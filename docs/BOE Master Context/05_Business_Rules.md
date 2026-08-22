@@ -863,6 +863,29 @@ is idempotent — the first thing that invalidated a version is the true answer.
 The Order number, `source_order_submission_id` and payment allocation
 identities and amounts are preserved by every amendment.
 
+### What an editor may change
+
+As of `20260928000000`, one section is editable: **client and party details** —
+`client_name`, `contact_number`, and the bill-to / ship-to name, phone, GST and
+address. Ten named text columns, enforced as a database allow-list where an
+unrecognised key is **refused**, not ignored.
+
+That section is safe to edit without recomputing anything, because nothing in
+it feeds a total. The remaining sections are **not yet editable** and are
+different in kind: changing a rate or a quantity must atomically recompute the
+line total, subtotal, pre-GST total, GST and Grand Total, and then re-evaluate
+the verified-payment position against the new Grand Total. Each needs its own
+migration and its own proofs.
+
+Every edit carries the row version it was read at (`order_submissions.row_version`,
+a monotonic counter — **not** a timestamp, because `now()` is transaction-scoped
+and cannot distinguish two writes in one transaction). A stale write is refused
+with `ORDER_SUBMISSION_STALE` rather than silently winning.
+
+A submitted PI may not have its client name cleared: `ORDER_SUBMISSION_CLIENT_NAME_REQUIRED`
+says so in words, ahead of the CHECK constraint that would otherwise surface as
+a catalog identifier.
+
 ### Readiness
 
 `piReadiness()` is the single shared answer to "can this PI take a payment /

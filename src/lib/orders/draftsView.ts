@@ -218,6 +218,14 @@ export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerificatio
   ship_to_phone: string | null
   billing_address: string | null
   shipping_address: string | null
+  // Optional on the TYPE because these two are newly READ, not newly written:
+  // the parser has stored them since 20260908000000, but fixtures built before
+  // the detail page asked for them do not carry the keys.
+  bill_to_gst?: string | null
+  ship_to_gst?: string | null
+
+  /** Optimistic-concurrency counter — see PI_DRAFT_DETAIL_COLUMNS. */
+  row_version?: number | null
 
   source_workbook_name: string | null
 
@@ -348,6 +356,14 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // these has been written by the save route since the table was created.
   'contact_number', 'bill_to_phone', 'ship_to_phone',
   'billing_address', 'shipping_address',
+  // The two tax numbers, read with everything else. Editable through
+  // update_order_submission_client_details (20260928000000) and previously
+  // written by the parser but never surfaced.
+  'bill_to_gst', 'ship_to_gst',
+  // The optimistic-concurrency counter (20260928000000). Read here so an
+  // editor can send back the version it opened at; a concurrent edit moves it
+  // and the second write is refused rather than silently winning.
+  'row_version',
   'source_workbook_name',
   'gross_product_amount', 'discount_amount', 'subtotal_after_discount',
   'fabric_cost', 'fabric_cost_meaning', 'fabric_cost_text',

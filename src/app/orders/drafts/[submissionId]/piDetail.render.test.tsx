@@ -433,10 +433,15 @@ const summaryHtml = (over: {
   figures?: ReturnType<typeof summaryCommercialFigures>
   billing?: ReturnType<typeof buildBillingSummary>
   canEditBilling?: boolean
+  canEditDetails?: boolean
+  missingSummary?: string | null
   ownership?: ReturnType<typeof buildOwnership>
   workbookName?: string | null
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
+    canEditDetails={over.canEditDetails ?? false}
+    onEditDetails={() => {}}
+    missingSummary={over.missingSummary ?? null}
     ownership={over.ownership ?? buildOwnership({
       documentAuthor: 'Nishant Soni',
       submitterName: 'Nishant Soni',
@@ -2492,6 +2497,11 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
       'request_order_submission_changes',
       'set_order_submission_billing_percentage',
       'submit_pi_for_review',
+      // The client and party details editor (20260928000000). The one write on
+      // this page that supplies BUSINESS DATA rather than moving a status, and
+      // the answer to a PI imported without a client name — which previously
+      // dead-ended the workflow with no way anywhere to fix it.
+      'update_order_submission_client_details',
       'verify_pi_finance_check',
     ])
   })

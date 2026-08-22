@@ -134,6 +134,7 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
 export function PiSummaryCard({
   client, onOpenClient, ownership, statusLabel, tone, workbookName,
   dates, figures, billing, canEditBilling, onEditBilling,
+  canEditDetails, onEditDetails, missingSummary,
   payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
@@ -159,6 +160,22 @@ export function PiSummaryCard({
    */
   canEditBilling: boolean
   onEditBilling: () => void
+  /**
+   * Whether this viewer may correct the client and party details — the owner in
+   * draft/needs_changes, or an active admin at any stage. As everywhere else on
+   * this page, hiding the control is not the security:
+   * update_order_submission_client_details re-derives the whole rule.
+   */
+  canEditDetails: boolean
+  onEditDetails: () => void
+  /**
+   * What this PI still needs before it can take a payment, as one sentence.
+   *
+   * Null when nothing is missing. Present, this is the whole point of the
+   * panel: a workbook imported without a client name used to leave the reader
+   * with "Not provided" and a payment refusal, and no way to connect the two.
+   */
+  missingSummary: string | null
   /** null only while the payment summary has not been read yet. */
   payment: PaymentSummaryView | null
   canAdd: boolean
@@ -169,6 +186,29 @@ export function PiSummaryCard({
 }) {
   return (
     <PiCard>
+      {/* ── What is still missing, and the way to fix it ──
+          Above the summary rather than beside the field, because it is about
+          the record as a whole and because a reader who cannot proceed needs to
+          meet this before they go looking for the reason. */}
+      {missingSummary && (
+        <div
+          role="status"
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center',
+            padding: '10px 18px', fontSize: '12.5px',
+            background: '#fdf6ee', borderBottom: `1px solid ${colors.border}`,
+            color: '#8a4b12',
+          }}
+        >
+          <span style={{ flex: '1 1 240px', minWidth: 0 }}>{missingSummary}</span>
+          {canEditDetails && (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onEditDetails}>
+              Add client details
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="pi-detail-summary">
 
         {/* ── The left column: everything ABOUT the order ──

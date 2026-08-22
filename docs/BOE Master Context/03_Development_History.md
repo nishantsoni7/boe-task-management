@@ -836,15 +836,25 @@ widening it — see 05_Business_Rules.
 **PI data could not be corrected after import.**
 
 A workbook imported without a client name left the PI showing "Not provided"
-and no payment could be attributed to it. `piReadiness()` now gives every
-surface one shared answer listing everything missing at once, but the editor
-that would supply the values is **not yet built**.
+and no payment could be attributed to it. Fixed in two parts: `piReadiness()`
+gives every surface one shared answer listing everything missing at once, and
+`20260928000000` makes the client and party section editable, with a direct
+**Add client details** action on the summary where something is missing.
 
-> **Still open on this branch.** The general PI field editor (client and
-> addresses, dates and terms, products, commercial inputs), the owner
-> correction-request flow, and extending confirmed-workbook generation to apply
-> edited values to the generated copy. Migration `20260927000000` is **not
-> applied to any database**.
+The editing write path is deliberately **one section**, not the whole PI. Client
+and party details are ten text columns that feed no total; the commercial inputs
+and product rows are different in kind and need atomic recalculation plus a
+re-evaluated payment position. Those remain open.
+
+One defect was found by this migration's own assertions before it shipped: the
+first cut used `updated_at` for optimistic concurrency, and `now()` is
+transaction-scoped, so two writes in one transaction stamped the identical value
+and a stale edit compared equal to a fresh one. Replaced with an explicit
+monotonic `row_version` counter.
+
+> **Still open on this branch.** Editing for schedule/terms, products and
+> commercial inputs; the owner correction-request flow; and extending
+> confirmed-workbook generation to apply edited values to the generated copy.
 
 ---
 
@@ -855,4 +865,8 @@ that would supply the values is **not yet built**.
 | `20260924000000` | yes |
 | `20260925000000` | yes |
 | `20260926000000` | yes |
-| `20260927000000` | **NO — must be applied before the preview exercises the billing fix** |
+| `20260927000000` | **NO** |
+| `20260928000000` | **NO** |
+
+Both unapplied migrations must be applied, in order, before the preview can
+exercise the billing-percentage fix or the client-details editor.

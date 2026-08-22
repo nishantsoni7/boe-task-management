@@ -29,7 +29,7 @@
 // NOTHING HERE DECIDES AUTHORITY. These are dialogs; the RPCs behind them
 // re-derive the actor, the permission and the record's state in the database.
 
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, CheckCircle2, Send, ShieldCheck, Trash2, X } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -1462,6 +1462,271 @@ export function PiBillingPercentageModal({
                 )}
               </span>
             )}
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Editing the client and party details ──────────────────────────────────────
+
+/** The ten fields this editor owns, in the order they are shown. */
+export const PI_CLIENT_FIELDS = [
+  { key: 'client_name',      label: 'Client name',       group: 'client', required: true,  multiline: false },
+  { key: 'contact_number',   label: 'Contact number',    group: 'client', required: false, multiline: false },
+  { key: 'bill_to_name',     label: 'Bill to',           group: 'bill',   required: false, multiline: false },
+  { key: 'bill_to_phone',    label: 'Billing phone',     group: 'bill',   required: false, multiline: false },
+  { key: 'bill_to_gst',      label: 'Billing GST',       group: 'bill',   required: false, multiline: false },
+  { key: 'billing_address',  label: 'Billing address',   group: 'bill',   required: false, multiline: true  },
+  { key: 'ship_to_name',     label: 'Ship to',           group: 'ship',   required: false, multiline: false },
+  { key: 'ship_to_phone',    label: 'Shipping phone',    group: 'ship',   required: false, multiline: false },
+  { key: 'ship_to_gst',      label: 'Shipping GST',      group: 'ship',   required: false, multiline: false },
+  { key: 'shipping_address', label: 'Shipping address',  group: 'ship',   required: false, multiline: true  },
+] as const
+
+export type PiClientFieldKey = typeof PI_CLIENT_FIELDS[number]['key']
+export type PiClientFieldValues = Partial<Record<PiClientFieldKey, string | null>>
+
+const PI_CLIENT_GROUPS = [
+  { key: 'client', title: 'Client' },
+  { key: 'bill',   title: 'Bill to' },
+  { key: 'ship',   title: 'Ship to' },
+] as const
+
+/**
+ * SUPPLYING WHAT THE WORKBOOK DID NOT CARRY.
+ *
+ * A parser reads a human-authored spreadsheet, and a spreadsheet can be
+ * incomplete. Before this existed, a PI imported without a client name could
+ * never acquire one: the detail screen said "Not provided", no payment could be
+ * attributed to it, and nothing in the product could fix that.
+ *
+ * ONE DIALOG, NOT TEN EDIT LINKS. The summary is read far more often than it is
+ * corrected, and scattering small controls through it would put an editing
+ * affordance beside every value a reader is trying to scan.
+ *
+ * WHAT IT SENDS. Only the fields that actually CHANGED — an absent key means
+ * "leave that column alone", which is what lets two people correct different
+ * halves of the same PI without overwriting one another. The version travels
+ * with the write, so a stale dialog is refused rather than silently winning.
+ *
+ * WHAT IT DOES NOT OFFER. No total, no status, no date of record, no payment
+ * figure. Those are calculated or controlled elsewhere and a text box beside
+ * them would be a lie about who decides them.
+ */
+export function PiClientDetailsEditModal({
+  current, saving, failure, requireReason = false, missingKeys = [], onCancel, onSave,
+}: {
+  current: PiClientFieldValues
+  saving: boolean
+  failure: string | null
+  /** True when this is an admin amendment after submission. */
+  requireReason?: boolean
+  /** Fields the readiness check says are missing, marked for the reader. */
+  missingKeys?: readonly string[]
+  onCancel: () => void
+  onSave: (changed: PiClientFieldValues, reason: string | null) => void
+}) {
+  useScrollLock(true)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const reasonId = useId()
+
+  const initial = useMemo(() => {
+    const out: Record<string, string> = {}
+    for (const f of PI_CLIENT_FIELDS) out[f.key] = current[f.key] ?? ''
+    return out
+  }, [current])
+
+  const [values, setValues] = useState<Record<string, string>>(initial)
+  const [reason, setReason] = useState('')
+  const trimmedReason = reason.trim()
+
+  // Only what MOVED. Trimmed on both sides so re-typing the same value with a
+  // stray space is not an amendment, which would otherwise write an activity
+  // entry saying nothing changed.
+  const changed = useMemo(() => {
+    const out: PiClientFieldValues = {}
+    for (const f of PI_CLIENT_FIELDS) {
+      const next = (values[f.key] ?? '').trim()
+      const prev = (current[f.key] ?? '').trim()
+      if (next !== prev) out[f.key] = next === '' ? null : next
+    }
+    return out
+  }, [values, current])
+
+  const changedCount = Object.keys(changed).length
+  const clientNameEmptied = 'client_name' in changed && changed.client_name === null
+  const canSave = !saving
+    && changedCount > 0
+    && !clientNameEmptied
+    && (!requireReason || trimmedReason !== '')
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (!saving) onCancel(); return }
+      if (e.key !== 'Tab') return
+      const root = dialogRef.current
+      if (!root) return
+      const focusables = Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+        .filter(el => el.offsetParent !== null || el === document.activeElement)
+      const activeIndex = focusables.indexOf(document.activeElement as HTMLElement)
+      const target = resolveTrapTarget({ count: focusables.length, activeIndex, shiftKey: e.shiftKey })
+      if (target === null) return
+      e.preventDefault()
+      if (target === 'block') { root.focus(); return }
+      focusables[target === 'first' ? 0 : focusables.length - 1]?.focus()
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [onCancel, saving])
+
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!canSave) return
+    onSave(changed, requireReason ? trimmedReason : null)
+  }
+
+  return (
+    // A backdrop click is inert: this holds typed input, by the BOE form-modal rule.
+    <div style={OVERLAY}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Edit PI details"
+        tabIndex={-1}
+        style={{ ...PANEL, maxWidth: '560px', outline: 'none' }}
+      >
+        <ModalHeader
+          title="Edit PI details"
+          subtitle="Client and addresses"
+          onClose={onCancel}
+          disabled={saving}
+        />
+        <form
+          onSubmit={submit}
+          style={{
+            display: 'flex', flexDirection: 'column', gap: '16px',
+            padding: '16px 18px 18px', maxHeight: '68vh', overflowY: 'auto',
+          }}
+        >
+          {PI_CLIENT_GROUPS.map(group => (
+            <div key={group.key} style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+              <div style={{
+                fontSize: '11px', fontWeight: 700, letterSpacing: '0.04em',
+                textTransform: 'uppercase', color: colors.muted,
+              }}>
+                {group.title}
+              </div>
+              {/* One column on a phone, two where there is room — the address
+                  fields span both because a wrapped address is hard to read. */}
+              <div style={{
+                display: 'grid', gap: '9px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              }}>
+                {PI_CLIENT_FIELDS.filter(f => f.group === group.key).map(f => {
+                  const isMissing = missingKeys.includes(f.key)
+                    && (values[f.key] ?? '').trim() === ''
+                  return (
+                    <label
+                      key={f.key}
+                      style={{
+                        display: 'flex', flexDirection: 'column', gap: '4px',
+                        gridColumn: f.multiline ? '1 / -1' : undefined,
+                      }}
+                    >
+                      <span style={{ fontSize: '11.5px', fontWeight: 600, color: colors.primary }}>
+                        {f.label}
+                        {f.required && (
+                          <span aria-hidden="true" style={{ color: '#b3541e' }}> *</span>
+                        )}
+                      </span>
+                      {f.multiline ? (
+                        <textarea
+                          value={values[f.key] ?? ''}
+                          onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                          disabled={saving}
+                          rows={2}
+                          maxLength={500}
+                          style={{
+                            padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            borderRadius: '7px', background: colors.base,
+                            color: colors.primary, fontFamily: 'inherit',
+                          }}
+                        />
+                      ) : (
+                        <input
+                          type={f.key.includes('phone') || f.key === 'contact_number' ? 'tel' : 'text'}
+                          value={values[f.key] ?? ''}
+                          onChange={e => setValues(v => ({ ...v, [f.key]: e.target.value }))}
+                          disabled={saving}
+                          maxLength={500}
+                          style={{
+                            padding: '7px 10px', fontSize: '13px',
+                            border: `1px solid ${isMissing ? '#b3541e' : colors.border}`,
+                            borderRadius: '7px', background: colors.base, color: colors.primary,
+                          }}
+                        />
+                      )}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
+
+          {/* A submitted PI must keep a client name — the database refuses to
+              clear it. Said here so the reader learns it before pressing Save. */}
+          {clientNameEmptied && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>
+              A client name is required. Payments and submission both depend on it.
+            </div>
+          )}
+
+          {requireReason && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              <label htmlFor={reasonId} style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                Reason for this amendment
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                disabled={saving}
+                rows={2}
+                maxLength={500}
+                placeholder="Why is this being changed after submission?"
+                style={{
+                  padding: '7px 10px', fontSize: '13px', resize: 'vertical',
+                  border: `1px solid ${colors.border}`, borderRadius: '7px',
+                  background: colors.base, color: colors.primary, fontFamily: 'inherit',
+                }}
+              />
+              <div style={{ fontSize: '11.5px', color: colors.muted }}>
+                Recorded in Activity with what changed. Required.
+              </div>
+            </div>
+          )}
+
+          {failure && (
+            <div role="alert" style={{ fontSize: '12px', color: '#d9534f' }}>{failure}</div>
+          )}
+
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center' }}>
+            <button type="submit" className="boe-btn boe-btn-primary" disabled={!canSave}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            {/* What will be written, before it is written. */}
+            <span style={{ marginLeft: 'auto', fontSize: '11.5px', color: colors.muted }}>
+              {changedCount === 0
+                ? 'No changes yet'
+                : `${changedCount} field${changedCount === 1 ? '' : 's'} will change`}
+            </span>
           </div>
         </form>
       </div>

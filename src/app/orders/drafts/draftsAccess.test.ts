@@ -404,6 +404,15 @@ describe('the detail page renders only what it fetched', () => {
       'request_order_submission_changes',
       'set_order_submission_billing_percentage',
       'submit_pi_for_review',
+      // update_order_submission_client_details (20260928000000) writes ten
+      // named TEXT columns — client, contact, and the two parties — and
+      // nothing else. Its allow-list is enforced in the database, not here:
+      // an unrecognised key is REFUSED rather than ignored, so a caller
+      // cannot reach a total, a status, a payment or the Order link through
+      // it. Authority is the owner rule OR the active-admin rule, and it
+      // carries optimistic concurrency so two editors cannot silently
+      // overwrite each other.
+      'update_order_submission_client_details',
       'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and

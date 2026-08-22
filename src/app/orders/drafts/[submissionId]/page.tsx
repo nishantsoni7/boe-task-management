@@ -110,6 +110,7 @@ import {
 } from '@/components/orders/piPreview'
 import {
   PiBillingPercentageModal,
+  PiClientDetailsEditModal,
   PiClientDetailsModal,
   PiSubmitConfirmModal,
   PiNoteModal,
@@ -118,6 +119,8 @@ import {
   type PiNoteIntent,
 } from '@/components/orders/piReviewModals'
 import { colors } from '@/lib/tokens'
+import type { PiClientFieldValues } from '@/components/orders/piReviewModals'
+import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -356,6 +359,15 @@ function PiDraftDetailPageInner() {
    * their own draft must not be asked for one.
    */
   const [canAdminAmend, setCanAdminAmend] = useState(false)
+  const [clientEditOpen, setClientEditOpen] = useState(false)
+  const [clientSaving, setClientSaving] = useState(false)
+  const [clientFailure, setClientFailure] = useState<string | null>(null)
+  /**
+   * The row version the page last READ, held separately from the load state so
+   * the save callback can close over it without depending on where the
+   * submission binding happens to be derived.
+   */
+  const [rowVersion, setRowVersion] = useState<number | null>(null)
   const [billingDialog, setBillingDialog] = useState(false)
   const [billingSaving, setBillingSaving] = useState(false)
   const [billingFailure, setBillingFailure] = useState<string | null>(null)
@@ -570,6 +582,9 @@ function PiDraftDetailPageInner() {
       const number = (order as { display_number?: string | null } | null)?.display_number
       orderDisplayNumber = typeof number === 'string' && number.trim() !== '' ? number.trim() : null
     }
+
+    // The version this render is based on, for optimistic concurrency.
+    setRowVersion(typeof row.row_version === 'number' ? row.row_version : null)
 
     setLoad({
       kind: 'ready',
@@ -865,6 +880,43 @@ function PiDraftDetailPageInner() {
       setBillingSaving(false)
     }
   }, [billingSaving, supabase, submissionId, loadDraft])
+
+  /**
+   * SUPPLY OR CORRECT THE CLIENT AND PARTY DETAILS.
+   *
+   * Sends only what changed, and the row version it was read at. The RPC
+   * re-derives the authority, the staleness and every field rule, so a refusal
+   * here is the database's answer and this shows it rather than substituting a
+   * sentence of its own — that substitution is exactly what made a missing
+   * environment variable look like a refusal on the Order screen.
+   */
+  const saveClientDetails = useCallback(async (
+    changed: PiClientFieldValues,
+    reason: string | null,
+  ) => {
+    if (clientSaving) return
+    setClientSaving(true)
+    setClientFailure(null)
+    try {
+      const { error } = await supabase.rpc('update_order_submission_client_details', {
+        p_submission_id: submissionId,
+        p_fields: changed,
+        // The version this dialog was opened at. A concurrent edit moves it and
+        // the write is refused instead of silently winning.
+        p_expected_version: rowVersion,
+        p_reason: reason,
+      })
+      if (error) {
+        setClientFailure((error as { message?: string }).message
+          ?? 'The details could not be saved.')
+        return
+      }
+      setClientEditOpen(false)
+      await loadDraft({ quiet: true })
+    } finally {
+      setClientSaving(false)
+    }
+  }, [clientSaving, supabase, submissionId, rowVersion, loadDraft])
 
   const approveException = useCallback(() => runAction('approve_exception', async () => {
     const { error } = await supabase.rpc('approve_pi_advance_exception', {
@@ -1210,6 +1262,19 @@ function PiDraftDetailPageInner() {
    * products; the card is now a dialog the summary opens, so the answer is
    * resolved here and passed to both. Not one input to it changed.
    */
+  /**
+   * WHAT THIS PI STILL NEEDS — the shared answer, so this screen and the
+   * payment and submission gates cannot disagree about the same record.
+   *
+   * Computed for the PAYMENT purpose because that is the gate a reader meets
+   * first, and it is where the reported dead end was: no client name, no
+   * payment, and nothing on the page offering a way to supply one.
+   */
+  const paymentReadiness = piReadiness('payment', {
+    client_name: submission.client_name ?? null,
+    source_workbook_path: null,
+  })
+
   const canAddPayment = canAddPiPayment(
     {
       userId: viewerId,
@@ -1376,6 +1441,18 @@ function PiDraftDetailPageInner() {
              cannot disagree. */
           canEditBilling={canEditSubmission || canAdminAmend}
           onEditBilling={() => { setBillingFailure(null); setBillingDialog(true) }}
+          /* The same two authorities the billing control uses. The owner rule
+             covers a draft; the admin rule covers every stage after it. */
+          canEditDetails={canEditSubmission || canAdminAmend}
+          onEditDetails={() => { setClientFailure(null); setClientEditOpen(true) }}
+          /* Only offered where something can actually be fixed by a form —
+             piReadinessIsEditable is false for a list of workbook problems, and
+             pointing at an editor for those would be a lie. */
+          missingSummary={
+            paymentReadiness.ready || !piReadinessIsEditable(paymentReadiness)
+              ? null
+              : paymentReadiness.summary
+          }
           ownership={ownership}
           statusLabel={draftStatusLabel(submission.status)}
           tone={tone}
@@ -1611,6 +1688,32 @@ function PiDraftDetailPageInner() {
           onCancel={() => { if (!billingSaving) setBillingDialog(false) }}
           onSave={(value, reason) => { void saveBillingPercentage(value, reason) }}
           onClear={reason => { void saveBillingPercentage(null, reason) }}
+        />
+      )}
+
+      {clientEditOpen && (
+        <PiClientDetailsEditModal
+          current={{
+            client_name:      submission.client_name ?? null,
+            contact_number:   submission.contact_number ?? null,
+            bill_to_name:     submission.bill_to_name ?? null,
+            bill_to_phone:    submission.bill_to_phone ?? null,
+            bill_to_gst:      submission.bill_to_gst ?? null,
+            billing_address:  submission.billing_address ?? null,
+            ship_to_name:     submission.ship_to_name ?? null,
+            ship_to_phone:    submission.ship_to_phone ?? null,
+            ship_to_gst:      submission.ship_to_gst ?? null,
+            shipping_address: submission.shipping_address ?? null,
+          }}
+          saving={clientSaving}
+          failure={clientFailure}
+          /* A reason is required exactly when this is an ADMIN AMENDMENT of a
+             PI the owner can no longer edit — the same condition the database
+             applies, asked here so the reader learns it before typing. */
+          requireReason={canAdminAmend && !canEditSubmission}
+          missingKeys={paymentReadiness.missing.map(m => m.key)}
+          onCancel={() => { if (!clientSaving) setClientEditOpen(false) }}
+          onSave={(changed, reason) => { void saveClientDetails(changed, reason) }}
         />
       )}
 
