@@ -31,6 +31,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+
+import { orderDocumentResponse } from '@/lib/orders/orderDocuments'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -255,13 +257,23 @@ describe('when generation fails', () => {
     assert.ok(route.includes('{ status: 202 }'))
   })
 
-  test('every failure code the route emits is one the sanitizer knows', async () => {
-    const { ORDER_DOCUMENT_FAILURES } = await import('./orderDocuments')
-    const emitted = [...route.matchAll(/code:\s*'([A-Z_]+)'/g)].map(m => m[1])
+  test('every code the route emits has PREWRITTEN copy the client owns', async () => {
+    const { ORDER_DOCUMENT_RESPONSES } = await import('./orderDocuments')
+    // WIDENED, in both directions, when the response matrix was introduced.
+    //
+    // It used to check only ORDER_DOCUMENT_FAILURES — the codes that get STORED
+    // on a failed version — which is a narrower set than the codes the route
+    // ANSWERS with. It also matched only `code:` object properties, so every
+    // code passed positionally to fail() escaped it entirely, including
+    // FORBIDDEN and NOT_FOUND. Both gaps are closed here.
+    const emitted = [
+      ...[...route.matchAll(/code:\s*'([A-Z_]+)'/g)].map(m => m[1]),
+      ...[...route.matchAll(/fail\(\s*\d+,\s*'([A-Z_]+)'/g)].map(m => m[1]),
+    ]
     assert.ok(emitted.length > 0)
     for (const code of emitted) {
       assert.ok(
-        code in ORDER_DOCUMENT_FAILURES || code === 'GENERATION_FAILED',
+        code in ORDER_DOCUMENT_RESPONSES,
         `${code} has no prewritten sentence, so it would render as the generic failure`)
     }
   })
@@ -358,5 +370,96 @@ describe('the PDF the route produces', () => {
   test('reads the BOE mark from the repository, and survives its absence', () => {
     assert.ok(route.includes('boe-logo-full.png'))
     assert.match(raw, /A missing file\s*\n?\s*\*?\s*is not a failure/)
+  })
+})
+
+// ══ 9. THE MANUAL-TEST FAILURE, REGRESSED ════════════════════════════════════
+//
+// Nishant pressed Generate documents on confirmed Order 0001 and the card said
+// "That could not be done just now." The Order had a linked approved PI, the
+// card was visible, and his account was an active admin — so the sentence was
+// wrong about every part of what it implied.
+//
+// The cause was `process.env.SUPABASE_SERVICE_ROLE_KEY!`. supabase-js throws
+// `supabaseKey is required.` when that value is absent or empty, the client was
+// constructed OUTSIDE this route's try/catch, and the escaped throw became a
+// bare 500 with no `message` in its body. The card's own fallback sentence then
+// stood in for a diagnosis it never had.
+//
+// Three separate things had to be true for a missing variable to look like a
+// refusal, and each gets its own test below, because any one of them coming
+// back reproduces the whole bug.
+
+describe('a deployment with no service-role key', () => {
+  test('the client is built from a CHECKED value, never a `!` assertion', () => {
+    assert.ok(!route.includes('process.env.SUPABASE_SERVICE_ROLE_KEY!'),
+      'the non-null assertion is what threw; it must not return')
+    assert.ok(!route.includes('process.env.NEXT_PUBLIC_SUPABASE_URL!'))
+    assert.ok(route.includes('if (!url || !key) return null'),
+      'serviceClient must report absence, not throw it')
+  })
+
+  test('the route REFUSES with its own code before touching the client', () => {
+    assert.ok(route.includes("'SERVER_NOT_CONFIGURED'"))
+    const guard = route.indexOf('if (!service)')
+    const firstUse = route.indexOf('service\n    .rpc(')
+    assert.ok(guard > 0, 'the null client must be guarded')
+    assert.ok(guard < firstUse || firstUse === -1,
+      'the guard must come before the first use of the client')
+  })
+
+  test('that refusal is NOT dressed up as a permission answer', () => {
+    // The whole harm of the original bug: a server fault read as a user fault.
+    const { message, retryable } = orderDocumentResponse('SERVER_NOT_CONFIGURED')
+    assert.match(message, /not configured on this deployment/i)
+    assert.match(message, /not something you can fix/i)
+    assert.equal(retryable, false)
+    assert.ok(!/permission|authority|allowed|access/i.test(message),
+      'a missing environment variable is not a permission problem')
+  })
+
+  test('nothing can escape the handler without a message', () => {
+    // The outermost net. Without it, any unanticipated throw reproduces the
+    // exact same symptom through a different door.
+    assert.ok(route.includes('return await handle(req, { params })'))
+    assert.match(route, /catch \{\s*\n\s*return fail\(500, ORDER_DOCUMENT_UNKNOWN_FAILURE/)
+  })
+})
+
+describe('every response this route can send', () => {
+  test('carries a `message`, with NO exceptions', () => {
+    // The client falls back to its own generic sentence whenever `message` is
+    // absent, so a message-less response is indistinguishable from a crash.
+    // Two responses used to lack one: 202 in_progress and 409 superseded.
+    // SCOPED TO THE ERROR RESPONSES, which is exactly where the client reads
+    // `message`. A 200 'ready' and the 202 both take other paths in the card,
+    // and requiring copy on a success would be ceremony rather than a guard.
+    const all = route.match(/NextResponse\.json\(\{[\s\S]*?\}, \{ status: (\d+) \}\)/g) ?? []
+    const responses = all.filter(r => Number(/status: (\d+) \}\)$/.exec(r)?.[1] ?? 0) >= 400)
+    assert.ok(responses.length >= 3, `expected several error responses, found ${responses.length}`)
+    for (const r of responses) {
+      // `message` shorthand is as good as `message:` — both put the field on
+      // the wire, which is the only thing that matters to the client.
+      assert.ok(/\bmessage\b/.test(r), `a response carries no message:\n${r}`)
+    }
+  })
+
+  test('carries a stable `code` the client can resolve', () => {
+    for (const code of ['SERVER_NOT_CONFIGURED', 'CLAIM_ACTIVE', 'CLAIM_LOST']) {
+      assert.ok(route.includes(`'${code}'`), `${code} is not emitted`)
+      assert.notEqual(orderDocumentResponse(code).message, undefined)
+    }
+  })
+
+  test('recording a failure cannot REPLACE the failure being recorded', () => {
+    // If release() throws, the caller must still learn about the original
+    // problem. The lease falls to the TTL takeover it was designed for.
+    const start = route.indexOf('const release =')
+    assert.ok(start > 0, 'release() not found')
+    const release = route.slice(start, route.indexOf('\n  }', start))
+    assert.ok(/try \{/.test(release), 'the release must guard its own RPC')
+    assert.ok(/\} catch \{/.test(release),
+      'the release must not be able to throw over the error it is recording')
+    assert.ok(release.includes('fail_order_document_generation'))
   })
 })

@@ -5,6 +5,8 @@ import { join } from 'node:path'
 
 import { createClient } from '@/lib/supabase/server'
 import {
+  ORDER_DOCUMENTS_GENERIC_FAILURE,
+  ORDER_DOCUMENT_FAILURES,
   ORDER_DOCUMENT_UNKNOWN_FAILURE,
   orderDocumentAttemptPath,
   sanitizeOrderDocumentFailure,
@@ -77,15 +79,34 @@ export const runtime = 'nodejs'
  */
 export const maxDuration = 60
 
-/** The privileged client. A function so its INFERRED type can be named — the
- *  same idiom /api/orders/import/process-draft uses. */
+/**
+ * The privileged client — or null when this deployment has not been given the
+ * service role key.
+ *
+ * THIS RETURNS NULL RATHER THAN THROWING, and that is the fix for a real defect
+ * rather than a stylistic preference.
+ *
+ * It used to be `process.env.SUPABASE_SERVICE_ROLE_KEY!` — a non-null assertion
+ * over a value the type system cannot actually vouch for. When the variable is
+ * absent or empty, supabase-js throws `supabaseKey is required.` at the moment
+ * of construction, and that construction sat OUTSIDE this route's try/catch. The
+ * throw therefore escaped the handler entirely: Next returned a bare 500 whose
+ * body carries no `message`, the client's `body?.message` came back undefined,
+ * and the card fell back to its own generic sentence — "That could not be done
+ * just now." A missing environment variable was being reported as though it
+ * were a refusal, which sent everybody looking at permissions.
+ *
+ * A missing key is a DEPLOYMENT fault, not a user fault, and it now says so.
+ * The two sibling routes in this module (test-data-cleanup, submissions/delete)
+ * already guarded this way; this one is now consistent with them.
+ */
 function serviceClient() {
-  return createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return null
+  return createServiceClient(url, key)
 }
-type ServiceClient = ReturnType<typeof serviceClient>
+type ServiceClient = NonNullable<ReturnType<typeof serviceClient>>
 
 const fail = (status: number, code: string, message: string) =>
   NextResponse.json({ error: code, message }, { status })
@@ -103,6 +124,23 @@ async function readLogo(): Promise<Uint8Array | null> {
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // THE OUTERMOST NET. Every deliberate exit below carries a code and a
+  // message; this exists for the exits nobody wrote. An escaped throw becomes a
+  // bare 500 whose body has no `message`, and the client then falls back to its
+  // own generic sentence — which is precisely how a missing environment
+  // variable came to be reported to a user as though it were a refusal.
+  //
+  // It says nothing about what happened. sanitizeOrderDocumentFailure is not
+  // even consulted here: at this depth the failure has no established meaning,
+  // and inventing one would be worse than admitting there isn't one.
+  try {
+    return await handle(req, { params })
+  } catch {
+    return fail(500, ORDER_DOCUMENT_UNKNOWN_FAILURE, ORDER_DOCUMENTS_GENERIC_FAILURE)
+  }
+}
+
+async function handle(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   // ── 1. Authenticate from the session, never from the body ──
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
@@ -139,7 +177,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const asked = (requested ?? {}) as { version?: number; status?: string }
 
   // ── 3. Claim, as the server ──
+  //
+  // THE CONFIGURATION IS CHECKED BEFORE THE CLIENT IS USED. A deployment
+  // missing SUPABASE_SERVICE_ROLE_KEY cannot generate anything, and it must say
+  // that in its own words: this is the one failure here that no retry, no
+  // permission and no different Order will resolve.
   const service = serviceClient()
+  if (!service) {
+    return fail(503, 'SERVER_NOT_CONFIGURED',
+      'Document generation is not configured on this deployment. This is a server setting, not something you can fix — please report it.')
+  }
+
   const { data: claimed, error: claimError } = await service
     .rpc('claim_order_document_generation', { p_order_id: orderId })
 
@@ -156,9 +204,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   if (claimError || !claim.claimed) {
     // Somebody else is already generating this Order, or the version was picked
     // up between the request and here. Not an error — the work is happening.
+    //
+    // EVERY RESPONSE FROM HERE ON CARRIES A `message`. The client falls back to
+    // its own generic sentence whenever one is absent, which is exactly how a
+    // configuration crash came to be reported as a refusal. A response without
+    // a message is now a bug in this file.
     return NextResponse.json({
       status: 'in_progress',
+      code: 'CLAIM_ACTIVE',
       version: claim.version ?? asked.version ?? null,
+      message: 'These documents are already being generated. This page will show them when they are ready.',
     }, { status: 202 })
   }
 
@@ -178,12 +233,21 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const release = async (code: unknown) => {
     const { code: safeCode, message } = sanitizeOrderDocumentFailure(code)
-    await service.rpc('fail_order_document_generation', {
-      p_version_id: versionId,
-      p_claim_token: token,
-      p_error_code: safeCode,
-      p_error_message: message,
-    })
+    // RELEASING MUST NOT BE ABLE TO REPLACE THE FAILURE IT IS RECORDING. If the
+    // release itself throws — the network drops, the claim was taken over — the
+    // caller still needs the answer about the ORIGINAL failure, and the lease
+    // will fall to the TTL takeover it was designed for. Swallowing here is
+    // therefore correct; swallowing anywhere else in this file would not be.
+    try {
+      await service.rpc('fail_order_document_generation', {
+        p_version_id: versionId,
+        p_claim_token: token,
+        p_error_code: safeCode,
+        p_error_message: message,
+      })
+    } catch {
+      // deliberately ignored — see above
+    }
     return { safeCode, message }
   }
 
@@ -224,7 +288,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       // The claim was taken over while this run was working, so its output is
       // stale and must not be published. Nothing is released: the live claim
       // belongs to somebody else and this run has no right to fail it.
-      return NextResponse.json({ status: 'superseded', version }, { status: 409 })
+      return NextResponse.json({
+        status: 'superseded',
+        code: 'CLAIM_LOST',
+        version,
+        message: ORDER_DOCUMENT_FAILURES.CLAIM_LOST,
+      }, { status: 409 })
     }
 
     return NextResponse.json({ status: 'ready', version }, { status: 200 })

@@ -71,6 +71,7 @@ import {
   ORDER_DOCUMENT_COLUMNS,
   ORDER_DOCUMENT_URL_TTL_SECONDS,
   buildOrderDocumentsView,
+  orderDocumentResponse,
   type OrderDocumentRow,
 } from '@/lib/orders/orderDocuments'
 
@@ -865,9 +866,23 @@ export default function OrderDetailPage() {
     setDocError(null)
     try {
       const response = await fetch(`/api/orders/${id}/documents`, { method: 'POST' })
-      const body = await response.json().catch(() => null) as { message?: string } | null
+      const body = await response.json().catch(() => null) as
+        { code?: string; error?: string; message?: string } | null
+
       if (!response.ok && response.status !== 202) {
-        setDocError(typeof body?.message === 'string' ? body.message : DOCUMENTS_REFUSED)
+        // THE CODE DECIDES, NOT THE SERVER'S PROSE.
+        //
+        // This used to print `body.message` and fall back to one generic
+        // sentence when it was absent. That fallback is how a deployment
+        // missing its service-role key was reported to a reader as "that could
+        // not be done just now" — a sentence that describes a refusal, sends
+        // them to look at permissions, and is wrong about all of it.
+        //
+        // The code is resolved against a table THIS BUNDLE owns, so the text on
+        // screen is text this repository reviewed. The server's own message is
+        // never rendered; an unknown code degrades to the generic answer rather
+        // than printing a token from the wire.
+        setDocError(orderDocumentResponse(body?.code ?? body?.error).message)
       }
     } catch {
       setDocError(DOCUMENTS_REFUSED)

@@ -320,6 +320,86 @@ export const ORDER_DOCUMENT_FAILURES = {
 
 export type OrderDocumentFailureCode = keyof typeof ORDER_DOCUMENT_FAILURES
 
+/**
+ * WHAT THE ROUTE MAY ANSWER, and what the reader is told for each.
+ *
+ * The card used to show one sentence for everything a request could return,
+ * which meant a deployment missing its service-role key, a permission refusal
+ * and a genuine render failure were indistinguishable to the person looking at
+ * them. The first of those three is not the reader's to fix, the second is not
+ * theirs to retry, and the third is — and only a code can tell them apart.
+ *
+ * `retryable` is the difference between "try again" and "this will not change
+ * by trying"; the card uses it to decide whether to keep offering the action.
+ *
+ * NONE of these strings names a bucket, a key, a path, a token, a hostname or a
+ * function. That property is what makes them safe to print, and it is asserted
+ * in orderDocuments.test.ts rather than left to care.
+ */
+export const ORDER_DOCUMENT_RESPONSES = {
+  UNAUTHORIZED: {
+    message: 'Please sign in again.',
+    retryable: false,
+  },
+  BAD_REQUEST: {
+    message: 'That Order reference is not valid.',
+    retryable: false,
+  },
+  FORBIDDEN: {
+    message: 'Generating Order documents needs the management approval authority.',
+    retryable: false,
+  },
+  NOT_FOUND: {
+    message: 'That Order is not available to you.',
+    retryable: false,
+  },
+  NO_SOURCE_PI: {
+    message: 'This Order was not created from a PI, so it has no documents to generate.',
+    retryable: false,
+  },
+  SERVER_NOT_CONFIGURED: {
+    message: 'Document generation is not configured on this deployment. This is a server setting, not something you can fix — please report it.',
+    retryable: false,
+  },
+  CLAIM_ACTIVE: {
+    message: 'These documents are already being generated. This page will show them when they are ready.',
+    retryable: false,
+  },
+  CLAIM_LOST: {
+    message: ORDER_DOCUMENT_FAILURES.CLAIM_LOST,
+    retryable: true,
+  },
+  WORKBOOK_MISSING: { message: ORDER_DOCUMENT_FAILURES.WORKBOOK_MISSING, retryable: false },
+  WORKBOOK_MISMATCH: { message: ORDER_DOCUMENT_FAILURES.WORKBOOK_MISMATCH, retryable: false },
+  WORKBOOK_UNREADABLE: { message: ORDER_DOCUMENT_FAILURES.WORKBOOK_UNREADABLE, retryable: false },
+  WORKBOOK_UNSUPPORTED: { message: ORDER_DOCUMENT_FAILURES.WORKBOOK_UNSUPPORTED, retryable: false },
+  WORKBOOK_TOO_LARGE: { message: ORDER_DOCUMENT_FAILURES.WORKBOOK_TOO_LARGE, retryable: false },
+  PDF_RENDER_FAILED: { message: ORDER_DOCUMENT_FAILURES.PDF_RENDER_FAILED, retryable: true },
+  PDF_TOO_LARGE: { message: ORDER_DOCUMENT_FAILURES.PDF_TOO_LARGE, retryable: false },
+  IMAGE_UNREADABLE: { message: ORDER_DOCUMENT_FAILURES.IMAGE_UNREADABLE, retryable: false },
+  UPLOAD_FAILED: { message: ORDER_DOCUMENT_FAILURES.UPLOAD_FAILED, retryable: true },
+  PI_UNREADABLE: { message: ORDER_DOCUMENT_FAILURES.PI_UNREADABLE, retryable: false },
+  GENERATION_FAILED: { message: ORDER_DOCUMENTS_GENERIC_FAILURE, retryable: true },
+} as const
+
+export type OrderDocumentResponseCode = keyof typeof ORDER_DOCUMENT_RESPONSES
+
+/**
+ * The sentence to show for a response code, and whether trying again is worth
+ * anything.
+ *
+ * An UNRECOGNISED code falls back to the generic retryable answer rather than
+ * printing itself. A code is a token from a server this client does not verify;
+ * rendering it would put unreviewed text on the screen.
+ */
+export function orderDocumentResponse(code: unknown): { message: string; retryable: boolean } {
+  if (typeof code === 'string'
+      && Object.prototype.hasOwnProperty.call(ORDER_DOCUMENT_RESPONSES, code)) {
+    return ORDER_DOCUMENT_RESPONSES[code as OrderDocumentResponseCode]
+  }
+  return { message: ORDER_DOCUMENTS_GENERIC_FAILURE, retryable: true }
+}
+
 export function isOrderDocumentFailureCode(value: unknown): value is OrderDocumentFailureCode {
   return typeof value === 'string' && Object.prototype.hasOwnProperty.call(ORDER_DOCUMENT_FAILURES, value)
 }
