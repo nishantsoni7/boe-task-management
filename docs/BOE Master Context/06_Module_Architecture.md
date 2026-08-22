@@ -882,16 +882,26 @@ deliberate:
   a source guard proves a policy exists, not that it refuses the right person.
   They need fixture rows, so they belong on a scratch database — never on
   production.
-* **A read-only posture check**,
-  `supabase/tests/order_confirmed_handoff_posture.sql`, which closes the gap the
-  level above leaves open. The assertion scripts prove the behaviour *somewhere*;
+* **Read-only posture checks** — `order_confirmed_handoff_posture.sql` (16
+  checks) for the three document migrations and `order_pi_editing_posture.sql`
+  (48) for the seven editing ones — which close the gap the level above leaves
+  open. The assertion scripts prove the behaviour *somewhere*;
   nothing else asks whether those properties survived the trip to the database
   people actually use. It writes nothing at all — every check is a catalog read,
   with no transaction to roll back and no fixture to clean up — which is what
   makes it safe to run against production, where the question matters most. Run
-  it immediately after applying the three Order-document migrations. Each of its
-  sixteen checks has been mutation-tested; a check that cannot fail is not a
-  check.
+  them immediately after applying their migrations. Every check in both has been
+  mutation-tested; a check that cannot fail is not a check. What the editing one
+  catches, proved by breaking each: a server-only RPC granted to a browser role,
+  an editor revoked from employees, an exposed `claim_token`, a client-writable
+  `superseded_at`, the owner rule widened with the admin rule, an action dropped
+  from the closed set, that set opened entirely, and an unpinned `search_path`.
+
+  Their read-only promise is itself enforced: `postureScripts.test.ts` refuses a
+  write statement or a transaction in either file. It strips comments **and
+  string literals** before scanning — the scripts describe the writes they do
+  not perform, both in prose and in their failure messages, and a scan of the
+  raw text fails on the very sentence promising the property it checks.
 * **A read-only eligibility diagnostic**,
   `supabase/tests/order_pi_handoff_eligibility.sql`, which answers the question
   the PI handoff actually provokes in use: *why is the Approved PI panel not on
@@ -915,9 +925,9 @@ deliberate:
   | `order_submission_schedule_terms_assertions.sql` | 36 | dates and terms, including the ISO-shape check that keeps `'yesterday'` out |
   | `order_submission_correction_requests_assertions.sql` | 20 | the owner's correction channel |
   | `order_submission_product_edit_assertions.sql` | 28 | product descriptions, and money refused BY NAME |
-  | `order_submission_change_pi_assertions.sql` | 62 | Change PI: the authority, the lease, and what a replacement means after submission |
+  | `order_submission_change_pi_assertions.sql` | 77 | Change PI: the authority, the lease, what a replacement means after submission, exception staleness, the allocation it must not touch, and all 24 activity actions written |
 
-  210 checks in total. They run against a local PostgreSQL 16 schema built from
+  232 checks in total. They run against a local PostgreSQL 16 schema built from
   the migrations plus a stub of what precedes them, and that stub is part of the
   method rather than a convenience: the first version of it did **not** carry
   `order_submission_activity`'s CHECK constraint, and over a hundred assertions

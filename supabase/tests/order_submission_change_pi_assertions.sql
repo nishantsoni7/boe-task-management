@@ -25,6 +25,7 @@ declare
   u_other    constant uuid := '22222222-2222-2222-2222-222222222222';
   u_approver constant uuid := '33333333-3333-3333-3333-333333333333';
   u_nobody   constant uuid := '44444444-4444-4444-4444-444444444444';
+  u_finance  constant uuid := '55555555-5555-5555-5555-555555555555';
   u_admin    constant uuid := '66666666-6666-6666-6666-666666666666';
 
   k_draft  constant uuid := 'c1000000-0000-0000-0000-00000000000d';
@@ -32,6 +33,9 @@ declare
   k_appr   constant uuid := 'c3000000-0000-0000-0000-00000000000a';
   o_appr   constant uuid := 'c4000000-0000-0000-0000-00000000000b';
   d_ver    constant uuid := 'c5000000-0000-0000-0000-00000000000c';
+  k_exc    constant uuid := 'c6000000-0000-0000-0000-00000000000d';
+  a_appr   constant uuid := 'c7000000-0000-0000-0000-00000000000e';
+  t_exc    constant uuid := 'aaaaaaa4-0000-0000-0000-000000000004';
 
   t_draft  constant uuid := 'aaaaaaa1-0000-0000-0000-000000000001';
   t_subm   constant uuid := 'aaaaaaa2-0000-0000-0000-000000000002';
@@ -39,7 +43,7 @@ declare
 
   m_orders uuid; a_create uuid; a_approve uuid;
   v_res jsonb; v_txt text; v_num numeric; v_int int; v_ts timestamptz;
-  v_uuid uuid; v_bool boolean; v_long text; v_orders_before int;
+  v_uuid uuid; v_uuid2 uuid; v_bool boolean; v_long text; v_orders_before int;
 begin
   select id into m_orders  from public.permission_modules where module_key = 'orders';
   select id into a_create  from public.permission_actions where action_key = 'create';
@@ -61,7 +65,18 @@ begin
     (k_subm,  'submitted', 'Submitted Co', u_owner, u_owner, null, t_subm,
      295000, 250000, 250000, 40, '2026-05-01', '2026-07-01'),
     (k_appr,  'approved',  'Approved Co',  u_owner, u_owner, null, t_appr,
+     295000, 250000, 250000, 40, '2026-05-01', '2026-07-01'),
+    -- A submitted PI carrying an APPROVED reduced-payment exception, so §J can
+    -- ask the real derivation whether the decision is still current.
+    (k_exc,   'submitted', 'Exception Co', u_owner, u_owner, null, t_exc,
      295000, 250000, 250000, 40, '2026-05-01', '2026-07-01');
+
+  update public.order_submissions
+     set source_workbook_sha256  = repeat('9', 64),
+         payment_terms           = '50% advance, balance before dispatch',
+         billing_terms           = 'GST invoice on dispatch',
+         advance_declared_amount = 118000
+   where id = k_exc;
 
   update public.order_submissions
      set finance_verified_by = u_approver,
@@ -76,6 +91,12 @@ begin
   values (o_appr, '0001', 'Approved Co', u_owner, u_owner,
           '2026-05-01', '2026-07-01', 295000, 250000, 40, 'running', k_appr);
   update public.order_submissions set order_id = o_appr where id = k_appr;
+
+  -- Money that has already arrived against the Order. §K proves not one rupee
+  -- of it moves.
+  insert into public.finance_payment_allocations
+    (id, order_id, order_submission_id, allocated_amount, status)
+  values (a_appr, o_appr, null, 120000, 'active');
 
   insert into public.order_document_versions (id, order_id, version, status,
     excel_path, pdf_path, excel_sha256, pdf_sha256, excel_bytes, pdf_bytes, completed_at)
@@ -204,6 +225,34 @@ begin
     -- a pass.
     if sqlerrm like '%NOT_EDITABLE%' or sqlerrm like '%FORBIDDEN%' then n_pass := n_pass + 1;
     else failures := array_append(failures, 'C2: ' || sqlerrm); n_fail := n_fail + 1; end if;
+  end;
+
+  -- FINANCE VERIFICATION IS NOT EDITING AUTHORITY, and it is asked here through
+  -- can_verify_pi_finance() itself rather than by asserting that the predicate
+  -- is absent from the workbook editor's body. The verifier is a REAL one: the
+  -- permission override below is what that function resolves.
+  -- BOTH halves the predicate needs: finance.approve, and the module entry
+  -- (finance.view) that module_entry_open resolves. Granting only the first
+  -- would make the verifier fail for the wrong reason and the refusal below
+  -- would prove nothing.
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed)
+  select u_finance, m.id, a.id, true
+  from public.permission_modules m, public.permission_actions a
+  where m.module_key = 'finance' and a.action_key in ('approve', 'view');
+
+  set local role authenticated;
+  perform set_config('test.uid', u_finance::text, true);
+  v_bool := public.can_verify_pi_finance();
+  reset role;
+  if v_bool then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'C2b: the fixture verifier cannot verify — the test proves nothing'); n_fail := n_fail + 1; end if;
+
+  begin
+    v_res := public.assert_order_submission_workbook_editor(k_subm, u_finance, 'the figures need correcting');
+    failures := array_append(failures, 'C2c: the finance verifier replaced a submitted PI'); n_fail := n_fail + 1;
+  exception when others then
+    if sqlerrm like '%NOT_EDITABLE%' or sqlerrm like '%FORBIDDEN%' then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'C2c: ' || sqlerrm); n_fail := n_fail + 1; end if;
   end;
 
   begin
@@ -483,10 +532,13 @@ begin
     else failures := array_append(failures, 'G4: ' || sqlerrm); n_fail := n_fail + 1; end if;
   end;
 
-  -- No payment or allocation may have been touched by any of the above.
+  -- No payment or allocation may have been touched by any of the above. The
+  -- fixture deliberately carries ONE, so "nothing appeared" and "nothing was
+  -- removed" are both real claims here rather than a count of zero that would
+  -- pass however the money was handled. Section K then reads the row itself.
   select count(*) into v_int from public.finance_payment_allocations;
-  if v_int = 0 then n_pass := n_pass + 1;
-  else failures := array_append(failures, 'G5: an allocation appeared'); n_fail := n_fail + 1; end if;
+  if v_int = 1 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('G5: %s allocations exist, expected the one the fixture made', v_int)); n_fail := n_fail + 1; end if;
 
 
   -- ═══ H. THE LEASE IS THE GATE BEFORE THE GATE ══════════════════════════
@@ -557,6 +609,178 @@ begin
     if sqlerrm like '%NOT_OWNED%' then n_pass := n_pass + 1;
     else failures := array_append(failures, 'H6: ' || sqlerrm); n_fail := n_fail + 1; end if;
   end;
+
+
+  -- ═══ J. AN APPROVED EXCEPTION GOES STALE BY ITSELF ═════════════════════
+  --
+  -- 20261003000000 writes NO invalidation for the reduced-payment exception,
+  -- and that omission is the design rather than a gap:
+  -- order_submission_exception_current() DERIVES currency by comparing the
+  -- decision's recorded basis against the live grand total, workbook hash and
+  -- both terms. A replacement moves all of them, so the decision stops being
+  -- current on its own — and a second stored answer would be a second thing to
+  -- keep in step with the first.
+  --
+  -- Asked through the REAL function, verbatim from 20260921000000, so this is a
+  -- claim about what runs rather than about a re-implementation.
+
+  update public.order_submissions
+     set advance_exception_status                   = 'approved',
+         advance_exception_decided_grand_total      = grand_total,
+         advance_exception_decided_workbook_sha256  = source_workbook_sha256,
+         advance_exception_decided_payment_terms    = payment_terms,
+         advance_exception_decided_billing_terms    = billing_terms
+   where id = k_exc;
+
+  select public.order_submission_exception_current(
+           advance_exception_status,
+           advance_exception_decided_grand_total, grand_total,
+           advance_exception_decided_workbook_sha256, source_workbook_sha256,
+           advance_exception_decided_payment_terms, payment_terms,
+           advance_exception_decided_billing_terms, billing_terms)
+    into v_bool
+  from public.order_submissions where id = k_exc;
+  if v_bool then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'J1: the exception was not current to begin with — the test proves nothing'); n_fail := n_fail + 1; end if;
+
+  v_res := public.replace_order_submission_parse(k_exc, u_admin, jsonb_build_object(
+    'processing_token', t_exc::text,
+    'fingerprint', 'fp-exc-2',
+    'change_reason', 'Rate corrected after the exception was approved',
+    'header', jsonb_build_object('client_name', 'Exception Co'),
+    'source', jsonb_build_object('workbook_path', 'pi/exc/v2.xlsx',
+                                 'workbook_sha256', repeat('f', 64)),
+    'commercial', jsonb_build_object('grand_total', '420000'),
+    'items', '[]'::jsonb, 'item_images', '[]'::jsonb));
+
+  select public.order_submission_exception_current(
+           advance_exception_status,
+           advance_exception_decided_grand_total, grand_total,
+           advance_exception_decided_workbook_sha256, source_workbook_sha256,
+           advance_exception_decided_payment_terms, payment_terms,
+           advance_exception_decided_billing_terms, billing_terms)
+    into v_bool
+  from public.order_submissions where id = k_exc;
+  if not v_bool then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'J2: the exception is STILL current after the workbook moved'); n_fail := n_fail + 1; end if;
+
+  -- The decision itself is untouched: it is history, and it still says what was
+  -- approved and on what basis. What changed is that the basis is no longer the
+  -- PI's.
+  select advance_exception_status into v_txt from public.order_submissions where id = k_exc;
+  if v_txt = 'approved' then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'J3: the decision was rewritten'); n_fail := n_fail + 1; end if;
+
+  select advance_exception_decided_grand_total into v_num from public.order_submissions where id = k_exc;
+  if v_num = 295000 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('J4: the recorded basis moved to %s', v_num)); n_fail := n_fail + 1; end if;
+
+  -- 20260917000000's trigger, still doing its own job: a declared advance
+  -- cannot survive the total it was measured against.
+  select advance_declared_amount into v_num from public.order_submissions where id = k_exc;
+  if v_num is null then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'J5: a declared advance survived a new grand total'); n_fail := n_fail + 1; end if;
+
+
+  -- ═══ K. THE MONEY IS NOT TOUCHED ═══════════════════════════════════════
+  --
+  -- An allocation is the record of where a payment went. A replacement may move
+  -- what the Order is WORTH; it may not move one rupee of what has been paid,
+  -- nor re-point an allocation, nor create a second one.
+
+  select count(*), coalesce(sum(allocated_amount), 0)
+    into v_int, v_num
+  from public.finance_payment_allocations where order_id = o_appr and status = 'active';
+  if v_int = 1 and v_num = 120000 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('K1: %s active allocations totalling %s', v_int, v_num)); n_fail := n_fail + 1; end if;
+
+  select id, allocated_amount, status, order_submission_id
+    into v_uuid, v_num, v_txt, v_uuid2
+  from public.finance_payment_allocations where id = a_appr;
+  if v_uuid = a_appr and v_num = 120000 and v_txt = 'active' and v_uuid2 is null
+  then n_pass := n_pass + 1;
+  else failures := array_append(failures, 'K2: the allocation row was rewritten'); n_fail := n_fail + 1; end if;
+
+  select count(*) into v_int from public.finance_payment_allocations;
+  if v_int = 1 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('K3: %s allocation rows exist', v_int)); n_fail := n_fail + 1; end if;
+
+
+  -- ═══ L. EVERY DECLARED ACTION IS ACCEPTED ══════════════════════════════
+  --
+  -- 20261001000000 restates a CLOSED constraint. Its own self-check reads the
+  -- constraint's TEXT and writes one probe row; this writes all twenty-four,
+  -- because a constraint that reads correctly and refuses in practice is the
+  -- exact failure that migration exists to close — 20260923000000 is applied to
+  -- production and logs an action it never declared.
+
+  v_int := 0;
+  foreach v_txt in array array[
+    'submission_created', 'parse_replaced', 'submitted', 'changes_requested',
+    'rejected', 'advance_exception_requested', 'advance_exception_approved',
+    'advance_exception_rejected', 'finance_verified', 'approved',
+    'payment_recorded', 'payment_allocations_moved',
+    'billing_percentage_set', 'billing_percentage_amended_by_admin',
+    'client_details_updated', 'client_details_amended_by_admin',
+    'schedule_terms_updated', 'schedule_terms_amended_by_admin',
+    'correction_requested', 'correction_resolved', 'correction_rejected',
+    'product_details_updated', 'product_details_amended_by_admin',
+    'workbook_replaced_by_admin'
+  ] loop
+    begin
+      insert into public.order_submission_activity (submission_id, action)
+      values (k_draft, v_txt);
+      v_int := v_int + 1;
+    exception when others then
+      failures := array_append(failures, format('L1: %s was REFUSED: %s', v_txt, sqlerrm));
+      n_fail := n_fail + 1;
+    end;
+  end loop;
+  if v_int = 24 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('L2: %s of 24 actions accepted', v_int)); n_fail := n_fail + 1; end if;
+
+  -- AND THE SET IS STILL CLOSED. A constraint that accepted everything would
+  -- pass the loop above and prove nothing.
+  begin
+    insert into public.order_submission_activity (submission_id, action)
+    values (k_draft, 'something_nobody_declared');
+    failures := array_append(failures, 'L3: the action set is not closed'); n_fail := n_fail + 1;
+  exception when others then
+    n_pass := n_pass + 1;
+  end;
+
+  delete from public.order_submission_activity
+   where submission_id = k_draft and action <> 'parse_replaced';
+
+
+  -- ═══ M. THE BILLING PERCENTAGE RECORDS WHAT IT DID ═════════════════════
+  --
+  -- The defect this closes was invisible in production: the authority bug
+  -- refused the write before it could reach the logging bug behind it. Fixing
+  -- the authority alone would have exposed a CHECK violation to the next person
+  -- who pressed Save. Both halves are exercised here, in that order.
+
+  set local role authenticated;
+  perform set_config('test.uid', u_admin::text, true);
+  begin
+    v_res := public.set_order_submission_billing_percentage(
+      k_appr, 55, 'Corrected after approval');
+    if (v_res ->> 'changed')::boolean then n_pass := n_pass + 1;
+    else failures := array_append(failures, 'M1: ' || v_res::text); n_fail := n_fail + 1; end if;
+  exception when others then
+    failures := array_append(failures, 'M1: the billing write failed -> ' || sqlerrm);
+    n_fail := n_fail + 1;
+  end;
+  reset role;
+
+  select count(*) into v_int from public.order_submission_activity
+   where submission_id = k_appr and action = 'billing_percentage_amended_by_admin';
+  if v_int = 1 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('M2: %s activity rows recorded', v_int)); n_fail := n_fail + 1; end if;
+
+  select billing_percentage into v_num from public.orders where id = o_appr;
+  if v_num = 55 then n_pass := n_pass + 1;
+  else failures := array_append(failures, format('M3: the Order says %s', v_num)); n_fail := n_fail + 1; end if;
 
 
   -- ═══ I. PRIVILEGES ═════════════════════════════════════════════════════
