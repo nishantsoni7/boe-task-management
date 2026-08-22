@@ -9,7 +9,7 @@
  * of an activity log silently discarded, every employee scoring zero, and a page
  * that was internally consistent and comprehensively wrong.
  *
- * The four task archives are exactly the shape that hits it. They only ever
+ * These five lists are exactly the shape that hits it. They only ever
  * grow, and each is ordered newest-first, so past a thousand rows the OLDEST
  * records stop appearing — the ones somebody opens an archive specifically to
  * find. Nothing looks wrong; the list just quietly stops going back far enough.
@@ -32,12 +32,17 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-/** Every list that shows finished work and therefore grows without limit. */
+/** Every Task Management list that grows without limit and is read in full. */
 const ARCHIVES = [
   { label: 'my completed tasks',            file: 'src/app/tasks/my/completed/page.tsx' },
   { label: 'completed tasks I assigned',    file: 'src/app/tasks/assigned-by-me/completed/page.tsx' },
   { label: 'cancelled tasks',               file: 'src/app/tasks/cancelled/page.tsx' },
   { label: 'cancelled tasks I assigned',    file: 'src/app/tasks/assigned-by-me/cancelled/page.tsx' },
+  // Not finished work, but the same shape: quotation requests accumulate, the
+  // list is ordered newest-first, and the tab counts are computed from these
+  // rows — so a silently short read understates somebody's outstanding workload
+  // rather than merely showing a short list.
+  { label: 'quotation requests',            file: 'src/app/tasks/quotation-requests/page.tsx' },
 ]
 
 const source = (file: string) => readFileSync(file, 'utf8')
@@ -87,9 +92,9 @@ describe('a failed read is never rendered as an empty archive', () => {
       // even reachable until `ok` has been narrowed — the helper's failure
       // branch carries no rows property at all — so a caller cannot quietly
       // compute from a partial read.
-      assert.ok(code.includes('taskResult.ok && !taskResult.truncated ? null : ARCHIVE_LOAD_ERROR'),
+      assert.match(code, /(\w+)\.ok && !\1\.truncated \? null : \w*LOAD_ERROR/,
         `${file}: truncation and failure must both raise the notice`)
-      assert.ok(code.includes('setAllTasks(taskResult.ok ?'),
+      assert.match(code, /set\w*Tasks\((\w+)\.ok \?/,
         `${file}: rows may only be read after ok is narrowed`)
 
       // And it reaches the screen.
@@ -103,6 +108,7 @@ describe('a failed read is never rendered as an empty archive', () => {
       const code = source(file)
       const banner = code.indexOf('{loadError && (')
       const list = code.indexOf('{visibleTasks.length === 0 ? (')
+      assert.ok(list > 0, `${file}: expected a visibleTasks empty-state branch`)
       assert.ok(banner > 0 && list > banner,
         `${file}: the notice must precede the list, not replace it`)
     })

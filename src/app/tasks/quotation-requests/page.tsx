@@ -17,10 +17,21 @@ import {
   type DateFilterKey, type QuotationFilters,
 } from './filters'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { fetchAllRows } from '@/lib/supabasePaging'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
+
+/**
+ * What the screen says when the list could not be read in full.
+ *
+ * The tab counts are computed from these rows, so a partial answer understates
+ * somebody's outstanding work — a stronger reason than a short list to say so
+ * rather than to show it silently.
+ */
+const QUOTATIONS_LOAD_ERROR =
+  'Quotation requests could not be loaded in full. Check your connection and try again.'
 
 const QTN_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type', 'task_type',
@@ -196,6 +207,7 @@ function QuotationRequestsContent() {
   const [loggedInId,   setLoggedInId]   = useState('')
   const [tasks,        setTasks]        = useState<Task[]>([])
   const [loading,      setLoading]      = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const { state, setState } = useListUrlState(LIST_PARAMS)
   const viewTab = state.tab
@@ -230,22 +242,48 @@ function QuotationRequestsContent() {
       // list — their assigned quotation tasks are still there, without the
       // customer's commercial details. Denied BEFORE the query runs, so a
       // direct URL never fetches a row it may not show.
-      const { data: me } = await supabase
-        .from('users').select('role').eq('id', session.user.id).single()
-      const taskPerms = await getEffectivePermissions(supabase, session.user.id, 'task_management').catch(() => [])
+      // THE ROLE AND THE PERMISSIONS, TOGETHER. They ran one after the next, and
+      // neither needs the other's answer: resolve_effective_permissions is asked
+      // by user id, which the session already carries. The GATE below is
+      // unchanged and still holds both before it decides.
+      const [{ data: me }, taskPerms] = await Promise.all([
+        supabase.from('users').select('role').eq('id', session.user.id).single(),
+        getEffectivePermissions(supabase, session.user.id, 'task_management').catch(() => []),
+      ])
       if (!deriveQuotationCapabilities(me?.role, taskPerms).canViewQuotations) {
         router.replace('/tasks/my')
         return
       }
 
-      const { data } = await supabase
+      // THE LIST STAYS AFTER THE GATE, deliberately. That ordering is
+      // load-bearing and is not an oversight to be parallelised away: a direct
+      // URL must never fetch a row it may not show, and starting this read
+      // beside the permission resolve would do exactly that.
+      //
+      // PAGED, because PostgREST truncates silently at 1000 rows — a cap, not an
+      // error (src/lib/supabasePaging.ts). Quotation requests accumulate and
+      // this list is ordered newest-first, so past a thousand the oldest would
+      // stop appearing with nothing to show for it. The whole set is held in
+      // memory because the tabs, counts and search on this page all work over
+      // it; narrowing one page in the browser would hide every match beyond it.
+      //
+      // The secondary sort on `id` is required for stable paging: range() maps
+      // to LIMIT/OFFSET, which promises nothing about row order unless the
+      // ordering is unique.
+      const result = await fetchAllRows<Task>((from, to) => supabase
         .from('tasks')
         .select(QTN_COLUMNS)
         .eq('task_type', 'quotation_request')
         .or(`assigned_to.eq.${session.user.id},created_by.eq.${session.user.id}`)
         .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, to))
 
-      setTasks((data ?? []) as unknown as Task[])
+      // A FAILED READ IS NOT AN EMPTY WORKLOAD. The tab counts are computed from
+      // these rows, so silently accepting a partial answer would understate
+      // somebody's outstanding work rather than merely showing a short list.
+      setLoadError(result.ok && !result.truncated ? null : QUOTATIONS_LOAD_ERROR)
+      setTasks(result.ok ? (result.rows as unknown as Task[]) : [])
       setLoading(false)
     }
     init()
@@ -482,6 +520,24 @@ function QuotationRequestsContent() {
             <div style={{ paddingLeft: '4px' }}>Notes</div>
             <div />
           </div>
+
+          {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without it the screen
+              would show "No quotation requests yet" — a statement about the
+              business — when the truth is that the request did not finish. It
+              sits above the rows rather than replacing them, so whatever loaded
+              stays usable. */}
+          {loadError && (
+            <div
+              role="alert"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                margin: '8px', padding: '10px 14px', borderRadius: '8px',
+                background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+              }}
+            >
+              <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
+            </div>
+          )}
 
           {/* Rows */}
           {visibleTasks.length === 0 ? (
