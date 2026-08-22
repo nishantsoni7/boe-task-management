@@ -17,6 +17,8 @@ import { join } from 'node:path'
 
 import {
   PI_CLIENT_NAME_REQUIREMENT,
+  PI_COMMERCIAL_FIELDS,
+  PI_HAS_CONFIGURABLE_GST_RATE,
   piReadiness,
   piReadinessFirstSection,
   piReadinessIsEditable,
@@ -28,6 +30,24 @@ const complete: PiReadinessSource = {
   client_name: 'Marigold Interiors',
   source_workbook_path: 'submissions/abc/original/pi.xlsx',
   parse_blocking_issues: [],
+}
+
+/**
+ * The body of piReadiness() alone — the function that decides what is missing.
+ *
+ * Classification constants elsewhere in the module legitimately name derived
+ * fields; only this function may not.
+ */
+function requirementLogic(): string {
+  const src = readFileSync(join(process.cwd(), 'src/lib/orders/piReadiness.ts'), 'utf8')
+  const at = src.indexOf('export function piReadiness(')
+  assert.ok(at > 0, 'piReadiness() not found')
+  const rest = src.slice(at)
+  const end = rest.indexOf('\nfunction summarize')
+  return (end === -1 ? rest : rest.slice(0, end))
+    .split('\n')
+    .filter(l => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//') && !l.trimStart().startsWith('/*'))
+    .join('\n')
 }
 
 const goodItem: PiReadinessItem = {
@@ -207,12 +227,15 @@ describe('optional fields', () => {
     assert.deepEqual(r.missing, [])
   })
 
-  test('the module names no optional field ANYWHERE in its source', () => {
-    const src = readFileSync(join(process.cwd(), 'src/lib/orders/piReadiness.ts'), 'utf8')
-    const code = src
-      .split('\n')
-      .filter(l => !l.trimStart().startsWith('*') && !l.trimStart().startsWith('//') && !l.trimStart().startsWith('/*'))
-      .join('\n')
+  test('the requirement logic names no optional field', () => {
+    // SCOPED TO piReadiness() ITSELF, not the whole module.
+    //
+    // The module also CLASSIFIES the commercial fields, which means naming
+    // gst_amount and grand_total in order to record that no human may type
+    // them. A whole-file scan reads that classification as a requirement — the
+    // opposite of what it says. What must be true is that the function which
+    // GENERATES requirements never mentions them.
+    const code = requirementLogic()
     for (const optional of [
       'contact_number', 'bill_to_phone', 'ship_to_phone',
       'billing_address', 'shipping_address', 'bill_to_name', 'ship_to_name',
@@ -225,10 +248,11 @@ describe('optional fields', () => {
   })
 
   test('a derived total is never a requirement', () => {
-    const src = readFileSync(join(process.cwd(), 'src/lib/orders/piReadiness.ts'), 'utf8')
-    for (const derived of ['grand_total', 'total_before_gst', 'subtotal_after_discount']) {
-      assert.ok(!src.includes(`'${derived}'`),
-        `${derived} is calculated, not supplied`)
+    const code = requirementLogic()
+    for (const derived of ['grand_total', 'total_before_gst', 'subtotal_after_discount',
+                           'gst_amount', 'gross_product_amount']) {
+      assert.ok(!code.includes(derived),
+        `${derived} is calculated, not supplied — it must not generate a requirement`)
     }
   })
 })
@@ -271,5 +295,61 @@ describe('the answer itself', () => {
     // A pure function of its arguments: no clock, no network, no database.
     const src = readFileSync(join(process.cwd(), 'src/lib/orders/piReadiness.ts'), 'utf8')
     assert.ok(!/supabase|fetch\(|Date\.now|new Date/.test(src))
+  })
+})
+
+// ══ 7. The commercial classification ═════════════════════════════════════════
+
+describe('which commercial fields a human may edit', () => {
+  test('input and derived do not overlap', () => {
+    const overlap = PI_COMMERCIAL_FIELDS.input
+      .filter(f => (PI_COMMERCIAL_FIELDS.derived as readonly string[]).includes(f))
+    assert.deepEqual(overlap, [], 'a field cannot be both typed and calculated')
+  })
+
+  test('every forbidden figure is on the derived list', () => {
+    for (const f of ['gross_product_amount', 'subtotal_after_discount',
+                     'total_before_gst', 'gst_amount', 'grand_total']) {
+      assert.ok((PI_COMMERCIAL_FIELDS.derived as readonly string[]).includes(f),
+        `${f} must never be a text box`)
+    }
+  })
+
+  test('derivable is a STRICT SUBSET of derived, and smaller', () => {
+    // The distinction that matters. A figure can be both "no human should type
+    // this" and "BOE has never known how to compute it".
+    for (const f of PI_COMMERCIAL_FIELDS.derivable) {
+      assert.ok((PI_COMMERCIAL_FIELDS.derived as readonly string[]).includes(f))
+    }
+    assert.ok(PI_COMMERCIAL_FIELDS.derivable.length < PI_COMMERCIAL_FIELDS.derived.length,
+      'if everything derived were derivable, there would be no blocker to record')
+  })
+
+  test('total_before_gst, gst_amount and grand_total are NOT derivable', () => {
+    // Read from named workbook cells. The arithmetic behind them lives in a
+    // spreadsheet formula this system has never read.
+    for (const f of ['total_before_gst', 'gst_amount', 'grand_total']) {
+      assert.ok(!(PI_COMMERCIAL_FIELDS.derivable as readonly string[]).includes(f),
+        `${f} cannot be recomputed without inventing arithmetic`)
+    }
+  })
+
+  test('and the parser still says so', () => {
+    // Re-read from source, so the classification cannot quietly rot if the
+    // parser ever starts deriving these.
+    const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
+    assert.match(parser, /totalBeforeGst:\s+'I\d+'/, 'total before GST is read from a cell')
+    assert.match(parser, /grandTotal:\s+'I\d+'/, 'grand total is read from a cell')
+    assert.match(parser, /const grossProductAmount = products\.reduce/, 'gross IS derived')
+    assert.match(parser, /const expectedSubtotal = grossProductAmount - discount/,
+      'the subtotal IS derived')
+    assert.match(parser, /The workbook's figure has been kept/,
+      'and a disagreement keeps the workbook, not the computation')
+  })
+
+  test('there is no configurable GST rate, and the source agrees', () => {
+    assert.equal(PI_HAS_CONFIGURABLE_GST_RATE, false)
+    const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
+    assert.ok(!/gst_?rate/i.test(parser), 'a GST rate appeared in the parser')
   })
 })

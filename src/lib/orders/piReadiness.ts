@@ -48,6 +48,67 @@
 /** What a surface is about to do, which decides how much has to be true. */
 export type PiReadinessPurpose = 'payment' | 'submission'
 
+/**
+ * THE COMMERCIAL FIELDS, CLASSIFIED — read from the parser, not assumed.
+ *
+ * This lives here rather than in an editor because it is the answer to a
+ * question every surface asks: which of these numbers did a human supply, and
+ * which did something compute?
+ *
+ * The classification is not a judgement call. src/lib/pi/masterSheetParser.ts
+ * shows exactly what BOE does with each figure, and it is not what one would
+ * guess: MOST OF THESE TOTALS ARE READ FROM NAMED WORKBOOK CELLS, not derived.
+ * `subtotal_after_discount` comes from I116, `total_before_gst` from I120,
+ * `grand_total` from I122. The parser derives only two things —
+ * `grossProductAmount` as the sum of the line totals, and `expectedSubtotal` as
+ * gross minus discount — and when its arithmetic disagrees with the workbook's
+ * figure it raises a WARNING and keeps the workbook's. The workbook computes;
+ * BOE transcribes and flags disagreement.
+ *
+ * That is why `derivable` is a smaller set than `derived`. A figure can be
+ * something no human should type AND something BOE has never known how to
+ * compute — `total_before_gst` is exactly that, because the relationship
+ * between the subtotal, fabric, packing and transport lives in a spreadsheet
+ * formula this system has never read, and transport is as often the words "as
+ * applicable" as it is a number.
+ */
+export const PI_COMMERCIAL_FIELDS = {
+  /** Direct human inputs. Safe to edit; nothing else depends on how they arose. */
+  input: [
+    'discount_amount',
+    'fabric_cost', 'fabric_cost_meaning', 'fabric_cost_text',
+    'packing_cost', 'packing_cost_meaning', 'packing_cost_text',
+    'transportation_amount', 'transportation_text',
+  ],
+  /** Never a text box. Calculated or transcribed, and owned elsewhere. */
+  derived: [
+    'gross_product_amount',
+    'subtotal_after_discount',
+    'total_before_gst',
+    'gst_amount',
+    'grand_total',
+  ],
+  /**
+   * The subset of `derived` whose arithmetic THIS SYSTEM actually knows,
+   * because the parser already computes it to check the workbook against.
+   * Anything in `derived` but not here cannot be recomputed without inventing
+   * arithmetic BOE has never had.
+   */
+  derivable: [
+    'gross_product_amount',    // Σ line totals, or Σ quantity × rate
+    'subtotal_after_discount', // gross − discount
+  ],
+} as const
+
+/**
+ * There is NO GST RATE anywhere in this system.
+ *
+ * Not a column, not a parser field, not a constant. `gst_amount` is read from a
+ * cell as an amount. So "the GST rate, if it is truly configurable" has an
+ * answer: it is not configurable, because it does not exist as an input.
+ */
+export const PI_HAS_CONFIGURABLE_GST_RATE = false
+
 /** One thing that is missing, and where the reader goes to supply it. */
 export type PiRequirement = {
   /** Stable key — for tests and for the editor to focus the right section. */
