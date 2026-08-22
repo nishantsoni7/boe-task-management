@@ -22,7 +22,7 @@
 --
 -- ── AND WHAT THIS BRANCH ADDED ────────────────────────────────────────────
 --
--- Four migrations on this branch log nine further actions, none of them on the
+-- Five migrations on this branch log ten further actions, none of them on the
 -- list either. Every one of them would have failed the same way.
 --
 -- ── WHY NONE OF THIS WAS CAUGHT SOONER ────────────────────────────────────
@@ -87,7 +87,12 @@ alter table public.order_submission_activity
     -- action set's home and the two ship together. The rule stands: a migration
     -- that logs a new action must see it declared before it can be applied.
     'product_details_updated',
-    'product_details_amended_by_admin'
+    'product_details_amended_by_admin',
+
+    -- ── 20261003000000: Change PI — the workbook itself replaced by an admin
+    -- after the PI has left draft. The ordinary draft re-upload keeps logging
+    -- 'parse_replaced' and is not an amendment. ──
+    'workbook_replaced_by_admin'
   ));
 
 comment on constraint order_submission_activity_action_check on public.order_submission_activity is
@@ -121,6 +126,7 @@ begin
     'schedule_terms_updated', 'schedule_terms_amended_by_admin',
     'correction_requested', 'correction_resolved', 'correction_rejected',
     'product_details_updated', 'product_details_amended_by_admin',
+    'workbook_replaced_by_admin',
     'submission_created', 'parse_replaced', 'submitted', 'changes_requested',
     'rejected', 'advance_exception_requested', 'advance_exception_approved',
     'advance_exception_rejected', 'finance_verified', 'approved',
@@ -156,5 +162,5 @@ begin
     end if;
   end;
 
-  raise notice '20261001000000 applied: activity actions extended (21 in the set).';
+  raise notice '20261001000000 applied: activity actions extended (24 in the set).';
 end $$;
