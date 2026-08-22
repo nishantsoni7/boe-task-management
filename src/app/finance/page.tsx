@@ -2603,22 +2603,33 @@ function FinancePageInner() {
       const uid = session.user.id
       setUserId(uid)
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', uid)
-        .single()
+      // ── THE PROFILE, THE PERMISSIONS AND THE LIST, TOGETHER ──
+      //
+      // These ran one after the next, so the page waited for four latencies end
+      // to end before it drew anything — and none of the last three needs
+      // another's answer. Every row loadRequests reads is scoped by RLS, not by
+      // the capabilities being resolved beside it. The same shape the Received
+      // Payments pages and the Order detail now use.
+      //
+      // NOTHING ABOUT AUTHORITY CHANGED. `caps` still starts empty and is still
+      // resolved by resolve_effective_permissions before anything can be
+      // clicked: pageLoading is not cleared until all three have landed, and a
+      // failed resolve still falls back to NO capabilities rather than to the
+      // role.
+      const [{ data: me }, financePerms] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', uid)
+          .single(),
+        getEffectivePermissions(supabase, uid, 'finance').catch(() => []),
+        loadRequests(),
+      ])
 
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')
-
-      // Resolved before the first render of the list, so the approval and
-      // correction controls are decided by the time anything can be clicked.
-      // A failed resolve falls back to no capabilities rather than to the role.
-      const financePerms = await getEffectivePermissions(supabase, uid, 'finance').catch(() => [])
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
 
-      await loadRequests()
       setPageLoading(false)
     }
     init()
