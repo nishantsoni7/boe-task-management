@@ -495,3 +495,50 @@ describe('every response this route can send', () => {
     assert.ok(release.includes('fail_order_document_generation'))
   })
 })
+
+// ══ The confirmed Excel carries what the RECORD says ═════════════════════════
+//
+// The workbook is the file the client agreed to, and until now the confirmed
+// Excel was that file with one cell filled in. `Edit PI Details` can correct a
+// phone number or an address without replacing it, so the document could ship
+// carrying a value somebody had already fixed — contradicting the record it
+// came from, with nothing on either saying which is right.
+
+describe('a corrected PI reaches the confirmed Excel', () => {
+  test('the route hands the record’s values to the workbook writer', () => {
+    assert.ok(route.includes('const corrections = {'),
+      'the route builds the correction set')
+    assert.match(route, /buildConfirmedWorkbook\(\{\s*bytes: loaded\.bytes, orderNumber, corrections,?\s*\}\)/)
+  })
+
+  test('every value comes from the PI row, never from the workbook', () => {
+    const at = route.indexOf('const corrections = {')
+    const block = route.slice(at, route.indexOf('}', at))
+    const fields = [...block.matchAll(/^\s*(\w+):\s*pi\./gm)].map(m => m[1])
+    assert.deepEqual(fields.sort(), [
+      'bill_to_gst', 'bill_to_name', 'bill_to_phone', 'billing_address',
+      'contact_number', 'dispatch_commitment',
+      'ship_to_gst', 'ship_to_name', 'ship_to_phone', 'shipping_address',
+    ], 'the ten fields the template contract establishes, and no others')
+    // NOTHING is read off the parsed workbook here, and nothing is defaulted to
+    // a literal: a value the record does not carry must clear the cell or leave
+    // it alone, never invent one.
+    assert.ok(!/corrections[\s\S]{0,400}?loaded\./.test(block))
+  })
+
+  test('no commercial value is offered to the writer', () => {
+    const at = route.indexOf('const corrections = {')
+    const block = route.slice(at, route.indexOf('}', at))
+    for (const forbidden of ['grand_total', 'gst_amount', 'discount', 'total_before_gst',
+                             'fabric', 'packing', 'transportation', 'billing_percentage']) {
+      assert.ok(!block.includes(forbidden), `${forbidden} must never be written into a cell`)
+    }
+  })
+
+  test('the two GST columns are actually read', () => {
+    // A correction the route cannot see is a correction that silently does not
+    // happen — the failure mode that made this whole area worth fixing.
+    const handoff = readFileSync(join(ROOT, 'src/lib/orders/orderPiHandoff.ts'), 'utf8')
+    assert.match(handoff, /'bill_to_gst', 'ship_to_gst'/)
+  })
+})

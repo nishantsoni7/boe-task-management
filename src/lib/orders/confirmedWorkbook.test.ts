@@ -24,12 +24,16 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { unzipSync, zipSync } from 'fflate'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   CONFIRMED_NUMBER_CELL,
   CONFIRMED_SHEET_NAME,
   CONFIRMED_WORKBOOK_MAX_BYTES,
   buildConfirmedWorkbook,
+  CONFIRMED_EDITABLE_CELLS,
+  CONFIRMED_WRITABLE_REFS,
   columnIndex,
   escapeXmlText,
   parseCellRef,
@@ -71,6 +75,10 @@ function masterSheetXml(opts: {
   shuffleRows?: boolean
   /** A completely empty sheet: <sheetData/>. */
   emptySheetData?: boolean
+  /** The party rows the header contract names, as a real BOE PI carries them. */
+  partyRows?: boolean
+  /** Make one correction target a formula cell. */
+  billToNameFormula?: boolean
 } = {}): string {
   const chrome =
     `<dimension ref="A1:K130"/>`
@@ -122,7 +130,27 @@ function masterSheetXml(opts: {
     `<row r="120"><c r="I120" s="9"><f>SUM(I32:I112)</f><v>3600</v></c></row>`,
   ].filter(Boolean)
 
-  const ordered = opts.shuffleRows ? [rows[2], rows[1], rows[0], ...rows.slice(3)] : rows
+  // The header block a real PI carries: BOE's own GST beside the contact
+  // number, then the two parties. Rows 22 and 25-28 hold shared strings, which
+  // is what makes "a correction becomes an inline string" a real transition
+  // rather than an inline-to-inline rewrite.
+  const party = opts.partyRows ? [
+    `<row r="22"><c r="B22" s="3" t="s"><v>0</v></c><c r="G22" s="3" t="s"><v>1</v></c></row>`,
+    `<row r="25"><c r="B25" s="3" t="s"><v>2</v></c><c r="G25" s="3" t="s"><v>3</v></c></row>`,
+    `<row r="26"><c r="B26" s="3" t="s"><v>4</v></c><c r="G26" s="3" t="s"><v>0</v></c></row>`,
+    `<row r="27"><c r="B27" s="3" t="s"><v>1</v></c><c r="G27" s="3" t="s"><v>2</v></c></row>`,
+    `<row r="28"><c r="B28" s="3" t="s"><v>3</v></c><c r="G28" s="3" t="s"><v>4</v></c></row>`,
+  ] : []
+  if (opts.partyRows && opts.billToNameFormula) {
+    party[1] = `<row r="25"><c r="B25" s="3"><f>CONCATENATE(A1," Ltd")</f><v>X Ltd</v></c>`
+      + `<c r="G25" s="3" t="s"><v>3</v></c></row>`
+  }
+
+  const withParty = opts.partyRows
+    ? [rows[0], rows[1], ...party, ...rows.slice(2)].filter(Boolean)
+    : rows
+
+  const ordered = opts.shuffleRows ? [rows[2], rows[1], rows[0], ...rows.slice(3)] : withParty
 
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
     + `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"`
@@ -787,5 +815,161 @@ describe('validateConfirmedRebuild', () => {
     // — which is the stronger answer.
     assert.equal(validateConfirmedRebuild(original, [...names], bad, [...names], PART),
       'unexpected_part_modified')
+  })
+})
+
+// ══ 9. A correction made on the record reaches the confirmed Excel ═══════════
+//
+// `Edit PI Details` can fix a phone number or an address without replacing the
+// workbook. Before this, the confirmed Excel was the stored file with ONE cell
+// filled in, so it still carried the value that was corrected — a document
+// contradicting the record it came from, with nothing on either saying which is
+// right.
+//
+// What must stay true while that changes: the workbook's own formulas are still
+// formulas, the photographs are still the same bytes, exactly one part moves,
+// and nothing commercial is writable at all.
+
+describe('the record’s corrections reach the confirmed workbook', () => {
+  const CORRECTIONS = {
+    bill_to_name: 'Acme Interiors Pvt Ltd',
+    bill_to_phone: '+91 98765 43210',
+    billing_address: '12 Residency Road\nBengaluru 560025',
+    ship_to_name: 'Acme Warehouse',
+    contact_number: '+91 80 4123 0000',
+    bill_to_gst: '29ABCDE1234F1Z5',
+  }
+
+  const built = async (over: Parameters<typeof buildWorkbook>[0] = {},
+                       corrections: Record<string, string | null> = CORRECTIONS) =>
+    buildConfirmedWorkbook({
+      bytes: buildWorkbook({ b20: DEFAULT_B20, partyRows: true, ...over }),
+      orderNumber: NUMBER,
+      corrections: corrections as never,
+    })
+
+  test('every corrected value reads back out of the produced file', async () => {
+    const result = await built()
+    assert.equal(result.ok, true, result.ok ? '' : `${result.reason}: ${result.detail}`)
+    if (!result.ok) return
+    const { xml } = masterOf(result.bytes)
+    for (const [field, value] of Object.entries(CORRECTIONS)) {
+      const ref = CONFIRMED_EDITABLE_CELLS[field as keyof typeof CONFIRMED_EDITABLE_CELLS]
+      assert.equal(readInlineCell(xml, ref), value, `${field} did not land in ${ref}`)
+    }
+    // And the Order number is still there — the whole reason this module exists.
+    assert.equal(readInlineCell(xml, CONFIRMED_NUMBER_CELL), NUMBER)
+  })
+
+  test('the workbook’s formulas are still formulas', async () => {
+    // The safety gate counts them, and a correction that clobbered one would
+    // also leave calcChain.xml naming a cell that no longer computes.
+    const result = await built()
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    const { xml } = masterOf(result.bytes)
+    assert.ok(xml.includes('<f>C32*H32</f>'), 'the line total formula survived')
+    assert.ok(xml.includes('<f>SUM(I32:I112)</f>'), 'the subtotal formula survived')
+  })
+
+  test('exactly one part changed, and the photographs are byte-identical', async () => {
+    const original = buildWorkbook({ b20: DEFAULT_B20, partyRows: true })
+    const result = await buildConfirmedWorkbook({
+      bytes: original, orderNumber: NUMBER, corrections: CORRECTIONS as never,
+    })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    assert.equal(result.unchangedCount, Object.keys(unzipSync(original)).length - 1,
+      'however many cells moved, one part moved')
+
+    const before = unzipSync(original) as Record<string, Uint8Array>
+    const after = unzipSync(result.bytes) as Record<string, Uint8Array>
+    for (const name of Object.keys(before)) {
+      if (name === result.changedPart) continue
+      assert.deepEqual(after[name], before[name], `${name} was rewritten`)
+    }
+  })
+
+  test('a field outside the template contract is REFUSED, not ignored', async () => {
+    // Silently dropping it would publish a document missing a correction that
+    // nobody was told had been dropped.
+    for (const field of ['grand_total', 'discount_amount', 'client_name',
+                         'payment_terms', 'due_date', 'order_confirmation_date']) {
+      const result = await built({}, { [field]: 'anything' })
+      assert.equal(result.ok, false, `${field} was accepted`)
+      if (result.ok) continue
+      assert.match(result.detail, new RegExp(field))
+      assert.match(result.detail, /not a cell this template establishes/)
+    }
+  })
+
+  test('null and absent leave the cell exactly as the workbook had it', async () => {
+    const untouched = await built({}, {})
+    const withNulls = await built({}, { bill_to_name: null, contact_number: null })
+    assert.equal(untouched.ok, true)
+    assert.equal(withNulls.ok, true)
+    if (!untouched.ok || !withNulls.ok) return
+    // Both produce a file whose Master differs from the other only by nothing:
+    // absent and null are the same instruction.
+    assert.equal(masterOf(untouched.bytes).xml, masterOf(withNulls.bytes).xml)
+    // And B25 is still the shared string it started as, never rewritten inline.
+    assert.equal(readInlineCell(masterOf(untouched.bytes).xml, 'B25'), null)
+  })
+
+  test('an empty string CLEARS the cell, which is not the same as null', async () => {
+    const result = await built({}, { bill_to_phone: '' })
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+    assert.equal(readInlineCell(masterOf(result.bytes).xml, 'B26'), '')
+  })
+
+  test('a formula in a correction target refuses the whole document', async () => {
+    // Publishing it with that one correction quietly missing would be worse
+    // than not publishing: the reader would have no way to know.
+    const result = await built({ billToNameFormula: true })
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.match(result.detail, /bill_to_name \(B25\)/)
+  })
+
+  test('nothing commercial is writable, at all', async () => {
+    // The honest guard is not offering these rather than relying on the
+    // formula refusal downstream — a commercial cell that happened to hold a
+    // literal would otherwise be writable.
+    const refs = new Set(CONFIRMED_WRITABLE_REFS)
+    for (const commercial of ['I115', 'I116', 'I117', 'I118', 'I119', 'I120', 'I121', 'I122', 'G115']) {
+      assert.ok(!refs.has(commercial), `${commercial} must never be writable`)
+    }
+    assert.equal(refs.size, Object.keys(CONFIRMED_EDITABLE_CELLS).length + 1,
+      'the writable set is the editable cells plus the Order number, and nothing else')
+  })
+
+  test('every editable cell is one the parser already reads', async () => {
+    // THE CONTRACT. A cell this system has never read is a cell it has no
+    // business writing — the reference a correction writes to must be the same
+    // reference the import read from, or the two disagree about where a value
+    // lives and no test would notice.
+    const parser = readFileSync(
+      join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
+    const header = parser.slice(parser.indexOf('const HEADER_CELLS'),
+                                parser.indexOf('const COMMERCIAL_CELLS'))
+    const known = new Set([...header.matchAll(/'([A-Z]+\d+)'/g)].map(m => m[1]))
+    for (const ref of Object.values(CONFIRMED_EDITABLE_CELLS)) {
+      assert.ok(known.has(ref), `${ref} is not a HEADER_CELLS reference`)
+    }
+    assert.ok(known.has(CONFIRMED_NUMBER_CELL))
+  })
+
+  test('a correction survives when its row does not exist yet', async () => {
+    // A workbook that never carried a ship-to GST has no row 27 cell for it.
+    // The row is created in ascending order rather than appended, or Excel
+    // reports the file as needing repair.
+    const result = await built({ partyRows: false })
+    assert.equal(result.ok, true, result.ok ? '' : result.detail)
+    if (!result.ok) return
+    const { xml } = masterOf(result.bytes)
+    assert.equal(readInlineCell(xml, 'B25'), CORRECTIONS.bill_to_name)
+    const rows = [...xml.matchAll(/<row r="(\d+)"/g)].map(m => Number(m[1]))
+    assert.deepEqual(rows, [...rows].sort((a, b) => a - b), 'rows stayed in ascending order')
   })
 })

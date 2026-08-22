@@ -378,7 +378,34 @@ async function generate(input: {
   if (!loaded.ok) return { ok: false, code: loaded.reason }
 
   // ── The confirmed workbook ──
-  const rewritten = await buildConfirmedWorkbook({ bytes: loaded.bytes, orderNumber })
+  //
+  // THE RECORD'S CURRENT VALUES, not the workbook's. `Edit PI Details` can
+  // correct a phone number or an address without replacing the file, and a
+  // confirmed Excel still carrying the old one would contradict the record it
+  // came from — with nothing on either to say which is right.
+  //
+  // Only the fields CONFIRMED_EDITABLE_CELLS establishes travel: each is a cell
+  // masterSheetParser already READS, so the reference a correction writes to is
+  // the reference the import read from and the two cannot disagree about where
+  // a value lives. Nothing commercial is here, and nothing derived — the
+  // workbook's formulas stay formulas, and the module refuses a formula cell in
+  // any case.
+  const corrections = {
+    contact_number:      pi.contact_number,
+    bill_to_name:        pi.bill_to_name,
+    bill_to_phone:       pi.bill_to_phone,
+    bill_to_gst:         pi.bill_to_gst ?? null,
+    billing_address:     pi.billing_address,
+    ship_to_name:        pi.ship_to_name,
+    ship_to_phone:       pi.ship_to_phone,
+    ship_to_gst:         pi.ship_to_gst ?? null,
+    shipping_address:    pi.shipping_address,
+    dispatch_commitment: pi.dispatch_commitment,
+  }
+
+  const rewritten = await buildConfirmedWorkbook({
+    bytes: loaded.bytes, orderNumber, corrections,
+  })
   if (!rewritten.ok) return { ok: false, code: rewritten.reason }
   if (rewritten.bytes.length > CONFIRMED_WORKBOOK_MAX_BYTES) return { ok: false, code: 'WORKBOOK_TOO_LARGE' }
 

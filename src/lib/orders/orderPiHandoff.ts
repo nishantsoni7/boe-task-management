@@ -81,6 +81,10 @@ export const ORDER_PI_HANDOFF_COLUMNS = [
   // Contact and location — the reason an operations reader opens this at all.
   'contact_number', 'bill_to_phone', 'ship_to_phone',
   'billing_address', 'shipping_address',
+  // The two tax numbers. Read here so the confirmed Excel can carry a corrected
+  // one — CONFIRMED_EDITABLE_CELLS maps both to the template cells the parser
+  // already reads them from.
+  'bill_to_gst', 'ship_to_gst',
   // Schedule. `due_date` is the stored column (20260922000000); the commitment
   // beside it is prose and is only ever shown when there is no date.
   'order_confirmation_date', 'dispatch_commitment', 'due_date',
@@ -110,6 +114,9 @@ export type OrderPiRow = PersistedHeaderSource & PersistedCommercialSource & {
   ship_to_phone: string | null
   billing_address: string | null
   shipping_address: string | null
+  /** Optional so a fixture written before this read still types. */
+  bill_to_gst?: string | null
+  ship_to_gst?: string | null
   due_date: string | null
   billing_percentage?: number | string | null
   source_workbook_name: string | null

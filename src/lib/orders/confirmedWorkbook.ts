@@ -78,6 +78,70 @@ export const CONFIRMED_NUMBER_CELL = 'B20'
  *  relationships in different orders. */
 export const CONFIRMED_SHEET_NAME = MASTER_SHEET_NAME
 
+/**
+ * THE CELLS A DIRECT EDIT MAY REACH — and why the list is this short.
+ *
+ * `Edit PI Details` can correct a phone number, an address or a confirm date
+ * without replacing the workbook. If the confirmed Excel then still carried the
+ * old value, the Order would ship a document contradicting the record it came
+ * from, and the person who corrected it would have no way to know.
+ *
+ * EVERY ENTRY IS A CELL THE PARSER ALREADY READS. These are HEADER_CELLS from
+ * masterSheetParser.ts, which is the template contract: the same reference the
+ * import reads from is the one a correction writes to, so the two can never
+ * disagree about where a value lives. A cell this system has never read is a
+ * cell it has no business writing.
+ *
+ * WHAT IS DELIBERATELY ABSENT:
+ *
+ *   every COMMERCIAL_CELLS reference — I115 through I122 are the outputs of the
+ *     workbook's own formulas. setCellInlineString refuses a formula cell
+ *     outright, and validateConfirmedRebuild refuses a changed formula count,
+ *     but the honest guard is not offering them at all.
+ *   due_date, payment_terms, billing_terms — editable on the record and with NO
+ *     template cell. The parser derives the due date from the dispatch
+ *     commitment's prose and never reads the two terms from a cell at all, so
+ *     there is no established reference to write and inventing one would be
+ *     this module deciding where a value belongs in somebody else's template.
+ *   order_confirmation_date, at A113 — a template cell, and excluded anyway.
+ *     Every write here is an INLINE STRING, which is what makes it safe: it
+ *     touches no shared string table and no other part. A113 is read by the
+ *     parser as a DATE, so writing text into it would change the cell's type,
+ *     strip the number format the template designer chose, and leave a
+ *     left-aligned string where a formatted date belongs. A corrected confirm
+ *     date reaches the confirmed PDF, which is generated from the record; the
+ *     Excel keeps the workbook's own date until the workbook is replaced. That
+ *     is a smaller cost than a document that looks broken.
+ *   client_name — derived at import FROM billToName rather than read from a cell
+ *     of its own. B25 is bill_to_name's, and writing client_name there would
+ *     make two independently editable columns fight over one cell.
+ *   boe_gst, creation_date, created_by — BOE's own registration and the source
+ *     document's provenance. Neither is a correction anybody makes here.
+ *   product rows — a line's description lives in a row this module has never
+ *     located, and locating rows by position in a file with merged blocks and
+ *     anchored images is the guess this whole approach exists to avoid.
+ */
+export const CONFIRMED_EDITABLE_CELLS = {
+  contact_number:      'G22',
+  bill_to_name:        'B25',
+  bill_to_phone:       'B26',
+  bill_to_gst:         'B27',
+  billing_address:     'B28',
+  ship_to_name:        'G25',
+  ship_to_phone:       'G26',
+  ship_to_gst:         'G27',
+  shipping_address:    'G28',
+  dispatch_commitment: 'E113',
+} as const
+
+export type ConfirmedEditableField = keyof typeof CONFIRMED_EDITABLE_CELLS
+
+/** Every cell this module may write, the Order number's included. */
+export const CONFIRMED_WRITABLE_REFS: readonly string[] = [
+  CONFIRMED_NUMBER_CELL,
+  ...Object.values(CONFIRMED_EDITABLE_CELLS),
+]
+
 // ── Limits ────────────────────────────────────────────────────────────────────
 
 /**
@@ -358,6 +422,17 @@ export type ConfirmedWorkbookInput = {
   bytes: Uint8Array
   /** The confirmed Order number, exactly as it will appear. */
   orderNumber: string
+  /**
+   * The record's CURRENT value for each directly editable field, when it differs
+   * from what the workbook holds.
+   *
+   * A key not in CONFIRMED_EDITABLE_CELLS is REFUSED, not ignored: a caller that
+   * asked for something outside the contract has made a mistake, and silently
+   * dropping it would produce a document missing a correction nobody was told
+   * about. Null or absent means "leave that cell alone" — which is different
+   * from an empty string, and an empty string clears the cell.
+   */
+  corrections?: Partial<Record<ConfirmedEditableField, string | null>>
 }
 
 /**
@@ -402,8 +477,37 @@ export async function buildConfirmedWorkbook(
     return fail('WORKBOOK_UNREADABLE', 'the worksheet part is empty')
   }
 
+  // ── The Order number, then every correction, into the SAME worksheet part ──
+  //
+  // One part is rewritten however many cells move, so §4's "exactly one part
+  // changed" proof is unaffected by the number of corrections.
   const written = setCellInlineString(originalXml, CONFIRMED_NUMBER_CELL, number)
   if (!written.ok) return fail(written.reason, written.detail)
+
+  const corrections = input.corrections ?? {}
+  let xml = written.xml
+  /** Cell reference -> the value it must read back as. Checked after the write. */
+  const expected = new Map<string, string>([[CONFIRMED_NUMBER_CELL, number]])
+
+  for (const key of Object.keys(corrections)) {
+    // REFUSED, NOT IGNORED. A caller asking for a field outside the template
+    // contract has made a mistake, and quietly dropping it would ship a
+    // document missing a correction nobody was told about.
+    if (!(key in CONFIRMED_EDITABLE_CELLS)) {
+      return fail('WORKBOOK_UNSUPPORTED', `${key} is not a cell this template establishes`)
+    }
+    const value = corrections[key as ConfirmedEditableField]
+    if (value === null || value === undefined) continue
+
+    const ref = CONFIRMED_EDITABLE_CELLS[key as ConfirmedEditableField]
+    const step = setCellInlineString(xml, ref, value)
+    // A formula in one of these cells is a workbook shape this must not rewrite
+    // — setCellInlineString says so — and refusing the whole document is right:
+    // publishing it with that one correction missing would be worse.
+    if (!step.ok) return fail(step.reason, `${key} (${ref}): ${step.detail}`)
+    xml = step.xml
+    expected.set(ref, value)
+  }
 
   /**
    * THE CELL MAY ALREADY READ CORRECTLY, and that is not an error.
@@ -419,18 +523,20 @@ export async function buildConfirmedWorkbook(
    * relaxing the "the rewrite did nothing" check, which is what catches a
    * genuine silent no-op.
    */
-  const alreadyCorrect = written.xml === originalXml
+  const alreadyCorrect = xml === originalXml
 
   // PROVE THE WRITE LANDED before anything is compressed. A rewrite that
   // silently did nothing would produce a valid workbook with no Order number in
   // it, which is the one failure a reader could not see.
-  if (readInlineCell(written.xml, CONFIRMED_NUMBER_CELL) !== number) {
-    return fail('WORKBOOK_UNSUPPORTED', `${CONFIRMED_NUMBER_CELL} does not read back as the number written`)
+  for (const [ref, value] of expected) {
+    if (readInlineCell(xml, ref) !== value) {
+      return fail('WORKBOOK_UNSUPPORTED', `${ref} does not read back as the value written`)
+    }
   }
 
   const rebuiltEntries: ArchiveEntries = {}
   for (const name of names) rebuiltEntries[name] = entries[name]
-  rebuiltEntries[sheet.part] = new TextEncoder().encode(written.xml)
+  rebuiltEntries[sheet.part] = new TextEncoder().encode(xml)
 
   const files: Record<string, [Uint8Array, { level: 0 | 6 }]> = {}
   for (const name of names) {
@@ -465,8 +571,17 @@ export async function buildConfirmedWorkbook(
   )
   if (problem) return fail('WORKBOOK_UNSUPPORTED', `the confirmed workbook failed validation: ${problem}`)
 
-  if (readInlineCell(partText(reopened.archive.entries, sheet.part), CONFIRMED_NUMBER_CELL) !== number) {
-    return fail('WORKBOOK_UNSUPPORTED', 'the Order number did not survive the round trip')
+  // EVERY written cell is read back out of the file that was actually produced,
+  // not out of the string that went into the compressor. A validator checking
+  // its own input would not catch a compressor that dropped an entry.
+  const finalXml = partText(reopened.archive.entries, sheet.part)
+  for (const [ref, value] of expected) {
+    if (readInlineCell(finalXml, ref) !== value) {
+      return fail('WORKBOOK_UNSUPPORTED',
+        ref === CONFIRMED_NUMBER_CELL
+          ? 'the Order number did not survive the round trip'
+          : `${ref} did not survive the round trip`)
+    }
   }
 
   return {
