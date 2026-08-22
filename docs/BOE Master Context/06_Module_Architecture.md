@@ -891,3 +891,10 @@ Order Management is tested at three levels, and the boundaries are deliberate:
   it immediately after applying the three Order-document migrations. Each of its
   sixteen checks has been mutation-tested; a check that cannot fail is not a
   check.
+* **A read-only eligibility diagnostic**,
+  `supabase/tests/order_pi_handoff_eligibility.sql`, which answers the question
+  the PI handoff actually provokes in use: *why is the Approved PI panel not on
+  this Order?* It sorts every Order into eligible and ineligible and names the
+  reason for each, and it flags approved PIs that produced no Order — a state
+  `approve_order_submission()` writes in one transaction and which therefore
+  should never exist. Four SELECTs, no writes, safe on production.

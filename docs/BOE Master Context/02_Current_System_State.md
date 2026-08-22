@@ -1118,6 +1118,17 @@ Three migrations, **none applied**:
   workbook. Order-side commercial values are **read from the linked PI**, not
   duplicated onto `orders` — that is a standing decision, and GST and the
   pre-GST total have no `orders` column and are not to be given one.
+  **The whole panel keys off one column, `orders.source_order_submission_id`**,
+  which `approve_order_submission()` writes and nothing else does. An Order
+  therefore carries a PI only if it was created by approving one; an Order made
+  directly, or converted from an Order Request, never will. That column must
+  never be backfilled by hand to make the panel appear — it is immutable once
+  set and financial history hangs off it.
+  An Order with no linked PI is **told so in a short read-only panel**. The
+  first cut rendered nothing at all, on the reasoning that an absence needs no
+  explanation; in use that silence was indistinguishable from the feature not
+  being deployed, and was read that way. `supabase/tests/order_pi_handoff_eligibility.sql`
+  reports which Orders qualify and why the rest do not.
 * **A second visibility door, deliberately separate from the first.**
   `can_view_order(uuid)` is SECURITY **INVOKER** so it asks the existing `orders`
   SELECT policies rather than restating them. `can_view_order_submission_via_order()`

@@ -25,6 +25,7 @@ import {
   ORDER_PI_PRODUCTS_TITLE,
   ORDER_PI_SECTION_TITLE,
   OrderDocumentsCard,
+  OrderPiNoSource,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
@@ -42,6 +43,7 @@ import {
   type OrderDocumentRow,
 } from '@/lib/orders/orderDocuments'
 import {
+  ORDER_PI_NO_SOURCE_BODY,
   ORDER_PI_UNAVAILABLE_BODY,
   ORDER_PI_WORKBOOK_LABEL,
   buildOrderPiHandoff,
@@ -425,11 +427,30 @@ describe('when the linked PI cannot be read', () => {
 describe('/orders/[id] itself', () => {
   const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
 
-  test('renders nothing at all for an Order with no source PI', () => {
+  /**
+   * CORRECTED. This test used to assert the opposite — that an Order with no
+   * linked PI rendered nothing at all — and the assertion was faithfully
+   * enforcing a decision that turned out to be wrong in use. The first person
+   * to open this screen could not tell "this Order has no PI" apart from "the
+   * feature was never deployed", and reported the feature missing.
+   *
+   * Silence is only a good answer when the reader can already infer the
+   * reason. Here they cannot, so the screen says it.
+   */
+  test('an Order with no source PI is TOLD it has none, not left silent', () => {
     assert.ok(page.includes("piHandoff.kind === 'ready'"))
     assert.ok(page.includes("piHandoff.kind === 'unavailable'"))
-    // `none` has no branch, which is exactly the point: nothing renders.
-    assert.ok(!page.includes("piHandoff.kind === 'none' &&"))
+    assert.ok(page.includes("piHandoff.kind === 'none' && <OrderPiNoSource />"))
+    assert.ok(page.includes('OrderPiNoSource,'), 'the component must be imported')
+  })
+
+  test('the no-PI panel still gets NO documents card — there is nothing to generate', () => {
+    // The documents card stays behind `kind !== 'none'`. Explaining the absence
+    // must not become an invitation to generate a document that cannot exist.
+    assert.match(page, /piHandoff\.kind !== 'none' && \(/)
+    const noSourceAt = page.indexOf("piHandoff.kind === 'none' && <OrderPiNoSource />")
+    const cardAt = page.indexOf("piHandoff.kind !== 'none' && (")
+    assert.ok(noSourceAt > cardAt, 'the explanation follows the card gate, it does not widen it')
   })
 
   test('reads the PI through the caller\'s own session, with no service key anywhere', () => {
@@ -629,5 +650,47 @@ describe('/orders/[id] and its documents', () => {
 
   test('an Order with NO source PI gets no documents card at all', () => {
     assert.match(page, /piHandoff\.kind !== 'none' && \(/)
+  })
+})
+
+// ── 9. The Order that came from no PI at all ──────────────────────────────────
+
+describe('OrderPiNoSource', () => {
+  const html = renderToStaticMarkup(<OrderPiNoSource />)
+
+  test('states the reason in words a reader can act on', () => {
+    assert.ok(html.includes(ORDER_PI_NO_SOURCE_BODY))
+    assert.ok(/not created from a PI submission/i.test(html))
+  })
+
+  test('says how an Order DOES come to carry a PI', () => {
+    // Without this, the panel tells somebody they are stuck without telling
+    // them what the working case looks like.
+    assert.ok(/approving one/i.test(html))
+  })
+
+  test('offers no action, because none exists', () => {
+    // CONTROLS, not vocabulary. The prose says the words "generate" and
+    // "documents" while explaining that neither is available here, and a test
+    // that banned the words would forbid the sentence from being clear. What
+    // must not appear is something clickable.
+    assert.ok(!/<button/i.test(html))
+    assert.ok(!/<a\s/i.test(html))
+    assert.ok(!/<input/i.test(html))
+    assert.ok(!/onclick/i.test(html))
+    assert.ok(!/role="button"/i.test(html))
+  })
+
+  test('does not promise a document', () => {
+    assert.ok(!/\.xlsx|\.pdf/i.test(html))
+  })
+
+  test('is distinguishable from the RLS-refusal panel', () => {
+    // The two answer the same question for different reasons. A reader who
+    // lacks access must not be told the Order has no PI, and vice versa.
+    const refused = renderToStaticMarkup(<OrderPiUnavailable />)
+    assert.notEqual(html, refused)
+    assert.ok(!html.includes(ORDER_PI_UNAVAILABLE_BODY))
+    assert.ok(!refused.includes(ORDER_PI_NO_SOURCE_BODY))
   })
 })

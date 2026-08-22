@@ -62,6 +62,7 @@ import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/com
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import {
   OrderDocumentsCard,
+  OrderPiNoSource,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
@@ -1313,7 +1314,8 @@ export default function OrderDetailPage() {
             Rendered for every Order that came from a PI, including one nobody
             has asked about yet: "no documents have been generated" is the
             answer to a question somebody opening this page is asking. An Order
-            with no PI has no documents to generate and gets no card. */}
+            with no PI has no documents to generate and gets no card — it gets
+            the one-line explanation below instead. */}
         {piHandoff.kind !== 'none' && (
           <OrderDocumentsCard
             view={documentsView}
@@ -1325,6 +1327,15 @@ export default function OrderDetailPage() {
             error={docError}
           />
         )}
+
+        {/* EVERY ORDER NOW SAYS SOMETHING ABOUT ITS PI, and that is a
+            correction. This originally rendered nothing at all for an Order
+            with no linked PI, reasoning that an absence needs no explanation.
+            But "this Order has no PI" and "the feature is not deployed" are
+            indistinguishable from the outside, and the first reader of this
+            screen read the silence as the second. The panel is read-only and
+            offers no action, because there is no action to offer. */}
+        {piHandoff.kind === 'none' && <OrderPiNoSource />}
 
         {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
 

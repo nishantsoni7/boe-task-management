@@ -310,6 +310,26 @@ export const ORDER_PI_UNAVAILABLE_TITLE = 'Approved PI'
 export const ORDER_PI_UNAVAILABLE_BODY =
   'The approved PI behind this Order is not available to you.'
 
+/**
+ * THE ORDER THAT NEVER CAME FROM A PI.
+ *
+ * This panel exists because its absence was a defect. The first cut of this
+ * feature rendered NOTHING for an Order with no linked PI — deliberately, on
+ * the reasoning that there is no point explaining the absence of a thing that
+ * was never there.
+ *
+ * That reasoning was wrong, and a real reader proved it: from the outside,
+ * "this Order has no PI" and "the feature was never deployed" look identical,
+ * and the person who cannot tell them apart is exactly the person who needs
+ * to. Silence is not a neutral answer here. It is an ambiguous one.
+ *
+ * So the panel says which of the two it is, and says how the other one comes
+ * about, without inviting anybody to expect a document that cannot exist.
+ */
+export const ORDER_PI_NO_SOURCE_TITLE = 'Approved PI'
+export const ORDER_PI_NO_SOURCE_BODY =
+  'This Order was not created from a PI submission, so there is no approved PI to show and no confirmed documents to generate. Orders carry a PI only when they were created by approving one.'
+
 // ── Small shared readers ──────────────────────────────────────────────────────
 
 const cleanText = (value: string | null | undefined): string | null => {

@@ -43,6 +43,8 @@ import {
   type SummaryFigure,
 } from '../drafts/[submissionId]/piDetailView'
 import {
+  ORDER_PI_NO_SOURCE_BODY,
+  ORDER_PI_NO_SOURCE_TITLE,
   ORDER_PI_UNAVAILABLE_BODY,
   ORDER_PI_UNAVAILABLE_TITLE,
   ORDER_PI_WORKBOOK_LABEL,
@@ -89,6 +91,25 @@ export function OrderPiUnavailable() {
       <PiCardHeader title={ORDER_PI_UNAVAILABLE_TITLE} />
       <div style={{ padding: '16px 18px', fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
         {ORDER_PI_UNAVAILABLE_BODY}
+      </div>
+    </PiCard>
+  )
+}
+
+/**
+ * The Order that came from somewhere other than a PI.
+ *
+ * Deliberately the same quiet card as the one above, because it answers the
+ * same question a reader is asking — "where is the PI?" — and only the reason
+ * differs. It carries no action: there is nothing here to retry, request or
+ * be granted, and offering one would suggest otherwise.
+ */
+export function OrderPiNoSource() {
+  return (
+    <PiCard>
+      <PiCardHeader title={ORDER_PI_NO_SOURCE_TITLE} />
+      <div style={{ padding: '16px 18px', fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+        {ORDER_PI_NO_SOURCE_BODY}
       </div>
     </PiCard>
   )
