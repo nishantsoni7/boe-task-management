@@ -18,6 +18,18 @@ import { onlyParticipating } from '@/lib/payroll/participation'
 import { fetchActiveSettings, settingsForPeriod } from '@/lib/payroll/settingsStore'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EngineAttendanceRecord, EnginePendingAdjustment } from '@/lib/payroll/types'
+import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
+
+/** One attendance row, as the payroll review reads it. */
+type PayrollAttendanceRow = {
+  id: string
+  user_id: string
+  attendance_date: string
+  check_in_at: string | null
+  check_out_at: string | null
+  punch_direction_source: string | null
+}
+
 
 type EmployeeRow = EngineEmployee & {
   full_name: string
@@ -69,13 +81,36 @@ export async function GET(req: NextRequest) {
   // punch_direction_source is selected here for the same reason generation
   // selects it: without it every stored day reaches the engine as a guess, and
   // this preview would disagree with the run it is previewing.
-  const { data: allRecords, error: recErr } = await svc
-    .from('attendance_records')
-    .select('id, user_id, attendance_date, check_in_at, check_out_at, punch_direction_source')
-    .gte('attendance_date', start)
-    .lt('attendance_date', end)
-
-  if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
+  // ── PAGED, BECAUSE POSTGREST TRUNCATES SILENTLY ──
+  //
+  // A month of attendance is (employees x days) rows: fifty people over thirty-one
+  // days is over 1,500, and PostgREST caps a response at 1000 with no error and
+  // no warning (src/lib/supabasePaging.ts). A plain select here returns a
+  // plausible-looking array that is missing a third of the month, and every
+  // figure derived from it is quietly wrong.
+  //
+  // unwrapPagedRows REFUSES a failed or capped read rather than computing from
+  // part of one. For attendance that is the only acceptable behaviour: a summary
+  // built from two thirds of a month is worse than no summary, because it looks
+  // like an answer.
+  //
+  // THIS ONE DECIDES MONEY. It is the preview of a payroll run, so a short read
+  // would under-count somebody's attended days and under-pay them, in a screen
+  // whose whole purpose is to be checked before the run.
+  let allRecords: PayrollAttendanceRow[]
+  try {
+    allRecords = unwrapPagedRows('attendance records', await fetchAllRows<PayrollAttendanceRow>(
+      (pageFrom, pageTo) => svc
+        .from('attendance_records')
+        .select('id, user_id, attendance_date, check_in_at, check_out_at, punch_direction_source')
+        .gte('attendance_date', start)
+        .lt('attendance_date', end)
+        .order('id', { ascending: true })
+        .range(pageFrom, pageTo)))
+  } catch (err) {
+    const detail = err instanceof PagedReadError ? err.detail : String(err)
+    return NextResponse.json({ error: detail }, { status: 500 })
+  }
 
   // Group records by employee, mapped through the SAME narrowing generation
   // uses so an unrecognised stored value fails to 'inferred' on both paths.
