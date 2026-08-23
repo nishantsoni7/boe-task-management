@@ -27,8 +27,6 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 
 const MIGRATION =
   'supabase/migrations/20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
-const DEPLOYED_APPROVE =
-  'supabase/migrations/20260923000000_order_submission_billing_percentage.sql'
 const SUITE   = 'supabase/tests/run_order_number_reservation_suite.sh'
 const SCHEMA  = 'supabase/tests/_order_number_reservation_shaped_schema.sql'
 const ASSERTS = 'supabase/tests/order_number_reservation_assertions.sql'
@@ -46,6 +44,43 @@ function body(source: string, name: string): string[] {
 }
 
 describe('it destroys nothing', () => {
+  test('exactly one applied function is restated, and it is the smallest one', () => {
+    // THE AUDIT PROPERTY. An earlier form of this migration restated five
+    // applied functions — allocate_confirmed_order_number,
+    // set_next_confirmed_order_number, assign_order_display_number,
+    // approve_order_submission and reset_confirmed_order_number_cycle — roughly
+    // 950 lines of correct, deployed code, for the sake of a clause or two in
+    // each. Every one of those clauses is a trigger now, which binds every
+    // writer rather than one function's callers.
+    const restated = [...sql.matchAll(/^create or replace function public\.(\w+)\(/gm)]
+      .map(m => m[1])
+    const APPLIED_ELSEWHERE = [
+      'allocate_confirmed_order_number',
+      'set_next_confirmed_order_number',
+      'approve_order_submission',
+      'reset_confirmed_order_number_cycle',
+      'replace_order_submission_parse',
+      'create_order_submission',
+    ]
+    for (const fn of APPLIED_ELSEWHERE) {
+      assert.ok(!restated.includes(fn),
+        `${fn} is applied and correct — a trigger must carry the new rule instead of restating it`)
+    }
+    assert.ok(restated.includes('assign_order_display_number'),
+      'the one exception: it IS the trigger that decides a new Order’s number')
+  })
+
+  test('and it asserts, at apply time, that the four it does NOT restate are intact', () => {
+    for (const rule of [
+      'allocate_confirmed_order_number has lost its exhaustion rule',
+      'set_next_confirmed_order_number has lost its floor rule',
+      'reset_confirmed_order_number_cycle has lost its empty-register gate',
+      'approve_order_submission has lost its stranded-money refusal',
+    ]) {
+      assert.ok(sql.includes(rule), `${rule} must be checked against the live catalog`)
+    }
+  })
+
   test('no table, column, constraint, index, policy or trigger is dropped', () => {
     // The one exception is stated and is not a loss: the activity ACTION check
     // is dropped and immediately re-added with every value it had plus two, and
@@ -57,7 +92,12 @@ describe('it destroys nothing', () => {
       .sort()
     assert.deepEqual(drops, [
       'drop constraint if exists order_submission_activity_action_check;',
+      'drop trigger if exists order_number_cycle_respects_reservations on public.order_number_cycle;',
+      'drop trigger if exists order_submissions_auto_reserve_order_number on public.order_submissions;',
+      'drop trigger if exists order_submissions_log_reservation on public.order_submissions;',
       'drop trigger if exists order_submissions_protect_reserved_number on public.order_submissions;',
+      'drop trigger if exists order_submissions_require_revised_pi_on_submit on public.order_submissions;',
+      'drop trigger if exists orders_consume_reserved_number on public.orders;',
     ])
   })
 
@@ -71,12 +111,30 @@ describe('it destroys nothing', () => {
     assert.deepEqual(applyTimeUpdates, [], 'a top-level UPDATE would rewrite live rows')
   })
 
-  test('the columns it adds are nullable, with no default and no backfill', () => {
+  test('the five reservation columns are nullable, with no default and no backfill', () => {
     const block = sql.slice(sql.indexOf('alter table public.order_submissions'))
       .split(';')[0]
     assert.match(block, /add column if not exists reserved_order_number\s+text,/)
     assert.doesNotMatch(block, /not null/i)
     assert.doesNotMatch(block, /\bdefault\b/i)
+  })
+
+  test('the obligation grandfathers every existing draft, by DDL and not by UPDATE', () => {
+    // ADD COLUMN ... NOT NULL DEFAULT false fills every existing row with false
+    // without rewriting the table and without this migration executing a single
+    // UPDATE against live data. The default is THEN changed to true, so the two
+    // populations are separated by the one event that actually distinguishes
+    // them: whether the row existed when this ran.
+    assert.match(sql, /add column if not exists reservation_required boolean not null default false;/)
+    assert.match(sql, /alter column reservation_required set default true;/)
+    const addAt = sql.indexOf('add column if not exists reservation_required')
+    const setAt = sql.indexOf('alter column reservation_required set default true')
+    assert.ok(addAt > 0 && addAt < setAt, 'the grandfathering default must be in force first')
+  })
+
+  test('and it proves both halves of that at apply time', () => {
+    assert.match(sql, /existing PI submission\(s\) were made subject to the new reservation rule/)
+    assert.match(sql, /new PI submissions would not require a reserved Order number/)
   })
 })
 
@@ -97,13 +155,16 @@ describe('the two new doors are reachable, and the internals are not', () => {
     })
   }
 
-  test('the number allocator stays unreachable from a browser', () => {
-    // Granting it would let any client take a number outside every workflow —
-    // the hole 20260703000000 §7 exists to close.
-    assert.match(sql,
-      /revoke execute on function public\.allocate_confirmed_order_number\(\) from public, anon, authenticated;/)
+  test('the number allocator is neither restated NOR granted to a client role', () => {
+    // It is not touched at all — that is the audit property above — so what
+    // matters here is that this file does not widen it. Granting it would let
+    // any client take a number outside every workflow, which is the hole
+    // 20260703000000 §7 exists to close.
     assert.doesNotMatch(sql,
       /grant\s+execute on function public\.allocate_confirmed_order_number/)
+    // And the apply-time block proves the deployed revoke still stands.
+    assert.match(sql, /allocate_confirmed_order_number\(\)',\s*\n\s*'public\.assign_order_display_number\(\)/,
+      'both must be probed as unreachable by a client role')
   })
 
   test('the display-number trigger function stays unreachable too', () => {
@@ -174,10 +235,14 @@ describe('the reservation cannot be taken twice, or taken back', () => {
   const fn = body(sql, 'reserve_order_number_for_submission').join('\n')
 
   test('an existing reservation is ANSWERED, before anything is written', () => {
-    const answer = fn.indexOf("'already_reserved',      true")
-    const allocate = fn.indexOf('public.allocate_confirmed_order_number()')
+    // The client door delegates; the answer lives in the implementation.
+    const impl = body(sql, 'reserve_order_number_internal').join('\n')
+    const answer = impl.indexOf("'already_reserved',      true")
+    const allocate = impl.indexOf('public.allocate_confirmed_order_number()')
     assert.ok(answer > 0 && answer < allocate,
       'the idempotent answer must come before the allocator is ever reached')
+    // And the door reaches the implementation without a second copy of the rule.
+    assert.match(fn, /public\.reserve_order_number_internal\(p_submission_id, v_actor\)/)
   })
 
   test('the PI is locked before its state is judged', () => {
@@ -187,8 +252,70 @@ describe('the reservation cannot be taken twice, or taken back', () => {
   })
 
   test('the number comes from the cycle, never from a max() preview', () => {
-    assert.match(fn, /public\.allocate_confirmed_order_number\(\)/)
-    assert.doesNotMatch(fn, /max\(/i, 'a max()+1 preview is the defect this replaces')
+    const impl = body(sql, 'reserve_order_number_internal').join('\n')
+    const auto = body(sql, 'order_submissions_auto_reserve_order_number').join('\n')
+    for (const source of [impl, auto]) {
+      assert.match(source, /public\.allocate_confirmed_order_number\(\)/)
+      assert.doesNotMatch(source, /max\(/i, 'a max()+1 preview is the defect this replaces')
+    }
+  })
+
+  test('a NEW draft takes its number with nobody pressing anything', () => {
+    const auto = body(sql, 'order_submissions_auto_reserve_order_number').join('\n')
+    // Fires on the workbook, not on creation: a number recorded against a NULL
+    // hash would read as "never revised" for the rest of that PI's life.
+    assert.match(auto, /if not new\.reservation_required then return new; end if;/)
+    assert.match(auto, /if new\.source_workbook_sha256 is null then return new; end if;/)
+    assert.match(auto, /if new\.reserved_order_number is not null then return new; end if;/)
+    assert.match(sql, /create trigger order_submissions_auto_reserve_order_number\s*\n\s*before insert or update on public\.order_submissions/)
+  })
+
+  test('exactly one audit row per reservation, written by watching the column', () => {
+    // Two doors, one trail. Neither door writes its own row, so they cannot
+    // disagree about what a reservation looks like or both record one.
+    const log = body(sql, 'order_submissions_log_reservation').join('\n')
+    assert.match(log, /if tg_op = 'UPDATE' and old\.reserved_order_number is not null then return null; end if;/)
+    assert.match(log, /'order_number_reserved'/)
+    for (const door of ['reserve_order_number_internal', 'order_submissions_auto_reserve_order_number']) {
+      assert.doesNotMatch(body(sql, door).join('\n'), /'order_number_reserved'/,
+        `${door} must not write its own reservation audit row`)
+    }
+  })
+
+  test('the revised PI must CONTAIN the number, and the hash alone never suffices', () => {
+    const rule = body(sql, 'order_submission_revised_pi_refusal').join('\n')
+    // Three refusals, in the order that makes each answerable.
+    const missing  = rule.indexOf('ORDER_SUBMISSION_REVISED_PI_MISSING')
+    const noNumber = rule.indexOf('ORDER_SUBMISSION_REVISED_PI_NO_NUMBER')
+    const mismatch = rule.indexOf('ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH')
+    assert.ok(missing > 0 && missing < noNumber && noNumber < mismatch,
+      'the hash is asked FIRST, so an unrevised workbook that happens to say the right thing is still refused')
+    assert.match(rule, /v_found <> v_expected/, 'exact equality, never a prefix or a substring')
+    // Comments stripped first: this function's own prose says the words
+    // "substring" and "numeric" while explaining why it uses neither.
+    const code = rule.split('\n').map(l => l.replace(/--.*$/, '')).join('\n')
+    assert.doesNotMatch(code, /\blike\b|position\(|substr|::bigint|::numeric/i,
+      'a partial, substring or numeric match would accept a document that says something else')
+  })
+
+  test('and the same rule is asked at BOTH gates, from one function', () => {
+    for (const gate of ['assign_order_display_number', 'order_submissions_require_revised_pi_on_submit']) {
+      assert.match(body(sql, gate).join('\n'), /public\.order_submission_revised_pi_refusal\(/,
+        `${gate} must ask the one rule rather than restate it`)
+    }
+  })
+
+  test('the reference it compares is the server-parsed cell, single-writer', () => {
+    assert.match(sql, /function\(s\) other than replace_order_submission_parse write source_order_number/)
+    assert.match(sql, /replace_order_submission_parse is client-callable/)
+  })
+
+  test('the cycle rule binds the TABLE, so a raw UPDATE cannot walk it back', () => {
+    assert.match(sql, /create trigger order_number_cycle_respects_reservations\s*\n\s*before insert or update on public\.order_number_cycle/)
+    assert.match(sql, /ORDER_NUMBER_CYCLE_BEHIND_RESERVATION/)
+    // Compared as bigint, because '0009' > '00010' is true as text.
+    assert.match(body(sql, 'order_number_cycle_respects_reservations').join('\n'),
+      /reserved_order_number::bigint/)
   })
 
   test('the authority is the workbook editor’s, and only its draft branch', () => {
@@ -207,111 +334,6 @@ describe('the reservation cannot be taken twice, or taken back', () => {
     assert.doesNotMatch(sql, /set\s+reserved_order_number\s*=\s*null/i)
     assert.match(body(sql, 'prevent_reserved_order_number_change').join('\n'),
       /RESERVED_ORDER_NUMBER_IMMUTABLE/)
-  })
-})
-
-describe('approve_order_submission is re-emitted whole, and loses nothing', () => {
-  const deployed = body(readFileSync(DEPLOYED_APPROVE, 'utf8'), 'approve_order_submission')
-  const restated = body(sql, 'approve_order_submission')
-
-  test('every line of the deployed body survives, except six that were extended', () => {
-    // THE CONTINUITY CHECK. `create or replace` cannot change a signature, and
-    // the house rule for this function is to restate it in full — which is also
-    // the easiest way to drop a rule by accident. So the deployed body's lines
-    // are compared as a multiset: anything MISSING is either a deliberate,
-    // enumerated change or a rule that has silently gone.
-    //
-    // All six below are the same line with something appended — a trailing
-    // comma, or a key added beside it — never a rule removed.
-    const counts = new Map<string, number>()
-    for (const line of restated) counts.set(line, (counts.get(line) ?? 0) + 1)
-    const missing: string[] = []
-    for (const line of deployed) {
-      const left = counts.get(line) ?? 0
-      if (left === 0) missing.push(line)
-      else counts.set(line, left - 1)
-    }
-
-    assert.deepEqual(missing.sort(), [
-      '         order_id    = v_order_id',
-      "      'already_approved', true",
-      "      'display_number',   v_number,",
-      "      'order_id',         v_sub.order_id,",
-      "      'submission_id',    p_submission_id,",
-      "    'moved_allocations', v_moved_count",
-    ])
-  })
-
-  test('the money gates, the workbook gates and the allocation move are all still there', () => {
-    const text = restated.join('\n')
-    for (const rule of [
-      'ORDER_SUBMISSION_FINANCE_NOT_VERIFIED',
-      'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT',
-      'ORDER_SUBMISSION_PAYMENT_AWAITING_VERIFICATION',
-      'ORDER_SUBMISSION_EXCEPTION_STALE',
-      'ORDER_SUBMISSION_WORKBOOK_NOT_STORED',
-      'ORDER_SUBMISSION_BAD_IMAGE_PATH',
-      'ORDER_SUBMISSION_ALLOCATION_NOT_MOVED',
-      "actor_has_module_permission('orders', 'approve_order')",
-    ]) {
-      assert.ok(text.includes(rule), `${rule} must survive the re-emission`)
-    }
-  })
-
-  test('the reservation clause is dead code for a PI that holds none', () => {
-    const text = restated.join('\n')
-    const guard = 'if v_sub.reserved_order_number is not null then'
-    assert.ok(text.includes(guard))
-    // Every new refusal sits inside that guard, so an unreserved PI is approved
-    // exactly as it always has been.
-    for (const raised of ['ORDER_SUBMISSION_REVISED_PI_MISSING', 'ORDER_NUMBER_RESERVATION_IN_USE']) {
-      assert.ok(text.indexOf(raised) > text.indexOf(guard))
-    }
-  })
-
-  test('the revised-PI test is the WORKBOOK HASH, not a flag anybody can tick', () => {
-    const text = restated.join('\n')
-    assert.match(text,
-      /source_workbook_sha256 is not distinct from v_sub\.reserved_number_workbook_sha256/)
-    // A null live hash is refused too: it is not evidence a revised file exists.
-    assert.match(text, /v_sub\.source_workbook_sha256 is null\s*\n\s*or v_sub\.source_workbook_sha256 is not distinct/)
-  })
-
-  test('the number is still assigned by the trigger, never written here', () => {
-    const insert = restated.join('\n')
-    const columns = insert.slice(insert.indexOf('insert into public.orders'))
-      .split('values')[0]
-    assert.doesNotMatch(columns, /display_number/,
-      'a second place a number can be assigned is a second place it can be wrong')
-  })
-})
-
-describe('the cycle reset gains a gate and keeps its own', () => {
-  const fn = body(sql, 'reset_confirmed_order_number_cycle').join('\n')
-
-  test('every original gate is still there', () => {
-    for (const gate of [
-      'ORDER_NUMBER_RESET_FORBIDDEN',
-      'ORDER_NUMBER_RESET_NO_CLAIM',
-      'ORDER_NUMBER_RESET_CLAIM_INVALID',
-      'ORDER_NUMBER_RESET_CLAIM_UNFINISHED',
-      'ORDER_NUMBER_RESET_ORDERS_EXIST',
-      'ORDER_NUMBER_RESET_APPROVAL_PENDING',
-      'ORDER_NUMBER_RESET_ALLOCATIONS_REMAIN',
-    ]) {
-      assert.ok(fn.includes(gate), `${gate} must survive the re-emission`)
-    }
-  })
-
-  test('and a reservation now blocks it', () => {
-    assert.match(fn, /ORDER_NUMBER_RESET_RESERVATIONS_EXIST/)
-    // Every reservation, used or not: a used one belongs to an Order, and an
-    // unused one is a live promise. Neither survives a restart of the register.
-    assert.match(fn, /where s\.reserved_order_number is not null/)
-  })
-
-  test('it still deletes nothing', () => {
-    assert.doesNotMatch(fn, /\bdelete\b/i)
   })
 })
 
@@ -381,11 +403,22 @@ describe('the runnable suite exists, and proves what text cannot', () => {
     }
   })
 
-  test('every case A–V is asserted', () => {
+  test('every case is asserted: A–O, the nine split cases, and the permission block', () => {
     const asserts = readFileSync(ASSERTS, 'utf8')
-    for (const letter of 'ABCDEFGHIJKLMNOPQRSTUV') {
+    for (const letter of 'ABCDEFGHIJKLMNO') {
       assert.match(asserts, new RegExp(`${letter} pass|${letter} FAILED`),
         `case ${letter} is not covered`)
+    }
+    for (let i = 1; i <= 9; i++) {
+      assert.match(asserts, new RegExp(`S${i} pass|S${i} FAILED`), `split case S${i} is not covered`)
+    }
+    for (let i = 1; i <= 8; i++) {
+      assert.match(asserts, new RegExp(`P${i} FAILED`), `permission case P${i} is not covered`)
+    }
+    // The revised-PI rule is asked directly, case by case, before it is asked
+    // through a workflow — nine refusals the hash alone could not produce.
+    for (let i = 1; i <= 9; i++) {
+      assert.match(asserts, new RegExp(`E${i} FAILED`), `revised-PI case E${i} is not covered`)
     }
   })
 })

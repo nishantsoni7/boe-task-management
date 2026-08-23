@@ -17,8 +17,10 @@ import assert from 'node:assert/strict'
 import {
   NO_PI_NUMBER_NOTE,
   NUMBER_LABEL,
+  PI_RESERVATION_COLUMNS,
   RESERVATION_INSTRUCTION,
   describeReservation,
+  normalizeOrderNumberReference,
   reservationApprovalMessage,
   reservationBlockedReason,
   reservationErrorMessage,
@@ -125,11 +127,17 @@ describe('what the panel says', () => {
     assert.ok(view.standing.includes(RESERVATION_INSTRUCTION))
   })
 
-  test('held, and a revised file has been uploaded since', () => {
+  test('held, and a revised file has arrived — but nothing is promised by it', () => {
+    // THE SENTENCE THAT USED TO OVERPROMISE. It said "The Confirmed Order will
+    // be created as 0042", which is only true if the revised file actually
+    // CARRIES 0042 — and this screen cannot see that: it reads the workbook
+    // hash, never the parsed cell. The server checks the number on submit and
+    // says so if it is wrong.
     const view = describeReservation({ ...reserved, currentWorkbookSha256: 'b'.repeat(64) })
     assert.equal(view.state, 'revised_pi_uploaded')
     assert.match(view.standing, /revised file has been uploaded/)
-    assert.match(view.standing, /will be created as 0042/)
+    assert.match(view.standing, /checked against 0042 when the PI is submitted/)
+    assert.doesNotMatch(view.standing, /will be created as/)
   })
 
   test('used: the Confirmed Order came out carrying it', () => {
@@ -234,10 +242,12 @@ describe('server refusals become sentences that name the rule', () => {
 })
 
 describe('the approval-time refusals that belong to the reservation', () => {
-  test('the revised PI is missing', () => {
-    assert.match(
-      reservationApprovalMessage({ message: 'ORDER_SUBMISSION_REVISED_PI_MISSING: Order number 0042 …' }) ?? '',
-      /revised PI carrying that number has not been uploaded/)
+  test('the revised PI is missing — the server’s own sentence, minus the code', () => {
+    // It used to be replaced with a fixed sentence here. The server's version
+    // names the number, and the number is the actionable part.
+    assert.equal(
+      reservationApprovalMessage({ message: 'ORDER_SUBMISSION_REVISED_PI_MISSING: Order number 0042 is reserved for this PI, but no revised PI has been uploaded since it was issued.' }),
+      'Order number 0042 is reserved for this PI, but no revised PI has been uploaded since it was issued.')
   })
 
   test('the reserved number is already in use', () => {
@@ -254,5 +264,133 @@ describe('the approval-time refusals that belong to the reservation', () => {
     assert.equal(reservationApprovalMessage(null), null)
     assert.equal(reservationApprovalMessage(undefined), null)
     assert.equal(reservationApprovalMessage({}), null)
+  })
+})
+
+describe('the number read out of a workbook, normalized the way SQL normalizes it', () => {
+  test('surrounding whitespace and case are harmless', () => {
+    for (const raw of ['0042', ' 0042', '0042 ', '  0042  ', '\t0042\n']) {
+      assert.equal(normalizeOrderNumberReference(raw), '0042')
+    }
+    assert.equal(normalizeOrderNumberReference(' 00ab '), '00AB')
+  })
+
+  test('a blank cell says nothing, and says it as null', () => {
+    for (const raw of [null, undefined, '', '   ', '\t\n']) {
+      assert.equal(normalizeOrderNumberReference(raw), null)
+    }
+  })
+
+  test('internal whitespace is COLLAPSED, never removed', () => {
+    // '00 42' is not '0042'. A reader of the document sees a space, and the
+    // document therefore does not carry the Order number. Removing the space
+    // here would accept a document that says something else.
+    assert.equal(normalizeOrderNumberReference('00  42'), '00 42')
+    assert.notEqual(normalizeOrderNumberReference('00 42'), '0042')
+  })
+
+  test('leading zeros are NOT stripped, because they are part of the identifier', () => {
+    // 20260704000000 §4: "leading zeros are part of the identifier, which is why
+    // the column stays text". A PI printed with 42 carries the wrong number.
+    assert.notEqual(normalizeOrderNumberReference('42'), normalizeOrderNumberReference('0042'))
+  })
+
+  test('nothing that merely contains the number normalizes to it', () => {
+    for (const near of ['PI-0042', '0042/2026', '0042A', '004', '00420']) {
+      assert.notEqual(normalizeOrderNumberReference(near), '0042')
+    }
+  })
+})
+
+describe('the panel does not offer a decision that is not being made', () => {
+  const newDraft = { ...draft, reservationRequired: true }
+
+  test('a NEW draft is told its number is coming, not invited to take one', () => {
+    const view = describeReservation(newDraft)
+    assert.equal(view.state, 'available')
+    assert.match(view.standing, /issued for this PI as soon as its PI file is uploaded/)
+    assert.match(view.standing, /must carry it before the PI can be submitted/)
+    // No invitation, and no suggestion that skipping it is possible.
+    assert.doesNotMatch(view.standing, /Reserve one now|if the revised PI has to carry it/)
+  })
+
+  test('a GRANDFATHERED draft is still offered the choice', () => {
+    const view = describeReservation({ ...draft, reservationRequired: false })
+    assert.match(view.standing, /Reserve one now/)
+  })
+
+  test('either way the absence of a PI number is stated', () => {
+    for (const input of [newDraft, draft]) {
+      assert.ok(describeReservation(input).standing.includes(NO_PI_NUMBER_NOTE))
+    }
+  })
+
+  test('a blocked NEW draft says the number has not arrived YET', () => {
+    const view = describeReservation({ ...newDraft, hasWorkbook: false })
+    assert.equal(view.state, 'blocked')
+    assert.match(view.standing, /has been reserved for this PI yet/)
+    assert.match(view.blockedReason ?? '', /Upload the PI file first/)
+  })
+})
+
+describe('the columns the panel reads travel with the record', () => {
+  test('the obligation and the reservation are read together, in one list', () => {
+    assert.ok(PI_RESERVATION_COLUMNS.includes('reservation_required'))
+    assert.ok(PI_RESERVATION_COLUMNS.includes('reserved_order_number'))
+    assert.ok(PI_RESERVATION_COLUMNS.includes('reserved_number_workbook_sha256'))
+    assert.ok(PI_RESERVATION_COLUMNS.includes('source_workbook_sha256'))
+  })
+
+  test('the workbook’s own reference is NOT among them', () => {
+    // source_order_number is what the revised-PI rule compares, and the
+    // comparison is the database's. No PI screen renders it: beside a reserved
+    // Order number it could only be read as a rival answer to one question, and
+    // draftsAccess.test.ts holds these pages to that.
+    assert.ok(!PI_RESERVATION_COLUMNS.includes('source_order_number'))
+  })
+})
+
+describe('the refusals that name two numbers are passed through, not rewritten', () => {
+  test('a mismatch keeps what the file says AND what is reserved', () => {
+    const raw = 'ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH: the revised PI carries Order number 0099, but 0042 is reserved for it. Correct the PI and upload it again.'
+    const message = reservationApprovalMessage({ message: raw })
+    assert.match(message ?? '', /0099/)
+    assert.match(message ?? '', /0042/)
+    // The machine prefix is taken off; nothing else is.
+    assert.doesNotMatch(message ?? '', /ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH/)
+    assert.match(message ?? '', /^the revised PI carries Order number 0099/)
+  })
+
+  test('a missing revised PI keeps the number it is asking for', () => {
+    const raw = 'ORDER_SUBMISSION_REVISED_PI_MISSING: Order number 0042 is reserved for this PI, but no revised PI has been uploaded since it was issued. Put 0042 into the PI and upload it with Change PI.'
+    assert.match(reservationApprovalMessage({ message: raw }) ?? '', /0042/)
+    assert.doesNotMatch(reservationApprovalMessage({ message: raw }) ?? '', /ORDER_SUBMISSION/)
+  })
+
+  test('a blank reference is reported as its own thing', () => {
+    const raw = 'ORDER_SUBMISSION_REVISED_PI_NO_NUMBER: the revised PI does not carry an Order number. Put 0042 into the PI and upload it again.'
+    assert.match(reservationApprovalMessage({ message: raw }) ?? '', /does not carry an Order number/)
+  })
+
+  test('a missing reservation on a new draft says what to do', () => {
+    assert.match(
+      reservationApprovalMessage({ message: 'ORDER_SUBMISSION_RESERVATION_REQUIRED: …' }) ?? '',
+      /Upload the PI file so a number can be issued/)
+  })
+
+  test('an Order created outside approval is named as such', () => {
+    assert.match(
+      reservationApprovalMessage({ message: 'ORDER_FROM_RESERVED_PI_REQUIRES_APPROVAL: …' }) ?? '',
+      /only be created by approving it/)
+  })
+
+  test('a refusal with no recognisable shape is still passed on whole', () => {
+    // Saying less than the server did is never an improvement.
+    const raw = 'ORDER_SUBMISSION_REVISED_PI_MISSING'
+    assert.equal(reservationApprovalMessage({ message: raw }), raw)
+  })
+
+  test('and anything that is not a reservation refusal is still NOT claimed', () => {
+    assert.equal(reservationApprovalMessage({ message: 'ORDER_SUBMISSION_PAYMENT_INSUFFICIENT: …' }), null)
   })
 })

@@ -3,13 +3,19 @@
 # payment-allocation surfaces, apply 20261009000000 onto the DEPLOYED bodies of
 # the five functions it replaces, and prove what the migration claims:
 #
+#   * a new PI Draft takes its number AUTOMATICALLY, the moment it has a workbook
+#   * a draft that predates the migration is grandfathered, and reserves by hand
 #   * a reservation is sequential, atomic and idempotent
 #   * two concurrent reservations never take the same number
 #   * two PI Drafts can never hold the same number
+#   * the revised PI must actually CONTAIN the reserved number — not merely be a
+#     different file — and the check reads the server-parsed cell, never a
+#     client-supplied value
 #   * the Confirmed Order comes out carrying the reserved number
-#   * approval is refused when the revised PI was never uploaded
+#   * the cycle can never be moved back over a live reservation, by ANY writer
 #   * one payment divides across Orders and PI Drafts in a single transaction,
 #     and a failing row leaves neither payment nor allocation behind
+#   * split entry needs payment-entry access AND the separate allocation grant
 #   * the migration refuses itself when a retirement guard is missing
 #
 #   supabase/tests/run_order_number_reservation_suite.sh <psql-host-or-socket-dir> [port]
@@ -110,13 +116,15 @@ echo "══ the assertions ══"
 echo "══ two concurrent reservations ══"
 "${Q[@]}" -d "$DB" -c "
   insert into public.order_submissions (id, status, submitted_by, created_by, client_name,
+                                        reservation_required,
                                         source_workbook_path, source_workbook_name, source_workbook_sha256)
-  select 'aaaaaaaa-0000-4000-8000-00000000c001', 'draft', u.id, u.id, 'Race A',
+  select 'aaaaaaaa-0000-4000-8000-00000000c001', 'draft', u.id, u.id, 'Race A', false,
          'submissions/x/original/a.xlsx', 'a.xlsx', repeat('c', 64)
   from public.users u where u.email = 'owner@test' ;
   insert into public.order_submissions (id, status, submitted_by, created_by, client_name,
+                                        reservation_required,
                                         source_workbook_path, source_workbook_name, source_workbook_sha256)
-  select 'aaaaaaaa-0000-4000-8000-00000000c002', 'draft', u.id, u.id, 'Race B',
+  select 'aaaaaaaa-0000-4000-8000-00000000c002', 'draft', u.id, u.id, 'Race B', false,
          'submissions/y/original/b.xlsx', 'b.xlsx', repeat('d', 64)
   from public.users u where u.email = 'owner@test';" >/dev/null
 
@@ -128,6 +136,10 @@ race() { # <submission id> <out file>
     select public.reserve_order_number_for_submission('$1')->>'reserved_order_number';
     commit;" 2>&1
 }
+
+# Both drafts are pre-109 shaped — reservation_required false — so the number is
+# taken by the CLIENT door and the race is a race for the cycle row, which is
+# exactly the contention being tested.
 
 race aaaaaaaa-0000-4000-8000-00000000c001 "$TMP/raceA" &
 PID_A=$!

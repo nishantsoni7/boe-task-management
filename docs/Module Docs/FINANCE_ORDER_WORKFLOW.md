@@ -1216,7 +1216,7 @@ missing model.
 
 ---
 
-## 12. Split payment entry, and a reservable Order number (`20261009000000`)
+## 12. Split payment entry, and the Order number a PI must carry (`20261009000000`)
 
 > **NOT APPLIED.** `20261009000000_split_payment_entry_and_order_submission_number_reservation.sql`
 > exists in the repository and has **not** been run against the linked database.
@@ -1226,6 +1226,8 @@ missing model.
 > opposite. It is present in that file's exact "no migration added after 108
 > without being accounted for" list. **Nothing below is live until somebody runs
 > `supabase db push`.** 107 and 108 are untouched.
+>
+> **⚠ DEPLOYMENT ORDER: the migration goes first.** See §12.6.
 
 ### 12.1 One payment, divided as it is recorded
 
@@ -1238,166 +1240,208 @@ payment in one act — there were two doors and each wrote exactly one destinati
 | `record_pi_submission_payment()` | one payment, allocated **in full** to one PI |
 | the Finance entry form (`/finance`) | one payment, at most one direct linkage |
 
-So a transfer covering two Orders and a PI Draft had to be entered once and then
-allocated twice more, through a control the person entering it may not hold.
-Between the insert and the last allocation the money was misclassified, and a
-failure anywhere in that sequence left a payment attached to less than it paid
-for.
-
 **`record_payment_with_allocations(amount, date, mode, client, received_in,
-reference, remarks, allocations jsonb)`** is the missing door. The payment-level
+reference, remarks, allocations jsonb)`** is the missing door. Payment-level
 facts once; then a list of `{kind, id, amount}` rows, at most 20, each naming a
 Confirmed Order or a PI Draft. One transaction: every row or none.
 
 - **A remainder is ordinary.** Allocations may total less than the payment; the
   rest is an available balance the existing **Allocate** control spends later.
-  An empty list is permitted — that is the plain unallocated payment the Finance
-  form already writes.
+  An empty list is permitted.
 - **It writes no direct linkage.** `order_id` stays NULL, so under the canonical
   rule (PR #49) the allocations are the only statement about where the money
-  went, rather than a second, weaker claim beside them.
+  went.
 - **It inserts no allocation itself.** Every row goes through
-  `allocate_payment_to_target_internal()`, which holds the capacity invariant
-  under a lock on the parent payment, refuses an invisible or ineligible target,
-  and refuses a second active claim on the same target. There is no second
-  allocation system.
-- **Verification is not bypassed.** The payment is written `pending_approval` —
+  `allocate_payment_to_target_internal()` — capacity lock, duplicate rule, target
+  eligibility and visibility, all the canonical ones.
+- **Verification is not weakened.** The payment is written `pending_approval` —
   Awaiting Verification. Finance's verify / correct-and-verify / reject authority
   is untouched.
-- **An Order Request cannot be named.** There is no parameter for one and the
-  allocation table has no such column; the migration re-asserts
-  `20261007000000`'s retirement guards at apply time.
+- **An Order Request cannot be named.** No parameter, no column, and the
+  migration re-asserts `20261007000000`'s retirement guards at apply time.
 
-**Surface.** `Record Payment` on `/finance/received`, offered to a holder of
-`finance.allocate`. The modal shows **Payment**, **Allocated** and **Left to
-allocate** continuously, counted in exact decimal (`exactMoney.ts`), and reuses
-the Allocate control's own RLS-scoped target search — so "only within your
-permitted scope" is one answer, not two.
+**Who may use it — §12.5.**
 
-### 12.2 The Order number, before there is an Order
+### 12.2 A PI Draft carries its Order number before anybody reviews it
 
-The revised PI a customer signs has to carry the Order number. The number was
-allocated as the Order row was inserted, inside `approve_order_submission()` — and
-the only stage at which a PI's own owner may replace its workbook is
-`draft`/`needs_changes`, which is **before** approval. The number never existed at
-the one moment it was needed.
+The revised PI a customer signs has to carry the Order number, and the number
+used to exist only after approval — by which time the PI's owner may no longer
+replace its workbook.
 
-**This is not `max(order_number) + 1` shown on a screen.** Two people asking at
-the same instant would be shown the same number, print it on two customers'
-documents, and discover the collision at approval, when one is already signed.
+**The workflow, and it is not optional for a new PI Draft:**
 
-**`reserve_order_number_for_submission(submission_id)`** takes the number from
-the real cycle through `allocate_confirmed_order_number()` — the same
-`FOR UPDATE` on the same singleton `order_number_cycle` row an Order creation
-takes — and advances it. A number that is shown is a number that is spent.
+```
+create draft → upload the PI file → NUMBER ISSUED AUTOMATICALLY
+→ put that number into the PI → upload the revised file
+→ submit for review → finance → approval → Confirmed Order with that number
+```
+
+**Automatic, not a button.** A PI Draft created after this migration takes its
+number the moment its first workbook is parsed — a `BEFORE INSERT OR UPDATE`
+trigger on `order_submissions` calls the same `allocate_confirmed_order_number()`
+an Order creation calls. Nobody presses anything. It fires on the *workbook*
+rather than on creation because a number recorded against a NULL workbook hash
+would read as "never revised" for the rest of that PI's life.
+
+**Existing drafts are grandfathered, by DDL and not by a backfill.**
+`reservation_required` is added `NOT NULL DEFAULT false` — which fills every
+existing row with `false` without rewriting the table and **without this
+migration executing a single UPDATE against live data** — and the default is
+*then* changed to `true`. The two populations are separated by the one event that
+actually distinguishes them: whether the row existed when the migration ran. Both
+halves are asserted at apply time.
+
+A grandfathered draft may still reserve, through the controlled compatibility
+action `reserve_order_number_for_submission()` — offered on the PI screen only to
+that population. **Once it does, every rule below binds it.**
 
 | Rule | How |
 | --- | --- |
-| Sequential, from the existing series | `allocate_confirmed_order_number()`; four digits, 0001–9999, one global cycle. **No new format and no second series** — the schema has no legal-entity, financial-year or branch scope to honour. |
-| Concurrency-safe | the cycle row's `FOR UPDATE`. The second caller blocks, then re-reads. |
-| Idempotent | an existing reservation is **returned** (`already_reserved: true`) before the allocator is reached. No second number, no second audit row. |
-| Never silently changed | `order_submissions_protect_reserved_number` refuses any change to `reserved_order_number` once set, and any re-stamp of `reserved_order_number_used_at`. |
+| Sequential, from the existing series | `allocate_confirmed_order_number()`; four digits, 0001–9999, one global cycle. **No new format, no second series** — the schema has no legal-entity, financial-year or branch scope. |
+| Concurrency-safe | the cycle row's `FOR UPDATE`. Proved by a two-connection race in the SQL suite. |
+| Idempotent | an existing reservation is **returned**; re-uploading, re-parsing and clicking all yield the same number and **one** audit row. |
+| Never silently changed | `order_submissions_protect_reserved_number` freezes the number, the consumption stamp **and** the obligation. |
 | Two drafts never share one | partial unique index `order_submissions_reserved_order_number_uidx`. |
-| Never reused or reassigned | nothing releases a reservation. An abandoned one is a **gap in the series**, which is the safe outcome: a reused number is two commercial documents claiming to be the same Order. |
-| Not typed by anybody | the panel has no input. The number is issued by the database. |
+| Never reused or reassigned | nothing releases a reservation. **An abandoned one is a permanent gap in the series** — the safe outcome, since a reused number is two commercial documents claiming to be the same Order. The reservation and its audit row remain. |
+| The cycle can never step back over one | a trigger on `order_number_cycle` itself, so it binds the admin setter, the cycle reset, the service role and a raw `UPDATE` alike. |
 
-**Stage and authority.** Only while the PI is `draft` or `needs_changes` — the
-stages at which the owner can still upload the revised file — and only for the
-population that may replace that workbook there: the PI's owner, or an active
-admin, holding `orders.create`. Asked by calling
-`assert_order_submission_workbook_editor()` and requiring `after_submission =
-false`, so the two rules cannot drift. **Finance authority is not a route**
-(reserving a commercial number is not a money decision), and neither is
-`orders.approve_order` (the approver's act is approval, which already numbers the
-Order).
+**Audit:** `order_number_reserved` (with `automatic: true|false`),
+`order_number_revised_pi_verified`, and `order_number_used`. The reservation row
+is written by one AFTER trigger watching the column, so both doors record it
+identically and neither records it twice.
 
-**The revised PI is proved, not asserted.** `reserved_number_workbook_sha256`
-captures the workbook hash at the moment the number was issued.
-`approve_order_submission()` refuses a reserved PI whose live hash still equals
-it — the file nobody replaced is the file that does not carry the number. A NULL
-live hash is refused for the same reason. This is the idiom
-`order_submission_exception_current()` already uses.
+### 12.3 The revised PI must actually contain the number
 
-**Approval.** The Order is created **with** the reserved number:
-`assign_order_display_number()` reads the reservation when the row names a source
-PI **and** `in_pi_submission_approval()` is open for that PI **and** the
-reservation is unused. A bare INSERT cannot set that marker, so
-`new.display_number` is still ignored and a caller still cannot seed a number.
-`orders_source_order_submission_id_uidx` is the third independent guarantee that
-one reservation produces one Order.
+An earlier form of this work compared only the **workbook hash**, which proved
+that a *different file* had been uploaded — not that it carried the number. A
+salesperson who corrected a typo elsewhere and re-uploaded satisfied it with a
+document that still had the wrong number, or none.
 
-**A PI without a reservation is approved exactly as before**, numbered from the
-cycle at insert. Reservation is opt-in; what is enforced is the other direction —
-a reservation that exists must be used, and must have been followed by a revised
-workbook.
+**The number is now read out of the revised workbook and compared.**
 
-**Two functions gain a rule so the two halves of the series cannot cross.**
-`set_next_confirmed_order_number()` now refuses a value at or below the highest
-outstanding reservation (previously it looked only at `public.orders`, where a
-reserved number is not yet). `allocate_confirmed_order_number()` walks past any
-number a PI Draft holds — normally dead code, since a reservation advances the
-cycle past itself. `reset_confirmed_order_number_cycle()` gains
-`ORDER_NUMBER_RESET_RESERVATIONS_EXIST`.
+| | |
+| --- | --- |
+| **Field** | `order_submissions.source_order_number` — cell **B20** of the Master sheet (`src/lib/pi/masterSheetParser.ts`, `HEADER_CELLS.sourceOrderNumber`) |
+| **Parser** | the one that already exists. **No second Excel parser was created.** |
+| **Trust** | `/api/orders/import/process-draft` downloads the stored bytes and parses them **server-side** (its own §11, *"THE TRUSTED PARSE"*); it takes no header value from the request body. `replace_order_submission_parse()` is the **only** writer of the column and is revoked from `public`, `anon` **and** `authenticated`. A browser can ask for stored bytes to be re-parsed; it cannot state what they say. Both facts are asserted at apply time. |
+| **Normalization** | `normalize_order_number_reference()`: trim surrounding whitespace, collapse internal whitespace runs to one space, upper-case, blank → NULL. **Leading zeros are NOT stripped** — they are part of the identifier (`20260704000000` §4), so `42` is not `0042`. |
+| **Comparison** | exact equality. No prefix, substring or numeric match: `42`, `004`, `00420`, `PI-0042`, `0042/2026`, `0042A` and `00 42` are all refused. |
 
-**Surface.** A panel on the PI Draft detail page between the summary and the
-workflow controls, showing the number large and selectable with a **Copy**
-action and the instruction *"Add this Order number to the revised PI, then upload
-the revised file."* Three numbers are named apart and never as one another:
-**Reserved Order number**, **PI reference (from the file)** and **Confirmed Order
-number**. The panel is absent entirely until the migration is applied — its
-columns are read by a separate probe, so a missing column hides one panel rather
-than taking the whole page down.
+`order_submission_revised_pi_refusal()` is the single rule, asked at **both**
+gates so they can never disagree, returning the refusal message or NULL:
 
-**Audit.** `order_number_reserved` and `order_number_used`, both added to the
-closed `order_submission_activity_action_check` set in the same migration that
-writes them.
+1. `ORDER_SUBMISSION_REVISED_PI_MISSING` — hash unchanged, or no hash at all.
+   **Asked first, deliberately:** while the workbook has not been re-parsed, the
+   reference on the row is the one read *before* the number existed, so a match
+   would be coincidence. A failed parse lands here too — a failed parse replaces
+   nothing, so the hash does not move.
+2. `ORDER_SUBMISSION_REVISED_PI_NO_NUMBER` — the revised PI carries no number.
+3. `ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH` — it carries a different one.
+   The message names **both** numbers and is passed through to the screen intact,
+   because neither is knowable in the browser.
 
-### 12.3 Common-payment linkage — verified, not rebuilt
+**Where it is enforced:** at submission (a trigger on the status transition, so
+every submit RPC is bound) and again at Order creation (inside
+`assign_order_display_number`, so **every** path that creates an Order is bound,
+including any written later). A PI corrected between review and approval is
+caught by the second.
+
+### 12.4 The Confirmed Order is created with the number
+
+`assign_order_display_number()` — **the only applied function this migration
+restates**, and it cannot be a trigger because it *is* the trigger — reads the
+reservation when the row names a source PI, refuses unless
+`in_pi_submission_approval()` is open for that PI, and refuses on any of the
+revised-PI failures above. `NEW.display_number` is still ignored, so a caller
+still cannot seed a number: they choose a PI, not a number.
+
+`orders_consume_reserved_number()` (AFTER INSERT) stamps the reservation used and
+writes the two trail entries. Three independent guarantees that one reservation
+produces one Order: the consumption stamp is one-way, the immutability trigger
+refuses a second stamp, and `orders_source_order_submission_id_uidx` is unique.
+
+**`approve_order_submission()` is not touched by this migration at all.** Its
+refusals are raised inside its own INSERT, abort its transaction, and reach its
+caller unchanged.
+
+### 12.5 Permissions
+
+| Action | Who | Enforced by |
+| --- | --- | --- |
+| Record a payment (existing form) | Finance module entry (`finance.view`), `submitted_by = auth.uid()` | RLS: `finance_payment_requests_own_insert` + the restrictive module gate |
+| **Record a payment and divide it** | Finance module entry **and** `finance.allocate` | `record_payment_with_allocations()` — both asked explicitly, because `SECURITY DEFINER` bypasses RLS |
+| Allocate after creation | `finance.allocate` | `allocate_payment_to_target()` |
+| Reserve an Order number (compatibility action) | the PI's owner or an active admin, holding `orders.create`, while `draft`/`needs_changes` | `reserve_order_number_for_submission()` via `assert_order_submission_workbook_editor()` |
+| Upload the revised PI | unchanged: owner or admin while `draft`/`needs_changes`; active admin with a reason thereafter | `replace_order_submission_parse()` |
+| Approve the PI / create the Order | `orders.approve_order` | `approve_order_submission()` |
+
+**Sales and Senior Sales may divide a payment when separately authorized, and
+only then.** `finance.allocate` is a registered Access Control action and is
+**PROTECTED** (`src/lib/permissions/levels.ts`), which means **no preset level
+confers it** — an administrator grants it to a named person. So:
+
+- a Sales user with `finance.view` alone records payments through the existing
+  form and **cannot** divide one;
+- a selected Sales or Senior Sales user granted `finance.view` **+**
+  `finance.allocate` can divide during entry;
+- Finance and Admin keep exactly the grants they already had.
+
+Nothing anywhere decides this by role, team or job title — the same two grants
+produce the same answer for everyone. The **Record Payment** control is drawn
+from `caps.canAllocatePayment` (= module entry **and** `allocate`); the RPC
+re-derives both, so a forged call meets the same two questions the hidden button
+would have.
+
+### 12.6 Deployment order — the migration goes first
+
+**Apply `20261009000000`, then deploy the code.** The PI detail page reads its
+record **once** (a rule with a test on it), and the reservation columns are
+spread into `PI_DRAFT_DETAIL_COLUMNS`; a select naming a column that does not
+exist fails whole. The same ordering `billing_percentage` needed from
+`20260923000000`.
+
+If the two cannot be atomic, the safe sequence is:
+
+1. `supabase db push` the migration. **Nothing changes for anybody**: the old
+   code selects no new column, every existing draft is grandfathered, the
+   automatic trigger fires only for drafts created afterwards, and no gate binds
+   a PI with no reservation.
+2. Deploy the code.
+
+The reverse order breaks `/orders/drafts/[submissionId]` until the migration
+lands. There is no window in which a *new* draft is created without its number,
+because step 1 installs the trigger before any code can create one.
+
+### 12.7 Common-payment linkage — verified, not rebuilt
 
 One payment allocated to several Confirmed Orders already produces a reliable
 shared relationship, and no schema or UI change was needed:
 
-- `finance_payment_allocations` is the relationship. There is **no** separate
-  "linked orders" table and the payment row is never duplicated per Order.
-- **Finance** (`AllocationPanel`, `ReceivedPaymentsView.tsx`) shows one payment
-  with every visible allocation, its amount, and a door to each destination; the
-  allocated and unallocated totals reconcile to the payment on screen.
-- **Each Order** (`orderFinancePosition.ts`, `/orders/[id]`) counts only its own
-  allocated share, marks the row `isPartialShare`, states the payment's full
-  amount beneath it, and links to the Finance record. It says *part of this
-  payment is elsewhere* without claiming **where** — it reads only its own
-  allocations.
-- **Restricted viewers** lose a hidden target's **number** and nothing else: no
-  id, no client, no link. And a reader who cannot see every allocation gets
-  `state: 'unknown'` and **no** available balance at all, because an incomplete
-  sum understates attribution and therefore overstates what is free to spend
-  again.
-- **Reversal** keeps the trail: a reversed allocation is never deleted, counts
-  for nothing, and frees its share back onto the payment.
+- `finance_payment_allocations` **is** the relationship. No separate "linked
+  orders" table, and the payment row is never duplicated per Order.
+- **Finance** (`AllocationPanel`) shows one payment with every visible
+  allocation, its amount and a door to each; allocated and unallocated totals
+  reconcile to the payment on screen.
+- **Each Order** counts only its own allocated share, marks the row
+  `isPartialShare`, states the payment's full amount beneath it, and says *part
+  of this payment is elsewhere* without claiming **where**.
+- **Restricted viewers** lose a hidden target's **number** and nothing else.
+  A reader who cannot see every allocation gets `state: 'unknown'` and **no**
+  available balance — an incomplete sum understates attribution and therefore
+  overstates what is free to spend again.
+- **Reversal** keeps the trail and frees its share back onto the payment.
 
 Pinned by `src/lib/finance/commonPaymentLinkage.test.ts`.
 
-### 12.4 Permissions, in one place
+### 12.8 Verifying it without a linked database
 
-| Action | Who | Enforced by |
-| --- | --- | --- |
-| Record a payment (existing form) | Finance module entry, `submitted_by = auth.uid()` | RLS: `finance_payment_requests_own_insert` + the restrictive module gate |
-| Record a payment **and divide it** | Finance module entry **and** `finance.allocate` | `record_payment_with_allocations()`, both asked explicitly because a `SECURITY DEFINER` function bypasses RLS |
-| Allocate after creation | `finance.allocate` | `allocate_payment_to_target()` |
-| Reserve an Order number | the PI's owner or an active admin, holding `orders.create`, while `draft`/`needs_changes` | `reserve_order_number_for_submission()` via `assert_order_submission_workbook_editor()` |
-| Upload the revised PI | unchanged: owner or admin while `draft`/`needs_changes`; active admin with a reason thereafter | `replace_order_submission_parse()` |
-| Approve the PI / create the Order | `orders.approve_order` | `approve_order_submission()` |
-| Correct or reverse an allocation | unchanged | the existing correction path |
+```
+supabase/tests/run_order_number_reservation_suite.sh <psql-host-or-socket-dir> [port]
+```
 
-Every write above is server-authorised. The browser gates only decide whether to
-**draw** a control, so nobody is offered a door that will shut in their face.
-
-### 12.5 Verifying it without a linked database
-
-`supabase/tests/run_order_number_reservation_suite.sh <psql-host-or-socket-dir> [port]`
-builds a production-shaped database, installs the **deployed** bodies of the five
-functions the migration replaces (extracted from their own migration files),
-applies `20261009000000`, and runs 22 assertions plus a **two-connection race**
-proving two concurrent reservations take different numbers. It also runs a
-negative case first — a retirement guard dropped, the migration refusing itself
-and rolling back completely — so the assertions after it cannot be vacuous.
+Builds a production-shaped database, installs the **deployed** bodies of the
+functions this migration does *not* restate (extracted from their own migration
+files), applies `20261009000000`, and runs 24 assertion blocks plus a
+**two-connection race** proving concurrent reservations take different numbers.
+A negative case runs first — a retirement guard dropped, the migration refusing
+itself and rolling back completely — so nothing after it can be vacuous.

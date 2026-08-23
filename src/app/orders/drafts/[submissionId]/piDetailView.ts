@@ -704,9 +704,19 @@ export const BLOCKING_INSTRUCTION =
 /**
  * One muted line, replacing the paragraph that used to explain at length that no
  * order number exists. It says the two things that are true and stops.
+ *
+ * IT USED TO SAY "Official order numbering begins after management approval",
+ * and 20261009000000 made that false. A PI now takes its Order number as soon as
+ * it has a workbook — the whole point being that the number can be printed on
+ * the revised PI the customer signs — and only the CONFIRMED ORDER waits for
+ * approval. Leaving the old sentence beside a panel displaying a reserved number
+ * would have been two rules on one screen contradicting each other.
+ *
+ * The new line says the same two things the old one meant to: this is a stored
+ * copy, and it is not an Order yet.
  */
 export const STORED_COPY_NOTE =
-  'Stored PI copy. Official order numbering begins after management approval.'
+  'Stored PI copy. The Confirmed Order is created at management approval, with the Order number reserved here.'
 
 // ── 9. Final approval ─────────────────────────────────────────────────────────
 //

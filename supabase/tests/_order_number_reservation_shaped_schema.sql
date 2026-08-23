@@ -45,8 +45,21 @@
 --     decides its own authorization in its body, which is what is being tested.
 -- ═════════════════════════════════════════════════════════════════════════════
 
+-- The two client roles, FIRST: every revoke below names them, and a revoke on a
+-- role that does not exist is an error rather than a no-op.
+do $$
+begin
+  if not exists (select 1 from pg_roles where rolname = 'authenticated') then
+    create role authenticated nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'anon') then
+    create role anon nologin;
+  end if;
+end $$;
+
 create schema if not exists auth;
 create schema if not exists storage;
+grant usage on schema public to authenticated, anon;
 create extension if not exists pgcrypto;
 
 -- ── The caller ───────────────────────────────────────────────────────────────
@@ -146,6 +159,11 @@ create table public.order_submissions (
   source_workbook_path   text,
   source_workbook_name   text,
   source_workbook_sha256 text,
+  -- B20 of the Master sheet, as the ONE parser reads it. In production this is
+  -- written by replace_order_submission_parse() and by nothing else, from a
+  -- SERVER-SIDE parse of the stored bytes; the stand-in below preserves that
+  -- property, because the whole revised-PI rule depends on it.
+  source_order_number    text,
   parse_blocking_issues  jsonb not null default '[]'::jsonb,
   deletion_claim_token   uuid,
   advance_exception_status text,
@@ -546,6 +564,40 @@ returns boolean language sql immutable as $$
      and p_decided_billing_terms is not distinct from p_billing_terms
 $$;
 
+-- ── The ONE writer of source_order_number ───────────────────────────────────
+--
+-- Reduced to the property the revised-PI rule depends on: it writes the header
+-- from a payload the SERVER produced by parsing the stored workbook, and it is
+-- executable by no client role. The real function is ~400 lines and this
+-- migration does not touch it; what is modelled is the write and the reach.
+create or replace function public.replace_order_submission_parse(
+  p_submission_id uuid, p_actor_id uuid, p_payload jsonb)
+returns jsonb language plpgsql security definer set search_path = public, pg_temp as $$
+declare v_header jsonb := coalesce(p_payload -> 'header', '{}'::jsonb); v_status text;
+begin
+  select status into v_status from public.order_submissions where id = p_submission_id for update;
+  if not found then
+    raise exception 'Order submission % not found', p_submission_id using errcode = 'P0002';
+  end if;
+
+  update public.order_submissions
+     set source_order_number    = nullif(btrim(coalesce(v_header ->> 'source_order_number', '')), ''),
+         client_name            = coalesce(nullif(btrim(coalesce(v_header ->> 'client_name', '')), ''), client_name),
+         source_workbook_path   = coalesce(p_payload ->> 'source_workbook_path', source_workbook_path),
+         source_workbook_name   = coalesce(p_payload ->> 'source_workbook_name', source_workbook_name),
+         source_workbook_sha256 = coalesce(p_payload ->> 'source_workbook_sha256', source_workbook_sha256),
+         updated_at             = now()
+   where id = p_submission_id;
+
+  perform public.log_order_submission_activity(
+    p_submission_id, p_actor_id, 'parse_replaced', v_status, v_status, null, '{}'::jsonb);
+
+  return jsonb_build_object('submission_id', p_submission_id);
+end $$;
+
+revoke execute on function public.replace_order_submission_parse(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+
 -- 20260908000000 §6. Encapsulated in production so the parent table, the child
 -- tables and the storage policies cannot drift apart — and, just as importantly,
 -- so a caller's visibility is a BOOLEAN rather than a three-valued expression
@@ -729,16 +781,6 @@ create trigger orders_refuse_request_provenance
 -- No client-role write on order_submissions, so every write in this suite goes
 -- through a SECURITY DEFINER function — which is the arrangement the migration's
 -- authorization reasoning depends on.
-do $$
-begin
-  if not exists (select 1 from pg_roles where rolname = 'authenticated') then
-    create role authenticated nologin;
-  end if;
-  if not exists (select 1 from pg_roles where rolname = 'anon') then
-    create role anon nologin;
-  end if;
-end $$;
-grant usage on schema public to authenticated, anon;
 grant select on public.order_submissions, public.order_submission_activity,
                 public.orders, public.finance_payment_requests,
                 public.finance_payment_allocations to authenticated;

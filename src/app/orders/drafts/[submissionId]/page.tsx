@@ -1570,6 +1570,7 @@ function PiDraftDetailPageInner() {
     hasWorkbook:            Boolean((submission.source_workbook_path ?? '').trim())
                               && Boolean(submission.source_workbook_sha256),
     canEditWorkbook:        canEditSubmission,
+    reservationRequired:    submission.reservation_required ?? false,
   })
 
   const paymentReadiness = piReadiness('payment', {
@@ -1788,10 +1789,17 @@ function PiDraftDetailPageInner() {
             confirmedNumber={draft.orderDisplayNumber}
             acting={reserving}
             failure={reservationFailure}
-            /* Offered only where the RPC would accept it. The RPC re-derives
+            /* THE COMPATIBILITY ACTION, and only that. A PI created after
+               20261009000000 takes its number automatically as soon as its file
+               is uploaded, so there is nothing for anybody to press — offering a
+               button there would suggest a decision that is not being made. The
+               control exists for the grandfathered population, which reserves by
+               hand or not at all.
+
+               Offered only where the RPC would accept it. The RPC re-derives
                every one of these conditions under its own lock, so this is a
                drawing rule and authorizes nothing. */
-            onReserve={reservationView.state === 'available'
+            onReserve={reservationView.state === 'available' && !submission.reservation_required
               ? () => { setCopiedNumber(false); void reserveOrderNumber() }
               : null}
             onCopy={copyOrderNumber}

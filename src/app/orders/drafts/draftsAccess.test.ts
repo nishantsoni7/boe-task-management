@@ -699,9 +699,14 @@ describe('the drafts list', () => {
     for (const forbidden of ['max(display_number', 'display_number +', 'padStart', 'lpad']) {
       assert.ok(!detail.includes(forbidden), `${forbidden} would be the browser inventing a number`)
     }
-    // The standing statement stays: until approval, this record has no number.
-    assert.ok(/numbering begins after management approval/.test(read(DETAIL_VIEW)),
-      'the draft states plainly that numbering happens only after approval')
+    // THE STANDING STATEMENT CHANGED, and had to. Until 20261009000000 a PI had
+    // no number until approval, and the footnote said so. It now takes one as
+    // soon as it has a workbook — that is the whole point, so the revised PI can
+    // be printed with it — and only the CONFIRMED ORDER waits for approval.
+    // What is still pinned is that the page states the rule rather than leaving
+    // a reader to infer it from a number appearing.
+    assert.ok(/Confirmed Order is created at management approval/.test(read(DETAIL_VIEW)),
+      'the draft states plainly what approval actually creates')
   })
 
   test('a draft with no client name still identifies itself', () => {

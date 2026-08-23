@@ -7,6 +7,13 @@
 // no number existed. So the number was never available at the one moment it was
 // needed.
 //
+// IT IS NOT OPTIONAL FOR A NEW PI. A PI Draft created after 20261009000000 takes
+// its number automatically, the moment its first workbook is parsed — nobody
+// presses anything — and cannot be submitted or approved until a revised
+// workbook actually carries it. A draft that predates the migration is
+// grandfathered: it takes no number by itself, and reserves through the
+// compatibility action below if and when somebody wants it to.
+//
 // WHAT IT IS NOT. It is not `max(order_number) + 1` shown on a screen. Two
 // people asking at the same moment would be shown the same number, print it on
 // two customers' documents, and discover the collision at approval — when one of
@@ -50,6 +57,11 @@ export const RESERVATION_INSTRUCTION =
  * screen renders it — a rule draftsAccess.test.ts holds these pages to.
  */
 export const PI_RESERVATION_COLUMNS: readonly string[] = [
+  // Whether the workflow is mandatory for this PI. It decides the panel's
+  // WORDING and nothing else — a new draft is told its number is coming, a
+  // grandfathered one is offered the compatibility action — and the database
+  // decides both.
+  'reservation_required',
   'reserved_order_number',
   'reserved_order_number_at',
   'reserved_number_workbook_sha256',
@@ -68,6 +80,7 @@ export const PI_RESERVATION_COLUMNS: readonly string[] = [
  * absent field and a null one are the same answer — which they are.
  */
 export type PiReservationFields = {
+  reservation_required?: boolean | null
   reserved_order_number?: string | null
   reserved_order_number_at?: string | null
   reserved_number_workbook_sha256?: string | null
@@ -115,7 +128,7 @@ export type ReservationState =
   | 'available'
   /** No number, and something stops one being taken. */
   | 'blocked'
-  /** Held, and the revised PI has not been uploaded since. */
+  /** Held, and no revised PI has been uploaded since. */
   | 'awaiting_revised_pi'
   /** Held, and a different workbook has been uploaded since it was taken. */
   | 'revised_pi_uploaded'
@@ -135,16 +148,24 @@ export type ReservationView = {
 }
 
 /**
- * Whether the revised PI is still outstanding.
+ * Whether NO revised PI has been uploaded since the number was issued.
  *
- * THE SAME TEST THE DATABASE MAKES, and deliberately not a second opinion:
- * approve_order_submission() compares the PI's live workbook hash against the
- * hash captured when the number was issued, and refuses while they agree. A
- * screen that decided this some other way would tell somebody they were ready to
- * be approved and then watch the approval refuse them.
+ * THE FIRST HALF OF THE DATABASE'S TEST, and only the first half. The rule has
+ * two parts — a workbook must have been re-parsed since the number was issued,
+ * AND the number it parsed to must be the reserved one — and this screen can
+ * only see the first. The second reads the parsed cell, which no PI screen
+ * renders: the workbook's own B20 is normally the number of whatever older PI
+ * this one was copied from, and putting it beside a reserved Order number would
+ * offer a reader two rival answers to one question.
  *
- * A MISSING LIVE HASH IS OUTSTANDING, not satisfied — it is not evidence that a
- * revised workbook exists, and the database refuses it for exactly that reason.
+ * SO THIS IS A WORDING HINT, NOT A VERDICT. `false` means "a revised file has
+ * arrived", never "you are ready" — and the panel says exactly that much. The
+ * verdict is the server's, and it arrives as a refusal on submit
+ * (revisedPiRefusalMessage below), which names both numbers because it can.
+ *
+ * A MISSING LIVE HASH COUNTS AS OUTSTANDING: it is not evidence that a revised
+ * workbook exists, and order_submission_revised_pi_refusal() refuses it for
+ * exactly that reason.
  */
 export function revisedPiOutstanding(input: {
   reservedWorkbookSha256: string | null | undefined
@@ -152,6 +173,24 @@ export function revisedPiOutstanding(input: {
 }): boolean {
   if (!input.currentWorkbookSha256) return true
   return input.currentWorkbookSha256 === input.reservedWorkbookSha256
+}
+
+/**
+ * The one normalization applied before an Order number read out of a workbook is
+ * compared — mirroring normalize_order_number_reference() in SQL exactly.
+ *
+ * WHY IT EXISTS IN TYPESCRIPT AT ALL, given the comparison is the database's:
+ * so the rule can be stated once in a test that reads like the rule, and so a
+ * future screen that needs to explain the rule does not invent a second one.
+ * Nothing in the browser decides an approval with it.
+ *
+ * IT DOES NOT STRIP LEADING ZEROS. They are part of the identifier
+ * (20260704000000 §4), so 42 is not 0042 and a document printed with 42 carries
+ * the wrong number.
+ */
+export function normalizeOrderNumberReference(value: string | null | undefined): string | null {
+  const collapsed = (value ?? '').replace(/\s+/g, ' ').trim().toUpperCase()
+  return collapsed === '' ? null : collapsed
 }
 
 /**
@@ -205,6 +244,15 @@ export function describeReservation(input: {
   deletionClaimed: boolean
   hasWorkbook: boolean
   canEditWorkbook: boolean
+  /**
+   * Whether this PI must hold a reserved number before it can be submitted —
+   * order_submissions.reservation_required. TRUE for every draft created after
+   * 20261009000000, FALSE for the grandfathered population.
+   *
+   * It changes the WORDING, never the gate: a new draft is told the number is
+   * coming, a legacy one is offered the choice, and the database decides both.
+   */
+  reservationRequired?: boolean | null
 }): ReservationView {
   const number = input.reserved ?? null
 
@@ -227,15 +275,37 @@ export function describeReservation(input: {
     return {
       state: outstanding ? 'awaiting_revised_pi' : 'revised_pi_uploaded',
       number,
+      // THE SECOND SENTENCE PROMISES NOTHING. A revised file having arrived is
+      // not the same as it carrying the right number, and only the server knows
+      // which — so this says what it can see and names when the answer comes.
       standing: outstanding
         ? `${number} is held for this PI. ${RESERVATION_INSTRUCTION}`
-        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. The Confirmed Order will be created as ${number}.`,
+        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. It is checked against ${number} when the PI is submitted for review.`,
       blockedReason: null,
       canCopy: true,
     }
   }
 
   const blocked = reservationBlockedReason(input)
+  const required = Boolean(input.reservationRequired)
+
+  // A NEW DRAFT IS NOT BEING OFFERED A CHOICE. Its number is issued the moment
+  // its first PI is uploaded, by the database, with no control to press — so the
+  // wording says what is about to happen rather than inviting a decision. The
+  // only reason it can be sitting here with no number is that no PI file has
+  // been uploaded yet, which is what the blocked reason will already say.
+  if (required) {
+    return {
+      state: blocked ? 'blocked' : 'available',
+      number: null,
+      standing: blocked
+        ? `No Order number has been reserved for this PI yet. ${NO_PI_NUMBER_NOTE}`
+        : `An Order number is issued for this PI as soon as its PI file is uploaded, and the revised PI must carry it before the PI can be submitted for review. ${NO_PI_NUMBER_NOTE}`,
+      blockedReason: blocked,
+      canCopy: false,
+    }
+  }
+
   return {
     state: blocked ? 'blocked' : 'available',
     number: null,
@@ -319,11 +389,45 @@ export function reservationErrorMessage(error: unknown): string {
  */
 export function reservationApprovalMessage(error: unknown): string | null {
   const m = messageOf(error)
+
+  // THE MISMATCH MESSAGE IS THE SERVER'S OWN, PASSED THROUGH. It is the one
+  // refusal on this screen that names two numbers — what the file says and what
+  // is reserved — and neither is knowable here: no PI screen reads the parsed
+  // cell. Rewriting it into a fixed sentence would throw away the only fact that
+  // makes it actionable.
+  if (m.includes('ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH')) {
+    return afterCode(m, 'ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH')
+  }
+  if (m.includes('ORDER_SUBMISSION_REVISED_PI_NO_NUMBER')) {
+    return afterCode(m, 'ORDER_SUBMISSION_REVISED_PI_NO_NUMBER')
+  }
   if (m.includes('ORDER_SUBMISSION_REVISED_PI_MISSING')) {
-    return 'An Order number was reserved for this PI, but the revised PI carrying that number has not been uploaded. Upload it before approving.'
+    return afterCode(m, 'ORDER_SUBMISSION_REVISED_PI_MISSING')
+  }
+  if (m.includes('ORDER_SUBMISSION_RESERVATION_REQUIRED')) {
+    return 'This PI has no Order number yet. Upload the PI file so a number can be issued, then put that number into the revised PI.'
+  }
+  if (m.includes('ORDER_FROM_RESERVED_PI_REQUIRES_APPROVAL')) {
+    return 'An Order for this PI can only be created by approving it.'
   }
   if (m.includes('ORDER_NUMBER_RESERVATION_IN_USE')) {
     return 'The Order number reserved for this PI is already in use. Nothing was approved — ask an administrator to check the numbering.'
   }
   return null
+}
+
+/**
+ * The human half of a `CODE: sentence` refusal, with the code taken off.
+ *
+ * THESE THREE MESSAGES ARE WRITTEN FOR A PERSON, in the database, because they
+ * are the only place both numbers are known. What is stripped is the machine
+ * prefix, and nothing else — no reformatting, no truncation, no substitution.
+ * A message that somehow arrives without one is passed through whole rather than
+ * replaced, because an unexpected shape is not a reason to say less.
+ */
+function afterCode(message: string, code: string): string {
+  const at = message.indexOf(code)
+  if (at < 0) return message
+  const rest = message.slice(at + code.length).replace(/^\s*:\s*/, '').trim()
+  return rest === '' ? message : rest
 }
