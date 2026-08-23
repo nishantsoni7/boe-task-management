@@ -21,16 +21,19 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { execSync } from 'node:child_process'
 
 const FIX = 'supabase/migrations/20261006000000_payment_participant_and_order_total_security.sql'
 const ATTRIBUTION = 'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql'
 const SUITE = 'supabase/tests/payment_participant_security.sql'
+const GRANTS = 'supabase/tests/participant_predicate_grants.sql'
 const SCHEMA = 'supabase/tests/_production_shaped_schema.sql'
 const RUNNER = 'supabase/tests/run_security_suite.sh'
 
 const fix = readFileSync(FIX, 'utf8')
 const attribution = readFileSync(ATTRIBUTION, 'utf8')
 const suite = readFileSync(SUITE, 'utf8')
+const grants = readFileSync(GRANTS, 'utf8')
 const schema = readFileSync(SCHEMA, 'utf8')
 const runner = readFileSync(RUNNER, 'utf8')
 
@@ -213,8 +216,13 @@ describe('exposure 2 — the Order total', () => {
   test('grants are unchanged: anon and PUBLIC out, authenticated in', () => {
     assert.ok(fix.includes(
       'revoke execute on function public.order_linked_payment_total(uuid) from public, anon;'))
-    assert.ok(fix.includes('anon must not hold EXECUTE on order_linked_payment_total'))
-    assert.ok(fix.includes('authenticated must retain EXECUTE on order_linked_payment_total'))
+    const grants = fix.match(
+      /grant\s+execute on function public\.order_linked_payment_total\(uuid\) to ([^\n;]+)/g) ?? []
+    assert.equal(grants.length, 1)
+    assert.match(grants[0], /to authenticated$/)
+    // The four grant questions are asked for this function by the shared loop in
+    // §4f; see the "four separate ways" block below.
+    assert.ok(fix.includes("'order_linked_payment_total(uuid)'"))
   })
 
   test('a null auth.uid() is admitted, and the migration justifies it', () => {
@@ -255,6 +263,147 @@ describe('all three functions meet the protected-RPC rules', () => {
       assert.equal(fix.match(new RegExp(`alter function public\\.${name}[^\\n]*owner to`, 'i')), null)
     })
   }
+})
+
+
+describe('exposure 3 — the EXECUTE grant that was never revoked', () => {
+  const ORIGIN = 'supabase/migrations/20260919000000_pi_submission_payment_entry.sql'
+
+  test('the applied migration really did write a grant and no revoke', () => {
+    // The root cause, pinned so this test explains itself in five years.
+    // PostgreSQL grants EXECUTE on a new function to PUBLIC by default, and anon
+    // is a member of PUBLIC.
+    const origin = readFileSync(ORIGIN, 'utf8')
+    assert.ok(origin.includes(
+      'grant execute on function public.can_read_payment_as_participant(uuid) to authenticated;'))
+    assert.equal(origin.match(
+      /revoke execute on function public\.can_read_payment_as_participant/), null,
+      'if a revoke ever appears in the applied file, this whole section is obsolete')
+  })
+
+  test('20261006000000 writes the revoke, and writes it before the grant', () => {
+    const revoke = fix.indexOf(
+      'revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;')
+    const grant = fix.indexOf(
+      'grant  execute on function public.can_read_payment_as_participant(uuid) to authenticated;')
+    assert.ok(revoke > 0, 'the revoke is the fix')
+    assert.ok(grant > revoke, 'a revoke after the grant would undo it')
+  })
+
+  test('the revoke follows the function body, because create or replace keeps an ACL', () => {
+    // Replacing the function in §2 preserved the stray PUBLIC grant untouched.
+    // That is why correcting the body was not enough.
+    const body = fix.indexOf('create or replace function public.can_read_payment_as_participant(')
+    const revoke = fix.indexOf(
+      'revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;')
+    assert.ok(body > 0 && revoke > body)
+    assert.ok(fix.includes('CREATE OR REPLACE DOES NOT RESET AN ACL'))
+  })
+
+  test('service_role is NOT granted, and the migration proves the call path', () => {
+    assert.equal(fix.match(/grant\s+execute on function[^\n;]*to[^\n;]*service_role/i), null,
+      'bypassing RLS is not a reason to hold an RPC')
+    assert.ok(fix.includes('SERVICE_ROLE IS DELIBERATELY NOT GRANTED'))
+    assert.ok(fix.includes('service_role holds BYPASSRLS, so those policies are never'))
+  })
+
+  test('no code calls the predicate as an RPC, which is the other half of that argument', () => {
+    // Only a comment refers to it; there is no invocation anywhere in src/.
+    const hits = execSync(
+      "grep -rn 'can_read_payment_as_participant' src/ 2>/dev/null || true",
+      { encoding: 'utf8' })
+      .split('\n')
+      .filter(l => l.trim() && !/\.test\./.test(l))
+      .filter(l => /\.rpc\(|rpc\(['"`]can_read_payment_as_participant/.test(l))
+    assert.deepEqual(hits, [], 'a real RPC call would change the service_role analysis')
+  })
+})
+
+describe('the grant assertions are made four separate ways', () => {
+  test('PUBLIC, anon and authenticated are each asked on their own', () => {
+    assert.ok(fix.includes("raise exception 'PUBLIC must not hold EXECUTE on %'"))
+    assert.ok(fix.includes("raise exception 'anon must not hold EXECUTE on %'"))
+    assert.ok(fix.includes("raise exception 'authenticated must hold EXECUTE on %'"))
+  })
+
+  test('and the fourth question — WHO holds a direct grant — is read from proacl', () => {
+    // has_function_privilege answers "can this role execute", which is true for a
+    // superuser and for anyone inheriting through PUBLIC. It can never answer
+    // "who has been granted this".
+    assert.ok(fix.includes('aclexplode(v_acl)'))
+    assert.ok(fix.includes("when a.grantee = 0 then 'PUBLIC'"))
+    assert.ok(fix.includes("if v_grantees is distinct from array['authenticated'] then"))
+  })
+
+  test('a NULL proacl is treated as the PUBLIC grant it is', () => {
+    assert.ok(fix.includes('carries default privileges, which means PUBLIC holds EXECUTE'))
+  })
+
+  test('all three functions go through the same loop', () => {
+    for (const fn of ['can_view_order_as_actor(uuid)',
+                      'can_read_payment_as_participant(uuid)',
+                      'order_linked_payment_total(uuid)']) {
+      assert.ok(fix.includes(`'${fn}'`), `${fn} must be in the grant-assertion loop`)
+    }
+  })
+})
+
+describe('the production-shaped schema reproduces the REAL grant state', () => {
+  test('it grants without revoking, exactly as the applied migration does', () => {
+    // The bug in the harness itself: an earlier version added a revoke the
+    // applied migration never had, so it reproduced a grant state that did not
+    // exist. That is why 20261006000000 passed locally and failed remotely.
+    assert.ok(schema.includes(
+      'grant execute on function public.can_read_payment_as_participant(uuid) to authenticated;'))
+    assert.equal(schema.match(
+      /revoke execute on function public\.can_read_payment_as_participant/), null,
+      'a revoke here would hide the very defect this file exists to reproduce')
+    assert.ok(schema.includes('Reproducing the REAL grant state is the point of this file'))
+  })
+
+  test('the other two functions keep their real revokes', () => {
+    assert.ok(schema.includes(
+      'revoke execute on function public.order_linked_payment_total(uuid) from public, anon;'))
+  })
+
+  test('anon exists as a role, or nothing could inherit through PUBLIC', () => {
+    assert.ok(schema.includes("rolname = 'anon'"))
+    assert.ok(schema.includes("rolname = 'service_role'"))
+  })
+})
+
+describe('the grant regression test', () => {
+  test('it requires the defect to reproduce in the BEFORE phase', () => {
+    assert.ok(grants.includes('BEFORE: PUBLIC does not hold EXECUTE'))
+    assert.ok(grants.includes('BEFORE: anon does not inherit EXECUTE'))
+  })
+
+  test('it asserts all four grant questions after the fix', () => {
+    assert.ok(grants.includes('AFTER  grants FAILED: PUBLIC still holds EXECUTE'))
+    assert.ok(grants.includes('AFTER  grants FAILED: anon still holds EXECUTE'))
+    assert.ok(grants.includes('AFTER  grants FAILED: authenticated lost EXECUTE'))
+    assert.ok(grants.includes('EXECUTE granted to %, expected only {authenticated}'))
+    assert.ok(grants.includes('AFTER  grants FAILED: service_role holds EXECUTE'))
+  })
+
+  test('it proves no policy broke because of the revoke', () => {
+    // A lost grant raises "permission denied for function" rather than returning
+    // zero rows, so the policies are exercised for real and the participant
+    // reads are required to still return their rows.
+    assert.ok(grants.includes('all four payment policies still resolve for authenticated callers'))
+    assert.ok(grants.includes('Order and PI participant reads still return their rows'))
+    assert.ok(grants.includes('anon is refused with insufficient_privilege'))
+  })
+
+  test('it runs in both phases and leaves nothing behind', () => {
+    assert.ok(grants.includes("to_regprocedure('public.can_view_order_as_actor(uuid)') is not null"))
+    assert.ok(grants.trimEnd().endsWith('rollback;'))
+  })
+
+  test('and the runner runs it in both phases', () => {
+    const runs = [...runner.matchAll(/participant_predicate_grants\.sql/g)]
+    assert.equal(runs.length, 2, 'once before the migrations and once after')
+  })
 })
 
 describe('the executable suite exists and covers the whole matrix', () => {

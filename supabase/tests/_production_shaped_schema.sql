@@ -202,8 +202,14 @@ returns boolean language sql stable security definer set search_path = public, p
       )
   );
 $$;
-revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;
-grant  execute on function public.can_read_payment_as_participant(uuid) to authenticated;
+-- ONLY THE GRANT, exactly as 20260919000000 §2 wrote it — no revoke. That
+-- omission is the third exposure: PostgreSQL grants EXECUTE on a new function to
+-- PUBLIC by default and `anon` is a member of PUBLIC, so anon has been able to
+-- call this since the day it shipped. An earlier version of this harness added a
+-- revoke here that the applied migration never had, which is exactly why the
+-- harness passed locally while 20261006000000 failed on the linked database.
+-- Reproducing the REAL grant state is the point of this file.
+grant execute on function public.can_read_payment_as_participant(uuid) to authenticated;
 
 -- 20260816000000 §5 — SECURITY DEFINER, granted to authenticated, gated on
 -- nothing. (The attribution rule itself is corrected by 20261005000000; this is

@@ -19,6 +19,7 @@ echo "══ building the production-shaped schema (pre-correction definitions) 
 
 echo "══ BEFORE: the exposures, demonstrated ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_participant_security.sql"
+"${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/participant_predicate_grants.sql"
 
 echo "══ applying the three unapplied migrations, in order ══"
 for m in 20261004000000_finance_received_payments_allocation_state \
@@ -30,6 +31,7 @@ done
 
 echo "══ AFTER: the same matrix, now required to hold ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_participant_security.sql"
+"${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/participant_predicate_grants.sql"
 
 echo "══ the batched-RPC security harness ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_active_allocation_totals_security.sql"

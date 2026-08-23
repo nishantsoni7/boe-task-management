@@ -206,6 +206,55 @@ $$;
 comment on function public.can_read_payment_as_participant(uuid) is
   'True when an allocation — active or reversed — attaches this payment to a PI submission or an Order the caller can already open. The single participant-visibility rule shared by the payment policy and the module gate. Grants SELECT only; confers no verification, allocation, correction or deletion. SECURITY DEFINER because reading finance_payment_allocations as the invoker would be a policy cycle through finance_payment_requests; both of its visibility branches are therefore auth.uid()-based predicates that keep their meaning at any nesting depth, never RLS reads that a definer would silently bypass.';
 
+-- ═══ 2a. The grant this function never had ══════════════════════════════════
+--
+-- THE THIRD EXPOSURE, and the one that stopped this migration applying.
+--
+-- PostgreSQL grants EXECUTE on a NEW function to PUBLIC by default, and every
+-- role — `anon` included — is a member of PUBLIC. Sibling functions in this
+-- codebase all close that default explicitly: order_linked_payment_total
+-- (20260816000000 §5), can_view_order (20260924000000 §1),
+-- can_view_order_submission (20260908000000) each carry
+--
+--     revoke execute on function ... from public, anon;
+--     grant  execute on function ... to authenticated;
+--
+-- 20260919000000 §2 wrote only the GRANT. So can_read_payment_as_participant
+-- has carried PostgreSQL's default PUBLIC EXECUTE since the day it shipped, and
+-- `anon` — the unauthenticated PostgREST role — has been able to call it.
+--
+-- CREATE OR REPLACE DOES NOT RESET AN ACL. Replacing the function in §2 above
+-- preserves whatever privileges it already held, so the correction to its BODY
+-- left the stray PUBLIC grant exactly where it was. §4 caught that on the linked
+-- database and the whole migration rolled back, which is the assertion doing its
+-- job — but the revoke has to be written, not assumed.
+--
+-- WHAT anon COULD DO WITH IT. Call it, and learn for any payment UUID whether an
+-- allocation attaches it to an Order or PI. It returns a boolean and no rows, and
+-- anon holds no SELECT on finance_payment_requests or finance_payment_allocations
+-- (20260918000000 §9), so this is an existence-and-linkage oracle rather than a
+-- data read — but a payment UUID is exactly what an allocation id or a shared
+-- URL can carry, and an unauthenticated caller has no business being answered.
+--
+-- SERVICE_ROLE IS DELIBERATELY NOT GRANTED. Bypassing RLS is not a reason to
+-- hold an RPC. The call path is the whole argument:
+--
+--   * The only callers are four RLS policies, every one of them TO authenticated
+--     (§2's list). service_role holds BYPASSRLS, so those policies are never
+--     evaluated for it and this function is never reached.
+--   * No client or server code calls it — there is one comment referring to it
+--     in src/lib/orders/orderPayments.ts and no invocation anywhere.
+--   * It is a read predicate. Nothing it could do for a service operation is
+--     something service_role cannot already do by reading the tables directly.
+--
+-- So it gets no grant. If a service path ever genuinely needs it, that is a new
+-- migration with the call path written down, not a line added here for comfort.
+-- The function's OWNER keeps EXECUTE by ownership, which is how the migration
+-- runner and every SECURITY DEFINER that calls it continue to work.
+
+revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;
+grant  execute on function public.can_read_payment_as_participant(uuid) to authenticated;
+
 -- ═══ 3. The Order total, gated ══════════════════════════════════════════════
 --
 -- The CURRENT definition from 20261005000000 §2, copied verbatim, with the
@@ -320,9 +369,13 @@ grant  execute on function public.order_linked_payment_total(uuid) to authentica
 
 do $$
 declare
-  v_def  text;
-  v_pols text[];
-  v_n    int;
+  v_def       text;
+  v_pols      text[];
+  v_n         int;
+  v_fn        text;
+  v_acl       aclitem[];
+  v_owner     text;
+  v_grantees  text[];
 begin
   -- 4a. The restatement in §1 must still match the policies it restates.
   select array_agg(p.polname order by p.polname) into v_pols
@@ -427,25 +480,65 @@ begin
       'order_linked_payment_total must prefer active allocations over the direct link';
   end if;
 
-  -- 4f. Grants on all three, exactly as intended.
-  if has_function_privilege('anon', 'public.can_view_order_as_actor(uuid)', 'execute') then
-    raise exception 'anon must not hold EXECUTE on can_view_order_as_actor';
-  end if;
-  if has_function_privilege('public', 'public.can_view_order_as_actor(uuid)', 'execute') then
-    raise exception 'PUBLIC must not hold EXECUTE on can_view_order_as_actor';
-  end if;
-  if not has_function_privilege('authenticated', 'public.can_view_order_as_actor(uuid)', 'execute') then
-    raise exception 'authenticated must hold EXECUTE on can_view_order_as_actor';
-  end if;
-  if has_function_privilege('anon', 'public.order_linked_payment_total(uuid)', 'execute') then
-    raise exception 'anon must not hold EXECUTE on order_linked_payment_total';
-  end if;
-  if not has_function_privilege('authenticated', 'public.order_linked_payment_total(uuid)', 'execute') then
-    raise exception 'authenticated must retain EXECUTE on order_linked_payment_total';
-  end if;
-  if has_function_privilege('anon', 'public.can_read_payment_as_participant(uuid)', 'execute') then
-    raise exception 'anon must not hold EXECUTE on can_read_payment_as_participant';
-  end if;
+  -- 4f. Grants on all three, checked FOUR WAYS EACH.
+  --
+  -- Separately, because the four questions have different answers and the first
+  -- run of this migration proved it: PUBLIC held EXECUTE on
+  -- can_read_payment_as_participant (20260919000000 §2 wrote a grant and no
+  -- revoke), anon inherited it through PUBLIC, and `create or replace` in §2
+  -- carried the ACL through untouched. A single has_function_privilege('anon',…)
+  -- test found it, but only by luck of ordering — each of the four is asserted
+  -- on its own now.
+  --
+  -- The fourth is the one text cannot express: NO UNINTENDED ROLE holds a DIRECT
+  -- grant. has_function_privilege() answers "can this role execute", which is
+  -- true for a superuser and for anyone inheriting from PUBLIC; it can never
+  -- answer "who has been granted this". That is read out of proacl below, where
+  -- grantee 0 is PUBLIC and everything else is a real role.
+  foreach v_fn in array array[
+    'can_view_order_as_actor(uuid)',
+    'can_read_payment_as_participant(uuid)',
+    'order_linked_payment_total(uuid)'
+  ] loop
+    if has_function_privilege('public', 'public.' || v_fn, 'execute') then
+      raise exception 'PUBLIC must not hold EXECUTE on %', v_fn;
+    end if;
+    if has_function_privilege('anon', 'public.' || v_fn, 'execute') then
+      raise exception 'anon must not hold EXECUTE on %', v_fn;
+    end if;
+    if not has_function_privilege('authenticated', 'public.' || v_fn, 'execute') then
+      raise exception 'authenticated must hold EXECUTE on %', v_fn;
+    end if;
+
+    -- A NULL proacl means "default privileges", which IS the PUBLIC grant. It
+    -- has to fail here even though the three tests above may not catch it on a
+    -- database where anon happens not to exist.
+    select p.proacl, pg_get_userbyid(p.proowner)
+      into v_acl, v_owner
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.oid = ('public.' || v_fn)::regprocedure;
+
+    if v_acl is null then
+      raise exception
+        '% carries default privileges, which means PUBLIC holds EXECUTE; write an explicit revoke', v_fn;
+    end if;
+
+    select coalesce(array_agg(distinct grantee_name order by grantee_name), '{}')
+      into v_grantees
+    from (
+      select case when a.grantee = 0 then 'PUBLIC'
+                  else pg_get_userbyid(a.grantee) end as grantee_name
+      from aclexplode(v_acl) a
+      where a.privilege_type = 'EXECUTE'
+    ) g
+    where grantee_name <> v_owner;
+
+    if v_grantees is distinct from array['authenticated'] then
+      raise exception
+        'EXECUTE on % is granted to %, expected only {authenticated} beside the owner %',
+        v_fn, v_grantees, v_owner;
+    end if;
+  end loop;
 end $$;
 
 commit;
