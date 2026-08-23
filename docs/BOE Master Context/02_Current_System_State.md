@@ -8,12 +8,20 @@ Last Updated: September 2026 — Order Management state, routes, storage and per
 Request workflow is retired; PI Drafts are the only pre-approval Order workflow,
 and a Confirmed Order arises only from an approved PI. Payments carry one
 canonical classification — Orders, PI Drafts, Available — computed by the
-database. Both are described below and are **not yet applied**: they arrive with
-migrations `20261007000000` and `20261008000000`. `20261007000000` was attempted
-three times on the linked database and each time refused its own apply-time
-assertion and rolled back completely — see "The policy set the retirement
-leaves", "Asking the schema the right question" and "RESET ROLE is not a
-restore". Both migrations remain pending.
+database. Both arrive with migrations `20261007000000` and `20261008000000`, and
+**both were applied successfully to the linked Supabase database on 2026-08-23**;
+`supabase migration list --linked` shows Local and Remote matching through
+`20261008000000`.
+
+`20261007000000` had refused its own apply three times before that, rolling back
+completely each time — see "The policy set the retirement leaves", "Asking the
+schema the right question" and "RESET ROLE is not a restore". The successful
+apply means those apply-time assertion blocks ran against real rows and passed.
+
+**Both migrations are now immutable.** Their bytes are pinned by SHA-256 in
+`src/lib/finance/participantAndOrderTotalSecurity.test.ts`. Any later database
+correction must be a new forward-only migration after `20261008000000`; neither
+file may be edited again.
 
 ---
 

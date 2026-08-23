@@ -22,6 +22,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { execSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 
 const FIX = 'supabase/migrations/20261006000000_payment_participant_and_order_total_security.sql'
 const ATTRIBUTION = 'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql'
@@ -504,37 +505,96 @@ describe('the ACL regression reproduces the linked database before it proves the
   })
 })
 
-describe('the applied migrations are not edited', () => {
-  const APPLIED = [
-    'supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql',
-    'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql',
+describe('the applied migrations are frozen', () => {
+  /**
+   * Every migration the linked database has run, and the SHA-256 of the exact
+   * bytes it ran.
+   *
+   * Applied means immutable. A forward-only correction that edited one of these
+   * would put the repository and the database permanently out of step, and
+   * nothing would say so — `supabase db push` records that a version was
+   * applied, not what it contained, so the migration history cannot tell you
+   * afterwards whether the file still matches what ran. These hashes are the
+   * only thing that can, and they protect the repository side going forward.
+   * They are not evidence about the bytes already in the database.
+   *
+   * 106 was applied before this branch existed; 107 and 108 were applied on
+   * 2026-08-23, and `supabase migration list --linked` shows Local and Remote
+   * matching through 108.
+   *
+   * TO CORRECT A DATABASE AFTER THIS POINT: add migration 109 or later. Do not
+   * edit a file below.
+   */
+  const FROZEN: ReadonlyArray<readonly [file: string, sha256: string]> = [
+    // Allocation state on the received-payments projection (PR #49).
+    ['supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql',
+     'b17c7f931424fe952135d42a5d20a4366225353c131ebeaed36bd5fd6067fd5d'],
+    // Order-linked payment totals from allocations (PR #49).
+    ['supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql',
+     'c0f4a27e5f28aa32b00c690bb9a97b7aadbd820a8d3d4797c1f6947e6d994dcf'],
+    // Retiring the Order Request workflow: four guards, two dropped permissive
+    // write policies, ten revoked RPCs. Deletes nothing.
+    ['supabase/migrations/20261007000000_retire_order_requests.sql',
+     '0ff189e3ea7a0bcde8e1c98286e21c25ebca3e5846c7badd8117169b7e9ff373'],
+    // The canonical payment classification, as columns on the existing
+    // projection. Creates no table and stores nothing.
+    ['supabase/migrations/20261008000000_finance_payment_classification.sql',
+     'e2494ca54ae65fa4d155b3b9ff7e9eae27663fd455757c882a6d10d8c9aa2fbb'],
   ]
 
-  test('104 and 105 are byte-identical to the commit the linked database applied', () => {
-    // They are applied and immutable. A forward-only correction that edited one
-    // would put the repository and the database permanently out of step.
-    for (const file of APPLIED) {
-      const applied = execSync(`git show 3d57fb2:${file} | sha256sum`, { encoding: 'utf8' }).split(' ')[0]
-      const local = execSync(`sha256sum ${file}`, { encoding: 'utf8' }).split(' ')[0]
-      assert.equal(local, applied, `${file} must not change: it is applied`)
+  test('each applied migration still hashes to the bytes that were applied', () => {
+    // Hashed from the file on disk, against a literal. No git object is
+    // consulted: the previous form of this test read `git show 3d57fb2:<file>`,
+    // and 3d57fb2 is a PRE-SQUASH commit that exists only while the merged
+    // branch survives on the remote. In a clone that lacked it, `git show`
+    // failed, the pipe carried nothing, and `sha256sum` of an empty stream
+    // (e3b0c442…b7852b855) became the "expected" value — so the test failed for
+    // a reason that had nothing to do with the migrations. A pinned literal
+    // cannot rot that way.
+    for (const [file, expected] of FROZEN) {
+      const actual = createHash('sha256').update(readFileSync(file)).digest('hex')
+      assert.equal(actual, expected,
+        `${file} must not change: it is applied. Correct the database with a new migration instead.`)
     }
   })
 
-  test('and every migration after them is unapplied and forward-only', () => {
-    // The list is asserted EXACTLY rather than as a count, so a new migration is
-    // a decision somebody makes on purpose — and so the reader of this file
-    // knows which files the linked database has not seen.
+  test('the two PR #49 migrations match the squash commit on main', () => {
+    // Provenance for the first two literals, and a second opinion on them: main
+    // is where those files live permanently, so this is the durable reference
+    // the pre-squash commit never was. Skipped rather than failed where the
+    // commit is not in the clone — a shallow checkout is not a defect in the
+    // migrations, which the literals above have already checked.
+    const SQUASH = '39825a2ed3dc1021523f578bbf60457220c0fc23'
+    let reachable = true
+    try {
+      execSync(`git cat-file -e ${SQUASH}^{commit}`, { stdio: 'ignore' })
+    } catch {
+      reachable = false
+    }
+    if (!reachable) return
+
+    for (const [file, expected] of FROZEN.slice(0, 2)) {
+      const onMain = createHash('sha256')
+        .update(execSync(`git show ${SQUASH}:${file}`, { maxBuffer: 32 * 1024 * 1024 }))
+        .digest('hex')
+      assert.equal(onMain, expected, `${file} on main disagrees with its pinned hash`)
+    }
+  })
+
+  test('no migration has been added after 108 without being accounted for', () => {
+    // The list is asserted EXACTLY rather than as a count, so adding a migration
+    // is a decision somebody makes on purpose and has to record here.
+    //
+    // This says nothing about whether any of them is applied — 106, 107 and 108
+    // all are, and a future 109 may be by the time it is read. What it protects
+    // is that a new file cannot appear unnoticed beside four frozen ones.
     const later = execSync('ls supabase/migrations', { encoding: 'utf8' })
       .split('\n').filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
       .sort()
     assert.deepEqual(later, [
       '20261006000000_payment_participant_and_order_total_security.sql',
-      // Retiring the Order Request workflow: four guards, one dropped INSERT
-      // policy, ten revoked RPCs. Deletes nothing.
       '20261007000000_retire_order_requests.sql',
-      // The canonical payment classification, as columns on the existing
-      // projection. Creates no table and stores nothing.
       '20261008000000_finance_payment_classification.sql',
     ])
   })
