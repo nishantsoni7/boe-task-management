@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, Hash, Eraser, DatabaseZap } from 'lucide-react'
+import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, Hash, Eraser } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -148,18 +148,6 @@ export function ControlCenterLayout({
             icon={<Eraser size={15} strokeWidth={1.8} />}
             active={pathname === '/admin/control-center/test-data-cleanup'}
             onClick={() => navTo('/admin/control-center/test-data-cleanup')}
-          />
-          {/* A SEPARATE ENTRY, not a tab of the one above, because the two
-              answer different questions. Test Data Cleanup removes ONE test
-              transaction, found by searching for it. Data Management clears a
-              MODULE, where there is nothing to search for and the only choice
-              is which half. Folding them together would put "clear every Order
-              in the system" one click from a search box. */}
-          <NavItem
-            label="Data Management"
-            icon={<DatabaseZap size={15} strokeWidth={1.8} />}
-            active={pathname === '/admin/control-center/data-management'}
-            onClick={() => navTo('/admin/control-center/data-management')}
           />
           <NavItem
             label="Change History"

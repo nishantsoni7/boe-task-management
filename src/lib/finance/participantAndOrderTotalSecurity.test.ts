@@ -586,9 +586,8 @@ describe('the applied migrations are frozen', () => {
     // is a decision somebody makes on purpose and has to record here.
     //
     // This says nothing about whether any of them is applied — 106, 107 and 108
-    // are; 110 is NOT, and neither is 109, which lives on the Order/Finance
-    // branch. What it protects is that a new file cannot appear unnoticed beside
-    // the frozen ones.
+    // all are, and a future 109 may be by the time it is read. What it protects
+    // is that a new file cannot appear unnoticed beside four frozen ones.
     const later = execSync('ls supabase/migrations', { encoding: 'utf8' })
       .split('\n').filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
@@ -597,20 +596,7 @@ describe('the applied migrations are frozen', () => {
       '20261006000000_payment_participant_and_order_total_security.sql',
       '20261007000000_retire_order_requests.sql',
       '20261008000000_finance_payment_classification.sql',
-      // UNAPPLIED, and numbered 110 rather than 109 because 109 already exists
-      // on claude/boe-order-finance-verify-ml0o9y and neither is applied yet.
-      // Its own header carries the apply order: 109 first, then this.
-      '20261010000000_order_submission_and_finance_test_data_reset.sql',
     ])
-  })
-
-  test('and 109 is deliberately absent here, so nothing can collide with it', () => {
-    // The Order/Finance branch owns 20261009000000. If it ever appeared in this
-    // tree as well, two different files would claim one migration number and
-    // whichever applied first would silently win.
-    const files = execSync('ls supabase/migrations', { encoding: 'utf8' }).split('\n')
-    assert.ok(!files.some(f => f.startsWith('20261009000000')),
-      'migration 109 belongs to the Order/Finance branch and must not be recreated here')
   })
 })
 
