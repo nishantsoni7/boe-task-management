@@ -240,7 +240,11 @@ describe('the harness itself stays honest', () => {
     assert.ok(harness.includes('exclusion is real'))
   })
 
-  test('it records the pre-existing participant-predicate finding it reproduces', () => {
-    assert.ok(harness.includes('PRE-EXISTING FINDING reproduced'))
+  test('it isolates the definer mechanism behind exposure 1', () => {
+    // Corrected by 20261006000000 §2 and proved against real roles in
+    // payment_participant_security.sql; kept here because it reduces the
+    // mechanism to four lines.
+    assert.ok(harness.includes('MECHANISM reproduced'))
+    assert.ok(harness.includes('corrected by 20261006000000'))
   })
 })

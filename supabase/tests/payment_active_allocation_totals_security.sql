@@ -359,22 +359,24 @@ begin
   if v_n <> 1 then raise exception 'ITEM 9 FAILED: 5,000 copies of one id produced % rows', v_n; end if;
   raise notice 'ITEM 9 pass  — a 10,000-id array neither bypasses the gate nor duplicates a total';
 
-  -- ═══ A PRE-EXISTING FINDING, recorded because this harness proves it ══════
-  -- can_read_payment_as_participant() is a SECURITY DEFINER whose Order branch
-  -- is a bare EXISTS on public.orders. Inside a definer, RLS on that table is
+  -- ═══ THE MECHANISM BEHIND EXPOSURE 1, kept as a demonstration ════════════
+  -- t_can_read_payment_as_participant below is the shape the APPLIED
+  -- can_read_payment_as_participant() has: a SECURITY DEFINER whose Order branch
+  -- is a bare EXISTS on the orders table. Inside a definer, RLS on that table is
   -- evaluated for the OWNER, so the branch degenerates to "the Order exists" and
-  -- the predicate is true for callers who can open no Order at all. It is NOT
-  -- introduced by 20261005000000 — that migration stops depending on it — but it
-  -- is live in the applied schema, where it also backs
-  -- finance_payment_requests_participant_select.
+  -- the predicate is true for callers who can open no Order at all.
+  --
+  -- 20261006000000 §2 corrects it, and payment_participant_security.sql proves
+  -- the correction against real roles. This block stays because it isolates the
+  -- MECHANISM in four lines, which is the thing worth not forgetting.
   reset role; set local role authenticated;
   perform set_config('request.jwt.claim.sub', MALLORY::text, true);
   select count(*) into v_n from t_orders;
   if v_n <> 0 then raise exception 'HARNESS BROKEN: Mallory should see no Order, sees %', v_n; end if;
   if t_can_read_payment_as_participant(P_D) then
-    raise notice 'PRE-EXISTING FINDING reproduced — a caller who can open NO Order is still a "participant" of an allocated payment';
+    raise notice 'MECHANISM reproduced — a bare EXISTS inside a definer makes a caller who can open NO Order a "participant" (corrected by 20261006000000 §2)';
   else
-    raise notice 'PRE-EXISTING FINDING did not reproduce — re-check the predicate against the applied schema';
+    raise notice 'MECHANISM did not reproduce — re-check the definer semantics';
   end if;
 
   reset role;

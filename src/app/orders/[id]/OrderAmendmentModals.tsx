@@ -333,6 +333,13 @@ export function RequestOrderChangeModal({
  * salesperson is not necessarily all of them; order_linked_payment_total is
  * SECURITY DEFINER and returns the true total. Cancelling an order while
  * misinformed about the money on it is the specific mistake this prevents.
+ *
+ * NULL IS NOT ZERO. Since 20261006000000 the RPC is gated on Order visibility
+ * and answers NULL — the same answer an Order that does not exist gets — for a
+ * caller who may not see this one. Coercing that to 0 would print "no payments
+ * have been received against this order" on top of money that may well exist,
+ * which is exactly the misinformation the definer is here to prevent. It is
+ * reported as unreadable instead, the same as a failed call.
  */
 function useReceivedTotal(orderId: string, supabase: SupabaseClient) {
   const [received, setReceived] = useState<number | null>(null)
@@ -343,8 +350,8 @@ function useReceivedTotal(orderId: string, supabase: SupabaseClient) {
     ;(async () => {
       const { data, error } = await supabase.rpc('order_linked_payment_total', { p_order_id: orderId })
       if (cancelled) return
-      if (error) { setFailed(true); return }
-      setReceived(Number(data ?? 0))
+      if (error || data === null || data === undefined) { setFailed(true); return }
+      setReceived(Number(data))
     })()
     return () => { cancelled = true }
   }, [orderId, supabase])
