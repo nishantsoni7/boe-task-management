@@ -66,6 +66,10 @@ import {
   ALLOCATE_ACTION_LABEL,
   AllocatePaymentModal,
 } from './AllocatePaymentModal'
+import {
+  RECORD_PAYMENT_ACTION_LABEL,
+  RecordSplitPaymentModal,
+} from './RecordSplitPaymentModal'
 import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
@@ -1746,6 +1750,10 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
   // named by its kind alone and offers no door — see paymentLinks.ts.
   const [targetLabels,   setTargetLabels]   = useState<Map<string, string>>(new Map())
   const [allocateTarget, setAllocateTarget] = useState<PaymentRequest | null>(null)
+  // Recording a payment and dividing it in one flow. Held here rather than in
+  // the modal so the list can refresh itself and say what landed.
+  const [recording, setRecording] = useState(false)
+  const [recordNotice, setRecordNotice] = useState<string | null>(null)
   // Whether the projection carries the classification at all. Fails closed: the
   // columns arrive with 20261008000000, and until then the tabs are not drawn
   // and no query is built against a column that does not exist.
@@ -2500,6 +2508,23 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
           </button>
         )}
 
+        {/* ── Record Payment ──
+            ONE real payment, entered once and divided across every Order and PI
+            Draft it actually paid for — the flow that did not exist while money
+            had to go in against a single destination and be re-allocated
+            afterwards. Offered to a holder of finance.allocate, which is what
+            record_payment_with_allocations() requires alongside Finance module
+            entry; the RPC re-derives both, so this is a drawing rule only. */}
+        {caps.canAllocatePayment && (
+          <button
+            onClick={() => { setRecordNotice(null); setRecording(true) }}
+            className="boe-btn boe-btn-primary"
+            style={{ padding: '5px 12px', fontSize: '12px', flexShrink: 0 }}
+          >
+            {RECORD_PAYMENT_ACTION_LABEL}
+          </button>
+        )}
+
         {/* The size of the WHOLE narrowed set, from the database's exact count —
             not the length of the page in hand, which would understate it the
             moment there is more than one page. */}
@@ -2510,6 +2535,27 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
           {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
         </div>
       </div>
+
+      {recordNotice && (
+        <div
+          role="status"
+          style={{
+            marginBottom: '10px', padding: '9px 12px', borderRadius: '8px',
+            border: `1px solid ${colors.border}`, background: colors.raised,
+            fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+            display: 'flex', alignItems: 'center', gap: '10px',
+          }}
+        >
+          <span style={{ minWidth: 0 }}>{recordNotice}</span>
+          <button
+            onClick={() => setRecordNotice(null)}
+            className="boe-btn boe-btn-ghost"
+            style={{ marginLeft: 'auto', padding: '3px 9px', fontSize: '11px', flexShrink: 0 }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="boe-card" style={{ overflow: 'hidden' }}>
         {/* Table */}
@@ -2629,6 +2675,24 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
       )}
 
 
+
+      {/* ── Record Payment ──
+          The whole entry, allocations included, in one transaction. Every gate
+          is record_payment_with_allocations()'s. */}
+      {recording && (
+        <RecordSplitPaymentModal
+          supabase={supabase}
+          onClose={() => setRecording(false)}
+          onRecorded={summary => {
+            setRecording(false)
+            setRecordNotice(
+              summary.allocationCount === 0
+                ? `Payment ${summary.requestNumber} recorded. None of it is allocated yet — it is available to allocate.`
+                : `Payment ${summary.requestNumber} recorded and divided across ${summary.allocationCount} record${summary.allocationCount === 1 ? '' : 's'}. Finance verification is still pending.`)
+            refreshAfterMutation()
+          }}
+        />
+      )}
 
       {/* ── Allocate ──
           The one control that spends part of a payment, offering exactly the

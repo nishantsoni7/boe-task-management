@@ -261,7 +261,13 @@ describe('no Order screen waits more than it must', () => {
       // are retired (20261007000000) and replaced by one notice that makes TWO:
       // the reader's profile, and a provenance lookup that names the Confirmed
       // Order a converted request became — where the reader can already open it.
-      [DRAFTS]: 4, [PI_DETAIL]: 25, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
+      // PI_DETAIL 25 -> 26: reserve_order_number_for_submission, which runs when
+      // somebody presses Reserve. A SAVE, not a load — the reserved number
+      // itself arrives with the record, in the one read the page already makes,
+      // because its columns are spread into PI_DRAFT_DETAIL_COLUMNS. So the
+      // count grew and the startup path did not: the wait test above is
+      // unchanged.
+      [DRAFTS]: 4, [PI_DETAIL]: 26, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

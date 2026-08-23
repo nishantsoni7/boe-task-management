@@ -139,6 +139,11 @@ import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
 import {
+  describeReservation,
+  reservationApprovalMessage,
+  reservationErrorMessage,
+} from '@/lib/orders/orderNumberReservation'
+import {
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canAddPiPayment,
@@ -238,6 +243,7 @@ import {
   PiAdvanceBand,
   PiBlockingPanel,
   PiLowerGrid,
+  PiOrderNumberPanel,
   PiSummaryCard,
   PiSavedStrip,
   PiStoredCopyNote,
@@ -370,6 +376,15 @@ function PiDraftDetailPageInner() {
    * their own draft must not be asked for one.
    */
   const [canAdminAmend, setCanAdminAmend] = useState(false)
+
+  // ── The reserved Order number ──
+  //
+  // The number itself arrives WITH the record — it is four columns on the row
+  // the page already reads, spread into PI_DRAFT_DETAIL_COLUMNS — so nothing is
+  // held here but the in-flight and failure state of the one action.
+  const [reserving, setReserving] = useState(false)
+  const [reservationFailure, setReservationFailure] = useState<string | null>(null)
+  const [copiedNumber, setCopiedNumber] = useState(false)
   /** null = closed; otherwise the section being edited. */
   const [editSection, setEditSection] = useState<PiEditSection | null>(null)
   /**
@@ -730,7 +745,14 @@ function PiDraftDetailPageInner() {
     try {
       const { error } = await call()
       if (error) {
-        setActionFailure(describeSubmissionFailure(error, action).message)
+        // THE TWO REFUSALS THAT BELONG TO THE RESERVATION, said in their own
+        // words first. describeSubmissionFailure has no sentence for either and
+        // would fall through to a generic line — which, for the one that means
+        // "upload the revised PI", is the difference between an actionable
+        // instruction and a dead end. It claims nothing else: anything that is
+        // not a reservation refusal returns null and takes the existing path.
+        const reservationMessage = reservationApprovalMessage(error)
+        setActionFailure(reservationMessage ?? describeSubmissionFailure(error, action).message)
         return
       }
       setDialog(null)
@@ -768,6 +790,44 @@ function PiDraftDetailPageInner() {
     void run()
     return () => { active = false }
   }, [supabase, submissionId])
+
+  /**
+   * Takes the next Order number and holds it for this PI.
+   *
+   * IDEMPOTENT AT BOTH ENDS. The RPC returns the existing reservation rather
+   * than taking a second number, and `reserving` keeps a second click from
+   * even asking — so a double-click, a refresh mid-flight and a retried request
+   * all end with the same one number.
+   *
+   * ON SUCCESS THE PAGE RE-READS rather than patching state from the reply: the
+   * panel's standing depends on the workbook hash as well as the number, and one
+   * read of the record is the truth about both.
+   */
+  const reserveOrderNumber = useCallback(async () => {
+    if (reserving) return
+    setReserving(true)
+    setReservationFailure(null)
+    const { error } = await supabase.rpc(
+      'reserve_order_number_for_submission', { p_submission_id: submissionId })
+    setReserving(false)
+    if (error) { setReservationFailure(reservationErrorMessage(error)); return }
+    await loadDraft({ quiet: true })
+  }, [supabase, submissionId, reserving, loadDraft])
+
+  /**
+   * Puts the number on the clipboard, and says so.
+   *
+   * A FAILURE IS NOT REPORTED AS ONE. Clipboard access is refused in plenty of
+   * ordinary situations — an insecure origin, a browser setting — and the number
+   * is right there, selectable, in the panel. Telling somebody the copy failed
+   * when they can simply select it would be noise.
+   */
+  const copyOrderNumber = useCallback((value: string) => {
+    void navigator.clipboard?.writeText(value).then(
+      () => setCopiedNumber(true),
+      () => undefined,
+    )
+  }, [])
 
   /**
    * Records one payment, then uploads its optional proof.
@@ -1490,6 +1550,28 @@ function PiDraftDetailPageInner() {
   const ownsSubmission = viewerId !== null && (
     submission.created_by === viewerId || submission.submitted_by === viewerId)
 
+  /**
+   * WHERE THIS PI STANDS ON ITS ORDER NUMBER.
+   *
+   * `canEditWorkbook` is can_edit_order_submission's own answer, which is the
+   * same authority reserve_order_number_for_submission() asks for: the owner in
+   * draft or needs_changes, or an active admin in those stages. Asked of the
+   * database once, on load, rather than reconstructed here from a role.
+   */
+  const reservationView = describeReservation({
+    reserved:               submission.reserved_order_number ?? null,
+    reservedWorkbookSha256: submission.reserved_number_workbook_sha256 ?? null,
+    currentWorkbookSha256:  submission.source_workbook_sha256 ?? null,
+    usedAt:                 submission.reserved_order_number_used_at ?? null,
+    confirmedNumber:        draft.orderDisplayNumber,
+    status:                 submission.status,
+    hasOrder:               submission.order_id !== null && submission.order_id !== undefined,
+    deletionClaimed:        Boolean(submission.deletion_claim_token),
+    hasWorkbook:            Boolean((submission.source_workbook_path ?? '').trim())
+                              && Boolean(submission.source_workbook_sha256),
+    canEditWorkbook:        canEditSubmission,
+  })
+
   const paymentReadiness = piReadiness('payment', {
     client_name: submission.client_name ?? null,
     source_workbook_path: null,
@@ -1695,6 +1777,26 @@ function PiDraftDetailPageInner() {
           notice={paymentNotice}
           onDismissNotice={() => setPaymentNotice(null)}
         />
+
+        {/* ── 2a. The Order number, before there is an Order ──
+            Between the summary and the controls, because it is a fact about
+            this PI that the person is about to act on: reserve it, put it in
+            the revised file, upload that file, then submit. Absent entirely
+            where 20261009000000 has not been applied. */}
+        <PiOrderNumberPanel
+            view={reservationView}
+            confirmedNumber={draft.orderDisplayNumber}
+            acting={reserving}
+            failure={reservationFailure}
+            /* Offered only where the RPC would accept it. The RPC re-derives
+               every one of these conditions under its own lock, so this is a
+               drawing rule and authorizes nothing. */
+            onReserve={reservationView.state === 'available'
+              ? () => { setCopiedNumber(false); void reserveOrderNumber() }
+              : null}
+            onCopy={copyOrderNumber}
+            copied={copiedNumber}
+          />
 
         {/* ── 3. Workflow and actions, ABOVE the products ──
             Whatever is being asked of this viewer, in one coordinated panel, so

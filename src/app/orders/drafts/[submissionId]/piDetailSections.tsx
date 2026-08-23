@@ -18,7 +18,7 @@
 
 import {
   AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
-  History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  Hash, History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
@@ -47,6 +47,12 @@ import {
   type AdvanceView,
 } from '@/lib/orders/advanceRequirement'
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
+import {
+  NUMBER_LABEL,
+  RESERVED_HEADING,
+  RESERVE_ACTION_LABEL,
+  type ReservationView,
+} from '@/lib/orders/orderNumberReservation'
 import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
@@ -1424,3 +1430,154 @@ export function PiSavedStrip() {
 
 /** The status label, so the page and this file cannot word a state differently. */
 export { draftStatusLabel }
+
+// ── The Order number, before there is an Order ────────────────────────────────
+//
+// THE PANEL THE PI-FIRST WORKFLOW NEEDED. The revised PI a customer signs has to
+// carry the Order number, and the number used to exist only after approval — by
+// which time the PI's own owner may no longer replace its workbook. So this
+// takes the number from the real cycle, early, and says what to do with it.
+//
+// THE NUMBERS ARE NAMED APART. The reserved Order number and — once approved —
+// the Confirmed Order number, each under its own label from NUMBER_LABEL rather
+// than a shared "Number". Reading one as the other is exactly how a document
+// goes out with the wrong number on it.
+//
+// AND THE PI'S OWN REFERENCE IS NOT SHOWN, here or anywhere on these screens.
+// The workbook's B20 is normally the number of whatever older PI this one was
+// copied from; beside a reserved Order number it could only be read as a rival
+// answer to the same question. A PI Draft has no Order number of its own, which
+// is what this panel says when there is no reservation.
+//
+// NOT EDITABLE, BY ANYBODY, THROUGH THIS PANEL. There is no input: the number is
+// issued by the database and is immutable once issued
+// (order_submissions_protect_reserved_number). A field here would suggest
+// otherwise.
+//
+// A DRAWING RULE ONLY. reserve_order_number_for_submission() re-derives the
+// actor, re-asks the workbook-editor authority, locks the PI and re-reads its
+// state. What this decides is whether to OFFER the control, so nobody is handed
+// a button that will certainly be refused.
+
+export function PiOrderNumberPanel({
+  view,
+  confirmedNumber,
+  acting,
+  failure,
+  onReserve,
+  onCopy,
+  copied,
+}: {
+  view: ReservationView
+  confirmedNumber: string | null
+  acting: boolean
+  failure: string | null
+  onReserve: (() => void) | null
+  onCopy: (value: string) => void
+  copied: boolean
+}) {
+  const tone =
+    view.state === 'used' ? TONE_STYLE.green
+    : view.state === 'revised_pi_uploaded' ? TONE_STYLE.blue
+    : view.state === 'awaiting_revised_pi' ? TONE_STYLE.amber
+    : TONE_STYLE.neutral
+
+  return (
+    <PiCard>
+      <PiCardHeader title={RESERVED_HEADING} />
+      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+
+        {/* The number itself, and the one action that goes with it. Large,
+            monospaced and selectable, because it is going to be typed into a
+            spreadsheet by hand as often as it is copied. */}
+        {view.number ? (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
+            background: tone.bg, border: `1px solid ${tone.border}`,
+            borderRadius: '8px', padding: '12px 14px',
+          }}>
+            <Hash size={16} color={tone.color} style={{ flexShrink: 0 }} />
+            <span style={{
+              fontSize: '22px', fontWeight: 800, color: tone.color,
+              fontVariantNumeric: 'tabular-nums', letterSpacing: '0.04em', userSelect: 'all',
+            }}>
+              {view.number}
+            </span>
+            {view.canCopy && (
+              <button
+                onClick={() => onCopy(view.number as string)}
+                className="boe-btn boe-btn-ghost"
+                style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '12px', flexShrink: 0 }}
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            {onReserve && (
+              <button
+                onClick={onReserve}
+                disabled={acting}
+                className="boe-btn boe-btn-primary"
+                style={{
+                  padding: '7px 14px', fontSize: '13px',
+                  opacity: acting ? 0.6 : 1, cursor: acting ? 'not-allowed' : 'pointer',
+                }}
+              >
+                {acting ? 'Reserving…' : RESERVE_ACTION_LABEL}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* WHERE THIS PI STANDS, in one sentence — including the instruction,
+            which is the whole point of showing the number this early. */}
+        <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
+          {view.standing}
+        </div>
+
+        {/* THE CONFIRMED ORDER NUMBER, once there is one, under its own label
+            and never beside the reserved one without it. Read back from the
+            Order that was created — this panel composes no number. */}
+        {confirmedNumber && (
+          <div style={{
+            borderTop: `1px solid ${colors.border}`, paddingTop: '10px', minWidth: 0,
+          }}>
+            <div style={{
+              fontSize: '10px', fontWeight: 600, color: colors.muted,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>
+              {NUMBER_LABEL.confirmed}
+            </div>
+            <div style={{
+              fontSize: '13px', fontWeight: 700, color: colors.primary,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {confirmedNumber}
+            </div>
+          </div>
+        )}
+
+        {/* Why the control is not offered, always said. A panel that simply
+            shows nothing leaves somebody wondering whether the feature is
+            broken or whether it is not for them. */}
+        {view.blockedReason && (
+          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
+            {view.blockedReason}
+          </div>
+        )}
+
+        {failure && (
+          <div style={{
+            fontSize: '12px', color: colors.red, background: colors.redTint,
+            border: `1px solid ${colors.border}`, borderRadius: '6px',
+            padding: '8px 12px', lineHeight: 1.5,
+          }}>
+            {failure}
+          </div>
+        )}
+      </div>
+    </PiCard>
+  )
+}

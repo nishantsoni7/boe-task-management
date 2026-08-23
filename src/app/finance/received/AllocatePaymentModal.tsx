@@ -93,7 +93,7 @@ const STATUS_LABEL: Record<string, string> = {
   needs_changes: 'Needs Changes',
 }
 
-function statusLabel(status: string): string {
+export function statusLabel(status: string): string {
   return STATUS_LABEL[status] ?? status
 }
 
@@ -176,6 +176,97 @@ export function allocationErrorMessage(raw: string | null | undefined): string {
   return 'The allocation could not be recorded. Refresh and try again.'
 }
 
+/**
+ * ONE SEARCH, TWO SOURCES, THREE MATCHABLE THINGS.
+ *
+ * Order number, PI reference and client name — the three ways somebody actually
+ * identifies a piece of business. Both reads are RLS-scoped, so what comes back
+ * is what this reader may already open; no scope is written here.
+ *
+ * EXPORTED because the Add Payment form divides a payment across several of
+ * these at once and must offer exactly the same candidates under exactly the
+ * same scoping. Two pickers would be two answers to "what may I allocate to",
+ * which is the arrangement this whole area has been removing.
+ */
+export async function searchAllocationTargets(
+  supabase: ReturnType<typeof createClient>,
+  term: string,
+): Promise<AllocationCandidate[]> {
+  const [ordersRes, draftsRes] = await Promise.all([
+    supabase
+      .from('orders')
+      .select('id, display_number, client_name, total_value, status')
+      .or(`display_number.ilike.%${term}%,client_name.ilike.%${term}%`)
+      // The RPC refuses a cancelled Order outright, so it is not offered.
+      .not('status', 'in', '(cancelled)')
+      .order('created_at', { ascending: false })
+      .limit(15),
+    // A PI HAS NO ALLOCATED NUMBER of its own until one is reserved or issued.
+    // So its "reference" is what the workbook itself carries: the source order
+    // number typed into the document, and the file name the employee uploaded.
+    // Both are searchable because a salesperson identifies a draft by whichever
+    // of the two they have.
+    supabase
+      .from('order_submissions')
+      .select('id, source_order_number, source_workbook_name, client_name, grand_total, status')
+      .or(`source_order_number.ilike.%${term}%,source_workbook_name.ilike.%${term}%,client_name.ilike.%${term}%`)
+      // An approved PI has become an Order and its money belongs to the Order;
+      // a rejected one receives nothing. The RPC refuses both, and this agrees
+      // with it rather than offering a choice that would fail.
+      .in('status', ALLOCATABLE_PI_STATUSES as unknown as string[])
+      .order('created_at', { ascending: false })
+      .limit(15),
+  ])
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const orders: AllocationCandidate[] = ((ordersRes.data ?? []) as any[]).map(o => ({
+    kind: 'order',
+    id: o.id,
+    reference: o.display_number ?? '—',
+    clientName: o.client_name ?? '—',
+    status: o.status,
+    value: o.total_value,
+  }))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const drafts: AllocationCandidate[] = ((draftsRes.data ?? []) as any[]).map(d => ({
+    kind: 'submission',
+    id: d.id,
+    reference: d.source_order_number || d.source_workbook_name || 'PI Draft',
+    clientName: d.client_name ?? '—',
+    status: d.status,
+    value: d.grand_total,
+  }))
+
+  return [...orders, ...drafts]
+}
+
+/**
+ * What a chosen target has already received, and what it still needs.
+ *
+ * FROM THE SAME FUNCTIONS THE TARGET'S OWN SCREEN READS. A refusal resolves to
+ * an unknown position rather than to zero: telling somebody an Order has
+ * received nothing when they merely cannot see its payments would have them
+ * allocate against a gap that is already closed.
+ */
+export async function loadTargetPosition(
+  supabase: ReturnType<typeof createClient>,
+  candidate: AllocationCandidate,
+): Promise<TargetPosition> {
+  if (candidate.kind === 'order') {
+    const { data, error } = await supabase.rpc(
+      'order_linked_payment_total', { p_order_id: candidate.id })
+    const received = error ? null : (data === null || data === undefined ? null : String(data))
+    return { received, outstanding: remaining(candidate.value, received) }
+  }
+
+  const { data, error } = await supabase.rpc(
+    'pi_submission_payment_summary', { p_submission_id: candidate.id })
+  if (error || !data) return { received: null, outstanding: null }
+  const summary = data as { verified_amount?: string | number }
+  const received = summary.verified_amount === undefined ? null : String(summary.verified_amount)
+  return { received, outstanding: remaining(candidate.value, received) }
+}
+
 // ── The modal ─────────────────────────────────────────────────────────────────
 
 export function AllocatePaymentModal({
@@ -210,13 +301,6 @@ export function AllocatePaymentModal({
 
   const ceiling = allocationCeiling(payment.available_balance)
 
-  /**
-   * ONE SEARCH FIELD, TWO SOURCES, THREE MATCHABLE THINGS.
-   *
-   * Order number, PI reference and client name — the three ways somebody
-   * actually identifies a piece of business. Both reads are RLS-scoped, so what
-   * comes back is what this reader may already open; no scope is written here.
-   */
   const runSearch = async (raw: string) => {
     setQuery(raw)
     setSelected(null)
@@ -226,85 +310,17 @@ export function AllocatePaymentModal({
 
     const token = ++searchToken.current
     setSearching(true)
-
-    const [ordersRes, draftsRes] = await Promise.all([
-      supabase
-        .from('orders')
-        .select('id, display_number, client_name, total_value, status')
-        .or(`display_number.ilike.%${term}%,client_name.ilike.%${term}%`)
-        // The RPC refuses a cancelled Order outright, so it is not offered.
-        .not('status', 'in', '(cancelled)')
-        .order('created_at', { ascending: false })
-        .limit(15),
-      // A PI HAS NO ALLOCATED NUMBER — one is issued at approval, which is the
-      // moment it stops being a PI. So its "reference" is what the workbook
-      // itself carries: the source order number typed into the document, and
-      // the file name the employee uploaded. Both are searchable because a
-      // salesperson identifies a draft by whichever of the two they have.
-      supabase
-        .from('order_submissions')
-        .select('id, source_order_number, source_workbook_name, client_name, grand_total, status')
-        .or(`source_order_number.ilike.%${term}%,source_workbook_name.ilike.%${term}%,client_name.ilike.%${term}%`)
-        // An approved PI has become an Order and its money belongs to the
-        // Order; a rejected one receives nothing. The RPC refuses both, and
-        // this agrees with it rather than offering a choice that would fail.
-        .in('status', ALLOCATABLE_PI_STATUSES as unknown as string[])
-        .order('created_at', { ascending: false })
-        .limit(15),
-    ])
-
+    const found = await searchAllocationTargets(supabase, term)
     if (token !== searchToken.current) return
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orders: AllocationCandidate[] = ((ordersRes.data ?? []) as any[]).map(o => ({
-      kind: 'order',
-      id: o.id,
-      reference: o.display_number ?? '—',
-      clientName: o.client_name ?? '—',
-      status: o.status,
-      value: o.total_value,
-    }))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const drafts: AllocationCandidate[] = ((draftsRes.data ?? []) as any[]).map(d => ({
-      kind: 'submission',
-      id: d.id,
-      reference: d.source_order_number || d.source_workbook_name || 'PI Draft',
-      clientName: d.client_name ?? '—',
-      status: d.status,
-      value: d.grand_total,
-    }))
-
-    setResults([...orders, ...drafts])
+    setResults(found)
     setSearching(false)
   }
 
-  /**
-   * What the chosen target has already received, and what it still needs.
-   *
-   * FROM THE SAME FUNCTIONS THE TARGET'S OWN SCREEN READS. A refusal resolves to
-   * an unknown position rather than to zero: telling somebody an Order has
-   * received nothing when they merely cannot see its payments would have them
-   * allocate against a gap that is already closed.
-   */
   const selectTarget = async (candidate: AllocationCandidate) => {
     setSelected(candidate)
     setPosition(null)
     setError(null)
-
-    if (candidate.kind === 'order') {
-      const { data, error: rpcError } = await supabase.rpc(
-        'order_linked_payment_total', { p_order_id: candidate.id })
-      const received = rpcError ? null : (data === null || data === undefined ? null : String(data))
-      setPosition({ received, outstanding: remaining(candidate.value, received) })
-      return
-    }
-
-    const { data, error: rpcError } = await supabase.rpc(
-      'pi_submission_payment_summary', { p_submission_id: candidate.id })
-    if (rpcError || !data) { setPosition({ received: null, outstanding: null }); return }
-    const summary = data as { verified_amount?: string | number; pending_balance?: string | number | null }
-    const received = summary.verified_amount === undefined ? null : String(summary.verified_amount)
-    setPosition({ received, outstanding: remaining(candidate.value, received) })
+    setPosition(await loadTargetPosition(supabase, candidate))
   }
 
   const blocked = allocationBlockedReason({ ceiling, selected, amount })
@@ -522,7 +538,7 @@ function Figure({ label, value, strong }: { label: string; value: string; strong
   )
 }
 
-function KindBadge({ kind }: { kind: AllocationTargetKind }) {
+export function KindBadge({ kind }: { kind: AllocationTargetKind }) {
   const isOrder = kind === 'order'
   return (
     <span style={{

@@ -525,6 +525,12 @@ describe('the applied migrations are frozen', () => {
    * TO CORRECT A DATABASE AFTER THIS POINT: add migration 109 or later. Do not
    * edit a file below.
    */
+  //
+  // 20261009000000 is deliberately NOT in this list. It is not applied, so its
+  // bytes are still the repository's to change; it joins this list on the day
+  // `supabase db push` runs it and not before. A hash pinned for an unapplied
+  // file would assert the wrong thing entirely — that the file may not be
+  // corrected, which until it is applied is exactly what it may be.
   const FROZEN: ReadonlyArray<readonly [file: string, sha256: string]> = [
     // Allocation state on the received-payments projection (PR #49).
     ['supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql',
@@ -596,6 +602,11 @@ describe('the applied migrations are frozen', () => {
       '20261006000000_payment_participant_and_order_total_security.sql',
       '20261007000000_retire_order_requests.sql',
       '20261008000000_finance_payment_classification.sql',
+      // 109. NOT APPLIED. Split payment entry, and a reservable Order number.
+      // Recorded here on purpose: this list is asserted exactly, so a new
+      // migration cannot appear unnoticed beside the frozen ones — and its
+      // absence from FROZEN above is the statement that it has not been pushed.
+      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
     ])
   })
 })
