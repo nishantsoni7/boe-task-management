@@ -179,8 +179,11 @@ describe('it is a fix, not a rule change', () => {
     // allocated anywhere", which is the fact the rule turns on and which no
     // single Order can establish for itself. It attributes nothing.
     assert.ok(fix.includes('create or replace function public.payment_active_allocation_totals'))
-    assert.ok(fix.includes('can_read_payment_as_participant(f.id)'),
-      'and it is gated per id, so it reveals nothing about a payment the caller could not open')
+    // Gated per id by the payment table's own RLS — the function is SECURITY
+    // INVOKER precisely so that the read rule is asked rather than restated.
+    // paymentTotalsRpcSecurity.test.ts asserts that in full.
+    assert.ok(fix.includes('where f.id = any(coalesce(p_payment_ids'),
+      'and it answers only for ids that survive that table\'s policies')
   })
 })
 

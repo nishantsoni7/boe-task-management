@@ -73,11 +73,12 @@ describe('the SQL implements the canonical rule, in the canonical order', () => 
     assert.ok(migration.includes('finance_payment_status_is_verified'))
   })
 
-  test('the whole-payment helper is gated on readability', () => {
-    // It is SECURITY DEFINER so its aggregate is complete. The per-id gate is
-    // what stops that being a widening.
+  test('the whole-payment helper is gated by RLS, not by a restatement of it', () => {
+    // SECURITY INVOKER, so the payment table's own policies decide which ids are
+    // answerable. See paymentTotalsRpcSecurity.test.ts for the full argument and
+    // supabase/tests/payment_active_allocation_totals_security.sql for the
+    // executable proof.
     assert.ok(migration.includes('payment_active_allocation_totals'))
-    assert.ok(migration.includes('can_read_payment_as_participant(f.id)'))
     assert.ok(migration.includes('anon must not hold EXECUTE on payment_active_allocation_totals'))
   })
 

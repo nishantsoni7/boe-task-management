@@ -864,11 +864,18 @@ export default function OrderDetailPage() {
     // allocated ₹4,00,000 to a DIFFERENT Order reads as ₹10,00,000 here and
     // ₹4,00,000 there: ₹14,00,000 of attribution for ₹10,00,000 of money.
     //
-    // ONE BATCHED CALL for every payment on the screen, never one per row, and
-    // gated per id by can_read_payment_as_participant() inside the function — it
-    // returns nothing for a payment this reader could not already open. A
-    // failure leaves the map empty, and the rule then WITHHOLDS the direct-link
+    // ONE BATCHED CALL for every payment on the screen, never one per row. The
+    // function is SECURITY INVOKER, so the payment table's own RLS decides which
+    // ids it answers for — a payment this reader could not already open simply
+    // yields no row.
+    //
+    // THREE THINGS MEAN "UNKNOWN" HERE, AND ALL THREE ARE HANDLED THE SAME WAY:
+    // a missing row (not readable), an explicit NULL (readable, but the reader
+    // cannot see enough of the allocation table to vouch for a zero), and a
+    // failed call (empty map). In every case the rule WITHHOLDS the direct-link
     // fallback rather than guessing, which under-states instead of over-stating.
+    // A zero that the reader CAN vouch for arrives as 0, not NULL, and the
+    // fallback then fires — that is worked example A, the ordinary case.
     const paymentIds = merged.map(p => p.id)
     const activeTotals = new Map<string, string | number | null>()
     if (paymentIds.length > 0) {
