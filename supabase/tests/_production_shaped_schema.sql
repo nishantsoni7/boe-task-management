@@ -97,15 +97,22 @@ create table public.finance_payment_requests (
   order_request_id uuid, order_request_number text, sales_note text,
   status text not null, payment_against text,
   submitted_by uuid, approved_by uuid, admin_note text,
-  created_at timestamptz not null default now(), approved_at timestamptz);
+  created_at timestamptz not null default now(), approved_at timestamptz,
+  -- Carried by the real table (20260918000000) and used by
+  -- payment_attribution_assertions.sql to mark its A-F fixtures.
+  is_test_data boolean not null default false);
 
 create table public.finance_payment_allocations (
-  id uuid primary key,
+  id uuid primary key default gen_random_uuid(),
   payment_request_id uuid not null references public.finance_payment_requests(id),
   allocated_amount numeric not null,
   status text not null,
   order_id uuid references public.orders(id),
   order_submission_id uuid references public.order_submissions(id),
+  origin_target_type text,
+  created_by uuid,
+  reversed_by uuid, reversed_at timestamptz, reversal_reason text,
+  is_test_data boolean not null default false,
   created_at timestamptz not null default now());
 
 create index finance_payment_allocations_payment_active_idx

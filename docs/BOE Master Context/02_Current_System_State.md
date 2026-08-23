@@ -1112,10 +1112,9 @@ levels of doneness. Nothing here blurs them.
 
 ### Branch — `claude/confirmed-order-handoff-performance`
 
-Ten migrations. `20260924000000`, `20260925000000` and `20260926000000` are
-applied to the linked project; **the other seven are not** — see the status
-table in 03_Development_History, which also records why `20261001000000` must
-precede the two after it.
+Ten migrations, **all now applied to the linked project** — see the status table
+in 03_Development_History, which also records why `20261001000000` must precede
+the two after it. Applied is not deployed: this branch is still unmerged.
 
 The branch now covers three things beyond the handoff itself: **the confirmed
 Excel and PDF**, **correcting a PI after import** (a direct edit for anything
@@ -1169,6 +1168,55 @@ rather than overwritten.
   nothing.**
 * **Performance.** Every Order screen's startup was parallelized. No query was
   dropped, cached or derived, and no authority moved out of the database.
+
+### Branch — `claude/order-finance-integration-1e3y36`
+
+Order Management and Finance now describe the same money the same way. **Its
+three migrations — `20261004000000`, `20261005000000`, `20261006000000` — are
+applied to the linked database. The application code is not merged and not
+deployed.**
+
+**The canonical attribution rule.** Active allocations are authoritative; the
+payment's direct `order_id` is a fallback used only when no active allocation
+exists. A payment allocated to Order Y contributes **nothing** to Order X even
+when X is the Order its `order_id` names — which is what stops the same rupee
+being counted twice. A reversed allocation counts for nothing and returns the
+payment to its link. Attribution across every target, plus what is unallocated,
+equals the payment exactly and can never exceed it.
+
+The rule lives once, in `src/lib/finance/paymentAttribution.ts`, and is mirrored
+by `order_linked_payment_total()` and by `finance_received_payments`
+(`allocated_total`, `attributed_total`, `allocation_state`). A parity test
+requires the SQL and the TypeScript to agree on the same worked examples; a
+runnable SQL assertion file proves the figures against rows.
+
+**Money is exact.** All comparison and summation happens in exact decimal on
+`bigint`; `numeric` crosses PostgREST as the string it arrives as and is never
+routed through a JavaScript double. One formatter, not three.
+
+**Reads are bounded and honest.** PostgREST caps a response at 1000 rows
+silently. Every large list read — Finance, Tasks, Quotations, Attendance,
+Payroll — now pages, and a partial read raises rather than rendering as a short
+list. Filtering, searching and tab counts are server-side; no screen narrows one
+page of rows and reports the result as a total.
+
+**Three visibility rules changed, all narrowing.**
+
+* A payment allocated to an Order is readable only by someone who can open that
+  Order. It previously read as *"the Order exists"* to every authenticated user,
+  because the predicate is `SECURITY DEFINER` and a definer bypasses the RLS it
+  was believed to be asking. `can_view_order_as_actor()` is the definer-safe
+  form; `can_view_order()` remains correct wherever the call chain is invoker.
+* An Order's received total is readable only by someone who can view that Order,
+  and returns NULL — not 0, not an error — otherwise, so an inaccessible Order
+  and a non-existent one are indistinguishable.
+* `can_view_order_as_actor`, `can_read_payment_as_participant` and
+  `order_linked_payment_total` each grant EXECUTE to `authenticated` and to
+  nobody else. PUBLIC, `anon` and `service_role` are each revoked explicitly, so
+  the ACL does not depend on platform default privileges.
+
+Nothing about payment capture, verification, rejection, the 40% advance rule,
+exception approval, PI/Order continuity, numbering or documents changed.
 
 ### Planned
 
