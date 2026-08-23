@@ -244,3 +244,59 @@ describe('one bounded read, many payments', () => {
     assert.equal(summarizePaymentAllocations([], [alloc()]).size, 0)
   })
 })
+
+// ── The direct-link fallback, so Finance and the Orders agree ────────────────
+
+describe('a linked payment with no allocations is not free money', () => {
+  test('it reads FULLY allocated, not Unallocated', () => {
+    // Worked example A. The Order counts this payment in full through the
+    // canonical fallback, so calling it "Unallocated" here would have the same
+    // rupees committed to an Order AND sitting in Finance's suspense queue —
+    // the conservation law broken across two modules.
+    const summary = only(
+      [{ id: 'pay-1', amount: '1000000.00', hasDirectLink: true }], [],
+      { emptyIsConclusive: true })
+    assert.equal(summary.state, 'full')
+    assert.equal(summary.unallocated, '0')
+  })
+
+  test('without a direct link it is genuinely unallocated', () => {
+    const summary = only(
+      [{ id: 'pay-1', amount: '1000000.00', hasDirectLink: false }], [],
+      { emptyIsConclusive: true })
+    assert.equal(summary.state, 'unallocated')
+    assert.equal(summary.unallocated, '1000000.00')
+  })
+
+  test('once an allocation exists the link stops mattering', () => {
+    // Worked example B: allocations are authoritative the moment any exists,
+    // even when the link names the same Order. ₹5L of ₹10L allocated leaves ₹5L
+    // free — the legacy ₹10L is not counted.
+    const summary = only(
+      [{ id: 'pay-1', amount: '1000000.00', hasDirectLink: true }],
+      [alloc({ payment_request_id: 'pay-1', allocated_amount: '500000.00' })],
+      { emptyIsConclusive: true })
+    assert.equal(summary.state, 'partial')
+    assert.equal(summary.allocated, '500000.00')
+    assert.equal(summary.unallocated, '500000.00')
+  })
+
+  test('a reversed-only allocation falls back to the link', () => {
+    // Worked example E: a withdrawn claim does not suppress the direct linkage.
+    const summary = only(
+      [{ id: 'pay-1', amount: '1000000.00', hasDirectLink: true }],
+      [alloc({ payment_request_id: 'pay-1', allocated_amount: '400000.00', status: 'reversed' })],
+      { emptyIsConclusive: true })
+    assert.equal(summary.state, 'full')
+    assert.equal(summary.unallocated, '0')
+  })
+
+  test('and a reader who cannot see allocations is still told so', () => {
+    // The fallback must not override the safety rule: an empty list that is not
+    // conclusive stays "unknown", link or no link.
+    const summary = only(
+      [{ id: 'pay-1', amount: '1000000.00', hasDirectLink: true }], [],
+      { emptyIsConclusive: false })
+    assert.equal(summary.state, 'unknown')
+  })
+})

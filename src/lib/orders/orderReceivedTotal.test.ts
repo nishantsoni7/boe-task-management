@@ -90,8 +90,7 @@ describe('the corrected definition', () => {
     // order_id is Finance bookkeeping and says nothing about whether the client
     // paid. Stated through finance_payment_status_is_verified rather than
     // restated, so there is one definition of "verified" in the system.
-    const uses = corrected.split('finance_payment_status_is_verified').length - 1
-    assert.equal(uses, 2, 'both branches must ask the shared predicate')
+    assert.ok(corrected.includes('public.finance_payment_status_is_verified(f.status)'))
     assert.ok(!corrected.includes("status = 'approved_linked'"),
       'the narrow status test must be gone')
   })
@@ -102,12 +101,37 @@ describe('the corrected definition', () => {
     assert.ok(corrected.includes('public.finance_payment_status_is_verified(f.status)'))
   })
 
-  test('a payment that is BOTH linked and allocated is counted once', () => {
-    // The two branches are made disjoint explicitly. A backfill could produce a
-    // row satisfying both, and counting it twice would overstate what the client
-    // paid at the exact moment somebody is deciding whether to cancel.
-    assert.ok(corrected.includes('f.order_id is distinct from p_order_id'),
-      'the allocation branch must exclude rows the legacy branch already counted')
+  test('THE CANONICAL RULE: allocations decide, the direct link is the fallback', () => {
+    // The first correction merely ADDED the allocations to the legacy sum,
+    // keeping "the link wins" for any payment that carried one. That is unsound
+    // the moment both exist — and both can, because allocate_payment_to_target()
+    // does not refuse a payment that already carries an order_id.
+    //
+    // A ₹10,00,000 payment linked to X and allocated ₹4,00,000 to Y was credited
+    // ₹10,00,000 to X *and* ₹4,00,000 to Y: ₹14,00,000 of attribution for
+    // ₹10,00,000 of money. The two branches are now EXCLUSIVE and ORDERED, not
+    // additive.
+    assert.match(corrected, /when\s+s\.active_total > 0\s+then s\.own_total/,
+      'any active allocation makes the allocations authoritative')
+    assert.match(corrected, /when\s+s\.order_id = p_order_id\s+then s\.amount/,
+      'the direct link attributes the whole payment, but only as a fallback')
+
+    const allocationBranch = corrected.indexOf('s.active_total > 0')
+    const linkBranch = corrected.indexOf('s.order_id = p_order_id   then s.amount')
+    assert.ok(allocationBranch > 0 && linkBranch > allocationBranch,
+      'the allocation branch must be tested FIRST, or the link wins again')
+
+    // And they are branches of one CASE, so exactly one applies per payment.
+    assert.ok(!corrected.includes('+\n  coalesce(('),
+      'the two must not be summed — that was the defect')
+  })
+
+  test('this Order gets ZERO from a payment allocated entirely elsewhere', () => {
+    // Worked example C, as a structural claim: `own_total` counts only
+    // allocations naming THIS Order, so a payment whose money went to another
+    // Order contributes nothing here even though its order_id names this one.
+    assert.match(corrected, /and a\.order_id = p_order_id/,
+      'the own-share total must be anchored to this Order')
   })
 })
 
@@ -140,15 +164,23 @@ describe('it is a fix, not a rule change', () => {
     assert.ok(corrected.includes('stable'))
   })
 
-  test('no companion function was introduced', () => {
-    // Two functions answering one question, with the wrong one still wired into
-    // the audit trail, is a duplicate source of financial truth.
+  test('no companion ATTRIBUTION function was introduced', () => {
+    // Two functions answering "what has this Order received", with the wrong one
+    // still wired into the audit trail, is a duplicate source of financial
+    // truth.
     assert.ok(!/create\s+(or replace\s+)?function\s+public\.order_received_payment_total/i.test(fix),
-      'the question must have exactly one answer')
-    // The name appears in the prose explaining why it was NOT created, which is
-    // the reasoning this assertion protects — so match on the declaration, not
-    // on the word.
-    assert.ok(fix.includes('would leave two functions answering'))
+      'the attribution question must have exactly one answer')
+    assert.ok(fix.includes('would leave two answers to one question'),
+      'and the file states why, so nobody adds one later')
+  })
+
+  test('the one function it DOES add answers a different question', () => {
+    // payment_active_allocation_totals answers "how much of this payment is
+    // allocated anywhere", which is the fact the rule turns on and which no
+    // single Order can establish for itself. It attributes nothing.
+    assert.ok(fix.includes('create or replace function public.payment_active_allocation_totals'))
+    assert.ok(fix.includes('can_read_payment_as_participant(f.id)'),
+      'and it is gated per id, so it reveals nothing about a payment the caller could not open')
   })
 })
 
@@ -198,9 +230,14 @@ describe('the migration is forward-only and reversible', () => {
 
   test('it states how to undo itself', () => {
     assert.ok(fix.includes('ROLLBACK'))
-    assert.ok(fix.includes("20260816000000's definition"),
+    assert.ok(fix.includes("20260816000000's definition of order_linked_payment_total"),
       'the rollback names the definition to restore')
+    assert.ok(fix.includes('drop function if exists public.payment_active_allocation_totals'),
+      'and drops the helper it added')
     // And says what rolling back costs, so it is a decision rather than a reflex.
-    assert.ok(fix.includes('Rolling back restores the defect'))
+    // Whitespace-tolerant: the sentence wraps across comment lines, and a test
+    // that breaks on re-wrapping is testing the formatting, not the content.
+    assert.match(fix.replace(/\s*--\s*/g, ' '), /Rolling back restores the defect/,
+      'the rollback must say what it costs, so it is a decision rather than a reflex')
   })
 })

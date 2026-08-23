@@ -92,7 +92,24 @@ function position(
     linkedRows as Parameters<typeof mergeOrderPayments>[0],
     allocations,
   )
-  const rows = withExactAmounts(merged, { linked: linkedRows, allocations })
+  // THE WHOLE-PAYMENT FACT, as payment_active_allocation_totals() supplies it in
+  // production. Every fixture here is self-contained, so a payment's active
+  // total is the sum of the active allocations the fixture declares — including
+  // any that name a DIFFERENT target, which is what makes the override testable.
+  const activeTotals = new Map<string, string>()
+  for (const a of allocations) {
+    if (a.status !== 'active' || !a.payment) continue
+    const prior = Number(activeTotals.get(a.payment.id) ?? '0')
+    activeTotals.set(a.payment.id, (prior + Number(a.allocated_amount)).toFixed(2))
+  }
+  // A payment with no active allocation at all still needs an entry, or the rule
+  // would treat it as indeterminate and withhold the legacy fallback.
+  for (const row of linkedRows) if (!activeTotals.has(row.id)) activeTotals.set(row.id, '0.00')
+  for (const a of allocations) {
+    if (a.payment && !activeTotals.has(a.payment.id)) activeTotals.set(a.payment.id, '0.00')
+  }
+
+  const rows = withExactAmounts(merged, { linked: linkedRows, allocations, activeTotals })
   return { rows, summary: buildOrderFinancePosition(rows, orderValue) }
 }
 
@@ -236,16 +253,22 @@ describe('a split payment credits this Order with only its own share', () => {
     assert.deepEqual(summary.splitPayments, [])
   })
 
-  test('several allocations of one payment onto this Order sum through the merge’s first row', () => {
-    // mergeOrderPayments de-duplicates by payment id and keeps the first row it
-    // sees. withExactAmounts must describe THAT row — reading a later allocation
-    // would annotate a row the list is not showing.
+  test('several allocations of one payment onto this Order SUM into one row', () => {
+    // mergeOrderPayments de-duplicates by payment id, so the payment appears
+    // ONCE — rule 7. But this Order's share is the sum of every active
+    // allocation naming it, not the first one found.
+    //
+    // THIS CORRECTS A PREVIOUS UNDER-CREDIT. The old code took the first
+    // allocation and ignored the rest, so an Order whose share had been recorded
+    // in parts — or corrected by reversing one allocation and adding another —
+    // was shown less money than it had.
     const { rows } = position([], [
       allocation({ id: 'a1', paymentId: 'p1', allocated_amount: '100.00', paymentAmount: '500.00' }),
       allocation({ id: 'a2', paymentId: 'p1', allocated_amount: '400.00', paymentAmount: '500.00' }),
     ], '1000.00')
-    assert.equal(rows.length, 1)
-    assert.equal(rows[0].exactAllocatedAmount, '100.00')
+    assert.equal(rows.length, 1, 'one payment, one row')
+    assert.equal(rows[0].exactAllocatedAmount, '500.00')
+    assert.equal(rows[0].isPartialShare, false, 'the two together are the whole payment')
   })
 })
 
@@ -340,15 +363,33 @@ describe('progressWidth', () => {
 })
 
 describe('withExactAmounts', () => {
-  test('an allocation row missing from the source falls back to the merged figures', () => {
-    // Defensive: the merge and the exact pass read the same two arrays, so this
-    // cannot arise today. It is pinned so a future caller passing a narrowed
-    // source degrades to the displayed value rather than to zero.
+  test('WITHOUT the whole-payment fact, the legacy fallback is withheld', () => {
+    // The safety property, and the reason the defect was possible at all.
+    //
+    // A directly linked payment is attributed in full ONLY when we can prove it
+    // has no active allocation elsewhere. Absent that proof the rule attributes
+    // nothing rather than everything, because the failure that matters is an
+    // Order reporting money it has not been given — which is exactly how a ₹10L
+    // payment allocated elsewhere came to be counted twice.
+    //
+    // Under-stating is visible and recoverable; over-stating is not.
     const merged = mergeOrderPayments(
       [linked({ id: 'p1', amount: '400000.00' })] as Parameters<typeof mergeOrderPayments>[0], [])
     const rows: OrderFinancePaymentRow[] = withExactAmounts(merged, { linked: [], allocations: [] })
-    assert.equal(rows[0].exactAmount, '400000')
-    assert.equal(rows[0].exactAllocatedAmount, '400000')
+    assert.equal(rows[0].exactAllocatedAmount, '0')
+    assert.equal(rows[0].attributionBasis, 'indeterminate')
+  })
+
+  test('WITH it, a linked payment with no allocations is attributed in full', () => {
+    // Worked example A, through the same entry point.
+    const linkedRows = [linked({ id: 'p1', amount: '400000.00' })]
+    const merged = mergeOrderPayments(linkedRows as Parameters<typeof mergeOrderPayments>[0], [])
+    const rows = withExactAmounts(merged, {
+      linked: linkedRows, allocations: [],
+      activeTotals: new Map([['p1', '0.00']]),
+    })
+    assert.equal(rows[0].exactAllocatedAmount, '400000.00')
+    assert.equal(rows[0].attributionBasis, 'legacy')
     assert.equal(rows[0].isPartialShare, false)
   })
 })

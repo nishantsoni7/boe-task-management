@@ -54,6 +54,7 @@ import {
   subtractExact,
   type ExactDecimal,
 } from './exactMoney'
+import { attributeToTarget, type AttributionBasis } from './paymentAttribution'
 import { isAwaitingVerification } from './piPaymentView'
 import { isVerifiedPaymentStatus, type OrderPaymentRow } from '@/lib/orders/orderPayments'
 
@@ -80,6 +81,11 @@ export type OrderFinancePaymentRow = OrderPaymentRow & {
    * total and gates nothing.
    */
   isPartialShare: boolean
+  /**
+   * How this Order came to be attributed the share above — see
+   * paymentAttribution.ts. Drives the row's explanation, never a total.
+   */
+  attributionBasis: AttributionBasis
 }
 
 /** Every figure the Order's payment summary states, all exact decimal strings. */
@@ -152,30 +158,59 @@ export function withExactAmounts(
       allocated_amount: string | number | null
       payment: { id: string; amount: string | number | null } | null
     }[]
+    /**
+     * Payment id → the total of EVERY active allocation against that payment,
+     * wherever it points, from payment_active_allocation_totals().
+     *
+     * THE FACT THE CANONICAL RULE TURNS ON, and the one this Order cannot
+     * establish for itself: it reads only the allocations naming it, and RLS
+     * would not show it an allocation onto somebody else's Order anyway.
+     *
+     * A payment MISSING from the map is `null` — not zero — and the rule then
+     * withholds the direct-link fallback rather than guessing. That under-states
+     * rather than over-states, which is the only safe direction.
+     */
+    activeTotals?: ReadonlyMap<string, string | number | null>
   },
 ): OrderFinancePaymentRow[] {
   const linkedAmount = new Map<string, string | number | null>()
   for (const row of sources.linked) linkedAmount.set(row.id, row.amount)
 
-  const allocated = new Map<string, { share: string | number | null; amount: string | number | null }>()
+  // EVERY active allocation to THIS Order, per payment — all of them, not the
+  // first. A payment may legitimately carry several allocations onto one Order
+  // (a correction reverses one and adds another; a split can be recorded in
+  // parts), and this Order's share is their sum. Taking only the first would
+  // under-credit it.
+  const ownShares = new Map<string, (string | number | null)[]>()
+  const ledgerAmount = new Map<string, string | number | null>(linkedAmount)
   for (const allocation of sources.allocations) {
     const payment = allocation.payment
-    // FIRST WINS, matching mergeOrderPayments: it takes the first allocation it
-    // sees for a payment id and ignores the rest, so reading a later one here
-    // would describe a row the list is not showing.
-    if (!payment || allocated.has(payment.id)) continue
-    allocated.set(payment.id, { share: allocation.allocated_amount, amount: payment.amount })
+    if (!payment) continue
+    const shares = ownShares.get(payment.id) ?? []
+    shares.push(allocation.allocated_amount)
+    ownShares.set(payment.id, shares)
+    if (!ledgerAmount.has(payment.id)) ledgerAmount.set(payment.id, payment.amount)
   }
 
   return rows.map(row => {
-    // A legacy linked row's share IS its amount — there is no allocation to
-    // read, and the payment is wholly this Order's by the link itself.
-    const source = row.viaAllocation
-      ? allocated.get(row.id)
-      : { share: linkedAmount.get(row.id) ?? null, amount: linkedAmount.get(row.id) ?? null }
+    const amountRaw = ledgerAmount.get(row.id) ?? null
+    const amount = parseExact(amountRaw)
 
-    const amount = parseExact(source?.amount)
-    const share = parseExact(source?.share)
+    // THE CANONICAL RULE, applied here and nowhere else on this screen — the
+    // same one order_linked_payment_total() applies in SQL. If the payment has
+    // any active allocation, this Order gets only its own share and the direct
+    // link is ignored; if it has none, the link attributes the whole payment.
+    const attribution = attributeToTarget({
+      paymentId: row.id,
+      amount: amountRaw,
+      activeAllocationTotal: sources.activeTotals?.get(row.id) ?? null,
+      ownActiveAllocations: ownShares.get(row.id) ?? [],
+      // `viaAllocation` is false exactly when the row came from the legacy read,
+      // which is the read scoped to `order_id = this Order`.
+      directlyLinkedToTarget: !row.viaAllocation,
+    })
+
+    const share = parseExact(attribution.share)
 
     return {
       ...row,
@@ -185,7 +220,8 @@ export function withExactAmounts(
       // genuinely unreadable value is left out of totals rather than counted
       // as nought.
       exactAmount: amount ? exactToString(amount) : String(row.amount),
-      exactAllocatedAmount: share ? exactToString(share) : String(row.allocatedAmount),
+      exactAllocatedAmount: attribution.share,
+      attributionBasis: attribution.basis,
       isPartialShare: Boolean(amount && share && compareExact(share, amount) < 0),
     }
   })

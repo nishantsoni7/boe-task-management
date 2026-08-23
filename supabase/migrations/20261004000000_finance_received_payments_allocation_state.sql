@@ -131,6 +131,28 @@ select
   -- anywhere else in this system.
   coalesce(totals.allocated_total, 0) as allocated_total,
 
+  -- ── NEW: how much of it is ATTRIBUTED, under the canonical rule ──
+  --
+  -- NOT THE SAME AS allocated_total, and the difference is the whole point.
+  -- `allocated_total` is the allocation ledger's own figure. ATTRIBUTION is what
+  -- the Orders actually count, and it follows the rule stated in
+  -- src/lib/finance/paymentAttribution.ts and order_linked_payment_total():
+  --
+  --   any active allocation  → the allocations are authoritative
+  --   none, but a direct link → the link attributes the WHOLE payment
+  --   neither                 → nothing is attributed
+  --
+  -- WITHOUT THIS COLUMN THE CONSERVATION LAW BREAKS. A ₹10,00,000 payment
+  -- linked to an Order with no allocations is counted in full by that Order —
+  -- so calling it "unallocated" here would have the same rupees appearing as
+  -- both committed and free, and would put money into Finance's suspense queue
+  -- that is already spoken for. That is worked example A.
+  case
+    when coalesce(totals.allocated_total, 0) > 0 then coalesce(totals.allocated_total, 0)
+    when f.order_id is not null                  then f.amount
+    else 0
+  end as attributed_total,
+
   -- ── NEW: the state, as one word ──
   --
   -- Derived from the total and the payment's own amount, so the boundaries are
@@ -148,11 +170,20 @@ select
   -- NULL on the table (20260628000200), so this branch is unreachable today; it
   -- is stated so the expression can never return 'unallocated' for a payment
   -- whose amount could not be read.
+  -- COMPUTED FROM ATTRIBUTION, not from the allocation ledger alone, so this
+  -- state and the Orders' totals are the same statement. A payment attributed in
+  -- full by its direct link reads `full`, not `unallocated`.
   case
-    when f.amount is null                             then null
-    when coalesce(totals.allocated_total, 0) = 0      then 'unallocated'
-    when coalesce(totals.allocated_total, 0) > f.amount then 'over'
-    when coalesce(totals.allocated_total, 0) = f.amount then 'full'
+    when f.amount is null then null
+    when (case when coalesce(totals.allocated_total, 0) > 0 then coalesce(totals.allocated_total, 0)
+               when f.order_id is not null                  then f.amount
+               else 0 end) = 0                     then 'unallocated'
+    when (case when coalesce(totals.allocated_total, 0) > 0 then coalesce(totals.allocated_total, 0)
+               when f.order_id is not null                  then f.amount
+               else 0 end) > f.amount              then 'over'
+    when (case when coalesce(totals.allocated_total, 0) > 0 then coalesce(totals.allocated_total, 0)
+               when f.order_id is not null                  then f.amount
+               else 0 end) = f.amount              then 'full'
     else 'partial'
   end as allocation_state
 
@@ -261,6 +292,9 @@ begin
   end if;
   if not ('allocation_state' = any (v_cols)) then
     raise exception 'finance_received_payments is missing allocation_state';
+  end if;
+  if not ('attributed_total' = any (v_cols)) then
+    raise exception 'finance_received_payments is missing attributed_total';
   end if;
 
   -- 3d. No CLIENT role may write through it. A view with joins is not

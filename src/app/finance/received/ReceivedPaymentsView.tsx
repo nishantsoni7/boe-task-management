@@ -1700,7 +1700,13 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
     if (token !== loadToken.current) return
 
-    setAllocations(summarizePaymentAllocations(rows, (data ?? []) as PaymentAllocationRow[], {
+    setAllocations(summarizePaymentAllocations(
+      // `hasDirectLink` carries the payment's own order_id into the rule: a
+      // linked payment with no allocations is attributed in full to that Order
+      // by the canonical fallback, so it is not free money and must not read
+      // "Unallocated" here while the Order counts it.
+      rows.map(r => ({ id: r.id, amount: r.amount, hasDirectLink: r.order_id !== null })),
+      (data ?? []) as PaymentAllocationRow[], {
       readable: !error,
       // Only a reader who can see EVERY allocation may be told "unallocated" on
       // the strength of an empty list. This is the protected finance.view_all

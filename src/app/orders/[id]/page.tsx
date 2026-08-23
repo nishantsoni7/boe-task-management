@@ -851,10 +851,37 @@ export default function OrderDetailPage() {
     // types cannot know the cardinality, so it is narrowed here once.
     const allocationRows = (allocData ?? []) as unknown as OrderAllocationRow[]
 
-    setPayments(withExactAmounts(
-      mergeOrderPayments(linkedRows, allocationRows),
-      { linked: linkedRows, allocations: allocationRows },
-    ))
+    const merged = mergeOrderPayments(linkedRows, allocationRows)
+
+    // ── THE WHOLE-PAYMENT FACT ──
+    //
+    // The canonical attribution rule turns on whether a payment has active
+    // allocations ELSEWHERE — which this screen cannot see for itself. Its two
+    // reads are both anchored to this Order, and RLS would not show it an
+    // allocation onto somebody else's Order in any case.
+    //
+    // Without this, a ₹10,00,000 payment carrying this Order's order_id but
+    // allocated ₹4,00,000 to a DIFFERENT Order reads as ₹10,00,000 here and
+    // ₹4,00,000 there: ₹14,00,000 of attribution for ₹10,00,000 of money.
+    //
+    // ONE BATCHED CALL for every payment on the screen, never one per row, and
+    // gated per id by can_read_payment_as_participant() inside the function — it
+    // returns nothing for a payment this reader could not already open. A
+    // failure leaves the map empty, and the rule then WITHHOLDS the direct-link
+    // fallback rather than guessing, which under-states instead of over-stating.
+    const paymentIds = merged.map(p => p.id)
+    const activeTotals = new Map<string, string | number | null>()
+    if (paymentIds.length > 0) {
+      const { data: totals } = await supabase
+        .rpc('payment_active_allocation_totals', { p_payment_ids: paymentIds })
+      for (const row of (totals ?? []) as { payment_request_id: string; active_total: string | number | null }[]) {
+        activeTotals.set(row.payment_request_id, row.active_total)
+      }
+    }
+
+    setPayments(withExactAmounts(merged, {
+      linked: linkedRows, allocations: allocationRows, activeTotals,
+    }))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mappedActivity: ActivityEntry[] = ((aData ?? []) as any[]).map(a => ({
@@ -1448,9 +1475,11 @@ export default function OrderDetailPage() {
               fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
             }}>
               {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
-              {' '}split across more than one record. Only this Order&apos;s share is counted above;
-              the full amount of each is in the Payment column, and its complete allocation history
-              is in its Finance record.
+              {' '}allocated across more than one record. Once a payment is allocated, the
+              allocations decide what each Order receives — so only this Order&apos;s allocated
+              share is counted above, even where the payment also names this Order directly.
+              The full amount of each is shown beneath its share, and the complete allocation
+              history is in its Finance record.
             </div>
           )}
         </SectionCard>
@@ -1484,7 +1513,9 @@ export default function OrderDetailPage() {
                   captionSide: 'top', textAlign: 'left', fontSize: '11px',
                   color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
                 }}>
-                  Amounts shown are this Order&apos;s share of each payment.
+                  Amounts are this Order&apos;s share. Where a payment has been
+                  allocated, the allocation decides the share; where it has not,
+                  a payment linked to this Order counts in full.
                 </caption>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -1519,7 +1550,7 @@ export default function OrderDetailPage() {
                               case, where the whole payment is this Order's. */}
                           {p.isPartialShare && (
                             <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
-                              of {formatMoney(p.exactAmount)} received
+                              allocated from {formatMoney(p.exactAmount)} received
                             </div>
                           )}
                         </td>

@@ -43,6 +43,22 @@ import {
   type ExactDecimal,
 } from './exactMoney'
 
+/**
+ * One payment, as the summary reads it.
+ *
+ * `hasDirectLink` is the payment's own order_id. It matters because the
+ * canonical attribution rule (paymentAttribution.ts) uses the direct link as a
+ * FALLBACK when a payment has no active allocation — so a linked payment with no
+ * allocations is attributed in full to that Order and is NOT free money. Calling
+ * it "Unallocated" here would put committed rupees into Finance's suspense
+ * queue and would count the same money twice across the two modules.
+ */
+export type SummarisablePayment = {
+  id: string
+  amount: string | number | null
+  hasDirectLink?: boolean
+}
+
 /** One allocation row, as the bounded read returns it. */
 export type PaymentAllocationRow = {
   id: string
@@ -110,7 +126,7 @@ export const ALLOCATION_STATE_LABEL: Record<PaymentAllocationState, string> = {
  * read is emphatically not evidence that money is unallocated.
  */
 export function summarizePaymentAllocations(
-  payments: readonly { id: string; amount: string | number | null }[],
+  payments: readonly SummarisablePayment[],
   allocations: readonly PaymentAllocationRow[],
   options: {
     readable?: boolean
@@ -205,6 +221,22 @@ export function summarizePaymentAllocations(
 
     const remaining = subtractExact(amount, allocated)
     const comparison = compareExact(allocated, amount)
+
+    // THE DIRECT-LINK FALLBACK, so this panel and the Orders describe the same
+    // money. A payment with no active allocation but a direct link is attributed
+    // in full to the Order that link names — worked example A — so nothing about
+    // it is free. Reporting it as unallocated would have the same rupees
+    // counted by an Order AND sitting in Finance's suspense queue.
+    if (isZero(allocated) && payment.hasDirectLink) {
+      result.set(payment.id, {
+        paymentId: payment.id,
+        state: 'full',
+        allocated: exactToString(ZERO),
+        unallocated: exactToString(ZERO),
+        targets,
+      })
+      continue
+    }
 
     result.set(payment.id, {
       paymentId: payment.id,
