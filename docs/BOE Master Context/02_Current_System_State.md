@@ -10,9 +10,10 @@ and a Confirmed Order arises only from an approved PI. Payments carry one
 canonical classification — Orders, PI Drafts, Available — computed by the
 database. Both are described below and are **not yet applied**: they arrive with
 migrations `20261007000000` and `20261008000000`. `20261007000000` was attempted
-twice on the linked database and both times refused its own apply-time assertion
-and rolled back completely — see "The policy set the retirement leaves" and
-"Asking the schema the right question". Both migrations remain pending.
+three times on the linked database and each time refused its own apply-time
+assertion and rolled back completely — see "The policy set the retirement
+leaves", "Asking the schema the right question" and "RESET ROLE is not a
+restore". Both migrations remain pending.
 
 ---
 
@@ -1470,6 +1471,73 @@ and 1 row by `pg_catalog`, the first form reproducing the linked failure verbati
 on a database that has the column, the corrected form passing for that same
 reader — and carries a mutation test that really drops the column and requires
 the corrected assertion to notice.
+
+## RESET ROLE is not a restore
+
+The third attempt got past both catalog checks and refused itself on the
+readability probe that had been added beside them:
+
+```
+public.orders.source_order_request_id is in the catalog but could not be read
+(permission denied for table orders)   (SQLSTATE P0001)
+At statement: 25
+```
+
+Statement 24 — the retirement's own row census — had read `public.orders`
+successfully. Statement 25 read the same table and column, with the same SQL, and
+was refused. The SQL was not the difference. **The role was.**
+
+`supabase db push` connects as a **login role** and then assumes the role that
+owns the schema, so for the whole run `session_user` and `current_user` are two
+different roles. §5f becomes an ordinary client (`SET LOCAL ROLE authenticated`)
+to prove the historical read still works, and then used `RESET ROLE` to put the
+role back.
+
+**`RESET ROLE` is `SET ROLE NONE`.** It returns to `SESSION_USER` — the login
+role — not to whatever role was set before it. It is not a save-and-restore. So
+every probe in §5f silently demoted the session to the login role, which holds
+nothing on the business tables, for the remainder of the transaction. The next
+statement to touch one got `permission denied`.
+
+§5f now captures `current_user` into `v_applier` before anything switches away,
+restores with `SET LOCAL ROLE <v_applier>` on **every** exit path including both
+exception branches, and never calls `RESET ROLE`. That matters well beyond the
+probe: §5m re-counts `public.orders` to compare against the census and would have
+been the very next casualty.
+
+**And the readability probe is gone.** It was the wrong instrument regardless of
+the role bug: *a migration must not require its applying role to hold `SELECT` on
+a business table in order to prove a column exists.* Schema questions go to
+`pg_catalog`, which is readable by PUBLIC and filtered by nothing. Row questions
+go to the census, which is taken once, as the applying role, before any assertion
+runs, and compared in §5m.
+
+`supabase/tests/run_order_request_retirement_suite.sh` now builds its harness with
+that role model — a `boe_cli` login role that is `NOINHERIT`, holds nothing on any
+business table, and may only *become* `boe_migrator`, which owns the schema — and
+applies both migrations as `boe_cli` having assumed `boe_migrator`. It reproduces
+all three linked failures verbatim before applying the corrected file. **A
+harness applied by a superuser proves almost nothing about a migration:** a
+superuser passes every privilege check and never sees `permission denied`.
+
+## What §5i asserts now
+
+`20260701000000` did not add a column. It added a five-part guarantee, and an
+assertion that checked only the column would let four fifths of it be removed
+without a word. All five are read from the catalog:
+
+| Part | Asserted |
+| --- | --- |
+| the pair | present, not dropped, **and still `uuid` / `text`** |
+| the foreign key | to `order_requests(id)`, `contype = 'f'`, **`confdeltype = 'a'` (NO ACTION)** |
+| `orders_source_order_request_id_uidx` | present, `indisunique`, **`indpred is not null`** (still partial) |
+| `orders_protect_source_request` | present, enabled, still backed by `prevent_order_source_request_change` |
+| the rows | census before and after, **both halves of the pair counted** |
+
+`supabase/tests/order_request_provenance_mutations.sql` breaks each part in turn —
+column dropped, column retyped, FK dropped, FK *redirected*, index dropped, index
+made non-unique, trigger dropped, trigger *disabled*, and three census changes —
+and requires the assertion to fail for the right reason each time.
 
 ## The provenance contract, unchanged
 

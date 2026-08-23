@@ -427,6 +427,16 @@ begin
     and a.attnum > 0
     and not a.attisdropped;
 
+  -- FAIL CLOSED ON AN EMPTY LIST. Every check below is `not (v_col = any(v_cols))`,
+  -- and `= any(NULL)` is NULL, `not NULL` is NULL, and `if NULL then` is FALSE —
+  -- so a v_cols that came back NULL would let all eighteen column assertions pass
+  -- in silence. Unreachable as written, because the regclass cast above throws
+  -- first if the view is gone; asserted anyway, because that is the direction
+  -- this whole class of defect fails in.
+  if v_cols is null or array_length(v_cols, 1) is null then
+    raise exception 'finance_received_payments has no columns in the catalog; the projection is gone';
+  end if;
+
   -- 3b. Every pre-existing column is still present, still named the same, in the
   -- same position. CREATE OR REPLACE enforces this itself; asserting it catches
   -- a hand-edited redefinition and states the contract for a reader.
@@ -520,8 +530,12 @@ begin
   -- attributed_total's own branches, this finds it at apply time instead of on a
   -- Finance screen months later.
   --
-  -- Run as the migration's owner, so it sees every row — the invoker semantics
-  -- that scope a client's read do not scope a superuser's.
+  -- READ AS THE APPLYING ROLE, which owns the schema, so it sees every row: the
+  -- invoker semantics that scope a client's read do not scope the owner's. This
+  -- is a question about DATA, which is why reading rows is the right instrument
+  -- here and the wrong one in 20261007000000 §5i, where the question was about
+  -- schema. Nothing in this file switches roles, so the session that took the
+  -- catalog checks above is the session that takes this one.
   if exists (
     select 1 from public.finance_received_payments
     where coalesce(order_attributed_total, 0) + coalesce(pi_attributed_total, 0)

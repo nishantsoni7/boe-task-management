@@ -372,6 +372,10 @@ select
   (select count(*) from public.order_request_activity)                             as activity,
   (select count(*) from public.order_request_attachments)                          as attachments,
   (select count(*) from public.orders where source_order_request_id is not null)   as orders_with_provenance,
+  -- BOTH HALVES OF THE PAIR. Counting only the id would let the denormalised
+  -- request number be cleared without the census noticing, and the number is
+  -- what the Order detail page actually renders.
+  (select count(*) from public.orders where source_request_number is not null)     as orders_with_request_number,
   (select count(*) from public.finance_payment_requests
     where order_request_id is not null)                                            as payments_with_linkage;
 
@@ -384,6 +388,25 @@ declare
   v_probe    uuid;
   v_admin    uuid;
   v_row      uuid;
+  -- ── THE ROLE THIS MIGRATION IS BEING APPLIED AS ──
+  --
+  -- Captured before anything switches away from it, because `RESET ROLE` cannot
+  -- get back to it. RESET ROLE is `SET ROLE NONE`: it makes current_user equal
+  -- SESSION_USER. It is not a save-and-restore.
+  --
+  -- That distinction cost this migration an apply. The CLI connects as a login
+  -- role and then assumes the role that owns the schema, so `current_user` and
+  -- `session_user` are two different roles for the whole run. §5f becomes an
+  -- ordinary client to prove RLS still works, and every `reset role` after it
+  -- dropped the session to the LOGIN role instead of back to the owner — for the
+  -- rest of the transaction. The next statement that touched a business table
+  -- got `permission denied for table orders`, two statements after the census
+  -- had read that same table without complaint.
+  --
+  -- Restoring to the captured role is the fix, and it matters beyond §5i: §5m
+  -- re-counts public.orders to compare against the census, and would have been
+  -- the very next casualty.
+  v_applier  name := current_user;
 begin
   -- ── 5a. RLS is still ON ──
   --
@@ -540,7 +563,7 @@ begin
     execute 'set local role authenticated';
     perform set_config('request.jwt.claim.sub', v_admin::text, true);
     select count(*) into v_count from public.order_requests where id = v_row;
-    execute 'reset role';
+    execute format('set local role %I', v_applier);
     perform set_config('request.jwt.claim.sub', '', true);
 
     if v_count <> 1 then
@@ -557,7 +580,7 @@ begin
     execute 'set local role authenticated';
     perform set_config('request.jwt.claim.sub', v_probe::text, true);
     select count(*) into v_count from public.order_requests;
-    execute 'reset role';
+    execute format('set local role %I', v_applier);
     perform set_config('request.jwt.claim.sub', '', true);
 
     if v_count <> 0 then
@@ -578,18 +601,21 @@ begin
     begin
       insert into public.order_requests (request_number, status, created_by, requested_by, assigned_to)
       values ('RETIREMENT-PROBE', 'submitted', v_admin, v_admin, v_admin);
-      execute 'reset role';
+      execute format('set local role %I', v_applier);
       raise exception
         'an admin was able to INSERT an Order Request: the retirement is not closed';
     exception
       when insufficient_privilege or check_violation then
-        null;  -- refused by RLS, which is the point
+        -- Refused by RLS, which is the point. The role is put back on this path
+        -- too: every exit from a probe restores the applying role, so no later
+        -- assertion can inherit a client identity by accident.
+        execute format('set local role %I', v_applier);
       when others then
         -- The trigger's own ORDER_REQUESTS_RETIRED is equally a refusal, and on
         -- a path where the owner reaches the trigger it is the one that fires.
+        execute format('set local role %I', v_applier);
         if sqlerrm not like '%ORDER_REQUESTS_RETIRED%'
            and sqlerrm not like '%row-level security%' then
-          execute 'reset role';
           raise;
         end if;
     end;
@@ -598,7 +624,7 @@ begin
     perform set_config('request.jwt.claim.sub', v_admin::text, true);
     update public.order_requests set client_name = client_name where id = v_row;
     get diagnostics v_count = row_count;
-    execute 'reset role';
+    execute format('set local role %I', v_applier);
     if v_count <> 0 then
       raise exception 'an admin updated % Order Request row(s) directly; every mutation belongs to an RPC', v_count;
     end if;
@@ -607,7 +633,7 @@ begin
     perform set_config('request.jwt.claim.sub', v_admin::text, true);
     delete from public.order_requests where id = v_row;
     get diagnostics v_count = row_count;
-    execute 'reset role';
+    execute format('set local role %I', v_applier);
     perform set_config('request.jwt.claim.sub', '', true);
     if v_count <> 0 then
       raise exception
@@ -644,23 +670,15 @@ begin
     end if;
   end loop;
 
-  -- ── 5i. NOTHING WAS DELETED. Every column the historical records depend on
-  -- is still there, still named the same.
+  -- ── 5i. NOTHING WAS DELETED, AND THE PROVENANCE CONTRACT IS INTACT ──
   --
-  -- ── WHY THIS ASKS pg_catalog AND NOT information_schema ──
+  -- ── TWO WRONG ORACLES, IN ORDER ──
   --
-  -- The first form of this check asked `information_schema.columns`, and the
-  -- linked database refused the apply on it:
+  -- The first form asked `information_schema.columns`, and the linked database
+  -- refused the apply:
   --
   --     public.orders.source_order_request_id must not be dropped:
   --     confirmed Orders depend on it
-  --
-  -- The column is not missing. `20260701000000` adds it, no migration in the
-  -- history drops or renames it, the Order detail page selects it
-  -- (src/app/orders/[id]/page.tsx), and the census statement immediately above
-  -- this block had just READ it — `count(*) ... where source_order_request_id is
-  -- not null` cannot parse against a column that is not there. Two statements
-  -- apart, the same migration read the column and then declared it dropped.
   --
   -- `information_schema.columns` is not a schema oracle. Its definition ends
   --
@@ -670,58 +688,140 @@ begin
   --                                  'SELECT, INSERT, UPDATE, REFERENCES'))
   --
   -- so it answers "is this column visible to whoever is asking", not "does this
-  -- column exist". It reports a perfectly present column as absent whenever the
-  -- applying role is neither the table's owner nor a holder of a privilege on
-  -- that column, and for any relation kind outside those four. That is a
-  -- property of the connection, not of the schema — which is exactly why this
-  -- passed locally and failed on the linked database.
+  -- column exist", and reports a present column as absent whenever the applying
+  -- role is neither the relation's owner nor a privilege holder for it.
   --
-  -- `pg_catalog.pg_attribute` is the schema. It is readable by PUBLIC, it is
-  -- filtered by nothing, and it is what `to_regclass` and every DDL statement
-  -- resolve against. The divergence is demonstrated, both directions, in
-  -- supabase/tests/order_request_provenance_assertions.sql §1.
+  -- The second form asked pg_catalog — correctly — and then also READ the
+  -- column, to prove the record was reachable and not merely catalogued. The
+  -- linked database refused that too:
   --
-  -- AND THE COLUMN IS THEN READ. A catalog row proves existence; it does not
-  -- prove the historical record is still reachable through it. The dynamic
-  -- SELECT below is the assertion that would still fail if a column survived as
-  -- an unusable stub — and it is the same read the application performs.
+  --     public.orders.source_order_request_id is in the catalog but could not
+  --     be read (permission denied for table orders)
+  --
+  -- That was the migration's own doing, not the database's: see the `v_applier`
+  -- note above. A demoted session had reached this loop. But the read was the
+  -- wrong instrument regardless — A MIGRATION MUST NOT REQUIRE ITS APPLYING ROLE
+  -- TO HOLD SELECT ON A BUSINESS TABLE JUST TO PROVE A COLUMN EXISTS. Schema
+  -- questions belong to the catalog, which is readable by PUBLIC and filtered by
+  -- nothing; row questions belong to the census, which is taken once, as the
+  -- applying role, before any assertion runs, and compared in §5m.
+  --
+  -- ── WHAT THE PROVENANCE CONTRACT ACTUALLY IS ──
+  --
+  -- `20260701000000` did not add a column. It added a five-part guarantee, and
+  -- asserting only the column would let four fifths of it be removed silently:
+  --
+  --   §1  the pair — source_order_request_id uuid, source_request_number text
+  --   §1  the foreign key to order_requests(id), NO ACTION, so a converted
+  --       request can never be hard-deleted
+  --   §3  orders_source_order_request_id_uidx — partial unique, one Order per
+  --       source request, the mirror of order_requests_converted_order_id_uidx
+  --   §4  prevent_order_source_request_change() on orders_protect_source_request
+  --       — both columns frozen once set
+  --
+  -- All five are asserted below, from the catalog alone.
+
+  -- 5i-i. The columns the historical records depend on, and their types.
   foreach v_missing in array array[
-    'orders.source_order_request_id',
-    'orders.source_request_number',
-    'finance_payment_requests.order_request_id',
-    'finance_payment_requests.order_request_number',
-    'order_requests.converted_order_id',
-    'order_requests.request_number'
+    'orders.source_order_request_id=uuid',
+    'orders.source_request_number=text',
+    'finance_payment_requests.order_request_id=uuid',
+    'finance_payment_requests.order_request_number=text',
+    'order_requests.converted_order_id=uuid',
+    'order_requests.request_number=text'
   ] loop
-    if to_regclass('public.' || quote_ident(split_part(v_missing, '.', 1))) is null
-       or not exists (
-         select 1
-         from pg_catalog.pg_attribute a
-         where a.attrelid = ('public.' || quote_ident(split_part(v_missing, '.', 1)))::regclass
-           and a.attname  = split_part(v_missing, '.', 2)
-           and a.attnum > 0
-           and not a.attisdropped
-       ) then
-      raise exception 'public.% must not be dropped: confirmed Orders depend on it', v_missing;
+    v_names := split_part(split_part(v_missing, '=', 1), '.', 1);          -- table
+    v_expected := array[split_part(split_part(v_missing, '=', 1), '.', 2), -- column
+                        split_part(v_missing, '=', 2)];                    -- type
+
+    if to_regclass('public.' || quote_ident(v_names)) is null then
+      raise exception 'public.% must not be dropped: it is the historical record', v_names;
     end if;
 
-    begin
-      execute format('select count(*) from public.%I where %I is not null',
-                     split_part(v_missing, '.', 1), split_part(v_missing, '.', 2))
-        into v_count;
-    exception when others then
+    select count(*) into v_count
+    from pg_catalog.pg_attribute a
+    where a.attrelid = ('public.' || quote_ident(v_names))::regclass
+      and a.attname = v_expected[1]
+      and a.attnum > 0
+      and not a.attisdropped;
+
+    if v_count = 0 then
+      raise exception 'public.%.% must not be dropped: confirmed Orders depend on it',
+        v_names, v_expected[1];
+    end if;
+
+    -- The TYPE too. A column that survived as the wrong type is a column the
+    -- application can no longer read, which is the thing being protected.
+    select count(*) into v_count
+    from pg_catalog.pg_attribute a
+    where a.attrelid = ('public.' || quote_ident(v_names))::regclass
+      and a.attname = v_expected[1]
+      and a.attnum > 0 and not a.attisdropped
+      and format_type(a.atttypid, null) = v_expected[2];
+
+    if v_count = 0 then
       raise exception
-        'public.% is in the catalog but could not be read (%): the historical record must stay reachable',
-        v_missing, sqlerrm;
-    end;
+        'public.%.% changed type; it must remain %', v_names, v_expected[1], v_expected[2];
+    end if;
   end loop;
 
-  -- The three tables themselves, and the provenance foreign key that ties an
-  -- Order to the request it came from.
+  -- 5i-ii. The foreign key that makes "a converted Order Request is never
+  -- hard-deleted" a database guarantee rather than a UI convention. NO ACTION is
+  -- the point of it, so the action is asserted, not just the constraint.
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint c
+    join pg_catalog.pg_attribute a
+      on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+    where c.conrelid  = 'public.orders'::regclass
+      and c.confrelid = 'public.order_requests'::regclass
+      and c.contype   = 'f'
+      and a.attname   = 'source_order_request_id'
+      and c.confdeltype = 'a'          -- NO ACTION
+      and array_length(c.conkey, 1) = 1
+  ) then
+    raise exception
+      'orders.source_order_request_id lost its NO ACTION foreign key to order_requests(id); a converted request could then be hard-deleted';
+  end if;
+
+  -- 5i-iii. One Order per source request (20260701000000 §3). Partial, because
+  -- almost every Order predating the feature has NULL here and multiple NULLs
+  -- must stay legal — so the predicate is asserted with it.
+  if not exists (
+    select 1
+    from pg_catalog.pg_index i
+    join pg_catalog.pg_class ic on ic.oid = i.indexrelid
+    where i.indrelid = 'public.orders'::regclass
+      and ic.relname = 'orders_source_order_request_id_uidx'
+      and i.indisunique
+      and i.indpred is not null
+  ) then
+    raise exception
+      'orders_source_order_request_id_uidx is missing or no longer a partial unique index; two Orders could name one request';
+  end if;
+
+  -- 5i-iv. Provenance is read-only in the database (20260701000000 §4). Without
+  -- this an admin could re-point an Order at a different request and the audit
+  -- trail would be unfalsifiable.
+  if not exists (
+    select 1
+    from pg_catalog.pg_trigger t
+    join pg_catalog.pg_proc p on p.oid = t.tgfoid
+    where t.tgrelid = 'public.orders'::regclass
+      and t.tgname  = 'orders_protect_source_request'
+      and p.proname = 'prevent_order_source_request_change'
+      and not t.tgisinternal
+      and t.tgenabled <> 'D'
+  ) then
+    raise exception
+      'orders_protect_source_request is missing or disabled; Order Request provenance would stop being immutable';
+  end if;
+
+  -- The three tables themselves.
   foreach v_missing in array array[
     'order_requests', 'order_request_activity', 'order_request_attachments'
   ] loop
-    if to_regclass('public.' || v_missing) is null then
+    if to_regclass('public.' || quote_ident(v_missing)) is null then
       raise exception 'public.% must not be dropped: it is the historical record', v_missing;
     end if;
   end loop;
@@ -818,6 +918,8 @@ begin
        or c.attachments            <> (select count(*) from public.order_request_attachments)
        or c.orders_with_provenance <> (select count(*) from public.orders
                                         where source_order_request_id is not null)
+       or c.orders_with_request_number <> (select count(*) from public.orders
+                                        where source_request_number is not null)
        or c.payments_with_linkage  <> (select count(*) from public.finance_payment_requests
                                         where order_request_id is not null)
   ) then

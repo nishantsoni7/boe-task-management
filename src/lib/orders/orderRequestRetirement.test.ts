@@ -373,15 +373,18 @@ describe('history is preserved, and stays readable', () => {
   })
 
   test('the columns confirmed Orders depend on are asserted present at apply time', () => {
+    // Each entry carries the type it must keep: `table.column=type`. A column
+    // that survived as the wrong type is a column the application can no longer
+    // read, which is the thing being protected.
     for (const column of [
-      'orders.source_order_request_id',
-      'orders.source_request_number',
-      'finance_payment_requests.order_request_id',
-      'finance_payment_requests.order_request_number',
-      'order_requests.converted_order_id',
-      'order_requests.request_number',
+      'orders.source_order_request_id=uuid',
+      'orders.source_request_number=text',
+      'finance_payment_requests.order_request_id=uuid',
+      'finance_payment_requests.order_request_number=text',
+      'order_requests.converted_order_id=uuid',
+      'order_requests.request_number=text',
     ]) {
-      assert.ok(sql.includes(`'${column}'`), `${column} must be asserted present`)
+      assert.ok(sql.includes(`'${column}'`), `${column} must be asserted present, with its type`)
     }
     assert.match(sql, /must not be dropped: confirmed Orders depend on it/)
   })
@@ -402,12 +405,55 @@ describe('history is preserved, and stays readable', () => {
     assert.match(code, /not a\.attisdropped/)
   })
 
-  test('and the column is then read, not merely found in a catalog', () => {
-    // A catalog row proves the column exists; it does not prove the historical
-    // record is still reachable through it. This is the same read the Order
-    // detail page performs.
-    assert.match(code, /execute format\('select count\(\*\) from public\.%I where %I is not null'/)
-    assert.match(sql, /is in the catalog but could not be read/)
+  test('and it does NOT read a business table to prove a column exists', () => {
+    // The second form asked pg_catalog and then also read the column, to prove
+    // the record was reachable and not merely catalogued. The linked database
+    // refused that too: `permission denied for table orders`. A migration must
+    // not require its applying role to hold SELECT on a business table just to
+    // answer a schema question. Schema questions go to the catalog; row
+    // questions go to the census, which is taken once as the applying role.
+    assert.equal(/execute format\('select count\(\*\) from public\.%I where %I is not null'/.test(code), false,
+      'the provenance assertion must not read business rows')
+    assert.equal(/is in the catalog but could not be read/.test(sql), false)
+  })
+
+  test('the whole provenance contract is asserted, not just the column', () => {
+    // 20260701000000 added a five-part guarantee. Asserting only the column
+    // would let four fifths of it be removed in silence — proved one part at a
+    // time in supabase/tests/order_request_provenance_mutations.sql.
+    assert.match(code, /format_type\(a\.atttypid, null\) = v_expected\[2\]/)          // type
+    assert.match(code, /c\.confrelid = 'public\.order_requests'::regclass/)             // FK target
+    assert.match(code, /c\.confdeltype = 'a'/)                                          // NO ACTION
+    assert.match(code, /ic\.relname = 'orders_source_order_request_id_uidx'/)           // the index
+    assert.match(code, /i\.indisunique/)
+    assert.match(code, /i\.indpred is not null/)                                        // ... partial
+    assert.match(code, /t\.tgname  = 'orders_protect_source_request'/)                  // immutability
+    assert.match(code, /p\.proname = 'prevent_order_source_request_change'/)
+  })
+
+  test('RESET ROLE is never used to put the applying role back', () => {
+    // RESET ROLE is SET ROLE NONE: it returns to SESSION_USER, not to whatever
+    // role was set before. The CLI connects as a login role and then assumes the
+    // role that owns the schema, so every `reset role` in this file demoted the
+    // session to the login role for the rest of the transaction — and the next
+    // statement that touched a business table got `permission denied`.
+    assert.equal(/reset role/i.test(code), false,
+      'restore the captured applying role instead: RESET ROLE is not a save/restore')
+    assert.match(code, /v_applier {2}name := current_user;/)
+    assert.match(code, /execute format\('set local role %I', v_applier\)/)
+    // Every switch away is matched by a switch back.
+    const away = (code.match(/set local role authenticated/g) ?? []).length
+    const back = (code.match(/set local role %I', v_applier/g) ?? []).length
+    assert.ok(back >= away, `every client probe must restore the applying role (${away} away, ${back} back)`)
+  })
+
+  test('the census counts both halves of the provenance pair', () => {
+    // Counting only the id would let the denormalised request number be cleared
+    // without the census noticing — and the number is what the Order detail page
+    // renders.
+    assert.match(code, /where source_order_request_id is not null\)   as orders_with_provenance/)
+    assert.match(code, /where source_request_number is not null\) {5}as orders_with_request_number/)
+    assert.match(code, /c\.orders_with_request_number <> \(select count\(\*\) from public\.orders/)
   })
 
   test('every Order Request table keeps its SELECT policies', () => {

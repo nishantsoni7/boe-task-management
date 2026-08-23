@@ -50,16 +50,68 @@
 -- creates only what the `order_requests` visibility rules touch, and it is built
 -- to be thrown away.
 
-create schema if not exists auth;
-create or replace function auth.uid() returns uuid language sql stable as $$
-  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
-$$;
+-- ── THE ROLES, AND WHY THE SHAPE OF THEM IS PART OF THE TEST ────────────────
+--
+-- A harness applied by a superuser proves almost nothing about a migration:
+-- a superuser passes every privilege check, owns everything by implication, and
+-- never sees `permission denied`. The linked environment is not that. The CLI
+-- connects as a LOGIN role and then assumes the role that owns the schema, so
+-- for the whole run
+--
+--     session_user  = boe_cli        the login role, no rights of its own
+--     current_user  = boe_migrator   the owner, which is what applies the file
+--
+-- and the two are different roles. That difference is not incidental: it is
+-- what turned `RESET ROLE` inside 20261007000000 into a demotion rather than a
+-- restore, and produced
+--
+--     public.orders.source_order_request_id is in the catalog but could not be
+--     read (permission denied for table orders)
+--
+-- two statements after the census had read that same table. `RESET ROLE` is
+-- `SET ROLE NONE` — it returns to SESSION_USER, not to whatever role was set
+-- before. Reproducing that needs both roles, and needs boe_cli to hold NOTHING
+-- on the business tables.
+--
+-- boe_cli is NOINHERIT and its memberships are granted WITH INHERIT FALSE, so it
+-- can BECOME boe_migrator but never borrows its privileges — which is what makes
+-- the demotion visible instead of silently harmless.
+--
+-- NO GRANT IS EVER MADE TO boe_cli ON A BUSINESS TABLE, here or anywhere else in
+-- this suite. Handing it one would make the harness pass by making the
+-- environment wrong.
 
 do $$ begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon; end if;
   if not exists (select 1 from pg_roles where rolname = 'authenticated') then create role authenticated; end if;
   if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role bypassrls; end if;
+  if not exists (select 1 from pg_roles where rolname = 'boe_migrator') then
+    create role boe_migrator nosuperuser nologin;
+  end if;
+  if not exists (select 1 from pg_roles where rolname = 'boe_cli') then
+    create role boe_cli login nosuperuser noinherit;
+  end if;
 end $$;
+
+-- boe_cli may BECOME the owner, and may become a client role, but inherits from
+-- neither.
+grant boe_migrator  to boe_cli with inherit false;
+grant authenticated to boe_cli with inherit false;
+-- The owner may become `authenticated`, which is what 20261007000000 §5f does to
+-- prove the historical read still works as an ordinary client.
+grant authenticated to boe_migrator;
+
+alter schema public owner to boe_migrator;
+create schema if not exists auth authorization boe_migrator;
+
+-- Everything from here is built AS THE OWNER, so the migration — which runs as
+-- that same role — is applying to a schema it owns, exactly as on the linked
+-- database.
+set role boe_migrator;
+
+create or replace function auth.uid() returns uuid language sql stable as $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
 
 grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth   to anon, authenticated, service_role;
@@ -702,3 +754,5 @@ insert into public.finance_payment_requests
 values ('44444444-0000-4000-8000-0000000000c2', 'PAY-FIXTURE-2', 'Fixture Client', 25000, 'approved',
         '11111111-0000-4000-8000-000000000002',
         '22222222-0000-4000-8000-0000000000a1');
+
+reset role;
