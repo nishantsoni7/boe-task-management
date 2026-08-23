@@ -56,12 +56,15 @@ describe('the enforcement claims themselves', () => {
   })
 
   test('isActionEnforced is per-action on a partial module', () => {
-    for (const action of ['view', 'can_be_order_assignee', 'approve', 'manage', 'delete']) {
+    for (const action of ['view', 'view_all', 'approve_order', 'manage', 'delete']) {
       assert.equal(isActionEnforced('orders', action), true, `orders.${action} is enforced`)
     }
-    // create/edit stay on the admin-or-assigned ownership rule, and neither
-    // module has a protected export path.
-    for (const action of ['create', 'edit', 'export']) {
+    // Edit stays on the ownership rules, and the module has no protected export
+    // path. `approve` and `can_be_order_assignee` are not enforced because they
+    // are not REGISTERED any more — the Order Request workflow they authorized
+    // is retired (20261007000000), so claiming enforcement would be describing
+    // an authority nobody can exercise.
+    for (const action of ['edit', 'export', 'approve', 'can_be_order_assignee']) {
       assert.equal(isActionEnforced('orders', action), false, `orders.${action} is not enforced`)
     }
   })
@@ -127,22 +130,23 @@ describe('the claims still match the code', () => {
     assert.equal(isActionEnforced('finance', 'edit'), false)
   })
 
-  test('Orders is "partial" — entry, approve, manage and delete resolve; create and edit do not', () => {
+  test('Orders is "partial" — entry, PI review, manage and delete resolve; edit does not', () => {
     const guard = read('src/app/orders/layout.tsx')
     assert.ok(
       guard.includes("hasPermission(supabase, session.user.id, 'orders', 'view')"),
       'the Orders guard no longer resolves view — update MODULE_ENFORCEMENT.orders',
     )
 
-    const detail = read('src/app/orders/requests/[id]/page.tsx')
-    assert.ok(detail.includes('caps.canApproveOrder'), 'review must resolve orders.approve')
-    assert.ok(detail.includes('caps.canDeleteOrder'), 'delete must resolve orders.delete')
+    // The PI Draft detail page is where the review decisions live now that Order
+    // Request conversion is retired.
+    const detail = read('src/app/orders/drafts/[submissionId]/page.tsx')
+    assert.ok(detail.includes('canApproveOrderSubmission'), 'review must resolve orders.approve_order')
 
-    const shared = read('src/app/orders/requests/components/shared.ts')
-    assert.ok(
-      shared.includes('return isAdmin || r.assigned_to === userId'),
-      'the admin-or-assigned rule backs the "create and edit" wording',
-    )
+    // Deletion is still capability-driven, in the shared rule both the list and
+    // the dialog read.
+    const deletion = read('src/lib/orders/submissionDeletion.ts')
+    assert.ok(deletion.includes('canDeleteSubmission'), 'delete must resolve through one rule')
+
     assert.equal(isActionEnforced('orders', 'edit'), false)
   })
 

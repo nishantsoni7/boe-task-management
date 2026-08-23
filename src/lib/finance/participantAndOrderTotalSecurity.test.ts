@@ -520,12 +520,23 @@ describe('the applied migrations are not edited', () => {
     }
   })
 
-  test('and this migration is the only one after them', () => {
+  test('and every migration after them is unapplied and forward-only', () => {
+    // The list is asserted EXACTLY rather than as a count, so a new migration is
+    // a decision somebody makes on purpose — and so the reader of this file
+    // knows which files the linked database has not seen.
     const later = execSync('ls supabase/migrations', { encoding: 'utf8' })
       .split('\n').filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
       .sort()
-    assert.deepEqual(later, ['20261006000000_payment_participant_and_order_total_security.sql'])
+    assert.deepEqual(later, [
+      '20261006000000_payment_participant_and_order_total_security.sql',
+      // Retiring the Order Request workflow: four guards, one dropped INSERT
+      // policy, ten revoked RPCs. Deletes nothing.
+      '20261007000000_retire_order_requests.sql',
+      // The canonical payment classification, as columns on the existing
+      // projection. Creates no table and stores nothing.
+      '20261008000000_finance_payment_classification.sql',
+    ])
   })
 })
 

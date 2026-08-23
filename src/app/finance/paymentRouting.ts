@@ -49,156 +49,47 @@ export function isConfirmedPayment(status: string): boolean {
 // asserted by the tests, so adding a sixth status without deciding where it
 // belongs fails loudly instead of making a record vanish from both pages.
 
-// ── Which Received Payments page ──────────────────────────────────────────────
-// The split axis is ALLOCATION — is this money attached to a business record at
-// all? Three things count, and any one of them is enough:
+// ── The one payments surface, and how a row is classified ────────────────────
 //
-//   linked   → an ACTIVE allocation naming a Confirmed Order   (is_order_allocated)
-//              OR order_id IS NOT NULL                          (legacy Order link)
-//              OR order_request_id IS NOT NULL                  (Order-Request link)
-//   unlinked → none of the three
+// WHAT USED TO BE HERE, AND WHY IT IS GONE
+// ----------------------------------------
+// `linkageModeFor`, `applyLinkageScope`, `LINKED_OR_PREDICATE` and
+// `resolveLinkedAgainst` split every received payment into "Linked" and
+// "Non-Linked" across two sibling pages, and the split counted THREE things as a
+// linkage: an active allocation onto an Order, the payment's own `order_id`, and
+// an `order_request_id`.
 //
-// THE ALLOCATION BRANCH IS PHASE 3's. Approving a PI moves its active
-// allocations onto the new Order and deliberately leaves the parent payment
-// alone — its proof, its verification and the reference the salesperson typed
-// all stay where they are, so it still carries `order_id = NULL` and
-// `approved_unlinked`. Without this branch that money would sit in Non-Linked
-// Payments, which claims to be "money with nothing at all pointing at it", and
-// the counters beside it would over-report. The ledger is not rewritten to fix
-// that; the READ is corrected, from the allocation table that has been the
-// source of truth for what money belongs to since Phase 1.
+// The third of those was the load-bearing one, and it is no longer true. It read
+// "someone has said which piece of business this belongs to, and conversion will
+// move it onto the Order by itself" — but the Order Request workflow is retired
+// (20261007000000), nothing will ever convert, and the canonical attribution
+// rule has never attributed a rupee through `order_request_id` in any case: rule
+// 2 names `order_id` and only `order_id`. So money parked on a retired request
+// was being shown as spoken for while every figure beside it said it was free.
 //
-// AN ORDER-REQUEST LINKAGE IS STILL A LINKAGE, unchanged. The payment has been
-// allocated: someone has said which piece of business it belongs to, and
-// conversion later moves it onto the Order without anyone touching it again.
-// Non-Linked is therefore not "no Confirmed Order yet" — it is the genuinely
-// unallocated queue, which is the only set that needs someone to act.
+// It was also the wrong SHAPE. A payment split between an Order and a PI Draft
+// belongs in both of those views and, if anything is left over, in Available
+// too — three memberships a two-page partition cannot express, and which is
+// exactly what a payments surface has to show.
 //
-// The two predicates are exhaustive and mutually exclusive by construction — the
-// second is the exact negation of the first — so every received payment lands on
-// exactly one page, asserted by the tests. 20260698's CHECK forbids both parent
-// columns being set at once, so the OR only ever matches one of them in practice.
+// The replacement is ONE classification, defined once in
+// src/lib/finance/paymentClassification.ts and computed by the
+// finance_received_payments projection, filtered and counted in the DATABASE so
+// it survives paging. Nothing in this file decides it any more.
 
 /**
- * The allocation-aware projection both Received Payments pages and the sidebar
- * counters read.
+ * The allocation-aware projection every payments surface and counter reads.
  *
- * A `security_invoker` VIEW over finance_payment_requests (20260921000000 §8a):
- * every underlying policy is evaluated as the caller, so it can show nothing the
- * base tables would not, and it yields exactly one row per payment. Named once
- * here so the lists and the counts cannot end up reading different things.
+ * A `security_invoker` VIEW over finance_payment_requests (20260921000000 §8a,
+ * extended by 20261004000000 and 20261008000000): every underlying policy is
+ * evaluated as the caller, so it can show nothing the base tables would not, and
+ * it yields exactly one row per payment. Named once here so the lists and the
+ * counts cannot end up reading different things.
  *
  * EVERY MUTATION STILL TARGETS THE BASE TABLE by the payment's own id — the
  * projection is read-only and carries no write privilege at all.
  */
 export const RECEIVED_PAYMENTS_SOURCE = 'finance_received_payments'
-
-export type PaymentLinkageMode = 'linked' | 'unlinked'
-
-export function linkageModeFor(row: {
-  order_id: string | null
-  order_request_id: string | null
-  /**
-   * Whether an ACTIVE allocation names a Confirmed Order. Absent on a row read
-   * straight from the base table, where it is simply unknown — and treated as
-   * false, which is exactly the pre-Phase-3 answer.
-   */
-  is_order_allocated?: boolean | null
-}): PaymentLinkageMode {
-  return (row.is_order_allocated || row.order_id || row.order_request_id) ? 'linked' : 'unlinked'
-}
-
-// ── The same rule, as a database predicate ────────────────────────────────────
-// linkageModeFor classifies a row already in hand; the two Received Payments
-// pages and the sidebar counts have to ask the DATABASE the same question
-// instead — the pages so they never hold each other's rows, the counts so they
-// never pull thousands of rows down just to length them.
-//
-// Both go through applyLinkageScope, so the list a page shows and the number the
-// sidebar prints beside it are the same query shape by construction. Writing the
-// filters out at a third call site is what would let them drift.
-
-export const LINKED_OR_PREDICATE =
-  'is_order_allocated.is.true,order_id.not.is.null,order_request_id.not.is.null'
-
-// Structural, not Supabase-typed: this only needs `.or()` and `.is()`, and
-// naming them here keeps ../paymentRouting free of a supabase-js import (it is
-// otherwise pure, and its tests run without one).
-type LinkageScopable<T> = {
-  or(filters: string): T
-  is(column: string, value: null | boolean): T
-}
-
-/**
- * The same rule as a database filter, applied to a query over
- * RECEIVED_PAYMENTS_SOURCE.
- *
- * The unlinked branch is the EXACT NEGATION of the linked one — all three
- * conditions false — so the two scopes partition the confirmed set and a payment
- * can never appear on both pages or on neither.
- */
-export function applyLinkageScope<T extends LinkageScopable<T>>(
-  query: T,
-  mode: PaymentLinkageMode,
-): T {
-  return mode === 'linked'
-    ? query.or(LINKED_OR_PREDICATE)
-    : query.is('is_order_allocated', false).is('order_id', null).is('order_request_id', null)
-}
-
-// ── What a payment is linked against ──────────────────────────────────────────
-// One resolution, used by both Received Payments tables, in strict priority:
-//
-//   1. a Confirmed Order      → "Order ORD-2026-0007"
-//   2. an Order Request       → "Order Request REQ-2026-0024"
-//   3. neither                → "Not linked"
-//
-// The Order wins whenever both are somehow present, so a request that has since
-// been converted reads as its Order without anything having to migrate the row's
-// display. (20260698 adds a CHECK forbidding both columns at once, so in
-// practice the ordering only ever settles the null cases — it is stated
-// explicitly here so the rule survives that constraint being relaxed.)
-//
-// `number` falls back to the id only when the denormalised number column is
-// missing, which no current write path produces. It exists so a half-written row
-// still identifies itself instead of rendering a bare prefix.
-
-export type LinkedAgainst =
-  | { kind: 'order';   prefix: 'Order';         number: string; label: string }
-  | { kind: 'request'; prefix: 'Order Request'; number: string; label: string }
-  | { kind: 'none';    label: 'Not linked' }
-
-export function resolveLinkedAgainst(row: {
-  order_id: string | null
-  order_number: string | null
-  order_request_id: string | null
-  order_request_number: string | null
-  /** The Confirmed Order an ACTIVE allocation names, from the projection. */
-  allocated_order_id?: string | null
-  allocated_order_number?: string | null
-}): LinkedAgainst {
-  if (row.order_id) {
-    const number = row.order_number ?? row.order_id
-    return { kind: 'order', prefix: 'Order', number, label: `Order ${number}` }
-  }
-  // THE ALLOCATION, SECOND AND AHEAD OF THE REQUEST. A Confirmed Order is the
-  // more final fact, and the priority above already says the Order wins whenever
-  // both are somehow present. The label is identical in shape to the legacy one
-  // — the row simply stops reading "Not linked" for money that is attached.
-  //
-  // The number falls back to the id when the reader may not open that Order:
-  // whether the money is allocated is derived from the ALLOCATION, so a caller
-  // who cannot see the Order still sees the linkage and loses only its number.
-  if (row.allocated_order_id) {
-    const number = row.allocated_order_number ?? row.allocated_order_id
-    return { kind: 'order', prefix: 'Order', number, label: `Order ${number}` }
-  }
-  if (row.order_request_id) {
-    const number = row.order_request_number ?? row.order_request_id
-    return { kind: 'request', prefix: 'Order Request', number, label: `Order Request ${number}` }
-  }
-  return { kind: 'none', label: 'Not linked' }
-}
 
 // ── Who may VERIFY a payment, and when ────────────────────────────────────────
 //

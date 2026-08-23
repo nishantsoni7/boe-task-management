@@ -1640,13 +1640,17 @@ describe('the drafts list carries the review queue', () => {
       'an unresolved name falls through to a dash rather than an id')
   })
 
-  test('no navigation entry or dashboard was added', () => {
+  test('no navigation entry or dashboard was added for the review queue', () => {
     const nav = read(ORDERS_NAV)
     assert.ok(!nav.includes('/orders/review'))
     assert.ok(!nav.includes('Approvals'))
     const items = [...nav.matchAll(/\{ label: '([^']+)',\s*path:/g)].map(m => m[1])
-    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'Order Requests', 'PI Drafts'],
-      'one page, and the sidebar is untouched')
+    // The Order Request entry that sat between Confirmed Orders and PI Drafts is
+    // gone with the workflow (20261007000000). The review queue still has no
+    // entry of its own: it is a SECTION of PI Drafts, so a reviewer finds it
+    // where the records already are.
+    assert.deepEqual(items, ['Dashboard', 'PI Drafts', 'Confirmed Orders'],
+      'three destinations, and the review queue is not a fourth')
   })
 })
 

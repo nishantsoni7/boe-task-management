@@ -334,16 +334,21 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
   test('no regression: existing protected actions are untouched', () => {
     for (const key of [
       'delete', 'admin', 'manage', 'assign', 'dispatch',
-      'receive', 'mark_lost', 'close', 'can_be_order_assignee',
+      'receive', 'mark_lost', 'close',
     ]) {
       assert.ok(isProtectedAction(key), `${key} must still be protected`)
     }
-    // Assignee eligibility still resolves without module entry — Aditya's and
-    // Dhruv's case, and 20260697000000's whole point.
-    assert.equal(
-      deriveOrdersCapabilities('member', allow('can_be_order_assignee')).canBeOrderAssignee,
-      true,
-    )
+    // `can_be_order_assignee` is deliberately NOT in that list any more. It
+    // named an Order Request assignee, the workflow is retired
+    // (20261007000000), and the Orders module no longer registers the action —
+    // which is stronger than protecting it, because an action nothing declares
+    // can never be granted at all.
+    //
+    // A stored grant is not deleted by that, and must resolve to nothing rather
+    // than to an authority the database would refuse.
+    const caps = deriveOrdersCapabilities('member', allow('can_be_order_assignee'))
+    assert.equal('canBeOrderAssignee' in caps, false)
+    assert.deepEqual(caps, deriveOrdersCapabilities('member', []))
   })
 
   test('no regression: Attendance and Payroll remain role-only', () => {

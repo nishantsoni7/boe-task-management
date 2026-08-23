@@ -1405,20 +1405,27 @@ describe('orders.approve_order', () => {
     }
   })
 
-  test('the capability is derived separately from Order Request approval', () => {
-    const withApproveOnly = deriveOrdersCapabilities('employee', [
+  test('it was never the plain `approve` action, which is why the retirement cost it nothing', () => {
+    // THE SEPARATION WAS THE POINT, and this is where it paid off. `approve`
+    // meant "convert an Order Request", and reusing it for PI review would have
+    // handed PI approval to every converter. The workflow is now retired
+    // (20261007000000) and the module no longer registers `approve` at all —
+    // so a stored grant for it resolves to NOTHING, and everybody who reviews
+    // PIs today keeps doing so, because they hold approve_order instead.
+    const withRetiredGrant = deriveOrdersCapabilities('employee', [
       { actionKey: 'view', allowed: true, source: 'employee_override' as const },
       { actionKey: 'approve', allowed: true, source: 'employee_override' as const },
     ])
-    assert.equal(withApproveOnly.canApproveOrder, true)
-    assert.equal(withApproveOnly.canApproveOrderSubmission, false, 'approve must not imply approve_order')
+    assert.equal(withRetiredGrant.canApproveOrderSubmission, false,
+      'a retired approve grant must not become PI review authority')
+    assert.equal('canApproveOrder' in withRetiredGrant, false,
+      'the capability itself is gone, not merely false')
 
     const withSubmissionOnly = deriveOrdersCapabilities('employee', [
       { actionKey: 'view', allowed: true, source: 'employee_override' as const },
       { actionKey: 'approve_order', allowed: true, source: 'employee_override' as const },
     ])
     assert.equal(withSubmissionOnly.canApproveOrderSubmission, true)
-    assert.equal(withSubmissionOnly.canApproveOrder, false, 'approve_order must not imply approve')
   })
 
   test('it needs module entry, like every other Orders capability', () => {

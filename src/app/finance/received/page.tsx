@@ -1,69 +1,46 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useRef } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
-import { RECEIVED_PAYMENTS_SOURCE, linkageModeFor } from '@/app/finance/paymentRouting'
-
-// ── /finance/received — redirect only ─────────────────────────────────────────
-// Received Payments is no longer one list with an internal tab strip; it is two
-// sibling routes (linked / unlinked). This route keeps no table of its own — it
-// resolves where the caller belongs and replaces itself with that page.
+// ── /finance/received — the payments surface ──────────────────────────────────
 //
-// Existing deep links still arrive here with `?payment=…&action=link|edit`
-// (the Admin Action Queue, the Order Requests details modal, and Finance
-// notifications via getNotificationMeta). Rather than have each caller guess
-// which of the two pages currently holds the row, this looks the linkage up and
-// forwards the query string untouched, so every one of those links keeps
-// working and keeps opening the same modal it always did.
+// ONE LIST, FOUR VIEWS. Received Payments used to be two sibling routes, Linked
+// and Non-Linked, splitting every payment by whether any of three columns was
+// set. That split could not survive the canonical classification:
+//
+//   * a payment divided between a Confirmed Order and a PI Draft belongs in BOTH
+//     linked views at once, and in Available too if anything is left over — three
+//     memberships a two-page partition cannot express;
+//   * an Order Request linkage counted as "linked", on the reasoning that
+//     conversion would move the money onto an Order by itself. The workflow is
+//     retired (20261007000000), nothing will convert, and the canonical rule has
+//     never attributed a rupee through that column — so the money was displayed
+//     as spoken for while every figure beside it said it was free.
+//
+// The view is a `?view=` on this one route, so a payment can appear in as many
+// of them as it genuinely belongs to, and every narrowing and count is the
+// database's rather than a filter over the page in hand.
+//
+// DEEP LINKS ARE UNCHANGED. `?payment=…&action=link|edit` still arrives here from
+// the Admin Action Queue and from Finance notifications, and still opens the
+// same modal it always did — the list resolves the row by id when it is not on
+// the current page, so it no longer matters which view the reader lands in.
 
-export default function ReceivedPaymentsRedirectPage() {
+import { Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { LoadingScreen } from '@/components/ui/atoms'
+import { readPaymentView } from '@/lib/finance/paymentClassification'
+import { ReceivedPaymentsView } from './ReceivedPaymentsView'
+
+export default function ReceivedPaymentsPage() {
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ReceivedPaymentsRedirect />
+      <ReceivedPayments />
     </Suspense>
   )
 }
 
-function ReceivedPaymentsRedirect() {
-  const router       = useRouter()
+function ReceivedPayments() {
   const searchParams = useSearchParams()
-  const supabase     = useMemo(() => createClient(), [])
-  const resolved     = useRef(false)
-
-  useEffect(() => {
-    if (resolved.current) return
-    resolved.current = true
-
-    const query  = searchParams.toString()
-    const suffix = query ? `?${query}` : ''
-    const paymentId = searchParams.get('payment')
-
-    // Plain navigation: Linked Payments is the default child route.
-    if (!paymentId) { router.replace(`/finance/received/linked${suffix}`); return }
-
-    const resolve = async () => {
-      const { data } = await supabase
-        .from(RECEIVED_PAYMENTS_SOURCE)
-        .select('order_id, order_request_id, is_order_allocated')
-        .eq('id', paymentId)
-        .maybeSingle()
-
-      // The SAME linkageModeFor the two pages classify their rows with, read
-      // from the SAME projection, so a deep link cannot forward to the page that
-      // does not hold the row — including money whose only attachment is an
-      // active allocation onto a Confirmed Order, which the base table's own
-      // columns still show as unattached.
-      //
-      // A row that is missing or not readable under RLS falls through to Linked,
-      // the default, which simply highlights nothing — never an error page.
-      const isSuspense = !!data && linkageModeFor(data) === 'unlinked'
-      router.replace(`/finance/received/${isSuspense ? 'unlinked' : 'linked'}${suffix}`)
-    }
-    resolve()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  return <LoadingScreen />
+  // Anything unrecognised — an old bookmark, a typed URL — resolves to All
+  // rather than to an empty list.
+  return <ReceivedPaymentsView view={readPaymentView(searchParams.get('view'))} />
 }

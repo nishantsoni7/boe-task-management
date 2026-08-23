@@ -65,9 +65,6 @@ export const ACCESS_LEVEL_LABELS: Record<AccessLevel, { label: string; descripti
  *                          independent of edit, delete and manage.
  *   dispatch receive
  *   mark_lost close        Sample Tracking's lifecycle transitions
- *   can_be_order_assignee  eligibility to be named on an Order Request. Granted
- *                          only per person by design (20260697000000) — never
- *                          via a role or a preset.
  *   view_quotations        quotation requests and their customer contact
  *   manage_quotations      details. Commercially sensitive, so ordinary Task
  *                          Management access must not reach them.
@@ -95,7 +92,6 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   'receive',
   'mark_lost',
   'close',
-  'can_be_order_assignee',
   'view_quotations',
   'manage_quotations',
   'view_all',
@@ -226,6 +222,12 @@ export const STANDARD_LEVEL_ACTIONS: Record<PresetLevel, readonly string[]> = {
   no_access:   [],
   viewer:      ['view'],
   contributor: ['view', 'create', 'edit'],
+  // `approve` is still here, and still means whatever a module that declares it
+  // means by it — Finance's payment verification, Assets' change requests, Task
+  // Management's review. ORDERS NO LONGER DECLARES IT: it meant "convert an
+  // Order Request" and that workflow is retired, so standardActionsForLevel
+  // intersects it away for Orders and grants nothing there. Removing it here
+  // would take payment verification away from every Finance manager.
   manager:     ['view', 'create', 'edit', 'approve', 'export'],
 }
 

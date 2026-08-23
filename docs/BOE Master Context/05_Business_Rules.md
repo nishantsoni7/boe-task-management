@@ -170,6 +170,46 @@ ignore the bell.
 
 ---
 
+## Order Requests — RETIRED (branch, not applied)
+
+**The Order Request workflow is retired.** The only active Order lifecycle is:
+
+```
+PI upload / import → PI Draft → submit for review → finance / payment
+conditions → management approval → Confirmed Order
+```
+
+Anything not finally approved stays under **PI Drafts**, and only an approved PI
+becomes a Confirmed Order. There is no active Order Request creation, list,
+dashboard card, action, navigation entry or workflow.
+
+**Finance Payment Requests are NOT retired.** They are a different record on a
+different table with a different lifecycle and remain fully active.
+
+Everything under the three headings that follow — Order Request Attachments,
+Order Request Payment Targets and Order Request Approval Requirement — describes
+records that **already exist** and is kept because those records are still
+readable and their money is still on the books. None of it describes something
+anybody can still do:
+
+* no new Order Request can be created (the INSERT policy is dropped and a trigger
+  refuses every INSERT, for every role);
+* none can be converted into an Order (both writes are refused, in the two places
+  they happen);
+* no NEW payment may name one (`ORDER_REQUESTS_RETIRED`), though an existing link
+  may still be **cleared**, which is how historical money reaches a real target;
+* the ten workflow RPCs are executable by no client role.
+
+Under the canonical attribution rule an Order Request has never attributed a
+rupee — only `order_id` is a fallback — so a historical request-linked payment
+with no allocations now reads as **Available to Allocate**, which is what it is.
+
+See `docs/BOE Master Context/02_Current_System_State.md` for the guards, the
+Access Control options that were removed, and the payment classification that
+replaced the old linked/non-linked split.
+
+---
+
 ## Order Request Attachments
 
 Every new Order Request carries file attachments in two categories:

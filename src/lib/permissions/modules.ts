@@ -197,43 +197,59 @@ registerModule({
   ],
 })
 
-// Order Requests (/orders/requests) is not a separate module — it lives
-// under the same /orders route tree and inherits this module's 'view'
-// permission via the shared src/app/orders/layout.tsx guard.
+// PI Drafts (/orders/drafts) is not a separate module — it lives under the same
+// /orders route tree and inherits this module's 'view' permission via the shared
+// src/app/orders/layout.tsx guard.
+//
+// TWO ACTIONS WERE REMOVED WHEN THE ORDER REQUEST WORKFLOW WAS RETIRED, because
+// each existed only to authorize a step in it and each is now an Access Control
+// option that grants nothing:
+//
+//   approve                 meant "convert an Order Request into an Order", and
+//                           was checked by convert_order_request_to_order,
+//                           reject_order_request and
+//                           request_order_request_clarification
+//                           (20260901000000). All three are revoked from every
+//                           client role by 20261007000000 §4, and the database
+//                           refuses the writes they would attempt.
+//   can_be_order_assignee   meant "may be NAMED as an Order Request assignee",
+//                           read by is_eligible_order_assignee from the request
+//                           forms. No request can be created or edited, so
+//                           nothing reads it.
+//
+// GRANTS ALREADY MADE ARE NOT DELETED by removing the options — this registry
+// decides what may be OFFERED, not what exists — and a grant nothing reads
+// confers nothing. Offering them would be the defect: an administrator would be
+// choosing an authority that cannot be exercised, and would reasonably believe
+// they had given somebody something.
+//
+// approve_order is UNAFFECTED and is the live review authority. It was
+// deliberately never `approve` for exactly this reason: reusing that action
+// would have handed PI approval to everyone who could convert an Order Request,
+// silently, and the retirement would now be taking it away again just as
+// silently.
 registerModule({
   moduleKey: 'orders',
   displayName: 'Order Management',
-  description: 'Track confirmed orders from request through production and dispatch.',
+  description: 'PI Drafts, confirmed orders, production and dispatch.',
   actions: [
     { actionKey: 'view', displayName: 'View' },
     { actionKey: 'create', displayName: 'Create' },
     { actionKey: 'edit', displayName: 'Edit' },
     { actionKey: 'delete', displayName: 'Delete' },
-    { actionKey: 'approve', displayName: 'Approve' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
-    // Custom action: eligible to be selected as an Order Request Assignee,
-    // independent of the Sales team (20260697000000_order_request_assignee_eligibility.sql).
-    // Granted only via employee_permission_overrides for named exceptions —
-    // never via role_permissions — so it never broadens to every admin/
-    // manager/operations/bdm employee.
-    { actionKey: 'can_be_order_assignee', displayName: 'Can Be Order Assignee' },
     // Authority to review an imported PI submission — the workbook an employee
-    // uploads with no official order number — and eventually to approve it into
-    // a numbered Order. Registered by 20260908000000.
-    //
-    // DELIBERATELY NOT `approve`. That action already means "convert an Order
-    // Request" and is checked by convert_order_request_to_order,
-    // reject_order_request and request_order_request_clarification
-    // (20260901000000). Reusing it would hand PI approval to everyone who can
-    // convert an Order Request today, silently and without anyone choosing it.
+    // uploads with no official order number — and to approve it into a numbered
+    // Order. Registered by 20260908000000. This is now the ONLY approval
+    // authority in the module's pre-Order workflow.
     { actionKey: 'approve_order', displayName: 'Approve Order Submissions' },
     // Authority to decide an ADVANCE EXCEPTION on a submitted PI — whether BOE
     // will start the order on less than its standard 40% advance, zero
     // included. Registered by 20260913000000.
     //
     // DELIBERATELY NOT approve_order. That one means "review this PI": send it
-    // back, reject it, and eventually approve it. Whether to accept a lower
+    // back, reject it, and approve it. Whether to accept a lower
     // advance is a commercial decision about money at risk, and reusing
     // approve_order would have handed it, silently and retroactively, to
     // everybody who can already send a PI back. The two are independent in both

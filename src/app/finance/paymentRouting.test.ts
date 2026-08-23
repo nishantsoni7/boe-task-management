@@ -4,16 +4,20 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   CONFIRMED_PAYMENT_STATUSES,
-  LINKED_OR_PREDICATE,
   REQUEST_STAGE_STATUSES,
   RECEIVED_PAYMENTS_SOURCE,
-  applyLinkageScope,
   isConfirmedPayment,
   isRequestStageStatus,
-  linkageModeFor,
-  resolveLinkedAgainst,
   canVerifyPayment,
 } from './paymentRouting'
+import {
+  CLASSIFIED_PAYMENT_STATUSES,
+  PAYMENT_VIEWS,
+  classifyPayment,
+  paymentViewClauses,
+} from '@/lib/finance/paymentClassification'
+import { directOrderOf, paymentLinks, linkCounts } from '@/lib/finance/paymentLinks'
+import type { PaymentAllocationSummary } from '@/lib/finance/paymentAllocations'
 
 // Every status finance_payment_requests allows (20260628000200 + the two
 // approved states added by 20260688/20260690). Named here so the exhaustiveness
@@ -65,219 +69,147 @@ test('an unknown status is claimed by neither page', () => {
   assert.equal(isConfirmedPayment('cancelled'), false)
 })
 
-// ── Received Payments routing ─────────────────────────────────────────────────
-// A payment is LINKED when it is attached to either kind of business record. The
-// Non-Linked page is the genuinely unallocated queue and nothing else.
+// ── Where a payment's money actually goes ─────────────────────────────────────
+//
+// WHAT THIS SECTION REPLACED. `linkageModeFor` and `applyLinkageScope` split
+// every received payment across two sibling pages, counting three things as a
+// linkage: an active Order allocation, the payment's own order_id, and an
+// order_request_id. The third is retired (20261007000000) and has never
+// attributed a rupee under the canonical rule; and the pair could not express a
+// payment SPLIT between an Order and a PI Draft, which belongs in both linked
+// views at once.
+//
+// What replaced it is one classification, tested in
+// src/lib/finance/paymentClassification.test.ts, plus the DESTINATIONS a row
+// draws — which is what these tests cover: every place the money went, a door to
+// each the reader may open, and nothing at all about the ones they may not.
 
-// The linkage shapes, named once. `both` cannot occur while 20260698's CHECK
-// stands, and is covered anyway so the rule survives it. ALLOCATED is Phase 3's
-// shape: neither parent column is set — the payment record is deliberately left
-// alone when a PI is approved — and the money is nonetheless on a numbered Order.
-type LinkageShape = {
-  order_id: string | null
-  order_request_id: string | null
-  is_order_allocated?: boolean | null
+function summary(targets: PaymentAllocationSummary['targets']): PaymentAllocationSummary {
+  return { paymentId: 'p1', state: 'partial', allocated: null, unallocated: null, targets }
 }
 
-const ORDER_ONLY:   LinkageShape = { order_id: 'order-1', order_request_id: null }
-const REQUEST_ONLY: LinkageShape = { order_id: null,      order_request_id: 'req-1' }
-const BOTH:         LinkageShape = { order_id: 'order-1', order_request_id: 'req-1' }
-const NEITHER:      LinkageShape = { order_id: null,      order_request_id: null }
-const ALLOCATED:    LinkageShape = { order_id: null,      order_request_id: null, is_order_allocated: true }
+const ORDER_TARGET = {
+  allocationId: 'a1', kind: 'order' as const, targetId: 'order-1', label: null, amount: '400000.00',
+}
+const PI_TARGET = {
+  allocationId: 'a2', kind: 'submission' as const, targetId: 'sub-1', label: null, amount: '250000.00',
+}
 
-const ALL_SHAPES: LinkageShape[] = [ORDER_ONLY, REQUEST_ONLY, BOTH, NEITHER, ALLOCATED]
+const LABELS = new Map([['order-1', 'ORD-2026-0007'], ['sub-1', 'PI-0042']])
 
-test('order_id only routes to Linked Payments', () => {
-  assert.equal(linkageModeFor(ORDER_ONLY), 'linked')
-})
-
-test('order_request_id only routes to Linked Payments', () => {
-  // An Order Request linkage IS an allocation — this is the corrected rule.
-  assert.equal(linkageModeFor(REQUEST_ONLY), 'linked')
-})
-
-test('both ids route to Linked Payments, and Order wins the display', () => {
-  assert.equal(linkageModeFor(BOTH), 'linked')
-  const t = resolveLinkedAgainst({
-    ...BOTH, order_number: 'ORD-2026-0007', order_request_number: 'REQ-2026-0024',
+test('a payment allocated to an Order points at that Order, and offers a door', () => {
+  const links = paymentLinks({
+    summary: summary([ORDER_TARGET]), directOrder: null, labels: LABELS, canOpenOrders: true,
   })
-  assert.equal(t.kind, 'order')
-  assert.equal(t.label, 'Order ORD-2026-0007')
+  assert.equal(links.length, 1)
+  assert.equal(links[0].kind, 'order')
+  assert.equal(links[0].label, 'ORD-2026-0007')
+  assert.equal(links[0].href, '/orders/order-1')
 })
 
-test('neither id routes to Non-Linked Payments', () => {
-  assert.equal(linkageModeFor(NEITHER), 'unlinked')
+test('a payment split between an Order and a PI points at BOTH', () => {
+  // The case a two-page partition could not express at all.
+  const links = paymentLinks({
+    summary: summary([ORDER_TARGET, PI_TARGET]), directOrder: null, labels: LABELS, canOpenOrders: true,
+  })
+  assert.deepEqual(links.map(l => l.kind), ['order', 'submission'])
+  assert.deepEqual(links.map(l => l.href), ['/orders/order-1', '/orders/drafts/sub-1'])
 })
 
-test('an Order Request-linked payment never appears under Non-Linked Payments', () => {
-  assert.notEqual(linkageModeFor(REQUEST_ONLY), 'unlinked')
-  assert.notEqual(linkageModeFor(BOTH), 'unlinked')
+test('the direct linkage is a destination ONLY when nothing is allocated', () => {
+  // Rule 2 of the canonical attribution rule, and not a separate decision. A
+  // payment linked to X and allocated to Y points at Y — naming X as well would
+  // show a destination its own figures attribute nothing to.
+  const withAllocation = paymentLinks({
+    summary: summary([ORDER_TARGET]),
+    directOrder: { id: 'order-legacy', number: 'ORD-2026-0001' },
+    labels: LABELS, canOpenOrders: true,
+  })
+  assert.deepEqual(withAllocation.map(l => l.label), ['ORD-2026-0007'])
+
+  const withoutAllocation = paymentLinks({
+    summary: summary([]),
+    directOrder: { id: 'order-legacy', number: 'ORD-2026-0001' },
+    labels: LABELS, canOpenOrders: true,
+  })
+  assert.deepEqual(withoutAllocation.map(l => l.label), ['ORD-2026-0001'])
+  assert.equal(withoutAllocation[0].href, '/orders/order-legacy')
 })
 
-test('Non-Linked Payments contains only rows with NO relationship at all', () => {
-  const unlinked = ALL_SHAPES.filter(r => linkageModeFor(r) === 'unlinked')
-  assert.deepEqual(unlinked, [NEITHER])
-  for (const r of unlinked) {
-    assert.equal(r.order_id, null)
-    assert.equal(r.order_request_id, null)
-    assert.ok(!r.is_order_allocated)
-  }
-})
-
-test('every linkage shape belongs to exactly one subpage', () => {
-  for (const r of ALL_SHAPES) {
-    const mode = linkageModeFor(r)
-    const onLinked   = mode === 'linked'
-    const onUnlinked = mode === 'unlinked'
-    assert.equal(
-      Number(onLinked) + Number(onUnlinked), 1,
-      `${JSON.stringify(r)} must appear on exactly one Received Payments page`,
-    )
-  }
-})
-
-test('the routing predicate is Boolean(allocated || order_id || order_request_id)', () => {
-  // Stated directly, so a future edit that reintroduces a status check or drops
-  // one of the three inputs fails here rather than in production.
-  for (const r of ALL_SHAPES) {
-    const expected = Boolean(r.is_order_allocated || r.order_id || r.order_request_id) ? 'linked' : 'unlinked'
-    assert.equal(linkageModeFor(r), expected)
-  }
-})
-
-// ── Sidebar count predicates ──────────────────────────────────────────────────
-// The counts cannot classify rows in the browser — they are head:true queries
-// that never receive one. What CAN be checked is that the database predicate the
-// counts send is the same one linkageModeFor applies in memory, on every shape.
-
-// Minimal stand-in for a PostgREST filter builder: records the calls instead of
-// making them, so the predicate can be asserted without a database.
-function fakeQuery() {
-  const calls: string[] = []
-  const q = {
-    calls,
-    or(filters: string) { calls.push(`or(${filters})`); return q },
-    is(column: string, value: null | boolean) { calls.push(`is(${column},${value})`); return q },
-  }
-  return q
-}
-
-test('the linked scope asks the database for any of the three linkages', () => {
-  assert.deepEqual(applyLinkageScope(fakeQuery(), 'linked').calls, [
-    'or(is_order_allocated.is.true,order_id.not.is.null,order_request_id.not.is.null)',
-  ])
-  assert.equal(
-    LINKED_OR_PREDICATE,
-    'is_order_allocated.is.true,order_id.not.is.null,order_request_id.not.is.null',
+test('directOrderOf drops the link the moment anything is allocated', () => {
+  assert.deepEqual(
+    directOrderOf({ order_id: 'o1', order_number: 'ORD-1', allocated_total: '0' }),
+    { id: 'o1', number: 'ORD-1' },
   )
+  assert.equal(directOrderOf({ order_id: 'o1', order_number: 'ORD-1', allocated_total: '400000' }), null)
+  assert.equal(directOrderOf({ order_id: null, order_number: null, allocated_total: '0' }), null)
 })
 
-test('the non-linked scope requires ALL THREE to be absent', () => {
-  assert.deepEqual(applyLinkageScope(fakeQuery(), 'unlinked').calls, [
-    'is(is_order_allocated,false)',
-    'is(order_id,null)',
-    'is(order_request_id,null)',
-  ])
+test('a payment with nothing pointing at it has no destinations at all', () => {
+  const links = paymentLinks({
+    summary: summary([]), directOrder: null, labels: new Map(), canOpenOrders: true,
+  })
+  assert.deepEqual(links, [])
 })
 
-test('the count predicate never narrows to order_id alone', () => {
-  // The bug this guards: counting (or listing) on order_id only would drop every
-  // Order-Request-linked payment out of Linked Payments.
-  const linked = applyLinkageScope(fakeQuery(), 'linked').calls.join(' ')
-  assert.match(linked, /order_request_id/)
-  const unlinked = applyLinkageScope(fakeQuery(), 'unlinked').calls.join(' ')
-  assert.match(unlinked, /order_request_id/)
-})
-
-test('the count scope and linkageModeFor agree on every linkage shape', () => {
-  // Simulates each predicate against the four shapes, and asserts the row would
-  // be counted by exactly the page linkageModeFor sends it to.
-  const matchesLinkedPredicate   = (r: LinkageShape) =>
-    !!(r.is_order_allocated || r.order_id || r.order_request_id)
-  const matchesUnlinkedPredicate = (r: LinkageShape) =>
-    !r.is_order_allocated && !r.order_id && !r.order_request_id
-
-  for (const r of ALL_SHAPES) {
-    const mode = linkageModeFor(r)
-    assert.equal(matchesLinkedPredicate(r),   mode === 'linked',   `linked count vs routing: ${JSON.stringify(r)}`)
-    assert.equal(matchesUnlinkedPredicate(r), mode === 'unlinked', `non-linked count vs routing: ${JSON.stringify(r)}`)
-    // Counted once in total, never zero times and never twice.
-    assert.equal(Number(matchesLinkedPredicate(r)) + Number(matchesUnlinkedPredicate(r)), 1)
+test('A DESTINATION THE READER MAY NOT OPEN IS NAMED BY ITS KIND AND NOTHING ELSE', () => {
+  // No number, no id, no client, no link. That the money is split is the
+  // reader's own business; whose business the other share is, is not.
+  const links = paymentLinks({
+    summary: summary([ORDER_TARGET, PI_TARGET]),
+    directOrder: null,
+    // RLS returned neither record.
+    labels: new Map(),
+    canOpenOrders: true,
+  })
+  assert.deepEqual(links.map(l => l.label), ['An Order', 'A PI Draft'])
+  assert.deepEqual(links.map(l => l.href), [null, null])
+  assert.deepEqual(links.map(l => l.named), [false, false])
+  for (const link of links) {
+    assert.equal(link.label.includes(link.kind === 'order' ? 'order-1' : 'sub-1'), false,
+      'an id must never leak through the placeholder')
   }
 })
 
-test('the counts are scoped to received payments only', () => {
-  // Request-stage records must not be counted as money received.
-  for (const s of REQUEST_STAGE_STATUSES) {
-    assert.equal((CONFIRMED_PAYMENT_STATUSES as readonly string[]).includes(s), false)
-  }
-  assert.deepEqual([...CONFIRMED_PAYMENT_STATUSES], ['approved_unlinked', 'approved_linked'])
+test('a reader who cannot open Order Management is offered no doors at all', () => {
+  const links = paymentLinks({
+    summary: summary([ORDER_TARGET]), directOrder: null, labels: LABELS, canOpenOrders: false,
+  })
+  // The linkage is still stated — it is their payment — but there is nowhere
+  // to send them.
+  assert.equal(links[0].label, 'ORD-2026-0007')
+  assert.equal(links[0].href, null)
 })
 
-// ── Linked Against resolution ─────────────────────────────────────────────────
-
-const row = (o: Partial<Parameters<typeof resolveLinkedAgainst>[0]>) => ({
-  order_id: null, order_number: null,
-  order_request_id: null, order_request_number: null,
-  allocated_order_id: null, allocated_order_number: null,
-  ...o,
+test('the counts say how many are hidden, never which', () => {
+  const links = paymentLinks({
+    summary: summary([ORDER_TARGET, PI_TARGET]),
+    directOrder: null,
+    labels: new Map([['order-1', 'ORD-2026-0007']]),
+    canOpenOrders: true,
+  })
+  assert.deepEqual(linkCounts(links), { total: 2, openable: 1, hidden: 1 })
 })
 
-test('a confirmed Order is displayed as "Order <order_number>"', () => {
-  const t = resolveLinkedAgainst(row({ order_id: 'o1', order_number: 'ORD-2026-0007' }))
-  assert.equal(t.kind, 'order')
-  assert.equal(t.label, 'Order ORD-2026-0007')
-})
+// ── The narrowing the two surfaces share ─────────────────────────────────────
 
-test('the Order Request number is displayed when no confirmed Order exists', () => {
-  const t = resolveLinkedAgainst(row({ order_request_id: 'r1', order_request_number: 'REQ-2026-0024' }))
-  assert.equal(t.kind, 'request')
-  assert.equal(t.label, 'Order Request REQ-2026-0024')
-})
-
-test('a confirmed Order is preferred over an Order Request', () => {
-  // What conversion produces in transit: the display prefers the Order without
-  // anything having to migrate the row.
-  const t = resolveLinkedAgainst(row({
-    order_id: 'o1', order_number: 'ORD-2026-0007',
-    order_request_id: 'r1', order_request_number: 'REQ-2026-0024',
-  }))
-  assert.equal(t.kind, 'order')
-  assert.equal(t.label, 'Order ORD-2026-0007')
-})
-
-test('"Not linked" is displayed only when neither relation exists', () => {
-  assert.equal(resolveLinkedAgainst(row({})).label, 'Not linked')
-  // ...and never when a request number is available.
-  assert.notEqual(
-    resolveLinkedAgainst(row({ order_request_id: 'r1', order_request_number: 'REQ-1' })).label,
-    'Not linked',
-  )
-})
-
-test('the cell is never blank and never a vague pending label', () => {
-  const rows = [
-    row({ order_id: 'o1', order_number: 'ORD-1' }),
-    row({ order_request_id: 'r1', order_request_number: 'REQ-1' }),
-    row({}),
-  ]
-  for (const r of rows) {
-    const label = resolveLinkedAgainst(r).label
-    assert.ok(label.trim().length > 0, 'label must not be blank')
-    assert.doesNotMatch(label, /Order No\. Pending|awaiting order/i)
+test('the classified scope is every status except rejected', () => {
+  assert.deepEqual([...CLASSIFIED_PAYMENT_STATUSES],
+    ['approved_unlinked', 'approved_linked', 'pending_approval', 'needs_clarification'])
+  assert.equal((CLASSIFIED_PAYMENT_STATUSES as readonly string[]).includes('rejected'), false)
+  // Every status the table allows is either classified or rejected — nothing
+  // falls through into no scope at all.
+  for (const status of ALL_STATUSES) {
+    const classified = (CLASSIFIED_PAYMENT_STATUSES as readonly string[]).includes(status)
+    assert.equal(classified, status !== 'rejected', status)
   }
 })
 
-test('a missing denormalised number falls back to the id rather than a bare prefix', () => {
-  assert.equal(resolveLinkedAgainst(row({ order_id: 'o1' })).label, 'Order o1')
-  assert.equal(resolveLinkedAgainst(row({ order_request_id: 'r1' })).label, 'Order Request r1')
-})
-
-test('the Payment Request number is never overwritten by the linkage label', () => {
-  // resolveLinkedAgainst reads only the linkage columns — request_number is not
-  // one of its inputs, so no linkage state can shadow it.
-  const t = resolveLinkedAgainst(row({ order_id: 'o1', order_number: 'ORD-1' }))
-  assert.equal('request_number' in t, false)
+test('the four views each narrow on a column the projection computes', () => {
+  const columns = PAYMENT_VIEWS.flatMap(view =>
+    paymentViewClauses(view).map(clause => clause.kind === 'eq' ? clause.column : ''))
+  assert.deepEqual(columns.filter(Boolean),
+    ['is_linked_to_order', 'is_linked_to_pi', 'is_available_to_allocate'])
 })
 
 // ── Verification must be reachable, and only by the right people ─────────────
@@ -449,82 +381,93 @@ describe('the details modal actually offers verification', () => {
 // are proved in supabase/tests/pi_verified_payment_gate_assertions.sql §13–§15.
 
 describe('the fifteen compatibility cases', () => {
-  const shape = (o: Partial<LinkageShape>): LinkageShape => ({
-    order_id: null, order_request_id: null, is_order_allocated: false, ...o,
+  // Restated against the canonical classification. The acceptance list asked
+  // "which of the two pages holds this row"; there are no longer two pages, so
+  // each case is now "which of the four views, and what does the row say".
+  //
+  // Cases 11–15 are database-visibility and cross-module facts with no pure-
+  // function surface; they are proved in
+  // supabase/tests/pi_verified_payment_gate_assertions.sql §13–§15.
+
+  const classify = (row: Partial<Parameters<typeof classifyPayment>[0]>) => classifyPayment({
+    id: 'p', amount: '1000000.00', status: 'approved_unlinked', order_id: null,
+    allocated_total: '0', order_allocated_total: '0', pi_allocated_total: '0',
+    active_allocation_count: 0, attribution_complete: true, ...row,
   })
 
-  test('1. a legacy approved_linked payment with a parent order_id stays Linked', () => {
-    const r = shape({ order_id: 'order-1' })
-    assert.equal(linkageModeFor(r), 'linked')
-    // And it is still labelled from the PARENT column, not the allocation.
-    assert.equal(
-      resolveLinkedAgainst(row({ order_id: 'order-1', order_number: 'ORD-2026-0007' })).label,
-      'Order ORD-2026-0007',
-    )
+  test('1. a legacy approved_linked payment with a parent order_id is Order money', () => {
+    const c = classify({ order_id: 'order-1', status: 'approved_linked' })
+    assert.deepEqual(c.views.sort(), ['all', 'orders'])
+    assert.equal(Number(c.orderLinked), 1000000)
+    // And attributed in FULL by rule 2 — so nothing about it is available.
+    assert.equal(Number(c.available), 0)
   })
 
-  test('2. a legacy approved_unlinked payment with no allocation stays Non-Linked', () => {
-    assert.equal(linkageModeFor(shape({})), 'unlinked')
+  test('2. a legacy approved_unlinked payment with no allocation is Available', () => {
+    const c = classify({})
+    assert.deepEqual(c.views.sort(), ['all', 'available'])
   })
 
-  test('3. a verified PI payment is Non-Linked BEFORE conversion', () => {
-    // An active allocation onto the PI is not a Confirmed-Order allocation, so
-    // the projection reports is_order_allocated = false. The money is real and
-    // attached to a PI — but no Order exists yet, and the Finance queue is about
-    // Orders.
-    assert.equal(linkageModeFor(shape({ is_order_allocated: false })), 'unlinked')
+  test('3. a verified PI payment is PI money BEFORE conversion, not Order money', () => {
+    const c = classify({ allocated_total: '1000000.00', pi_allocated_total: '1000000.00', active_allocation_count: 1 })
+    assert.deepEqual(c.views.sort(), ['all', 'pi_drafts'])
+    assert.equal(Number(c.orderLinked), 0)
   })
 
-  test('4. the SAME payment becomes Linked the moment its allocation moves', () => {
-    const before = shape({})
-    const after  = shape({ is_order_allocated: true })
-    assert.equal(linkageModeFor(before), 'unlinked')
-    assert.equal(linkageModeFor(after),  'linked')
+  test('4. the SAME payment becomes Order money the moment its allocation moves', () => {
+    const before = classify({ allocated_total: '1000000.00', pi_allocated_total: '1000000.00', active_allocation_count: 1 })
+    const after  = classify({ allocated_total: '1000000.00', order_allocated_total: '1000000.00', active_allocation_count: 1 })
+    assert.equal(before.views.includes('pi_drafts'), true)
+    assert.equal(after.views.includes('orders'), true)
+    assert.equal(after.views.includes('pi_drafts'), false)
   })
 
   test('5. nothing about the payment record itself changes across that move', () => {
-    // The only difference between the two shapes above is the DERIVED column.
-    // Both parent linkage columns — and by extension the row's id, its status
-    // and the salesperson's reference in order_number — are identical.
-    const before = shape({})
-    const after  = shape({ is_order_allocated: true })
-    assert.equal(before.order_id, after.order_id)
-    assert.equal(before.order_request_id, after.order_request_id)
-    assert.deepEqual(
-      Object.keys(before).filter(k => (before as never)[k] !== (after as never)[k]),
-      ['is_order_allocated'],
-    )
+    // The allocation moves; the payment row does not (20260921000000 §7). Both
+    // classifications read the same order_id — null — and the same amount.
+    const before = classify({ allocated_total: '1000000.00', pi_allocated_total: '1000000.00', active_allocation_count: 1 })
+    const after  = classify({ allocated_total: '1000000.00', order_allocated_total: '1000000.00', active_allocation_count: 1 })
+    assert.equal(before.attributed, after.attributed)
+    assert.equal(before.available, after.available)
+    assert.equal(before.allocationCount, after.allocationCount)
   })
 
-  test('6. a REVERSED Order allocation does not make a payment Linked', () => {
-    // Enforced in the projection's LATERAL (`a.status = 'active'`), asserted
+  test('6. a REVERSED Order allocation attributes nothing', () => {
+    // Enforced in the projection's aggregates (`a.status = 'active'`), asserted
     // here on the view text so it cannot be dropped, and functionally in the SQL
     // suite. A reversed allocation is a claim that was withdrawn.
     assert.match(VIEW_SQL, /and a\.status = 'active'/)
-    assert.equal(linkageModeFor(shape({ is_order_allocated: false })), 'unlinked')
+    // A payment whose only allocation was reversed sums to zero and falls back
+    // to rule 2 — which, with no direct link, is nothing.
+    const c = classify({ allocated_total: '0', active_allocation_count: 0 })
+    assert.equal(Number(c.orderLinked), 0)
+    assert.deepEqual(c.views.sort(), ['all', 'available'])
   })
 
-  test('7. an active PI allocation plus a reversed Order allocation stays Non-Linked', () => {
-    // Both conditions in the LATERAL must hold together: active AND naming an
-    // Order. Either alone is not a Confirmed-Order allocation.
-    assert.match(VIEW_SQL, /and a\.status = 'active'\s*\n\s*and a\.order_id is not null/)
-    assert.equal(linkageModeFor(shape({ is_order_allocated: false })), 'unlinked')
+  test('7. an active PI allocation plus a reversed Order allocation is PI money only', () => {
+    const c = classify({
+      allocated_total: '250000.00', pi_allocated_total: '250000.00',
+      order_allocated_total: '0', active_allocation_count: 1,
+    })
+    assert.equal(c.views.includes('pi_drafts'), true)
+    assert.equal(c.views.includes('orders'), false)
+    assert.equal(Number(c.available), 750000)
   })
 
-  test('8. an Order Request payment is classified exactly as it is today', () => {
-    // Unchanged from before Phase 3: an Order-Request linkage is a linkage. The
-    // payment has been allocated to a piece of business, and conversion moves it
-    // onto the Order without anyone touching it again.
-    assert.equal(linkageModeFor(shape({ order_request_id: 'req-1' })), 'linked')
-    assert.equal(
-      resolveLinkedAgainst(row({ order_request_id: 'req-1', order_request_number: 'REQ-2026-0024' })).label,
-      'Order Request REQ-2026-0024',
-    )
+  test('8. A RETIRED ORDER REQUEST ATTRIBUTES NOTHING, so its money is Available', () => {
+    // CHANGED, deliberately, and it is the canonical rule rather than a new
+    // decision: rule 2 names order_id and only order_id. A request-linked
+    // payment used to read as "linked" on the reasoning that conversion would
+    // move it onto an Order by itself. Nothing will convert now, so calling it
+    // spoken for would hide money that genuinely needs a person.
+    const c = classify({ order_id: null })
+    assert.deepEqual(c.views.sort(), ['all', 'available'])
+    assert.equal(Number(c.available), 1000000)
   })
 
   test('9. pending / clarification / rejected screens are untouched', () => {
-    // The classification never reads status, and the Payment Requests page never
-    // reads the projection — it stays on the base table, with its own scope.
+    // The Payment Requests page never reads the projection — it stays on the
+    // base table, with its own scope.
     for (const status of REQUEST_STAGE_STATUSES) {
       assert.equal(isConfirmedPayment(status), false)
     }
@@ -533,20 +476,19 @@ describe('the fifteen compatibility cases', () => {
       'the Payment Requests page must keep reading finance_payment_requests')
   })
 
-  test('10. the counters match their lists, shape for shape', () => {
-    // Same assertion as the count-scope test above, restated against the
-    // acceptance list: each shape is matched by exactly one of the two database
-    // predicates, and by the same one linkageModeFor sends it to.
-    const linkedPredicate   = (r: LinkageShape) => !!(r.is_order_allocated || r.order_id || r.order_request_id)
-    const unlinkedPredicate = (r: LinkageShape) => !r.is_order_allocated && !r.order_id && !r.order_request_id
-    for (const r of ALL_SHAPES) {
-      assert.equal(Number(linkedPredicate(r)) + Number(unlinkedPredicate(r)), 1, JSON.stringify(r))
-      assert.equal(linkedPredicate(r), linkageModeFor(r) === 'linked', JSON.stringify(r))
-    }
+  test('10. the counters match their lists, view for view', () => {
+    // Structural rather than restated: the sidebar counts and the list build
+    // their predicates from the SAME paymentViewClauses, so they cannot narrow
+    // differently.
+    const counts = readFileSync(join(process.cwd(), 'src/hooks/queries/useReceivedPaymentsCounts.ts'), 'utf8')
+    const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
+    assert.ok(counts.includes('paymentViewClauses('), 'the counts must use the shared predicate')
+    assert.ok(view.includes('paymentViewFilterClauses('), 'the list must use the shared predicate')
+    assert.ok(counts.includes('CLASSIFIED_PAYMENT_STATUSES'), 'and the shared status scope')
+    assert.ok(view.includes('CLASSIFIED_PAYMENT_STATUSES'))
   })
 
   test('11–15 are proved in SQL, and the file says so', () => {
-    // Visibility, RLS isolation, Order detail and PI detail are database facts.
     const suite = readFileSync(
       join(process.cwd(), 'supabase/tests/pi_verified_payment_gate_assertions.sql'), 'utf8')
     for (const marker of [
@@ -574,7 +516,6 @@ describe('the projection both pages read', () => {
     for (const file of [
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/hooks/queries/useReceivedPaymentsCounts.ts',
-      'src/app/finance/received/page.tsx',
       'src/app/admin/control-center/action-queue/page.tsx',
     ]) {
       const src = readFileSync(join(process.cwd(), file), 'utf8')
@@ -732,40 +673,49 @@ describe('the projection both pages read', () => {
 // ── A future payment split across several Orders ──────────────────────────────
 
 describe('multi-allocation behaviour', () => {
-  test('one active Order allocation among several is enough to be Linked', () => {
-    assert.equal(linkageModeFor({ order_id: null, order_request_id: null, is_order_allocated: true }), 'linked')
+  const many = summary([
+    { allocationId: 'a1', kind: 'order', targetId: 'order-a', label: null, amount: '300000.00' },
+    { allocationId: 'a2', kind: 'order', targetId: 'order-b', label: null, amount: '200000.00' },
+    { allocationId: 'a3', kind: 'submission', targetId: 'sub-a', label: null, amount: '100000.00' },
+  ])
+
+  test('EVERY destination is shown, not just the first', () => {
+    // The projection's LIMIT 1 lateral names ONE Order for its own label column;
+    // the row's destinations come from the allocation table, which has them all.
+    // A list that showed only the first would tell a reader their ₹6L payment
+    // went to one Order.
+    const links = paymentLinks({
+      summary: many,
+      directOrder: null,
+      labels: new Map([['order-a', 'ORD-A'], ['order-b', 'ORD-B'], ['sub-a', 'PI-A']]),
+      canOpenOrders: true,
+    })
+    assert.deepEqual(links.map(l => l.label), ['ORD-A', 'ORD-B', 'PI-A'])
   })
 
-  test('it appears once, labelled by the first Order', () => {
-    // The projection returns a single allocation row (LIMIT 1), so the page has
-    // exactly one order to name and exactly one row to draw.
-    const t = resolveLinkedAgainst(row({
-      allocated_order_id: 'order-a', allocated_order_number: 'ORD-2026-0007',
-    }))
-    assert.equal(t.kind, 'order')
-    assert.equal(t.label, 'Order ORD-2026-0007')
+  test('Orders are listed before PI Drafts, in allocation order', () => {
+    const links = paymentLinks({
+      summary: many, directOrder: null, labels: new Map(), canOpenOrders: true,
+    })
+    assert.deepEqual(links.map(l => l.kind), ['order', 'order', 'submission'])
   })
 
-  test('no allocated amount reaches the Finance list', () => {
-    const t = resolveLinkedAgainst(row({ allocated_order_id: 'order-a' }))
-    assert.equal('amount' in t, false)
+  test('each destination carries its OWN share, never the payment total', () => {
+    const links = paymentLinks({
+      summary: many, directOrder: null, labels: new Map(), canOpenOrders: true,
+    })
+    assert.deepEqual(links.map(l => l.amount), ['300000.00', '200000.00', '100000.00'])
   })
 
-  test('the allocated Order is named only when the parent has none', () => {
-    // Priority is unchanged: the parent order_id still wins, so no legacy row
-    // changes its label.
-    const t = resolveLinkedAgainst(row({
-      order_id: 'order-legacy', order_number: 'ORD-2026-0001',
-      allocated_order_id: 'order-a', allocated_order_number: 'ORD-2026-0007',
-    }))
-    assert.equal(t.label, 'Order ORD-2026-0001')
-  })
-
-  test('an allocated Order the reader cannot open still reads as linked', () => {
-    // is_order_allocated comes from the ALLOCATION, and the number from the
-    // Order. A caller whose RLS hides the Order loses the number, not the fact.
-    const t = resolveLinkedAgainst(row({ allocated_order_id: 'order-a', allocated_order_number: null }))
-    assert.equal(t.kind, 'order')
-    assert.equal(t.label, 'Order order-a')
+  test('a viewer who may open only one of three sees one door and two placeholders', () => {
+    const links = paymentLinks({
+      summary: many,
+      directOrder: null,
+      labels: new Map([['order-b', 'ORD-B']]),
+      canOpenOrders: true,
+    })
+    assert.deepEqual(links.map(l => l.href), [null, '/orders/order-b', null])
+    assert.deepEqual(links.map(l => l.label), ['An Order', 'ORD-B', 'A PI Draft'])
+    assert.deepEqual(linkCounts(links), { total: 3, openable: 1, hidden: 2 })
   })
 })

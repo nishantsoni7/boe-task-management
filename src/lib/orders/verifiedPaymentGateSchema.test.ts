@@ -1030,14 +1030,23 @@ describe('the Finance linkage projection', () => {
   })
 
   test('the surfaces that read it are the Finance ones, and no more', () => {
-    // The read model is the smallest that makes the classification correct:
-    // the two lists, their counters, the deep-link resolver, and the one Admin
-    // queue that ASKS SOMEBODY TO LINK a payment.
+    // The read model is the smallest that makes the classification correct: the
+    // one list, its counters, and the one Admin queue that ASKS SOMEBODY TO ACT
+    // on a payment.
+    //
+    // The deep-link resolver is no longer among them. It existed to decide which
+    // of two sibling pages held a row; there is one list now, and it resolves
+    // `?payment=` by id itself — which it has to, because a payment split
+    // between an Order and a PI Draft is in several views at once and no single
+    // one of them is "the page that holds it".
+    //
+    // The Orders dashboard reads it too, for one head-count, and does so through
+    // the same constant.
     const readers = [
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/hooks/queries/useReceivedPaymentsCounts.ts',
-      'src/app/finance/received/page.tsx',
       'src/app/admin/control-center/action-queue/page.tsx',
+      'src/app/orders/page.tsx',
     ]
     for (const file of readers) {
       assert.ok(existsSync(join(process.cwd(), file)), `${file} must exist`)

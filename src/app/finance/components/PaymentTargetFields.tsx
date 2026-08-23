@@ -1,45 +1,43 @@
 'use client'
 
 // ── Payment target selector ───────────────────────────────────────────────────
-// The three-way choice at the top of a payment request form, plus the search-
-// first selector the two linked targets need. Shared by the submission modal and
-// the owner's edit modal so a correction offers exactly the same three options,
-// the same searches and the same clearing rule as the original submission.
+// The choice at the top of a payment request form, plus the search-first
+// selector the linked target needs. Shared by the submission modal and the
+// owner's edit modal so a correction offers exactly the same options, the same
+// search and the same clearing rule as the original submission.
+//
+// TWO CHOICES, NOT THREE. Order Request was the third and is retired: no new
+// payment may name one, and the database refuses the write (20261007000000 §3).
+// Money that belongs to a PI Draft is recorded as New Order money and ALLOCATED
+// to the PI afterwards — a PI is reached through the allocation table, not
+// through a linkage column on the payment row.
 //
 // Presentational + query only. Every rule it appears to enforce is enforced
-// server-side as well and independently: RLS decides which Order Requests are
-// visible at all, and finance_payment_requests_derive_target re-derives the
-// target, the request number and the client name from the locked row. This
-// component exists so the reader is told BEFORE a round trip, never so the
-// server can trust it.
+// server-side as well and independently: RLS decides which Orders are visible at
+// all, and finance_payment_requests_derive_target re-derives the target and the
+// client name from the locked row. This component exists so the reader is told
+// BEFORE a round trip, never so the server can trust it.
 
 import { useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
 import {
-  ORDER_REQUEST_SELECTABLE_STATUSES,
   PAYMENT_TARGET_OPTIONS,
   switchTarget,
   type ConfirmedOrderOption,
-  type OrderRequestOption,
   type PaymentTargetState,
-  type PaymentTargetType,
+  type SelectablePaymentTargetType,
 } from '../paymentTargets'
 
-// Status wording for the two record kinds, so a result row says what state the
-// record is in rather than leaving the reader to infer it from the number.
+// Status wording, so a result row says what state the Order is in rather than
+// leaving the reader to infer it from the number.
 const ORDER_STATUS_LABEL: Record<string, { label: string; color: string }> = {
   running:            { label: 'Running',            color: '#1E40AF' },
   on_hold:            { label: 'On Hold',            color: '#9A3412' },
   ready_for_dispatch: { label: 'Ready for Dispatch', color: '#5B21B6' },
   dispatched:         { label: 'Dispatched',         color: '#166534' },
   cancelled:          { label: 'Cancelled',          color: '#991B1B' },
-}
-
-const REQUEST_STATUS_LABEL: Record<string, { label: string; color: string }> = {
-  submitted:           { label: 'Submitted',           color: '#92400E' },
-  needs_clarification: { label: 'Needs Clarification', color: '#9A3412' },
 }
 
 const SECTION_LABEL: React.CSSProperties = {
@@ -165,15 +163,14 @@ export function PaymentTargetFields({
 }) {
   const [query, setQuery]         = useState('')
   const [searching, setSearching] = useState(false)
-  const [orderResults,   setOrderResults]   = useState<ConfirmedOrderOption[]>([])
-  const [requestResults, setRequestResults] = useState<OrderRequestOption[]>([])
+  const [orderResults, setOrderResults] = useState<ConfirmedOrderOption[]>([])
   // Only the newest search may write results: a slow earlier query must never
   // overwrite a later one with stale rows.
   const searchToken = useRef(0)
 
-  const clearResults = () => { setOrderResults([]); setRequestResults([]) }
+  const clearResults = () => { setOrderResults([]) }
 
-  const selectTarget = (target: PaymentTargetType) => {
+  const selectTarget = (target: SelectablePaymentTargetType) => {
     if (disabled || target === value.target) return
     setQuery('')
     clearResults()
@@ -185,78 +182,58 @@ export function PaymentTargetFields({
     // Typing again abandons the current selection: the client name follows the
     // selected record, so a stale selection behind a fresh search would be a
     // silent mismatch.
-    onChange({ ...value, selectedRequest: null, selectedOrder: null })
+    onChange({ ...value, selectedOrder: null })
     const trimmed = raw.trim()
     if (!trimmed) { clearResults(); return }
 
     const token = ++searchToken.current
     setSearching(true)
 
-    if (value.target === 'confirmed_order') {
-      // Preserved verbatim from the original Confirmed Order search.
-      const { data } = await supabase
-        .from('orders')
-        .select('id, display_number, client_name, total_value, status')
-        .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-        .not('status', 'in', '(cancelled)')
-        .order('created_at', { ascending: false })
-        .limit(20)
-      if (token !== searchToken.current) return
-      setOrderResults((data ?? []) as ConfirmedOrderOption[])
-    } else {
-      // Only requests this viewer may actually use. Three independent filters,
-      // each of which the database also applies:
-      //   * RLS — a non-admin sees only requests they created, are the requester
-      //     of, or are assigned to (order_requests_requester_select /
-      //     _assignee_select, 20260707);
-      //   * finalized_at — an upload-stage draft (20260711) is not a submitted
-      //     request and must never be offered;
-      //   * status — active only. derive_target refuses anything else.
-      const { data } = await supabase
-        .from('order_requests')
-        .select('id, request_number, client_name, total_value, status')
-        .or(`request_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-        .in('status', ORDER_REQUEST_SELECTABLE_STATUSES as unknown as string[])
-        .not('finalized_at', 'is', null)
-        .order('created_at', { ascending: false })
-        .limit(20)
-      if (token !== searchToken.current) return
-      setRequestResults((data ?? []) as OrderRequestOption[])
-    }
+    // ONE SEARCH, AND ONLY CONFIRMED ORDERS. The Order Request branch that used
+    // to sit beside this is gone: it searched `order_requests` for a target no
+    // new payment may name. Preserved verbatim otherwise.
+    const { data } = await supabase
+      .from('orders')
+      .select('id, display_number, client_name, total_value, status')
+      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
+      .not('status', 'in', '(cancelled)')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (token !== searchToken.current) return
+    setOrderResults((data ?? []) as ConfirmedOrderOption[])
     setSearching(false)
-  }
-
-  const pickRequest = (r: OrderRequestOption) => {
-    clearResults()
-    onChange({ ...value, selectedRequest: r, selectedOrder: null })
   }
 
   const pickOrder = (o: ConfirmedOrderOption) => {
     clearResults()
-    onChange({ ...value, selectedOrder: o, selectedRequest: null })
+    onChange({ ...value, selectedOrder: o })
   }
 
   const reopenSearch = () => {
     setQuery('')
     clearResults()
-    onChange({ ...value, selectedRequest: null, selectedOrder: null })
+    onChange({ ...value, selectedOrder: null })
   }
 
   const linked  = value.target !== 'unallocated'
-  const results = value.target === 'confirmed_order' ? orderResults : requestResults
-  const noHits  = query.trim() !== '' && !searching && results.length === 0
+  const noHits  = query.trim() !== '' && !searching && orderResults.length === 0
 
   return (
     <div>
       <div style={SECTION_LABEL}>Payment Against</div>
 
-      {/* Three explicit choices. They are three business stages, not three
-          shades of one — so they are three equal cards, never a two-way toggle
-          with a sub-option. */}
+      {/* Explicit choices, one card each. They are business stages, not shades
+          of one — so they stay equal cards rather than a toggle with a
+          sub-option, and the grid follows however many there are rather than
+          hard-coding a count that a retirement would leave stretched. */}
       <div
         role="radiogroup"
         aria-label="Payment target"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '10px' }}
+        style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${PAYMENT_TARGET_OPTIONS.length}, 1fr)`,
+          gap: '8px', marginBottom: '10px',
+        }}
       >
         {PAYMENT_TARGET_OPTIONS.map(opt => {
           const active = value.target === opt.value
@@ -297,19 +274,11 @@ export function PaymentTargetFields({
       {linked && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <label style={FIELD_LABEL}>
-            {value.target === 'order_request' ? 'Select Order Request' : 'Select Confirmed Order'}
+            Select Confirmed Order
             <span style={{ color: colors.red, marginLeft: '2px' }}>*</span>
           </label>
 
-          {value.target === 'order_request' && value.selectedRequest ? (
-            <SelectedRecord
-              kind="Order Request"
-              number={value.selectedRequest.request_number}
-              clientName={value.selectedRequest.client_name}
-              onChange={reopenSearch}
-              disabled={disabled}
-            />
-          ) : value.target === 'confirmed_order' && value.selectedOrder ? (
+          {value.selectedOrder ? (
             <SelectedRecord
               kind="Confirmed Order"
               number={value.selectedOrder.display_number}
@@ -328,69 +297,41 @@ export function PaymentTargetFields({
                   value={query}
                   disabled={disabled}
                   onChange={e => runSearch(e.target.value)}
-                  placeholder={value.target === 'order_request'
-                    ? 'Search by request number or client…'
-                    : 'Search by order number or client…'}
+                  placeholder="Search by order number or client…"
                   style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary }}
                 />
                 {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
               </div>
 
-              {results.length > 0 && (
+              {orderResults.length > 0 && (
                 <div style={{
                   border: `1px solid ${colors.border}`, borderRadius: '7px', overflow: 'hidden',
                   maxHeight: '180px', overflowY: 'auto', marginTop: '4px',
                 }}>
-                  {value.target === 'order_request'
-                    ? requestResults.map((r, idx) => {
-                        const meta = REQUEST_STATUS_LABEL[r.status] ?? { label: r.status, color: colors.muted }
-                        return (
-                          <ResultRow
-                            key={r.id}
-                            number={r.request_number}
-                            clientName={r.client_name}
-                            statusLabel={meta.label}
-                            statusColor={meta.color}
-                            amount={r.total_value}
-                            last={idx === requestResults.length - 1}
-                            onSelect={() => pickRequest(r)}
-                          />
-                        )
-                      })
-                    : orderResults.map((o, idx) => {
-                        const meta = ORDER_STATUS_LABEL[o.status] ?? { label: o.status, color: colors.muted }
-                        return (
-                          <ResultRow
-                            key={o.id}
-                            number={o.display_number}
-                            clientName={o.client_name}
-                            statusLabel={meta.label}
-                            statusColor={meta.color}
-                            amount={o.total_value}
-                            last={idx === orderResults.length - 1}
-                            onSelect={() => pickOrder(o)}
-                          />
-                        )
-                      })}
+                  {orderResults.map((o, idx) => {
+                    const meta = ORDER_STATUS_LABEL[o.status] ?? { label: o.status, color: colors.muted }
+                    return (
+                      <ResultRow
+                        key={o.id}
+                        number={o.display_number}
+                        clientName={o.client_name}
+                        statusLabel={meta.label}
+                        statusColor={meta.color}
+                        amount={o.total_value}
+                        last={idx === orderResults.length - 1}
+                        onSelect={() => pickOrder(o)}
+                      />
+                    )
+                  })}
                 </div>
               )}
 
               {noHits && (
                 <div style={{ fontSize: '12px', color: colors.muted, padding: '6px 0', lineHeight: 1.5 }}>
-                  {value.target === 'order_request'
-                    ? `No open Order Request matches “${query.trim()}”. Only requests you can access, that are still awaiting approval, can be selected.`
-                    : `No orders found for “${query.trim()}”.`}
+                  No orders found for &ldquo;{query.trim()}&rdquo;.
                 </div>
               )}
             </>
-          )}
-
-          {/* Stated once the record is chosen, because it is the moment the
-              reader stops being able to type the client name themselves. */}
-          {value.target === 'order_request' && value.selectedRequest && (
-            <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-              This payment will appear on {value.selectedRequest.request_number} straight away, marked pending until an admin approves it.
-            </span>
           )}
         </div>
       )}

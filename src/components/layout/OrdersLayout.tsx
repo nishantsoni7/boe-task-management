@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { LayoutDashboard, List, ClipboardList, FileText, Home, RefreshCw, Bell } from 'lucide-react'
+import { LayoutDashboard, List, FileText, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -10,7 +10,6 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
 import { useUnreadOrderNotifications } from '@/hooks/queries/useUnreadNotifications'
-import { useOrderRequestsCount } from '@/hooks/queries/useOrderRequestsCount'
 
 type OrdersLayoutProps = {
   profile: UserProfile | null
@@ -50,13 +49,6 @@ export function OrdersLayout({
   // Orders-only unread count — drives both the sidebar "Notifications" badge
   // and this layout's link, scoped to Orders' own notification types.
   const unreadOrders = useUnreadOrderNotifications()
-
-  // Neutral TOTAL count of Order Requests — the same scope as the Order
-  // Requests page's "All" tab (every status). Drives the "Order Requests" nav
-  // badge below. Unlike unreadOrders this is never an unread/alert count, so
-  // reading a request or a notification never changes it, and it never affects
-  // the bell block or the Notifications entry's badge styling.
-  const orderRequestsCount = useOrderRequestsCount()
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -102,17 +94,22 @@ export function OrdersLayout({
     setSidebarOpen(false)
   }
 
+  // ── THREE DESTINATIONS, AND THE RETIRED ONE IS NOT AMONG THEM ──
+  //
+  // Order Requests used to sit between Confirmed Orders and PI Drafts, carrying
+  // a company-wide volume badge. That workflow is retired: the only path to a
+  // Confirmed Order is now PI upload → PI Draft → review → approval, so an entry
+  // into it would be an invitation to start something that can no longer finish.
+  // The route itself still answers — it explains the retirement and offers PI
+  // Drafts — so an old bookmark lands somewhere sensible rather than on a 404.
+  //
+  // NO BADGE ON PI DRAFTS, deliberately. Drafts are a personal working set whose
+  // size is nobody else's business, and a number here would cost a query on
+  // every Orders page for something with no decision attached to it.
   const navItems: { label: string; path: string; icon: React.ReactNode; exact: boolean; badge?: number }[] = [
-    { label: 'Dashboard',       path: '/orders',          icon: <LayoutDashboard size={15} strokeWidth={1.8} />, exact: true },
-    { label: 'Confirmed Orders', path: '/orders/all',     icon: <List            size={15} strokeWidth={1.8} />, exact: false },
-    // badge stays undefined only while the count query is still loading; a real
-    // 0 is passed through and rendered.
-    { label: 'Order Requests',  path: '/orders/requests', icon: <ClipboardList   size={15} strokeWidth={1.8} />, exact: false, badge: orderRequestsCount },
-    // Saved PI submissions. NO BADGE, deliberately: the Order Requests count
-    // above is a company-wide volume figure, and drafts are a personal working
-    // set whose size is nobody else's business — a number here would also cost a
-    // query on every Orders page for something with no decision attached to it.
-    { label: 'PI Drafts',       path: '/orders/drafts',   icon: <FileText        size={15} strokeWidth={1.8} />, exact: false },
+    { label: 'Dashboard',        path: '/orders',        icon: <LayoutDashboard size={15} strokeWidth={1.8} />, exact: true },
+    { label: 'PI Drafts',        path: '/orders/drafts', icon: <FileText        size={15} strokeWidth={1.8} />, exact: false },
+    { label: 'Confirmed Orders', path: '/orders/all',    icon: <List            size={15} strokeWidth={1.8} />, exact: false },
   ]
 
   return (
@@ -198,8 +195,8 @@ export function OrdersLayout({
         {/* ── Notification alert block — same pulsing indicator as Task
             Management and Finance, shown only when Orders has unread
             notifications. Was previously missing from this layout, which is
-            why the bell never appeared for Order Request notifications even
-            though the sidebar "Notifications" badge above already worked. ── */}
+            why the bell never appeared for Orders notifications even though the
+            sidebar "Notifications" badge above already worked. ── */}
         {unreadOrders > 0 && (
           <div style={{ padding: '0 10px 14px' }}>
             <button

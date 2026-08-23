@@ -66,8 +66,12 @@ const ALL = 'src/app/orders/all/page.tsx'
 const DETAIL = 'src/app/orders/[id]/page.tsx'
 const DRAFTS = 'src/app/orders/drafts/page.tsx'
 const PI_DETAIL = 'src/app/orders/drafts/[submissionId]/page.tsx'
-const REQUESTS = 'src/app/orders/requests/page.tsx'
-const REQUEST_DETAIL = 'src/app/orders/requests/[id]/page.tsx'
+/**
+ * The retired Order Request routes now render one notice component, and it has a
+ * startup path of its own — so it is measured here like any other screen. The
+ * two page files are thin wrappers with no session work at all.
+ */
+const RETIRED_NOTICE = 'src/app/orders/requests/RetiredWorkflowNotice.tsx'
 const IMPORT = 'src/app/orders/import/page.tsx'
 
 /**
@@ -176,6 +180,11 @@ describe('the Orders layout guard', () => {
  * The guard blocks its children, so what a person actually waits through is
  * guard + screen: /orders went from 7 to 4, the Order detail from 8 to 5, both
  * request screens from 7 to 4.
+ *
+ * THE TWO REQUEST SCREENS ARE NOW ONE NOTICE. Their workflow is retired
+ * (20261007000000) and both routes render RetiredWorkflowNotice, which keeps the
+ * same two-wait shape: the session, then one parallel group holding the profile
+ * and the provenance lookup.
  */
 const SCREENS: { path: string; label: string; waits: number; before: number }[] = [
   { path: DASHBOARD,      label: 'the Orders dashboard', waits: 2, before: 4 },
@@ -183,8 +192,7 @@ const SCREENS: { path: string; label: string; waits: number; before: number }[] 
   { path: DETAIL,         label: 'the Order detail',     waits: 3, before: 5 },
   { path: DRAFTS,         label: 'PI Drafts',            waits: 3, before: 4 },
   { path: PI_DETAIL,      label: 'the PI detail',        waits: 3, before: 4 },
-  { path: REQUESTS,       label: 'Order Requests',       waits: 2, before: 4 },
-  { path: REQUEST_DETAIL, label: 'the request detail',   waits: 2, before: 4 },
+  { path: RETIRED_NOTICE, label: 'the retired-workflow notice', waits: 2, before: 4 },
 ]
 
 describe('no Order screen waits more than it must', () => {
@@ -228,7 +236,13 @@ describe('no Order screen waits more than it must', () => {
     // and a fourth independent call in a group that already waits for the
     // slowest costs no latency.
     const expected: Record<string, number> = {
-      [GUARD]: 2, [DASHBOARD]: 9, [ALL]: 2, [DETAIL]: 19,
+      // DASHBOARD went 9 -> 11 when the Order Request card and its count were
+      // replaced by the workflow the dashboard now describes: PI Drafts, the
+      // review queue, awaiting-verification money and available funds. All of
+      // them are issued INSIDE the page's existing Promise.all, so the count
+      // grew and the number of times the page waits did not — which is the whole
+      // property this block exists to protect.
+      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 19,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -243,7 +257,11 @@ describe('no Order screen waits more than it must', () => {
       // again. One runs when a line's description is saved, the other when the
       // lines are reordered; neither is on the startup path, so the page still
       // waits exactly as many times as it did.
-      [DRAFTS]: 4, [PI_DETAIL]: 25, [REQUESTS]: 18, [REQUEST_DETAIL]: 7, [IMPORT]: 5,
+      // The two Order Request screens carried 18 and 7 reads between them; both
+      // are retired (20261007000000) and replaced by one notice that makes TWO:
+      // the reader's profile, and a provenance lookup that names the Confirmed
+      // Order a converted request became — where the reader can already open it.
+      [DRAFTS]: 4, [PI_DETAIL]: 25, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
@@ -288,7 +306,7 @@ describe('where an ordering IS load-bearing, it is kept', () => {
 // ══ 4. Nothing was cached, derived, or moved out of the database ═════════════
 
 describe('what did NOT change', () => {
-  const ALL_SCREENS = [GUARD, DASHBOARD, ALL, DETAIL, DRAFTS, PI_DETAIL, REQUESTS, REQUEST_DETAIL, IMPORT]
+  const ALL_SCREENS = [GUARD, DASHBOARD, ALL, DETAIL, DRAFTS, PI_DETAIL, RETIRED_NOTICE, IMPORT]
 
   test('no screen caches a profile, a permission or a record across a load', () => {
     // USAGE, not the WORD. Several of these files promise in prose never to

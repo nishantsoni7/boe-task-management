@@ -12,29 +12,37 @@ import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { isValidAmount } from '@/lib/currency'
 import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
-import {
-  CONFIRMED_PAYMENT_STATUSES,
-  RECEIVED_PAYMENTS_SOURCE,
-  applyLinkageScope,
-  resolveLinkedAgainst,
-  type LinkedAgainst,
-} from '@/app/finance/paymentRouting'
+import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
   ALLOCATION_FILTER_OPTIONS,
-  LINKAGE_FILTER_OPTIONS,
+  PAYMENT_VIEW_OPTIONS,
+  RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
   allocationFilterAvailable,
   allocationFilterClauses,
   ALLOCATED_TOTAL_COLUMN,
+  CLASSIFIED_PAYMENT_STATUSES,
   dateRange,
   isNarrowed,
-  linkageFilterClauses,
+  paymentViewFilterClauses,
   pageCount,
   pageRange,
   resultSummary,
   receivedPaymentsSearchFilter,
   type AllocationFilter,
-  type LinkageFilter,
+  type PaymentView,
 } from '@/app/finance/receivedPaymentsQuery'
+import {
+  PAYMENT_VERIFICATION_LABEL,
+  paymentRowFigures,
+  paymentClassificationAvailable,
+  type ClassifiablePayment,
+} from '@/lib/finance/paymentClassification'
+import {
+  directOrderOf,
+  linkCounts,
+  paymentLinks,
+  type PaymentLink,
+} from '@/lib/finance/paymentLinks'
 import {
   ALLOCATION_STATE_LABEL,
   PENDING_ALLOCATION_SUMMARY,
@@ -48,6 +56,10 @@ import {
   orderDetailHref,
   piSubmissionHref,
 } from '@/lib/finance/crossModuleLinks'
+import {
+  ALLOCATE_ACTION_LABEL,
+  AllocatePaymentModal,
+} from './AllocatePaymentModal'
 import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
@@ -80,9 +92,24 @@ type PaymentRequest = {
    *  classification and the "Linked Against" label; never written. */
   allocated_order_id: string | null
   allocated_order_number: string | null
-  /** allocated_order_id IS NOT NULL, computed in the projection so the same
-   *  fact can be filtered server-side by applyLinkageScope. */
+  /** allocated_order_id IS NOT NULL, computed in the projection. */
   is_order_allocated: boolean
+  // ── The canonical classification, from the projection (20261008000000) ──
+  //
+  // READ, NEVER RE-DERIVED. These are the figures the database filtered and
+  // counted this page by; computing them again in the browser from the
+  // allocation rows in hand would produce a second answer that disagrees with
+  // the narrowing the reader just applied.
+  order_allocated_total: string | number | null
+  pi_allocated_total: string | number | null
+  allocated_total: string | number | null
+  attributed_total: string | number | null
+  available_balance: string | number | null
+  active_allocation_count: number | null
+  attribution_complete: boolean | null
+  is_linked_to_order: boolean | null
+  is_linked_to_pi: boolean | null
+  is_available_to_allocate: boolean | null
   sales_note: string | null
   status: string
   payment_against: string
@@ -96,28 +123,19 @@ type PaymentRequest = {
   created_at: string
 }
 
-// Combined Link-modal search result: a Confirmed Order or an eligible Order
-// Request, tagged so the two are never confused. A payment links to exactly
-// one of them (enforced server-side by the 20260698 CHECK + RPCs).
-type LinkTarget =
-  | {
-      kind: 'order'
-      id: string
-      display_number: string
-      client_name: string
-      total_value: number | null
-      status: string
-      confirm_date: string | null
-    }
-  | {
-      kind: 'request'
-      id: string
-      request_number: string
-      client_name: string
-      assignee_name: string | null
-      total_value: number | null
-      status: string
-    }
+// A Link-modal search result. ONE KIND, because there is now one kind of direct
+// linkage a payment may carry: a Confirmed Order. The Order Request branch that
+// sat beside it is retired (20261007000000) — the database refuses the write, so
+// offering the choice would be an invitation to a submission that cannot land.
+type LinkTarget = {
+  kind: 'order'
+  id: string
+  display_number: string
+  client_name: string
+  total_value: number | null
+  status: string
+  confirm_date: string | null
+}
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -130,6 +148,16 @@ type LinkTarget =
  * costs ONE query rather than one per character.
  */
 const SEARCH_DEBOUNCE_MS = 250
+
+/**
+ * Below this the eleven-column table becomes cards.
+ *
+ * The table is honestly wide and the app shell clips horizontal overflow, so a
+ * phone would either lose columns off the edge or squeeze them into
+ * unreadability. 768px is the same breakpoint PI Drafts uses for the same
+ * decision.
+ */
+const PAYMENTS_TABLE_BREAKPOINT = 768
 
 const PAYMENT_MODE_LABEL: Record<string, string> = {
   bank_transfer: 'Bank Transfer',
@@ -167,60 +195,63 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
-// ── Modes ─────────────────────────────────────────────────────────────────────
-// Received Payments is two sibling pages, not one page with a tab strip. The
-// split axis is ALLOCATION — see linkageModeFor in ../paymentRouting:
+// ── The four views ────────────────────────────────────────────────────────────
 //
-//   linked   → order_id IS NOT NULL  OR  order_request_id IS NOT NULL
-//   unlinked → order_id IS NULL     AND  order_request_id IS NULL
+// Received Payments is ONE list with four views, not two sibling pages. The old
+// pair — Linked and Non-Linked — split every payment by whether any of three
+// columns was set, and both halves of that are now wrong:
 //
-// An Order Request linkage counts as LINKED. The money has been allocated to a
-// piece of business; conversion later moves it onto the Order by itself. What
-// makes Non-Linked worth its own page is the opposite case — money with nothing
-// at all pointing at it, which is the only set that needs someone to act.
+//   * a payment divided between a Confirmed Order and a PI Draft belongs in BOTH
+//     linked views at once, and in Available too if anything is left over. A
+//     partition has to pick one, and picking one is how a mixed payment becomes
+//     invisible from the other side.
+//   * an Order Request linkage counted as "linked", on the reasoning that
+//     conversion would move the money onto an Order by itself. That workflow is
+//     retired (20261007000000), nothing will convert, and the canonical
+//     attribution rule has never attributed a rupee through that column.
 //
-// The two predicates are exhaustive and mutually exclusive over the pair of
-// columns, so the pair covers exactly the approved rows the single page used to
-// load (approved_linked / approved_unlinked) and nothing is invisible.
+// The copy below is per-view; everything else on the page is shared verbatim.
+// The narrowing itself lives in paymentClassification.ts and is applied by the
+// DATABASE, so a view survives paging and its count describes the whole set.
 
-export type ReceivedPaymentsMode = 'linked' | 'unlinked'
-
-const MODE_META: Record<ReceivedPaymentsMode, {
-  path: string
+const VIEW_META: Record<PaymentView, {
   title: string
   subtitle: string
   empty: string
   searchPlaceholder: string
 }> = {
-  linked: {
-    path:     '/finance/received/linked',
-    title:    'Linked Payments',
-    subtitle: 'Received payments linked to either an Order or an Order Request.',
-    empty:    'No linked payments yet.',
-    searchPlaceholder: 'Client, order or request…',
+  all: {
+    title:    'Received Payments',
+    subtitle: 'Every payment received, and what each one is attached to.',
+    empty:    'No payments received yet.',
+    searchPlaceholder: 'Payment, client or order…',
   },
-  unlinked: {
-    path:     '/finance/received/unlinked',
-    title:    'Non-Linked Payments',
-    subtitle: 'Received payments linked to neither an Order nor an Order Request.',
-    empty:    'No unallocated payments. Every received payment is linked.',
-    searchPlaceholder: 'Client…',
+  orders: {
+    title:    'Payments · Orders',
+    subtitle: 'Money attributed to one or more Confirmed Orders.',
+    empty:    'No payment is attributed to a Confirmed Order yet.',
+    searchPlaceholder: 'Payment, client or order…',
+  },
+  pi_drafts: {
+    title:    'Payments · PI Drafts',
+    subtitle: 'Money attributed to one or more PI Drafts awaiting approval.',
+    empty:    'No payment is attributed to a PI Draft yet.',
+    searchPlaceholder: 'Payment or client…',
+  },
+  available: {
+    title:    'Payments · Available',
+    subtitle: 'Money with an unallocated balance, waiting to be given a home.',
+    empty:    'Nothing is waiting to be allocated. Every payment has a home.',
+    searchPlaceholder: 'Payment or client…',
   },
 }
 
-// Linked Payments only: narrows the two linkage targets apart. A plain form
-// control alongside search — deliberately not a revived tab strip. Non-Linked
-// Payments needs none: every row there is linked to nothing by definition, so
-// there is nothing left to narrow.
-//
-// THE FILTER AND ITS PREDICATES NOW LIVE IN ../receivedPaymentsQuery, with the
-// paging, the search columns and the date bounds. They moved out of this file
-// because the narrowing had drifted from the badge beside it: this page tested
-// `order_id` alone, while resolveLinkedAgainst had learned in Phase 3 to read a
-// Confirmed Order out of an ACTIVE ALLOCATION. A payment attached to an Order by
-// allocation — which is every payment PI conversion moves — displayed
-// "Order ORD-…" in its row and then matched NEITHER narrowing. Stating the rule
-// once, in a module with tests, is what stops that happening again.
+/** The one list route. Its view is a `?view=`. */
+const RECEIVED_PATH = '/finance/received'
+
+function viewHref(view: PaymentView): string {
+  return `${RECEIVED_PATH}?view=${view}`
+}
 
 const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
   running:            { label: 'Running',             color: '#1E40AF' },
@@ -228,13 +259,6 @@ const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
   ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
   dispatched:         { label: 'Dispatched',          color: '#166534' },
   cancelled:          { label: 'Cancelled',           color: '#991B1B' },
-}
-
-// Order Request statuses eligible to receive a payment link (the RPC enforces
-// the same pair server-side).
-const REQUEST_STATUS_META: Record<string, { label: string; color: string }> = {
-  submitted:           { label: 'Submitted',           color: '#92400E' },
-  needs_clarification: { label: 'Needs Clarification', color: '#1E40AF' },
 }
 
 const PAYMENT_MODE_OPTIONS = [
@@ -377,45 +401,127 @@ function StatusBadge({ status, requestLinked }: { status: string; requestLinked?
   )
 }
 
-// ── Linked Against cell ───────────────────────────────────────────────────────
-// One badge for all three outcomes of resolveLinkedAgainst (../paymentRouting),
-// so a reader never has to work out which of two differently-shaped cells they
-// are looking at. The TYPE is spelled out in words next to the number —
-// "Order ORD-…" / "Order Request REQ-…" — because colour alone cannot carry it,
-// and the number alone cannot say what it is a number OF.
+// ── Destinations cell ─────────────────────────────────────────────────────────
 //
-// Palette is unchanged from the badges this replaces: blue for a Confirmed
-// Order, violet for an Order Request, amber for neither.
-const LINKED_AGAINST_STYLE: Record<LinkedAgainst['kind'], { bg: string; color: string; border: string }> = {
-  order:   { bg: colors.blueTint, color: colors.blue, border: 'rgba(85,133,232,0.25)' },
-  request: { bg: '#F5F3FF',       color: '#5B21B6',   border: '#DDD6FE' },
-  none:    { bg: '#FFF7ED',       color: '#9A3412',   border: '#FED7AA' },
+// EVERY place one payment's money went, and a door to each — but only where the
+// reader may actually open it. A payment split three ways shows three
+// destinations; a payment attributed in full to one Order by the canonical rule's
+// direct-link fallback shows that one; a payment with nothing pointing at it
+// shows the plain statement that nothing does.
+//
+// A DESTINATION THE READER MAY NOT OPEN IS NAMED BY ITS KIND AND NOTHING ELSE.
+// "A PI Draft" — no number, no client, no id, no link. That the money is split
+// is the reader's own business (it is their payment); whose business the other
+// share is, is not. paymentLinks decides that from whether RLS returned the
+// record, which is a strictly more accurate answer than any capability check
+// here could be.
+//
+// Palette: blue for a Confirmed Order, violet for a PI Draft, amber for nothing
+// at all — unchanged from the badges this replaces.
+
+const DESTINATION_STYLE: Record<'order' | 'submission' | 'none', { bg: string; color: string; border: string }> = {
+  order:      { bg: colors.blueTint, color: colors.blue, border: 'rgba(85,133,232,0.25)' },
+  submission: { bg: '#F5F3FF',       color: '#5B21B6',   border: '#DDD6FE' },
+  none:       { bg: '#FFF7ED',       color: '#9A3412',   border: '#FED7AA' },
 }
 
-function LinkedAgainstBadge({ target, interactive }: { target: LinkedAgainst; interactive?: boolean }) {
-  const s = LINKED_AGAINST_STYLE[target.kind]
-  return (
+export const NO_DESTINATION_LABEL = 'Not allocated'
+
+function DestinationBadge({ link, onOpen }: { link: PaymentLink; onOpen?: (href: string) => void }) {
+  const style = DESTINATION_STYLE[link.kind]
+  const openable = link.href !== null && onOpen !== undefined
+  const body = (
     <span
-      title={target.label}
+      title={link.named ? link.label : 'You cannot open this record'}
       style={{
         display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-        background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-        fontSize: '11px', fontWeight: target.kind === 'none' ? 600 : 700, whiteSpace: 'nowrap',
+        background: style.bg, color: style.color, border: `1px solid ${style.border}`,
+        fontSize: '11px', fontWeight: 700, whiteSpace: 'nowrap',
         // Underlined only when it is actually a door, so a badge never looks
         // clickable to a reader who has nowhere to go.
-        textDecoration: interactive ? 'underline' : undefined,
-        textUnderlineOffset: interactive ? '2px' : undefined,
+        textDecoration: openable ? 'underline' : undefined,
+        textUnderlineOffset: openable ? '2px' : undefined,
+        opacity: link.named ? 1 : 0.75,
       }}
     >
-      {target.kind === 'none' ? (
-        target.label
-      ) : (
-        <>
-          <span style={{ fontWeight: 600, opacity: 0.85 }}>{target.prefix}</span>
-          {' '}
-          {target.number}
-        </>
-      )}
+      <span style={{ fontWeight: 600, opacity: 0.85 }}>
+        {link.kind === 'order' ? 'Order' : 'PI'}
+      </span>
+      {' '}
+      {link.label}
+    </span>
+  )
+
+  if (!openable) return body
+  return (
+    <button
+      onClick={e => { e.stopPropagation(); onOpen(link.href as string) }}
+      style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit', textAlign: 'left' }}
+    >
+      {body}
+    </button>
+  )
+}
+
+function DestinationsCell({ links, onOpen }: { links: readonly PaymentLink[]; onOpen?: (href: string) => void }) {
+  if (links.length === 0) {
+    return (
+      <span style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+        background: DESTINATION_STYLE.none.bg, color: DESTINATION_STYLE.none.color,
+        border: `1px solid ${DESTINATION_STYLE.none.border}`,
+        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      }}>
+        {NO_DESTINATION_LABEL}
+      </span>
+    )
+  }
+  return (
+    <span style={{ display: 'inline-flex', gap: '4px', flexWrap: 'wrap' }}>
+      {links.map(link => <DestinationBadge key={link.key} link={link} onOpen={onOpen} />)}
+    </span>
+  )
+}
+
+/** The verification state, as a badge. The OTHER axis, never folded into money. */
+function VerificationBadge({ status }: { status: string }) {
+  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+  return (
+    <span
+      title={PAYMENT_VERIFICATION_LABEL[paymentRowFigures({
+        id: '', amount: null, status, order_id: null,
+      }).verification]}
+      style={{
+        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+        background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
+        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+      }}
+    >
+      {meta.label}
+    </span>
+  )
+}
+
+/**
+ * One money figure in the table, right-aligned and tabular.
+ *
+ * A ZERO IS PRINTED AS A DASH, and a withheld figure as "—" too but muted and
+ * titled: "no money went here" and "you may not be told" are both usefully
+ * quiet, and neither should shout a 0.00 that draws the eye away from the
+ * figures that matter.
+ */
+function MoneyCell({ value, title }: { value: string | null; title?: string }) {
+  const zero = value !== null && Number(value) === 0
+  return (
+    <span
+      title={title ?? (value === null ? 'Not visible to you' : undefined)}
+      style={{
+        fontVariantNumeric: 'tabular-nums',
+        color: value === null || zero ? colors.muted : colors.primary,
+        fontWeight: value === null || zero ? 400 : 600,
+      }}
+    >
+      {value === null || zero ? '—' : formatMoney(value)}
     </span>
   )
 }
@@ -431,38 +537,14 @@ function LinkedAgainstBadge({ target, interactive }: { target: LinkedAgainst; in
 // see paymentAllocations.ts on why "we cannot show you" must never be rendered
 // as "Unallocated".
 
-const ALLOCATION_STATE_STYLE: Record<PaymentAllocationSummary['state'], { color: string; weight: number }> = {
-  unknown:     { color: colors.muted, weight: 500 },
-  unallocated: { color: '#9A3412',    weight: 700 },
-  partial:     { color: colors.blue,  weight: 700 },
-  full:        { color: colors.green, weight: 700 },
-  over:        { color: colors.red,   weight: 700 },
-}
-
-function AllocationCell({ summary }: { summary: PaymentAllocationSummary }) {
-  const style = ALLOCATION_STATE_STYLE[summary.state]
-  return (
-    <div style={{ minWidth: 0 }}>
-      <div style={{ fontSize: '11.5px', fontWeight: style.weight, color: style.color, whiteSpace: 'nowrap' }}>
-        {ALLOCATION_STATE_LABEL[summary.state]}
-      </div>
-      {/* The figure only where it adds something the word does not. "Fully
-          allocated" and "Unallocated" already state the whole amount; a
-          part-allocated payment is the one case where the reader needs the
-          number, because the remainder is what needs acting on. */}
-      {summary.state === 'partial' && summary.unallocated && (
-        <div style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-          {formatMoney(summary.unallocated)} free
-        </div>
-      )}
-      {summary.state === 'over' && summary.allocated && (
-        <div style={{ fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-          {formatMoney(summary.allocated)} allocated
-        </div>
-      )}
-    </div>
-  )
-}
+// THE ALLOCATION CELL IS GONE, and so is the state word it printed.
+//
+// "Partly allocated" told a reader that SOMETHING was left without saying how
+// much, to whom the rest had gone, or whether they could act on it. The table
+// now prints the three figures themselves — to Orders, to PI Drafts, available —
+// beside the destinations they went to, which answers all three questions at
+// once. ALLOCATION_STATE_LABEL still names the state in the details modal's
+// panel below, where the per-allocation split is shown in full.
 
 // ── Allocation panel ──────────────────────────────────────────────────────────
 //
@@ -970,15 +1052,16 @@ function LinkOrderModal({
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState<string | null>(null)
 
-  // Only a new_order-origin payment may be parked on an Order Request — the
-  // link RPC rejects anything else (20260698), so the search doesn't offer
-  // request targets for other payments at all.
-  const canLinkToRequest = payment.payment_against === 'new_order'
-
-  // One search field, two sources: Confirmed Orders (as before) plus active
-  // Order Requests ('submitted' / 'needs_clarification' — the same pair the
-  // link RPC enforces server-side). Results are tagged and rendered with an
-  // explicit type badge so the two can never be confused.
+  // ── ONE SEARCH, AND ONLY CONFIRMED ORDERS ──
+  //
+  // An Order Request branch used to sit beside this, searching `order_requests`
+  // for a linkage the retirement now refuses (20261007000000 §3). It is gone
+  // rather than left to fail on submit.
+  //
+  // LINKING IS NOT ALLOCATING. This writes the payment's own `order_id` — the
+  // legacy direct linkage, which the canonical rule uses as a fallback only when
+  // nothing is allocated. Money that should be SPLIT, or that belongs to a PI
+  // Draft, goes through Allocate instead.
   const handleSearch = async (q: string) => {
     setQuery(q)
     setSelected(null)
@@ -986,88 +1069,52 @@ function LinkOrderModal({
     if (!trimmed) { setResults([]); return }
 
     setSearching(true)
-    const [ordersRes, requestsRes] = await Promise.all([
-      supabase
-        .from('orders')
-        .select('id, display_number, client_name, total_value, status, confirm_date')
-        .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-        .not('status', 'in', '(cancelled)')
-        .order('created_at', { ascending: false })
-        .limit(20),
-      canLinkToRequest
-        ? supabase
-            .from('order_requests')
-            .select('id, request_number, client_name, total_value, status, assigned_to_user:users!assigned_to(full_name)')
-            .or(`request_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-            .in('status', ['submitted', 'needs_clarification'])
-            // Never surface an upload-stage draft (finalized_at IS NULL) as a
-            // linkable request — it has no verified Main PI and is not a real
-            // submission. RLS already hides other users' drafts; this covers the
-            // edge where the searcher is the draft's own creator.
-            .not('finalized_at', 'is', null)
-            .order('created_at', { ascending: false })
-            .limit(20)
-        : Promise.resolve({ data: [] }),
-    ])
+    const { data } = await supabase
+      .from('orders')
+      .select('id, display_number, client_name, total_value, status, confirm_date')
+      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
+      .not('status', 'in', '(cancelled)')
+      .order('created_at', { ascending: false })
+      .limit(20)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const orderTargets: LinkTarget[] = ((ordersRes.data ?? []) as any[]).map(o => ({
-      kind: 'order',
+    setResults(((data ?? []) as any[]).map(o => ({
+      kind: 'order' as const,
       id: o.id,
       display_number: o.display_number,
       client_name: o.client_name,
       total_value: o.total_value,
       status: o.status,
       confirm_date: o.confirm_date ?? null,
-    }))
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const requestTargets: LinkTarget[] = ((requestsRes.data ?? []) as any[]).map(r => ({
-      kind: 'request',
-      id: r.id,
-      request_number: r.request_number,
-      client_name: r.client_name,
-      total_value: r.total_value,
-      status: r.status,
-      assignee_name: r.assigned_to_user?.full_name ?? null,
-    }))
-
-    setResults([...orderTargets, ...requestTargets])
+    })))
     setSearching(false)
   }
 
-  // Routed entirely through the guarded RPCs (link_finance_payment_to_order,
-  // 20260691000000, and link_finance_payment_to_order_request, 20260698000000):
-  // each locks its rows, revalidates eligibility server-side, and writes the
-  // activity rows itself. No client-side .update() of finance_payment_requests
-  // or the activity tables remains.
+  // Routed entirely through the guarded RPC (link_finance_payment_to_order,
+  // 20260691000000): it locks its rows, revalidates eligibility server-side, and
+  // writes the activity rows itself. No client-side .update() of
+  // finance_payment_requests or the activity tables remains.
   const handleLink = async () => {
     if (!selected) return
     setSaving(true)
     setError(null)
 
-    const { error: rpcError } = selected.kind === 'order'
-      ? await supabase.rpc('link_finance_payment_to_order', {
-          p_payment_request_id: payment.id,
-          p_order_id:           selected.id,
-        })
-      : await supabase.rpc('link_finance_payment_to_order_request', {
-          p_payment_request_id: payment.id,
-          p_order_request_id:   selected.id,
-        })
+    const { error: rpcError } = await supabase.rpc('link_finance_payment_to_order', {
+      p_payment_request_id: payment.id,
+      p_order_id:           selected.id,
+    })
 
     setSaving(false)
     if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
 
-    // Tell the request creator their payment is now attached. Reuses the
-    // existing finance_linked event for both targets; the number in the
-    // message makes the target type obvious (BOE-… vs ORD-REQ-…).
+    // Tell the submitter their payment is now attached.
     void notifyFinance({
       event: 'finance_linked',
       requestNumber: payment.request_number,
       entityId: payment.id,
       creatorId: payment.submitted_by,
       clientName: payment.client_name,
-      orderNumber: selected.kind === 'order' ? selected.display_number : selected.request_number,
+      orderNumber: selected.display_number,
     })
 
     onLinked()
@@ -1090,7 +1137,7 @@ function LinkOrderModal({
       </div>
 
       {/* Search */}
-      <Field label="Search Orders & Order Requests">
+      <Field label="Search Confirmed Orders">
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           background: colors.raised, border: `1px solid ${colors.border}`,
@@ -1102,7 +1149,7 @@ function LinkOrderModal({
           <input
             type="text"
             autoFocus
-            placeholder="Order / request number or client name…"
+            placeholder="Order number or client name…"
             value={query}
             onChange={e => handleSearch(e.target.value)}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
@@ -1111,28 +1158,19 @@ function LinkOrderModal({
         </div>
       </Field>
 
-      {/* Results — Confirmed Orders first, then eligible Order Requests, each
-          carrying an explicit type badge. */}
       {results.length > 0 && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
           maxHeight: '240px', overflowY: 'auto',
         }}>
           {results.map((t, idx) => {
-            const isSelected = selected?.kind === t.kind && selected?.id === t.id
-            const number = t.kind === 'order' ? t.display_number : t.request_number
-            const statusMeta = t.kind === 'order'
-              ? (ORDER_STATUS_META[t.status] ?? { label: t.status, color: colors.muted })
-              : (REQUEST_STATUS_META[t.status] ?? { label: t.status, color: colors.muted })
-            const typeBadge = t.kind === 'order'
-              ? { label: 'Confirmed Order', bg: colors.blueTint, color: colors.blue, border: 'rgba(85,133,232,0.25)' }
-              : { label: 'Order Request',   bg: '#F5F3FF',      color: '#5B21B6',   border: '#DDD6FE' }
-            const subline = t.kind === 'order'
-              ? [t.client_name, t.confirm_date ? `Confirmed ${fmtDate(t.confirm_date)}` : null].filter(Boolean).join(' · ')
-              : [t.client_name, t.assignee_name ? `Assignee: ${t.assignee_name}` : null].filter(Boolean).join(' · ')
+            const isSelected = selected?.id === t.id
+            const statusMeta = ORDER_STATUS_META[t.status] ?? { label: t.status, color: colors.muted }
+            const subline = [t.client_name, t.confirm_date ? `Confirmed ${fmtDate(t.confirm_date)}` : null]
+              .filter(Boolean).join(' · ')
             return (
               <div
-                key={`${t.kind}-${t.id}`}
+                key={t.id}
                 onClick={() => setSelected(isSelected ? null : t)}
                 style={{
                   padding: '10px 14px',
@@ -1148,12 +1186,12 @@ function LinkOrderModal({
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{
                       display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-                      background: typeBadge.bg, color: typeBadge.color, border: `1px solid ${typeBadge.border}`,
+                      background: colors.blueTint, color: colors.blue, border: '1px solid rgba(85,133,232,0.25)',
                       fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
                     }}>
-                      {typeBadge.label}
+                      Confirmed Order
                     </span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{number}</span>
+                    <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{t.display_number}</span>
                     <span style={{ fontSize: '11px', fontWeight: 600, color: statusMeta.color }}>{statusMeta.label}</span>
                   </div>
                   <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1164,9 +1202,6 @@ function LinkOrderModal({
                   <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
                     {t.total_value != null ? fmtAmount(t.total_value) : '—'}
                   </div>
-                  {t.kind === 'request' && (
-                    <div style={{ fontSize: '10px', color: colors.muted, marginTop: '2px' }}>Expected value</div>
-                  )}
                   {isSelected && (
                     <div style={{ fontSize: '10px', color: colors.blue, fontWeight: 600, marginTop: '2px' }}>Selected</div>
                   )}
@@ -1179,17 +1214,7 @@ function LinkOrderModal({
 
       {query.trim() && !searching && results.length === 0 && (
         <div style={{ fontSize: '13px', color: colors.muted, textAlign: 'center', padding: '12px 0' }}>
-          No orders or order requests found for &ldquo;{query.trim()}&rdquo;.
-        </div>
-      )}
-
-      {selected?.kind === 'request' && (
-        <div style={{
-          fontSize: '12px', color: '#5B21B6', background: '#F5F3FF',
-          border: '1px solid #DDD6FE', borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
-        }}>
-          Linking does not convert this request. When it is converted to an
-          official Order, this payment will transfer to that Order automatically.
+          No orders found for &ldquo;{query.trim()}&rdquo;.
         </div>
       )}
 
@@ -1205,13 +1230,7 @@ function LinkOrderModal({
           className="boe-btn boe-btn-primary"
           style={{ padding: '8px 18px', fontSize: '13px', opacity: (!selected || saving) ? 0.6 : 1, cursor: (!selected || saving) ? 'not-allowed' : 'pointer' }}
         >
-          {saving
-            ? 'Linking…'
-            : !selected
-              ? 'Link'
-              : selected.kind === 'order'
-                ? `Link to Order ${selected.display_number}`
-                : `Link to Request ${selected.request_number}`}
+          {saving ? 'Linking…' : !selected ? 'Link' : `Link to Order ${selected.display_number}`}
         </button>
       </div>
     </FinanceModal>
@@ -1244,13 +1263,16 @@ const TH_STYLE: React.CSSProperties = {
 function ReceivedPaymentsTable({
   rows,
   canManage,
+  canAllocate,
   canOpenLinkedRecord,
   allocations,
+  labels,
   highlightId,
   onView,
   onEdit,
   onLink,
   onUnlink,
+  onAllocate,
   onOpenLinked,
 }: {
   rows: PaymentRequest[]
@@ -1260,49 +1282,55 @@ function ReceivedPaymentsTable({
    */
   canManage: boolean
   /**
+   * May allocate part of a payment to an Order or a PI Draft — finance.allocate,
+   * the same action allocate_payment_to_target() requires. A DRAWING rule: the
+   * RPC re-derives it, so hiding the control protects nobody and showing it
+   * grants nothing.
+   */
+  canAllocate: boolean
+  /**
    * May open Order Management at all — orders.view, the same module entry
    * /orders/layout.tsx enforces. A DRAWING rule and never an authorization one:
-   * the Order page re-reads its own row under this reader's RLS and shows "not
-   * available" for one they may not open, so the link grants nothing.
+   * the destination re-reads its own row under this reader's RLS and refuses
+   * anything they may not open.
    */
   canOpenLinkedRecord: boolean
   /** How much of each payment has a home. Absent until the second read lands. */
   allocations: Map<string, PaymentAllocationSummary>
+  /** Display numbers for allocation targets, by id, for records RLS returned. */
+  labels: ReadonlyMap<string, string>
   highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
   onLink:   (r: PaymentRequest) => void
   onUnlink: (r: PaymentRequest) => void
+  onAllocate: (r: PaymentRequest) => void
   onOpenLinked: (href: string) => void
 }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
   return (
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '880px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1040px' }}>
         <thead>
           <tr>
-            <th style={TH_STYLE}>Payment Request #</th>
+            <th style={TH_STYLE}>Payment</th>
             <th style={TH_STYLE}>Client</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
-            <th style={TH_STYLE}>Payment Date</th>
-            <th style={TH_STYLE}>Linked Against</th>
-            <th style={TH_STYLE}>Allocation</th>
-            <th style={TH_STYLE}>Payment Mode</th>
-            <th style={TH_STYLE}>Confirmed By</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Received</th>
+            <th style={TH_STYLE}>Status</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>To Orders</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>To PI Drafts</th>
+            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Available</th>
+            <th style={TH_STYLE}>Goes To</th>
+            <th style={TH_STYLE}>Paid On</th>
+            <th style={TH_STYLE}>Mode</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
           </tr>
         </thead>
         <tbody>
           {rows.map(r => {
-            const target = resolveLinkedAgainst(r)
-            const isLinked = target.kind === 'order'
-            const isRequestLinked = target.kind === 'request'
+            const view = rowView(r, allocations, labels, canOpenLinkedRecord)
             const isHighlighted = r.id === highlightId
-            // The Order this row names, by the SAME priority resolveLinkedAgainst
-            // uses: the legacy link first, then an active allocation. Null when
-            // the row is attached to an Order Request or to nothing.
-            const linkedOrderId = isLinked ? (r.order_id ?? r.allocated_order_id) : null
             return (
               <tr
                 key={r.id}
@@ -1321,47 +1349,53 @@ function ReceivedPaymentsTable({
                 <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
                 </td>
+                {/* VERIFICATION, ITS OWN COLUMN. Whether the money arrived and
+                    whose business it belongs to are different questions decided
+                    by different people; a screen that merged them would have to
+                    invent a precedence nobody chose. */}
+                <td style={TD}>
+                  <VerificationBadge status={r.status} />
+                </td>
+                <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
+                  <MoneyCell value={view.figures.orderLinked} />
+                </td>
+                <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
+                  <MoneyCell value={view.figures.piLinked} />
+                </td>
+                {/* THE BALANCE, NOT A YES/NO BADGE. A ₹10L payment with ₹4L
+                    allocated has ₹6L that still needs somebody, and a flag would
+                    hide it behind a confident "yes". An over-allocated row is
+                    marked rather than capped — the excess is a defect in stored
+                    data and is the only evidence of it. */}
+                <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
+                  {view.figures.overAllocated ? (
+                    <span title="Attribution exceeds the payment. This needs a person." style={{ color: colors.red, fontWeight: 700, fontSize: '11px' }}>
+                      Over-allocated
+                    </span>
+                  ) : (
+                    <MoneyCell value={view.figures.available} />
+                  )}
+                </td>
+                {/* Every destination, and a door to each the reader may open.
+                    One the reader may NOT open is named by its kind alone. */}
+                <td style={TD}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                    <DestinationsCell links={view.links} onOpen={onOpenLinked} />
+                    {view.counts.total > 1 && (
+                      <span
+                        title={`${view.counts.total} allocations`}
+                        style={{ fontSize: '10.5px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}
+                      >
+                        ×{view.counts.total}
+                      </span>
+                    )}
+                  </span>
+                </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {fmtDate(r.payment_date)}
                 </td>
-                {/* Linked Against — Confirmed Order first, then Order Request,
-                    then "Not linked". Never blank, and never a pending label
-                    while a real request number is available. */}
-                <td style={TD}>
-                  {/* THE DOOR INTO THE OTHER MODULE. A payment attached to a
-                      Confirmed Order — by the legacy link OR by an active
-                      allocation, which is how PI conversion moves money —
-                      becomes a button to that Order. An Order Request has no
-                      detail route of its own here, so it stays a plain badge
-                      rather than a link that goes nowhere. */}
-                  {linkedOrderId && canOpenLinkedRecord ? (
-                    <button
-                      onClick={e => { e.stopPropagation(); onOpenLinked(orderDetailHref(linkedOrderId)) }}
-                      title={`Open ${target.label}`}
-                      style={{
-                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                        font: 'inherit', textAlign: 'left',
-                      }}
-                    >
-                      <LinkedAgainstBadge target={target} interactive />
-                    </button>
-                  ) : (
-                    <LinkedAgainstBadge target={target} />
-                  )}
-                </td>
-                {/* How much of this payment has been given a home — the
-                    question Finance asks that no Order screen can answer, since
-                    an Order reads only its own allocations. "Not visible to
-                    you" when this reader may not see every allocation: an empty
-                    list is not evidence that money is unallocated. */}
-                <td style={TD}>
-                  <AllocationCell summary={allocations.get(r.id) ?? PENDING_ALLOCATION_SUMMARY(r.id)} />
-                </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
-                </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {r.approved_by_name ?? '—'}
                 </td>
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div
@@ -1375,37 +1409,40 @@ function ReceivedPaymentsTable({
                     >
                       View
                     </button>
+                    {/* ALLOCATE — offered only where there is a balance to
+                        spend AND the reader may be told what it is. A withheld
+                        balance is null, and allocating against a figure nobody
+                        can vouch for is how the same rupees get spent twice. */}
+                    {canAllocate && view.canAllocate && (
+                      <button
+                        onClick={() => onAllocate(r)}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                      >
+                        {ALLOCATE_ACTION_LABEL}
+                      </button>
+                    )}
                     {canManage && (
                       <>
-                        {/* Link action for fully unlinked suspense payments */}
-                        {!isLinked && !isRequestLinked && (
+                        {/* Link action for a payment with no Order behind it. */}
+                        {!r.order_id && (
                           <button
                             onClick={() => onLink(r)}
                             className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.blue }}
                           >
                             Link
                           </button>
                         )}
-                        {/* Unlink from an Order Request — same reason-required
-                            flow, routed through
-                            unlink_finance_payment_from_order_request
-                            (20260698000000), same new_order-origin gate. */}
-                        {isRequestLinked && r.payment_against === 'new_order' && (
-                          <button
-                            onClick={() => onUnlink(r)}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.muted }}
-                          >
-                            Unlink
-                          </button>
-                        )}
-                        {/* Unlink action — only for payments that originated as a new
-                            order. An existing_order payment was validated against a
-                            real order at submission and unlink_finance_payment_from_order
-                            (20260691000000) rejects it outright, so the option is not
-                            offered here at all. */}
-                        {isLinked && r.payment_against === 'new_order' && (
+                        {/* Unlink — only for a payment that originated as a new
+                            order. An existing_order payment was validated
+                            against a real Order at submission and
+                            unlink_finance_payment_from_order (20260691000000)
+                            rejects it outright, so the option is not offered.
+                            A retired Order Request linkage is unlinkable for
+                            the same reason it must be: it is the one way that
+                            money reaches a real target. */}
+                        {(r.order_id || r.order_request_id) && r.payment_against === 'new_order' && (
                           <button
                             onClick={() => onUnlink(r)}
                             className="boe-btn boe-btn-ghost"
@@ -1424,10 +1461,7 @@ function ReceivedPaymentsTable({
                         {/* No Delete. A row on this page is a Received Payment —
                             money that actually arrived — and is permanent bank
                             payment history (20260705000000). The database
-                            refuses the delete regardless of what the UI offers:
-                            the admin policy is now unapproved-only and
-                            finance_payment_requests_guard_approved_delete no
-                            longer exempts admins or the service role. */}
+                            refuses the delete regardless of what the UI offers. */}
                       </>
                     )}
                   </div>
@@ -1441,21 +1475,152 @@ function ReceivedPaymentsTable({
   )
 }
 
+// ── The mobile list ───────────────────────────────────────────────────────────
+//
+// The table has eleven columns and is honestly wide. On a phone it would either
+// overflow the page horizontally — which the app's shell clips — or shrink into
+// unreadable columns, so below the breakpoint the same rows are drawn as CARDS.
+//
+// SAME DATA, SAME rowView, SAME DECISIONS. Nothing is hidden on mobile that a
+// desktop reader is shown: the three money figures, the verification state, the
+// destinations and their doors are all here. What changes is the shape.
+
+function ReceivedPaymentsCards({
+  rows, canAllocate, canOpenLinkedRecord, allocations, labels, highlightId, onView, onAllocate, onOpenLinked,
+}: {
+  rows: PaymentRequest[]
+  canAllocate: boolean
+  canOpenLinkedRecord: boolean
+  allocations: Map<string, PaymentAllocationSummary>
+  labels: ReadonlyMap<string, string>
+  highlightId?: string | null
+  onView: (r: PaymentRequest) => void
+  onAllocate: (r: PaymentRequest) => void
+  onOpenLinked: (href: string) => void
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      {rows.map(r => {
+        const view = rowView(r, allocations, labels, canOpenLinkedRecord)
+        return (
+          <div
+            key={r.id}
+            id={`payment-row-${r.id}`}
+            onClick={() => onView(r)}
+            style={{
+              padding: '12px 14px',
+              borderBottom: `1px solid ${colors.border}`,
+              background: r.id === highlightId ? colors.amberTint : undefined,
+              cursor: 'pointer',
+              display: 'flex', flexDirection: 'column', gap: '8px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.client_name}
+              </span>
+              <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                {fmtAmount(r.amount)}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <VerificationBadge status={r.status} />
+              <span style={{ fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
+                {r.request_number} · {fmtDate(r.payment_date)}
+              </span>
+            </div>
+
+            {/* The three figures, wrapped rather than scrolled. */}
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px' }}>
+              <span>
+                <span style={{ color: colors.muted }}>Orders </span>
+                <MoneyCell value={view.figures.orderLinked} />
+              </span>
+              <span>
+                <span style={{ color: colors.muted }}>PI Drafts </span>
+                <MoneyCell value={view.figures.piLinked} />
+              </span>
+              <span>
+                <span style={{ color: colors.muted }}>Available </span>
+                {view.figures.overAllocated
+                  ? <span style={{ color: colors.red, fontWeight: 700 }}>Over-allocated</span>
+                  : <MoneyCell value={view.figures.available} />}
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <DestinationsCell links={view.links} onOpen={onOpenLinked} />
+              {canAllocate && view.canAllocate && (
+                <button
+                  onClick={e => { e.stopPropagation(); onAllocate(r) }}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                >
+                  {ALLOCATE_ACTION_LABEL}
+                </button>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+/**
+ * Everything one row needs, decided once for both the table and the cards.
+ *
+ * THE FIGURES ARE THE PROJECTION'S, read through the canonical classification
+ * rather than recomputed from the allocation rows in hand. The database filtered
+ * and counted this page by those columns, and a second answer derived in the
+ * browser would disagree with the narrowing the reader just applied.
+ */
+function rowView(
+  r: PaymentRequest,
+  allocations: Map<string, PaymentAllocationSummary>,
+  labels: ReadonlyMap<string, string>,
+  canOpenOrders: boolean,
+) {
+  const figures = paymentRowFigures(r as unknown as ClassifiablePayment)
+  const summary = allocations.get(r.id) ?? PENDING_ALLOCATION_SUMMARY(r.id)
+  const links = paymentLinks({
+    summary,
+    directOrder: directOrderOf(r),
+    labels,
+    canOpenOrders,
+  })
+  return {
+    figures,
+    summary,
+    links,
+    counts: linkCounts(links),
+    // A BALANCE THAT WAS WITHHELD IS NOT A BALANCE TO SPEND. `available` is null
+    // when this reader cannot see every allocation of this payment, and the
+    // control is not offered — the RPC would compute the true balance under a
+    // lock and could refuse, but offering a control on a figure nobody can
+    // vouch for invites exactly the double-spend the withholding prevents.
+    canAllocate: figures.available !== null
+      && Number(figures.available) > 0
+      && r.status !== 'rejected',
+  }
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 // One component, two routes: /finance/received/linked and
 // /finance/received/unlinked each render it with their own `mode`. The table,
 // the detail modal and every link/unlink action are shared verbatim — only the
 // query predicate, the copy and the filter row differ.
 
-export function ReceivedPaymentsView({ mode }: { mode: ReceivedPaymentsMode }) {
+export function ReceivedPaymentsView({ view }: { view: PaymentView }) {
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ReceivedPaymentsViewInner mode={mode} />
+      <ReceivedPaymentsViewInner view={view} />
     </Suspense>
   )
 }
 
-function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
+function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
   const [pageLoading,    setPageLoading]    = useState(true)
   // Finance authority for the SIGNED-IN user. Starts empty and is only
   // widened once the resolver answers, so no correction control can flash
@@ -1472,7 +1637,6 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   const [unlinking,      setUnlinking]      = useState(false)
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
-  const [linkage,        setLinkage]        = useState<LinkageFilter>('all')
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
   // ── The allocation narrowing ──
@@ -1498,7 +1662,19 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // Finance with the count beside them reading a confident "1000". `total` is
   // the database's exact count, so the line under the toolbar describes the
   // whole set rather than the length of what happened to load.
-  const [page,           setPage]           = useState(1)
+  // ── The page, and which view it belongs to ──
+  //
+  // HELD TOGETHER, deliberately. Changing the view is a different set entirely,
+  // so page four of the old one means nothing in the new one — but the view
+  // arrives as a PROP from the route, not from a control this component owns,
+  // so there is no click to hang a reset on. Resetting it in an effect would set
+  // state during a render it also caused, which is the cascading-render pattern
+  // react-hooks/set-state-in-effect exists to catch. Deriving it instead costs
+  // nothing and cannot render twice.
+  const [pageState, setPageState] = useState<{ view: PaymentView; page: number }>({ view, page: 1 })
+  const page = pageState.view === view ? pageState.page : 1
+  const setPage = (next: number | ((current: number) => number)) =>
+    setPageState({ view, page: typeof next === 'function' ? next(page) : next })
   const [total,          setTotal]          = useState<number | null>(null)
   // How much of each payment on THIS PAGE has been given a home. A second
   // bounded read keyed on the ids already on screen — one query for the page,
@@ -1510,8 +1686,19 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // Order or PI it names. It grants nothing — the destination re-reads its own
   // record under this reader's RLS and refuses anything they may not open.
   const [ordersCaps,     setOrdersCaps]     = useState(NO_ORDERS_CAPABILITIES)
+  // Display numbers for the Orders and PI Drafts this page's allocations name,
+  // read under the reader's OWN RLS. A target whose row did not come back is
+  // named by its kind alone and offers no door — see paymentLinks.ts.
+  const [targetLabels,   setTargetLabels]   = useState<Map<string, string>>(new Map())
+  const [allocateTarget, setAllocateTarget] = useState<PaymentRequest | null>(null)
+  // Whether the projection carries the classification at all. Fails closed: the
+  // columns arrive with 20261008000000, and until then the tabs are not drawn
+  // and no query is built against a column that does not exist.
+  const [classificationReady, setClassificationReady] = useState(false)
+  // Below this the eleven-column table becomes cards. Same data, same decisions.
+  const [isMobile,       setIsMobile]       = useState(false)
 
-  const meta         = MODE_META[mode]
+  const meta         = VIEW_META[view]
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
@@ -1520,6 +1707,19 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // Guards the one-time ?payment= deep-link resolution below (see effect near
   // the bottom of init) so it can never re-fire and reopen a closed modal.
   const deepLinkHandled = useRef(false)
+
+  // ── Wide table, or cards ──
+  //
+  // Measured rather than guessed at from a user-agent string, and re-measured on
+  // resize so rotating a tablet lands on the right shape. Starts false, which is
+  // the desktop table: the first paint on a phone swaps to cards within a frame,
+  // and starting with cards would flash them on every desktop load instead.
+  useEffect(() => {
+    const measure = () => setIsMobile(window.innerWidth < PAYMENTS_TABLE_BREAKPOINT)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [])
 
   // The narrowing, as the DATABASE will be asked it. Held in a ref as well as
   // in state so the loader always reads the CURRENT filters rather than the ones
@@ -1541,13 +1741,16 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     const dates = dateRange(dateFrom, dateTo)
     return {
       search: receivedPaymentsSearchFilter(search),
-      linkage,
+      // The VIEW is not a filter the reader applied; it is where they are. It is
+      // in this object because the loader has to send it, and out of isNarrowed
+      // for the same reason — see receivedPaymentsQuery.ts.
+      view,
       dateFrom: dates.from,
       dateTo: dates.to,
       // Never sent unless the column is there AND this reader may trust it.
       allocation: allocationOffered ? allocation : ('all' as AllocationFilter),
     }
-  }, [search, linkage, dateFrom, dateTo, allocation, allocationOffered])
+  }, [search, view, dateFrom, dateTo, allocation, allocationOffered])
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for
@@ -1587,22 +1790,21 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
-        allocated_order_id, allocated_order_number, is_order_allocated
+        allocated_order_id, allocated_order_number, is_order_allocated,
+        ${RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS.join(', ')}
       `, { count: 'exact' })
-      .in('status', CONFIRMED_PAYMENT_STATUSES as unknown as string[])
+      // The classified scope: every payment that is not rejected. Rejected money
+      // is not money, and the projection's own booleans refuse it a second time.
+      .in('status', CLASSIFIED_PAYMENT_STATUSES as unknown as string[])
 
-    // Either linkage counts. Filtered in the database rather than in the browser
-    // so neither page ever holds the other's rows — and through the SAME
-    // applyLinkageScope the sidebar counts use, so the list and the number
-    // beside its nav entry are one predicate, not two that must be kept in step.
-    let scoped = applyLinkageScope(base, mode)
+    let scoped = base
 
     // ── THE NARROWING, IN THE DATABASE ──
     //
-    // Search and the linkage filter used to run in the BROWSER, over whatever
-    // the unbounded query happened to return. Both had to move here the moment
-    // the list became paged: filtering a page after the fact narrows only the
-    // fifty rows in hand and silently hides every match on page two.
+    // Search and the classification both used to run in the BROWSER, over
+    // whatever the unbounded query happened to return. Both had to move here the
+    // moment the list became paged: filtering a page after the fact narrows only
+    // the fifty rows in hand and silently hides every match on page two.
     //
     // Every clause narrows a set RLS has ALREADY decided this caller may see —
     // RECEIVED_PAYMENTS_SOURCE is security_invoker — so no filter here can widen
@@ -1611,10 +1813,11 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     // would otherwise be parsed as MORE FILTER rather than as text to match.
     if (filters.search) scoped = scoped.or(filters.search)
 
-    for (const clause of linkageFilterClauses(mode === 'linked' ? filters.linkage : 'all')) {
-      if (clause.kind === 'or') scoped = scoped.or(clause.filters)
-      else if (clause.kind === 'isNull') scoped = scoped.is(clause.column, null)
-      else scoped = scoped.not(clause.column, 'is', null)
+    // THE VIEW, as the SAME predicate the sidebar counts use — one definition in
+    // paymentClassification.ts, so the list and the number beside its nav entry
+    // cannot describe different sets.
+    for (const clause of paymentViewFilterClauses(filters.view)) {
+      if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
     }
 
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
@@ -1700,13 +1903,27 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
     if (token !== loadToken.current) return
 
+    const allocationRows = (data ?? []) as PaymentAllocationRow[]
+
+    // ── WHICH DESTINATIONS THIS READER MAY OPEN ──
+    //
+    // Two bounded reads over the ids this page's allocations name, under the
+    // reader's OWN RLS. A record that comes back has a name and a door; one that
+    // does not has neither, and paymentLinks names it by its kind alone.
+    //
+    // ASKING THE DATABASE IS THE POINT. A capability check here would be a
+    // second, coarser answer than RLS's per-record one, and would offer a door
+    // into a record RLS refuses. Bounded twice over: the page is at most fifty
+    // payments, and these are keyed to exactly the targets they name.
+    void loadTargetLabels(allocationRows, rows, token)
+
     setAllocations(summarizePaymentAllocations(
       // `hasDirectLink` carries the payment's own order_id into the rule: a
       // linked payment with no allocations is attributed in full to that Order
       // by the canonical fallback, so it is not free money and must not read
       // "Unallocated" here while the Order counts it.
       rows.map(r => ({ id: r.id, amount: r.amount, hasDirectLink: r.order_id !== null })),
-      (data ?? []) as PaymentAllocationRow[], {
+      allocationRows, {
       readable: !error,
       // Only a reader who can see EVERY allocation may be told "unallocated" on
       // the strength of an empty list. This is the protected finance.view_all
@@ -1723,6 +1940,68 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           .map(r => [r.allocated_order_id as string, r.allocated_order_number as string]),
       ),
     }))
+  }
+
+  /**
+   * The display numbers for every Order and PI Draft this page's payments point
+   * at, for the records this reader may actually read.
+   *
+   * A MISS IS THE ANSWER, NOT A FAILURE. An id that comes back with no row is a
+   * record RLS refused, and paymentLinks turns that into an unnamed destination
+   * with no door — the reader learns that their payment is split without
+   * learning whose business the other share is.
+   *
+   * A PI HAS NO ALLOCATED NUMBER, so it is named by what its workbook carries.
+   * An approved PI's money belongs to the Order, so a PI naming money here is by
+   * definition still a draft and still has no number of its own.
+   */
+  const loadTargetLabels = async (
+    allocationRows: readonly PaymentAllocationRow[],
+    rows: readonly PaymentRequest[],
+    token: number,
+  ) => {
+    const orderIds = new Set<string>()
+    const submissionIds = new Set<string>()
+    for (const row of allocationRows) {
+      if (row.status !== 'active') continue
+      if (row.order_id) orderIds.add(row.order_id)
+      if (row.order_submission_id) submissionIds.add(row.order_submission_id)
+    }
+    // The direct-link fallback's Order is a destination too, and its number is
+    // often already on the projection row — but not always, so it is asked for
+    // here rather than assumed.
+    for (const row of rows) {
+      if (row.order_id) orderIds.add(row.order_id)
+    }
+
+    if (orderIds.size === 0 && submissionIds.size === 0) {
+      if (token === loadToken.current) setTargetLabels(new Map())
+      return
+    }
+
+    const [ordersRes, submissionsRes] = await Promise.all([
+      orderIds.size > 0
+        ? supabase.from('orders').select('id, display_number').in('id', [...orderIds])
+        : Promise.resolve({ data: [] }),
+      submissionIds.size > 0
+        ? supabase.from('order_submissions')
+            .select('id, source_order_number, source_workbook_name')
+            .in('id', [...submissionIds])
+        : Promise.resolve({ data: [] }),
+    ])
+
+    if (token !== loadToken.current) return
+
+    const labels = new Map<string, string>()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const row of ((ordersRes.data ?? []) as any[])) {
+      if (row.display_number) labels.set(row.id, row.display_number)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const row of ((submissionsRes.data ?? []) as any[])) {
+      labels.set(row.id, row.source_order_number || row.source_workbook_name || 'Draft')
+    }
+    setTargetLabels(labels)
   }
 
   // Every mutation on this page — link, unlink, edit, status correction — can
@@ -1779,6 +2058,23 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           result.error ? null : { columns: [ALLOCATED_TOTAL_COLUMN, 'allocation_state'] }))
         .catch(() => false)
 
+      // ── IS THE CLASSIFICATION THERE? ──
+      //
+      // The same shape, for the same reason. The four views exist only once
+      // 20261008000000 is applied; until then the tab strip is not drawn and no
+      // query is built against a column that does not exist. A strip whose tabs
+      // all returned the same rows would look like a working control that
+      // quietly does nothing.
+      //
+      // In this group, so it costs no wait.
+      const classificationProbe = supabase
+        .from(RECEIVED_PAYMENTS_SOURCE)
+        .select(`id, ${RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS.join(', ')}`)
+        .limit(1)
+        .then((result: { error: unknown }) => paymentClassificationAvailable(
+          result.error ? null : { columns: [...RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS] }))
+        .catch(() => false)
+
       // THE ALLOCATION READ'S SAFETY FLAG, PUBLISHED BEFORE IT IS NEEDED.
       // loadAllocations must know whether an EMPTY allocation list is conclusive
       // for this reader, and that answer depends on both calls above. Handing it
@@ -1791,15 +2087,18 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           deriveFinanceCapabilities((who as UserProfile | null)?.role, perms).canViewAllFinance)
         .catch(() => false)
 
-      const [{ data: me }, financePerms, ordersPerms, allocationAvailable] = await Promise.all([
-        profilePromise,
-        financePromise,
-        ordersPromise,
-        allocationProbe,
-        loadRequests(),
-      ])
+      const [{ data: me }, financePerms, ordersPerms, allocationAvailable, classificationAvailable] =
+        await Promise.all([
+          profilePromise,
+          financePromise,
+          ordersPromise,
+          allocationProbe,
+          classificationProbe,
+          loadRequests(),
+        ])
 
       setAllocationReady(allocationAvailable)
+      setClassificationReady(classificationAvailable)
       setProfile(me as UserProfile)
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
@@ -1825,7 +2124,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
     const timer = setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.linkage, filters.dateFrom, filters.dateTo, filters.allocation, page])
+  }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.allocation, page])
 
   // A narrowing change moves the reader back to page one — staying on page four
   // of a result set that now has one page would show an empty table over a
@@ -1837,15 +2136,13 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // here the page reset is simply part of what changing a filter means.
   const narrowBy = <T,>(set: (value: T) => void) => (value: T) => { set(value); setPage(1) }
   const applySearch   = narrowBy(setSearch)
-  const applyLinkage  = narrowBy(setLinkage)
   const applyDateFrom = narrowBy(setDateFrom)
   const applyDateTo   = narrowBy(setDateTo)
   const applyAllocation = narrowBy(setAllocation)
 
   // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
   // Runs exactly once, once `requests` is loaded. Sources: the Admin Action
-  // Queue (action=link) and the Order Requests details modal's per-payment Edit
-  // action (action=edit). Each modal auto-opens only when the loaded payment
+  // Queue (action=link) and Finance notifications. Each modal auto-opens only when the loaded payment
   // still satisfies the same rule the manual button uses — a stale, already
   // linked, or not-permitted payment is simply highlighted, never a fatal error.
   useEffect(() => {
@@ -1922,7 +2219,7 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
 
       // Drop the deep-link params so a refresh or back-navigation can't
       // reopen the modal.
-      router.replace(meta.path)
+      router.replace(viewHref(view))
     }
     resolveDeepLink()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1977,12 +2274,11 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
-  const narrowed = isNarrowed({ search, linkage, dateFrom: filters.dateFrom, dateTo: filters.dateTo, allocation: filters.allocation })
+  const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo, allocation: filters.allocation })
   const pages = pageCount(total)
 
   const clearFilters = () => {
     setSearch('')
-    setLinkage('all')
     setDateFrom('')
     setDateTo('')
     setAllocation('all')
@@ -1998,7 +2294,51 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       subtitle={meta.subtitle}
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
+      activeReceivedView={view}
     >
+      {/* ── The four views ──
+          Where the reader IS, not a filter they applied — so this is a tab
+          strip and not another control in the toolbar, and it is absent from
+          isNarrowed. Each tab is a route, so a view is deep-linkable, shareable
+          and survives a refresh; the narrowing itself is the database's.
+
+          NOT DRAWN AT ALL until the projection carries the classification
+          (20261008000000). A strip whose tabs all returned the same rows would
+          be worse than no strip: it would look like a working control that
+          quietly does nothing. */}
+      {classificationReady && (
+        <div
+          role="tablist"
+          aria-label="Payment views"
+          style={{
+            display: 'flex', gap: '4px', flexWrap: 'wrap',
+            marginBottom: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {PAYMENT_VIEW_OPTIONS.map(option => {
+            const active = option.value === view
+            return (
+              <button
+                key={option.value}
+                role="tab"
+                aria-selected={active}
+                title={option.description}
+                onClick={() => router.push(viewHref(option.value))}
+                style={{
+                  padding: '6px 12px', borderRadius: '8px', flexShrink: 0,
+                  fontSize: '12px', fontWeight: active ? 700 : 500,
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                  border: active ? '1.5px solid #DC1F2E' : `1px solid ${colors.border}`,
+                  background: active ? 'rgba(220,31,46,0.04)' : colors.raised,
+                  color: active ? '#DC1F2E' : colors.secondary,
+                }}
+              >
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+      )}
       {/* ── Toolbar ── search, the Linked-only linkage filter, and the result
           count. Which linkage a page shows is now the route, so there is no
           status navigation left inside the card below. */}
@@ -2027,27 +2367,9 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
           )}
         </div>
 
-        {/* Linked Payments only — a payment is attached to a Confirmed Order or
-            to an Order Request, never both, so this simply narrows to one.
-            Non-Linked Payments holds one kind by definition, so it needs no
-            filter — one that could never match would be worse than none. */}
-        {mode === 'linked' && (
-          <select
-            className="boe-input"
-            aria-label="Filter by linkage type"
-            value={linkage}
-            onChange={e => applyLinkage(e.target.value as LinkageFilter)}
-            style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
-          >
-            {LINKAGE_FILTER_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        )}
-
         {/* ── How much of it has a home ──
             Answered by the database across the WHOLE narrowed set, so it
-            composes correctly with search, the date range, the linkage filter
+            composes correctly with search, the date range, the view
             and paging — a state computed over the loaded page would narrow
             fifty rows and hide every match on page two.
 
@@ -2144,18 +2466,35 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
             ) : meta.empty}
           </div>
         ) : (
-          <ReceivedPaymentsTable
-            rows={visible}
-            canManage={caps.canManageFinance}
-            canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
-            allocations={allocations}
-            highlightId={highlightId}
-            onView={r  => setDetailRequest(r)}
-            onEdit={r  => setEditRequest(r)}
-            onLink={r  => setLinkRequest(r)}
-            onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
-            onOpenLinked={href => router.push(href)}
-          />
+          isMobile ? (
+            <ReceivedPaymentsCards
+              rows={visible}
+              canAllocate={caps.canAllocatePayment}
+              canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
+              allocations={allocations}
+              labels={targetLabels}
+              highlightId={highlightId}
+              onView={r => setDetailRequest(r)}
+              onAllocate={r => setAllocateTarget(r)}
+              onOpenLinked={href => router.push(href)}
+            />
+          ) : (
+            <ReceivedPaymentsTable
+              rows={visible}
+              canManage={caps.canManageFinance}
+              canAllocate={caps.canAllocatePayment}
+              canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
+              allocations={allocations}
+              labels={targetLabels}
+              highlightId={highlightId}
+              onView={r  => setDetailRequest(r)}
+              onEdit={r  => setEditRequest(r)}
+              onLink={r  => setLinkRequest(r)}
+              onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
+              onAllocate={r => setAllocateTarget(r)}
+              onOpenLinked={href => router.push(href)}
+            />
+          )
         )}
 
         {/* ── Paging ──
@@ -2219,6 +2558,25 @@ function ReceivedPaymentsViewInner({ mode }: { mode: ReceivedPaymentsMode }) {
       )}
 
 
+
+      {/* ── Allocate ──
+          The one control that spends part of a payment, offering exactly the
+          two targets the business has: a permitted Confirmed Order or a
+          permitted PI Draft. Every gate is allocate_payment_to_target()'s. */}
+      {allocateTarget && (
+        <AllocatePaymentModal
+          payment={{
+            id: allocateTarget.id,
+            request_number: allocateTarget.request_number,
+            client_name: allocateTarget.client_name,
+            amount: allocateTarget.amount,
+            available_balance: allocateTarget.available_balance,
+          }}
+          supabase={supabase}
+          onClose={() => setAllocateTarget(null)}
+          onAllocated={() => { setAllocateTarget(null); refreshAfterMutation() }}
+        />
+      )}
 
       {linkRequest && (
         <LinkOrderModal

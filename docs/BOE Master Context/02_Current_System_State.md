@@ -4,6 +4,13 @@
 
 Last Updated: September 2026 — Order Management state, routes, storage and permissions. See "Order Management — where it stands".
 
+**Branch — Order Requests retired, and one payment classification.** The Order
+Request workflow is retired; PI Drafts are the only pre-approval Order workflow,
+and a Confirmed Order arises only from an approved PI. Payments carry one
+canonical classification — Orders, PI Drafts, Available — computed by the
+database. Both are described below and are **not yet applied**: they arrive with
+migrations `20261007000000` and `20261008000000`, which have not been pushed.
+
 ---
 
 # MODULE STATUS OVERVIEW
@@ -1232,20 +1239,23 @@ exception approval, PI/Order continuity, numbering or documents changed.
 
 | Route | What it is |
 | --- | --- |
-| `/orders` | Dashboard: running Orders, five figures above them |
+| `/orders` | Dashboard: PI Drafts, review queue, Confirmed Orders and the money. **Branch:** reworked around the PI workflow |
 | `/orders/all` | Every Order the viewer may see, filtered and sorted |
 | `/orders/[id]` | One Confirmed Order. **Branch:** gains the approved-PI handoff and the documents card |
-| `/orders/drafts` | PI drafts and submissions |
+| `/orders/drafts` | PI drafts and submissions, with the review queue at the top |
 | `/orders/drafts/[submissionId]` | One PI: review, decisions, payments, approval |
 | `/orders/import` | Upload a PI workbook and read it back |
-| `/orders/requests` | Order Requests list |
-| `/orders/requests/[id]` | One Order Request |
+| `/orders/requests` | **Branch:** the retired-workflow notice, with an `Open PI Drafts` action |
+| `/orders/requests/[id]` | **Branch:** the same notice, plus the Confirmed Order a converted request became where the reader may open it |
 | `/orders/notifications` | Order Management notifications |
 
 API routes: `/api/orders/[id]`, `/api/orders/import/process-draft`,
-`/api/orders/notify`, `/api/orders/requests/*`, `/api/orders/submissions/*`,
-`/api/orders/test-data-cleanup`, and — **branch** —
+`/api/orders/submissions/*`, `/api/orders/test-data-cleanup`, and — **branch** —
 `POST /api/orders/[id]/documents`.
+
+**Branch — removed:** `/api/orders/notify` and `/api/orders/requests/*`. Every
+one of them served a step in the retired workflow, and each was reachable by
+POST whatever the sidebar offered.
 
 ### Storage — the `order-files` bucket
 
@@ -1306,3 +1316,199 @@ them.
 Retry never creates an Order, never allocates a number and never moves a payment
 allocation — asserted structurally in the migration, and behaviourally in
 `supabase/tests/order_document_generation_assertions.sql`.
+
+---
+
+# ORDER REQUESTS — RETIRED (branch, not applied)
+
+## The only Order lifecycle
+
+```
+  PI upload / import
+      ▼
+  PI Draft                      ← anything not finally approved stays here
+      ▼
+  submit for review
+      ▼
+  Finance / payment conditions
+      ▼
+  management approval
+      ▼
+  Confirmed Order               ← only an approved PI becomes one
+```
+
+There is no active Order Request creation, list, dashboard card, action,
+navigation entry or workflow. **Finance Payment Requests are a different record
+on a different table with a different lifecycle and remain fully active** —
+raising one, verifying one, correcting one, allocating one and reversing an
+allocation all behave exactly as they did.
+
+## What the retirement actually closes
+
+Hiding a screen is not retirement: a route gone from the sidebar is still a POST
+away, and an RPC somebody holds a reference to still runs. `20261007000000`
+closes the write paths, for every caller including the service role and any
+SECURITY DEFINER function:
+
+| Guard | Refuses |
+| --- | --- |
+| `order_requests_refuse_new` (BEFORE INSERT) | every new Order Request |
+| `order_requests_refuse_conversion` (BEFORE UPDATE) | the transition into `converted`, and a new `converted_order_id` |
+| `orders_refuse_request_provenance` (BEFORE INSERT) | a NEW Order carrying request provenance |
+| `zz_finance_payment_requests_refuse_request_target` | a payment that NEWLY names an Order Request |
+
+Plus the dropped `order_requests_requester_insert` policy — with RLS on and no
+INSERT policy, PostgREST refuses the command outright — and EXECUTE revoked from
+`public`, `anon` and `authenticated` on ten RPCs, across every overload:
+`finalize_order_request`, `resubmit_order_request`, `reapply_order_request`,
+`respond_to_clarification`, `edit_order_request`,
+`edit_order_request_attachments`, `request_order_request_clarification`,
+`reject_order_request`, `convert_order_request_to_order` and
+`link_finance_payment_to_order_request`.
+
+None of the guards reads `auth.uid()` and none exempts a role. A retirement an
+admin or the service role could step around would not be one.
+
+## Historical compatibility
+
+**Nothing is deleted.** Not one table, column, foreign key, index, row, storage
+object or audit entry. `order_requests`, `order_request_activity`,
+`order_request_attachments`, `orders.source_order_request_id`,
+`orders.source_request_number`, `finance_payment_requests.order_request_id` and
+`order_request_number` all stay, and every SELECT policy on them is untouched —
+asserted at apply time, so the migration refuses itself rather than shipping a
+partial retirement.
+
+* A confirmed Order created by conversion keeps its provenance, and
+  `prevent_order_source_request_change` still refuses to alter it. Old Orders
+  open exactly as before.
+* `finance_payment_requests.order_request_id` is a historical fact about where
+  money was parked. Nulling it would rewrite the payment trail — and under the
+  canonical attribution rule it has never attributed a rupee, so such a payment
+  now reads as **Available**, which is the truth about it.
+* Five paths stay executable so nothing is stranded: `admin_delete_order_request`,
+  `cleanup_unfinalized_order_request`,
+  `remove_unfinalized_order_request_attachment`,
+  `admin_list_stale_order_request_drafts` and
+  `unlink_finance_payment_from_order_request`. None creates, advances or converts
+  a request; the last is the one way historical money reaches a real target.
+* If the remaining Order Request data is confirmed test data, it goes through the
+  **existing controlled test-data cleanup protocol** (`20260706000000`), not
+  through this migration and not as part of applying it.
+
+## Access Control
+
+Two options are no longer registered against Orders, because each existed only
+for the retired workflow and would now grant nothing:
+
+| Action | What it meant |
+| --- | --- |
+| `orders.approve` | convert an Order Request into an Order |
+| `orders.can_be_order_assignee` | may be NAMED as an Order Request assignee |
+
+Grants already stored are **not deleted**; they resolve to nothing. Offering
+them would be the defect — an administrator would choose an authority nobody can
+exercise. `orders.approve_order` is unaffected and is now the only approval
+authority in the pre-Order workflow; it was deliberately never `approve`, which
+is exactly why the retirement takes nothing away from anybody who reviews PIs.
+
+## Retired routes still answer
+
+`/orders/requests` and `/orders/requests/[id]` render a restrained explanation
+with a single `Open PI Drafts` action. Order Request notifications were sent for
+months and every one of them carries a request id, so a 404 would tell people
+their link is broken. Where the request was converted before the retirement and
+the reader can already open the resulting Order, the notice offers that Order
+too — a READ, under the reader's own RLS, naming nothing they could not already
+see. It offers no control that would restart the workflow and writes nothing.
+
+---
+
+# PAYMENT CLASSIFICATION (branch, not applied)
+
+## The four views
+
+One classification, defined once in `src/lib/finance/paymentClassification.ts`
+and mirrored by the `finance_received_payments` projection
+(`20261008000000`). Both Order Management and Finance read it.
+
+| View | Means |
+| --- | --- |
+| **All Payments** | every payment that is not rejected |
+| **Linked to Orders** | money attributed to one or more Confirmed Orders |
+| **Linked to PI Drafts** | money attributed to one or more PI Drafts |
+| **Available to Allocate** | a positive unallocated balance |
+
+**The first three are not a partition, and must not be.** A payment split
+between an Order and a PI belongs in BOTH linked views, and a partly allocated
+payment appears in `Available` as well as wherever its allocated half went. The
+four counts therefore do not sum to `All`, and each is its own exact query.
+
+## The canonical allocation rule
+
+Unchanged from PR #49. Every figure follows it; nothing restates it:
+
+1. Any active allocation → **the allocations are authoritative**, and the
+   payment's own `order_id` contributes nothing.
+2. No active allocation → the direct linkage attributes the **whole** payment to
+   the Order it names.
+3. A reversed allocation is a withdrawn claim and counts for nothing.
+4. What is left after active allocations is the **available balance**.
+5. Attributed + available = the payment amount, exactly.
+
+The two kind totals — to Orders, to PI Drafts — are that same attributed figure
+**split by target kind**, and are asserted to sum back to it for every payment in
+the database at apply time. A PI has no direct-link fallback, because the schema
+has no PI equivalent of `order_id`.
+
+**A retired Order Request attributes nothing**, and that is the rule rather than
+a special case: rule 2 names `order_id` and only `order_id`.
+
+## What is deliberately withheld
+
+The projection is `SECURITY INVOKER`, so its allocation sums are what THIS caller
+may read. A reader who reaches a payment through PI or Order participation sees
+only the allocations naming records they can open — their sum understates the
+attribution, which **overstates** the balance.
+
+Overstating free money is the one error direction that must never happen: it gets
+the same rupees allocated twice. So `available_balance` is `NULL`, never a
+number, unless the caller's sight is complete — company-wide Finance sight
+(admins included) or their own submitted payment, the same two cases
+`payment_active_allocation_totals()` already treats as complete. A withheld
+balance keeps the payment out of `Available` and out of the allocation control.
+
+## Verification is a second axis
+
+Whether the money ARRIVED and whose business it BELONGS TO are different
+questions decided by different people, and the surface never merges them.
+Awaiting-verification money is real, recorded and allocatable, so it classifies
+exactly like verified money and is reported under its own status. **Rejected
+money is in no view at all** — enforced by the projection's own booleans, in the
+database, so a client that forgot the status filter cannot inflate a total.
+
+**Over-allocated historical payments stay visible as an error state and are never
+silently capped.** The capacity trigger refuses to create that state, so a row in
+it is legacy data that needs a person, and rounding it away would erase the only
+evidence.
+
+## Where it is read
+
+`/finance/received` is one list with four views, selected by `?view=`.
+`/finance/received/linked` and `/finance/received/unlinked` forward to it with
+the query string intact, so existing bookmarks and `?payment=` deep links keep
+working. The Orders dashboard links into the same list; it does not rebuild it.
+
+## Allocation
+
+`allocate_payment_to_target()` is unchanged and remains the only door: it
+requires `finance.allocate`, locks the payment, re-derives the balance under that
+lock, re-validates that the target exists, is eligible and is visible to the
+caller, refuses a duplicate active claim and a rejected payment, and writes the
+activity trail itself. The picker offers a permitted Confirmed Order or a
+permitted PI Draft — **never an Order Request** — searching by order number, PI
+reference or client name, and shows what the target is worth, what it has already
+received under the canonical rule, and what is still outstanding.
+
+Neither `orders.view_all` nor `finance.view_all` is widened. A salesperson sees
+and allocates only within the scope RLS already gives them.

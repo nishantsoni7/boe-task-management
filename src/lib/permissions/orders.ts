@@ -6,35 +6,30 @@ import type { EffectivePermission } from './types'
 // into the booleans the pages branch on. Same shape as assetsAccess.ts,
 // meetings.ts and finance.ts.
 //
-// PARTIALLY WIRED TODAY, and that gap is the point. src/app/orders/layout.tsx
-// already honours resolve_permission('orders','view') for module entry, so a
-// grant really does open the route. Everything INSIDE then re-derives a single
-// `isAdmin` from users.role — src/app/orders/page.tsx:224,
-// src/app/orders/requests/page.tsx:1839,
-// src/app/orders/requests/[id]/page.tsx:822 — so create/edit/delete/approve/
-// export/manage grants are saved, resolved, and checked nowhere. Connecting
-// this file to those pages, with matching server-side checks, is a separate
-// step; nothing here changes Orders behaviour today.
-//
 // The action a capability maps to:
 //
-//   view                   → open /orders and /orders/requests
-//   create                 → raise an order request
-//   edit                   → change an order or request (alongside the existing
-//                            "admin OR assigned_to" ownership rule in
-//                            src/app/orders/requests/components/shared.ts,
-//                            which is ownership, not permission)
-//   approve                → approve an order request
-//   export                 → download the order registers
-//   delete                 → remove an order request
-//   manage                 → administrative control across the module
-//   can_be_order_assignee  → eligible to be NAMED as an Order Request assignee
+//   view                        → open /orders
+//   create                      → upload a PI and start a new order
+//   edit                        → change an order or a PI Draft (alongside the
+//                                 existing ownership rules, which are ownership,
+//                                 not permission)
+//   approve_order               → review and approve an imported PI submission
+//   approve_advance_exception   → decide an advance exception on a submitted PI
+//   export                      → download the order registers
+//   delete                      → remove a record
+//   manage                      → administrative control across the module
+//   view_all                    → see every order in the company
 //
-// `delete`, `manage` and `can_be_order_assignee` are PROTECTED (see levels.ts).
-// The last of those is the strictest: migration 20260697000000 grants it only
-// through employee_permission_overrides for named exceptions, never through
-// role_permissions, so that it can never broaden to every admin/manager/
-// operations/bdm employee. A preset must not reach it either.
+// TWO CAPABILITIES WERE REMOVED WHEN THE ORDER REQUEST WORKFLOW WAS RETIRED.
+// `canApproveOrder` (the `approve` action) meant "convert an Order Request into
+// an Order", and `canBeOrderAssignee` meant "may be named as an Order Request
+// assignee". Both are now Access Control options that grant nothing — the RPCs
+// that read them are revoked from every client role by 20261007000000 §4, and
+// the database refuses the writes they would attempt — so they are no longer
+// registered, derived or offered. See modules.ts for why a grant that confers
+// nothing is worse than no option at all.
+//
+// `delete` and `manage` remain PROTECTED (see levels.ts).
 
 export type OrdersCapabilities = {
   /** May open Order Management at all. Says nothing about which orders are visible. */
@@ -51,20 +46,19 @@ export type OrdersCapabilities = {
   canViewAllOrders: boolean
   canCreateOrder: boolean
   /**
-   * May edit an order or request they are permitted to act on. WHICH records
-   * is still decided by the existing assignment rule and by RLS.
+   * May edit an order or a PI Draft they are permitted to act on. WHICH records
+   * is still decided by the existing ownership rules and by RLS.
    */
   canEditOrder: boolean
-  /** Convert an Order Request into a Confirmed Order. The `approve` action. */
-  canApproveOrder: boolean
   /**
-   * Review an imported PI submission — send it back for changes, and (from the
-   * approval phase) approve it into a numbered Order. Backed by the protected
-   * `approve_order` action, which 20260908000000 registers.
+   * Review an imported PI submission — send it back for changes, reject it, and
+   * approve it into a numbered Order. Backed by the protected `approve_order`
+   * action, which 20260908000000 registers.
    *
-   * NOT the same authority as canApproveOrder. Order Request conversion and PI
-   * approval are separate decisions on separate records, and one must never
-   * imply the other.
+   * THE ONLY APPROVAL AUTHORITY IN THE PRE-ORDER WORKFLOW, now that Order
+   * Request conversion is retired. It was deliberately never the plain `approve`
+   * action, which is exactly why the retirement takes nothing away from anybody
+   * holding this one.
    */
   canApproveOrderSubmission: boolean
   /**
@@ -92,11 +86,6 @@ export type OrdersCapabilities = {
   canDeleteOrder: boolean
   /** Administrative control of the module. */
   canManageOrders: boolean
-  /**
-   * May be selected as an Order Request assignee. Not an action this person
-   * performs — an eligibility other people's forms read. Per-employee only.
-   */
-  canBeOrderAssignee: boolean
 }
 
 export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
@@ -104,13 +93,11 @@ export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canViewAllOrders: false,
   canCreateOrder: false,
   canEditOrder: false,
-  canApproveOrder: false,
   canApproveOrderSubmission: false,
   canApproveAdvanceException: false,
   canExportOrders: false,
   canDeleteOrder: false,
   canManageOrders: false,
-  canBeOrderAssignee: false,
 }
 
 export function deriveOrdersCapabilities(
@@ -129,7 +116,6 @@ export function deriveOrdersCapabilities(
       canViewAllOrders: true,
       canCreateOrder: true,
       canEditOrder: true,
-      canApproveOrder: true,
       canApproveOrderSubmission: true,
       // An active admin decides advance exceptions without an explicit grant,
       // exactly as actor_has_module_permission's admin branch does in the
@@ -138,11 +124,6 @@ export function deriveOrdersCapabilities(
       canExportOrders: true,
       canDeleteOrder: true,
       canManageOrders: true,
-      // Assignee eligibility is NOT implied by being an admin. It is a named
-      // list that other people's dropdowns read, and 20260697000000 exists
-      // precisely so that it does not broaden to every admin. Resolved from
-      // the grant even here.
-      canBeOrderAssignee: allowed('can_be_order_assignee'),
     }
   }
 
@@ -155,7 +136,6 @@ export function deriveOrdersCapabilities(
     canViewAllOrders: withEntry('view_all'),
     canCreateOrder: withEntry('create'),
     canEditOrder: withEntry('edit'),
-    canApproveOrder: withEntry('approve'),
     canApproveOrderSubmission: withEntry('approve_order'),
     // Resolved from its OWN action. approve_order does not imply it, and it
     // does not imply approve_order.
@@ -163,10 +143,5 @@ export function deriveOrdersCapabilities(
     canExportOrders: withEntry('export'),
     canDeleteOrder: withEntry('delete'),
     canManageOrders: withEntry('manage'),
-    // Deliberately NOT gated on module entry: eligibility to be named on a
-    // request is a property of the person, read by somebody else's form. An
-    // employee can be a valid assignee without holding the Orders module
-    // themselves, which is the case 20260699000000 already supports.
-    canBeOrderAssignee: allowed('can_be_order_assignee'),
   }
 }

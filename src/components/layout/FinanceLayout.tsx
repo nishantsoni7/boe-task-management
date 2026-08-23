@@ -15,6 +15,13 @@ import {
   RECEIVED_PAYMENTS_COUNTS_KEY,
 } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  PAYMENT_VIEW_OPTIONS,
+  type PaymentView,
+} from '@/lib/finance/paymentClassification'
+
+/** The one Received Payments list. Its four views are `?view=` on this route. */
+export const RECEIVED_PAYMENTS_PATH = '/finance/received'
 
 type FinanceLayoutProps = {
   profile: UserProfile | null
@@ -23,6 +30,17 @@ type FinanceLayoutProps = {
   actions?: React.ReactNode
   onSignOut: () => void
   onRefresh?: () => Promise<void>
+  /**
+   * Which of the four Received Payments views the reader is on, when they are on
+   * that list at all.
+   *
+   * PASSED IN RATHER THAN READ FROM THE URL. The view lives in `?view=`, and
+   * calling useSearchParams here would put every screen that uses this layout
+   * behind a Suspense boundary for a highlight only one of them needs. The
+   * payments list already resolves the view for its own query; handing the same
+   * value to the sidebar is one source rather than two readings of one URL.
+   */
+  activeReceivedView?: PaymentView
   children: React.ReactNode
 }
 
@@ -33,6 +51,7 @@ export function FinanceLayout({
   actions,
   onSignOut,
   onRefresh,
+  activeReceivedView,
   children,
 }: FinanceLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -83,16 +102,27 @@ export function FinanceLayout({
     { label: 'Payment Requests',      path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
   ]
 
-  // Received Payments is a section, not a destination: the two pages below are
-  // the only list routes, and /finance/received itself only redirects to the
-  // first of them. The heading is deliberately inert so the section can never
-  // open a third list of its own.
-  // `badge` stays undefined only while the count query is still loading; a real
-  // zero renders as "0" rather than disappearing.
-  const receivedSubItems: { label: string; path: string; badge: number | undefined }[] = [
-    { label: 'Linked Payments',     path: '/finance/received/linked',   badge: receivedCounts.linked },
-    { label: 'Non-Linked Payments', path: '/finance/received/unlinked', badge: receivedCounts.unlinked },
-  ]
+  // ── Received Payments: one list, four views ──
+  //
+  // The section used to hold two sibling ROUTES — Linked and Non-Linked — and
+  // that split is gone. It could not express a payment divided between an Order
+  // and a PI Draft, which belongs in both views at once, and it counted a
+  // retired Order Request linkage as though something would still come to
+  // collect the money.
+  //
+  // These four are the canonical classification (paymentClassification.ts), each
+  // a `?view=` on the one list. THEY DO NOT SUM TO "All": a split payment with a
+  // balance is counted in three of them, because it genuinely is in three.
+  //
+  // `badge` stays undefined only while the count query is in flight, or when the
+  // classification columns are not yet in the database — a real zero renders as
+  // "0" rather than disappearing.
+  const receivedSubItems: { label: string; path: string; badge: number | undefined }[] =
+    PAYMENT_VIEW_OPTIONS.map(option => ({
+      label: option.label === 'All' ? 'All Payments' : option.label,
+      path: `${RECEIVED_PAYMENTS_PATH}?view=${option.value}`,
+      badge: receivedCounts[option.value],
+    }))
 
   return (
     <div className="boe-app-shell">
@@ -176,7 +206,12 @@ export function FinanceLayout({
             }}
           >
             {receivedSubItems.map(item => {
-              const active = pathname === item.path
+              // The view lives in the query string, so `pathname` alone cannot
+              // tell these four apart. A screen that is not the payments list
+              // passes no view and highlights none of them.
+              const active = pathname === RECEIVED_PAYMENTS_PATH
+                && activeReceivedView !== undefined
+                && item.path.endsWith(`view=${activeReceivedView}`)
               return (
                 <button
                   key={item.path}
@@ -189,9 +224,8 @@ export function FinanceLayout({
                     style={{ background: active ? '#DC1F2E' : '#A0A9BE' }}
                   />
                   {item.label}
-                  {/* Neutral volume badge — the same grey-on-grey treatment
-                      OrdersLayout uses for its Order Requests count, never the
-                      red unread-alert styling. marginLeft:auto pins it to the
+                  {/* Neutral volume badge — grey on grey, never the red
+                      unread-alert styling. marginLeft:auto pins it to the
                       trailing edge without disturbing the submenu indent. */}
                   {typeof item.badge === 'number' && (
                     <span style={{

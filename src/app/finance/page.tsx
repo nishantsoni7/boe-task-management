@@ -1234,7 +1234,7 @@ function NewPaymentConfirmationModal({
           display: 'flex', flexDirection: 'column', gap: '14px',
         }}>
 
-          {/* Section: which of the three stages is this money against? */}
+          {/* Section: which stage is this money against? */}
           <PaymentTargetFields
             supabase={supabase}
             value={target}
@@ -1244,10 +1244,8 @@ function NewPaymentConfirmationModal({
 
           {/* A record was chosen but carries no client name. Submit is already
               blocked (isTargetComplete); this says why, and where to fix it. */}
-          {isLinkedTarget && (target.selectedRequest || target.selectedOrder) && !clientName && (
-            <ErrorBanner message={target.target === 'order_request'
-              ? 'This Order Request has no client name on file. Correct it on the request before submitting a payment against it.'
-              : 'This order has no client name on file. Correct it on the Order Details page before submitting a payment request.'} />
+          {isLinkedTarget && target.selectedOrder && !clientName && (
+            <ErrorBanner message="This order has no client name on file. Correct it on the Order Details page before submitting a payment request." />
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1258,14 +1256,10 @@ function NewPaymentConfirmationModal({
                   {isLinkedTarget ? (
                     <>
                       <input className="boe-input" value={clientName} readOnly disabled
-                        placeholder={target.target === 'order_request'
-                          ? 'Select an Order Request first'
-                          : 'Select an order first'}
+                        placeholder="Select an order first"
                         style={{ width: '100%' }} />
                       <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                        {target.target === 'order_request'
-                          ? 'Client name is taken from the selected Order Request.'
-                          : 'Client name is taken from the selected order.'}
+                        Client name is taken from the selected order.
                       </span>
                     </>
                   ) : (
@@ -1407,26 +1401,24 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   // The target is editable here for the same reason the amount is: this modal
   // only ever opens on a payment that is still the submitter's to correct
   // (canManageRequest + the .in('status', UNAPPROVED_STATUSES) guard below), and
-  // picking the wrong Order Request is exactly the kind of mistake a
-  // clarification round is for. The database allows it in precisely the same
-  // window: finance_payment_requests_derive_target re-derives the target while
-  // the row is pre-approval and freezes it once approved.
+  // picking the wrong Order is exactly the kind of mistake a clarification round
+  // is for. The database allows it in precisely the same window:
+  // finance_payment_requests_derive_target re-derives the target while the row
+  // is pre-approval and freezes it once approved.
   //
   // Seeded from the row's stored linkage. status/total_value are not part of the
   // stored linkage and are not rendered for an already-selected record, so they
   // are left empty rather than invented.
+  //
+  // A HISTORICAL 'order_request' ROW OPENS AS 'unallocated', not as a target the
+  // form cannot draw. The retired linkage is not selectable and the payload
+  // clears it, which is exactly what correcting such a payment should do: the
+  // money stops naming a retired record and becomes allocatable to a real Order
+  // or PI Draft. Nothing is lost — the correction is a deliberate edit by
+  // somebody who may already edit this row, and the activity trail records it.
   const [target, setTarget] = useState<PaymentTargetState>(() => ({
-    target: readTargetType(r),
+    target: readTargetType(r) === 'confirmed_order' ? 'confirmed_order' : 'unallocated',
     manualClientName: r.client_name,
-    selectedRequest: r.order_request_id
-      ? {
-          id: r.order_request_id,
-          request_number: r.order_request_number ?? '',
-          client_name: r.client_name,
-          status: '',
-          total_value: null,
-        }
-      : null,
     selectedOrder: r.order_id
       ? {
           id: r.order_id,
@@ -1588,14 +1580,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         {isLinkedTarget ? (
           <>
             <input className="boe-input" value={clientName} readOnly disabled
-              placeholder={target.target === 'order_request'
-                ? 'Select an Order Request first'
-                : 'Select an order first'}
+              placeholder="Select an order first"
               style={{ width: '100%' }} />
             <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-              {target.target === 'order_request'
-                ? 'Client name is taken from the selected Order Request.'
-                : 'Client name is taken from the selected order.'}
+              Client name is taken from the selected order.
             </span>
           </>
         ) : (

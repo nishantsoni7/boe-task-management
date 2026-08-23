@@ -88,28 +88,35 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   //             request_order_request_clarification
   //   manage  → assert_order_amender, the choke point for amend_order and
   //             cancel_order
-  //   delete  → admin_delete_order_request, plus the delete API route
-  // create/edit stay on the existing admin-or-assigned ownership rule.
+  //   delete  → admin_delete_order_request, plus the controlled cleanup path
+  // create/edit stay on the existing ownership rules.
   // 'view_all' added by 20260903000000: it is what the two blanket SELECT
   // policies on orders and order_activity_log now require. Before that
   // migration those policies keyed on 'view', so module entry silently carried
   // company-wide sight — the defect this corrects.
   // 'approve_order' added by 20260908000000: it is the authority to review an
   // imported PI submission, checked by request_order_submission_changes() and
-  // by the order_submissions / order-files visibility rules. It is a SEPARATE
-  // action from 'approve', which remains the Order Request conversion
-  // authority — see the note in modules.ts.
+  // by the order_submissions / order-files visibility rules.
   //
-  // 'create' becomes enforced for the SUBMISSION path only: create_order_submission()
-  // and submit_order_submission() both require it. It is still NOT enforced for
-  // Order Requests, which keep the admin-or-assigned ownership rule, so this
-  // entry cannot claim create is enforced module-wide.
+  // 'approve' AND 'can_be_order_assignee' ARE GONE from this list because the
+  // module no longer declares them (20261007000000 retires the Order Request
+  // workflow and 20261008000000's sibling change removes the two options). They
+  // were enforced by convert_order_request_to_order, reject_order_request,
+  // request_order_request_clarification and is_eligible_order_assignee — every
+  // one of which is now revoked from all client roles or unreachable. An entry
+  // claiming they are enforced would be describing an authority nobody can
+  // exercise.
+  //
+  // 'create' is enforced for the SUBMISSION path: create_order_submission() and
+  // submit_order_submission() both require it. Edit still follows the
+  // ownership rules on a PI Draft, so this entry cannot claim edit is enforced
+  // module-wide.
   orders: {
     state: 'partial',
     enforcedActions: [
-      'view', 'view_all', 'approve', 'approve_order', 'manage', 'delete', 'can_be_order_assignee',
+      'view', 'view_all', 'approve_order', 'manage', 'delete',
     ],
-    detail: 'Opening the module, seeing all company orders, approving Order Requests, reviewing PI submissions, managing, deleting and assignee eligibility are enforced. Create and edit still follow the admin-or-assigned rule for Order Requests.',
+    detail: 'Opening the module, seeing all company orders, reviewing and approving PI submissions, managing and deleting are enforced. Edit still follows the ownership rules on a PI Draft.',
   },
 
   // Cut over by the same migration:
