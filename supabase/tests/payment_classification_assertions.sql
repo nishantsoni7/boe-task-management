@@ -34,6 +34,9 @@
 -- PREREQUISITES (controlled environment, migrations already applied):
 --   * psql as a role that bypasses RLS.
 --   * 20261004000000, 20261005000000, 20261007000000 and 20261008000000 applied.
+--   * at least one public.order_submissions row, to allocate PI money against.
+--   * at least one public.users row to act as; and for case O to run rather than
+--     skip, a second non-admin, non-deleted user to read as.
 --
 -- On success prints NOTICE 'ALL ASSERTIONS PASSED' and rolls back.
 
@@ -69,6 +72,17 @@ begin
   if v_pi is null then
     raise exception 'this suite needs at least one order_submissions row to allocate against';
   end if;
+
+  -- READ AS THE SUBMITTER. `available_balance` is NULL unless the caller's sight
+  -- of the allocation table is complete for that payment, and a psql session with
+  -- no JWT claim has auth.uid() NULL, so every balance below would come back NULL
+  -- and A-N would be asserting nothing. Every fixture is submitted by v_actor, so
+  -- claiming that identity is the smallest thing that makes the reads honest —
+  -- and it is a claim, not a grant: section O drops it again and proves an
+  -- incomplete reader is still told nothing.
+  perform set_config('request.jwt.claim.sub', v_actor::text, true);
+  perform set_config('request.jwt.claims',
+    json_build_object('sub', v_actor, 'role', 'authenticated')::text, true);
 
   perform set_config('test.cls_x',  v_x::text,     true);
   perform set_config('test.cls_y',  v_y::text,     true);

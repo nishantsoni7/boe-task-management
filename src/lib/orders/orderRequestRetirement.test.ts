@@ -61,6 +61,21 @@ const sql = read(MIGRATION)
 /** Executable SQL only — a comment explains, it does not run. */
 const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 
+/**
+ * The migration in two halves, split at its apply-time assertion block.
+ *
+ * Everything before §5 is the retirement itself, and it must contain no DML at
+ * all. §5 is allowed to PROBE — it issues an UPDATE and a DELETE as a client
+ * session and requires each to affect zero rows, which is how the apply proves
+ * on the real database that neither reaches a historical row. A probe that ever
+ * did reach one raises, and the whole migration rolls back.
+ */
+const executable = (text: string) =>
+  text.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+const ASSERTIONS_AT = sql.indexOf('5. Apply-time assertions')
+const changeCode = executable(sql.slice(0, ASSERTIONS_AT))
+const assertionCode = executable(sql.slice(ASSERTIONS_AT))
+
 /** Every RPC the retirement revokes from every client role. */
 const RETIRED_RPCS = [
   'finalize_order_request',
@@ -195,6 +210,25 @@ describe('no active API or RPC can create a new Order Request', () => {
     assert.equal(/create policy[^;]*on public\.order_requests[^;]*for insert/i.test(code), false)
   })
 
+  test('the last permissive DELETE policy goes with it', () => {
+    // Its only conceivable caller was a client issuing a raw DELETE. Every SQL
+    // delete of an Order Request lives inside a SECURITY DEFINER function, which
+    // bypasses RLS, so nothing loses a door it was using.
+    assert.match(code, /drop policy if exists "order_requests_admin_delete_unconverted" on public\.order_requests;/)
+    assert.equal(/create policy[^;]*on public\.order_requests[^;]*for (delete|update)/i.test(code), false)
+  })
+
+  test('the RESTRICTIVE module gate is KEPT, not dropped', () => {
+    // order_requests_module_entry_gate is `as restrictive for all`. PostgreSQL
+    // AND-s a restrictive policy onto the permissive ones; it can only narrow,
+    // never grant. On a table with no permissive INSERT policy left it grants
+    // nothing at all — so `cmd = ALL` here is not INSERT authority, and dropping
+    // it would REMOVE a restriction and widen the retired table. It is also one
+    // of the 27 module gates 20260905000000 asserts the presence of.
+    assert.equal(/drop policy[^;]*order_requests_module_entry_gate/i.test(code), false)
+    assert.match(sql, /order_requests_module_entry_gate[\s\S]*must remain/i)
+  })
+
   test('a trigger refuses every INSERT, beneath the policy', () => {
     // RLS does not apply to the table owner, to service_role, or inside a
     // SECURITY DEFINER function — and finalize_order_request is exactly such a
@@ -209,7 +243,17 @@ describe('no active API or RPC can create a new Order Request', () => {
 
   test('the apply itself fails if either layer is missing', () => {
     assert.match(sql, /the retirement guard "%" is missing or disabled/)
-    assert.match(sql, /order_requests still has % INSERT-capable polic\(ies\)/)
+    assert.match(sql, /order_requests still has permissive INSERT-capable polic\(ies\): %/)
+    // FILTERED ON `permissive`. Counting every `cmd in ('INSERT', 'ALL')` row is
+    // what made the first form of this migration refuse its own apply: it
+    // matched the restrictive module gate, which grants no INSERT to anyone.
+    // The assertion names the offending policies rather than counting them, so a
+    // future failure says which policy is wrong instead of how many.
+    assert.match(sql, /and permissive = 'PERMISSIVE'\s*\n\s*and cmd in \('INSERT', 'ALL'\)/)
+    assert.equal(
+      /(?<!permissive = 'PERMISSIVE'\s*\n\s*)and cmd in \('INSERT', 'ALL'\)/.test(sql), false,
+      'every INSERT-capability check must be filtered to permissive policies',
+    )
     assert.match(sql, /row level security must remain enabled on public\.order_requests/)
   })
 })
@@ -290,13 +334,42 @@ describe('Finance Payment Requests remain unchanged', () => {
 describe('history is preserved, and stays readable', () => {
   test('nothing is deleted — no table, column, row, index or storage object', () => {
     for (const forbidden of [
-      /\bdrop table\b/i, /\bdrop column\b/i, /\bdelete from\b/i, /\btruncate\b/i,
+      /\bdrop table\b/i, /\bdrop column\b/i, /\btruncate\b/i,
       /\bdrop index\b/i, /storage\.objects/i,
     ]) {
       assert.equal(forbidden.test(code), false, `the retirement must not run ${forbidden}`)
     }
-    // And it does not rewrite a single row.
-    assert.equal(/\bupdate public\./i.test(code), false, 'no row is rewritten')
+    // The change itself writes no row at all: no DML before the assertion block.
+    // Anchored to the start of a line: the migration's own COMMENT ON strings
+    // describe what the guards refuse, and prose that says "every INSERT into
+    // public.order_requests" is documentation, not a statement.
+    for (const forbidden of [/^\s*delete from\b/im, /^\s*update public\./im, /^\s*insert into public\./im]) {
+      assert.equal(forbidden.test(changeCode), false,
+        `the retirement itself must not run ${forbidden} — it changes permissions, not data`)
+    }
+  })
+
+  test('the apply-time probes can only ever affect zero rows', () => {
+    // §5f writes as a CLIENT session — `set local role authenticated` with a JWT
+    // sub — so RLS applies to it exactly as it applies to the product. Every one
+    // of its DML statements is immediately followed by a row-count check that
+    // raises unless the count is zero, which is what makes them probes rather
+    // than changes: a probe that touched a historical row would abort the apply
+    // and roll the whole migration back before it could commit.
+    for (const statement of assertionCode.match(/^\s*(?:insert into|update|delete from) [\s\S]*?;$/gim) ?? []) {
+      assert.match(statement, /public\.order_requests/,
+        'a probe may only write to the retired table itself')
+    }
+    assert.match(assertionCode, /update public\.order_requests set client_name = client_name/,
+      'the update probe must be a no-op assignment, so a row it did reach is unchanged')
+    assert.equal(
+      (assertionCode.match(/get diagnostics v_count = row_count;/g) ?? []).length >= 2, true,
+      'each probe must read back its row count',
+    )
+    assert.match(assertionCode, /an admin updated % Order Request row\(s\) directly/)
+    assert.match(assertionCode, /an admin deleted % Order Request row\(s\) directly/)
+    // And the probes only run at all where a client role exists to run as.
+    assert.match(assertionCode, /pg_has_role\(current_user, 'authenticated', 'MEMBER'\)/)
   })
 
   test('the columns confirmed Orders depend on are asserted present at apply time', () => {

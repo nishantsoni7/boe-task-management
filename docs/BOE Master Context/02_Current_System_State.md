@@ -9,7 +9,10 @@ Request workflow is retired; PI Drafts are the only pre-approval Order workflow,
 and a Confirmed Order arises only from an approved PI. Payments carry one
 canonical classification — Orders, PI Drafts, Available — computed by the
 database. Both are described below and are **not yet applied**: they arrive with
-migrations `20261007000000` and `20261008000000`, which have not been pushed.
+migrations `20261007000000` and `20261008000000`. `20261007000000` was attempted
+once on the linked database, refused its own apply-time assertion and rolled back
+completely — see "The policy set the retirement leaves" — and both migrations
+remain pending.
 
 ---
 
@@ -1357,8 +1360,8 @@ SECURITY DEFINER function:
 | `orders_refuse_request_provenance` (BEFORE INSERT) | a NEW Order carrying request provenance |
 | `zz_finance_payment_requests_refuse_request_target` | a payment that NEWLY names an Order Request |
 
-Plus the dropped `order_requests_requester_insert` policy — with RLS on and no
-INSERT policy, PostgREST refuses the command outright — and EXECUTE revoked from
+Plus the two dropped **permissive** write policies — see below — and EXECUTE
+revoked from
 `public`, `anon` and `authenticated` on ten RPCs, across every overload:
 `finalize_order_request`, `resubmit_order_request`, `reapply_order_request`,
 `respond_to_clarification`, `edit_order_request`,
@@ -1368,6 +1371,53 @@ INSERT policy, PostgREST refuses the command outright — and EXECUTE revoked fr
 
 None of the guards reads `auth.uid()` and none exempts a role. A retirement an
 admin or the service role could step around would not be one.
+
+## The policy set the retirement leaves
+
+`public.order_requests` carried seven policies before the retirement, arrived at
+over nine migrations. Two are dropped and five remain:
+
+| Policy | Kind | After |
+| --- | --- | --- |
+| `order_requests_requester_insert` | PERMISSIVE INSERT | **dropped** |
+| `order_requests_admin_delete_unconverted` | PERMISSIVE DELETE | **dropped** |
+| `order_requests_requester_select` | PERMISSIVE SELECT | kept |
+| `order_requests_admin_select` | PERMISSIVE SELECT | kept |
+| `order_requests_assignee_select` | PERMISSIVE SELECT | kept |
+| `order_requests_view_all_select` | PERMISSIVE SELECT | kept |
+| `order_requests_module_entry_gate` | **RESTRICTIVE ALL** | kept |
+
+With RLS on and no permissive INSERT policy, PostgREST refuses the command
+outright; with no permissive UPDATE or DELETE policy, both filter to zero rows.
+The delete policy had no caller to lose: every SQL delete of an Order Request —
+in `20260705000000`, `20260706000000`, `20260711000000`, `20260901000000` and
+`20260916000000` — sits inside a `SECURITY DEFINER` function, which bypasses RLS
+and is unaffected by dropping it. `admin_delete_order_request` and the test-data
+cleanup protocol keep working unchanged.
+
+**`order_requests_module_entry_gate` is deliberately kept.** It is RESTRICTIVE:
+PostgreSQL AND-s a restrictive policy onto whatever the permissive policies
+allow, so it can only narrow and never grants anything. Its `cmd = ALL` is not
+INSERT authority — on a table with no permissive INSERT policy left there is
+nothing for it to narrow — and dropping it would *remove* a restriction and widen
+the retired table. It is also one of the 27 module gates `20260905000000` asserts
+the presence of.
+
+**The first form of `20261007000000` got this wrong and refused its own apply.**
+Its §5b counted every `pg_policies` row with `cmd in ('INSERT', 'ALL')` without
+filtering on `permissive`, matched the restrictive gate, and raised
+`order_requests still has 1 INSERT-capable polic(ies); the retired workflow would
+remain creatable`. The whole migration rolled back; nothing was left half-applied.
+The corrected form filters to `permissive = 'PERMISSIVE'`, names the offending
+policies instead of counting them, asserts the restrictive gate must *remain*,
+and asserts the exact expected five-policy set so an unknown policy fails the
+apply by name rather than being deleted dynamically.
+
+`supabase/tests/run_order_request_retirement_suite.sh` builds a production-shaped
+database from the replayed policy history, reproduces that failure verbatim,
+proves it rolled back to a byte-identical policy set, applies the corrected
+migration, and proves the retirement holds — including that `20261008000000`
+still applies on top of it.
 
 ## Historical compatibility
 

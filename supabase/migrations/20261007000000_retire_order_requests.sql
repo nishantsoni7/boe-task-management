@@ -69,21 +69,66 @@
 
 begin;
 
--- ═══ 1. No new Order Request may be created ═════════════════════════════════
+-- ═══ 1. No client may write to order_requests at all ═══════════════════════
 --
 -- TWO LAYERS, because they fail differently and both are wanted.
 --
--- The POLICY is the PostgREST-facing layer: with the INSERT policy gone and no
--- other INSERT policy on the table, an insert from `authenticated` is refused by
--- RLS before a row is ever built. That is the layer that stops the retired
--- screen's own POST, and any hand-made copy of it.
+-- The POLICIES are the PostgREST-facing layer. With no PERMISSIVE policy for a
+-- command, PostgreSQL refuses that command outright for every client role: an
+-- INSERT is refused before a row is built, and an UPDATE or DELETE matches zero
+-- rows. That is the layer that stops the retired screen's own POST, and any
+-- hand-made copy of it.
 --
--- The TRIGGER is the layer beneath it: RLS does not apply to the table owner, to
--- `service_role`, or inside a SECURITY DEFINER function — and
+-- The TRIGGERS below are the layer beneath. RLS does not apply to the table
+-- owner, to `service_role`, or inside a SECURITY DEFINER function — and
 -- `finalize_order_request` is exactly such a function. A trigger applies to all
 -- of them.
+--
+-- ── WHAT THE FIRST ATTEMPT AT THIS MIGRATION GOT WRONG ──
+--
+-- It dropped the INSERT policy and then asserted that no policy on the table had
+-- `cmd` of INSERT or ALL. The linked database refused the apply:
+--
+--     order_requests still has 1 INSERT-capable polic(ies);
+--     the retired workflow would remain creatable
+--
+-- The policy it found is `order_requests_module_entry_gate` (20260905000000 §2),
+-- and it is RESTRICTIVE. A restrictive policy is AND-ed with the permissive ones
+-- and can only ever NARROW access — it grants nothing, INSERT-capable or
+-- otherwise. Dropping it would have REMOVED a restriction: the parent
+-- module-entry gate that stops somebody without `orders:view` reaching the four
+-- permissive SELECT policies at all. The assertion was wrong, not the database,
+-- and §5b below now asks the question it meant to ask.
+--
+-- Proved rather than argued: supabase/tests/order_request_retirement_pre_107.sql
+-- drops only the permissive INSERT policy, keeps the gate, and shows the INSERT
+-- refused for an owner AND for an admin. The suite around it
+-- (run_order_request_retirement_suite.sh) reproduces the failure above verbatim
+-- and shows it rolling back to a byte-identical policy set.
+--
+-- ── THE TWO PERMISSIVE WRITE POLICIES THIS DROPS ──
+--
+--   order_requests_requester_insert          (20260710000000 §2)
+--   order_requests_admin_delete_unconverted  (20260705000000)
+--
+-- The first is the creation path and is the point of the whole file.
+--
+-- THE SECOND IS DROPPED BECAUSE NOTHING CALLS IT. It let an admin delete an
+-- unconverted request straight from PostgREST. Every deletion of an
+-- `order_requests` row in this schema happens inside a SECURITY DEFINER
+-- function — `admin_delete_order_request`, `cleanup_unfinalized_order_request`
+-- and `execute_test_data_cleanup` — and a definer function bypasses RLS, so not
+-- one of them needs a policy. Keeping a direct client DELETE on a retired
+-- workflow's table would be retaining a write path with no caller and no audit
+-- trail, when the audited RPC that replaces it is asserted still executable in
+-- §5j.
+--
+-- NO UPDATE POLICY IS DROPPED, because there has not been one since
+-- 20260683000000 and 20260687000000 moved every mutation into an RPC. A direct
+-- UPDATE already matches zero rows; §5c asserts it stays that way.
 
 drop policy if exists "order_requests_requester_insert" on public.order_requests;
+drop policy if exists "order_requests_admin_delete_unconverted" on public.order_requests;
 
 create or replace function public.order_requests_refuse_new()
 returns trigger
@@ -306,16 +351,275 @@ end $$;
 -- ═══ 5. Apply-time assertions ═══════════════════════════════════════════════
 --
 -- The migration refuses itself rather than reporting a retirement it did not
--- actually perform. Every check below reads the committed catalog, not the
--- statements above.
+-- actually perform. Every check below reads the COMMITTED catalog or probes the
+-- real behaviour; none of them re-states an intention.
+--
+-- ROLLBACK IS ATOMIC. The whole file is one transaction, so a failure here
+-- leaves the policy set, the triggers and every grant exactly as they were —
+-- which is what the linked database observed when the first attempt refused
+-- itself, and what supabase/tests/order_request_retirement_assertions.sql
+-- re-proves.
+
+-- ── 5a. Row and provenance census, taken BEFORE anything is asserted ────────
+--
+-- Captured into a temp table so 5k can prove the file removed no row and
+-- rewrote no provenance value. Temp, so it disappears with the session and
+-- cannot become schema.
+
+create temporary table t_retirement_census on commit drop as
+select
+  (select count(*) from public.order_requests)                                     as requests,
+  (select count(*) from public.order_request_activity)                             as activity,
+  (select count(*) from public.order_request_attachments)                          as attachments,
+  (select count(*) from public.orders where source_order_request_id is not null)   as orders_with_provenance,
+  (select count(*) from public.finance_payment_requests
+    where order_request_id is not null)                                            as payments_with_linkage;
 
 do $$
 declare
-  v_missing text;
-  v_count   int;
+  v_missing  text;
+  v_count    int;
+  v_names    text;
+  v_expected text[];
+  v_probe    uuid;
+  v_admin    uuid;
+  v_row      uuid;
 begin
-  -- 5a. The four guards are attached, and each is enabled. A trigger created and
-  -- then disabled is the failure mode a `create trigger` alone cannot catch.
+  -- ── 5a. RLS is still ON ──
+  --
+  -- FIRST, because every other policy assertion is meaningless without it. If
+  -- RLS were off, "no INSERT policy" would mean the opposite of what 5b claims.
+  if not exists (
+    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'order_requests' and c.relrowsecurity
+  ) then
+    raise exception 'row level security must remain enabled on public.order_requests';
+  end if;
+
+  -- ── 5b. No PERMISSIVE policy admits INSERT ──
+  --
+  -- THE CORRECTION. The first attempt counted every policy whose `cmd` was
+  -- INSERT or ALL and refused the apply on finding one — but the one it found,
+  -- `order_requests_module_entry_gate`, is RESTRICTIVE. Restrictive policies are
+  -- AND-ed with the permissive ones; they can only narrow, never grant. Counting
+  -- one as INSERT-capable is a category error, and acting on it would have meant
+  -- dropping the parent module-entry gate, which WIDENS the table.
+  --
+  -- The question that actually decides whether a row can be inserted is: is
+  -- there a PERMISSIVE policy for INSERT (or for ALL, which covers it)? With
+  -- none, PostgreSQL refuses the command for every client role.
+  select string_agg(policyname || ' (' || cmd || ')', ', ' order by policyname)
+    into v_names
+  from pg_policies
+  where schemaname = 'public' and tablename = 'order_requests'
+    and permissive = 'PERMISSIVE'
+    and cmd in ('INSERT', 'ALL');
+
+  if v_names is not null then
+    raise exception
+      'order_requests still has permissive INSERT-capable polic(ies): %; the retired workflow would remain creatable',
+      v_names;
+  end if;
+
+  -- ── 5c. And none admits UPDATE or DELETE either ──
+  --
+  -- Direct UPDATE has been impossible since 20260683000000/20260687000000 moved
+  -- every mutation into an RPC; §1 removes the last direct DELETE. Both are
+  -- asserted rather than assumed, because a client write path into a retired
+  -- workflow's records is exactly the thing that survives a retirement by
+  -- accident.
+  select string_agg(policyname || ' (' || cmd || ')', ', ' order by policyname)
+    into v_names
+  from pg_policies
+  where schemaname = 'public' and tablename = 'order_requests'
+    and permissive = 'PERMISSIVE'
+    and cmd in ('UPDATE', 'DELETE', 'ALL');
+
+  if v_names is not null then
+    raise exception
+      'order_requests still has permissive write polic(ies): %; cleanup belongs to the SECURITY DEFINER RPCs, which bypass RLS and need none',
+      v_names;
+  end if;
+
+  -- ── 5d. THE RESTRICTIVE PARENT GATE IS STILL THERE ──
+  --
+  -- Asserted POSITIVELY, so no future edit "tidies away" the ALL policy the way
+  -- the first attempt was about to. It is the only thing stopping somebody
+  -- without `orders:view` reaching the four SELECT policies below, and removing
+  -- it would widen historical visibility rather than retire anything.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'order_requests'
+      and policyname = 'order_requests_module_entry_gate'
+      and permissive = 'RESTRICTIVE' and cmd = 'ALL'
+  ) then
+    raise exception
+      'order_requests_module_entry_gate must remain, RESTRICTIVE and FOR ALL: it is the parent module-entry gate (20260905000000), and dropping it would widen the table rather than retire it';
+  end if;
+
+  -- ── 5e. The four historical SELECT policies remain, and nothing else does ──
+  --
+  -- AN EXACT SET, not a minimum. A policy this file does not know about is a
+  -- policy nobody reasoned about, so it is named in the failure rather than
+  -- silently tolerated — and never dropped dynamically, because a migration that
+  -- deletes what it does not recognise is worse than one that stops.
+  v_expected := array[
+    'order_requests_admin_select',        -- 20260711000000 §3
+    'order_requests_assignee_select',     -- 20260711000000 §3
+    'order_requests_module_entry_gate',   -- 20260905000000 §2, RESTRICTIVE
+    'order_requests_requester_select',    -- 20260680000000
+    'order_requests_view_all_select'      -- 20260903000000
+  ];
+
+  select string_agg(policyname, ', ' order by policyname) into v_names
+  from pg_policies
+  where schemaname = 'public' and tablename = 'order_requests'
+    and not (policyname = any (v_expected));
+
+  if v_names is not null then
+    raise exception
+      'order_requests carries unexpected polic(ies): %. This migration reasoned about exactly: %',
+      v_names, array_to_string(v_expected, ', ');
+  end if;
+
+  foreach v_missing in array v_expected loop
+    if not exists (
+      select 1 from pg_policies
+      where schemaname = 'public' and tablename = 'order_requests' and policyname = v_missing
+    ) then
+      raise exception
+        'order_requests lost "%": historical records must stay readable by the same people who could read them before retirement',
+        v_missing;
+    end if;
+  end loop;
+
+  -- At least one SELECT policy, stated separately from the set above so the
+  -- requirement survives the set being edited.
+  select count(*) into v_count
+  from pg_policies
+  where schemaname = 'public' and tablename = 'order_requests'
+    and permissive = 'PERMISSIVE' and cmd = 'SELECT';
+
+  if v_count < 1 then
+    raise exception 'order_requests has no permissive SELECT policy; history would become unreadable';
+  end if;
+
+  -- ── 5f. HISTORY IS STILL READABLE, PROVED BY READING IT ──
+  --
+  -- The catalog checks above say the right policies exist. This says they still
+  -- WORK, by becoming an ordinary client and looking.
+  --
+  -- Requires membership of `authenticated` to assume the role. `supabase db
+  -- push` connects as `postgres`, which is a superuser and therefore a member of
+  -- every role, so this runs in the real target environment. Where it genuinely
+  -- cannot, it fails loudly and names why rather than skipping quietly.
+  if not pg_has_role(current_user, 'authenticated', 'MEMBER') then
+    raise exception
+      'cannot assume the authenticated role as %, so the historical-visibility probe could not run. Apply this migration as a role that may SET ROLE authenticated (supabase db push uses postgres).',
+      current_user;
+  end if;
+
+  -- A finalized request, and an active admin: the pair `order_requests_admin_select`
+  -- is written for, and the pair whose visibility must be unchanged. With no
+  -- historical rows there is genuinely nothing to demonstrate, and saying so is
+  -- more honest than inventing a fixture — this migration writes no row.
+  select id into v_row
+  from public.order_requests where finalized_at is not null limit 1;
+
+  select id into v_admin
+  from public.users where role = 'admin' and coalesce(is_deleted, false) = false limit 1;
+
+  if v_row is null then
+    raise notice
+      'no finalized Order Request exists, so the historical-visibility probe has nothing to read. The policy set is asserted above.';
+  elsif v_admin is null then
+    raise notice
+      'no active admin exists, so the historical-visibility probe has nobody to read as. The policy set is asserted above.';
+  else
+    -- 5f-i. An authorised historical viewer still sees the row.
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', v_admin::text, true);
+    select count(*) into v_count from public.order_requests where id = v_row;
+    execute 'reset role';
+    perform set_config('request.jwt.claim.sub', '', true);
+
+    if v_count <> 1 then
+      raise exception
+        'an admin can no longer read finalized Order Request %: retirement must not cost anybody sight of an existing record',
+        v_row;
+    end if;
+
+    -- 5f-ii. An unrelated user still sees nothing. A uuid no row and no user
+    -- carries: not the creator, not the requester, not the assignee, not an
+    -- admin, and holding no grant — so both the gate and every permissive
+    -- policy refuse them. Probing with a synthetic id writes nothing.
+    v_probe := '00000000-0000-4000-8000-0000000000ff'::uuid;
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', v_probe::text, true);
+    select count(*) into v_count from public.order_requests;
+    execute 'reset role';
+    perform set_config('request.jwt.claim.sub', '', true);
+
+    if v_count <> 0 then
+      raise exception
+        'an unrelated user can read % Order Request row(s); retirement must not widen visibility',
+        v_count;
+    end if;
+
+    -- 5f-iii. That same admin cannot INSERT, and cannot UPDATE or DELETE.
+    --
+    -- The strongest statement of the whole file, made the only way that settles
+    -- it: by trying. The INSERT is expected to raise, so it is caught; the
+    -- UPDATE and DELETE are expected to match zero rows, because RLS filters
+    -- them rather than erroring.
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', v_admin::text, true);
+
+    begin
+      insert into public.order_requests (request_number, status, created_by, requested_by, assigned_to)
+      values ('RETIREMENT-PROBE', 'submitted', v_admin, v_admin, v_admin);
+      execute 'reset role';
+      raise exception
+        'an admin was able to INSERT an Order Request: the retirement is not closed';
+    exception
+      when insufficient_privilege or check_violation then
+        null;  -- refused by RLS, which is the point
+      when others then
+        -- The trigger's own ORDER_REQUESTS_RETIRED is equally a refusal, and on
+        -- a path where the owner reaches the trigger it is the one that fires.
+        if sqlerrm not like '%ORDER_REQUESTS_RETIRED%'
+           and sqlerrm not like '%row-level security%' then
+          execute 'reset role';
+          raise;
+        end if;
+    end;
+
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', v_admin::text, true);
+    update public.order_requests set client_name = client_name where id = v_row;
+    get diagnostics v_count = row_count;
+    execute 'reset role';
+    if v_count <> 0 then
+      raise exception 'an admin updated % Order Request row(s) directly; every mutation belongs to an RPC', v_count;
+    end if;
+
+    execute 'set local role authenticated';
+    perform set_config('request.jwt.claim.sub', v_admin::text, true);
+    delete from public.order_requests where id = v_row;
+    get diagnostics v_count = row_count;
+    execute 'reset role';
+    perform set_config('request.jwt.claim.sub', '', true);
+    if v_count <> 0 then
+      raise exception
+        'an admin deleted % Order Request row(s) directly; deletion belongs to admin_delete_order_request, which is audited',
+        v_count;
+    end if;
+  end if;
+
+  -- ── 5g. The four guards are attached, and each is enabled ──
+  --
+  -- A trigger created and then disabled is the failure mode a bare
+  -- `create trigger` cannot catch.
   foreach v_missing in array array[
     'order_requests_refuse_new',
     'order_requests_refuse_conversion',
@@ -324,44 +628,14 @@ begin
   ] loop
     if not exists (
       select 1 from pg_trigger t
-      where t.tgname = v_missing
-        and not t.tgisinternal
-        and t.tgenabled <> 'D'
+      where t.tgname = v_missing and not t.tgisinternal and t.tgenabled <> 'D'
     ) then
       raise exception 'the retirement guard "%" is missing or disabled', v_missing;
     end if;
   end loop;
 
-  -- 5b. No INSERT policy remains on order_requests, for any role. With RLS on
-  -- and no INSERT policy, PostgREST refuses the command outright.
-  select count(*) into v_count
-  from pg_policies
-  where schemaname = 'public'
-    and tablename = 'order_requests'
-    and cmd in ('INSERT', 'ALL');
-
-  if v_count <> 0 then
-    raise exception
-      'order_requests still has % INSERT-capable polic(ies); the retired workflow would remain creatable',
-      v_count;
-  end if;
-
-  -- 5c. RLS is still ON. If it were off, the absence of a policy would mean the
-  -- opposite of what 5b just asserted.
-  if not exists (
-    select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = 'public' and c.relname = 'order_requests' and c.relrowsecurity
-  ) then
-    raise exception 'row level security must remain enabled on public.order_requests';
-  end if;
-
-  -- 5d. HISTORY IS STILL READABLE. The retirement must not have cost anybody
-  -- sight of an existing record: at least one SELECT policy has to remain on
-  -- each of the three Order Request tables, and on the two provenance columns'
-  -- own tables.
-  foreach v_missing in array array[
-    'order_requests', 'order_request_activity', 'order_request_attachments'
-  ] loop
+  -- ── 5h. HISTORY IS STILL READABLE on the two child tables ──
+  foreach v_missing in array array['order_request_activity', 'order_request_attachments'] loop
     if not exists (
       select 1 from pg_policies
       where schemaname = 'public' and tablename = v_missing and cmd in ('SELECT', 'ALL')
@@ -370,8 +644,8 @@ begin
     end if;
   end loop;
 
-  -- 5e. NOTHING WAS DELETED. Every column the historical records depend on is
-  -- still there, still named the same.
+  -- ── 5i. NOTHING WAS DELETED. Every column the historical records depend on
+  -- is still there, still named the same.
   foreach v_missing in array array[
     'orders.source_order_request_id',
     'orders.source_request_number',
@@ -390,9 +664,20 @@ begin
     end if;
   end loop;
 
-  -- 5f. The five cleanup and unlink paths are still executable. Revoking them
-  -- would strand abandoned drafts and, worse, strand money on a retired record
-  -- with no way to move it to a real one.
+  -- The three tables themselves, and the provenance foreign key that ties an
+  -- Order to the request it came from.
+  foreach v_missing in array array[
+    'order_requests', 'order_request_activity', 'order_request_attachments'
+  ] loop
+    if to_regclass('public.' || v_missing) is null then
+      raise exception 'public.% must not be dropped: it is the historical record', v_missing;
+    end if;
+  end loop;
+
+  -- ── 5j. The cleanup and unlink paths are still executable ──
+  --
+  -- Revoking them would strand abandoned drafts and, worse, strand money on a
+  -- retired record with no way to move it to a real one.
   foreach v_missing in array array[
     'admin_delete_order_request',
     'cleanup_unfinalized_order_request',
@@ -400,8 +685,7 @@ begin
     'unlink_finance_payment_from_order_request'
   ] loop
     select count(*) into v_count
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = v_missing
       and has_function_privilege('authenticated', p.oid, 'execute');
 
@@ -411,7 +695,7 @@ begin
     end if;
   end loop;
 
-  -- 5g. The ten retired RPCs are executable by no client role, in any overload.
+  -- ── 5k. The ten retired RPCs are executable by no client role, in any overload ──
   foreach v_missing in array array[
     'finalize_order_request',
     'resubmit_order_request',
@@ -425,8 +709,7 @@ begin
     'link_finance_payment_to_order_request'
   ] loop
     select count(*) into v_count
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = v_missing
       and (has_function_privilege('authenticated', p.oid, 'execute')
            or has_function_privilege('anon', p.oid, 'execute'));
@@ -438,9 +721,10 @@ begin
     end if;
   end loop;
 
-  -- 5h. FINANCE PAYMENT REQUESTS ARE UNCHANGED. The four doors that make that
-  -- workflow work must all still be open — this file must not have retired the
-  -- wrong thing.
+  -- ── 5l. FINANCE PAYMENT REQUESTS ARE UNCHANGED ──
+  --
+  -- The four doors that make that workflow work must all still be open: this
+  -- file must not have retired the wrong thing.
   foreach v_missing in array array[
     'approve_finance_payment_request',
     'allocate_payment_to_target',
@@ -448,8 +732,7 @@ begin
     'link_finance_payment_to_order'
   ] loop
     select count(*) into v_count
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = v_missing
       and has_function_privilege('authenticated', p.oid, 'execute');
 
@@ -458,7 +741,41 @@ begin
         'Finance Payment Requests must remain active: % is no longer executable', v_missing;
     end if;
   end loop;
+
+  -- And its own table keeps a permissive write path, because that workflow is
+  -- NOT retired. An empty result here would mean this file narrowed Finance by
+  -- mistake.
+  if not exists (
+    select 1 from pg_policies
+    where schemaname = 'public' and tablename = 'finance_payment_requests'
+      and permissive = 'PERMISSIVE' and cmd in ('INSERT', 'UPDATE', 'ALL')
+  ) then
+    raise exception
+      'finance_payment_requests lost its permissive write policies; the Finance Payment Request workflow must remain active';
+  end if;
+
+  -- ── 5m. NOT ONE ROW WAS REMOVED, AND NO PROVENANCE VALUE REWRITTEN ──
+  --
+  -- Compared against the census taken before any assertion ran. This file
+  -- contains no INSERT, UPDATE or DELETE of a business row; the census is what
+  -- makes that a checked fact rather than a claim.
+  if exists (
+    select 1 from t_retirement_census c
+    where c.requests               <> (select count(*) from public.order_requests)
+       or c.activity               <> (select count(*) from public.order_request_activity)
+       or c.attachments            <> (select count(*) from public.order_request_attachments)
+       or c.orders_with_provenance <> (select count(*) from public.orders
+                                        where source_order_request_id is not null)
+       or c.payments_with_linkage  <> (select count(*) from public.finance_payment_requests
+                                        where order_request_id is not null)
+  ) then
+    raise exception
+      'the retirement changed a row count or a provenance value; it must delete and rewrite nothing';
+  end if;
+
+  raise notice 'Order Request retirement: all assertions passed';
 end $$;
+
 
 commit;
 
