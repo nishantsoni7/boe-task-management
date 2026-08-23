@@ -71,6 +71,9 @@ echo "══ applying the corrected 20261007000000 ══"
 echo "══ AFTER: the retirement, required to hold ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/order_request_retirement_assertions.sql"
 
+echo "══ the provenance contract, and the oracle the first form asked ══"
+"${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/order_request_provenance_assertions.sql"
+
 echo "══ applying 20261008000000 on top, as the linked database will ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/migrations/20261008000000_finance_payment_classification.sql"
 

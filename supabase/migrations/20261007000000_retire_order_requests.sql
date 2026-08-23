@@ -646,6 +646,45 @@ begin
 
   -- ── 5i. NOTHING WAS DELETED. Every column the historical records depend on
   -- is still there, still named the same.
+  --
+  -- ── WHY THIS ASKS pg_catalog AND NOT information_schema ──
+  --
+  -- The first form of this check asked `information_schema.columns`, and the
+  -- linked database refused the apply on it:
+  --
+  --     public.orders.source_order_request_id must not be dropped:
+  --     confirmed Orders depend on it
+  --
+  -- The column is not missing. `20260701000000` adds it, no migration in the
+  -- history drops or renames it, the Order detail page selects it
+  -- (src/app/orders/[id]/page.tsx), and the census statement immediately above
+  -- this block had just READ it — `count(*) ... where source_order_request_id is
+  -- not null` cannot parse against a column that is not there. Two statements
+  -- apart, the same migration read the column and then declared it dropped.
+  --
+  -- `information_schema.columns` is not a schema oracle. Its definition ends
+  --
+  --     AND c.relkind IN ('r', 'v', 'f', 'p')
+  --     AND (pg_has_role(c.relowner, 'USAGE')
+  --          OR has_column_privilege(c.oid, a.attnum,
+  --                                  'SELECT, INSERT, UPDATE, REFERENCES'))
+  --
+  -- so it answers "is this column visible to whoever is asking", not "does this
+  -- column exist". It reports a perfectly present column as absent whenever the
+  -- applying role is neither the table's owner nor a holder of a privilege on
+  -- that column, and for any relation kind outside those four. That is a
+  -- property of the connection, not of the schema — which is exactly why this
+  -- passed locally and failed on the linked database.
+  --
+  -- `pg_catalog.pg_attribute` is the schema. It is readable by PUBLIC, it is
+  -- filtered by nothing, and it is what `to_regclass` and every DDL statement
+  -- resolve against. The divergence is demonstrated, both directions, in
+  -- supabase/tests/order_request_provenance_assertions.sql §1.
+  --
+  -- AND THE COLUMN IS THEN READ. A catalog row proves existence; it does not
+  -- prove the historical record is still reachable through it. The dynamic
+  -- SELECT below is the assertion that would still fail if a column survived as
+  -- an unusable stub — and it is the same read the application performs.
   foreach v_missing in array array[
     'orders.source_order_request_id',
     'orders.source_request_number',
@@ -654,14 +693,27 @@ begin
     'order_requests.converted_order_id',
     'order_requests.request_number'
   ] loop
-    if not exists (
-      select 1 from information_schema.columns
-      where table_schema = 'public'
-        and table_name = split_part(v_missing, '.', 1)
-        and column_name = split_part(v_missing, '.', 2)
-    ) then
+    if to_regclass('public.' || quote_ident(split_part(v_missing, '.', 1))) is null
+       or not exists (
+         select 1
+         from pg_catalog.pg_attribute a
+         where a.attrelid = ('public.' || quote_ident(split_part(v_missing, '.', 1)))::regclass
+           and a.attname  = split_part(v_missing, '.', 2)
+           and a.attnum > 0
+           and not a.attisdropped
+       ) then
       raise exception 'public.% must not be dropped: confirmed Orders depend on it', v_missing;
     end if;
+
+    begin
+      execute format('select count(*) from public.%I where %I is not null',
+                     split_part(v_missing, '.', 1), split_part(v_missing, '.', 2))
+        into v_count;
+    exception when others then
+      raise exception
+        'public.% is in the catalog but could not be read (%): the historical record must stay reachable',
+        v_missing, sqlerrm;
+    end;
   end loop;
 
   -- The three tables themselves, and the provenance foreign key that ties an

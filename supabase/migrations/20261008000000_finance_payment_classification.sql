@@ -412,10 +412,20 @@ begin
       'finance_received_payments must remain security_invoker=true (found "%")', v_opt;
   end if;
 
-  select array_agg(column_name::text order by ordinal_position)
+  -- FROM pg_catalog, NOT information_schema. `information_schema.columns` is
+  -- filtered by the asking role's privileges and by relkind, so it reports
+  -- present columns as absent whenever the applying role is neither the
+  -- relation's owner nor a privilege holder — which is how the first form of
+  -- 20261007000000 §5i refused its own apply on the linked database against a
+  -- column that demonstrably existed. A positive existence check read from it is
+  -- a false failure waiting to happen; this is the same check asked of the
+  -- catalog, which is filtered by nothing.
+  select array_agg(a.attname::text order by a.attnum)
     into v_cols
-  from information_schema.columns
-  where table_schema = 'public' and table_name = 'finance_received_payments';
+  from pg_catalog.pg_attribute a
+  where a.attrelid = 'public.finance_received_payments'::regclass
+    and a.attnum > 0
+    and not a.attisdropped;
 
   -- 3b. Every pre-existing column is still present, still named the same, in the
   -- same position. CREATE OR REPLACE enforces this itself; asserting it catches
@@ -455,9 +465,15 @@ begin
   for v_col in
     select unnest(array['is_linked_to_order','is_linked_to_pi','is_available_to_allocate'])
   loop
-    if (select data_type from information_schema.columns
-         where table_schema = 'public' and table_name = 'finance_received_payments'
-           and column_name = v_col) <> 'boolean' then
+    -- Also from the catalog, and for a second reason: a hidden column makes the
+    -- information_schema lookup return NULL, `NULL <> 'boolean'` is NULL, and
+    -- `if NULL then` is false — so the check would pass silently on exactly the
+    -- rows it exists to police. `is distinct from` closes that too.
+    if (select format_type(a.atttypid, a.atttypmod)
+          from pg_catalog.pg_attribute a
+         where a.attrelid = 'public.finance_received_payments'::regclass
+           and a.attname = v_col
+           and a.attnum > 0 and not a.attisdropped) is distinct from 'boolean' then
       raise exception '% must be boolean', v_col;
     end if;
   end loop;
@@ -542,11 +558,14 @@ begin
   -- 3j. NO TABLE GAINED A COLUMN. This migration adds a projection, not a stored
   -- total; a denormalised copy of allocation data would be a second source of
   -- financial truth and would drift the first time a write missed it.
+  -- Catalog again: a negative check read from information_schema passes whenever
+  -- the columns are merely invisible, which is the direction that would let a
+  -- stored classification through unnoticed.
   if exists (
-    select 1 from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'finance_payment_requests'
-      and column_name in (
+    select 1 from pg_catalog.pg_attribute a
+    where a.attrelid = 'public.finance_payment_requests'::regclass
+      and a.attnum > 0 and not a.attisdropped
+      and a.attname in (
         'order_attributed_total', 'pi_attributed_total', 'available_balance',
         'attribution_complete', 'active_allocation_count',
         'is_linked_to_order', 'is_linked_to_pi', 'is_available_to_allocate'

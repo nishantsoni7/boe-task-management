@@ -386,6 +386,30 @@ describe('history is preserved, and stays readable', () => {
     assert.match(sql, /must not be dropped: confirmed Orders depend on it/)
   })
 
+  test('presence is asked of pg_catalog, never of information_schema', () => {
+    // information_schema.columns ends its definition with a relkind filter and
+    //   (pg_has_role(c.relowner, 'USAGE')
+    //    OR has_column_privilege(c.oid, a.attnum, 'SELECT, INSERT, UPDATE, REFERENCES'))
+    // so it answers "is this column visible to whoever is asking", not "does it
+    // exist". Asking it is what made this migration refuse its own apply on the
+    // linked database against a column that demonstrably existed — the census
+    // statement two lines above had just read it. pg_catalog is filtered by
+    // neither clause. Demonstrated both directions in
+    // supabase/tests/order_request_provenance_assertions.sql.
+    assert.equal(/information_schema/.test(code), false,
+      'no executable statement may read information_schema: it is not a schema oracle')
+    assert.match(code, /from pg_catalog\.pg_attribute a/)
+    assert.match(code, /not a\.attisdropped/)
+  })
+
+  test('and the column is then read, not merely found in a catalog', () => {
+    // A catalog row proves the column exists; it does not prove the historical
+    // record is still reachable through it. This is the same read the Order
+    // detail page performs.
+    assert.match(code, /execute format\('select count\(\*\) from public\.%I where %I is not null'/)
+    assert.match(sql, /is in the catalog but could not be read/)
+  })
+
   test('every Order Request table keeps its SELECT policies', () => {
     for (const table of ['order_requests', 'order_request_activity', 'order_request_attachments']) {
       assert.ok(sql.includes(`'${table}'`), `${table} must be asserted still readable`)

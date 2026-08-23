@@ -10,9 +10,9 @@ and a Confirmed Order arises only from an approved PI. Payments carry one
 canonical classification — Orders, PI Drafts, Available — computed by the
 database. Both are described below and are **not yet applied**: they arrive with
 migrations `20261007000000` and `20261008000000`. `20261007000000` was attempted
-once on the linked database, refused its own apply-time assertion and rolled back
-completely — see "The policy set the retirement leaves" — and both migrations
-remain pending.
+twice on the linked database and both times refused its own apply-time assertion
+and rolled back completely — see "The policy set the retirement leaves" and
+"Asking the schema the right question". Both migrations remain pending.
 
 ---
 
@@ -1418,6 +1418,74 @@ database from the replayed policy history, reproduces that failure verbatim,
 proves it rolled back to a byte-identical policy set, applies the corrected
 migration, and proves the retirement holds — including that `20261008000000`
 still applies on top of it.
+
+## Asking the schema the right question
+
+The second attempt got past the policy assertions and refused itself on the
+provenance one instead:
+
+```
+public.orders.source_order_request_id must not be dropped:
+confirmed Orders depend on it   (SQLSTATE P0001)
+```
+
+**The column is not missing, and no compatibility column was added.**
+`20260655_create_orders.sql` creates `public.orders`; `20260701000000` adds
+`source_order_request_id` and `source_request_number`, a partial unique index on
+the first, and `prevent_order_source_request_change()` to freeze both once set.
+No migration in the 201-file history drops or renames either. The Order detail
+page selects both (`src/app/orders/[id]/page.tsx`), and the Orders list filters
+on `source_request_number` (`src/app/orders/all/page.tsx`). The statement
+immediately before the failing one — the retirement's own row census — had just
+counted `orders where source_order_request_id is not null`, which cannot parse
+against a column that is not there.
+
+The assertion was asking the wrong oracle. `information_schema.columns` ends its
+definition with
+
+```sql
+AND c.relkind IN ('r', 'v', 'f', 'p')
+AND (pg_has_role(c.relowner, 'USAGE')
+     OR has_column_privilege(c.oid, a.attnum,
+                             'SELECT, INSERT, UPDATE, REFERENCES'))
+```
+
+so it answers *"is this column visible to whoever is asking"*, not *"does this
+column exist"*. A present column is reported absent whenever the applying role is
+neither the relation's owner nor a holder of a privilege on that column. That is
+a property of the connection, not of the schema — which is why the same file
+passed locally and refused itself on the linked database.
+
+`20261007000000` §5i now reads `pg_catalog.pg_attribute`, which is filtered by
+neither clause and is what every DDL statement resolves against, **and then reads
+the column**, because a catalog row proves existence and not reachability.
+`20261008000000` carried the same defect in three places and is corrected the
+same way: one positive existence check that would have failed the very next apply
+for the identical reason, and two checks that would have passed silently when
+they should not have.
+
+`supabase/tests/order_request_provenance_assertions.sql` demonstrates both
+directions — the same present column reported as 0 rows by `information_schema`
+and 1 row by `pg_catalog`, the first form reproducing the linked failure verbatim
+on a database that has the column, the corrected form passing for that same
+reader — and carries a mutation test that really drops the column and requires
+the corrected assertion to notice.
+
+## The provenance contract, unchanged
+
+| Field | Where | Still true after the retirement |
+| --- | --- | --- |
+| `orders.source_order_request_id` | `20260701000000` §1 | present, NO ACTION FK to `order_requests(id)` |
+| `orders.source_request_number` | `20260701000000` §1 | present, denormalised copy of an immutable number |
+| `orders_source_order_request_id_uidx` | `20260701000000` §3 | one Order per source request |
+| `prevent_order_source_request_change()` | `20260701000000` §4 | both columns frozen once set |
+| `order_requests.converted_order_id` | `20260680000000` | the reverse link, still populated |
+
+The two foreign keys point in opposite directions and neither replaces the other:
+a converted request cannot be hard-deleted while an Order names it, and an Order
+carrying a source request cannot be deleted either. The retirement adds a guard
+refusing a *new* Order that carries provenance; it changes nothing about an
+existing one.
 
 ## Historical compatibility
 

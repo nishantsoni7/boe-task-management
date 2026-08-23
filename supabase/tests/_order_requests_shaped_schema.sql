@@ -74,18 +74,30 @@ create table public.users (
   id uuid primary key, full_name text, role text, team text,
   is_active boolean not null default true, is_deleted boolean not null default false);
 
+-- public.orders — 20260655_create_orders.sql, in the shape the provenance
+-- assertions read. The NOT NULLs, the status CHECK and the audit columns are
+-- kept because a fixture that could not be inserted into the real table would
+-- prove nothing about it.
+--
+-- THE PROVENANCE PAIR IS NOT DECLARED HERE. 20260701000000 adds it, and it is
+-- replayed below in migration order — after order_requests exists, because the
+-- column carries a foreign key to it. Declaring the finished shape in one place
+-- is what let the first form of 20261007000000 §5i ship: a harness that states
+-- the answer cannot disagree with the migration that produces it.
 create table public.orders (
-  id uuid primary key,
-  display_number text,
-  status text not null default 'running',
-  client_name text,
-  requested_by uuid,
-  assigned_to uuid,
-  -- The provenance a converted request leaves on the Order it became
-  -- (20260701000000). The retirement must not remove either column, and the
-  -- migration asserts both are still present.
-  source_order_request_id uuid,
-  source_request_number text);
+  id             uuid primary key default gen_random_uuid(),
+  display_number text unique not null,
+  client_name    text not null,
+  requested_by   uuid references public.users(id) on delete set null,
+  assigned_to    uuid references public.users(id) on delete set null,
+  total_value    numeric(12,2),
+  status         text not null default 'requested'
+                   check (status in ('requested', 'running', 'on_hold',
+                                     'ready_for_dispatch', 'dispatched', 'cancelled')),
+  notes          text,
+  created_by     uuid references public.users(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now());
 
 create table public.order_requests (
   id uuid primary key default gen_random_uuid(),
@@ -111,6 +123,59 @@ create table public.order_request_attachments (
   id uuid primary key default gen_random_uuid(),
   order_request_id uuid not null references public.order_requests(id) on delete cascade,
   storage_path text);
+
+-- ── 20260701000000: the Order's provenance back to the request ──────────────
+--
+-- Replayed here, in migration order, rather than folded into the CREATE TABLE
+-- above. It has to come after order_requests exists: the id column carries a
+-- foreign key to it, and the FK's default NO ACTION is what makes "a converted
+-- Order Request is never hard-deleted" a database guarantee rather than a UI
+-- convention.
+--
+-- §1, §3 and §4 of that migration, verbatim in behaviour. §2 is its backfill of
+-- pre-existing rows and §5 replaces the conversion RPC; neither is schema, and
+-- the retirement asserts nothing about either.
+alter table public.orders
+  add column if not exists source_order_request_id uuid references public.order_requests(id),
+  add column if not exists source_request_number   text;
+
+comment on column public.orders.source_order_request_id is
+  'The Order Request this Order was created from, if any. Set only by convert_order_request_to_order() and immutable thereafter. NO ACTION FK: the source request can never be hard-deleted.';
+
+-- One Order per source request — the mirror of order_requests_converted_order_id_uidx.
+create unique index if not exists orders_source_order_request_id_uidx
+  on public.orders (source_order_request_id)
+  where source_order_request_id is not null;
+
+-- Provenance is read-only in the database: settable once from NULL, frozen
+-- after. Without it an admin could silently re-point an Order at a different
+-- request and the audit trail would be unfalsifiable.
+create or replace function public.prevent_order_source_request_change()
+returns trigger language plpgsql as $$
+begin
+  if old.source_order_request_id is not null
+     and new.source_order_request_id is distinct from old.source_order_request_id then
+    raise exception 'source_order_request_id is immutable and cannot be changed once set'
+      using errcode = '42501';
+  end if;
+
+  if old.source_request_number is not null
+     and new.source_request_number is distinct from old.source_request_number then
+    raise exception 'source_request_number is immutable and cannot be changed once set'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.prevent_order_source_request_change() from public, anon, authenticated;
+
+drop trigger if exists orders_protect_source_request on public.orders;
+
+create trigger orders_protect_source_request
+  before update on public.orders
+  for each row execute function public.prevent_order_source_request_change();
 
 -- The Finance ledger, only far enough to prove the retirement leaves it alone
 -- and to hold the retired linkage columns the guard watches.
@@ -577,19 +642,31 @@ insert into public.t_permission_grants (user_id, module_key, action_key) values
   ('11111111-0000-4000-8000-000000000002', 'finance', 'view'),
   ('11111111-0000-4000-8000-000000000005', 'finance', 'view');
 
--- The confirmed Order a request became, carrying the provenance the retirement
--- is forbidden to erase.
+-- THE ORDER AND ITS REQUEST POINT AT EACH OTHER, so they are seeded in three
+-- steps rather than two. orders.source_order_request_id -> order_requests(id)
+-- (20260701000000) and order_requests.converted_order_id -> orders(id)
+-- (20260680000000) are both real foreign keys here, both NO ACTION, and neither
+-- row can be inserted already naming the other.
+
+-- One FINALIZED historical request: the row every visibility assertion reads.
+insert into public.order_requests
+  (id, request_number, status, client_name, created_by, requested_by, assigned_to, finalized_at)
+values
+  ('33333333-0000-4000-8000-0000000000b1', 'REQ-FIXTURE-1', 'converted', 'Fixture Client',
+   '11111111-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000002',
+   '11111111-0000-4000-8000-000000000003', now());
+
+-- The confirmed Order it became, carrying the provenance the retirement is
+-- forbidden to erase.
 insert into public.orders (id, display_number, status, client_name, source_order_request_id, source_request_number)
 values ('22222222-0000-4000-8000-0000000000a1', 'FIXTURE-ORDER-1', 'running', 'Fixture Client',
         '33333333-0000-4000-8000-0000000000b1', 'REQ-FIXTURE-1');
 
--- One FINALIZED historical request: the row every visibility assertion reads.
-insert into public.order_requests
-  (id, request_number, status, client_name, created_by, requested_by, assigned_to, finalized_at, converted_order_id, converted_at)
-values
-  ('33333333-0000-4000-8000-0000000000b1', 'REQ-FIXTURE-1', 'converted', 'Fixture Client',
-   '11111111-0000-4000-8000-000000000002', '11111111-0000-4000-8000-000000000002',
-   '11111111-0000-4000-8000-000000000003', now(), '22222222-0000-4000-8000-0000000000a1', now());
+-- And the reverse link, which is the older of the two and still the one the
+-- request side carries.
+update public.order_requests
+   set converted_order_id = '22222222-0000-4000-8000-0000000000a1', converted_at = now()
+ where id = '33333333-0000-4000-8000-0000000000b1';
 
 -- One UNFINALIZED upload-stage draft: the row the cleanup path deletes, and the
 -- one the admin and the assignee must NOT see (20260711000000's rule).

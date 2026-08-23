@@ -298,8 +298,9 @@ declare
   v_message  text;
 begin
   begin
-    insert into public.orders (id, display_number, source_order_request_id, source_request_number)
-    values (gen_random_uuid(), 'POST107-PROVENANCE',
+    insert into public.orders (id, display_number, client_name,
+                               source_order_request_id, source_request_number)
+    values (gen_random_uuid(), 'POST107-PROVENANCE', 'Fixture Client',
             '33333333-0000-4000-8000-0000000000b1', 'REQ-FIXTURE-1');
   exception when others then
     get stacked diagnostics v_sqlstate = returned_sqlstate, v_message = message_text;
