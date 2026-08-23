@@ -13,6 +13,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { PiDeleteConfirmModal } from './piReviewModals'
 import {
@@ -20,15 +22,17 @@ import {
   DELETE_PI_CANCEL_LABEL,
   DELETE_PI_CONFIRM_LABEL,
   DELETE_PI_DIALOG_TITLE,
+  DELETE_PI_RETRY_LABEL,
   DELETE_PI_WARNING,
   describeDeletionFailure,
+  type SubmissionDeletionFailure,
 } from '@/lib/orders/submissionDeletion'
 
 function render(over: {
   client?: string
   status?: string
   deleting?: boolean
-  failure?: string | null
+  failure?: SubmissionDeletionFailure | null
 } = {}): string {
   return renderToStaticMarkup(
     <PiDeleteConfirmModal
@@ -116,24 +120,113 @@ describe('a failed deletion keeps the dialog open and says why', () => {
     for (const code of ['STATUS_CHANGED', 'FORBIDDEN', 'NOT_FOUND',
                         'STORAGE_CLEANUP_FAILED', 'DELETE_FAILED'] as const) {
       const failure = describeDeletionFailure(code)
-      const html = render({ failure: failure.message })
+      const html = render({ failure })
       assert.ok(html.includes(failure.message.replace(/’/g, '’')),
         `${code} must be shown`)
-      assert.equal(confirmDisabled(html), false, 'and the action stays retryable')
+      assert.equal(confirmDisabled(html), false,
+        'and the action stays pressable for everything but a protected relationship')
     }
   })
 
   test('a PI that entered review explains itself in the dialog', () => {
     const html = render({
       status: 'draft',
-      failure: describeDeletionFailure('STATUS_CHANGED').message,
+      failure: describeDeletionFailure('STATUS_CHANGED'),
     })
     assert.ok(/under review/i.test(html))
     assert.ok(/cannot be deleted/i.test(html))
   })
 
   test('no raw database text ever reaches it', () => {
-    const html = render({ failure: describeDeletionFailure('DELETE_FAILED').message })
+    const html = render({ failure: describeDeletionFailure('DELETE_FAILED') })
     assert.ok(!/ERROR|relation |column |pg_|sqlstate/i.test(html))
+  })
+
+  test('the reason is announced, not merely drawn', () => {
+    // The button it disables may already have moved focus nowhere. A note that
+    // appears silently after a press is a note a screen-reader user never hears.
+    const html = render({ failure: describeDeletionFailure('DELETE_FAILED') })
+    assert.ok(html.includes('role="alert"'))
+    assert.ok(!render().includes('role="alert"'), 'and only once there is one')
+  })
+})
+
+// ── The four states, told apart ───────────────────────────────────────────────
+
+describe('the dialog distinguishes running, retryable, blocked and completed', () => {
+  test('RUNNING: every control is disabled and the button says what is happening', () => {
+    const html = render({ deleting: true })
+    assert.equal(confirmDisabled(html), true)
+    assert.ok(html.includes(DELETE_PI_BUSY_LABEL))
+    assert.equal((html.match(/<button[^>]*disabled=""/g) ?? []).length, 3)
+  })
+
+  test('RUNNING beats a previous failure: no red button while this request is out', () => {
+    const html = render({ deleting: true, failure: describeDeletionFailure('DELETE_FAILED') })
+    assert.equal(confirmDisabled(html), true)
+    assert.ok(!html.includes(`>${DELETE_PI_RETRY_LABEL}<`))
+    assert.ok(!html.includes(`>${DELETE_PI_CONFIRM_LABEL}<`))
+  })
+
+  test('RETRYABLE: the button becomes Retry deletion, and stays pressable', () => {
+    for (const code of ['STORAGE_CLEANUP_FAILED', 'DELETE_FAILED', 'CLAIM_INVALID'] as const) {
+      const html = render({ failure: describeDeletionFailure(code) })
+      assert.ok(html.includes(DELETE_PI_RETRY_LABEL), `${code} must offer a retry`)
+      assert.ok(!html.includes(`>${DELETE_PI_CONFIRM_LABEL}<`))
+      assert.equal(confirmDisabled(html), false)
+    }
+  })
+
+  test('NOT RETRYABLE: a refusal that will not change keeps the plain label', () => {
+    for (const code of ['FORBIDDEN', 'STATUS_CHANGED', 'NOT_FOUND',
+                        'UNAUTHORIZED', 'IN_PROGRESS'] as const) {
+      const html = render({ failure: describeDeletionFailure(code) })
+      assert.ok(!html.includes(DELETE_PI_RETRY_LABEL), `${code} must not read as a retry`)
+    }
+  })
+
+  test('IN PROGRESS says wait, and says it neutrally', () => {
+    const html = render({ failure: describeDeletionFailure('IN_PROGRESS') })
+    assert.ok(/currently in progress/i.test(html))
+    assert.ok(/please wait/i.test(html))
+    assert.ok(!/error|failed/i.test(html.slice(html.indexOf('currently in progress'))))
+  })
+
+  test('BLOCKED: the destructive button is disabled, because pressing it cannot help', () => {
+    const html = render({
+      failure: describeDeletionFailure('BLOCKED', [{ kind: 'payment_allocation', count: 1 }]),
+    })
+    assert.equal(confirmDisabled(html), true)
+    // Cancel and the × stay live: nothing is in flight, there is just nothing to
+    // press the red button for.
+    assert.equal((html.match(/<button[^>]*disabled=""/g) ?? []).length, 1)
+  })
+
+  test('BLOCKED names the record in the way, and what to do about it', () => {
+    const html = render({
+      failure: describeDeletionFailure('BLOCKED', [{ kind: 'payment_allocation', count: 2 }]),
+    })
+    assert.ok(html.includes('2 payments are allocated to this PI'))
+    assert.ok(/Finance/.test(html), 'the remedy is named, not just the obstacle')
+  })
+
+  test('BLOCKED carries no id, no amount and no payment reference', () => {
+    const html = render({
+      failure: describeDeletionFailure('BLOCKED', [
+        { kind: 'payment_allocation', count: 1 },
+        { kind: 'correction_request', count: 3 },
+      ]),
+    })
+    assert.ok(html.includes('correction requests belong to this PI'))
+    assert.ok(!/₹|[0-9a-f]{8}-[0-9a-f]{4}/i.test(html))
+  })
+
+  test('COMPLETED is not a state this dialog renders — the list removes the row', () => {
+    // Asserted here so the absence is deliberate: a "deleted!" panel inside a
+    // dialog that is about to unmount is a frame of flicker, and the success
+    // notice belongs to the list that still exists afterwards.
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/page.tsx'), 'utf8')
+    assert.ok(page.includes('setPendingDelete(null)'))
+    assert.ok(page.includes('setDeleted(DELETE_PI_SUCCESS)'))
   })
 })

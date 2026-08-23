@@ -21,6 +21,10 @@
 --   M. claims cannot be forged, borrowed or replayed
 --   N. no approval, no number, no payment, and no advance behaviour changed
 --   O. privileges — nothing internal became callable by a client role
+--   P. A RECORD THAT MUST SURVIVE refuses the deletion — an allocated payment
+--      and a correction request, demonstrated; every such reference, including
+--      a Confirmed Order's, enumerated from the catalog — and it refuses
+--      without destroying, releasing or changing anything
 --
 -- THE INVARIANT SECTIONS K–M EXIST FOR. Storage and Postgres cannot share a
 -- transaction, so the files are removed between two database calls. If an
@@ -53,6 +57,12 @@
 -- Every guard under test is a trigger or a SECURITY DEFINER function, so this
 -- script simulates the session with request.jwt.claims rather than SET ROLE —
 -- the same idiom the other assertion scripts in this directory use.
+--
+-- SECTION P IS THE EXCEPTION TO THE LINE BELOW, and deliberately narrow: it
+-- inserts one payment and one allocation of its own, entirely inside this
+-- transaction, because the defect it pins down is a foreign key from Finance
+-- into Orders and cannot be demonstrated without one. It approves nothing, links
+-- nothing to a real record, and rolls back with everything else.
 --
 -- NOTHING HERE PAYS OR APPROVES ANYBODY. No payment table is read or written, no
 -- finance record is created, and no submission reaches 'approved' by any route
@@ -1115,6 +1125,276 @@ begin
     and not has_table_privilege('authenticated', 'public.order_submission_item_images', 'delete')
     and not has_table_privilege('authenticated', 'public.order_submission_activity', 'delete'),
     'O6. deletion is reachable only through the RPCs, never through the table');
+end $$;
+
+-- ═══ P. A record that must survive refuses the deletion ═════════════════════
+--
+-- THE PRODUCTION FAILURE THIS SECTION EXISTS FOR.
+--
+-- A PI Draft would not delete. The dialog reported "already being deleted", the
+-- record stayed, and its workbook and every product image were already gone.
+--
+-- Nothing in sections K–M was wrong. The reservation freezes the submission and
+-- the three child tables that belong to it alone, and it did. What refused the
+-- deletion was a foreign key belonging to a DIFFERENT module: an allocated
+-- payment names the PI, with the default NO ACTION rule, and
+-- finalize_order_submission_deletion() neither deletes such a row nor should.
+-- So the final DELETE came back as a raw constraint error, at the one moment
+-- when the files were already gone and the route deliberately keeps the
+-- reservation.
+--
+-- From there the record could not converge: each attempt past the TTL reserved
+-- it again, found the bucket already empty, and was refused by the same foreign
+-- key; each attempt inside the TTL met the neutral in-progress refusal instead.
+--
+-- WHAT IS ASSERTED HERE IS THE DATABASE HALF OF THE ANSWER. The route now
+-- establishes these relationships BEFORE it reserves anything, so the refusal
+-- arrives with the files intact — but a check in application code is only as
+-- good as the list it checks, so P1 derives that list from the catalog. The rest
+-- prove that the refusal is real, that it destroys and changes nothing, that the
+-- reservation returns the record exactly as it was, and that the deletion
+-- succeeds the moment the blocking record is legitimately gone.
+--
+-- NOTHING IS DELETED TO MAKE A DELETION SUCCEED. P6 removes the payment through
+-- the path Finance already has for an unapproved one — which releases its
+-- allocations by the trigger 20260918000000 §8a installed — and P7 proves that a
+-- VERIFIED payment's allocation is not removable at all, so the PI stays.
+
+do $$
+declare
+  v_no_action text[];
+  v_expected  text[] := array[
+    'finance_payment_allocations.order_submission_id',
+    'order_submission_correction_requests.submission_id',
+    'orders.source_order_submission_id'
+  ];
+begin
+  -- ── P1. The list the application checks is the catalog's list ─────────────
+  --
+  -- Every foreign key pointing at order_submissions whose delete rule is NOT
+  -- cascade, read from pg_constraint. A later phase that adds a fourth and does
+  -- not teach the route about it fails HERE, rather than in production after a
+  -- workbook has been destroyed.
+  select coalesce(array_agg(entry order by entry), array[]::text[])
+    into v_no_action
+  from (
+    select (c.conrelid::regclass::text || '.' ||
+            (select string_agg(a.attname, ',' order by k.ord)
+               from unnest(c.conkey) with ordinality as k(attnum, ord)
+               join pg_attribute a
+                 on a.attrelid = c.conrelid and a.attnum = k.attnum)) as entry
+    from pg_constraint c
+    where c.contype = 'f'
+      and c.confrelid = 'public.order_submissions'::regclass
+      and c.confdeltype <> 'c'
+  ) refs;
+
+  perform pg_temp.ok(v_no_action = v_expected,
+    'P1. the NO ACTION references to order_submissions are exactly the three the route checks; found: '
+    || array_to_string(v_no_action, ', '));
+
+  -- And the three the submission owns really do cascade, so finalization's
+  -- explicit deletes are belt and braces rather than the only thing holding.
+  perform pg_temp.ok(
+    (select count(*) from pg_constraint c
+      where c.contype = 'f'
+        and c.confrelid = 'public.order_submissions'::regclass
+        and c.confdeltype = 'c') = 3,
+    'P2. the submission''s own three child tables still cascade');
+end $$;
+
+-- ── P3. An allocated payment refuses the deletion, and changes nothing ───────
+do $$
+declare
+  v_id      uuid;
+  v_pay     uuid := gen_random_uuid();
+  v_claim   uuid;
+  v_err     text;
+  v_items   integer;
+  v_events  integer;
+begin
+  v_id := pg_temp.make_submission();
+
+  -- The fixture is inserted directly: this script owns its own rows, and what is
+  -- under test is the foreign key, not who may allocate. The row is the shape
+  -- allocate_payment_to_target() writes.
+  insert into public.finance_payment_requests
+    (id, client_name, amount, payment_date, payment_mode, received_in, status, submitted_by)
+  values (v_pay, 'Deletion Assertions Payment', 5000.00, current_date, 'upi',
+          'company_account', 'pending_approval', current_setting('test.owner')::uuid);
+
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_pay, v_id, 5000.00, 'order_submission', current_setting('test.owner')::uuid);
+
+  select count(*) into v_items  from public.order_submission_items where submission_id = v_id;
+  select count(*) into v_events from public.order_submission_activity where submission_id = v_id;
+
+  perform pg_temp.act_as('owner');
+
+  -- The reservation is still granted: the PI is a draft the owner owns, and
+  -- begin makes no promise about what else refers to it.
+  v_claim := pg_temp.claim(v_id);
+  perform pg_temp.ok(v_claim is not null, 'P3a. the reservation is still granted');
+
+  -- FINALIZATION IS REFUSED, and this is the production symptom exactly: a
+  -- foreign key violation, not one of this module's own markers.
+  v_err := pg_temp.fails_with(format(
+    'select public.finalize_order_submission_deletion(%L::uuid, %L::uuid)', v_id, v_claim));
+  perform pg_temp.ok(v_err like '23503|%',
+    'P3b. an allocated payment refuses the final delete with a foreign key violation; got: ' || v_err);
+  perform pg_temp.ok(v_err like '%violates foreign key constraint%',
+    'P3c. and with the text the route classifies as BLOCKED; got: ' || v_err);
+
+  -- NOTHING WENT. Not the PI, not one child row, not the payment, not the
+  -- allocation — the whole function body is one transaction and it rolled back.
+  perform pg_temp.ok(pg_temp.alive(v_id), 'P3d. the PI survives the refusal');
+  perform pg_temp.ok(
+    (select count(*) from public.order_submission_items where submission_id = v_id) = v_items,
+    'P3e. every product line survives');
+  perform pg_temp.ok(
+    (select count(*) from public.order_submission_activity where submission_id = v_id) = v_events,
+    'P3f. and the whole activity trail');
+  perform pg_temp.ok(
+    (select count(*) from public.finance_payment_allocations
+      where order_submission_id = v_id) = 1,
+    'P3g. the allocation is untouched — money is never removed to clear a deletion');
+  perform pg_temp.ok(
+    exists (select 1 from public.finance_payment_requests where id = v_pay),
+    'P3h. and neither is the payment');
+
+  -- THE STORAGE OBJECTS ARE STILL THERE. In the fixed route they never would
+  -- have been touched, because the check runs before the reservation; here the
+  -- point is narrower and still worth pinning: the database removes no object,
+  -- so a refusal at this stage cannot be what destroyed them.
+  perform pg_temp.ok(
+    (select count(*) from storage.objects
+      where bucket_id = 'order-files'
+        and name like 'submissions/' || v_id::text || '/%') = 2,
+    'P3i. the workbook and the image are both still in the bucket');
+
+  -- ── P4. And the record comes back whole ───────────────────────────────────
+  perform pg_temp.ok(
+    (public.release_order_submission_deletion(v_id, v_claim) ->> 'released')::boolean,
+    'P4a. the holder releases its own failed attempt');
+  perform pg_temp.ok(not pg_temp.is_claimed(v_id),
+    'P4b. and the PI is no longer reserved');
+  perform pg_temp.ok(
+    (select status = 'draft' from public.order_submissions where id = v_id),
+    'P4c. in exactly the state it was in before any of this');
+
+  -- ── P5. A second attempt is refused identically, not differently ──────────
+  v_claim := pg_temp.claim(v_id);
+  v_err := pg_temp.fails_with(format(
+    'select public.finalize_order_submission_deletion(%L::uuid, %L::uuid)', v_id, v_claim));
+  perform pg_temp.ok(v_err like '23503|%',
+    'P5. a retry meets the same refusal, so nothing about it degrades');
+  perform public.release_order_submission_deletion(v_id, v_claim);
+
+  -- ── P6. Once the blocking payment is gone, the same PI deletes cleanly ────
+  --
+  -- Through the path Finance already has: an UNAPPROVED payment is deletable by
+  -- its submitter, and 20260918000000 §8a releases its allocations with it. No
+  -- allocation is deleted in its own right, here or anywhere.
+  delete from public.finance_payment_requests where id = v_pay;
+  perform pg_temp.ok(
+    (select count(*) from public.finance_payment_allocations
+      where order_submission_id = v_id) = 0,
+    'P6a. deleting the unapproved payment released its allocation');
+
+  perform pg_temp.act_as('owner');
+  perform pg_temp.ok((pg_temp.delete_pi(v_id) ->> 'deleted')::boolean,
+    'P6b. and the PI now deletes, through the ordinary protocol');
+  perform pg_temp.ok(not pg_temp.alive(v_id), 'P6c. it is gone');
+  perform pg_temp.ok(
+    (select count(*) from storage.objects
+      where bucket_id = 'order-files'
+        and name like 'submissions/' || v_id::text || '/%') = 0,
+    'P6d. with no orphaned workbook or image left behind');
+end $$;
+
+-- ── P7. A VERIFIED payment's allocation is permanent, and so is the refusal ──
+do $$
+declare
+  v_id    uuid;
+  v_pay   uuid := gen_random_uuid();
+  v_claim uuid;
+  v_err   text;
+begin
+  v_id := pg_temp.make_submission();
+
+  insert into public.finance_payment_requests
+    (id, client_name, amount, payment_date, payment_mode, received_in, status,
+     submitted_by, approved_by, approved_at)
+  values (v_pay, 'Deletion Assertions Verified', 5000.00, current_date, 'bank_transfer',
+          'company_account', 'approved_unlinked', current_setting('test.owner')::uuid,
+          current_setting('test.admin')::uuid, now());
+
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_submission_id, allocated_amount, origin_target_type, created_by)
+  values (v_pay, v_id, 5000.00, 'order_submission', current_setting('test.owner')::uuid);
+
+  perform pg_temp.act_as('owner');
+  v_claim := pg_temp.claim(v_id);
+  v_err := pg_temp.fails_with(format(
+    'select public.finalize_order_submission_deletion(%L::uuid, %L::uuid)', v_id, v_claim));
+  perform pg_temp.ok(v_err like '23503|%', 'P7a. verified money refuses the deletion too');
+  perform public.release_order_submission_deletion(v_id, v_claim);
+
+  -- AND IT IS NOT MEANT TO BE CLEARED. A verified payment is undeletable, so its
+  -- allocation is permanent and this PI is permanently undeletable — which is the
+  -- correct business answer, and the one the screen now gives instead of "could
+  -- not be deleted just now".
+  perform pg_temp.ok(
+    pg_temp.fails_with(format(
+      'delete from public.finance_payment_requests where id = %L::uuid', v_pay)) <> 'NO ERROR',
+    'P7b. and the verified payment behind it cannot be deleted to clear the way');
+  perform pg_temp.ok(pg_temp.alive(v_id), 'P7c. so the PI stays, with its files intact');
+end $$;
+
+-- ── P8. A correction request refuses it as well ──────────────────────────────
+--
+-- A KNOWN, DELIBERATE DEAD END, recorded here rather than worked around. A
+-- correction request is never deleted (20260930000000), finalization does not
+-- purge it, and its foreign key is NO ACTION — so a PI that was returned for
+-- changes after its owner raised one cannot be deleted at all. The route now
+-- says so plainly instead of failing generically. Giving such a PI a route out
+-- would need a forward-only migration that purges correction requests with their
+-- submission, in the way the activity trail already is; that is a database
+-- change and is deliberately not made here.
+do $$
+declare
+  v_id    uuid;
+  v_claim uuid;
+  v_err   text;
+begin
+  v_id := pg_temp.make_submission();
+  perform pg_temp.submit(v_id);
+
+  perform pg_temp.act_as('owner');
+  perform public.request_order_submission_correction(
+    v_id, 'products', 'The fabric name is wrong on line 3.', 'It was entered from an old quote.');
+
+  -- Back to a status the deletion allow-list admits, with the request surviving.
+  perform pg_temp.act_as('reviewer');
+  perform public.request_order_submission_changes(v_id, 'Correct the fabric name.');
+  perform pg_temp.ok(
+    (select count(*) from public.order_submission_correction_requests
+      where submission_id = v_id) = 1,
+    'P8a. the correction request survives the return for changes');
+
+  perform pg_temp.act_as('owner');
+  v_claim := pg_temp.claim(v_id);
+  v_err := pg_temp.fails_with(format(
+    'select public.finalize_order_submission_deletion(%L::uuid, %L::uuid)', v_id, v_claim));
+  perform pg_temp.ok(v_err like '23503|%',
+    'P8b. a correction request refuses the deletion; got: ' || v_err);
+  perform pg_temp.ok(pg_temp.alive(v_id), 'P8c. and the PI and its request both survive');
+  perform pg_temp.ok(
+    (select count(*) from public.order_submission_correction_requests
+      where submission_id = v_id) = 1,
+    'P8d. nothing removed the request to make room');
+  perform public.release_order_submission_deletion(v_id, v_claim);
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

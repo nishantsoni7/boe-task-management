@@ -71,6 +71,7 @@ import {
   canDeleteSubmission,
   describeDeletionFailure,
   type DeletionActor,
+  type SubmissionDeletionFailure,
 } from '@/lib/orders/submissionDeletion'
 
 const MOBILE_BREAKPOINT = 768
@@ -121,7 +122,16 @@ export default function PiDraftsPage() {
   /** The row whose confirmation dialog is open, or null. */
   const [pendingDelete, setPendingDelete] = useState<PiDraftListEntry | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const [deleteFailure, setDeleteFailure] = useState<string | null>(null)
+  /**
+   * The route's last answer about this deletion, described.
+   *
+   * THE WHOLE OBJECT, not the sentence out of it. The dialog needs three of its
+   * facts, not one: what to say, whether pressing again is worth doing, and
+   * whether the refusal is a protected relationship that a second press cannot
+   * move. Keeping only the message here is what left the red button live under a
+   * refusal that was never going to change.
+   */
+  const [deleteFailure, setDeleteFailure] = useState<SubmissionDeletionFailure | null>(null)
   const [deleted, setDeleted] = useState<string | null>(null)
 
   /**
@@ -300,11 +310,15 @@ export default function PiDraftsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ submissionId: entry.id }),
       })
-      const body = await response.json().catch(() => null) as { ok?: boolean; code?: unknown } | null
+      const body = await response.json().catch(() => null) as {
+        ok?: boolean
+        code?: unknown
+        detail?: { blockers?: unknown } | null
+      } | null
 
       if (!response.ok || body?.ok !== true) {
-        const failure = describeDeletionFailure(body?.code)
-        setDeleteFailure(failure.message)
+        const failure = describeDeletionFailure(body?.code, body?.detail?.blockers)
+        setDeleteFailure(failure)
         // The row stays visible either way. When the failure means the screen is
         // out of date — the PI entered review, or somebody else already deleted
         // it — the list is re-read so what is on screen is what is true.
@@ -318,7 +332,7 @@ export default function PiDraftsPage() {
       setPendingDelete(null)
       setDeleted(DELETE_PI_SUCCESS)
     } catch {
-      setDeleteFailure(describeDeletionFailure('DELETE_FAILED').message)
+      setDeleteFailure(describeDeletionFailure('DELETE_FAILED'))
     } finally {
       deletingRef.current = false
       setDeleting(false)
