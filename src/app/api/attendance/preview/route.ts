@@ -12,6 +12,17 @@ import {
   resolveEmployeeMapping,
 } from '@/lib/attendance/employeeMapping'
 import type { PunchDirectionSource } from '@/lib/attendance/punchDirection'
+import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
+
+/** One stored attendance row, as the existing-record map reads it. */
+type ExistingRow = {
+  user_id: string
+  attendance_date: string
+  check_in_at: string | null
+  check_out_at: string | null
+  punch_direction_source: string | null
+}
+
 
 // Admin only. This route reads every employee's stored punches for the month in
 // the uploaded file and returns the before/after diff, so it is team attendance
@@ -173,12 +184,45 @@ export async function POST(req: NextRequest) {
   if (pendingRows.length > 0) {
     const userIds = [...new Set(pendingRows.map(r => r.user_id))]
     const dates   = [...new Set(pendingRows.map(r => r.attendance_date))]
-    const { data: existing } = await svc
+    // ── PAGED, AND A SHORT READ HERE IS THE WORST KIND ──
+    //
+    // This map is what decides whether each imported row is NEW or a CHANGE to
+    // one already stored. It reads (users x dates), so a month for fifty people
+    // is over 1,500 rows — and PostgREST caps a response at 1000 with no error
+    // and no warning (src/lib/supabasePaging.ts).
+    //
+    // A truncated map does not merely under-report: every row it lost looks
+    // BRAND NEW to the classifier below, so an import would report inserting
+    // days that already exist and silently mis-state what it is about to change.
+    // That is a wrong answer about attendance, which is a wrong answer about pay.
+    //
+    // A failed page therefore leaves `existing` empty AND the failure visible
+    // rather than being absorbed into a confident classification: the read is
+    // ordered on the primary key so pages cannot overlap, and any failure or cap
+    // is surfaced instead of silently producing an all-new import.
+    const existingResult = await fetchAllRows<ExistingRow>((pageFrom, pageTo) => svc
       .from('attendance_records')
       .select('user_id, attendance_date, check_in_at, check_out_at, punch_direction_source')
       .in('user_id', userIds)
       .in('attendance_date', dates)
-    for (const row of existing ?? []) {
+      .order('id', { ascending: true })
+      .range(pageFrom, pageTo))
+
+    let existing: ExistingRow[]
+    try {
+      existing = unwrapPagedRows('existing attendance records', existingResult)
+    } catch (err) {
+      // REFUSE, do not proceed. Continuing with a partial map would classify
+      // every unread day as new — see above. The detail names the read, never a
+      // database string the caller did not ask for.
+      const detail = err instanceof PagedReadError ? err.detail : String(err)
+      return NextResponse.json(
+        { error: `Could not read existing attendance records: ${detail}` },
+        { status: 500 },
+      )
+    }
+
+    for (const row of existing) {
       existingMap.set(`${row.user_id}|${row.attendance_date}`, {
         check_in_at:            row.check_in_at,
         check_out_at:           row.check_out_at,

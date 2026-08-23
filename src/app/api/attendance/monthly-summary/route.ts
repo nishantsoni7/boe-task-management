@@ -3,6 +3,17 @@ import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAut
 import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 import { attendanceCoverageThrough, withinCoverage } from '@/lib/attendance/monthAvailability'
 import { onlyParticipating } from '@/lib/payroll/participation'
+import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
+
+/** One attendance row, as the monthly summary reads it. */
+type AttendanceRow = {
+  user_id: string
+  attendance_date: string
+  check_in_at: string | null
+  check_out_at: string | null
+  status: string | null
+}
+
 
 function hoursWorked(checkIn: string | null, checkOut: string | null): number {
   if (!checkIn || !checkOut) return 0
@@ -48,14 +59,34 @@ export async function GET(req: NextRequest) {
 
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
 
-  // Fetch all attendance records for the month
-  const { data: records, error: recErr } = await svc
-    .from('attendance_records')
-    .select('user_id, attendance_date, check_in_at, check_out_at, status')
-    .gte('attendance_date', from)
-    .lte('attendance_date', to)
-
-  if (recErr) return NextResponse.json({ error: recErr.message }, { status: 500 })
+  // ── PAGED, BECAUSE POSTGREST TRUNCATES SILENTLY ──
+  //
+  // A month of attendance is (employees x days) rows: fifty people over thirty-one
+  // days is over 1,500, and PostgREST caps a response at 1000 with no error and
+  // no warning (src/lib/supabasePaging.ts). A plain select here returns a
+  // plausible-looking array that is missing a third of the month, and every
+  // figure derived from it is quietly wrong.
+  //
+  // unwrapPagedRows REFUSES a failed or capped read rather than computing from
+  // part of one. For attendance that is the only acceptable behaviour: a summary
+  // built from two thirds of a month is worse than no summary, because it looks
+  // like an answer.
+  let records: AttendanceRow[]
+  try {
+    records = unwrapPagedRows('attendance records', await fetchAllRows<AttendanceRow>(
+      (pageFrom, pageTo) => svc
+        .from('attendance_records')
+        .select('user_id, attendance_date, check_in_at, check_out_at, status')
+        .gte('attendance_date', from)
+        .lte('attendance_date', to)
+        // A unique tiebreak: range() maps to LIMIT/OFFSET, which promises
+        // nothing about row order unless the ordering is deterministic.
+        .order('id', { ascending: true })
+        .range(pageFrom, pageTo)))
+  } catch (err) {
+    const detail = err instanceof PagedReadError ? err.detail : String(err)
+    return NextResponse.json({ error: detail }, { status: 500 })
+  }
 
   // Fetch public holidays for the month
   const { data: holidays, error: holErr } = await svc

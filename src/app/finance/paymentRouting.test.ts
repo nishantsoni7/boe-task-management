@@ -674,8 +674,30 @@ describe('the projection both pages read', () => {
   test('the lists ask for no allocation join of their own — no N+1', () => {
     const view = readFileSync(
       join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
-    assert.ok(!view.includes('finance_payment_allocations'),
-      'the list must not query allocations per row; the projection carries the flag')
+
+    // THE CLASSIFICATION still comes from the projection and never from a
+    // per-row query: is_order_allocated is what decides which of the two pages
+    // holds a payment, and that has not moved.
+    assert.ok(view.includes('is_order_allocated'),
+      'the linkage flag is the projection\'s, not a join the list performs')
+
+    // The page does now read finance_payment_allocations — the projection
+    // exposes no allocated amount and no split by design (20260921000000 §8a),
+    // and Finance has to be able to see how much of a payment is still free.
+    // The invariant this test protects was never "never touch that table"; it
+    // was NO N+1. So the shape is pinned instead of the absence:
+    //
+    //   * exactly ONE read of the table on the whole page, and
+    //   * keyed on the ids of the page already loaded, in one .in() —
+    //     which is bounded twice over, since the list itself is paged.
+    const reads = view.split(".from('finance_payment_allocations')").length - 1
+    assert.equal(reads, 1, 'exactly one allocation read, for the whole page')
+    assert.ok(view.includes(".in('payment_request_id', rows.map(r => r.id))"),
+      'the allocation read is batched across the page, never issued per row')
+
+    // And it is not inside anything that iterates rows.
+    const perRow = /rows\.map\([\s\S]{0,400}?\.from\('finance_payment_allocations'\)/
+    assert.ok(!perRow.test(view), 'the allocation read must not sit inside a row loop')
   })
 
   test('the list still orders by created_at, newest first', () => {

@@ -16,6 +16,17 @@ import {
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { idParam, optionParam, textParam } from '@/lib/listState'
+import { fetchAllRows } from '@/lib/supabasePaging'
+
+/**
+ * What the screen says when the archive could not be read in full.
+ *
+ * Deliberately not an empty list. "You have no completed tasks" is a statement
+ * about somebody's work; a failed or truncated read is a statement about the
+ * request, and the two must never look the same.
+ */
+const ARCHIVE_LOAD_ERROR =
+  'Your completed tasks could not be loaded in full. Check your connection and try again.'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -348,6 +359,7 @@ function CompletedTasksContent() {
   const [userId,       setUserId]       = useState<string>('')
   const [userMap,      setUserMap]      = useState<Record<string, string>>({})
   const [loading,      setLoading]      = useState(true)
+  const [loadError,    setLoadError]    = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [isMobile,     setIsMobile]     = useState(false)
 
@@ -377,14 +389,46 @@ function CompletedTasksContent() {
       const loggedInId = session.user.id
       const uid = viewAsUserId ?? loggedInId
       setUserId(uid)
-      const [{ data: profileData }, { data: tasks }, { data: userData }] = await Promise.all([
+      // ── THE ARCHIVE IS PAGED, BECAUSE POSTGREST TRUNCATES SILENTLY ──
+      //
+      // This list was a plain .select() with no range and no limit. PostgREST
+      // caps a response at 1000 rows on this project — a CAP, not an error: no
+      // error field, no warning, a plausible-looking array.
+      // src/lib/supabasePaging.ts documents the day that cost the Performance
+      // module three quarters of its data.
+      //
+      // An archive of finished work is EXACTLY the shape that hits it: it only
+      // grows, and it is ordered newest-first, so the 1001st completed task
+      // starts pushing the OLDEST ones out — the records somebody opens this
+      // page specifically to find. Nothing would look wrong.
+      //
+      // fetchAllRows reads it in pages and REPORTS truncation rather than
+      // under-reporting. The whole set is still held in memory, so the search
+      // and filters on this page keep working exactly as they did — which is
+      // why this and not server-side paging: narrowing a page in the browser
+      // would hide every match beyond it.
+      //
+      // The secondary sort on `id` is required, not cosmetic: range() maps to
+      // LIMIT/OFFSET, which promises nothing about row order unless the ordering
+      // is unique, so two tasks completed in the same instant could otherwise
+      // swap between pages — showing one twice and losing the other.
+      const [{ data: profileData }, taskResult, { data: userData }] = await Promise.all([
         supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
-        supabase.from('tasks').select(TASK_COLUMNS).eq('assigned_to', uid).eq('status', 'completed').order('last_update_at', { ascending: false }),
+        fetchAllRows<Task>((from, to) => supabase
+          .from('tasks').select(TASK_COLUMNS)
+          .eq('assigned_to', uid).eq('status', 'completed')
+          .order('last_update_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to)),
         supabase.from('users').select('id, full_name'),
       ])
 
       if (profileData) setProfile(profileData as UserProfile)
-      setAllTasks((tasks ?? []) as unknown as Task[])
+      // A FAILED OR TRUNCATED READ IS NOT AN EMPTY ARCHIVE. Showing "no
+      // completed tasks" because a page failed would be a statement about the
+      // person's work, not about the request.
+      setLoadError(taskResult.ok && !taskResult.truncated ? null : ARCHIVE_LOAD_ERROR)
+      setAllTasks(taskResult.ok ? (taskResult.rows as unknown as Task[]) : [])
       if (userData) {
         const map: Record<string, string> = {}
         for (const u of userData) map[u.id] = u.full_name
@@ -503,6 +547,23 @@ function CompletedTasksContent() {
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
           {/* Task list */}
           <div style={{ flex: 1, minWidth: 0 }}>
+            {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without this the
+                screen would show "No completed tasks" — a statement about
+                somebody's work — when the truth is that the request did not
+                finish. It sits ABOVE the list rather than replacing it, so
+                whatever did load is still usable. */}
+            {loadError && (
+              <div
+                role="alert"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+                  padding: '10px 14px', marginBottom: '10px', borderRadius: '8px',
+                  background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+                }}
+              >
+                <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
+              </div>
+            )}
             {visibleTasks.length === 0 ? (
               <EmptyState />
             ) : (

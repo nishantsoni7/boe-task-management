@@ -11,7 +11,8 @@ import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { formatINR, groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { formatMoney } from '@/lib/finance/piPaymentView'
 import { notifyFinance } from '@/lib/notify'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
@@ -33,7 +34,21 @@ import {
   type TabAccent,
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
-import { REQUEST_STAGE_STATUSES, canVerifyPayment, isRequestStageStatus } from './paymentRouting'
+import { REQUEST_STAGE_STATUSES, canVerifyPayment } from './paymentRouting'
+import {
+  COUNTED_TABS,
+  archiveCutoffIso,
+  clampPage,
+  pageCount,
+  pageRange,
+  parseFilterTab,
+  paymentRequestsSearchFilter,
+  resultSummary,
+  tabClauses,
+  tabCounts,
+  tabMatches,
+  type FilterTab,
+} from './paymentRequestsQuery'
 import {
   EMPTY_TARGET_STATE,
   PAYMENT_TARGET_LABEL,
@@ -111,7 +126,11 @@ type PaymentRequest = {
 }
 
 type AdminAction = 'approve' | 'needs_clarification' | 'reject'
-type FilterTab   = 'pending' | 'clarification' | 'rejected' | 'archive' | 'all'
+
+// FilterTab, parseFilterTab, the archive window and the tab predicates all live
+// in ./paymentRequestsQuery now — they had to, because the tabs became DATABASE
+// filters and the two forms must be one definition. See that module's tests,
+// which evaluate both forms against the same rows and require them to agree.
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -171,23 +190,32 @@ const EMPTY_MESSAGES: Record<FilterTab, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Maps an incoming ?tab= value (e.g. from the Admin Action Queue) to a known
-// FilterTab, defaulting to 'pending' for anything missing or unrecognized —
-// never throws on an invalid/stale deep link.
-// A stale deep link (?tab=order_pending, from before confirmed payments left
-// this page) is simply not in this list, so it falls through to 'pending'.
-const FILTER_TAB_KEYS: FilterTab[] = ['pending', 'clarification', 'rejected', 'archive', 'all']
-function parseFilterTab(value: string | null): FilterTab {
-  return (FILTER_TAB_KEYS as string[]).includes(value ?? '') ? (value as FilterTab) : 'pending'
-}
-
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-function fmtAmount(n: number) {
-  return formatINR(n)
-}
+// ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
+// one the PI payment card and the Order's payment summary read.
+//
+// THE DEFECT THIS CLOSES. Three formatters were in use across the two modules
+// and each rendered the same amount differently:
+//
+//   formatINR         maximumFractionDigits: 2 with NO minimum, so ₹1,000 and
+//                     ₹1,000.5 and ₹1,000.55 — ragged decimals that do not line
+//                     up in a tabular-nums column
+//   toLocaleString    default maximumFractionDigits: 3, so a legacy amount with
+//                     more precision than paise printed ₹1,000.555
+//   formatMoney       always two decimal places
+//
+// So one Received Payments row could read "₹1,000.5" in its Amount column and
+// "₹1,000.50" in the Allocation cell beside it — the same money, on the same
+// line, twice. Money on a finance screen is stated to the paise or it is not
+// reconcilable against a bank statement.
+//
+// formatMoney also accepts a STRING, which formatINR cannot: `numeric` crosses
+// the wire as a string precisely so it is not rounded by JSON's double, and a
+// formatter that only takes a number forces a lossy conversion at the boundary.
+const fmtAmount = formatMoney
 
 // Order No. display for both employee and admin views: shows the real number
 // once one exists, otherwise a concise state describing why not. A new_order
@@ -247,6 +275,16 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 // APPROVED_RACE_MESSAGE) — a row approved between load and click is still
 // refused by the database, not merely hidden.
 
+/**
+ * How long the search box waits before asking the database.
+ *
+ * Search is answered server-side now, so without this every keystroke would be
+ * a list query plus four count queries. 250ms is below the threshold at which
+ * typing feels laggy and comfortably above the interval between keystrokes, so
+ * an ordinary term costs one round of queries rather than one per character.
+ */
+const SEARCH_DEBOUNCE_MS = 250
+
 const UNAPPROVED_STATUSES = REQUEST_STAGE_STATUSES
 
 function isApproved(status: string): boolean {
@@ -282,42 +320,17 @@ function canManageRequest(r: PaymentRequest, isAdmin: boolean, userId: string): 
 // Null-safe: a row with no known timestamp is treated as active/not-stale so it
 // can never silently vanish from the active view.
 
-const ARCHIVE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000
-
-function archiveCutoff(): number {
-  return Date.now() - ARCHIVE_WINDOW_MS
-}
-
-function isArchivedRejected(r: PaymentRequest, cutoff: number): boolean {
-  if (r.status !== 'rejected') return false
-  const ts = r.rejected_at ?? r.updated_at ?? null
-  if (!ts) return false
-  return new Date(ts).getTime() <= cutoff
-}
+// ARCHIVE_WINDOW_MS, archiveCutoffIso, isArchivedRejected and matchesTab (now
+// tabMatches) moved to ./paymentRequestsQuery when the tabs became database
+// filters: the predicate a row is tested against in memory and the predicate the
+// query is built from have to be one rule, and keeping a second copy here is
+// exactly how they would drift.
 
 function isStaleClarification(r: PaymentRequest, cutoff: number): boolean {
   if (r.status !== 'needs_clarification') return false
   const ts = r.clarification_requested_at ?? r.updated_at ?? null
   if (!ts) return false
   return new Date(ts).getTime() <= cutoff
-}
-
-// Every tab is additionally gated on isRequestStageStatus, so a confirmed
-// payment cannot surface in ANY of them — not through 'all', not through a
-// locally stale row approved by someone else since this page loaded, and not
-// through the Archive rule. The query below already refuses to load one; this
-// is the second, independent gate over whatever is in memory.
-function matchesTab(r: PaymentRequest, tab: FilterTab, cutoff: number): boolean {
-  if (!isRequestStageStatus(r.status)) return false
-  switch (tab) {
-    case 'pending':       return r.status === 'pending_approval'
-    case 'clarification': return r.status === 'needs_clarification'
-    case 'rejected':      return r.status === 'rejected' && !isArchivedRejected(r, cutoff)
-    case 'archive':       return isArchivedRejected(r, cutoff)
-    // 'all' shows active requests only: every request-stage record except
-    // archived rejected, but keeps stale clarification.
-    default:              return !isArchivedRejected(r, cutoff)
-  }
 }
 
 // ── Shared modal shell ────────────────────────────────────────────────────────
@@ -2541,6 +2554,18 @@ function FinancePageInner() {
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
   const [search, setSearch]             = useState('')
   const [highlightId, setHighlightId]   = useState<string | null>(null)
+  // ── Paging ──
+  // The list carried no range and no limit, and PostgREST truncates at 1000 rows
+  // SILENTLY — no error, no warning, a plausible-looking array. This page looks
+  // like a small queue because it is scoped to the three request-stage statuses,
+  // but `rejected` accumulates forever: the Archive tab exists precisely because
+  // it does, and Archive — the tab whose whole purpose is the OLDEST rejected
+  // requests — is the first one that would empty while its badge kept counting.
+  const [page,        setPage]        = useState(1)
+  const [total,       setTotal]       = useState<number | null>(null)
+  // The four counted tabs. 'all' is derived from three of them — see tabCounts.
+  const [counts,      setCounts]      = useState<Record<string, number | null>>({})
+  const [loadError,   setLoadError]   = useState<string | null>(null)
 
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
@@ -2556,29 +2581,123 @@ function FinancePageInner() {
   // modal the admin already closed.
   const deepLinkHandled = useRef(false)
 
-  // ── Fetch — join submitted_by_name via users ─────────────────────────────────
-  const loadRequests = async () => {
+  // The narrowing, as the DATABASE will be asked it. One instant decides the
+  // archive cutoff for the list AND for all four counts, so a record on the
+  // boundary cannot be in one answer and out of the other.
+  const filters = useMemo(() => ({
+    tab: activeTab,
+    search: paymentRequestsSearchFilter(search),
+  }), [activeTab, search])
+
+  /**
+   * The archive cutoff the LOADED rows were selected against.
+   *
+   * Read from the clock inside the loader, never during render: a render is
+   * required to be pure, and a cutoff that moved every time the component
+   * re-drew could put a record on the boundary in one answer and out of the
+   * next. Storing what the QUERY used also guarantees the in-memory gate below
+   * tests rows against the same instant the database did.
+   *
+   * 0 until the first load, which archives nothing — the safe direction: a
+   * record is shown in the active tab rather than hidden in Archive.
+   */
+  const [cutoffMs, setCutoffMs] = useState(0)
+
+  // Guards against an out-of-order response. Each load claims a number; only the
+  // newest may write to state. Without it a slow query for "REQ" can land after
+  // a fast one for "REQ-2026" and repaint the wider result under a narrower box.
+  const loadToken = useRef(0)
+
+  /** The status scope and the narrowing, applied to any query over this table. */
+  const scopedQuery = <T extends {
+    in(column: string, values: string[]): T
+    or(filters: string): T
+    eq(column: string, value: string): T
+    is(column: string, value: null): T
+    not(column: string, op: string, value: null): T
+  }>(query: T): T => {
+    // Request-stage records ONLY. This replaces a .neq('approved_linked'),
+    // which let approved_unlinked through and put confirmed money on the
+    // Payment Requests page. Filtering positively means a status added later
+    // has to be named here to appear, rather than appearing by default.
+    let scoped = query.in('status', REQUEST_STAGE_STATUSES as unknown as string[])
+    if (filters.search) scoped = scoped.or(filters.search)
+    return scoped
+  }
+
+  /** The tab's own clauses, applied on top of the shared scope. */
+  const applyTab = <T extends {
+    or(filters: string): T
+    eq(column: string, value: string): T
+    is(column: string, value: null): T
+    not(column: string, op: string, value: null): T
+  }>(query: T, tab: FilterTab, cutoffIso: string): T => {
+    let scoped = query
+    for (const clause of tabClauses(tab, cutoffIso)) {
+      if (clause.kind === 'or') scoped = scoped.or(clause.filters)
+      else if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
+      else if (clause.kind === 'isNull') scoped = scoped.is(clause.column, null)
+      else if (clause.kind === 'notNull') scoped = scoped.not(clause.column, 'is', null)
+    }
+    return scoped
+  }
+
+  // ── Fetch — one page, narrowed in the database ───────────────────────────────
+  //
+  // EVERY TAB AND THE SEARCH MOVED SERVER-SIDE, and not for speed: a tab applied
+  // in the browser over ONE PAGE narrows fifty rows and silently hides every
+  // match on page two. Paging without moving them would have replaced a
+  // truncation defect with a filtering one.
+  //
+  // The predicates are the SAME ONES tabMatches applies — see
+  // paymentRequestsQuery.ts, where a test evaluates both forms against the same
+  // rows and requires them to agree on every one. The in-memory gate is kept
+  // below as a second, independent check.
+  const loadRequests = async (cutoffIso: string) => {
+    const token = ++loadToken.current
     setListLoading(true)
-    const { data } = await supabase
-      .from('finance_payment_requests')
-      .select(`
-        id, request_number, client_name, amount, payment_date, payment_mode,
-        received_in, collected_by_user_id, collected_from_text,
-        handed_over_to_user_id, handed_over_at, collection_handover_note,
-        proof_note, order_number, order_id,
-        order_request_id, order_request_number, sales_note,
-        payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
-        updated_at, rejected_at, clarification_requested_at,
-        submitted_by_user:users!submitted_by(full_name),
-        collected_by_user:users!collected_by_user_id(full_name),
-        handed_over_to_user:users!handed_over_to_user_id(full_name)
-      `)
-      // Request-stage records ONLY. This replaces a .neq('approved_linked'),
-      // which let approved_unlinked through and put confirmed money on the
-      // Payment Requests page. Filtering positively means a status added later
-      // has to be named here to appear, rather than appearing by default.
-      .in('status', REQUEST_STAGE_STATUSES as unknown as string[])
+
+    const range = pageRange(page)
+    const { data, count, error } = await applyTab(
+      scopedQuery(
+        supabase
+          .from('finance_payment_requests')
+          .select(`
+            id, request_number, client_name, amount, payment_date, payment_mode,
+            received_in, collected_by_user_id, collected_from_text,
+            handed_over_to_user_id, handed_over_at, collection_handover_note,
+            proof_note, order_number, order_id,
+            order_request_id, order_request_number, sales_note,
+            payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
+            updated_at, rejected_at, clarification_requested_at,
+            submitted_by_user:users!submitted_by(full_name),
+            collected_by_user:users!collected_by_user_id(full_name),
+            handed_over_to_user:users!handed_over_to_user_id(full_name)
+          `, { count: 'exact' }),
+      ),
+      activeTab,
+      cutoffIso,
+    )
+      // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET,
+      // which promises nothing about row order unless the ordering is unique —
+      // two requests created in the same instant could otherwise swap between
+      // pages, showing one twice and hiding the other.
       .order('created_at', { ascending: false })
+      .order('id', { ascending: false })
+      .range(range.from, range.to)
+
+    // A newer load has been issued; this answer is stale and must not repaint
+    // the screen underneath it.
+    if (token !== loadToken.current) return
+
+    if (error) {
+      // The list keeps whatever it had rather than blanking: a failed refresh is
+      // not evidence that the records are gone. The banner says which it is.
+      setLoadError('Could not load payment requests. Check your connection and try again.')
+      setListLoading(false)
+      return
+    }
+    setLoadError(null)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
@@ -2591,8 +2710,76 @@ function FinancePageInner() {
       handed_over_to_user: undefined,
     }))
     setRequests(mapped)
+    setTotal(count ?? null)
     setListLoading(false)
+
+    // A PAGE BEYOND THE END, corrected here rather than in an effect watching
+    // the total. Switching to a tab with fewer records would otherwise leave the
+    // reader on page four of a one-page result, staring at an empty table over a
+    // filter that matches plenty. Setting it from this async callback — not from
+    // a render or an effect the render caused — is what keeps the component
+    // pure; the change re-runs the page effect once and settles.
+    if (count !== null && count !== undefined) {
+      const corrected = clampPage(page, count)
+      if (corrected !== page) setPage(corrected)
+    }
   }
+
+  /**
+   * The four tab badges, counted by the database.
+   *
+   * HEAD REQUESTS: `count: 'exact', head: true` transfers no rows at all, so
+   * four of them cost four counts and no payload. They run TOGETHER, so the
+   * badges cost one wait rather than four.
+   *
+   * FOUR AND NOT FIVE — 'all' is exactly pending + clarification + rejected and
+   * is derived, which saves a round trip and cannot disagree with the tabs it is
+   * the sum of. A count that fails leaves its badge unknown rather than zero: a
+   * confident 0 on a tab holding records is worse than no number.
+   */
+  const loadCounts = async (cutoffIso: string) => {
+    const token = loadToken.current
+    const results = await Promise.all(COUNTED_TABS.map(async tab => {
+      const { count, error } = await applyTab(
+        scopedQuery(
+          supabase
+            .from('finance_payment_requests')
+            .select('id', { count: 'exact', head: true }),
+        ),
+        tab,
+        cutoffIso,
+      )
+      return [tab, error ? null : (count ?? null)] as const
+    }))
+
+    if (token !== loadToken.current) return
+    setCounts(Object.fromEntries(results))
+  }
+
+  /**
+   * One round of reads: the page of rows and the four badges, against ONE
+   * cutoff.
+   *
+   * The cutoff is read from the clock HERE — in an async function, never during
+   * render — and handed to both. Two loaders each calling Date.now() could, for
+   * a record sitting exactly on the 30-day boundary, put it in the list and out
+   * of the count in the same breath.
+   */
+  const reload = async () => {
+    const cutoffIso = archiveCutoffIso(Date.now())
+    setCutoffMs(Date.parse(cutoffIso))
+    await Promise.all([loadRequests(cutoffIso), loadCounts(cutoffIso)])
+  }
+
+  /**
+   * After a mutation: the page of rows AND the badges.
+   *
+   * A review, a correction, a delete or a reapply can move a record between
+   * tabs, so refreshing the list alone would leave a badge counting a record
+   * that is no longer there. The two run together — the counts are head-only
+   * requests and carry no payload.
+   */
+  const refreshAfterMutation = () => { reload() }
 
   // ── Auth + profile ───────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2603,34 +2790,83 @@ function FinancePageInner() {
       const uid = session.user.id
       setUserId(uid)
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', uid)
-        .single()
+      // ── THE PROFILE, THE PERMISSIONS AND THE LIST, TOGETHER ──
+      //
+      // These ran one after the next, so the page waited for four latencies end
+      // to end before it drew anything — and none of the last three needs
+      // another's answer. Every row loadRequests reads is scoped by RLS, not by
+      // the capabilities being resolved beside it. The same shape the Received
+      // Payments pages and the Order detail now use.
+      //
+      // NOTHING ABOUT AUTHORITY CHANGED. `caps` still starts empty and is still
+      // resolved by resolve_effective_permissions before anything can be
+      // clicked: pageLoading is not cleared until all three have landed, and a
+      // failed resolve still falls back to NO capabilities rather than to the
+      // role.
+      const [{ data: me }, financePerms] = await Promise.all([
+        supabase
+          .from('users')
+          .select(USER_PROFILE_COLUMNS)
+          .eq('id', uid)
+          .single(),
+        getEffectivePermissions(supabase, uid, 'finance').catch(() => []),
+        // The rows AND the four badge counts, in the same group. The counts are
+        // head-only — `count: 'exact', head: true` transfers no rows — so they
+        // cost four counts and no payload, and being in this group they cost no
+        // additional wait.
+        reload(),
+      ])
 
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')
-
-      // Resolved before the first render of the list, so the approval and
-      // correction controls are decided by the time anything can be clicked.
-      // A failed resolve falls back to no capabilities rather than to the role.
-      const financePerms = await getEffectivePermissions(supabase, uid, 'finance').catch(() => [])
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
 
-      await loadRequests()
       setPageLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // ── Re-read when the narrowing or the page changes ───────────────────────────
+  //
+  // The tab and the search are answered by the DATABASE now, so a change to
+  // either is a new query rather than a re-filter of rows already in hand. The
+  // search box is DEBOUNCED — without it every keystroke would be a round trip
+  // and four count queries — while a tab click is a single deliberate action and
+  // is not delayed.
+  //
+  // Skipped until the first load has finished, so the mount does not issue the
+  // same query twice.
+  useEffect(() => {
+    if (pageLoading) return
+    const delay = filters.search === null ? 0 : SEARCH_DEBOUNCE_MS
+    // The badges describe the SEARCHED set, so they move with the narrowing.
+    const timer = setTimeout(() => { reload() }, delay)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.search, activeTab])
+
+  // A page change is one more page of the SAME narrowing, so the badges are
+  // already right and only the rows are re-read — against the cutoff the badges
+  // were counted with, so the page and its tab totals describe one instant.
+  //
+  // Deferred by a timer rather than fetched in the effect body: the loader sets
+  // state on its first line, and doing that synchronously inside an effect is
+  // the cascading-render pattern react-hooks/set-state-in-effect exists to
+  // catch. The zero delay only moves it past the commit.
+  useEffect(() => {
+    if (pageLoading) return
+    const timer = setTimeout(() => { loadRequests(new Date(cutoffMs).toISOString()) }, 0)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page])
+
   // ── Deep-link resolution (Admin Action Queue → ?tab=&request=) ───────────────
   // Runs exactly once, once `requests` is loaded. A missing, invalid, or
   // no-longer-pending id is a silent no-op — the normal tab still renders,
   // no fatal error, no claim that the action is still available.
   useEffect(() => {
-    const resolveDeepLink = () => {
+    const resolveDeepLink = async () => {
       if (pageLoading || deepLinkHandled.current) return
       deepLinkHandled.current = true
 
@@ -2647,22 +2883,74 @@ function FinancePageInner() {
       }
 
       const requestId = searchParams.get('request')
-      if (requestId) {
-        const match = requests.find(r => r.id === requestId)
-        if (match) {
+      if (!requestId) return
+
+      // ── THE RECORD MAY NOT BE ON THIS PAGE ──
+      //
+      // Before the list was paged it held every request-stage record, so a deep
+      // link's target was always among the loaded rows. Now it is one page of
+      // fifty, and a link into an older request — exactly what the Admin Action
+      // Queue sends for an ageing item — would silently do nothing: no modal, no
+      // highlight, no explanation.
+      //
+      // So a miss is followed by ONE read for that ONE record, by its id, from
+      // the same RLS-protected table the list reads. A record this caller may
+      // not see comes back empty and the page simply renders its tab, which is
+      // what a stale or unauthorized link has always done here. Nothing is
+      // highlighted in that case, because the row is genuinely not on screen —
+      // but the record the link was for does open.
+      let match = requests.find(r => r.id === requestId) ?? null
+      const onThisPage = match !== null
+
+      if (!match) {
+        const { data } = await supabase
+          .from('finance_payment_requests')
+          .select(`
+            id, request_number, client_name, amount, payment_date, payment_mode,
+            received_in, collected_by_user_id, collected_from_text,
+            handed_over_to_user_id, handed_over_at, collection_handover_note,
+            proof_note, order_number, order_id,
+            order_request_id, order_request_number, sales_note,
+            payment_against, payment_target_type, status, submitted_by, admin_note, created_at,
+            updated_at, rejected_at, clarification_requested_at,
+            submitted_by_user:users!submitted_by(full_name),
+            collected_by_user:users!collected_by_user_id(full_name),
+            handed_over_to_user:users!handed_over_to_user_id(full_name)
+          `)
+          .eq('id', requestId)
+          // Request-stage only, exactly as the list is. A confirmed payment
+          // reached through a stale link belongs to Received Payments and must
+          // not open here.
+          .in('status', REQUEST_STAGE_STATUSES as unknown as string[])
+          .maybeSingle()
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const row = data as any
+        match = row
+          ? { ...row,
+              submitted_by_name:   row.submitted_by_user?.full_name   ?? undefined,
+              collected_by_name:   row.collected_by_user?.full_name   ?? undefined,
+              handed_over_to_name: row.handed_over_to_user?.full_name ?? undefined,
+              submitted_by_user:   undefined,
+              collected_by_user:   undefined,
+              handed_over_to_user: undefined } as PaymentRequest
+          : null
+      }
+
+      if (match) {
+        if (onThisPage) {
           setHighlightId(match.id)
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
-          if (caps.canApprovePayment && match.status === 'pending_approval') {
-            setReviewRequest(match)
-          } else {
-            setDetailRequest(match)
-          }
         }
-        // Drop the record param so a refresh or back-navigation can't reopen
-        // the modal; keep the tab so the deep link still lands correctly.
-        router.replace(`/finance?tab=${activeTab}`)
+        if (caps.canApprovePayment && match.status === 'pending_approval') {
+          setReviewRequest(match)
+        } else {
+          setDetailRequest(match)
+        }
       }
+      // Drop the record param so a refresh or back-navigation can't reopen
+      // the modal; keep the tab so the deep link still lands correctly.
+      router.replace(`/finance?tab=${activeTab}`)
     }
     resolveDeepLink()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2673,44 +2961,29 @@ function FinancePageInner() {
     router.replace('/login')
   }
 
-  // ── Filtered + searched list (client-side, newest-first already from DB) ─────
-  const visible = useMemo(() => {
-    const cutoff = archiveCutoff()
-    let list = requests.filter(r => matchesTab(r, activeTab, cutoff))
-    const q = search.trim().toLowerCase()
-    if (q) {
-      list = list.filter(r =>
-        r.client_name.toLowerCase().includes(q) ||
-        (r.order_number ?? '').toLowerCase().includes(q)
-      )
-    }
-    return list
-  }, [requests, activeTab, search])
+  // ── The page's rows ──────────────────────────────────────────────────────────
+  //
+  // THE ROWS ARE THE ANSWER, not a starting point to filter. The tab and the
+  // search are database predicates now; re-applying them here would narrow the
+  // fifty rows in hand and silently hide every match on the next page.
+  //
+  // tabMatches IS STILL APPLIED, and deliberately: it is the SAME predicate the
+  // query was built from, used as a second and independent gate over whatever is
+  // in memory. A row approved by somebody else since this page loaded must not
+  // linger in a tab the query would no longer return it for. It removes rows; it
+  // can never add one, so it cannot disagree with the count beside it in the
+  // direction that matters.
+  const visible = useMemo(
+    () => requests.filter(r => tabMatches(r, activeTab, cutoffMs)),
+    [requests, activeTab, cutoffMs])
 
-  // ── Status counts (across all unfiltered) ────────────────────────────────────
-  // Counted through the SAME matchesTab predicate the list uses, so a tab's
-  // badge and its contents can never disagree — and so the confirmed-payment
-  // exclusion is applied to the counts by construction rather than by five
-  // filters that each have to remember it.
-  const counts = useMemo(() => {
-    const cutoff = archiveCutoff()
-    const countTab = (tab: FilterTab) => requests.filter(r => matchesTab(r, tab, cutoff)).length
-    return {
-      pending:       countTab('pending'),
-      clarification: countTab('clarification'),
-      rejected:      countTab('rejected'),
-      archive:       countTab('archive'),
-      all:           countTab('all'),
-    }
-  }, [requests])
-
-  const tabCount: Record<FilterTab, number> = {
-    pending:       counts.pending,
-    clarification: counts.clarification,
-    rejected:      counts.rejected,
-    archive:       counts.archive,
-    all:           counts.all,
-  }
+  // ── The tab badges ───────────────────────────────────────────────────────────
+  // Counted by the DATABASE across the whole narrowed set — the old counts were
+  // taken over the rows that happened to be loaded, which was every row only
+  // while the query was unbounded. 'all' is derived from three of the four; a
+  // count that failed leaves its badge unknown rather than a confident zero.
+  const tabCount = useMemo(() => tabCounts(counts), [counts])
+  const pages = pageCount(total)
 
   // ── Row click handler ────────────────────────────────────────────────────────
   const handleRowClick = (r: PaymentRequest) => {
@@ -2729,7 +3002,7 @@ function FinancePageInner() {
       title="Payment Requests"
       subtitle="Sales can submit customer payment details here for admin approval."
       onSignOut={handleSignOut}
-      onRefresh={loadRequests}
+      onRefresh={reload}
       actions={
         <button onClick={() => { setFormPrefill(null); setShowForm(true) }} className="boe-btn boe-btn-primary"
           style={{ padding: '6px 14px', fontSize: '12px' }}>
@@ -2756,11 +3029,11 @@ function FinancePageInner() {
             type="text"
             placeholder="Client or order…"
             value={search}
-            onChange={e => setSearch(e.target.value)}
+            onChange={e => { setSearch(e.target.value); setPage(1) }}
             style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
           />
           {search && (
-            <button onClick={() => setSearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+            <button onClick={() => { setSearch(''); setPage(1) }} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
           )}
         </div>
       </div>
@@ -2771,24 +3044,61 @@ function FinancePageInner() {
         <StatusTabs
           tabs={FILTER_TABS.map(t => ({ ...t, count: tabCount[t.key] }))}
           active={activeTab}
-          onSelect={key => { setActiveTab(key); setSearch('') }}
+          onSelect={key => { setActiveTab(key); setSearch(''); setPage(1) }}
           summary={
-            listLoading
-              ? 'Loading…'
-              : search.trim()
-                ? `${visible.length} of ${tabCount[activeTab]} visible`
-                : `${visible.length} request${visible.length !== 1 ? 's' : ''}`
+            // The size of the WHOLE narrowed set, from the database's exact
+            // count — not the length of the page in hand, which understates it
+            // the moment there is more than one page.
+            resultSummary({
+              loading: listLoading,
+              shown: visible.length,
+              total,
+              narrowed: search.trim() !== '',
+              page,
+              pages,
+              noun: 'request',
+            })
           }
         />
+
+        {/* A FAILED REFRESH IS NOT EVIDENCE THE RECORDS ARE GONE. The rows
+            already on screen stay, and this says which it is and offers the way
+            back — rather than an empty table that reads as "no requests". */}
+        {loadError && (
+          <div
+            role="alert"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+              padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
+              background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+            }}
+          >
+            <span style={{ flex: 1, minWidth: '200px' }}>{loadError}</span>
+            <button onClick={refreshAfterMutation} className="boe-btn boe-btn-ghost" style={{ padding: '4px 12px', fontSize: '12px' }}>
+              Retry
+            </button>
+          </div>
+        )}
 
         {/* ── Table ── */}
         {listLoading ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
-            {search.trim()
-              ? `No results for "${search.trim()}".`
-              : EMPTY_MESSAGES[activeTab]}
+          /* TWO DIFFERENT EMPTIES. "No pending payment requests" is a statement
+             about the business; "no results for X" is a statement about the
+             search, and it offers the way out. Confusing the two sends somebody
+             hunting for a record that is merely filtered. */
+          <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
+            {search.trim() ? (
+              <>
+                No results for &ldquo;{search.trim()}&rdquo;.
+                <div style={{ marginTop: '10px' }}>
+                  <button onClick={() => { setSearch(''); setPage(1) }} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+                    Clear search
+                  </button>
+                </div>
+              </>
+            ) : EMPTY_MESSAGES[activeTab]}
           </div>
         ) : (
           <PaymentsTable
@@ -2796,13 +3106,48 @@ function FinancePageInner() {
             isAdmin={isAdmin}
             canApprove={caps.canApprovePayment}
             userId={userId}
-            cutoff={archiveCutoff()}
+            cutoff={cutoffMs}
             highlightId={highlightId}
             onRowClick={handleRowClick}
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
             onDelete={r => setDeleteRequest(r)}
           />
+        )}
+
+        {/* ── Paging ──
+            Rendered only when there is more than one page, so a short queue
+            looks exactly as it always has. ?tab= and ?request= deep links are
+            unaffected: the tab is a filter, and a request that is not on the
+            loaded page is fetched by its own id. */}
+        {!listLoading && pages > 1 && (
+          <nav
+            aria-label="Payment request pages"
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px',
+              padding: '10px 12px', borderTop: `1px solid ${colors.border}`,
+            }}
+          >
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: '12px', opacity: page <= 1 ? 0.5 : 1, cursor: page <= 1 ? 'not-allowed' : 'pointer' }}
+            >
+              Previous
+            </button>
+            <span style={{ fontSize: '12px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+              Page {page} of {pages}
+            </span>
+            <button
+              onClick={() => setPage(p => Math.min(pages, p + 1))}
+              disabled={page >= pages}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: '12px', opacity: page >= pages ? 0.5 : 1, cursor: page >= pages ? 'not-allowed' : 'pointer' }}
+            >
+              Next
+            </button>
+          </nav>
         )}
 
       </div>
@@ -2816,7 +3161,7 @@ function FinancePageInner() {
           initialSalesNote={formPrefill?.salesNote}
           contextLabel={formPrefill?.contextLabel}
           onClose={() => { setShowForm(false); setFormPrefill(null) }}
-          onSaved={() => { setShowForm(false); setFormPrefill(null); loadRequests() }}
+          onSaved={() => { setShowForm(false); setFormPrefill(null); refreshAfterMutation() }}
         />
       )}
       {reviewRequest && (
@@ -2831,7 +3176,7 @@ function FinancePageInner() {
           // count, but they share this callback and re-checking is free.
           onActioned={() => {
             setReviewRequest(null)
-            loadRequests()
+            refreshAfterMutation()
             queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
           }}
         />
@@ -2845,7 +3190,7 @@ function FinancePageInner() {
           mayApprovePayments={caps.canApprovePayment}
           userId={userId}
           supabase={supabase}
-          onCorrected={() => { setDetailRequest(null); loadRequests() }}
+          onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
           // Details hands off to the same two modals the table uses; only one
           // Finance modal is open at a time, so it closes as they open.
           onEdit={r => { setDetailRequest(null); setEditRequest(r) }}
@@ -2858,7 +3203,7 @@ function FinancePageInner() {
           isAdmin={isAdmin}
           supabase={supabase}
           onClose={() => setEditRequest(null)}
-          onSaved={() => { setEditRequest(null); loadRequests() }}
+          onSaved={() => { setEditRequest(null); refreshAfterMutation() }}
         />
       )}
       {deleteRequest && (
@@ -2866,7 +3211,7 @@ function FinancePageInner() {
           request={deleteRequest}
           supabase={supabase}
           onClose={() => setDeleteRequest(null)}
-          onDeleted={() => { setDeleteRequest(null); loadRequests() }}
+          onDeleted={() => { setDeleteRequest(null); refreshAfterMutation() }}
         />
       )}
 

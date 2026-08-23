@@ -15,6 +15,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
+import { formatMoney } from '@/lib/finance/piPaymentView'
 import {
   OrderModal, OrderField, OrderModalActions, OrderModalError, OrderModalNotice,
 } from '@/components/orders/OrderModal'
@@ -50,9 +51,28 @@ function failureMessage(message: string | null | undefined, fallback: string): s
   return amendmentErrorMessage(message) ?? fallback
 }
 
-function fmtAmount(n: number | null): string {
-  return n == null ? '—' : '₹' + n.toLocaleString('en-IN')
-}
+// ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
+// one the PI payment card and the Order's payment summary read.
+//
+// THE DEFECT THIS CLOSES. Three formatters were in use across the two modules
+// and each rendered the same amount differently:
+//
+//   formatINR         maximumFractionDigits: 2 with NO minimum, so ₹1,000 and
+//                     ₹1,000.5 and ₹1,000.55 — ragged decimals that do not line
+//                     up in a tabular-nums column
+//   toLocaleString    default maximumFractionDigits: 3, so a legacy amount with
+//                     more precision than paise printed ₹1,000.555
+//   formatMoney       always two decimal places
+//
+// So one Received Payments row could read "₹1,000.5" in its Amount column and
+// "₹1,000.50" in the Allocation cell beside it — the same money, on the same
+// line, twice. Money on a finance screen is stated to the paise or it is not
+// reconcilable against a bank statement.
+//
+// formatMoney also accepts a STRING, which formatINR cannot: `numeric` crosses
+// the wire as a string precisely so it is not rounded by JSON's double, and a
+// formatter that only takes a number forces a lossy conversion at the boundary.
+const fmtAmount = formatMoney
 
 /**
  * The seven amendable inputs, shared by the admin's Amend form and the
@@ -313,6 +333,13 @@ export function RequestOrderChangeModal({
  * salesperson is not necessarily all of them; order_linked_payment_total is
  * SECURITY DEFINER and returns the true total. Cancelling an order while
  * misinformed about the money on it is the specific mistake this prevents.
+ *
+ * NULL IS NOT ZERO. Since 20261006000000 the RPC is gated on Order visibility
+ * and answers NULL — the same answer an Order that does not exist gets — for a
+ * caller who may not see this one. Coercing that to 0 would print "no payments
+ * have been received against this order" on top of money that may well exist,
+ * which is exactly the misinformation the definer is here to prevent. It is
+ * reported as unreadable instead, the same as a failed call.
  */
 function useReceivedTotal(orderId: string, supabase: SupabaseClient) {
   const [received, setReceived] = useState<number | null>(null)
@@ -323,8 +350,8 @@ function useReceivedTotal(orderId: string, supabase: SupabaseClient) {
     ;(async () => {
       const { data, error } = await supabase.rpc('order_linked_payment_total', { p_order_id: orderId })
       if (cancelled) return
-      if (error) { setFailed(true); return }
-      setReceived(Number(data ?? 0))
+      if (error || data === null || data === undefined) { setFailed(true); return }
+      setReceived(Number(data))
     })()
     return () => { cancelled = true }
   }, [orderId, supabase])

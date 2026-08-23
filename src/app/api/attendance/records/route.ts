@@ -1,5 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireSelfOrAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
+import { PagedReadError, fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
+
+/** One row of the attendance CSV export. */
+type CsvAttendanceRow = {
+  id: string
+  attendance_date: string
+  check_in_at: string | null
+  check_out_at: string | null
+  status: string | null
+  // PostgREST returns an embedded relation as an object; the generated types
+  // widen it to an array. Both shapes are handled at the call site below, as
+  // they were before this read was paged.
+  users: { full_name: string; employee_code: string | null }[]
+}
+
 
 const PAGE_SIZE = 50
 
@@ -35,20 +50,43 @@ export async function GET(req: NextRequest) {
   const page       = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10))
 
   // ── CSV export: return all matching rows as a downloadable file ──
+  //
+  // PAGED, BECAUSE "ALL MATCHING ROWS" MEANT AT MOST 1000. Every filter here is
+  // optional, so an unfiltered export asks for the whole table — and PostgREST
+  // caps a response at 1000 rows with no error and no warning
+  // (src/lib/supabasePaging.ts). The file downloaded fine, opened fine, and was
+  // missing everything past the newest thousand days of attendance. An export is
+  // the worst place for that: it leaves the building and gets reconciled against
+  // by somebody who has no way to tell it is short.
+  //
+  // unwrapPagedRows REFUSES a failed or capped read rather than writing a
+  // partial CSV, because a partial CSV is indistinguishable from a complete one.
   if (format === 'csv') {
-    let csvQuery = svc
-      .from('attendance_records')
-      .select('attendance_date, check_in_at, check_out_at, status, users(full_name, employee_code)')
-      .order('attendance_date', { ascending: false })
+    const makeCsvPage = (pageFrom: number, pageTo: number) => {
+      let q = svc
+        .from('attendance_records')
+        .select('id, attendance_date, check_in_at, check_out_at, status, users(full_name, employee_code)')
+        .order('attendance_date', { ascending: false })
+        // A unique tiebreak. range() maps to LIMIT/OFFSET, which promises
+        // nothing about row order unless the ordering is deterministic — and two
+        // employees share every attendance_date.
+        .order('id', { ascending: false })
 
-    if (employeeId) csvQuery = csvQuery.eq('user_id', employeeId)
-    if (fromDate)   csvQuery = csvQuery.gte('attendance_date', fromDate)
-    if (toDate)     csvQuery = csvQuery.lte('attendance_date', toDate)
+      if (employeeId) q = q.eq('user_id', employeeId)
+      if (fromDate)   q = q.gte('attendance_date', fromDate)
+      if (toDate)     q = q.lte('attendance_date', toDate)
 
-    const { data, error } = await csvQuery
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+      return q.range(pageFrom, pageTo)
+    }
 
-    const rows = data ?? []
+    let rows: CsvAttendanceRow[]
+    try {
+      rows = unwrapPagedRows('attendance export',
+        await fetchAllRows<CsvAttendanceRow>(makeCsvPage as unknown as Parameters<typeof fetchAllRows<CsvAttendanceRow>>[0]))
+    } catch (err) {
+      const detail = err instanceof PagedReadError ? err.detail : String(err)
+      return NextResponse.json({ error: detail }, { status: 500 })
+    }
     const lines: string[] = ['Date,Employee,Employee Code,Check In,Check Out,Status']
     for (const r of rows) {
       const u = Array.isArray(r.users) ? r.users[0] : r.users as { full_name: string; employee_code: string | null } | null

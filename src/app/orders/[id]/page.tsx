@@ -14,10 +14,21 @@ import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import {
   mergeOrderPayments,
-  receivedFromPayments,
   type OrderAllocationRow,
-  type OrderPaymentRow,
 } from '@/lib/orders/orderPayments'
+import {
+  buildOrderFinancePosition,
+  progressWidth,
+  withExactAmounts,
+  type OrderFinancePaymentRow,
+} from '@/lib/finance/orderFinancePosition'
+import { formatMoney, formatPercent, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import {
+  deriveFinanceCapabilities,
+  NO_FINANCE_CAPABILITIES,
+  type FinanceCapabilities,
+} from '@/lib/permissions/finance'
+import { financePaymentHref, piSubmissionHref } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
@@ -118,7 +129,12 @@ type Order = {
 // The list this screen shows is the LEGACY linked payments plus anything the
 // Order's own active allocations point at — see mergeOrderPayments. A PI's money
 // arrives here through a MOVED allocation, never through a copied payment row.
-type LinkedPayment = OrderPaymentRow
+//
+// The row carries the EXACT `numeric` strings alongside the display numbers —
+// see orderFinancePosition.ts. Every total on this screen is built from those,
+// so the Order and the PI it was approved from cannot print different figures
+// for the same money.
+type LinkedPayment = OrderFinancePaymentRow
 
 type ActivityEntry = {
   id: string
@@ -166,12 +182,37 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
-const PAYMENT_STATUS_META: Record<string, { label: string; color: string }> = {
-  pending_approval:    { label: 'Pending',             color: '#92400E' },
-  approved_unlinked:   { label: 'Order No. Pending',   color: '#9A3412' },
-  approved_linked:     { label: 'Received',            color: '#166534' },
-  needs_clarification: { label: 'Needs Clarification', color: '#1E40AF' },
-  rejected:            { label: 'Rejected',            color: '#991B1B' },
+/**
+ * THE COLOUR of a payment status. The WORDS come from piPaymentStatusLabel, the
+ * same map the PI payment card reads, so one state cannot be called two things
+ * on two screens.
+ *
+ * WHAT THIS CORRECTED. This screen had its own label map, and three of its five
+ * entries disagreed with the PI's for the same stored value:
+ *
+ *   pending_approval    said "Pending". The product's word for that state is
+ *                       AWAITING VERIFICATION — the business rule names it — and
+ *                       "Pending" reads as though the money itself is pending
+ *                       rather than Finance's look at it.
+ *   approved_unlinked   said "Order No. Pending". On an ORDER's own screen that
+ *                       is close to false: the money is attached to this Order,
+ *                       by an allocation, which is precisely how PI conversion
+ *                       moves it. Whether the payment row ALSO carries a legacy
+ *                       order_id is Finance bookkeeping and says nothing to
+ *                       somebody reading their Order.
+ *   approved_linked     said "Received", which is the word the summary above now
+ *                       uses for verified + awaiting together. Two meanings for
+ *                       one word on one screen.
+ *
+ * Both approved statuses now read "Verified", exactly as they do on the PI.
+ * The palette is this screen's own and is unchanged.
+ */
+const PAYMENT_STATUS_COLOR: Record<string, string> = {
+  pending_approval:    '#92400E',
+  approved_unlinked:   '#166534',
+  approved_linked:     '#166534',
+  needs_clarification: '#1E40AF',
+  rejected:            '#991B1B',
 }
 
 /** The width below which the PI product table becomes a stack of cards. The
@@ -226,10 +267,28 @@ const EVENT_TYPE_LABEL: Record<string, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function fmtAmount(n: number | null) {
-  if (n == null) return '—'
-  return '₹' + n.toLocaleString('en-IN')
-}
+// ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
+// one the PI payment card and the Order's payment summary read.
+//
+// THE DEFECT THIS CLOSES. Three formatters were in use across the two modules
+// and each rendered the same amount differently:
+//
+//   formatINR         maximumFractionDigits: 2 with NO minimum, so ₹1,000 and
+//                     ₹1,000.5 and ₹1,000.55 — ragged decimals that do not line
+//                     up in a tabular-nums column
+//   toLocaleString    default maximumFractionDigits: 3, so a legacy amount with
+//                     more precision than paise printed ₹1,000.555
+//   formatMoney       always two decimal places
+//
+// So one Received Payments row could read "₹1,000.5" in its Amount column and
+// "₹1,000.50" in the Allocation cell beside it — the same money, on the same
+// line, twice. Money on a finance screen is stated to the paise or it is not
+// reconcilable against a bank statement.
+//
+// formatMoney also accepts a STRING, which formatINR cannot: `numeric` crosses
+// the wire as a string precisely so it is not rounded by JSON's double, and a
+// formatter that only takes a number forces a lossy conversion at the boundary.
+const fmtAmount = formatMoney
 
 function fmtDate(iso: string | null) {
   if (!iso) return '—'
@@ -267,6 +326,44 @@ function MetaField({ label, value }: { label: string; value: React.ReactNode }) 
       <span style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.4 }}>
         {value ?? '—'}
       </span>
+    </div>
+  )
+}
+
+// The Payment Summary's label and figure, said once so six tiles cannot word or
+// space themselves differently. `hint` carries the one thing a money figure on
+// this card cannot say for itself — what it is measured against.
+function FigureLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: '10px', fontWeight: 600, color: colors.muted,
+      textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function SummaryFigure({ label, value, color, hint }: {
+  label: string
+  value: string
+  color?: string
+  hint?: string
+}) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <FigureLabel>{label}</FigureLabel>
+      <div style={{
+        fontSize: '18px', fontWeight: 700, color: color ?? colors.primary,
+        fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
+      }}>
+        {value}
+      </div>
+      {hint && (
+        <div style={{ fontSize: '10px', color: colors.muted, marginTop: '2px', lineHeight: 1.4 }}>
+          {hint}
+        </div>
+      )}
     </div>
   )
 }
@@ -477,6 +574,11 @@ export default function OrderDetailPage() {
   // Orders authority for the SIGNED-IN user. Starts empty so the amendment
   // controls cannot render before the resolver answers.
   const [ordersCaps,    setOrdersCaps]    = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
+  // Finance authority for the SIGNED-IN user, resolved ALONGSIDE the Orders one
+  // in the same parallel group — so it costs no extra latency. It decides ONE
+  // thing on this page: whether a payment row offers a link into its Finance
+  // record. It grants nothing, reveals nothing, and no figure depends on it.
+  const [financeCaps,   setFinanceCaps]   = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
   const [order,         setOrder]         = useState<Order | null>(null)
   const [payments,      setPayments]      = useState<LinkedPayment[]>([])
   const [activity,      setActivity]      = useState<ActivityEntry[]>([])
@@ -736,12 +838,57 @@ export default function OrderDetailPage() {
 
     setDocuments((dData ?? []) as unknown as OrderDocumentRow[])
 
-    setPayments(mergeOrderPayments(
-      (pData ?? []) as Parameters<typeof mergeOrderPayments>[0],
-      // PostgREST returns an embedded to-one relation as an object; the generated
-      // types cannot know the cardinality, so it is narrowed here once.
-      ((allocData ?? []) as unknown as OrderAllocationRow[]),
-    ))
+    // MERGE, THEN RE-READ THE MONEY EXACTLY.
+    //
+    // mergeOrderPayments does the joining, the de-duplication and the ordering
+    // and keeps its two money fields as JS numbers, which is what the list has
+    // always sorted and rendered with. withExactAmounts then re-reads the SAME
+    // two source arrays for the `numeric` STRINGS PostgREST actually sent, and
+    // it is those the totals are built from — so no total can inherit a
+    // rounding the display introduced. Neither call queries anything.
+    const linkedRows = (pData ?? []) as Parameters<typeof mergeOrderPayments>[0]
+    // PostgREST returns an embedded to-one relation as an object; the generated
+    // types cannot know the cardinality, so it is narrowed here once.
+    const allocationRows = (allocData ?? []) as unknown as OrderAllocationRow[]
+
+    const merged = mergeOrderPayments(linkedRows, allocationRows)
+
+    // ── THE WHOLE-PAYMENT FACT ──
+    //
+    // The canonical attribution rule turns on whether a payment has active
+    // allocations ELSEWHERE — which this screen cannot see for itself. Its two
+    // reads are both anchored to this Order, and RLS would not show it an
+    // allocation onto somebody else's Order in any case.
+    //
+    // Without this, a ₹10,00,000 payment carrying this Order's order_id but
+    // allocated ₹4,00,000 to a DIFFERENT Order reads as ₹10,00,000 here and
+    // ₹4,00,000 there: ₹14,00,000 of attribution for ₹10,00,000 of money.
+    //
+    // ONE BATCHED CALL for every payment on the screen, never one per row. The
+    // function is SECURITY INVOKER, so the payment table's own RLS decides which
+    // ids it answers for — a payment this reader could not already open simply
+    // yields no row.
+    //
+    // THREE THINGS MEAN "UNKNOWN" HERE, AND ALL THREE ARE HANDLED THE SAME WAY:
+    // a missing row (not readable), an explicit NULL (readable, but the reader
+    // cannot see enough of the allocation table to vouch for a zero), and a
+    // failed call (empty map). In every case the rule WITHHOLDS the direct-link
+    // fallback rather than guessing, which under-states instead of over-stating.
+    // A zero that the reader CAN vouch for arrives as 0, not NULL, and the
+    // fallback then fires — that is worked example A, the ordinary case.
+    const paymentIds = merged.map(p => p.id)
+    const activeTotals = new Map<string, string | number | null>()
+    if (paymentIds.length > 0) {
+      const { data: totals } = await supabase
+        .rpc('payment_active_allocation_totals', { p_payment_ids: paymentIds })
+      for (const row of (totals ?? []) as { payment_request_id: string; active_total: string | number | null }[]) {
+        activeTotals.set(row.payment_request_id, row.active_total)
+      }
+    }
+
+    setPayments(withExactAmounts(merged, {
+      linked: linkedRows, allocations: allocationRows, activeTotals,
+    }))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mappedActivity: ActivityEntry[] = ((aData ?? []) as any[]).map(a => ({
@@ -779,18 +926,27 @@ export default function OrderDetailPage() {
       // resolved by resolve_effective_permissions in the database, and is still
       // in hand before any amendment control can render: pageLoading is not
       // cleared until all three have landed.
-      const [{ data: me }, ordersPerms] = await Promise.all([
+      //
+      // THE FINANCE RESOLVE JOINS THE SAME GROUP, and that is the whole reason
+      // it is affordable: it is a fourth independent call in a set that already
+      // waits for the slowest, so it adds no latency to a page that previously
+      // made three. It decides only whether a payment row draws a link into its
+      // Finance record — see crossModuleLinks.ts on why a link is a drawing
+      // question and never an authorization one.
+      const [{ data: me }, ordersPerms, financePerms] = await Promise.all([
         supabase
           .from('users')
           .select(USER_PROFILE_COLUMNS)
           .eq('id', session.user.id)
           .single(),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
         loadOrder(),
       ])
 
       setProfile(me as UserProfile)
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
+      setFinanceCaps(deriveFinanceCapabilities(me?.role, financePerms))
 
       // This one genuinely depends on the profile, and is asked only of an
       // admin — for whom it decides a single temporary, testing-phase control.
@@ -1037,12 +1193,16 @@ export default function OrderDetailPage() {
     )
   }
 
-  // VERIFIED money, at its ALLOCATED figure. `approved_unlinked` counts now and
-  // did not before: a payment recorded against the PI and verified by Finance is
-  // verified money whether or not it also carries a legacy order_id.
-  const received = receivedFromPayments(payments)
-  const pending    = (order.total_value ?? 0) - received
-  const completion = order.total_value ? Math.round((received / order.total_value) * 100) : 0
+  // THE ORDER'S FINANCE POSITION, computed in exact decimal from the `numeric`
+  // strings the two anchored reads returned — see orderFinancePosition.ts.
+  //
+  // Every figure below used to be a float sum done here, and three of them were
+  // wrong in ways a reader could see: verified money was labelled "Received" so
+  // unverified money did not exist on this screen, the Amount column printed a
+  // split payment's whole ledger amount beside a tile counting only this Order's
+  // share, and the arithmetic itself could disagree with the same money summed
+  // in `numeric` on the PI. Nothing on this screen adds money any more.
+  const finance = buildOrderFinancePosition(payments, order.total_value)
 
   const isOverdue = order.due_date &&
     !['dispatched', 'cancelled'].includes(order.status) &&
@@ -1233,49 +1393,143 @@ export default function OrderDetailPage() {
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
 
-        {/* ── Payment summary ── */}
+        {/* ── Payment summary ──
+
+            SIX FIGURES, and the three money states are three of them.
+
+            The card used to show four: Order Value, "Received", Pending and
+            Completion — where "Received" was in fact VERIFIED money. A payment
+            the client had genuinely made and Finance had not yet reached was
+            therefore invisible here, and a salesperson chasing a client for
+            money already sent had no way to see it on this screen.
+
+            The three are now named separately and never stand in for each
+            other. Verified is what Finance has confirmed and is the figure the
+            business treats as paid; Awaiting is money recorded and not yet
+            decided; Received is the two together — what has come in, whatever
+            Finance has done about it yet. The BALANCE is measured against
+            verified money alone, because unverified money does not reduce what
+            is owed. */}
         <SectionCard title="Payment Summary">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '16px' }}>
+            <SummaryFigure label="Order Value" value={formatMoney(finance.orderValue)} />
+            <SummaryFigure
+              label="Verified"
+              value={formatMoney(finance.verified)}
+              color={colors.green}
+              hint="confirmed by Finance"
+            />
+            <SummaryFigure
+              label="Awaiting Verification"
+              value={formatMoney(finance.awaitingVerification)}
+              color={finance.counts.awaiting > 0 ? colors.amber : colors.muted}
+              hint={finance.counts.awaiting > 0
+                ? `${finance.counts.awaiting} payment${finance.counts.awaiting === 1 ? '' : 's'} with Finance`
+                : 'nothing with Finance'}
+            />
+            <SummaryFigure
+              label="Received"
+              value={formatMoney(finance.received)}
+              hint="verified + awaiting"
+            />
+            <SummaryFigure
+              label="Balance"
+              value={formatMoney(finance.pendingBalance)}
+              color={finance.pendingBalance && finance.pendingBalance !== '0.00' && !finance.fullyPaid
+                ? colors.amber
+                : colors.muted}
+              hint="against verified"
+            />
             <div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Order Value</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: colors.primary }}>{fmtAmount(order.total_value)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Received</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: colors.green }}>{fmtAmount(received)}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Pending</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: pending > 0 ? colors.amber : colors.muted }}>
-                {fmtAmount(pending > 0 ? pending : 0)}
+              <FigureLabel>Verified %</FigureLabel>
+              <div style={{ fontSize: '18px', fontWeight: 700, color: finance.fullyPaid ? colors.green : colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                {formatPercent(finance.verifiedPercent)}
               </div>
-            </div>
-            <div>
-              <div style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Completion</div>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: completion >= 100 ? colors.green : colors.primary }}>
-                {order.total_value ? `${completion}%` : '—'}
-              </div>
-              {order.total_value && (
-                <div style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: colors.float, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', borderRadius: '2px', width: `${Math.min(completion, 100)}%`, background: completion >= 100 ? colors.green : colors.blue, transition: 'width 0.3s' }} />
+              {/* A PIXEL QUANTITY and nothing else — clamped to 0–100, never
+                  shown as a figure and never used in a decision. The figure
+                  above it is the truth and is deliberately not capped, so an
+                  overpaid Order reads over 100%. */}
+              {finance.verifiedPercent !== null && (
+                <div
+                  role="presentation"
+                  style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: colors.float, overflow: 'hidden' }}
+                >
+                  <div style={{
+                    height: '100%', borderRadius: '2px',
+                    width: `${progressWidth(finance.verifiedPercent)}%`,
+                    background: finance.fullyPaid ? colors.green : colors.blue,
+                    transition: 'width 0.3s',
+                  }} />
                 </div>
               )}
             </div>
           </div>
+
+          {/* MONEY THAT IS ONLY PARTLY THIS ORDER'S.
+
+              A payment may legitimately be split across targets, and every
+              figure above counts only this Order's share. Said out loud, because
+              a reader comparing the Balance here against a bank statement needs
+              to know the difference is a split and not a missing payment.
+
+              DELIBERATELY NOT CALLED "UNALLOCATED": the rest of that money may
+              be on another Order, on a PI, or on nothing at all, and this screen
+              reads only THIS Order's allocations. Finance answers that question,
+              from the payment's own record — which is where the link goes. */}
+          {finance.splitPayments.length > 0 && (
+            <div style={{
+              marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`,
+              fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+            }}>
+              {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
+              {' '}allocated across more than one record. Once a payment is allocated, the
+              allocations decide what each Order receives — so only this Order&apos;s allocated
+              share is counted above, even where the payment also names this Order directly.
+              The full amount of each is shown beneath its share, and the complete allocation
+              history is in its Finance record.
+            </div>
+          )}
         </SectionCard>
 
-        {/* ── Linked payments ── */}
-        <SectionCard title={`Linked Payments (${payments.length})`}>
+        {/* ── Payments ──
+
+            THE COLUMN THAT DID NOT RECONCILE. "Amount" printed each payment's
+            FULL ledger amount, while the summary above counted only this
+            Order's ALLOCATED share of it. For a payment split across two Orders
+            those are different numbers, so a reader adding the column by eye got
+            a total that did not match the tile. The leading figure is now this
+            Order's share — the figure the summary is built from — and a split
+            payment states its full amount underneath, so nothing is hidden and
+            the two agree.
+
+            STATUS WORDING NOW MATCHES THE PI — see PAYMENT_STATUS_COLOR above
+            for the three labels that disagreed and why each was wrong here. The
+            colours are this screen's existing ones, unchanged. */}
+        <SectionCard title={`Payments (${payments.length})`}>
           {payments.length === 0 ? (
-            <div style={{ color: colors.muted, fontSize: '13px' }}>No payments linked to this order yet.</div>
+            <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
+              No payment has been recorded against this Order yet.
+              {order.total_value != null && (
+                <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
+              )}
+            </div>
           ) : (
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
+                <caption style={{
+                  captionSide: 'top', textAlign: 'left', fontSize: '11px',
+                  color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
+                }}>
+                  Amounts are this Order&apos;s share. Where a payment has been
+                  allocated, the allocation decides the share; where it has not,
+                  a payment linked to this Order counts in full.
+                </caption>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    {['Client', 'Amount', 'Date', 'Mode', 'Status'].map(h => (
-                      <th key={h} style={{
-                        padding: '6px 12px', textAlign: 'left',
+                    {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
+                      <th key={h || `action-${i}`} scope="col" style={{
+                        padding: '6px 12px',
+                        textAlign: h === 'This Order' ? 'right' : 'left',
                         fontSize: '10px', fontWeight: 600, color: colors.muted,
                         textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
                       }}>{h}</th>
@@ -1284,21 +1538,56 @@ export default function OrderDetailPage() {
                 </thead>
                 <tbody>
                   {payments.map(p => {
-                    const pmeta = PAYMENT_STATUS_META[p.status] ?? { label: p.status, color: colors.muted }
+                    // One vocabulary, from the PI card's own map. An
+                    // unrecognised status says what it is rather than being
+                    // relabelled as something friendlier that might be untrue.
+                    const statusLabel = piPaymentStatusLabel(p.status)
+                    const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
                     return (
                       <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: '10px 12px', color: colors.primary }}>{p.client_name}</td>
-                        <td style={{ padding: '10px 12px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                          {fmtAmount(p.amount)}
+                        <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
+                          {p.client_name || '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                          <div style={{ fontWeight: 600, color: colors.primary }}>
+                            {formatMoney(p.exactAllocatedAmount)}
+                          </div>
+                          {/* Only when the two genuinely differ. Saying "of
+                              ₹X" under every row would be noise on the ordinary
+                              case, where the whole payment is this Order's. */}
+                          {p.isPartialShare && (
+                            <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
+                              allocated from {formatMoney(p.exactAmount)} received
+                            </div>
+                          )}
                         </td>
                         <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
                           {fmtDate(p.payment_date)}
                         </td>
                         <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                          {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode}
+                          {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
                         </td>
-                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: pmeta.color }}>
-                          {pmeta.label}
+                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
+                          {statusLabel}
+                        </td>
+                        {/* THE FINANCE RECORD — a payment's proof, its verification
+                            history and its complete allocation across every target
+                            live in Finance, and this is the door to them. Offered
+                            only to a reader who holds Finance module entry, so
+                            nobody is shown a door that shuts in their face; the
+                            Finance page still re-reads the row under that reader's
+                            own RLS and refuses anything they may not open. */}
+                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                          {financeCaps.canAccessFinanceModule && (
+                            <button
+                              onClick={() => router.push(financePaymentHref(p.id))}
+                              className="boe-btn boe-btn-ghost"
+                              style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                              title={`Open this payment's full record in Finance`}
+                            >
+                              Finance record
+                            </button>
+                          )}
                         </td>
                       </tr>
                     )
@@ -1366,6 +1655,12 @@ export default function OrderDetailPage() {
               onDownloadWorkbook={downloadWorkbook}
               downloading={wbBusy}
               downloadError={wbError}
+              // The way back to the PI this Order came from. The database has
+              // had this door since 20260924000000 — can_view_order_submission_via_order
+              // exists so that seeing the Order is a way onto its approved PI —
+              // and nothing in the interface used it, so the trail ran one way
+              // only. The PI screen still decides for itself under RLS.
+              onOpenPi={() => router.push(piSubmissionHref(piHandoff.submissionId))}
             />
 
             <OrderPiProducts

@@ -204,11 +204,35 @@ export async function GET(req: NextRequest) {
     const overallEndYear  = lastPeriod.payroll_month === 12 ? lastPeriod.payroll_year + 1 : lastPeriod.payroll_year
     const overallEnd = `${overallEndYear}-${String(overallEndMonth).padStart(2, '0')}-01`
 
-    const { data: attendanceRows } = await svc
-      .from('attendance_records')
-      .select('attendance_date, updated_at')
-      .gte('attendance_date', overallStart)
-      .lt('attendance_date', overallEnd)
+    // PAGED. The window is bounded to the months in play, but "the months in
+    // play" is every generated period — so for a year of payroll this is
+    // (employees x 365) rows, far past PostgREST's silent 1000-row cap
+    // (src/lib/supabasePaging.ts).
+    //
+    // A short read here does not report a smaller number; it makes a period look
+    // UP TO DATE when attendance has since changed underneath it, because the
+    // rows that would have said otherwise are the ones that went missing. The
+    // stale marker exists precisely to catch that, so it must not be the thing
+    // that fails quietly.
+    //
+    // A failed or capped read leaves the marker unset rather than confidently
+    // clean: `attendanceRows` stays undefined, and the code below already treats
+    // an absent row set as "nothing to compare", which shows no stale badge
+    // rather than a false all-clear.
+    const attendancePage = await fetchAllRows<{ attendance_date: string; updated_at: string }>(
+      (pageFrom, pageTo) => svc
+        .from('attendance_records')
+        .select('attendance_date, updated_at')
+        .gte('attendance_date', overallStart)
+        .lt('attendance_date', overallEnd)
+        // A unique tiebreak: range() maps to LIMIT/OFFSET, and every employee
+        // shares an attendance_date with every other employee.
+        .order('id', { ascending: true })
+        .range(pageFrom, pageTo))
+
+    const attendanceRows = attendancePage.ok && !attendancePage.truncated
+      ? attendancePage.rows
+      : undefined
 
     const lastGeneratedAt = Object.fromEntries(
       generatedPeriods.map(p => [p.id, latestGen[p.id].completed_at]),

@@ -908,6 +908,78 @@ rather than ignored.
 
 ---
 
+## Branch — `claude/order-finance-integration-1e3y36`
+
+Order Management and Finance were two modules describing the same money and
+disagreeing about it. This branch makes them describe it the same way, and fixes
+what the review found on the way through. **The three migrations it adds are
+applied to the linked database; the application code is not merged and not
+deployed.**
+
+### The canonical attribution rule
+
+One rule, stated once in `src/lib/finance/paymentAttribution.ts` and mirrored by
+`order_linked_payment_total()` and the `finance_received_payments` projection:
+
+1. If a payment has ANY active allocation, allocations are authoritative — each
+   Order or PI receives only its own active allocated share, and the payment's
+   direct `order_id` is ignored entirely, including when it names that Order.
+2. If it has no active allocation, the direct link attributes the whole payment.
+3. Reversed allocations count for nothing, so a payment whose only allocation was
+   reversed falls back to rule 2.
+4. Attribution across every target, plus what is unallocated, equals the payment
+   exactly — never more.
+
+Before this, a ₹10,00,000 payment linked to Order X and allocated ₹4,00,000 to
+Order Y was credited ₹10,00,000 to X *and* ₹4,00,000 to Y: ₹14,00,000 of
+attribution for ₹10,00,000 of money. Every screen agreed with every other screen
+and all of them were wrong together.
+
+Money is compared and summed in exact decimal on `bigint`
+(`src/lib/finance/exactMoney.ts`), never through a JavaScript double, and
+`numeric` is carried across PostgREST as the string it arrives as.
+
+### Reads are bounded, and a short read is an error
+
+Finance, Tasks, Quotations, Attendance and Payroll each had list reads that
+relied on PostgREST returning everything. PostgREST caps a response at 1000 rows
+**silently** — it is a cap, not an error — so those screens were quietly
+truncating. Every such read now pages through `fetchAllRows`, and a partial read
+raises `PagedReadError` rather than rendering as a short list. Filtering,
+searching and tab counts moved server-side; nothing narrows a page of rows on the
+client and calls the result a total.
+
+### Security corrections found by the pre-application review
+
+* **Legacy link plus allocation** — the over-attribution above.
+* **`can_read_payment_as_participant()`** was `SECURITY DEFINER` with a bare
+  `EXISTS` on `public.orders`. Inside a definer that reads as *"the Order
+  exists"*, so every authenticated user could read any payment ledger row
+  carrying an allocation to any Order. A `SECURITY INVOKER` helper called from
+  inside a definer runs as the definer too, so `can_view_order()` could not be
+  used there; `can_view_order_as_actor()` is its definer-safe sibling, written in
+  `auth.uid()` terms.
+* **`order_linked_payment_total()`** was granted to `authenticated` and gated on
+  nothing — any signed-in user could ask what any Order UUID had received. It is
+  now gated, and returns NULL for an Order the caller cannot see, the same answer
+  an unknown UUID gets.
+* **Function ACLs** — a hosted Supabase database gives every new function in
+  `public` four grants: PostgreSQL's built-in EXECUTE to PUBLIC, plus direct
+  entries for `anon`, `authenticated` and `service_role` from the platform's
+  `alter default privileges`. `revoke ... from public, anon` leaves
+  `service_role` standing. All three functions now carry three explicit revokes
+  and one explicit grant, so their ACL depends on no database default.
+
+### Testing
+
+`supabase/tests/` carries a production-shaped schema and a role-based suite —
+`run_security_suite.sh` — because the migration set cannot build a database (see
+`docs/migrations-are-not-self-contained.md`). It runs the matrix twice: once on
+the pre-correction definitions, where the exposures are *required to reproduce*,
+and once after the migrations, where every case must hold. It is not a
+substitute for the missing baseline schema and must never be added to
+`supabase/migrations`.
+
 ## Branch migrations — status
 
 | Migration | Applied | What it carries |
@@ -915,18 +987,24 @@ rather than ignored.
 | `20260924000000` | yes | Confirmed Order handoff — `can_view_order`, four additive SELECT policies |
 | `20260925000000` | yes | Document register, claim protocol, publication |
 | `20260926000000` | yes | Order-number cycle reset (six-gated; never invoked) |
-| `20260927000000` | **NO** | Admin amendment authority, `supersede_order_documents`, 3-arg billing RPC |
-| `20260928000000` | **NO** | Client and party details, `row_version` |
-| `20260929000000` | **NO** | Dates and terms; ISO-shape date check |
-| `20260930000000` | **NO** | Owner correction requests |
-| `20261001000000` | **NO** | The activity action set, extended — **fixes an applied defect** |
-| `20261002000000` | **NO** | Product descriptions and ordering; money refused by name |
-| `20261003000000` | **NO** | Change PI authority, and what a replacement means after submission |
+| `20260927000000` | yes | Admin amendment authority, `supersede_order_documents`, 3-arg billing RPC |
+| `20260928000000` | yes | Client and party details, `row_version` |
+| `20260929000000` | yes | Dates and terms; ISO-shape date check |
+| `20260930000000` | yes | Owner correction requests |
+| `20261001000000` | yes | The activity action set, extended — **fixes an applied defect** |
+| `20261002000000` | yes | Product descriptions and ordering; money refused by name |
+| `20261003000000` | yes | Change PI authority, and what a replacement means after submission |
+| `20261004000000` | yes | `finance_received_payments` gains `allocated_total` and `attributed_total`; allocation state computed from attribution |
+| `20261005000000` | yes | `order_linked_payment_total()` rewritten to the canonical rule; adds the batched `payment_active_allocation_totals()` |
+| `20261006000000` | yes | Participant predicate made definer-safe; the Order total gated; deterministic ACLs on all three functions |
 
-The unapplied migrations must be applied **in order**. `20261001000000` in
-particular must precede `20261002000000` and `20261003000000`, which log actions
-it declares — each of those refuses to apply otherwise, and says which
-dependency is missing.
+Every migration in this table is applied to the linked database. Applying them
+in order matters and always did: `20261001000000` must precede `20261002000000`
+and `20261003000000`, which log actions it declares, and `20261006000000`
+replaces functions `20261005000000` defines.
+
+**Applied is not deployed.** The application code that reads these functions
+lives on `claude/order-finance-integration-1e3y36` and has not been merged.
 
 ## Deployment configuration
 
