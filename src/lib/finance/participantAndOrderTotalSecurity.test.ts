@@ -46,6 +46,34 @@ function body(sql: string, name: string): string {
   return sql.slice(start, end)
 }
 
+
+/**
+ * Every function's ACL must be set by explicit statements, never inherited.
+ *
+ * THREE REVOKES, NOT ONE. A hosted Supabase database gives every new function in
+ * schema public four grants: PostgreSQL's built-in EXECUTE to PUBLIC, plus
+ * DIRECT entries for anon, authenticated and service_role from the platform's
+ * `alter default privileges`. `revoke ... from public, anon` clears the first
+ * and one of the second and leaves service_role standing — which is exactly how
+ * this migration was rejected on the linked database the second time.
+ */
+function assertDeterministicAcl(sig: string) {
+  for (const role of ['public', 'anon', 'service_role']) {
+    assert.ok(fix.includes(`revoke all on function public.${sig} from ${role};`),
+      `${sig} must explicitly revoke ALL from ${role}`)
+  }
+  const grants = fix.match(
+    new RegExp(`grant execute on function public\\.${sig.replace(/[()[\]]/g, '\\$&')} to ([^\n;]+)`, 'g')) ?? []
+  assert.equal(grants.length, 1, `${sig} must carry exactly one grant`)
+  assert.match(grants[0], /to authenticated$/)
+
+  // Order matters: a revoke after the grant would undo it.
+  const lastRevoke = Math.max(...['public', 'anon', 'service_role']
+    .map(r => fix.indexOf(`revoke all on function public.${sig} from ${r};`)))
+  const grantAt = fix.indexOf(`grant execute on function public.${sig} to authenticated;`)
+  assert.ok(grantAt > lastRevoke, `${sig}: the grant must follow every revoke`)
+}
+
 const participant = body(fix, 'can_read_payment_as_participant')
 const viewOrder = body(fix, 'can_view_order_as_actor')
 const total = body(fix, 'order_linked_payment_total')
@@ -130,13 +158,8 @@ describe('the definer-safe Order predicate', () => {
     assert.match(viewOrder, /from public\.users u/)
   })
 
-  test('EXECUTE is revoked from PUBLIC and anon, granted only to authenticated', () => {
-    assert.ok(fix.includes(
-      'revoke execute on function public.can_view_order_as_actor(uuid) from public, anon;'))
-    const grants = fix.match(
-      /grant\s+execute on function public\.can_view_order_as_actor\(uuid\) to ([^\n;]+)/g) ?? []
-    assert.equal(grants.length, 1)
-    assert.match(grants[0], /to authenticated$/)
+  test('its ACL is set deterministically, not left to database defaults', () => {
+    assertDeterministicAcl('can_view_order_as_actor(uuid)')
   })
 
   test('it does NOT replace can_view_order, which stays the invoker answer', () => {
@@ -213,16 +236,26 @@ describe('exposure 2 — the Order total', () => {
     assert.ok(fix.includes('must use the shared verified predicate'))
   })
 
-  test('grants are unchanged: anon and PUBLIC out, authenticated in', () => {
-    assert.ok(fix.includes(
-      'revoke execute on function public.order_linked_payment_total(uuid) from public, anon;'))
-    const grants = fix.match(
-      /grant\s+execute on function public\.order_linked_payment_total\(uuid\) to ([^\n;]+)/g) ?? []
-    assert.equal(grants.length, 1)
-    assert.match(grants[0], /to authenticated$/)
-    // The four grant questions are asked for this function by the shared loop in
-    // §4f; see the "four separate ways" block below.
-    assert.ok(fix.includes("'order_linked_payment_total(uuid)'"))
+  test('its ACL is set deterministically, not left to database defaults', () => {
+    assertDeterministicAcl('order_linked_payment_total(uuid)')
+  })
+
+  test('the browser caller is the reason authenticated keeps EXECUTE', () => {
+    // src/app/orders/[id]/OrderAmendmentModals.tsx calls it through a session
+    // client, so the role is `authenticated`. If that call ever disappears, the
+    // grant should be revisited — so the test reads the real call site.
+    const modal = readFileSync('src/app/orders/[id]/OrderAmendmentModals.tsx', 'utf8')
+    assert.match(modal, /supabase\.rpc\('order_linked_payment_total'/)
+    assert.ok(fix.includes('OrderAmendmentModals.tsx:351'))
+  })
+
+  test('and no service-role caller exists anywhere in the repository', () => {
+    const hits = execSync(
+      "grep -rln \"rpc('order_linked_payment_total'\" src/ scripts/ 2>/dev/null || true",
+      { encoding: 'utf8' }).split('\n').filter(Boolean).filter(f => !/\.test\./.test(f))
+    // One call site, and it is the browser modal. A server route using a
+    // service-role client would appear here and would change the ACL decision.
+    assert.deepEqual(hits, ['src/app/orders/[id]/OrderAmendmentModals.tsx'])
   })
 
   test('a null auth.uid() is admitted, and the migration justifies it', () => {
@@ -281,21 +314,16 @@ describe('exposure 3 — the EXECUTE grant that was never revoked', () => {
       'if a revoke ever appears in the applied file, this whole section is obsolete')
   })
 
-  test('20261006000000 writes the revoke, and writes it before the grant', () => {
-    const revoke = fix.indexOf(
-      'revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;')
-    const grant = fix.indexOf(
-      'grant  execute on function public.can_read_payment_as_participant(uuid) to authenticated;')
-    assert.ok(revoke > 0, 'the revoke is the fix')
-    assert.ok(grant > revoke, 'a revoke after the grant would undo it')
+  test('20261006000000 writes the revokes, and writes them before the grant', () => {
+    assertDeterministicAcl('can_read_payment_as_participant(uuid)')
   })
 
-  test('the revoke follows the function body, because create or replace keeps an ACL', () => {
+  test('the revokes follow the function body, because create or replace keeps an ACL', () => {
     // Replacing the function in §2 preserved the stray PUBLIC grant untouched.
     // That is why correcting the body was not enough.
     const body = fix.indexOf('create or replace function public.can_read_payment_as_participant(')
     const revoke = fix.indexOf(
-      'revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;')
+      'revoke all on function public.can_read_payment_as_participant(uuid) from public;')
     assert.ok(body > 0 && revoke > body)
     assert.ok(fix.includes('CREATE OR REPLACE DOES NOT RESET AN ACL'))
   })
@@ -319,32 +347,42 @@ describe('exposure 3 — the EXECUTE grant that was never revoked', () => {
   })
 })
 
-describe('the grant assertions are made four separate ways', () => {
-  test('PUBLIC, anon and authenticated are each asked on their own', () => {
-    assert.ok(fix.includes("raise exception 'PUBLIC must not hold EXECUTE on %'"))
-    assert.ok(fix.includes("raise exception 'anon must not hold EXECUTE on %'"))
-    assert.ok(fix.includes("raise exception 'authenticated must hold EXECUTE on %'"))
+describe('the apply-time ACL assertion is per function, and reads the real ACL', () => {
+  test('EFFECTIVE privilege is asked for PUBLIC and anon', () => {
+    // A PUBLIC entry makes anon effective without anon appearing in the ACL at
+    // all, so both have to be asked this way as well as read out of proacl.
+    assert.ok(fix.includes("raise exception 'PUBLIC must not hold EXECUTE on %', v_fn"))
+    assert.ok(fix.includes("raise exception 'anon must not hold EXECUTE on %', v_fn"))
+    assert.ok(fix.includes("'% must hold EXECUTE on %, and does not'"))
   })
 
-  test('and the fourth question — WHO holds a direct grant — is read from proacl', () => {
-    // has_function_privilege answers "can this role execute", which is true for a
-    // superuser and for anyone inheriting through PUBLIC. It can never answer
-    // "who has been granted this".
+  test('DIRECT grantees are read from proacl, which privilege checks cannot answer', () => {
     assert.ok(fix.includes('aclexplode(v_acl)'))
     assert.ok(fix.includes("when a.grantee = 0 then 'PUBLIC'"))
-    assert.ok(fix.includes("if v_grantees is distinct from array['authenticated'] then"))
+    assert.ok(fix.includes('if v_grantees is distinct from v_expected then'))
+    assert.ok(fix.includes('expected exactly % beside the owner %'))
   })
 
-  test('a NULL proacl is treated as the PUBLIC grant it is', () => {
-    assert.ok(fix.includes('carries default privileges, which means PUBLIC holds EXECUTE'))
-  })
-
-  test('all three functions go through the same loop', () => {
+  test('each function has its OWN expected list, not a shared one', () => {
+    // Three separate case arms. They agree today; a change to one must not be
+    // waved through because the other two still match.
     for (const fn of ['can_view_order_as_actor(uuid)',
                       'can_read_payment_as_participant(uuid)',
                       'order_linked_payment_total(uuid)']) {
-      assert.ok(fix.includes(`'${fn}'`), `${fn} must be in the grant-assertion loop`)
+      assert.ok(new RegExp(`when '${fn.replace(/[()]/g, '\\$&')}'\\s+then array\\['authenticated'\\]`).test(fix),
+        `${fn} must have its own expected-grantee arm`)
     }
+    assert.ok(fix.includes('every function must have its own'),
+      'and an unspecified function must fail rather than default to something')
+  })
+
+  test('a NULL proacl is treated as the default privileges it represents', () => {
+    assert.ok(fix.includes('carries default privileges, which include EXECUTE to PUBLIC'))
+  })
+
+  test('and the owner is required to keep EXECUTE', () => {
+    // Every SECURITY DEFINER in this migration reaches its helpers as the owner.
+    assert.ok(fix.includes("raise exception 'the owner % lost EXECUTE on %'"))
   })
 })
 
@@ -361,7 +399,17 @@ describe('the production-shaped schema reproduces the REAL grant state', () => {
     assert.ok(schema.includes('Reproducing the REAL grant state is the point of this file'))
   })
 
-  test('the other two functions keep their real revokes', () => {
+  test('it applies the platform default privileges, or nothing below is real', () => {
+    // This single line is what the first two attempts at 20261006000000 were
+    // missing: it is why a new function is born with a direct service_role grant.
+    assert.match(schema,
+      /alter default privileges in schema public\n\s*grant all on functions to postgres, anon, authenticated, service_role;/)
+  })
+
+  test('the pre-correction order_linked_payment_total keeps its real, narrower revoke', () => {
+    // 20260816000000 wrote `from public, anon`, so under the platform defaults it
+    // reaches 20261006000000 still holding a direct service_role grant — exactly
+    // the state the linked database is in.
     assert.ok(schema.includes(
       'revoke execute on function public.order_linked_payment_total(uuid) from public, anon;'))
   })
@@ -403,6 +451,81 @@ describe('the grant regression test', () => {
   test('and the runner runs it in both phases', () => {
     const runs = [...runner.matchAll(/participant_predicate_grants\.sql/g)]
     assert.equal(runs.length, 2, 'once before the migrations and once after')
+  })
+})
+
+
+describe('the ACL regression reproduces the linked database before it proves the fix', () => {
+  test('it asserts the harness gives a NEW function the linked database\'s privileges', () => {
+    // If this stops matching, every grant assertion downstream is meaningless —
+    // which is precisely what happened twice.
+    assert.ok(grants.includes(
+      "array['PUBLIC','anon','authenticated','service_role']"))
+    assert.ok(grants.includes('HARNESS DOES NOT MATCH THE LINKED DATABASE'))
+  })
+
+  test('it reproduces remote failure 1 — inherited PUBLIC / anon', () => {
+    assert.ok(grants.includes('REMOTE FAILURE 1 did not reproduce: PUBLIC does not hold EXECUTE'))
+    assert.ok(grants.includes('REMOTE FAILURE 1 did not reproduce: anon cannot execute'))
+  })
+
+  test('it reproduces remote failure 2 — the direct service_role grant', () => {
+    assert.ok(grants.includes('REMOTE FAILURE 2 did not reproduce'))
+    assert.ok(grants.includes("array['authenticated','service_role']"),
+      'the probe must end in the exact ACL the linked database rejected')
+  })
+
+  test('and shows the deterministic form fixing the same probe', () => {
+    for (const role of ['public', 'anon', 'service_role']) {
+      assert.ok(grants.includes(`revoke all on function public.t_acl_probe() from ${role};`))
+    }
+    assert.ok(grants.includes('the deterministic revoke form cost the owner its EXECUTE'),
+      'and that the owner survives it')
+  })
+
+  test('it checks each function\'s own exact ACL after the migration', () => {
+    assert.ok(grants.includes('AFTER  ACL FAILED: % is granted to %, expected exactly %'))
+    for (const fn of ['can_view_order_as_actor(uuid)',
+                      'can_read_payment_as_participant(uuid)',
+                      'order_linked_payment_total(uuid)']) {
+      assert.ok(grants.includes(`'${fn}'`), `${fn} must have its own ACL assertion`)
+    }
+  })
+
+  test('it proves direct service-role execution is refused, function by function', () => {
+    for (const fn of ['can_view_order_as_actor',
+                      'can_read_payment_as_participant',
+                      'order_linked_payment_total']) {
+      assert.ok(grants.includes(`AFTER  service_role FAILED: executed ${fn}`),
+        `${fn} must be probed as service_role`)
+    }
+    // And that service_role keeps what it actually needs.
+    assert.ok(grants.includes('still reads the finance tables directly, bypassing RLS'))
+  })
+})
+
+describe('the applied migrations are not edited', () => {
+  const APPLIED = [
+    'supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql',
+    'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql',
+  ]
+
+  test('104 and 105 are byte-identical to the commit the linked database applied', () => {
+    // They are applied and immutable. A forward-only correction that edited one
+    // would put the repository and the database permanently out of step.
+    for (const file of APPLIED) {
+      const applied = execSync(`git show 3d57fb2:${file} | sha256sum`, { encoding: 'utf8' }).split(' ')[0]
+      const local = execSync(`sha256sum ${file}`, { encoding: 'utf8' }).split(' ')[0]
+      assert.equal(local, applied, `${file} must not change: it is applied`)
+    }
+  })
+
+  test('and this migration is the only one after them', () => {
+    const later = execSync('ls supabase/migrations', { encoding: 'utf8' })
+      .split('\n').filter(Boolean)
+      .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
+      .sort()
+    assert.deepEqual(later, ['20261006000000_payment_participant_and_order_total_security.sql'])
   })
 })
 

@@ -48,6 +48,33 @@ grant usage on schema public to anon, authenticated, service_role;
 grant usage on schema auth   to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated, service_role;
 
+-- ═══ THE DEFAULT PRIVILEGES, WITHOUT WHICH THIS HARNESS LIES ════════════════
+--
+-- A hosted Supabase database runs this at bootstrap, so EVERY function created
+-- in schema public afterwards is born with FOUR grants it was never given
+-- explicitly. Two earlier attempts at 20261006000000 passed locally and failed
+-- on the linked database precisely because this line was missing:
+--
+--   attempt 1  ERROR: anon must not hold EXECUTE on can_read_payment_as_participant
+--   attempt 2  ERROR: EXECUTE on can_view_order_as_actor(uuid) is granted to
+--                     {authenticated,service_role}, expected only {authenticated}
+--
+-- With it, a new function's proacl is
+--
+--   {=X/postgres, postgres=X/postgres, anon=X/postgres,
+--    authenticated=X/postgres, service_role=X/postgres}
+--
+-- which is PostgreSQL's built-in EXECUTE-to-PUBLIC (the `=X/` entry, inherited
+-- by every role) PLUS three DIRECT grants from the line below. The two are
+-- different things and have to be revoked differently: `revoke ... from public`
+-- clears the first and none of the second.
+--
+-- If this ever stops matching the linked database, the tests below stop meaning
+-- anything, so participant_predicate_grants.sql asserts the exact shape rather
+-- than trusting it.
+alter default privileges in schema public
+  grant all on functions to postgres, anon, authenticated, service_role;
+
 -- ─── Tables ──────────────────────────────────────────────────────────────────
 
 create table public.users (
@@ -99,6 +126,14 @@ grant select on public.users, public.orders, public.order_submissions,
                 public.finance_payment_requests, public.finance_payment_allocations,
                 public.payment_proof_attachments
   to authenticated;
+
+-- service_role reads the tables directly and bypasses RLS, which is how every
+-- real service operation works and why it needs no EXECUTE on the visibility
+-- helpers. Granted here so that claim can be tested rather than asserted.
+grant select on public.users, public.orders, public.order_submissions,
+                public.finance_payment_requests, public.finance_payment_allocations,
+                public.payment_proof_attachments
+  to service_role;
 
 -- ─── Helper functions, copied from the applied migrations ────────────────────
 

@@ -1,25 +1,38 @@
 -- ═════════════════════════════════════════════════════════════════════════════
--- GRANT REGRESSION: can_read_payment_as_participant(uuid)
+-- ACL AND DEFAULT-PRIVILEGE REGRESSION
 -- ═════════════════════════════════════════════════════════════════════════════
 --
--- THE DEFECT THIS EXISTS FOR. PostgreSQL grants EXECUTE on a new function to
--- PUBLIC by default. 20260919000000 §2 wrote `grant ... to authenticated` and no
--- revoke, so the default survived and `anon` — a member of PUBLIC — inherited
--- EXECUTE. `create or replace` preserves an ACL, so correcting the function's
--- body in 20261006000000 §2 did not disturb it; §2a writes the revoke.
+-- WHY THIS FILE EXISTS. 20261006000000 was rejected by the linked database
+-- twice, both times on a grant the local harness did not reproduce:
 --
--- AND WHY IT IS A SEPARATE FILE. The first version of the production-shaped
--- harness added a revoke that the applied migration never had. It therefore
--- reproduced a grant state that did not exist, passed locally, and let
--- 20261006000000 reach the linked database and fail there. Grants are now
--- asserted from the catalog rather than assumed.
+--   attempt 1  ERROR: anon must not hold EXECUTE on can_read_payment_as_participant
+--   attempt 2  ERROR: EXECUTE on can_view_order_as_actor(uuid) is granted to
+--                     {authenticated,service_role}, expected only {authenticated}
 --
--- Runs in BOTH phases, detecting which one it is in by the existence of
--- can_view_order_as_actor():
---   BEFORE  anon must inherit EXECUTE through PUBLIC — the defect, demonstrated.
---   AFTER   PUBLIC and anon must hold nothing, authenticated must hold EXECUTE,
---           the function must still work when called through the RLS policies,
---           and no policy may have broken because of the revoke.
+-- They are two different mechanisms wearing the same clothes:
+--
+--   INHERITED  PostgreSQL grants EXECUTE on every new function to PUBLIC. anon
+--              is a member of PUBLIC, so anon can execute without ever appearing
+--              in the ACL. 20260919000000 §2 wrote a grant and no revoke, so
+--              can_read_payment_as_participant kept that default. Attempt 1.
+--   DIRECT     a hosted Supabase database runs `alter default privileges in
+--              schema public grant all on functions to postgres, anon,
+--              authenticated, service_role`, so every new function is ALSO born
+--              with three real ACL entries. `revoke ... from public, anon`
+--              clears PUBLIC and anon and leaves service_role. Attempt 2.
+--
+-- So this file asserts, in order:
+--
+--   1. the harness gives a NEWLY created function the same privileges the linked
+--      database gives one — if that stops being true, nothing below means
+--      anything;
+--   2. the UNCORRECTED forms reproduce BOTH remote failures, on a probe function
+--      created here, so the harness is proved to catch them rather than assumed;
+--   3. after 20261006000000, each of the three functions has its own exact ACL;
+--   4. nothing functional broke: the policies still resolve, participants keep
+--      their visibility, anon is refused, service_role is refused.
+--
+-- Runs in BOTH phases, detecting which by the existence of can_view_order_as_actor().
 --
 -- Run: see supabase/tests/run_security_suite.sh
 
@@ -62,6 +75,92 @@ insert into public.finance_payment_allocations (id, payment_request_id, allocate
 
 insert into public.payment_proof_attachments (id, payment_request_id) values
   ('00000000-0000-0000-0000-0000000f0001','00000000-0000-0000-0000-0000000c00a1');
+
+-- ═══ 1 & 2. The harness's own defaults, and both remote failures ═══════════
+
+do $$
+declare
+  v_acl       aclitem[];
+  v_owner     text;
+  v_grantees  text[];
+begin
+  -- 1. A FUNCTION CREATED RIGHT HERE must be born with what the linked database
+  -- gives one. This is the assertion whose absence let two migrations through.
+  create function public.t_acl_probe() returns int language sql as $f$ select 1 $f$;
+
+  select p.proacl, pg_get_userbyid(p.proowner) into v_acl, v_owner
+  from pg_proc p where p.oid = 'public.t_acl_probe()'::regprocedure;
+
+  select coalesce(array_agg(distinct g order by g), '{}') into v_grantees
+  from (select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end as g
+        from aclexplode(v_acl) a where a.privilege_type = 'EXECUTE') x
+  where g <> v_owner;
+
+  if v_grantees is distinct from array['PUBLIC','anon','authenticated','service_role'] then
+    raise exception
+      'HARNESS DOES NOT MATCH THE LINKED DATABASE: a new function is born with %, expected {PUBLIC,anon,authenticated,service_role}. Every grant assertion below is meaningless until this matches.',
+      v_grantees;
+  end if;
+  raise notice 'DEFAULTS pass — a new function is born with %, exactly as on the linked database', v_grantees;
+
+  -- 2a. REMOTE FAILURE 1, reproduced: the form 20260919000000 §2 used — a grant
+  -- and no revoke — leaves anon able to execute, through PUBLIC and directly.
+  grant execute on function public.t_acl_probe() to authenticated;
+  if not has_function_privilege('public', 'public.t_acl_probe()', 'execute') then
+    raise exception 'REMOTE FAILURE 1 did not reproduce: PUBLIC does not hold EXECUTE';
+  end if;
+  if not has_function_privilege('anon', 'public.t_acl_probe()', 'execute') then
+    raise exception 'REMOTE FAILURE 1 did not reproduce: anon cannot execute';
+  end if;
+  raise notice 'REMOTE FAILURE 1 reproduced — grant-without-revoke leaves anon able to execute';
+
+  -- 2b. REMOTE FAILURE 2, reproduced: the form 20261006000000 shipped with —
+  -- `revoke ... from public, anon` — clears PUBLIC and anon and leaves the
+  -- platform's DIRECT service_role grant standing.
+  revoke execute on function public.t_acl_probe() from public, anon;
+
+  select p.proacl into v_acl from pg_proc p
+  where p.oid = 'public.t_acl_probe()'::regprocedure;
+  select coalesce(array_agg(distinct g order by g), '{}') into v_grantees
+  from (select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end as g
+        from aclexplode(v_acl) a where a.privilege_type = 'EXECUTE') x
+  where g <> v_owner;
+
+  if v_grantees is distinct from array['authenticated','service_role'] then
+    raise exception
+      'REMOTE FAILURE 2 did not reproduce: after the shipped revoke the grantees are %, expected {authenticated,service_role}',
+      v_grantees;
+  end if;
+  raise notice
+    'REMOTE FAILURE 2 reproduced — `revoke from public, anon` leaves %, the exact ACL the linked database rejected',
+    v_grantees;
+
+  -- 2c. And the DETERMINISTIC form, applied to the same probe, fixes it.
+  revoke all on function public.t_acl_probe() from public;
+  revoke all on function public.t_acl_probe() from anon;
+  revoke all on function public.t_acl_probe() from service_role;
+  grant execute on function public.t_acl_probe() to authenticated;
+
+  select p.proacl into v_acl from pg_proc p
+  where p.oid = 'public.t_acl_probe()'::regprocedure;
+  select coalesce(array_agg(distinct g order by g), '{}') into v_grantees
+  from (select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end as g
+        from aclexplode(v_acl) a where a.privilege_type = 'EXECUTE') x
+  where g <> v_owner;
+
+  if v_grantees is distinct from array['authenticated'] then
+    raise exception 'the deterministic revoke form left %, expected {authenticated}', v_grantees;
+  end if;
+  if not has_function_privilege(v_owner, 'public.t_acl_probe()', 'execute') then
+    raise exception 'the deterministic revoke form cost the owner its EXECUTE';
+  end if;
+  raise notice
+    'DETERMINISTIC form pass — three explicit revokes leave %, and the owner keeps EXECUTE', v_grantees;
+
+  drop function public.t_acl_probe();
+end $$;
+
+-- ═══ 3. The three functions' own exact ACLs ════════════════════════════════
 
 do $$
 declare
@@ -133,6 +232,123 @@ begin
       'AFTER  grants FAILED: service_role holds EXECUTE; bypassing RLS is not a reason to hold an RPC';
   end if;
   raise notice 'AFTER  grants pass — service_role holds no EXECUTE, and needs none';
+end $$;
+
+-- ═══ Each function's OWN exact ACL, specified separately ═══════════════════
+--
+-- The same specification the migration asserts at apply time, restated here so
+-- the repository carries it too. Deliberately three separate entries rather than
+-- one shared list: they agree today, and a change to one must not be waved
+-- through because the other two still match.
+
+do $$
+declare
+  corrected boolean := to_regprocedure('public.can_view_order_as_actor(uuid)') is not null;
+  v_fn       text;
+  v_expected text[];
+  v_acl      aclitem[];
+  v_owner    text;
+  v_grantees text[];
+begin
+  if not corrected then return; end if;
+
+  foreach v_fn in array array[
+    'can_view_order_as_actor(uuid)',
+    'can_read_payment_as_participant(uuid)',
+    'order_linked_payment_total(uuid)'
+  ] loop
+    v_expected := case v_fn
+      when 'can_view_order_as_actor(uuid)'         then array['authenticated']
+      when 'can_read_payment_as_participant(uuid)' then array['authenticated']
+      when 'order_linked_payment_total(uuid)'      then array['authenticated']
+      else null
+    end;
+    if v_expected is null then
+      raise exception 'no ACL specified for %', v_fn;
+    end if;
+
+    select p.proacl, pg_get_userbyid(p.proowner) into v_acl, v_owner
+    from pg_proc p where p.oid = ('public.' || v_fn)::regprocedure;
+
+    if v_acl is null then
+      raise exception '% carries default privileges, which include EXECUTE to PUBLIC', v_fn;
+    end if;
+
+    select coalesce(array_agg(distinct g order by g), '{}') into v_grantees
+    from (select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end as g
+          from aclexplode(v_acl) a where a.privilege_type = 'EXECUTE') x
+    where g <> v_owner;
+
+    if v_grantees is distinct from v_expected then
+      raise exception 'AFTER  ACL FAILED: % is granted to %, expected exactly %',
+        v_fn, v_grantees, v_expected;
+    end if;
+    if has_function_privilege('public', 'public.' || v_fn, 'execute') then
+      raise exception 'AFTER  ACL FAILED: PUBLIC can still execute %', v_fn;
+    end if;
+    if has_function_privilege('anon', 'public.' || v_fn, 'execute') then
+      raise exception 'AFTER  ACL FAILED: anon can still execute %', v_fn;
+    end if;
+    if not has_function_privilege(v_owner, 'public.' || v_fn, 'execute') then
+      raise exception 'AFTER  ACL FAILED: the owner % lost EXECUTE on %', v_owner, v_fn;
+    end if;
+
+    raise notice 'AFTER  ACL pass — % : direct grantees % beside owner %, PUBLIC and anon excluded',
+      v_fn, v_grantees, v_owner;
+  end loop;
+end $$;
+
+-- ═══ Direct service-role execution is refused, function by function ════════
+--
+-- The privilege layer, not a policy: service_role holds BYPASSRLS, so if it held
+-- EXECUTE it would sail past every check these functions exist to make. None of
+-- the three has a service-role caller, so all three must refuse it outright.
+
+do $$
+declare
+  corrected boolean := to_regprocedure('public.can_view_order_as_actor(uuid)') is not null;
+  ORDER_X uuid := '00000000-0000-0000-0000-00000000d0e1';
+  P_X     uuid := '00000000-0000-0000-0000-0000000c00a1';
+begin
+  if not corrected then return; end if;
+
+  begin
+    set local role service_role;
+    perform public.can_view_order_as_actor(ORDER_X);
+    reset role;
+    raise exception 'AFTER  service_role FAILED: executed can_view_order_as_actor';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'AFTER  service_role pass — can_view_order_as_actor refused';
+  end;
+
+  begin
+    set local role service_role;
+    perform public.can_read_payment_as_participant(P_X);
+    reset role;
+    raise exception 'AFTER  service_role FAILED: executed can_read_payment_as_participant';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'AFTER  service_role pass — can_read_payment_as_participant refused';
+  end;
+
+  begin
+    set local role service_role;
+    perform public.order_linked_payment_total(ORDER_X);
+    reset role;
+    raise exception 'AFTER  service_role FAILED: executed order_linked_payment_total';
+  exception when insufficient_privilege then
+    reset role;
+    raise notice 'AFTER  service_role pass — order_linked_payment_total refused';
+  end;
+
+  -- service_role keeps everything it actually needs: it bypasses RLS and reads
+  -- the tables directly, which is how every real service operation works.
+  set local role service_role;
+  perform count(*) from public.finance_payment_requests;
+  perform count(*) from public.finance_payment_allocations;
+  reset role;
+  raise notice 'AFTER  service_role pass — still reads the finance tables directly, bypassing RLS';
 end $$;
 
 -- ═══ The revoke must not have broken a single policy ═══════════════════════

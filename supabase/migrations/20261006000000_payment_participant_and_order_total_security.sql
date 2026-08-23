@@ -140,8 +140,41 @@ $$;
 comment on function public.can_view_order_as_actor(uuid) is
   'True when the CALLER may read this Order — admin, operations, its requester, its assignee, or orders.view_all — ANDed with the RESTRICTIVE Orders module entry gate. The DEFINER-SAFE sibling of can_view_order(): identical in meaning, but expressed in auth.uid() terms so it survives being called from inside a SECURITY DEFINER, where can_view_order() would silently degenerate to "the Order exists". Use can_view_order() in policies and invoker functions; use this one only where a definer has no alternative. Because it restates the orders SELECT policies rather than asking them, the migration that introduced it asserts that policy set at apply time. Null or unknown id is false.';
 
-revoke execute on function public.can_view_order_as_actor(uuid) from public, anon;
-grant  execute on function public.can_view_order_as_actor(uuid) to authenticated;
+-- DETERMINISTIC ACL. Three revokes, not one, because a hosted Supabase database
+-- gives every new function in schema public FOUR grants:
+--
+--   * EXECUTE to PUBLIC   — PostgreSQL's built-in default, inherited by every role
+--   * EXECUTE to anon, authenticated and service_role — DIRECT entries, from the
+--     platform's `alter default privileges in schema public grant all on
+--     functions to postgres, anon, authenticated, service_role`
+--
+-- `revoke ... from public, anon` clears the first and one of the second, and
+-- leaves service_role holding a direct grant. That is exactly how the previous
+-- two attempts at this migration failed on the linked database. Naming all three
+-- roles explicitly makes the final ACL independent of what the database's
+-- defaults happen to be.
+--
+-- REVOKE ALL, not REVOKE EXECUTE, because the platform default grants ALL and a
+-- narrower revoke would leave whatever ALL covers today or gains tomorrow.
+--
+-- THE OWNER IS NOT TOUCHED. None of the three roles below is the owner, and a
+-- revoke never removes ownership, so `postgres=X/postgres` survives — which is
+-- what keeps every SECURITY DEFINER that calls can_view_order_as_actor working.
+revoke all on function public.can_view_order_as_actor(uuid) from public;
+revoke all on function public.can_view_order_as_actor(uuid) from anon;
+revoke all on function public.can_view_order_as_actor(uuid) from service_role;
+--
+-- WHO ACTUALLY CALLS THIS. Nothing outside the database. Its only two callers are
+-- §2's can_read_payment_as_participant and §3's order_linked_payment_total, both
+-- SECURITY DEFINER, so both reach it as the OWNER and neither needs a grant to
+-- work. There is no policy, no route, no script and no client call. The grant to
+-- `authenticated` below is therefore precautionary rather than required today —
+-- it keeps this function usable from a policy or an invoker helper without
+-- another migration, and it exposes nothing: the boolean it returns is exactly
+-- what the caller could derive by selecting the Order under its own RLS.
+-- service_role is NOT granted: it has no caller at all, and BYPASSRLS is not a
+-- reason to hold an RPC.
+grant execute on function public.can_view_order_as_actor(uuid) to authenticated;
 
 -- ═══ 2. The participant predicate, with a sound Order branch ════════════════
 --
@@ -252,8 +285,37 @@ comment on function public.can_read_payment_as_participant(uuid) is
 -- The function's OWNER keeps EXECUTE by ownership, which is how the migration
 -- runner and every SECURITY DEFINER that calls it continue to work.
 
-revoke execute on function public.can_read_payment_as_participant(uuid) from public, anon;
-grant  execute on function public.can_read_payment_as_participant(uuid) to authenticated;
+-- DETERMINISTIC ACL. Three revokes, not one, because a hosted Supabase database
+-- gives every new function in schema public FOUR grants:
+--
+--   * EXECUTE to PUBLIC   — PostgreSQL's built-in default, inherited by every role
+--   * EXECUTE to anon, authenticated and service_role — DIRECT entries, from the
+--     platform's `alter default privileges in schema public grant all on
+--     functions to postgres, anon, authenticated, service_role`
+--
+-- `revoke ... from public, anon` clears the first and one of the second, and
+-- leaves service_role holding a direct grant. That is exactly how the previous
+-- two attempts at this migration failed on the linked database. Naming all three
+-- roles explicitly makes the final ACL independent of what the database's
+-- defaults happen to be.
+--
+-- REVOKE ALL, not REVOKE EXECUTE, because the platform default grants ALL and a
+-- narrower revoke would leave whatever ALL covers today or gains tomorrow.
+--
+-- THE OWNER IS NOT TOUCHED. None of the three roles below is the owner, and a
+-- revoke never removes ownership, so `postgres=X/postgres` survives — which is
+-- what keeps every SECURITY DEFINER that calls can_read_payment_as_participant working.
+revoke all on function public.can_read_payment_as_participant(uuid) from public;
+revoke all on function public.can_read_payment_as_participant(uuid) from anon;
+revoke all on function public.can_read_payment_as_participant(uuid) from service_role;
+--
+-- WHO ACTUALLY CALLS THIS. Four RLS policies and nothing else — the two on
+-- finance_payment_requests and the two on payment_proof_attachments, every one
+-- of them TO authenticated. A policy is evaluated as the QUERYING role, so
+-- `authenticated` genuinely needs this grant: without it every payment read
+-- raises "permission denied for function" rather than returning fewer rows.
+-- service_role is NOT granted, per the trace above.
+grant execute on function public.can_read_payment_as_participant(uuid) to authenticated;
 
 -- ═══ 3. The Order total, gated ══════════════════════════════════════════════
 --
@@ -359,8 +421,45 @@ $$;
 comment on function public.order_linked_payment_total(uuid) is
   'Rupees of VERIFIED money attributed to one Confirmed Order under the canonical rule: if the payment has ANY active allocation, this Order receives only its own active allocated share and the payment''s direct order_id is ignored entirely; if it has none, the direct link attributes the whole payment. Reversed allocations count as zero. Attribution summed across every Order and PI, plus what is unallocated, equals the payment exactly. Mirrored by src/lib/finance/paymentAttribution.ts. GATED: returns NULL — never 0, never an error — unless the caller may view the Order under can_view_order_as_actor(), so an Order the caller cannot see and an Order that does not exist are indistinguishable. SECURITY DEFINER on purpose: a salesperson''s RLS does not show every payment on an Order, and cancelling one while misinformed about the money is the mistake this prevents. Reports; gates nothing.';
 
-revoke execute on function public.order_linked_payment_total(uuid) from public, anon;
-grant  execute on function public.order_linked_payment_total(uuid) to authenticated;
+-- DETERMINISTIC ACL. Three revokes, not one, because a hosted Supabase database
+-- gives every new function in schema public FOUR grants:
+--
+--   * EXECUTE to PUBLIC   — PostgreSQL's built-in default, inherited by every role
+--   * EXECUTE to anon, authenticated and service_role — DIRECT entries, from the
+--     platform's `alter default privileges in schema public grant all on
+--     functions to postgres, anon, authenticated, service_role`
+--
+-- `revoke ... from public, anon` clears the first and one of the second, and
+-- leaves service_role holding a direct grant. That is exactly how the previous
+-- two attempts at this migration failed on the linked database. Naming all three
+-- roles explicitly makes the final ACL independent of what the database's
+-- defaults happen to be.
+--
+-- REVOKE ALL, not REVOKE EXECUTE, because the platform default grants ALL and a
+-- narrower revoke would leave whatever ALL covers today or gains tomorrow.
+--
+-- THE OWNER IS NOT TOUCHED. None of the three roles below is the owner, and a
+-- revoke never removes ownership, so `postgres=X/postgres` survives — which is
+-- what keeps every SECURITY DEFINER that calls order_linked_payment_total working.
+revoke all on function public.order_linked_payment_total(uuid) from public;
+revoke all on function public.order_linked_payment_total(uuid) from anon;
+revoke all on function public.order_linked_payment_total(uuid) from service_role;
+--
+-- WHO ACTUALLY CALLS THIS. Two callers, and they are the reason the grant list
+-- is what it is:
+--
+--   * the browser, at src/app/orders/[id]/OrderAmendmentModals.tsx:351 —
+--     supabase.rpc('order_linked_payment_total'), a session client, so the role
+--     is `authenticated`. This one NEEDS the grant.
+--   * cancel_order_with_audit() (20260816000000 §5, 20260819000000 §3), which is
+--     SECURITY DEFINER and therefore reaches it as the OWNER.
+--
+-- NO SERVICE-ROLE CALLER EXISTS. There is no API route, no server action and no
+-- maintenance script that invokes it; the cancellation path reaches the database
+-- through cancel_order(uuid, text) as the signed-in user, never through a
+-- service-role client. So the direct service_role grant the platform defaults
+-- gave it in 20260816000000 is removed here rather than kept for comfort.
+grant execute on function public.order_linked_payment_total(uuid) to authenticated;
 
 -- ═══ 4. Apply-time assertions ═══════════════════════════════════════════════
 --
@@ -373,6 +472,8 @@ declare
   v_pols      text[];
   v_n         int;
   v_fn        text;
+  v_role      text;
+  v_expected  text[];
   v_acl       aclitem[];
   v_owner     text;
   v_grantees  text[];
@@ -480,63 +581,98 @@ begin
       'order_linked_payment_total must prefer active allocations over the direct link';
   end if;
 
-  -- 4f. Grants on all three, checked FOUR WAYS EACH.
+  -- 4f. THE EXACT ACL OF EACH FUNCTION, SPECIFIED SEPARATELY.
   --
-  -- Separately, because the four questions have different answers and the first
-  -- run of this migration proved it: PUBLIC held EXECUTE on
-  -- can_read_payment_as_participant (20260919000000 §2 wrote a grant and no
-  -- revoke), anon inherited it through PUBLIC, and `create or replace` in §2
-  -- carried the ACL through untouched. A single has_function_privilege('anon',…)
-  -- test found it, but only by luck of ordering — each of the four is asserted
-  -- on its own now.
+  -- Not one shared expected list. Each function gets its own line below, so a
+  -- future change to one cannot be waved through because the other two still
+  -- match. They happen to agree today; the spec still names them one at a time.
   --
-  -- The fourth is the one text cannot express: NO UNINTENDED ROLE holds a DIRECT
-  -- grant. has_function_privilege() answers "can this role execute", which is
-  -- true for a superuser and for anyone inheriting from PUBLIC; it can never
-  -- answer "who has been granted this". That is read out of proacl below, where
-  -- grantee 0 is PUBLIC and everything else is a real role.
+  -- WHAT IS BEING COMPARED, AND WHY IT IS THE DIRECT ACL. There are two
+  -- different questions and the previous two attempts at this migration were
+  -- wrecked by conflating them:
+  --
+  --   EFFECTIVE  has_function_privilege(role, fn, 'execute') — "can this role
+  --              execute it", which is true for a superuser and true for every
+  --              role while PUBLIC holds the grant. It cannot see WHO was
+  --              granted anything.
+  --   DIRECT     the aclitem entries in pg_proc.proacl — who actually holds a
+  --              grant. Grantee 0 is PUBLIC; everything else is a real role.
+  --
+  -- Both are asserted. PUBLIC and anon are checked effectively AND directly,
+  -- because a PUBLIC entry makes anon effective without anon appearing in the
+  -- ACL at all; service_role and the grantee list are checked directly, because
+  -- a direct grant is exactly what the platform's default privileges leave
+  -- behind and what the revokes above are written to remove.
   foreach v_fn in array array[
     'can_view_order_as_actor(uuid)',
     'can_read_payment_as_participant(uuid)',
     'order_linked_payment_total(uuid)'
   ] loop
+    -- The expected DIRECT grantees, beside the owner, for THIS function.
+    v_expected := case v_fn
+      -- An internal helper: both callers are SECURITY DEFINER and reach it as
+      -- the owner, so this grant is precautionary. No service-role caller.
+      when 'can_view_order_as_actor(uuid)'         then array['authenticated']
+      -- Four RLS policies, all TO authenticated; a policy runs as the querying
+      -- role, so this grant is load-bearing. No service-role caller.
+      when 'can_read_payment_as_participant(uuid)' then array['authenticated']
+      -- Called by the browser at OrderAmendmentModals.tsx:351 as `authenticated`,
+      -- and by cancel_order_with_audit() as the owner. No service-role caller.
+      when 'order_linked_payment_total(uuid)'      then array['authenticated']
+      else null
+    end;
+    if v_expected is null then
+      raise exception 'no ACL specified for %; every function must have its own', v_fn;
+    end if;
+
+    -- EFFECTIVE: the two roles that must never reach it, however they got there.
     if has_function_privilege('public', 'public.' || v_fn, 'execute') then
       raise exception 'PUBLIC must not hold EXECUTE on %', v_fn;
     end if;
     if has_function_privilege('anon', 'public.' || v_fn, 'execute') then
       raise exception 'anon must not hold EXECUTE on %', v_fn;
     end if;
-    if not has_function_privilege('authenticated', 'public.' || v_fn, 'execute') then
-      raise exception 'authenticated must hold EXECUTE on %', v_fn;
-    end if;
 
-    -- A NULL proacl means "default privileges", which IS the PUBLIC grant. It
-    -- has to fail here even though the three tests above may not catch it on a
-    -- database where anon happens not to exist.
+    -- EFFECTIVE: every role the spec DOES name must actually be able to call it.
+    foreach v_role in array v_expected loop
+      if not has_function_privilege(v_role, 'public.' || v_fn, 'execute') then
+        raise exception '% must hold EXECUTE on %, and does not', v_role, v_fn;
+      end if;
+    end loop;
+
     select p.proacl, pg_get_userbyid(p.proowner)
       into v_acl, v_owner
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.oid = ('public.' || v_fn)::regprocedure;
 
+    -- A NULL proacl is not "no grants" — it means DEFAULT privileges, which is
+    -- the PUBLIC grant plus whatever alter default privileges adds. It has to
+    -- fail here even on a database where anon does not exist to be tested above.
     if v_acl is null then
       raise exception
-        '% carries default privileges, which means PUBLIC holds EXECUTE; write an explicit revoke', v_fn;
+        '% carries default privileges, which include EXECUTE to PUBLIC; write explicit revokes', v_fn;
     end if;
 
-    select coalesce(array_agg(distinct grantee_name order by grantee_name), '{}')
-      into v_grantees
+    -- DIRECT: exactly the specified grantees, and nobody else. This is the check
+    -- that catches the platform's service_role grant, an application role added
+    -- by a later migration, or a PUBLIC entry that survived a narrower revoke.
+    select coalesce(array_agg(distinct g order by g), '{}') into v_grantees
     from (
-      select case when a.grantee = 0 then 'PUBLIC'
-                  else pg_get_userbyid(a.grantee) end as grantee_name
+      select case when a.grantee = 0 then 'PUBLIC' else pg_get_userbyid(a.grantee) end as g
       from aclexplode(v_acl) a
       where a.privilege_type = 'EXECUTE'
-    ) g
-    where grantee_name <> v_owner;
+    ) x
+    where g <> v_owner;
 
-    if v_grantees is distinct from array['authenticated'] then
+    if v_grantees is distinct from v_expected then
       raise exception
-        'EXECUTE on % is granted to %, expected only {authenticated} beside the owner %',
-        v_fn, v_grantees, v_owner;
+        'EXECUTE on % is granted to %, expected exactly % beside the owner %',
+        v_fn, v_grantees, v_expected, v_owner;
+    end if;
+
+    -- And the owner keeps it, or every SECURITY DEFINER calling this breaks.
+    if not has_function_privilege(v_owner, 'public.' || v_fn, 'execute') then
+      raise exception 'the owner % lost EXECUTE on %', v_owner, v_fn;
     end if;
   end loop;
 end $$;
