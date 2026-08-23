@@ -188,7 +188,10 @@ test('the counts say how many are hidden, never which', () => {
     labels: new Map([['order-1', 'ORD-2026-0007']]),
     canOpenOrders: true,
   })
-  assert.deepEqual(linkCounts(links), { total: 2, openable: 1, hidden: 1 })
+  // The per-kind counts are part of the shape: the Confirmed Payments table
+  // draws "×2" beside a money column from them rather than listing names.
+  assert.deepEqual(linkCounts(links),
+    { total: 2, openable: 1, hidden: 1, orders: 1, submissions: 1 })
 })
 
 // ── The narrowing the two surfaces share ─────────────────────────────────────
@@ -484,8 +487,13 @@ describe('the fifteen compatibility cases', () => {
     const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
     assert.ok(counts.includes('paymentViewClauses('), 'the counts must use the shared predicate')
     assert.ok(view.includes('paymentViewFilterClauses('), 'the list must use the shared predicate')
-    assert.ok(counts.includes('CLASSIFIED_PAYMENT_STATUSES'), 'and the shared status scope')
-    assert.ok(view.includes('CLASSIFIED_PAYMENT_STATUSES'))
+    // AND THE SAME STATUS SCOPE, which is now the CONFIRMED half rather than
+    // "everything except rejected". The four views classify money by where it
+    // has been attributed, and a payment nobody has verified has been attributed
+    // nowhere — so both the list and the badge beside it ask for the two
+    // confirmed statuses, and Payments to Verify carries its own count.
+    assert.ok(counts.includes('CONFIRMED_PAYMENT_STATUSES'), 'and the shared status scope')
+    assert.ok(view.includes('PAYMENT_SURFACE_STATUSES[surface]'))
   })
 
   test('11–15 are proved in SQL, and the file says so', () => {
@@ -716,6 +724,7 @@ describe('multi-allocation behaviour', () => {
     })
     assert.deepEqual(links.map(l => l.href), [null, '/orders/order-b', null])
     assert.deepEqual(links.map(l => l.label), ['An Order', 'ORD-B', 'A PI Draft'])
-    assert.deepEqual(linkCounts(links), { total: 3, openable: 1, hidden: 2 })
+    assert.deepEqual(linkCounts(links),
+      { total: 3, openable: 1, hidden: 2, orders: 2, submissions: 1 })
   })
 })

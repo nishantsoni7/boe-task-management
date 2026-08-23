@@ -193,7 +193,8 @@ describe('a destination the viewer cannot open is never named', () => {
     })
     assert.deepEqual(links.map(l => l.label), ['ORD-2026-0007', unnamedLabel('submission')])
     assert.deepEqual(links.map(l => l.href), ['/orders/order-1', null])
-    assert.deepEqual(linkCounts(links), { total: 2, openable: 1, hidden: 1 })
+    assert.deepEqual(linkCounts(links),
+      { total: 2, openable: 1, hidden: 1, orders: 1, submissions: 1 })
   })
 
   test('the placeholder carries no id, no number and no client', () => {
@@ -229,7 +230,8 @@ describe('a destination the viewer cannot open is never named', () => {
       canOpenOrders: false,
     })
     assert.deepEqual(links.map(l => l.href), [null, null])
-    assert.deepEqual(linkCounts(links), { total: 2, openable: 0, hidden: 0 })
+    assert.deepEqual(linkCounts(links),
+      { total: 2, openable: 0, hidden: 0, orders: 1, submissions: 1 })
   })
 
   test('the legacy direct link is subject to exactly the same rule', () => {

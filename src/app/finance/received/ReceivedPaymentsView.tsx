@@ -26,7 +26,6 @@ import {
   allocationFilterAvailable,
   allocationFilterClauses,
   ALLOCATED_TOTAL_COLUMN,
-  CLASSIFIED_PAYMENT_STATUSES,
   dateRange,
   isNarrowed,
   paymentViewFilterClauses,
@@ -74,6 +73,14 @@ import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissi
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import {
+  CONFIRMED_PAYMENT_COLUMNS,
+  PAYMENTS_TABLE_BREAKPOINT,
+  PAYMENT_SURFACE_STATUSES,
+  conciseName,
+  surfaceHasClassificationViews,
+  type PaymentSurface,
+} from '@/lib/finance/paymentSurfaces'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
   deriveFinanceCapabilities,
@@ -159,16 +166,6 @@ type LinkTarget = {
  */
 const SEARCH_DEBOUNCE_MS = 250
 
-/**
- * Below this the eleven-column table becomes cards.
- *
- * The table is honestly wide and the app shell clips horizontal overflow, so a
- * phone would either lose columns off the edge or squeeze them into
- * unreadability. 768px is the same breakpoint PI Drafts uses for the same
- * decision.
- */
-const PAYMENTS_TABLE_BREAKPOINT = 768
-
 const PAYMENT_MODE_LABEL: Record<string, string> = {
   bank_transfer: 'Bank Transfer',
   cash:          'Cash',
@@ -223,6 +220,21 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
 // The copy below is per-view; everything else on the page is shared verbatim.
 // The narrowing itself lives in paymentClassification.ts and is applied by the
 // DATABASE, so a view survives paging and its count describes the whole set.
+
+/**
+ * Payments to Verify names itself.
+ *
+ * SEPARATE COPY, not a fifth entry in VIEW_META, because it is not a view: the
+ * four views narrow confirmed money by where it went, and this page is the
+ * money that has not been confirmed at all. Sharing the record would have made
+ * it look like one more tab on a strip it does not belong to.
+ */
+const TO_VERIFY_META = {
+  title:    'Payments to Verify',
+  subtitle: 'Awaiting verification, needing clarification, or rejected.',
+  empty:    'Nothing is waiting to be verified.',
+  searchPlaceholder: 'Payment, client or order…',
+}
 
 const VIEW_META: Record<PaymentView, {
   title: string
@@ -1288,7 +1300,6 @@ function ReceivedPaymentsTable({
   onLink,
   onUnlink,
   onAllocate,
-  onOpenLinked,
   canDeleteRow,
   onDelete,
 }: {
@@ -1322,7 +1333,6 @@ function ReceivedPaymentsTable({
   onLink:   (r: PaymentRequest) => void
   onUnlink: (r: PaymentRequest) => void
   onAllocate: (r: PaymentRequest) => void
-  onOpenLinked: (href: string) => void
   /**
    * Whether THIS reader may delete THIS payment — canDeletePayment's answer,
    * which is admin, or the person who raised it, and only in a status the
@@ -1332,24 +1342,28 @@ function ReceivedPaymentsTable({
   canDeleteRow: (r: PaymentRequest) => boolean
   onDelete: (r: PaymentRequest) => void
 }) {
-  const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
+  // COMPACT, AND NO minWidth. The old table declared minWidth 1040px inside an
+  // overflowX:auto box, which is a promise to scroll sideways rather than to
+  // fit. Nine columns at these paddings fit 1024px with room over, so the box
+  // does not scroll and the page does not either — asserted in the tests rather
+  // than eyeballed.
+  const TD: React.CSSProperties = {
+    padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+  }
+  const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
+  const align = (a: 'left' | 'right'): React.CSSProperties =>
+    a === 'right' ? { textAlign: 'right' } : {}
 
   return (
-    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1040px' }}>
+    <div style={{ width: '100%' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
         <thead>
           <tr>
-            <th style={TH_STYLE}>Payment</th>
-            <th style={TH_STYLE}>Client</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Received</th>
-            <th style={TH_STYLE}>Status</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>To Orders</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>To PI Drafts</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Available</th>
-            <th style={TH_STYLE}>Goes To</th>
-            <th style={TH_STYLE}>Paid On</th>
-            <th style={TH_STYLE}>Mode</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Action</th>
+            {CONFIRMED_PAYMENT_COLUMNS.map(column => (
+              <th key={column.key} style={{ ...TH, ...align(column.align) }}>
+                {column.label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -1365,63 +1379,86 @@ function ReceivedPaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
-                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
-                  {r.request_number}
-                </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                  {r.client_name}
-                </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                {/* AMOUNT LEADS, and is the only bold figure in the row. It is
+                    what a Finance reader scans for, and the reference number
+                    that used to sit here is in the panel this row opens. */}
+                <td style={{
+                  ...TD, textAlign: 'right', fontSize: '13.5px', fontWeight: 700,
+                  color: colors.primary, fontVariantNumeric: 'tabular-nums',
+                }}>
                   {fmtAmount(r.amount)}
                 </td>
-                {/* VERIFICATION, ITS OWN COLUMN. Whether the money arrived and
-                    whose business it belongs to are different questions decided
-                    by different people; a screen that merged them would have to
-                    invent a precedence nobody chose. */}
-                <td style={TD}>
-                  <VerificationBadge status={r.status} />
+
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                 </td>
+
+                {/* THE PAYMENT DATE, not created_at. When the money moved is a
+                    fact about the money; when the row was typed is a fact about
+                    the typing, and reconciling a bank statement needs the first. */}
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  {fmtDate(r.payment_date)}
+                </td>
+
+                {/* A TOTAL AND A COUNT, never a list of names. Inline
+                    destinations are what made this row wrap unpredictably and
+                    the table impossible to size; the names are one click away
+                    in the panel, where there is room for all of them. */}
                 <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
                   <MoneyCell value={view.figures.orderLinked} />
+                  {view.counts.orders > 1 && (
+                    <span
+                      title={`${view.counts.orders} Confirmed Orders`}
+                      style={{ marginLeft: 5, fontSize: '10.5px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      ×{view.counts.orders}
+                    </span>
+                  )}
                 </td>
+
                 <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
                   <MoneyCell value={view.figures.piLinked} />
+                  {view.counts.submissions > 1 && (
+                    <span
+                      title={`${view.counts.submissions} PI Drafts`}
+                      style={{ marginLeft: 5, fontSize: '10.5px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      ×{view.counts.submissions}
+                    </span>
+                  )}
                 </td>
-                {/* THE BALANCE, NOT A YES/NO BADGE. A ₹10L payment with ₹4L
-                    allocated has ₹6L that still needs somebody, and a flag would
-                    hide it behind a confident "yes". An over-allocated row is
-                    marked rather than capped — the excess is a defect in stored
-                    data and is the only evidence of it. */}
+
+                {/* UNALLOCATED IS NEVER OVERSTATED. MoneyCell draws an em dash
+                    for null, and the projection returns null whenever the
+                    reader cannot see every allocation of this payment — an
+                    incomplete sum understates attribution, which overstates the
+                    balance, and that is how the same rupees get spent twice.
+                    An over-allocated row is marked rather than capped. */}
                 <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
                   {view.figures.overAllocated ? (
                     <span title="Attribution exceeds the payment. This needs a person." style={{ color: colors.red, fontWeight: 700, fontSize: '11px' }}>
-                      Over-allocated
+                      Over
                     </span>
                   ) : (
                     <MoneyCell value={view.figures.available} />
                   )}
                 </td>
-                {/* Every destination, and a door to each the reader may open.
-                    One the reader may NOT open is named by its kind alone. */}
-                <td style={TD}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                    <DestinationsCell links={view.links} onOpen={onOpenLinked} />
-                    {view.counts.total > 1 && (
-                      <span
-                        title={`${view.counts.total} allocations`}
-                        style={{ fontSize: '10.5px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}
-                      >
-                        ×{view.counts.total}
-                      </span>
-                    )}
-                  </span>
+
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}
+                    title={r.submitted_by_name ?? undefined}>
+                  {conciseName(r.submitted_by_name)}
                 </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {fmtDate(r.payment_date)}
+
+                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}
+                    title={r.approved_by_name ?? undefined}>
+                  {conciseName(r.approved_by_name)}
                 </td>
-                <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                  {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
-                </td>
+
+                {/* ONE MENU, NOT FIVE BUTTONS. Link, Unlink, Edit, Allocate and
+                    View as a row of text buttons was the widest column on the
+                    table and the reason it could not fit. View stays a button
+                    because it is what the whole row already does; the rest live
+                    behind a keyboard-reachable overflow. */}
                 <td style={{ ...TD, textAlign: 'right' }}>
                   <div
                     style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
@@ -1430,91 +1467,220 @@ function ReceivedPaymentsTable({
                     <button
                       onClick={() => onView(r)}
                       className="boe-btn boe-btn-ghost"
-                      style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                      style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
                     >
                       View
                     </button>
-                    {/* ALLOCATE — offered only where there is a balance to
-                        spend AND the reader may be told what it is. A withheld
-                        balance is null, and allocating against a figure nobody
-                        can vouch for is how the same rupees get spent twice. */}
-                    {canAllocate && view.canAllocate && (
-                      <button
-                        onClick={() => onAllocate(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
-                      >
-                        {ALLOCATE_ACTION_LABEL}
-                      </button>
-                    )}
-                    {canManage && (
-                      <>
-                        {/* Link action for a payment with no Order behind it. */}
-                        {!r.order_id && (
-                          <button
-                            onClick={() => onLink(r)}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.blue }}
-                          >
-                            Link
-                          </button>
-                        )}
-                        {/* Unlink — only for a payment that originated as a new
-                            order. An existing_order payment was validated
-                            against a real Order at submission and
-                            unlink_finance_payment_from_order (20260691000000)
-                            rejects it outright, so the option is not offered.
-                            A retired Order Request linkage is unlinkable for
-                            the same reason it must be: it is the one way that
-                            money reaches a real target. */}
-                        {(r.order_id || r.order_request_id) && r.payment_against === 'new_order' && (
-                          <button
-                            onClick={() => onUnlink(r)}
-                            className="boe-btn boe-btn-ghost"
-                            style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.muted }}
-                          >
-                            Unlink
-                          </button>
-                        )}
-                        <button
-                          onClick={() => onEdit(r)}
-                          className="boe-btn boe-btn-ghost"
-                          style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                        >
-                          Edit
-                        </button>
-                      </>
-                    )}
-                    {/* DELETE — and note it sits OUTSIDE canManage on purpose.
-                        Deleting a payment is not the finance.manage correction
-                        authority that Link, Unlink and Edit are: the only DELETE
-                        policies on finance_payment_requests are the creator's
-                        own and the administrator's, so canDeletePayment answers
-                        this and finance.manage does not.
-
-                        THE PAGE IS NOT ONLY VERIFIED MONEY, which is what this
-                        control existed to admit. CLASSIFIED_PAYMENT_STATUSES
-                        loads pending_approval and needs_clarification too, and
-                        an allocated one of those is exactly what a PI deletion
-                        blocker tells the operator to come here and remove. A
-                        verified row is never offered it — the status test is the
-                        first thing canDeletePayment asks, and
-                        finance_payment_requests_guard_approved_delete refuses it
-                        for every caller regardless. */}
-                    {canDeleteRow(r) && (
-                      <button
-                        onClick={() => onDelete(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
-                      >
-                        {PAYMENT_DELETE_CONFIRM_LABEL}
-                      </button>
-                    )}
+                    <RowActionsMenu
+                      label={`Actions for ${r.client_name}`}
+                      actions={[
+                        ...(canAllocate && view.canAllocate
+                          ? [{ label: ALLOCATE_ACTION_LABEL, onSelect: () => onAllocate(r) }]
+                          : []),
+                        ...(canManage && !r.order_id
+                          ? [{ label: 'Link to an Order', onSelect: () => onLink(r) }]
+                          : []),
+                        ...(canManage && (r.order_id || r.order_request_id)
+                            && r.payment_against === 'new_order'
+                          ? [{ label: 'Unlink', onSelect: () => onUnlink(r) }]
+                          : []),
+                        ...(canManage
+                          ? [{ label: 'Edit', onSelect: () => onEdit(r) }]
+                          : []),
+                        // DELETE — last, and gated by canDeleteRow rather than
+                        // canManage. Deleting a payment is not the finance.manage
+                        // correction authority the three above are: the only
+                        // DELETE policies on finance_payment_requests are the
+                        // creator's own and the administrator's.
+                        //
+                        // THIS PAGE IS NOT ONLY VERIFIED MONEY, which is what the
+                        // action exists to admit. CLASSIFIED_PAYMENT_STATUSES
+                        // loads pending_approval and needs_clarification too, and
+                        // an allocated one of those is exactly what a PI deletion
+                        // blocker sends an operator here to remove. A verified row
+                        // is never offered it — canDeletePayment asks the status
+                        // first, and the delete guard refuses it for every caller
+                        // regardless of what any menu shows.
+                        ...(canDeleteRow(r)
+                          ? [{ label: PAYMENT_DELETE_CONFIRM_LABEL, onSelect: () => onDelete(r), danger: true }]
+                          : []),
+                      ]}
+                    />
                   </div>
                 </td>
               </tr>
             )
           })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+/**
+ * The overflow menu, and why it is a real one.
+ *
+ * A <details> element gives keyboard focus, Enter and Escape, and an accessible
+ * name for free, and closes when focus leaves it. A div with an onClick would
+ * have needed all four written by hand and would have been reachable by mouse
+ * alone. Nothing is hidden that a reader could not otherwise do — the same four
+ * actions, behind one control instead of beside each other.
+ */
+function RowActionsMenu({ label, actions }: {
+  label: string
+  /** `danger` marks a destructive entry, which is drawn in red and sits last. */
+  actions: { label: string; onSelect: () => void; danger?: boolean }[]
+}) {
+  if (actions.length === 0) return null
+  return (
+    <details
+      style={{ position: 'relative', display: 'inline-block' }}
+      onBlur={event => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+          event.currentTarget.removeAttribute('open')
+        }
+      }}
+    >
+      <summary
+        aria-label={label}
+        title={label}
+        style={{
+          listStyle: 'none', cursor: 'pointer', padding: '3px 8px',
+          fontSize: '13px', lineHeight: '15px', color: colors.secondary,
+          borderRadius: 6, userSelect: 'none',
+        }}
+      >
+        ⋯
+      </summary>
+      <div
+        role="menu"
+        style={{
+          position: 'absolute', right: 0, top: '100%', zIndex: 20, marginTop: 4,
+          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
+          boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
+        }}
+      >
+        {actions.map(action => (
+          <button
+            key={action.label}
+            role="menuitem"
+            onClick={event => {
+              (event.currentTarget.closest('details') as HTMLDetailsElement | null)
+                ?.removeAttribute('open')
+              action.onSelect()
+            }}
+            style={{
+              display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px',
+              fontSize: '12px', color: action.danger ? colors.red : colors.primary,
+              background: 'transparent',
+              border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            {action.label}
+          </button>
+        ))}
+      </div>
+    </details>
+  )
+}
+
+/**
+ * The Payments to Verify table.
+ *
+ * A DIFFERENT TABLE, not the confirmed one with columns hidden. The two pages
+ * answer different questions and the columns follow: this one leads with the
+ * reference and the client — a verifier is reconciling a submission against a
+ * proof, and both are what they are holding — and it keeps STATUS, which the
+ * confirmed page dropped precisely because every row there has the same one.
+ *
+ * NO MONEY COLUMNS. To Orders, To PI Draft and Unallocated are attribution
+ * figures over money that has been confirmed to exist. Drawing them here would
+ * print ₹0 beside every row and invite somebody to read it as a fact.
+ *
+ * VERIFICATION LIVES WHERE THE ROWS ARE. Opening a row is what verifies it, and
+ * the row leaves this page for Confirmed Payments the moment it does — both
+ * pages ask the database for their own statuses rather than filtering a shared
+ * list in the browser.
+ */
+function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }: {
+  rows: PaymentRequest[]
+  canManage: boolean
+  highlightId?: string | null
+  onView: (r: PaymentRequest) => void
+  onEdit: (r: PaymentRequest) => void
+}) {
+  const TD: React.CSSProperties = {
+    padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+  }
+  const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
+
+  return (
+    <div style={{ width: '100%' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={TH}>Payment</th>
+            <th style={TH}>Client</th>
+            <th style={{ ...TH, textAlign: 'right' }}>Amount</th>
+            <th style={TH}>Mode</th>
+            <th style={TH}>Date</th>
+            <th style={TH}>Status</th>
+            <th style={TH}>Initiated by</th>
+            <th style={{ ...TH, textAlign: 'right' }}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(r => (
+            <tr
+              key={r.id}
+              id={`payment-row-${r.id}`}
+              onClick={() => onView(r)}
+              style={{ cursor: 'pointer', background: r.id === highlightId ? colors.amberTint : undefined }}
+              onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+              onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = r.id === highlightId ? colors.amberTint : 'transparent' }}
+            >
+              <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
+                {r.request_number}
+              </td>
+              <td style={{ ...TD, fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                {r.client_name}
+              </td>
+              <td style={{ ...TD, textAlign: 'right', fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                {fmtAmount(r.amount)}
+              </td>
+              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+              </td>
+              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                {fmtDate(r.payment_date)}
+              </td>
+              <td style={TD}>
+                <VerificationBadge status={r.status} />
+              </td>
+              <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}
+                  title={r.submitted_by_name ?? undefined}>
+                {conciseName(r.submitted_by_name)}
+              </td>
+              <td style={{ ...TD, textAlign: 'right' }}>
+                <div
+                  style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => onView(r)}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
+                  >
+                    Review
+                  </button>
+                  <RowActionsMenu
+                    label={`Actions for ${r.client_name}`}
+                    actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r) }] : []}
+                  />
+                </div>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -1670,15 +1836,19 @@ function rowView(
 // the detail modal and every link/unlink action are shared verbatim — only the
 // query predicate, the copy and the filter row differ.
 
-export function ReceivedPaymentsView({ view }: { view: PaymentView }) {
+export function ReceivedPaymentsView(
+  { view, surface = 'confirmed' }: { view: PaymentView; surface?: PaymentSurface },
+) {
   return (
     <Suspense fallback={<LoadingScreen />}>
-      <ReceivedPaymentsViewInner view={view} />
+      <ReceivedPaymentsViewInner view={view} surface={surface} />
     </Suspense>
   )
 }
 
-function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
+function ReceivedPaymentsViewInner(
+  { view, surface }: { view: PaymentView; surface: PaymentSurface },
+) {
   const [pageLoading,    setPageLoading]    = useState(true)
   // Finance authority for the SIGNED-IN user. Starts empty and is only
   // widened once the resolver answers, so no correction control can flash
@@ -1761,7 +1931,11 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
   // Below this the eleven-column table becomes cards. Same data, same decisions.
   const [isMobile,       setIsMobile]       = useState(false)
 
-  const meta         = VIEW_META[view]
+  // THE HEADER IS THE SURFACE'S, then the view's. Payments to Verify has one
+  // list and no classification views, so it names itself rather than borrowing
+  // "Received Payments" — a page whose title says one thing and whose rows are
+  // another is the confusion this split exists to end.
+  const meta         = surface === 'to_verify' ? TO_VERIFY_META : VIEW_META[view]
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
@@ -1856,9 +2030,20 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
         allocated_order_id, allocated_order_number, is_order_allocated,
         ${RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS.join(', ')}
       `, { count: 'exact' })
-      // The classified scope: every payment that is not rejected. Rejected money
-      // is not money, and the projection's own booleans refuse it a second time.
-      .in('status', CLASSIFIED_PAYMENT_STATUSES as unknown as string[])
+      // ── THE SURFACE'S OWN STATUSES, AND NOTHING ELSE ──
+      //
+      // This used to be CLASSIFIED_PAYMENT_STATUSES — everything except
+      // rejected — which put money that had arrived and money nobody had looked
+      // at yet in one list, and computed every count, every search result and
+      // every page number over the mixture. So "142 payments" answered neither
+      // question, and a verifier scanned past confirmed rows to find work.
+      //
+      // Now each page asks for exactly its half, from the one list in
+      // paymentSurfaces.ts that mirrors the database's own
+      // finance_payment_status_is_verified(). The two are disjoint and
+      // exhaustive, so a payment is on exactly one page and no status is
+      // homeless.
+      .in('status', PAYMENT_SURFACE_STATUSES[surface] as unknown as string[])
 
     let scoped = base
 
@@ -1879,8 +2064,14 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
     // THE VIEW, as the SAME predicate the sidebar counts use — one definition in
     // paymentClassification.ts, so the list and the number beside its nav entry
     // cannot describe different sets.
-    for (const clause of paymentViewFilterClauses(filters.view)) {
-      if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
+    // THE FOUR VIEWS BELONG TO CONFIRMED PAYMENTS ALONE. They classify money by
+    // where it has been attributed, and a payment nobody has verified has been
+    // attributed nowhere — "Available to Allocate" over unconfirmed money is an
+    // invitation to spend it twice.
+    if (surfaceHasClassificationViews(surface)) {
+      for (const clause of paymentViewFilterClauses(filters.view)) {
+        if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
+      }
     }
 
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
@@ -2369,7 +2560,7 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
       subtitle={meta.subtitle}
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
-      activeReceivedView={view}
+      activeReceivedView={surfaceHasClassificationViews(surface) ? view : undefined}
     >
       {/* ── The four views ──
           Where the reader IS, not a filter they applied — so this is a tab
@@ -2381,7 +2572,7 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
           (20261008000000). A strip whose tabs all returned the same rows would
           be worse than no strip: it would look like a working control that
           quietly does nothing. */}
-      {classificationReady && (
+      {classificationReady && surfaceHasClassificationViews(surface) && (
         <div
           role="tablist"
           aria-label="Payment views"
@@ -2593,6 +2784,14 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
             />
+          ) : surface === 'to_verify' ? (
+            <PaymentsToVerifyTable
+              rows={visible}
+              canManage={caps.canManageFinance}
+              highlightId={highlightId}
+              onView={r => setDetailRequest(r)}
+              onEdit={r => setEditRequest(r)}
+            />
           ) : (
             <ReceivedPaymentsTable
               rows={visible}
@@ -2607,7 +2806,6 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
               onLink={r  => setLinkRequest(r)}
               onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
               onAllocate={r => setAllocateTarget(r)}
-              onOpenLinked={href => router.push(href)}
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
             />
