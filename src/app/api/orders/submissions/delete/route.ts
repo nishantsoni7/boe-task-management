@@ -44,6 +44,9 @@ import { readDeletionBlockers } from '@/lib/orders/submissionDeletionBlockersSer
 //   5. begin_order_submission_deletion — authorize, verify status, RESERVE, and
 //      receive the storage keys the record owns, read from the database and
 //      never from anything the browser sent;
+//  5b. ask step 4's question AGAIN, freshly, now that the record is frozen, so
+//      a record created in the gap between the two is refused with the bucket
+//      still untouched and the reservation handed straight back;
 //   6. remove those objects with the service role;
 //   7. finalize_order_submission_deletion, on the claim. It cannot be refused by
 //      an ordinary status race, because step 5 made one impossible;
@@ -83,6 +86,21 @@ import { readDeletionBlockers } from '@/lib/orders/submissionDeletionBlockersSer
 // — the same predicate begin re-derives under its own lock — has said this
 // caller may delete this PI. A caller who may not falls through to begin, which
 // refuses them in its own words and reserves nothing.
+//
+// WHICH HALF OF THE RACE THIS FILE CLOSES, AND WHICH IT DOES NOT
+// ---------------------------------------------------------------
+// Steps 4 and 5b together close the window IN FRONT OF the reservation: an
+// allocation or a correction request that exists before the record is frozen is
+// found and refused, with nothing destroyed either time.
+//
+// They do not close the window BEHIND it. allocate_payment_to_target() locks the
+// PI row and refuses on a standing claim, so the ordinary allocation path is
+// already safe; request_order_submission_correction() reads no claim token at
+// all, and neither RPC binds a direct SQL or service-role INSERT. Those are
+// refused only by the two BEFORE INSERT triggers in 20261010000000 — a migration
+// that is NOT applied. Until it is, this route closes the application-level
+// pre-reservation window and the database enforcement behind the reservation is
+// still outstanding. Neither half is sufficient alone.
 //
 // THE CLAIM TOKEN NEVER REACHES THE BROWSER. It lives in this function's scope
 // for the length of one request and is not in any response body.
@@ -202,6 +220,7 @@ export async function POST(req: NextRequest) {
     return [
       `block;dur=${timing.block ?? 0}`,
       `claim;dur=${timing.claim ?? 0}`,
+      `recheck;dur=${timing.recheck ?? 0}`,
       `sweep;dur=${timing.sweep ?? 0}`,
       `list;dur=${stats.listMs}`,
       `remove;dur=${stats.removeMs}`,
@@ -272,16 +291,6 @@ export async function POST(req: NextRequest) {
     return fail({ code, status: HTTP_FOR[code] ?? 500 })
   }
 
-  // UNREACHABLE, AND CHECKED ANYWAY. begin re-derives order_submission_deletable_by
-  // under its own lock, so a caller the predicate above refused cannot get past
-  // it — but if the two ever disagreed, this is the line between a blocked PI
-  // and its workbook being destroyed. The reservation is not released: nothing
-  // has been touched, and it goes stale on its own.
-  if (blockers.length > 0) {
-    report('a blocked PI was reserved; refusing before the sweep')
-    return fail({ code: 'BLOCKED', status: HTTP_FOR.BLOCKED ?? 409, detail: { blockers } })
-  }
-
   const reservation = claim as {
     claim_token?: string
     storage_paths?: string[]
@@ -300,6 +309,62 @@ export async function POST(req: NextRequest) {
       // The reservation goes stale on its own and the record is intact either
       // way. Throwing here would replace the real failure with a cleanup one.
     }
+  }
+
+  // Step 5b. ASK AGAIN, NOW THAT THE RECORD IS FROZEN.
+  //
+  // The first check asked before the reservation existed, and that is what lets a blocked
+  // PI be refused with its files still in the bucket. What it cannot see, by
+  // construction, is a record created in the window between that read and the
+  // reservation commit. An allocation or a correction request written in that
+  // gap was invisible to step 4 and refusable by nothing else, and the first
+  // notice of it was a 23503 at finalization — with the sweep already done and
+  // the workbook already gone.
+  //
+  // So the question is asked a SECOND time, against the database, under the
+  // reservation. THIS IS A FRESH READ, NOT A RE-TEST of what step 4 returned:
+  // re-testing that variable would answer with exactly the stale state the
+  // window exists to describe, which is how the previous form of this guard
+  // could be true and useless at the same time.
+  //
+  // IT ALSO COVERS THE DISAGREEMENT CASE the previous form existed for. begin
+  // re-derives order_submission_deletable_by under its own lock, so a caller
+  // step 4's gate refused cannot get past it — but if the two ever disagreed,
+  // this is the line between a blocked PI and its workbook being destroyed.
+  //
+  // NO SECOND DISCLOSURE GATE. begin has already re-derived the deletion
+  // predicate under its own row lock, so a caller holding a claim is proven
+  // permitted. Calling order_submission_deletable_by again here would be dead
+  // code, and what this path discloses is what that predicate has already
+  // authorised.
+  //
+  // THE RESERVATION IS GIVEN BACK ON BOTH REFUSALS, and neither issues a single
+  // storage request. Nothing has been destroyed — the sweep has not started — so
+  // releasing is the difference between a PI the very next attempt can delete
+  // and one frozen for the claim's whole time to live. A read that FAILS is not
+  // an answer of "nothing is in the way": it releases and refuses too.
+  //
+  // WHAT THIS DOES NOT CLOSE. It is an application check, and it closes what
+  // exists BEFORE the reservation. A row inserted AFTER the reservation by
+  // direct SQL or the service role is refused only by the two BEFORE INSERT
+  // triggers in 20261010000000, which is not applied. Neither half is sufficient
+  // alone: this one closes the window in front of the reservation, those close
+  // everything behind it.
+  const recheckStarted = Date.now()
+  let held: DeletionBlocker[]
+  try {
+    held = await readDeletionBlockers(service, submissionId)
+  } catch {
+    timing.recheck = Date.now() - recheckStarted
+    await release()
+    report('could not re-establish what refers to this reserved PI')
+    return fail({ code: 'DELETE_FAILED', status: 500 })
+  }
+  timing.recheck = Date.now() - recheckStarted
+  if (held.length > 0) {
+    await release()
+    report('a blocked PI was reserved; refusing before the sweep')
+    return fail({ code: 'BLOCKED', status: HTTP_FOR.BLOCKED ?? 409, detail: { blockers: held } })
   }
 
   // Step 6. Remove the objects. The record is frozen, so nothing can be done to

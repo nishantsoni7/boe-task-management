@@ -422,10 +422,26 @@ describe('the route reserves the record before it removes a single file', () => 
     assert.ok(route.includes('let removalAttempted = false'))
     assert.ok(route.includes('onRemoveAttempt: () => { removalAttempted = true }'),
       'the flag is set BEFORE each request, so a throw cannot hide it')
-    for (const match of [...route.matchAll(/await release\(\)/g)]) {
-      const line = route.slice(route.lastIndexOf('\n', match.index!) + 1, match.index! + 15)
+    // SCOPED TO THE SWEEP AND AFTER, which is the region this rule is about. A
+    // release becomes unsafe only once a remove request could have gone out, so
+    // from the sweep onwards every one must still be guarded — asserted here
+    // exactly as strictly as before. Step 5b releases BEFORE the sweep exists,
+    // where nothing can have been destroyed; that region gets its own rule in
+    // the next assertion rather than an exemption from this one.
+    const sweepAt = route.indexOf('await removeAllObjectsForSubmission(')
+    assert.ok(sweepAt > 0)
+    for (const match of [...route.slice(sweepAt).matchAll(/await release\(\)/g)]) {
+      const at = match.index! + sweepAt
+      const line = route.slice(route.lastIndexOf('\n', at) + 1, at + 15)
       assert.ok(/if \(!removalAttempted\)/.test(line),
-        `an unguarded release: ${line.trim()}`)
+        `an unguarded release after the sweep began: ${line.trim()}`)
+    }
+
+    // And every release before that point must sit ahead of the sweep entirely,
+    // so "nothing was attempted" is a fact of position rather than a claim.
+    for (const match of [...route.slice(0, sweepAt).matchAll(/await release\(\)/g)]) {
+      assert.ok(match.index! < sweepAt,
+        'a pre-sweep release must precede the storage call it is safe because of')
     }
   })
 
@@ -503,9 +519,18 @@ describe('the route survives a slow or failed sweep without losing the record', 
       .join('\n')
     const sweep = code.indexOf('await removeAllObjectsForSubmission(')
     assert.ok(sweep > 0)
+    // RESTATED, NOT RELAXED. The rule was written when the only releases were
+    // the sweep's own, so "after the sweep" and "safe" were the same sentence.
+    // Step 5b now releases before the sweep call site exists at all — a point at
+    // which no remove request can have been issued, because the code that issues
+    // them has not been reached. The invariant that matters is unchanged: NO
+    // release may run in the window where a request may already be in flight,
+    // which is from the sweep call until it has settled.
     for (const match of [...code.matchAll(/await release\(\)/g)]) {
-      assert.ok((match.index ?? -1) > sweep,
-        'no release may run before the sweep has finished settling')
+      const at = match.index ?? -1
+      assert.ok(at < sweep || /if \(!removalAttempted\)/.test(
+        code.slice(code.lastIndexOf('\n', at) + 1, at + 15)),
+        'a release inside the sweep window must be guarded by !removalAttempted')
     }
     assert.ok(!code.includes('finally'),
       'a finally-block release would fire on paths where storage never settled')
@@ -656,14 +681,23 @@ describe('a PI something else depends on is refused BEFORE a file is touched', (
     // The last line between a protected relationship and a destroyed workbook.
     // begin re-derives the same predicate under its own lock, so this cannot
     // happen — which is exactly why it is worth a line rather than a comment.
-    const guard = route.indexOf('if (blockers.length > 0) {',
+    // THE GUARD IS NOW A FRESH READ. It used to re-test the value the
+    // pre-reservation check produced, which could only ever repeat that check's
+    // answer; it now asks the database again, under the reservation, so it also
+    // catches a record created in the window between the two.
+    const guard = route.indexOf('if (held.length > 0) {',
       route.indexOf("'begin_order_submission_deletion'"))
     const sweep = route.indexOf('removeAllObjectsForSubmission(')
     assert.ok(guard > 0 && guard < sweep)
     const branch = route.slice(guard, guard + 300)
     assert.ok(branch.includes("code: 'BLOCKED'"))
-    assert.ok(!branch.includes('await release()'),
-      'nothing was touched, so the reservation goes stale rather than being handed back')
+    // AND RELEASING HERE IS NOW THE CORRECT ANSWER, where once it was not. The
+    // old guard was unreachable, so leaving the claim to go stale cost nothing.
+    // This one is reachable and nothing has been destroyed on it, so handing the
+    // record back is the difference between a PI the next attempt can delete and
+    // one frozen for the claim's whole time to live.
+    assert.ok(branch.includes('await release()'),
+      'nothing was touched, so the record is handed back rather than left frozen')
   })
 
   test('an unauthorized caller falls through to begin, which refuses in its own words', () => {
@@ -1449,5 +1483,112 @@ describe('the migration enforces the same rule the screen draws', () => {
     assert.ok(!/payment/i.test(code), 'no payment table is read or written')
     assert.ok(!/display_number|order_number/.test(code), 'no number is allocated')
     assert.ok(!/insert into/i.test(code), 'deletion writes nothing anywhere')
+  })
+})
+
+describe('the question is asked again once the record is frozen', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  /**
+   * THE HALF THE FIRST FIX LEFT OPEN.
+   *
+   * Asking before the reservation is what lets a blocked PI be refused with its
+   * workbook still in the bucket, and that is why step 4 comes first. But a
+   * check taken before the record is frozen cannot see a row created after it:
+   * an allocation or a correction request written between step 4 and the
+   * reservation commit was invisible to the check and refusable by nothing else,
+   * and announced itself as a 23503 at finalization — with the sweep already
+   * done and the files already gone.
+   *
+   * The guard that used to sit after `begin` re-tested the value step 4 had
+   * produced, so it could only ever repeat step 4's answer. It is now a second
+   * read, against the database, under the reservation.
+   */
+  const FIRST  = route.indexOf('readDeletionBlockers(service, submissionId)')
+  const BEGIN  = route.indexOf("'begin_order_submission_deletion'")
+  const SECOND = route.indexOf('readDeletionBlockers(service, submissionId)', BEGIN)
+  const SWEEP  = route.indexOf('removeAllObjectsForSubmission(')
+
+  const block = route.slice(
+    route.indexOf('// Step 5b. ASK AGAIN'),
+    route.indexOf('// Step 6. Remove the objects'))
+
+  test('there is a second read, and it happens under the reservation', () => {
+    assert.ok(FIRST > 0 && FIRST < BEGIN, 'step 4 still asks before anything is reserved')
+    assert.ok(SECOND > BEGIN, 'the second read must come after the record is frozen')
+    assert.ok(SECOND < SWEEP, 'and before a single object is removed')
+    assert.notEqual(FIRST, SECOND, 'two distinct call sites, not one counted twice')
+  })
+
+  test('the second read asks the database; it does not re-test the first answer', () => {
+    assert.ok(block.includes('readDeletionBlockers(service, submissionId)'),
+      'step 5b must issue its own query')
+    assert.ok(/held\.length > 0/.test(block),
+      'and must branch on what IT found')
+    assert.ok(!/blockers\.length/.test(block),
+      're-testing step 4’s variable would answer with the stale state this exists to catch')
+    assert.ok(!/blockers\.length/.test(route.slice(BEGIN)),
+      'no path after the reservation may decide anything from the pre-reservation read')
+  })
+
+  test('both refusals hand the record back, because nothing has been destroyed', () => {
+    const releases = block.match(/await release\(\)/g) ?? []
+    assert.equal(releases.length, 2,
+      'the BLOCKED path and the read-error path must each release the claim')
+
+    const blockedAt = block.indexOf("return fail({ code: 'BLOCKED'")
+    const failedAt  = block.indexOf("return fail({ code: 'DELETE_FAILED'")
+    assert.ok(blockedAt > 0 && failedAt > 0, 'both refusals must exist')
+    assert.ok(block.lastIndexOf('await release()', blockedAt) > 0,
+      'the blocked refusal releases before it returns')
+    assert.ok(block.lastIndexOf('await release()', failedAt) > 0,
+      'the read-error refusal releases before it returns')
+  })
+
+  test('neither refusal touches storage', () => {
+    for (const call of ['removeAllObjectsForSubmission', '.storage', '.remove(']) {
+      assert.ok(!block.includes(call),
+        `step 5b must issue no storage request; found ${call}`)
+    }
+    const blockedAt = route.indexOf("detail: { blockers: held }")
+    assert.ok(blockedAt > 0 && blockedAt < SWEEP,
+      'the blocked refusal returns before the sweep, so no file can have gone')
+  })
+
+  test('a failed read is a refusal, never an answer of “nothing is in the way”', () => {
+    assert.ok(/catch \{[\s\S]*?await release\(\)[\s\S]*?DELETE_FAILED/.test(block),
+      'an unanswerable question must release and refuse, not proceed to the sweep')
+    assert.ok(!/catch \{[\s\S]*?held = \[\]/.test(block),
+      'it must never substitute an empty answer for a failed read')
+  })
+
+  test('the caller is not gated a second time, because begin already proved them', () => {
+    const afterBegin = route.slice(BEGIN).split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n')
+    assert.ok(!afterBegin.includes('order_submission_deletable_by'),
+      'begin re-derives the predicate under its own lock; a second gate would be dead code')
+  })
+
+  test('the refusal names what it found, and only what it found', () => {
+    assert.ok(block.includes('detail: { blockers: held }'),
+      'the screen must name the records the second read discovered')
+  })
+
+  /**
+   * THE LIMITATION, WRITTEN DOWN RATHER THAN IMPLIED. This route closes the
+   * window in FRONT of the reservation. A row inserted behind it by direct SQL
+   * or the service role is refused only by the triggers in 20261010000000, which
+   * is not applied. A reader of this file must not be able to conclude that the
+   * database race is closed here.
+   */
+  test('the header records which half of the race is still outstanding', () => {
+    const header = route.slice(0, route.indexOf('const SLOW_DELETION_MS'))
+    assert.ok(header.includes('20261010000000'),
+      'the migration that closes the other half must be named')
+    assert.ok(/NOT applied|not applied/.test(header),
+      'and its state must be stated, so nobody reads this as finished')
+    assert.ok(/Neither half is sufficient alone/i.test(header),
+      'the split must be explicit in both directions')
   })
 })

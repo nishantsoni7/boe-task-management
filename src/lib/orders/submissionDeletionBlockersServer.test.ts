@@ -295,3 +295,50 @@ describe('an unanswered question is never read as "nothing is in the way"', () =
     assert.ok(queries.every(query => !String(query.value).includes(SUBMISSION)))
   })
 })
+
+// ── The reader answers from the database every time it is asked ───────────────
+
+/**
+ * THE ROUTE ASKS THIS QUESTION TWICE, and the second answer has to be able to
+ * differ from the first — that is the entire point of asking again once the
+ * record is frozen. A reader that memoised its answer, per submission or per
+ * client, would turn the second call into a restatement of the first and hand
+ * back exactly the stale "nothing is in the way" the re-read exists to catch.
+ *
+ * So this asserts the absence of a cache directly: the same reader, the same
+ * client and the same submission id, with the underlying rows changing in
+ * between, must return the new answer and must have gone back to the database
+ * to get it.
+ */
+describe('a second read is a second question, not a remembered answer', () => {
+  test('the same reader called twice sees rows that appeared in between', async () => {
+    const counts: Record<string, number> = {}
+    const { client, queries } = fakeService({ counts })
+
+    const before = await readDeletionBlockers(client, SUBMISSION)
+    assert.deepEqual(before, [], 'nothing refers to this PI yet')
+
+    // An allocation lands in the window the route's step 5b exists to close.
+    counts[ALLOCATIONS] = 1
+
+    const after = await readDeletionBlockers(client, SUBMISSION)
+    assert.deepEqual(after, [{ kind: 'payment_allocation', count: 1 }],
+      'the second read must report what the first could not have seen')
+
+    assert.equal(queries.length, DELETION_BLOCKER_SOURCES.length * 2,
+      'every source is queried again on the second call; nothing is served from memory')
+  })
+
+  test('a blocker that has been dealt with stops being reported', async () => {
+    const counts: Record<string, number> = { [CORRECTIONS]: 2 }
+    const { client } = fakeService({ counts })
+
+    assert.deepEqual(await readDeletionBlockers(client, SUBMISSION),
+      [{ kind: 'correction_request', count: 2 }])
+
+    delete counts[CORRECTIONS]
+
+    assert.deepEqual(await readDeletionBlockers(client, SUBMISSION), [],
+      'the answer follows the database in both directions, so a cleared PI is deletable')
+  })
+})

@@ -802,12 +802,27 @@ describe('there is no timeout, and no timer-triggered release', () => {
 
   test('release is only ever reached from a settled outcome', () => {
     const body = code(route)
-    // Three release sites: a settled sweep failure, surviving objects, and a
-    // refused finalization. All three are downstream of an awaited sweep.
+    // FIVE release sites now, in two groups that are safe for different reasons.
+    //
+    // Downstream of the awaited sweep: a settled sweep failure and surviving
+    // objects. A release there may be overtaken by a remove request that already
+    // went out, so each one must be guarded by !removalAttempted — unchanged,
+    // and still asserted exactly as strictly.
+    //
+    // Upstream of it: step 5b's two refusals, taken under the reservation before
+    // the sweep call site is reached at all. No remove request can have been
+    // issued on those paths because the code that issues them has not run, so
+    // the record is provably whole and handing it straight back is correct.
     const sweep = body.indexOf('await removeAllObjectsForSubmission(')
+    assert.ok(sweep > 0)
     for (const match of [...body.matchAll(/await release\(\)/g)]) {
-      assert.ok(match.index !== undefined && match.index > sweep,
-        'no release may precede the point where the sweep has settled')
+      const at = match.index
+      assert.ok(at !== undefined)
+      if (at! > sweep) {
+        const line = body.slice(body.lastIndexOf('\n', at!) + 1, at! + 15)
+        assert.ok(/if \(!removalAttempted\)/.test(line),
+          'a release downstream of the sweep must be guarded by !removalAttempted')
+      }
     }
   })
 
