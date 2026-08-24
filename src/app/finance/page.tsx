@@ -9,7 +9,11 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
-import { deletePaymentEntry } from '@/lib/finance/paymentDeletion'
+import {
+  PAYMENT_DELETE_RETRY_LABEL,
+  describePaymentDeletionFailure,
+  type PaymentDeletionFailure,
+} from '@/lib/finance/paymentDeletionProtocol'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
@@ -2191,49 +2195,72 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 
 type DeleteConfirmModalProps = {
   request: PaymentRequest
-  supabase: ReturnType<typeof createClient>
   onClose: () => void
   onDeleted: () => void
 }
 
-function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: DeleteConfirmModalProps) {
+function DeleteConfirmModal({ request: r, onClose, onDeleted }: DeleteConfirmModalProps) {
   const [deleting, setDeleting] = useState(false)
-  const [error, setError]       = useState<string | null>(null)
-  // Set once an attempt has run and the confirmation is spent: this build
-  // never deletes the request, so every attempt collapses the footer to a
-  // single dismissal that refreshes the table rather than offering a retry.
-  const [settled, setSettled]   = useState(false)
-  const [warning, setWarning]   = useState<string | null>(null)
+  const [deleted, setDeleted]   = useState(false)
+  const [failure, setFailure]   = useState<PaymentDeletionFailure | null>(null)
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+
+  // A RETRYABLE FAILURE IS NOT SETTLED. The claim is still standing and the
+  // next press resumes from the frozen manifest, so the destructive button
+  // stays live and says what it is really doing.
+  const settled = deleted || (failure !== null && !failure.retryable)
 
   // THE SEQUENCE LIVES IN ONE PLACE NOW. It used to live here, and Received
   // Payments — where an allocated pending payment actually appears — had no
   // Delete at all, so the PI deletion blocker's instruction to "delete that
   // payment entry in Finance" pointed at a control the operator could not
-  // reach. Rather than grow a second copy on that page, the body moved to
-  // lib/finance/paymentDeletion and BOTH pages call it.
+  // reach. Rather than grow a second copy on that page, the body moved to a
+  // shared route and both surfaces call it.
   //
-  // THE SEQUENCE ITSELF CHANGED, and this page inherits the correction. It used
-  // to read the attachment count and then delete the request in a second round
-  // trip, which left a window where a proof inserted between the two calls was
-  // cascaded away with no durable record of its storage object. This build does
-  // not attempt the delete at all — see paymentDeletion.ts — so every attempt is
-  // a settled notice rather than a failure or a success.
+  // THE ROUTE, NOT AN APPLICATION SEQUENCE. This branch carries migration
+  // 20261010000000 §11, so this page goes through the same durable claim
+  // protocol as Received Payments — for a request with proof files or without —
+  // rather than keeping its own copy of the count-then-delete sequence that
+  // race is exactly what the claim exists to close.
   const handleDelete = async () => {
+    if (deleting || settled) return
     setDeleting(true)
-    setError(null)
+    setFailure(null)
 
-    const result = await deletePaymentEntry(supabase, r, friendlyDbErrorMessage)
+    let code: unknown = 'DELETE_FAILED'
+    try {
+      const response = await fetch('/api/finance/payments/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ paymentId: r.id }),
+      })
+      const body = await response.json().catch(() => null) as { ok?: boolean; code?: string } | null
+      if (body?.ok === true) {
+        setDeleting(false)
+        setDeleted(true)
+        onDeleted()
+        return
+      }
+      code = body?.code
+    } catch {
+      // A network failure is exactly as retryable as a storage one: the claim
+      // stands, nothing was reported deleted, and pressing again resumes.
+    }
     setDeleting(false)
-
-    setSettled(true)
-    setWarning(result.message)
+    setFailure(describePaymentDeletionFailure(code))
   }
+
+  const message = failure?.message ?? null
+
+  const deleteLabel = deleting
+    ? 'Deleting…'
+    : failure?.retryable === true ? PAYMENT_DELETE_RETRY_LABEL : 'Delete'
 
   return (
     // Once settled, EVERY dismissal path (✕, Escape, overlay click, the Close
-    // button) refreshes the table — the request itself never changed, but a
-    // stale row on screen invites a second Delete that reports the same notice.
+    // button) refreshes the table — a deleted row must not linger, and a
+    // permanently refused one invites a second Delete that reports the same
+    // answer.
     <FinanceModal title="Delete Payment Request" onClose={settled ? onDeleted : onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
         Delete this Payment Request? This action cannot be undone.
@@ -2258,12 +2285,7 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
           </span>
         </div>
       </div>
-      {error && <ErrorBanner message={error} />}
-      {warning && (
-        <div style={{ padding: '10px 12px', borderRadius: '8px', background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412', fontSize: '12px', lineHeight: 1.55 }}>
-          {warning}
-        </div>
-      )}
+      {message && <ErrorBanner message={message} />}
       {settled ? (
         <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
           <button onClick={onDeleted} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
@@ -2282,7 +2304,7 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
               cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
             }}
           >
-            {deleting ? 'Deleting…' : 'Delete'}
+            {deleteLabel}
           </button>
         </div>
       )}
@@ -3167,7 +3189,6 @@ function FinancePageInner() {
       {deleteRequest && (
         <DeleteConfirmModal
           request={deleteRequest}
-          supabase={supabase}
           onClose={() => setDeleteRequest(null)}
           onDeleted={() => { setDeleteRequest(null); refreshAfterMutation() }}
         />
