@@ -42,3 +42,27 @@ export const TASK_REVIEW_NOTIFICATION_SUFFIXES = {
   approve: 'approved and completed task',
   return:  'returned task to Working',
 } as const
+
+/**
+ * Performance overdue responsibility rule.
+ *
+ * An overdue penalty may apply to an employee only while they still own an
+ * actionable, unfinished obligation. The moment an assignee submits a task
+ * for approval it stops accruing overdue responsibility against them, same
+ * as `completed`/`cancelled` — the task is still open operationally (shown
+ * as Pending/Approval Pending, see `taskStatusLabel` in lib/ui.ts), but the
+ * outstanding action is a review, not work, and belongs to the creator. If
+ * the creator returns the task (`restoreTargetStatus` above sends it back to
+ * `working`), normal overdue accountability resumes from that point.
+ *
+ * This is the single source of truth for "can this task still accrue
+ * overdue against its assignee" — every overdue calculation (current-day
+ * portfolio counts, the historical per-day risk reconstruction in
+ * lib/performance.ts, and the My Tasks overdue views) must go through it so
+ * they cannot independently drift out of agreement with each other.
+ */
+export const NON_ACCRUING_OVERDUE_STATUSES = new Set(['completed', 'cancelled', 'pending_approval'])
+
+export function accruesAssigneeOverdue(status: string): boolean {
+  return !NON_ACCRUING_OVERDUE_STATUSES.has(status)
+}

@@ -23,6 +23,7 @@ import type {
   TrendAnalysis, TrendClassification, PerformanceRating,
 } from '@/lib/types'
 import { istDateOf, istDayEndUtc } from '@/lib/istDate'
+import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 export function computeBreakdown(inputs: DayInputs): ScoreBreakdown {
   const output = Math.min(
@@ -122,6 +123,12 @@ export const STALE_BLOCKED_DAYS = 2
 
 const CLOSED_STATUSES = new Set(['completed', 'cancelled'])
 
+// Note: CLOSED_STATUSES above only stops the loop from tracking a task any
+// further once it is truly done — a `pending_approval` task is not closed,
+// it is still open operationally, so it keeps its staleness/last-touch
+// tracking. It just must not accrue *overdue* while awaiting approval; see
+// accruesAssigneeOverdue() where the overdue count is incremented below.
+
 export function buildDailyRiskSeries(
   dateList: string[],
   tasks: RiskTask[],
@@ -186,7 +193,7 @@ export function buildDailyRiskSeries(
       const nextRevision = dueChanges.find(e => e.created_at > dayEnd)
       const dueOnDay     = nextRevision ? (nextRevision.old_val ?? null) : task.due_date
 
-      if (dueOnDay && dueOnDay < date) bucket.overdueCount++
+      if (dueOnDay && dueOnDay < date && accruesAssigneeOverdue(status)) bucket.overdueCount++
 
       if (status === 'blocked') {
         const measuredAt = Math.min(Date.parse(dayEnd), nowMs)

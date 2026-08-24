@@ -27,7 +27,10 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { restoreTargetStatus, TASK_REVIEW_NOTIFICATION_SUFFIXES } from './reviewTransitions'
+import {
+  restoreTargetStatus, TASK_REVIEW_NOTIFICATION_SUFFIXES,
+  accruesAssigneeOverdue, NON_ACCRUING_OVERDUE_STATUSES,
+} from './reviewTransitions'
 import { getNotificationCategoryFilter } from '@/lib/notifications'
 import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 
@@ -242,5 +245,23 @@ describe('restoreTargetStatus', () => {
     assert.equal(restoreTargetStatus(null), 'working')
     assert.equal(restoreTargetStatus(undefined), 'working')
     assert.equal(restoreTargetStatus(''), 'working')
+  })
+})
+
+describe('accruesAssigneeOverdue', () => {
+  test('completed, cancelled and pending_approval never accrue overdue', () => {
+    for (const status of ['completed', 'cancelled', 'pending_approval']) {
+      assert.equal(accruesAssigneeOverdue(status), false, status)
+    }
+  })
+
+  test('every status where work is genuinely still with the assignee can accrue overdue', () => {
+    for (const status of ['pending', 'started', 'working', 'waiting', 'blocked']) {
+      assert.equal(accruesAssigneeOverdue(status), true, status)
+    }
+  })
+
+  test('the exempt set is exactly the three non-accruing statuses', () => {
+    assert.deepEqual([...NON_ACCRUING_OVERDUE_STATUSES].sort(), ['cancelled', 'completed', 'pending_approval'])
   })
 })
