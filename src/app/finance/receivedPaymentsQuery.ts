@@ -236,4 +236,3 @@ export function allocationFilterAvailable(
   return probe.columns.includes('allocation_state')
     && probe.columns.includes(ALLOCATED_TOTAL_COLUMN)
 }
-
