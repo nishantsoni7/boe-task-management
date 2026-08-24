@@ -108,9 +108,15 @@ export async function POST(req: NextRequest) {
   // Duplicate identity is (user_id, type, entity_id) — the stable record the
   // notification is about, independent of title wording. A row without an
   // entity_id (legacy / missing) falls back to matching on title.
+  // ONE ROUND OF CHECKS, NOT ONE PER RECIPIENT. Each row's lookup is keyed to
+  // its own recipient and depends on no other row's answer, so they are asked
+  // together. On a submit/resubmit — which notifies every admin — this was N
+  // round trips in series, growing with headcount; it is now one wait.
+  //
+  // The identity being matched, the window, and the "no answer means send"
+  // direction are all unchanged: only the waiting is.
   const windowStart = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-  const fresh: NotifRow[] = []
-  for (const row of rows) {
+  const duplicates = await Promise.all(rows.map(row => {
     let q = supabase
       .from('notifications')
       .select('id')
@@ -118,9 +124,12 @@ export async function POST(req: NextRequest) {
       .eq('type', row.type)
       .gte('created_at', windowStart)
     q = row.entity_id != null ? q.eq('entity_id', row.entity_id) : q.eq('title', row.title)
-    const { data: dup } = await q.limit(1)
-    if (!dup || dup.length === 0) fresh.push(row)
-  }
+    return q.limit(1)
+  }))
+  const fresh: NotifRow[] = rows.filter((_, i) => {
+    const dup = duplicates[i]?.data
+    return !dup || dup.length === 0
+  })
   if (fresh.length === 0) return NextResponse.json({ skipped: true, deduped: true })
 
   const { error } = await supabase.from('notifications').insert(fresh)

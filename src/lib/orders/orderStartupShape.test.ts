@@ -417,3 +417,69 @@ describe('product photographs were deliberately LEFT ALONE', () => {
     assert.ok(!imports.some(line => line.includes('next/image')))
   })
 })
+
+// ══ 6. What a mutation re-reads ══════════════════════════════════════════════
+
+describe('a status change re-reads what it changed, and not the whole page', () => {
+  const detail = stripComments(read(DETAIL))
+
+  test('the status transition refreshes only the activity trail', () => {
+    // THE DEFECT: a transition wrote `orders.status` — already applied to the
+    // row in hand on the line above — and one order_activity_log entry, then
+    // called loadOrder(), which re-reads the Order, the PI handoff and its
+    // signed URLs, the legacy payments, the allocations, the activity log, the
+    // document versions, the change requests and the batched allocation
+    // totals. Ten round trips to learn one new row, on the control an
+    // operations user presses most.
+    assert.match(detail, /onStatusChanged=\{newStatus => \{[\s\S]{0,400}?reloadActivity\(\)/,
+      'the status handler must take the narrow refresh')
+    const handler = detail.slice(detail.indexOf('onStatusChanged={newStatus =>'))
+    const body = handler.slice(0, handler.indexOf('/>'))
+    assert.ok(!body.includes('loadOrder()'),
+      'and must not fall back to the full page load')
+    assert.ok(body.includes('setOrder(o => o ? { ...o, status: newStatus } : o)'),
+      'the new status is applied from the answer the server already gave')
+  })
+
+  test('the narrow refresh reads the activity log and nothing else', () => {
+    const fn = detail.slice(detail.indexOf('const reloadActivity ='))
+    const body = fn.slice(0, fn.indexOf('\n  }\n'))
+    assert.ok(body.includes('activityQuery()'), 'through the shared query')
+    assert.ok(body.includes('setActivity(mapActivityRows('), 'and the shared mapping')
+    for (const other of ['finance_payment_requests', 'finance_payment_allocations',
+                         'order_document_versions', 'order_change_requests', 'loadPiHandoff']) {
+      assert.ok(!body.includes(other), `${other} must not be re-read by a status change`)
+    }
+  })
+
+  test('ONE definition of the activity read, shared by both paths', () => {
+    // The full load and the narrow refresh must not be able to read or shape
+    // the trail differently — a divergence would show a different history
+    // depending on how the reader got there.
+    assert.equal((detail.match(/\.from\('order_activity_log'\)\s*\n?\s*\.select\(/g) ?? []).length, 1,
+      'the activity SELECT is written once')
+    assert.equal((detail.match(/activityQuery\(\)/g) ?? []).length, 2,
+      'and used by exactly the full load and the narrow refresh')
+  })
+
+  test('every path that CAN move commercial data still reloads everything', () => {
+    // The narrowing is deliberately confined to the status transition. An
+    // amendment, a cancellation and a change-request decision all rewrite
+    // columns on the Order itself, so a narrow refresh there would leave the
+    // screen stating figures the database no longer holds.
+    const after = detail.slice(detail.indexOf('const afterChange'))
+    const body = after.slice(0, after.indexOf('\n  }\n'))
+    assert.ok(body.includes('loadOrder()'),
+      'the amendment/cancel/change-request path keeps the full reload')
+    assert.ok(!body.includes('reloadActivity()'),
+      'and must not be narrowed to the trail alone')
+  })
+
+  test('the explicit Refresh control still re-reads the whole page', () => {
+    // A person pressing Refresh is asking for everything, including anything
+    // somebody else changed. That is the one guaranteed way back to a fully
+    // fresh screen, and it must not be narrowed.
+    assert.match(detail, /onRefresh=\{[^}]*loadOrder/,
+      'the header Refresh must still call the full load')
+  })
+})

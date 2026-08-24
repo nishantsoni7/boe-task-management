@@ -744,3 +744,48 @@ describe('multi-allocation behaviour', () => {
       { total: 3, openable: 1, hidden: 2, orders: 2, submissions: 1 })
   })
 })
+
+// ══ Every Order search on this page is race-guarded ═══════════════════════════
+
+describe('a slow search never repaints a newer one', () => {
+  const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
+
+  test('the Link Order search discards a superseded answer', () => {
+    // THE DEFECT: LinkOrderModal's search wrote whatever came back, with no
+    // token. A slow query for "ORD" landing after a fast one for "ORD-2026"
+    // replaced the narrower list with the wider one under a reader who had
+    // already typed past it — and this is the list an Order is picked from to
+    // LINK MONEY TO. Picking the top row of a list that had silently changed
+    // attaches a payment to an Order nobody was looking at.
+    //
+    // Its four siblings (PaymentTargetFields, AllocatePaymentModal,
+    // AllocateFundsModal, RecordSplitPaymentModal) all carried the guard
+    // already; this one call site did not.
+    const modal = view.slice(view.indexOf('function LinkOrderModal'))
+    const body = modal.slice(0, modal.indexOf('const handleLink'))
+    assert.ok(body.includes('const searchToken = useRef(0)'),
+      'the modal must hold a token')
+    assert.ok(body.includes('const token = ++searchToken.current'),
+      'each search must claim the newest token')
+    assert.ok(body.includes('if (token !== searchToken.current) return'),
+      'and a superseded search must return before it writes results')
+  })
+
+  test('the guard is claimed before the query and checked after it', () => {
+    const modal = view.slice(view.indexOf('function LinkOrderModal'))
+    const body = modal.slice(0, modal.indexOf('const handleLink'))
+    const claimed = body.indexOf('const token = ++searchToken.current')
+    const queried = body.indexOf(".from('orders')")
+    const checked = body.indexOf('if (token !== searchToken.current) return')
+    assert.ok(claimed < queried, 'the token is claimed before the round trip starts')
+    assert.ok(queried < checked, 'and re-read after it returns')
+    // Nothing may write the ANSWER between the query and the check. The blank
+    // -query `setResults([])` sits above all three and is deliberately not
+    // covered: it is synchronous, clears rather than paints, and has no
+    // in-flight request to be overtaken by.
+    assert.ok(!body.slice(queried, checked).includes('setResults('),
+      'no result may reach state before the token is re-read')
+    assert.ok(body.indexOf('setResults(', checked) > checked,
+      'and the results are written after it')
+  })
+})

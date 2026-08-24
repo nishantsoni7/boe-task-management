@@ -243,9 +243,28 @@ describe('a stale answer never repaints a newer page', () => {
 
   test('the search box is debounced, so a fast typist issues one query, not eight', () => {
     assert.ok(view.includes('SEARCH_DEBOUNCE_MS'))
-    assert.ok(view.includes('setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)'))
+    assert.ok(view.includes('setTimeout(() => { loadRequests() }, searchChanged ? SEARCH_DEBOUNCE_MS : 0)'),
+      'a keystroke still waits SEARCH_DEBOUNCE_MS before it costs a query')
     assert.ok(view.includes('return () => clearTimeout(timer)'),
       'and an abandoned keystroke cancels its own query')
+  })
+
+  test('and ONLY the search box is — a click is not made to wait for a typist', () => {
+    // THE DEFECT: every dependency of the re-read effect shared the keystroke
+    // timer, so paging and each of the five filter chips — one deliberate click
+    // apiece, with nothing to coalesce — sat idle for 250ms before their
+    // request even started. The paragraph above the effect always said the
+    // non-search controls were not debounced; the delay did not agree.
+    //
+    // Told apart BY VALUE rather than by which dependency fired, because
+    // selecting a filter also clears the term: comparing is what keeps a
+    // genuine search change debounced even when it arrives with a chip.
+    assert.ok(view.includes('const searchChanged = debouncedSearch.current !== filters.search'),
+      'the delay is decided by whether the SEARCH TERM moved')
+    assert.ok(view.includes('debouncedSearch.current = filters.search'),
+      'and the term it was last delayed for is recorded for the next comparison')
+    assert.ok(view.includes('const debouncedSearch = useRef<string | null | undefined>(undefined)'),
+      'undefined until the first change, which no real filter value equals')
   })
 
   test('changing a narrowing returns the reader to page one', () => {

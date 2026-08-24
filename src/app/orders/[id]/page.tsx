@@ -731,6 +731,49 @@ export default function OrderDetailPage() {
     }))
   }
 
+  /**
+   * The Order's own trail, as one query and one mapping — named once so the
+   * full page load and the narrow refresh below cannot read or shape it
+   * differently.
+   */
+  const activityQuery = () =>
+    supabase
+      .from('order_activity_log')
+      .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
+      .eq('order_id', id)
+      .order('created_at', { ascending: false })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapActivityRows = (rows: any): ActivityEntry[] =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((rows ?? []) as any[]).map(a => ({
+      id:         a.id,
+      event_type: a.event_type,
+      payload:    a.payload ?? {},
+      created_at: a.created_at,
+      actor_name: a.actor?.full_name ?? undefined,
+    }))
+
+  /**
+   * WHAT A STATUS CHANGE ACTUALLY CHANGED, and nothing else.
+   *
+   * A transition writes two things: `orders.status`, which the caller has
+   * already applied to the row in hand, and one `order_activity_log` entry.
+   * It touches no payment, no allocation, no document version, no change
+   * request and no PI handoff — so re-running the whole page load to see it
+   * spent ten round trips to learn one new row.
+   *
+   * Deliberately NOT used by the amendment, cancellation or change-request
+   * paths: each of those can move commercial columns on the Order itself, and
+   * a narrow refresh there would leave the screen stating figures the database
+   * no longer holds. Those keep the full loadOrder(). The header's explicit
+   * Refresh is also unchanged and still re-reads everything.
+   */
+  const reloadActivity = async () => {
+    const { data } = await activityQuery()
+    setActivity(mapActivityRows(data))
+  }
+
   const loadOrder = async () => {
     const { data: o } = await supabase
       .from('orders')
@@ -809,11 +852,7 @@ export default function OrderDetailPage() {
         .eq('order_id', id)
         .eq('status', 'active'),
 
-      supabase
-        .from('order_activity_log')
-        .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
-        .eq('order_id', id)
-        .order('created_at', { ascending: false }),
+      activityQuery(),
 
       supabase
         .from('order_document_versions')
@@ -890,15 +929,7 @@ export default function OrderDetailPage() {
       linked: linkedRows, allocations: allocationRows, activeTotals,
     }))
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mappedActivity: ActivityEntry[] = ((aData ?? []) as any[]).map(a => ({
-      id:         a.id,
-      event_type: a.event_type,
-      payload:    a.payload ?? {},
-      created_at: a.created_at,
-      actor_name: a.actor?.full_name ?? undefined,
-    }))
-    setActivity(mappedActivity)
+    setActivity(mapActivityRows(aData))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setChangeRequests(((cData ?? []) as any[]).map(c => ({
@@ -1255,7 +1286,9 @@ export default function OrderDetailPage() {
                 onRequestCancel={() => setCancelOpen(true)}
                 onStatusChanged={newStatus => {
                   setOrder(o => o ? { ...o, status: newStatus } : o)
-                  loadOrder()
+                  // The status is already applied above and the transition
+                  // wrote one activity row; nothing else on this page moved.
+                  reloadActivity()
                 }}
               />
             )}

@@ -1007,6 +1007,9 @@ function LinkOrderModal({
   const [selected,  setSelected]  = useState<LinkTarget | null>(null)
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState<string | null>(null)
+  // Only the newest search may write results: a slow earlier query must never
+  // overwrite a later one with stale rows.
+  const searchToken = useRef(0)
 
   // ── ONE SEARCH, AND ONLY CONFIRMED ORDERS ──
   //
@@ -1024,6 +1027,14 @@ function LinkOrderModal({
     const trimmed = q.trim()
     if (!trimmed) { setResults([]); return }
 
+    // ONLY THE NEWEST SEARCH MAY WRITE RESULTS. Without this, a slow earlier
+    // query returning after a later one replaces the list under the reader —
+    // and this list is the one an Order is picked from to LINK MONEY TO, so a
+    // stale row here is a payment attached to an Order nobody was looking at.
+    // The same guard the four sibling searches already carry
+    // (PaymentTargetFields, AllocatePaymentModal, AllocateFundsModal,
+    // RecordSplitPaymentModal); this call site was the one without it.
+    const token = ++searchToken.current
     setSearching(true)
     const { data } = await supabase
       .from('orders')
@@ -1032,6 +1043,7 @@ function LinkOrderModal({
       .not('status', 'in', '(cancelled)')
       .order('created_at', { ascending: false })
       .limit(20)
+    if (token !== searchToken.current) return
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setResults(((data ?? []) as any[]).map(o => ({
@@ -2015,6 +2027,16 @@ function ReceivedPaymentsViewInner(
   // the bottom of init) so it can never re-fire and reopen a closed modal.
   const deepLinkHandled = useRef(false)
 
+  /**
+   * The search term the last re-read was delayed for.
+   *
+   * Lets the re-read effect tell a KEYSTROKE — which needs coalescing — from a
+   * filter chip or a page step, which is one deliberate click and should start
+   * its request immediately. `undefined` until the first change, which no real
+   * filter value equals.
+   */
+  const debouncedSearch = useRef<string | null | undefined>(undefined)
+
   // ── Wide table, or cards ──
   //
   // Measured rather than guessed at from a user-agent string, and re-measured on
@@ -2531,7 +2553,18 @@ function ReceivedPaymentsViewInner(
   // issue the same query twice.
   useEffect(() => {
     if (pageLoading) return
-    const timer = setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)
+    // ONLY THE SEARCH IS DEBOUNCED, which is what the paragraph above always
+    // said and what the delay did not do: every dependency here shared the
+    // 250ms timer, so paging and each of the five filter chips — all of them a
+    // single deliberate click, with no keystroke to coalesce — waited a quarter
+    // of a second before their request even started.
+    //
+    // Compared by VALUE rather than assumed from which dependency fired,
+    // because a filter chip also clears the term; the same technique, and the
+    // same reason, as countedSearch on the Payment Requests page.
+    const searchChanged = debouncedSearch.current !== filters.search
+    debouncedSearch.current = filters.search
+    const timer = setTimeout(() => { loadRequests() }, searchChanged ? SEARCH_DEBOUNCE_MS : 0)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.allocation, filters.confirmedFilter, page])
