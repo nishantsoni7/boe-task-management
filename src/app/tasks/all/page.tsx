@@ -13,6 +13,7 @@ import { useListUrlState } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumListParam, idParam, pageParam } from '@/lib/listState'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 const TASK_COLUMNS = [
   'id', 'title', 'status', 'priority', 'is_urgent',
@@ -213,7 +214,7 @@ function ViewAllTasksContent() {
               No tasks found.
             </div>
           ) : tasks.map(task => {
-            const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
+            const overdue = !!task.due_date && task.due_date < TODAY_STR && accruesAssigneeOverdue(task.status)
             const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
             return (
               <div
@@ -298,7 +299,7 @@ function ViewAllTasksContent() {
             </div>
           ) : (
             tasks.map(task => {
-              const overdue = !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed'
+              const overdue = !!task.due_date && task.due_date < TODAY_STR && accruesAssigneeOverdue(task.status)
               const pill    = PRIORITY_PILL[task.priority] ?? PRIORITY_PILL.low
               return (
                 <div

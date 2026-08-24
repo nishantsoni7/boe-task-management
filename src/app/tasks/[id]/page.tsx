@@ -1064,12 +1064,13 @@ export default function TaskDetailPage() {
   if (loading) return <LoadingScreen />
   if (!task)   return <LoadingScreen message="Task not found" />
 
-  const overdue      = isOverdue(task.due_date ?? null)
   const isAssignee   = task.assigned_to === currentUserId
   const isCreator    = task.created_by === currentUserId
   const isSelfTask   = isCreator && isAssignee
   const isDelegated  = !isAssignee && task.created_by === currentUserId
-  const riskOverdue  = overdue && task.status !== 'completed'
+  // Status-aware: a task submitted for approval is no longer overdue
+  // responsibility against the assignee, even though it is still open.
+  const riskOverdue  = isOverdue(task.due_date ?? null, task.status)
   const assigneeName = isAssignee
     ? (profile?.full_name ?? 'You')
     : (teamMembers.find(m => m.id === task.assigned_to)?.full_name ?? task.assignee_name ?? 'Unknown')

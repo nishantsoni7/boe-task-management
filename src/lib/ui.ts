@@ -160,7 +160,11 @@ export function escalationLevel(
 
   if (!lastUpdateAt) return null
   const hoursSince = (Date.now() - new Date(lastUpdateAt).getTime()) / 3_600_000
-  if (dueDate && new Date(dueDate) < new Date() && hoursSince >= 24) return 'overdue'
+  // A task awaiting approval is not "no action taken" — the assignee acted.
+  // It can still go stale (danger/caution below), just never the overdue banner.
+  if (dueDate && new Date(dueDate) < new Date() && hoursSince >= 24 && accruesAssigneeOverdue(status)) {
+    return 'overdue'
+  }
   if (hoursSince >= 72) return 'danger'
   if (hoursSince >= 48) return 'caution'
   return null

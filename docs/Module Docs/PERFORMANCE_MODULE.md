@@ -67,7 +67,7 @@ measured once as of now and copied across the window — that copying was what m
 historical scores change every time today changed. A regression test asserts the
 weights.
 
-### 2a. Overdue responsibility rule
+### Overdue responsibility rule
 
 An overdue penalty may apply to an employee only while they still own an
 actionable, unfinished obligation. **A task stops accruing overdue

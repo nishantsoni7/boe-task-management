@@ -368,7 +368,7 @@ export default function ViewUserPage() {
               {previewList.items.length === 0 ? (
                 <div style={{ padding: '48px 24px', textAlign: 'center', color: '#9CA3AF', fontSize: '14px' }}>No tasks here.</div>
               ) : previewList.items.map(task => {
-                const isOverdueTask = task.due_date && new Date(task.due_date) < new Date()
+                const isOverdueTask = isOverdue(task.due_date, task.status)
                 return (
                   <div
                     key={task.id}
