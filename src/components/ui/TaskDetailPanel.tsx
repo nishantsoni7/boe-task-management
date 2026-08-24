@@ -115,7 +115,7 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
     return () => { document.body.style.overflow = prev }
   }, [])
 
-  const overdue        = isOverdue(task.due_date)
+  const overdue        = isOverdue(task.due_date, task.status)
   const priority       = PRIORITY[task.priority] ?? PRIORITY.low
   const statusColor    = STATUS_COLOR[task.status] ?? colors.muted
   const isSelfAssigned = task.assigned_to === task.created_by

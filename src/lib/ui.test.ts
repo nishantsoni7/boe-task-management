@@ -13,7 +13,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { isOverdue } from './ui'
+import { isOverdue, escalationLevel } from './ui'
 
 describe('isOverdue', () => {
   const YESTERDAY = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10)
@@ -46,5 +46,27 @@ describe('isOverdue', () => {
     for (const status of ['pending', 'started', 'working', 'waiting', 'blocked']) {
       assert.equal(isOverdue(YESTERDAY, status), true, status)
     }
+  })
+})
+
+describe('escalationLevel', () => {
+  const PAST_DUE = '2020-01-01'
+  const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000).toISOString()
+
+  test('a genuinely working past-due, stale task still escalates to overdue', () => {
+    assert.equal(escalationLevel(hoursAgo(30), 'working', PAST_DUE), 'overdue')
+  })
+
+  test('a task submitted for approval never shows the overdue banner, even long past due', () => {
+    assert.equal(escalationLevel(hoursAgo(30), 'pending_approval', PAST_DUE), null)
+  })
+
+  test('a stale pending_approval task can still escalate on staleness alone (danger/caution), just not as overdue', () => {
+    assert.equal(escalationLevel(hoursAgo(80), 'pending_approval', PAST_DUE), 'danger')
+    assert.equal(escalationLevel(hoursAgo(50), 'pending_approval', PAST_DUE), 'caution')
+  })
+
+  test('completed never escalates', () => {
+    assert.equal(escalationLevel(hoursAgo(200), 'completed', PAST_DUE), null)
   })
 })

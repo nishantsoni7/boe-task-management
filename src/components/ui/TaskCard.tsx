@@ -44,7 +44,7 @@ export function TaskCard({
   footer,
 }: TaskCardProps) {
   const router  = useRouter()
-  const overdue = isOverdue(task.due_date)
+  const overdue = isOverdue(task.due_date, task.status)
   const level   = showEscalation
     ? escalationLevel(task.last_update_at, task.status, task.due_date, task.created_at)
     : null

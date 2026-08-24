@@ -23,6 +23,7 @@ import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hook
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
 const TASK_COLUMNS = [
@@ -38,7 +39,10 @@ const NOW_MS    = Date.now()
 const H48       = 48 * 60 * 60 * 1000
 
 function isOverdue(task: Task) {
-  return !!task.due_date && task.due_date < TODAY_STR && task.status !== 'completed' && task.status !== 'cancelled'
+  // Once the assignee submits for approval, responsibility has moved to the
+  // reviewer — the task is no longer overdue against the assignee, even
+  // though it is still open and still shows in the For Approval tab below.
+  return !!task.due_date && task.due_date < TODAY_STR && accruesAssigneeOverdue(task.status)
 }
 function needsUpdate(task: Task) {
   if (task.status === 'completed' || task.status === 'cancelled') return false
@@ -1097,9 +1101,9 @@ function AssignedByMeContent() {
     const sort = (arr: Task[]) => [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
     return {
       all:            sort(allTasks),
-      // Work handed back for this person to accept. `overdue` may still contain
-      // it, because it is not completed and a missed due date is still a missed
-      // due date.
+      // Work handed back for this person to accept. `overdue` will not also
+      // contain it — once submitted for approval it is no longer overdue
+      // responsibility against the assignee (see accruesAssigneeOverdue).
       for_approval:   sort(allTasks.filter(t => t.status === 'pending_approval')),
       unacknowledged: sort(allTasks.filter(isUnacknowledged)),
       overdue:        sort(allTasks.filter(isOverdue)),
