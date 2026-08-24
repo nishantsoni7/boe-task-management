@@ -2,7 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
-  CLASSIFIED_PAYMENT_STATUSES,
+  CONFIRMED_PAYMENT_STATUSES,
+  TO_VERIFY_PAYMENT_STATUSES,
+} from '@/lib/finance/paymentSurfaces'
+import {
   PAYMENT_VIEWS,
   paymentViewClauses,
   type PaymentView,
@@ -12,7 +15,7 @@ import {
 // entries — All, Orders, PI Drafts and Available.
 //
 // EVERY NUMBER COMES FROM THE SAME THREE SOURCES OF TRUTH THE PAGE ITSELF USES:
-// RECEIVED_PAYMENTS_SOURCE for the rows, CLASSIFIED_PAYMENT_STATUSES for the
+// RECEIVED_PAYMENTS_SOURCE for the rows, CONFIRMED_PAYMENT_STATUSES for the
 // status scope, and paymentViewClauses for the classification. None of the three
 // is retyped here, so a badge cannot describe a different set from the tab it
 // sits beside — the alignment is structural, not a comment asking two call sites
@@ -72,7 +75,11 @@ export function useReceivedPaymentsCounts(): ReceivedPaymentsCounts {
         let query = supabase
           .from(RECEIVED_PAYMENTS_SOURCE)
           .select('id', { count: 'exact', head: true })
-          .in('status', CLASSIFIED_PAYMENT_STATUSES as unknown as string[])
+          // CONFIRMED ONLY. These badges sit beside the four Confirmed
+          // Payments views, and the list they count now asks for the same two
+          // statuses — a badge counting a set the page does not show is a
+          // number nobody can reconcile. Payments to Verify carries its own.
+          .in('status', CONFIRMED_PAYMENT_STATUSES as unknown as string[])
         for (const clause of paymentViewClauses(view)) {
           if (clause.kind === 'eq') query = query.eq(clause.column, clause.value)
         }
@@ -100,4 +107,35 @@ export function useReceivedPaymentsCounts(): ReceivedPaymentsCounts {
   // blank rather than flashing a misleading "0"; once resolved each is a number,
   // including a genuine 0.
   return data ?? PENDING
+}
+
+// ── Payments to Verify ────────────────────────────────────────────────────────
+
+export const PAYMENTS_TO_VERIFY_COUNT_KEY = ['finance', 'payments-to-verify', 'count'] as const
+
+/**
+ * How many payments are waiting for somebody.
+ *
+ * ITS OWN QUERY AND ITS OWN CACHE KEY, deliberately. It counts a disjoint set
+ * from the four above, so sharing either would make one of the two numbers
+ * wrong the moment a payment is verified — which is exactly the event both
+ * numbers exist to reflect.
+ *
+ * `undefined` while the query is in flight or if it refuses; a real zero is 0
+ * and renders as a badge, because "nothing to verify" is worth seeing.
+ */
+export function usePaymentsToVerifyCount(): number | undefined {
+  const { data } = useQuery({
+    queryKey: PAYMENTS_TO_VERIFY_COUNT_KEY,
+    queryFn: async () => {
+      const supabase = createClient()
+      const result = await supabase
+        .from(RECEIVED_PAYMENTS_SOURCE)
+        .select('id', { count: 'exact', head: true })
+        .in('status', TO_VERIFY_PAYMENT_STATUSES as unknown as string[])
+      return result.error ? null : (result.count ?? 0)
+    },
+    staleTime: 60_000,
+  })
+  return data === null || data === undefined ? undefined : data
 }

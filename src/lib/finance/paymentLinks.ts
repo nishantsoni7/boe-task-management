@@ -166,8 +166,20 @@ export function linkCounts(links: readonly PaymentLink[]): {
   total: number
   openable: number
   hidden: number
+  /** Destinations of each kind, so a column can say "×3" instead of listing them. */
+  orders: number
+  submissions: number
 } {
   const openable = links.filter(l => l.href !== null).length
   const named = links.filter(l => l.named).length
-  return { total: links.length, openable, hidden: links.length - named }
+  return {
+    total: links.length,
+    openable,
+    hidden: links.length - named,
+    // COUNTED FROM THE SAME LIST the names come from, so a count and the names
+    // behind it cannot disagree — including for a destination the reader may
+    // not open, which is still a destination and is still counted.
+    orders: links.filter(l => l.kind === 'order').length,
+    submissions: links.filter(l => l.kind === 'submission').length,
+  }
 }

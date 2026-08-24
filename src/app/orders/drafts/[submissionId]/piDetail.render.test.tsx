@@ -2145,10 +2145,17 @@ describe('the layout is CSS, at three real breakpoints', () => {
 describe('the page footnote', () => {
   const html = text(renderToStaticMarkup(<PiStoredCopyNote />))
 
-  test('is one short line, and still says numbering waits for approval', () => {
+  test('is one short line, and says what now actually waits for approval', () => {
     assert.ok(html.includes(STORED_COPY_NOTE))
-    assert.ok(STORED_COPY_NOTE.length < 120, 'a paragraph became a line')
-    assert.ok(/numbering begins after management approval/.test(STORED_COPY_NOTE))
+    assert.ok(STORED_COPY_NOTE.length < 130, 'a paragraph became a line')
+    // IT USED TO PIN "numbering begins after management approval", and
+    // 20261009000000 made that false: the NUMBER is reserved as soon as the PI
+    // has a workbook, so that the revised PI can carry it. What still waits for
+    // approval is the Confirmed Order, and that is what this must say — beside a
+    // panel showing a reserved number, the old sentence was a contradiction.
+    assert.ok(/Confirmed Order is created at management approval/.test(STORED_COPY_NOTE))
+    assert.ok(!/numbering begins after management approval/.test(STORED_COPY_NOTE),
+      'the superseded rule must not survive anywhere on this screen')
   })
 
   test('does not imply approval can be executed today', () => {

@@ -145,8 +145,18 @@ describe('the closed action set', () => {
   const { file, actions } = currentActionSet()
 
   test('is defined, and by the LATEST migration that touches it', () => {
+    // 20261001000000 is the action set's HOME — the file that gathered the
+    // scattered definitions into one closed list and stated the rule. It is not
+    // permanently the last word: the rule it states is that a migration logging
+    // a NEW action extends the set in the same migration, so whichever file did
+    // that most recently is the one this must name.
+    //
+    // 20261009000000 is that file. It adds order_number_reserved and
+    // order_number_used and re-emits the whole set in full, which is exactly
+    // what 20261001000000 asks of it.
     assert.ok(file.length > 0, 'no migration defines the action constraint')
-    assert.equal(file, '20261001000000_order_submission_activity_actions.sql')
+    assert.equal(file,
+      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql')
   })
 
   test('still admits every action the earlier phases wrote', () => {

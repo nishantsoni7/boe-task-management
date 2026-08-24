@@ -37,6 +37,7 @@ import type {
   PiImageRole,
 } from '@/lib/pi/types'
 import { PI_ADVANCE_COLUMNS, type PersistedAdvance } from './advanceRequirement'
+import { PI_RESERVATION_COLUMNS, type PiReservationFields } from './orderNumberReservation'
 import {
   PI_APPROVAL_COLUMNS,
   PI_FINANCE_COLUMNS,
@@ -162,7 +163,7 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & {
+export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PiReservationFields & {
   id: string
   status: string
   client_name: string | null
@@ -404,6 +405,15 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // decision if it carries one. Named in advanceRequirement.ts so the columns
   // and the module that reads them cannot drift apart.
   ...PI_ADVANCE_COLUMNS,
+  // The reserved Order number and the workbook hash it was issued against.
+  // Named in orderNumberReservation.ts so the columns and the module that reads
+  // them cannot drift apart.
+  //
+  // 20261009000000 MUST BE APPLIED BEFORE THIS SHIPS — a select naming a column
+  // that does not exist fails whole, and this is the page's only read of the
+  // record. The same deployment ordering `billing_percentage` needed from
+  // 20260923000000, for the same reason.
+  ...PI_RESERVATION_COLUMNS,
 ].join(', ')
 
 export const PI_DRAFT_ITEM_COLUMNS = [

@@ -131,8 +131,15 @@ describe('every narrowing is the database\'s', () => {
     assert.equal(/const visible = requests\s*\.\s*filter/.test(view), false)
   })
 
-  test('the status scope is sent too, so rejected money never reaches the page', () => {
-    assert.ok(loader.includes("in('status', CLASSIFIED_PAYMENT_STATUSES"))
+  test('THE SURFACE\'S OWN STATUS SCOPE is sent too, so the two pages are disjoint', () => {
+    // This used to be CLASSIFIED_PAYMENT_STATUSES — everything except rejected —
+    // which put money that had arrived and money nobody had looked at yet in one
+    // list, and computed every count, search result and page number over the
+    // mixture. Each page now asks for exactly its half.
+    assert.ok(loader.includes("in('status', PAYMENT_SURFACE_STATUSES[surface]"))
+    const code = loader.split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+    assert.ok(!code.includes('CLASSIFIED_PAYMENT_STATUSES'),
+      'the old mixed scope is gone from the code; the comment records why')
   })
 
   test('a search term is a LITERAL before it reaches a filter group', () => {
@@ -323,9 +330,12 @@ describe('the list and the badge beside it are one predicate', () => {
     assert.ok(read(COUNTS).includes('paymentViewClauses(view)'))
   })
 
-  test('and from the same status scope', () => {
-    assert.ok(loader.includes('CLASSIFIED_PAYMENT_STATUSES'))
-    assert.ok(read(COUNTS).includes('CLASSIFIED_PAYMENT_STATUSES'))
+  test('and from the same status scope — the confirmed half, on both', () => {
+    // The four badges sit beside the four Confirmed Payments views, so they
+    // count what that page shows. A badge measuring a wider set than its own
+    // list is a number nobody can reconcile against the rows under it.
+    assert.ok(loader.includes('PAYMENT_SURFACE_STATUSES[surface]'))
+    assert.ok(read(COUNTS).includes('CONFIRMED_PAYMENT_STATUSES'))
   })
 
   test('every view is a single equality on a column the projection computes', () => {

@@ -525,6 +525,12 @@ describe('the applied migrations are frozen', () => {
    * TO CORRECT A DATABASE AFTER THIS POINT: add migration 109 or later. Do not
    * edit a file below.
    */
+  //
+  // 20261009000000 is deliberately NOT in this list. It is not applied, so its
+  // bytes are still the repository's to change; it joins this list on the day
+  // `supabase db push` runs it and not before. A hash pinned for an unapplied
+  // file would assert the wrong thing entirely — that the file may not be
+  // corrected, which until it is applied is exactly what it may be.
   const FROZEN: ReadonlyArray<readonly [file: string, sha256: string]> = [
     // Allocation state on the received-payments projection (PR #49).
     ['supabase/migrations/20261004000000_finance_received_payments_allocation_state.sql',
@@ -596,7 +602,37 @@ describe('the applied migrations are frozen', () => {
       '20261006000000_payment_participant_and_order_total_security.sql',
       '20261007000000_retire_order_requests.sql',
       '20261008000000_finance_payment_classification.sql',
+      // 109. NOT APPLIED. Split payment entry, and a reservable Order number.
+      // Recorded here on purpose: this list is asserted exactly, so a new
+      // migration cannot appear unnoticed beside the frozen ones — and its
+      // absence from FROZEN above is the statement that it has not been pushed.
+      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
+      // 110. NOT APPLIED either, and it must be pushed AFTER 109 — it carries
+      // the higher number and depends on nothing in 109, but a file that lands
+      // in front of a lower-numbered one leaves that one permanently out of
+      // order behind the last applied remote migration. Both live on this
+      // branch precisely so they cannot be shipped in the wrong order.
+      '20261010000000_order_submission_and_finance_test_data_reset.sql',
     ])
+  })
+
+  test('109 and 110 are in ascending order, and neither is pinned as applied', () => {
+    // The whole reason the module reset lives on this branch rather than on
+    // PR #50: two unapplied migrations in one tree apply in filename order
+    // whatever sequence the branches merge in.
+    const pending = execSync('ls supabase/migrations', { encoding: 'utf8' })
+      .split('\n').filter(Boolean)
+      .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
+      .sort()
+    assert.deepEqual(pending, [
+      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
+      '20261010000000_order_submission_and_finance_test_data_reset.sql',
+    ])
+    for (const [file] of FROZEN) {
+      assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
+        || !/2026100900|2026101000/.test(file),
+        `${file} is unapplied and must not be pinned as frozen`)
+    }
   })
 })
 

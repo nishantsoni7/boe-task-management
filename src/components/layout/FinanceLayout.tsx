@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
+import { CheckSquare, ClipboardCheck, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -13,7 +13,10 @@ import { useUnreadFinanceNotifications } from '@/hooks/queries/useUnreadNotifica
 import {
   useReceivedPaymentsCounts,
   RECEIVED_PAYMENTS_COUNTS_KEY,
+  usePaymentsToVerifyCount,
+  PAYMENTS_TO_VERIFY_COUNT_KEY,
 } from '@/hooks/queries/useReceivedPaymentsCounts'
+import { PAYMENTS_TO_VERIFY_PATH } from '@/lib/finance/paymentSurfaces'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   PAYMENT_VIEW_OPTIONS,
@@ -69,14 +72,17 @@ export function FinanceLayout({
   // Neutral volume counts for the two Received Payments entries. Not unread
   // counts: opening a page never changes them.
   const receivedCounts = useReceivedPaymentsCounts()
+  const toVerifyCount  = usePaymentsToVerifyCount()
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
     setRefreshing(true)
-    // The Refresh control (and the visibilitychange handler below) re-reads the
-    // page; the sidebar counts are part of the same picture, so they are
-    // invalidated in the same breath rather than being left to staleTime.
+    // The Refresh control re-reads the page; the sidebar counts are part of the
+    // same picture, so they are invalidated in the same breath rather than
+    // being left to staleTime. Both count queries, because verifying a payment
+    // moves it between the two disjoint sets they measure.
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+    queryClient.invalidateQueries({ queryKey: PAYMENTS_TO_VERIFY_COUNT_KEY })
     if (onRefresh) {
       await onRefresh()
     } else {
@@ -86,20 +92,52 @@ export function FinanceLayout({
     setRefreshing(false)
   }, [refreshing, onRefresh, triggerRefresh, router, queryClient])
 
-  useEffect(() => {
-    const onVisible = () => { if (document.visibilityState === 'visible') handleRefresh() }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // ── NOTHING RE-FETCHES WHEN THE TAB COMES BACK ──
+  //
+  // THE CAUSE, NAMED. There was a `visibilitychange` listener here that called
+  // handleRefresh() every time this document became visible again. OrdersLayout
+  // removed its copy of the same listener and explained why; Finance kept one,
+  // which is why an Order page survived an alt-tab and a Finance page did not.
+  //
+  // What it actually did, on every return however brief:
+  //
+  //   * called the page's own onRefresh — for Confirmed Payments and Payments
+  //     to Verify that is loadRequests(), which sets listLoading and repaints
+  //     the table, so a glance at another tab threw away the scroll position
+  //     and made the rows jump under a reader's cursor;
+  //   * invalidated RECEIVED_PAYMENTS_COUNTS_KEY, so the sidebar badges went
+  //     blank and came back;
+  //   * ran router.refresh() on any page that passes no onRefresh, remounting
+  //     the tree — which is what closed an open modal and discarded a
+  //     half-typed correction note;
+  //   * captured handleRefresh from the FIRST render (empty dependency array,
+  //     with an eslint-disable to keep it quiet), so what it called was not
+  //     necessarily the handler the screen had by then.
+  //
+  // Returning to a tab is not a request for anything. Filters, pagination,
+  // scroll, an open modal and a partly-typed form all survive it now.
+  //
+  // WHAT STILL UPDATES THE SCREEN, unchanged: the Refresh control in the header
+  // (handleRefresh, which also invalidates the counts); every mutation, which
+  // reloads the list it changed; verification, allocation and reversal, for the
+  // same reason; a real navigation, which mounts; and a page's own load on
+  // mount. React Query is configured with refetchOnWindowFocus: false in
+  // Providers.tsx, so there is ONE answer to "does focus refetch": no.
+  //
+  // SESSION EXPIRY IS UNTOUCHED. That is the Supabase client's business and
+  // AuthIdentityBoundary's, not this layout's, and neither is changed here.
+  // Nothing is replaced with polling.
 
   const navTo = (path: string) => {
     router.push(path)
     setSidebarOpen(false)
   }
 
+  // PAYMENT REQUESTS IS A DIFFERENT WORKFLOW and stays where it is: a
+  // structurally separate record with its own lifecycle, not a view of the
+  // payments table and nothing to do with the retired Order Requests.
   const navItems = [
-    { label: 'Payment Requests',      path: '/finance',          icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+    { label: 'Payment Requests', path: '/finance', icon: <CheckSquare size={15} strokeWidth={1.8} /> },
   ]
 
   // ── Received Payments: one list, four views ──
@@ -181,7 +219,39 @@ export function FinanceLayout({
             )
           })}
 
-          {/* ── Received Payments ── inert section heading + its two pages.
+          {/* ── Payments to Verify ──
+              ITS OWN TOP-LEVEL ENTRY, not a fifth tab under Received Payments.
+              The four entries below narrow money that has been confirmed to
+              have arrived; this is the money nobody has confirmed at all, and
+              it is somebody's work queue rather than a way of reading the
+              ledger. Its badge counts a disjoint set, so the two numbers move
+              in opposite directions when a payment is verified — which is what
+              a verifier wants to see. */}
+          <button
+            className={`boe-nav-item${pathname === PAYMENTS_TO_VERIFY_PATH ? ' active' : ''}`}
+            onClick={() => navTo(PAYMENTS_TO_VERIFY_PATH)}
+            style={{ fontWeight: pathname === PAYMENTS_TO_VERIFY_PATH ? 600 : 400, marginBottom: '2px' }}
+          >
+            <span style={{
+              color: pathname === PAYMENTS_TO_VERIFY_PATH ? '#DC1F2E' : '#A0A9BE',
+              display: 'flex', alignItems: 'center',
+            }}>
+              <ClipboardCheck size={15} strokeWidth={1.8} />
+            </span>
+            Payments to Verify
+            {typeof toVerifyCount === 'number' && (
+              <span style={{
+                marginLeft: 'auto', flexShrink: 0,
+                fontSize: '10px', fontWeight: 700, color: '#3D4455',
+                background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+              }}>
+                {toVerifyCount > 999 ? '999+' : toVerifyCount}
+              </span>
+            )}
+          </button>
+
+          {/* ── Confirmed Payments ── inert section heading + its four views.
               Same .boe-nav-item metrics as a real item so the row heights line
               up, but rendered as a div with no hover/press affordance. */}
           <div
@@ -195,11 +265,11 @@ export function FinanceLayout({
             <span style={{ color: '#A0A9BE', display: 'flex', alignItems: 'center' }}>
               <CreditCard size={15} strokeWidth={1.8} />
             </span>
-            Received Payments
+            Confirmed Payments
           </div>
           <div
             role="group"
-            aria-label="Received Payments"
+            aria-label="Confirmed Payments"
             style={{
               marginLeft: '17px', paddingLeft: '10px',
               borderLeft: '1px solid rgba(0,0,0,0.09)',

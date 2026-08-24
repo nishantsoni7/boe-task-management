@@ -2,10 +2,10 @@
 
 // The Delete Payment confirmation — one modal, every Finance surface.
 //
-// Received Payments (this PR) and Payments to Verify (the Order/Finance branch)
-// both mount THIS component. Neither owns a copy of the sequence, the wording or
-// the outcome handling, because a destructive action that behaves differently
-// depending on which list you reached it from is two actions wearing one name.
+// Received Payments mounts THIS component, and it is deliberately the ONLY
+// implementation of the delete action on this branch. A destructive action
+// that behaves differently depending on which list you reached it from is two
+// actions wearing one name.
 //
 // WHAT IT SHOWS, AND WHY EACH LINE IS THERE. Amount, date and mode identify the
 // payment without making the reader go and look it up; the allocation summary
@@ -13,9 +13,19 @@
 // its allocations with it, and an operator who is clearing a PI blocker deserves
 // to see how much money is about to stop being attributed and to what.
 //
+// THE ROUTE, NOT A FLAG. This branch carries migration 20261010000000 §11, so
+// every deletion here — a payment with proof files or without — goes through
+// the durable claim protocol at /api/finance/payments/delete: a claim is taken
+// that freezes verification, proof mutation and allocation change before
+// anything is touched, its manifest is swept, and only then is the row deleted.
+// There is no unprotected fallback this modal can take instead: the
+// application-level count-then-delete sequence lives in lib/finance/
+// paymentDeletion.ts, and this branch never calls it, because a branch that has
+// the claim protocol has no reason to race one.
+//
 // IT DECIDES NOTHING. Whether this modal opens at all is canDeletePayment's
-// answer, and whether the delete succeeds is row-level security's and the guard
-// trigger's. This renders a question and reports an answer.
+// answer, and whether the delete succeeds is what the RPCs behind the route
+// decide, under a row lock. This renders a question and reports an answer.
 
 import { useState } from 'react'
 import { colors } from '@/lib/tokens'
@@ -25,11 +35,13 @@ import {
   PAYMENT_DELETE_BUSY_LABEL,
   PAYMENT_DELETE_CONFIRM_LABEL,
   PAYMENT_DELETE_TITLE,
-  deletePaymentEntry,
   type DeletablePayment,
-  type PaymentDeletionResult,
 } from '@/lib/finance/paymentDeletion'
-import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  PAYMENT_DELETE_RETRY_LABEL,
+  describePaymentDeletionFailure,
+  type PaymentDeletionFailure,
+} from '@/lib/finance/paymentDeletionProtocol'
 
 export type DeletePaymentModalPayment = DeletablePayment & {
   amount: number
@@ -53,11 +65,9 @@ function Row({ label, value }: { label: string; value: string }) {
 export function DeletePaymentModal({
   payment,
   allocationSummary,
-  supabase,
   formatAmount,
   formatDate,
   modeLabel,
-  describeError,
   onClose,
   onDeleted,
 }: {
@@ -69,39 +79,55 @@ export function DeletePaymentModal({
    * what the reader was allowed to load.
    */
   allocationSummary: string | null
-  supabase: SupabaseClient
   formatAmount: (amount: number) => string
   formatDate: (iso: string) => string
   modeLabel: (mode: string) => string
-  describeError: (error: { code?: string; message: string }) => string
   onClose: () => void
   /** Re-read the list and the counts. Called on every settled outcome. */
   onDeleted: () => void
 }) {
   const [deleting, setDeleting] = useState(false)
-  const [result, setResult] = useState<PaymentDeletionResult | null>(null)
+  const [deleted, setDeleted]   = useState(false)
+  const [failure, setFailure]   = useState<PaymentDeletionFailure | null>(null)
 
-  // Once the outcome is final the confirmation is spent: the payment is either
-  // gone or was never deletable, and neither offers a retry that can help. Every
-  // dismissal path from here refreshes the list, because leaving a deleted row
-  // on screen invites a second Delete that reports the wrong reason.
-  // The only outcome deletePaymentEntry ever returns is final: nothing was
-  // touched, and pressing again cannot change that in this build.
-  const settled = result !== null
+  // A RETRYABLE FAILURE IS NOT SETTLED. The claim is still standing and the
+  // next press resumes from the frozen manifest, so the destructive button
+  // stays live and says what it is really doing.
+  const settled = deleted || (failure !== null && !failure.retryable)
 
   const confirm = async () => {
     if (deleting || settled) return
     setDeleting(true)
-    const outcome = await deletePaymentEntry(supabase, payment, describeError)
+    setFailure(null)
+
+    let code: unknown = 'DELETE_FAILED'
+    try {
+      const response = await fetch('/api/finance/payments/delete', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ paymentId: payment.id }),
+      })
+      const body = await response.json().catch(() => null) as { ok?: boolean; code?: string } | null
+      if (body?.ok === true) {
+        setDeleting(false)
+        setDeleted(true)
+        onDeleted()
+        return
+      }
+      code = body?.code
+    } catch {
+      // A network failure is exactly as retryable as a storage one: the claim
+      // stands, nothing was reported deleted, and pressing again resumes.
+    }
     setDeleting(false)
-    setResult(outcome)
+    setFailure(describePaymentDeletionFailure(code))
   }
 
-  const message = result?.message ?? null
-  // Not an error the operator made and not a partial outcome: nothing was
-  // touched, and safe deletion arrives with the durable claim protocol. Drawn
-  // as a notice rather than a failure.
-  const isWarning = result?.outcome === 'unavailable'
+  const message = failure?.message ?? null
+
+  const confirmLabel = deleting
+    ? PAYMENT_DELETE_BUSY_LABEL
+    : failure?.retryable === true ? PAYMENT_DELETE_RETRY_LABEL : PAYMENT_DELETE_CONFIRM_LABEL
 
   return (
     <FinanceModal
@@ -138,9 +164,7 @@ export function DeletePaymentModal({
       {message && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.55,
-          background: isWarning ? '#FFF7ED' : '#FEF2F2',
-          border: `1px solid ${isWarning ? '#FED7AA' : '#FECACA'}`,
-          color: isWarning ? '#9A3412' : '#B91C1C',
+          background: '#FEF2F2', border: '1px solid #FECACA', color: '#B91C1C',
         }}>
           {message}
         </div>
@@ -166,7 +190,7 @@ export function DeletePaymentModal({
               cursor: deleting ? 'not-allowed' : 'pointer', opacity: deleting ? 0.6 : 1,
             }}
           >
-            {deleting ? PAYMENT_DELETE_BUSY_LABEL : PAYMENT_DELETE_CONFIRM_LABEL}
+            {confirmLabel}
           </button>
         </div>
       )}
