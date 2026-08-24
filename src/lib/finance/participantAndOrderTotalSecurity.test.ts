@@ -613,12 +613,18 @@ describe('the applied migrations are frozen', () => {
       // order behind the last applied remote migration. Both live on this
       // branch precisely so they cannot be shipped in the wrong order.
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
+      // 111. NOT APPLIED. Payment ID, admin-only payment deletion (extending
+      // 110's durable claim protocol to Confirmed Payments), and the
+      // multi-target allocation door. Recorded here for the same reason as
+      // 109 and 110: this list is exact, so its arrival is a decision on
+      // record rather than a file nobody noticed.
+      '20261011000000_admin_payment_deletion_and_payment_id.sql',
     ])
   })
 
-  test('109 and 110 are in ascending order, and neither is pinned as applied', () => {
+  test('109, 110 and 111 are in ascending order, and none is pinned as applied', () => {
     // The whole reason the module reset lives on this branch rather than on
-    // PR #50: two unapplied migrations in one tree apply in filename order
+    // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
     const pending = execSync('ls supabase/migrations', { encoding: 'utf8' })
       .split('\n').filter(Boolean)
@@ -627,10 +633,11 @@ describe('the applied migrations are frozen', () => {
     assert.deepEqual(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
+      '20261011000000_admin_payment_deletion_and_payment_id.sql',
     ])
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
-        || !/2026100900|2026101000/.test(file),
+        || !/2026100900|2026101000|2026101100/.test(file),
         `${file} is unapplied and must not be pinned as frozen`)
     }
   })

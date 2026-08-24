@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, ClipboardCheck, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
+import { CheckSquare, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -13,17 +13,21 @@ import { useUnreadFinanceNotifications } from '@/hooks/queries/useUnreadNotifica
 import {
   useReceivedPaymentsCounts,
   RECEIVED_PAYMENTS_COUNTS_KEY,
-  usePaymentsToVerifyCount,
-  PAYMENTS_TO_VERIFY_COUNT_KEY,
 } from '@/hooks/queries/useReceivedPaymentsCounts'
-import { PAYMENTS_TO_VERIFY_PATH } from '@/lib/finance/paymentSurfaces'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  PAYMENT_VIEW_OPTIONS,
-  type PaymentView,
-} from '@/lib/finance/paymentClassification'
 
-/** The one Received Payments list. Its four views are `?view=` on this route. */
+/**
+ * The one Received Payments list — now ONE nav entry, no `?view=` sub-items.
+ *
+ * ONLY TWO PRIMARY PAYMENT SECTIONS, per the current requirement: Payment
+ * Requests and Confirmed Payments. Payments to Verify is no longer a separate
+ * top-level entry — verifying is already covered from Payment Requests — and
+ * the four Confirmed Payments sub-views (All / Orders / PI Drafts / Available)
+ * are retired from the sidebar in favour of an IN-PAGE filter bar over
+ * `confirmed_allocation_status` (see ReceivedPaymentsView.tsx). Neither route
+ * is deleted — /finance/payments-to-verify still renders and still works for
+ * anyone who lands on it directly — only the sidebar entries are gone.
+ */
 export const RECEIVED_PAYMENTS_PATH = '/finance/received'
 
 type FinanceLayoutProps = {
@@ -33,17 +37,6 @@ type FinanceLayoutProps = {
   actions?: React.ReactNode
   onSignOut: () => void
   onRefresh?: () => Promise<void>
-  /**
-   * Which of the four Received Payments views the reader is on, when they are on
-   * that list at all.
-   *
-   * PASSED IN RATHER THAN READ FROM THE URL. The view lives in `?view=`, and
-   * calling useSearchParams here would put every screen that uses this layout
-   * behind a Suspense boundary for a highlight only one of them needs. The
-   * payments list already resolves the view for its own query; handing the same
-   * value to the sidebar is one source rather than two readings of one URL.
-   */
-  activeReceivedView?: PaymentView
   children: React.ReactNode
 }
 
@@ -54,7 +47,6 @@ export function FinanceLayout({
   actions,
   onSignOut,
   onRefresh,
-  activeReceivedView,
   children,
 }: FinanceLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -69,20 +61,17 @@ export function FinanceLayout({
   // marking read anywhere clears it via the existing invalidation.
   const unreadFinance = useUnreadFinanceNotifications()
 
-  // Neutral volume counts for the two Received Payments entries. Not unread
-  // counts: opening a page never changes them.
+  // Neutral volume count for the Confirmed Payments entry. Not an unread
+  // count: opening the page never changes it.
   const receivedCounts = useReceivedPaymentsCounts()
-  const toVerifyCount  = usePaymentsToVerifyCount()
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
     setRefreshing(true)
-    // The Refresh control re-reads the page; the sidebar counts are part of the
-    // same picture, so they are invalidated in the same breath rather than
-    // being left to staleTime. Both count queries, because verifying a payment
-    // moves it between the two disjoint sets they measure.
+    // The Refresh control re-reads the page; the sidebar count is part of the
+    // same picture, so it is invalidated in the same breath rather than being
+    // left to staleTime.
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
-    queryClient.invalidateQueries({ queryKey: PAYMENTS_TO_VERIFY_COUNT_KEY })
     if (onRefresh) {
       await onRefresh()
     } else {
@@ -133,34 +122,22 @@ export function FinanceLayout({
     setSidebarOpen(false)
   }
 
-  // PAYMENT REQUESTS IS A DIFFERENT WORKFLOW and stays where it is: a
-  // structurally separate record with its own lifecycle, not a view of the
-  // payments table and nothing to do with the retired Order Requests.
-  const navItems = [
-    { label: 'Payment Requests', path: '/finance', icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+  // EXACTLY TWO PRIMARY PAYMENT SECTIONS. Payment Requests is a structurally
+  // separate record with its own lifecycle, not a view of the payments table
+  // and nothing to do with the retired Order Requests. Confirmed Payments is
+  // the one list of money that has arrived — its former four `?view=`
+  // sub-items (All / Orders / PI Drafts / Available) are retired from the
+  // sidebar in favour of the in-page allocation-status filter bar, and the
+  // former standalone "Payments to Verify" entry is gone too: verifying a
+  // payment is already reachable from Payment Requests, so a third top-level
+  // section for it duplicated a workflow rather than adding one. `badge` is
+  // undefined only while the count query is in flight, or when the
+  // classification columns are not yet in the database — a real zero renders
+  // as "0" rather than disappearing.
+  const navItems: { label: string; path: string; icon: React.ReactNode; badge?: number }[] = [
+    { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} /> },
+    { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, badge: receivedCounts.all },
   ]
-
-  // ── Received Payments: one list, four views ──
-  //
-  // The section used to hold two sibling ROUTES — Linked and Non-Linked — and
-  // that split is gone. It could not express a payment divided between an Order
-  // and a PI Draft, which belongs in both views at once, and it counted a
-  // retired Order Request linkage as though something would still come to
-  // collect the money.
-  //
-  // These four are the canonical classification (paymentClassification.ts), each
-  // a `?view=` on the one list. THEY DO NOT SUM TO "All": a split payment with a
-  // balance is counted in three of them, because it genuinely is in three.
-  //
-  // `badge` stays undefined only while the count query is in flight, or when the
-  // classification columns are not yet in the database — a real zero renders as
-  // "0" rather than disappearing.
-  const receivedSubItems: { label: string; path: string; badge: number | undefined }[] =
-    PAYMENT_VIEW_OPTIONS.map(option => ({
-      label: option.label === 'All' ? 'All Payments' : option.label,
-      path: `${RECEIVED_PAYMENTS_PATH}?view=${option.value}`,
-      badge: receivedCounts[option.value],
-    }))
 
   return (
     <div className="boe-app-shell">
@@ -215,102 +192,21 @@ export function FinanceLayout({
                   {item.icon}
                 </span>
                 {item.label}
+                {/* Neutral volume badge — grey on grey, never the red
+                    unread-alert styling. */}
+                {typeof item.badge === 'number' && (
+                  <span style={{
+                    marginLeft: 'auto', flexShrink: 0,
+                    fontSize: '10px', fontWeight: 700, color: '#3D4455',
+                    background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                    padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+                  }}>
+                    {item.badge > 999 ? '999+' : item.badge}
+                  </span>
+                )}
               </button>
             )
           })}
-
-          {/* ── Payments to Verify ──
-              ITS OWN TOP-LEVEL ENTRY, not a fifth tab under Received Payments.
-              The four entries below narrow money that has been confirmed to
-              have arrived; this is the money nobody has confirmed at all, and
-              it is somebody's work queue rather than a way of reading the
-              ledger. Its badge counts a disjoint set, so the two numbers move
-              in opposite directions when a payment is verified — which is what
-              a verifier wants to see. */}
-          <button
-            className={`boe-nav-item${pathname === PAYMENTS_TO_VERIFY_PATH ? ' active' : ''}`}
-            onClick={() => navTo(PAYMENTS_TO_VERIFY_PATH)}
-            style={{ fontWeight: pathname === PAYMENTS_TO_VERIFY_PATH ? 600 : 400, marginBottom: '2px' }}
-          >
-            <span style={{
-              color: pathname === PAYMENTS_TO_VERIFY_PATH ? '#DC1F2E' : '#A0A9BE',
-              display: 'flex', alignItems: 'center',
-            }}>
-              <ClipboardCheck size={15} strokeWidth={1.8} />
-            </span>
-            Payments to Verify
-            {typeof toVerifyCount === 'number' && (
-              <span style={{
-                marginLeft: 'auto', flexShrink: 0,
-                fontSize: '10px', fontWeight: 700, color: '#3D4455',
-                background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
-                padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
-              }}>
-                {toVerifyCount > 999 ? '999+' : toVerifyCount}
-              </span>
-            )}
-          </button>
-
-          {/* ── Confirmed Payments ── inert section heading + its four views.
-              Same .boe-nav-item metrics as a real item so the row heights line
-              up, but rendered as a div with no hover/press affordance. */}
-          <div
-            style={{
-              display: 'flex', alignItems: 'center', gap: '9px',
-              padding: '7px 10px', marginBottom: '2px',
-              fontSize: '13px', fontWeight: 500, color: '#6B7384',
-              lineHeight: 1.3, userSelect: 'none',
-            }}
-          >
-            <span style={{ color: '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-              <CreditCard size={15} strokeWidth={1.8} />
-            </span>
-            Confirmed Payments
-          </div>
-          <div
-            role="group"
-            aria-label="Confirmed Payments"
-            style={{
-              marginLeft: '17px', paddingLeft: '10px',
-              borderLeft: '1px solid rgba(0,0,0,0.09)',
-            }}
-          >
-            {receivedSubItems.map(item => {
-              // The view lives in the query string, so `pathname` alone cannot
-              // tell these four apart. A screen that is not the payments list
-              // passes no view and highlights none of them.
-              const active = pathname === RECEIVED_PAYMENTS_PATH
-                && activeReceivedView !== undefined
-                && item.path.endsWith(`view=${activeReceivedView}`)
-              return (
-                <button
-                  key={item.path}
-                  className={`boe-nav-item${active ? ' active' : ''}`}
-                  onClick={() => navTo(item.path)}
-                  style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', fontSize: '12.5px' }}
-                >
-                  <span
-                    className="boe-nav-dot"
-                    style={{ background: active ? '#DC1F2E' : '#A0A9BE' }}
-                  />
-                  {item.label}
-                  {/* Neutral volume badge — grey on grey, never the red
-                      unread-alert styling. marginLeft:auto pins it to the
-                      trailing edge without disturbing the submenu indent. */}
-                  {typeof item.badge === 'number' && (
-                    <span style={{
-                      marginLeft: 'auto', flexShrink: 0,
-                      fontSize: '10px', fontWeight: 700, color: '#3D4455',
-                      background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
-                      padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
-                    }}>
-                      {item.badge > 999 ? '999+' : item.badge}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
 
           {/* Permanent Notifications entry — always visible, badge only when
               unread. Scoped to Finance's own notification types, and routes to

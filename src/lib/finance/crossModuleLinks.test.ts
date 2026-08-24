@@ -167,13 +167,17 @@ describe('the Order screen links into Finance, and gates it', () => {
 describe('the Finance list links into Order Management, and gates it', () => {
   const view = readFileSync(FINANCE_VIEW, 'utf8')
 
-  test('a row offers EVERY destination its money went to, not just one', () => {
-    // The row's destinations come from paymentLinks over the allocations, so a
-    // payment split three ways offers three doors. Building them from the
-    // projection's single LIMIT-1 label column would name one Order for a
-    // payment that reached three.
+  test('every destination its money went to is still resolved, from the allocations — not just one', () => {
+    // REVISED (Requirement 2): the CONFIRMED PAYMENTS ROW itself no longer
+    // draws a per-destination badge list (<DestinationsCell> is retired in
+    // favour of exact Total Allocated / Remaining figures and an expandable
+    // PI-Draft/Order breakdown) — but paymentLinks still resolves every
+    // destination from the allocations, for the detail modal's
+    // AllocationPanel (below) and for the delete-summary sentence, so a
+    // payment split three ways is still known to be split three ways.
     assert.ok(view.includes('paymentLinks({'))
-    assert.ok(view.includes('<DestinationsCell'))
+    assert.ok(!view.includes('<DestinationsCell'),
+      'the row-level destination badge list is retired; the row shows exact figures now')
   })
 
   test('the destinations follow the canonical rule, not a second priority', () => {
@@ -185,8 +189,12 @@ describe('the Finance list links into Order Management, and gates it', () => {
 
   test('and a door only to a reader who holds Orders module entry', () => {
     assert.ok(view.includes('canOpenOrderRecord(ordersCaps.canAccessOrdersModule)'))
-    assert.ok(view.includes('const openable = link.href !== null && onOpen !== undefined'),
-      'a destination is a button only when the reader can follow it')
+    // The gating itself now lives only in AllocationPanel (the detail modal),
+    // since that is the one place a destination is still rendered as a named
+    // link — see "a target the reader cannot NAME is never rendered as a
+    // link" below.
+    assert.ok(view.includes('canOpenLinkedRecord && target.label ? ('),
+      'a destination is a door only when the reader can both see and open it')
   })
 
   test('the allocation panel links to both an Order and a PI', () => {

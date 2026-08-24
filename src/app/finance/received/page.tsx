@@ -1,28 +1,24 @@
 'use client'
 
-// ── /finance/received — the payments surface ──────────────────────────────────
+// ── /finance/received — Confirmed Payments ─────────────────────────────────────
 //
-// ONE LIST, FOUR VIEWS. Received Payments used to be two sibling routes, Linked
-// and Non-Linked, splitting every payment by whether any of three columns was
-// set. That split could not survive the canonical classification:
+// THE TAB STRIP IS RETIRED. Requirement 1 (20261011000000) replaced the old
+// `?view=all|orders|pi_drafts|available` sidebar/tab UI with the in-page
+// allocation-status filter bar over `confirmed_allocation_status` (All / Zero
+// / Partially / Fully Allocated — a real database predicate, in
+// ReceivedPaymentsView itself). Nothing in this app can SET `?view=` any more.
 //
-//   * a payment divided between a Confirmed Order and a PI Draft belongs in BOTH
-//     linked views at once, and in Available too if anything is left over — three
-//     memberships a two-page partition cannot express;
-//   * an Order Request linkage counted as "linked", on the reasoning that
-//     conversion would move the money onto an Order by itself. The workflow is
-//     retired (20261007000000), nothing will convert, and the canonical rule has
-//     never attributed a rupee through that column — so the money was displayed
-//     as spoken for while every figure beside it said it was free.
-//
-// The view is a `?view=` on this one route, so a payment can appear in as many
-// of them as it genuinely belongs to, and every narrowing and count is the
-// database's rather than a filter over the page in hand.
+// `?view=` ITSELF IS STILL READ, on purpose: an existing bookmark or saved
+// link carrying it must not 404 or silently misbehave, and readPaymentView
+// fails closed to 'all' for anything it does not recognise. It no longer
+// narrows the query (paymentViewFilterClauses is gone from the loader), so at
+// most it affects which of VIEW_META's page-title strings is shown — never
+// which rows are returned.
 //
 // DEEP LINKS ARE UNCHANGED. `?payment=…&action=link|edit` still arrives here from
 // the Admin Action Queue and from Finance notifications, and still opens the
 // same modal it always did — the list resolves the row by id when it is not on
-// the current page, so it no longer matters which view the reader lands in.
+// the current page.
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'

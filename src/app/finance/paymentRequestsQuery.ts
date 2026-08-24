@@ -224,12 +224,15 @@ export function tabCounts(counted: Record<string, number | null>): Record<Filter
 /**
  * The columns a search term is matched against.
  *
- * `request_number` LEADS, and its absence was the same defect Received Payments
- * had: it is the first column the table draws, and somebody reading a reference
- * off an email types exactly that. The previous search read client_name and
- * order_number only.
+ * `human_payment_id` LEADS — it is now THE Payment ID shown to users
+ * (20261011000000 §1), so a search that could not find a row by it would not
+ * find a row by the number the table actually prints. `request_number` stays
+ * searchable too: it is still in the database, still on historical records
+ * somebody may have written down, and dropping it from search would make a
+ * findable row stop being findable.
  */
 export const PAYMENT_REQUESTS_SEARCH_COLUMNS = [
+  'human_payment_id',
   'request_number',
   'client_name',
   'order_number',

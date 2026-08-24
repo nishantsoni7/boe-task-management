@@ -412,13 +412,16 @@ describe('the allocation state composes with every other narrowing', () => {
   })
 
   test('it is applied as its own clause, alongside the others', () => {
-    // Search, the view, dates and allocation all narrow the same query and
-    // compose as AND. Each is a separate clause, so none can overwrite another.
+    // Search, the confirmed-allocation filter, dates and allocation state all
+    // narrow the same query and compose as AND. Each is a separate clause, so
+    // none can overwrite another. (paymentViewFilterClauses — the retired
+    // four-view classification tab strip — is gone from the list entirely;
+    // see receivedPaymentsView's own describe block.)
     const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
     const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
-      'paymentViewFilterClauses(',
+      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
       'allocationFilterClauses(filters.allocation)',
@@ -434,8 +437,8 @@ describe('the allocation state composes with every other narrowing', () => {
     const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
     assert.ok(view.includes('const applyAllocation = narrowBy(setAllocation)'),
       'narrowing must reset the page, or page four of a one-page result shows nothing')
-    assert.ok(view.includes('filters.allocation, page]'),
-      'a change to the allocation filter must re-issue the query')
+    assert.ok(view.includes('filters.allocation, filters.confirmedFilter, page]'),
+      'a change to the allocation filter (or the confirmed-allocation filter) must re-issue the query')
   })
 })
 

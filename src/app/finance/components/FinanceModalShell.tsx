@@ -143,7 +143,8 @@ export function RequestModalShell({
           zIndex: FINANCE_MODAL_DIALOG_Z, display: 'flex', flexDirection: 'column', overflow: 'hidden', outline: 'none',
         }}
       >
-        {/* ── Sticky header — request number is the primary identifier ── */}
+        {/* ── Sticky header — the Payment ID (human_payment_id) is the primary
+            identifier callers pass as `requestNumber`; never the raw UUID. ── */}
         <div style={{
           padding: '15px 20px', borderBottom: `1px solid ${colors.border}`,
           display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px', flexShrink: 0,

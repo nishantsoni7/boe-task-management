@@ -8,7 +8,10 @@ import {
   type PaymentDeletionCode,
 } from '@/lib/finance/paymentDeletionProtocol'
 
-// Deleting one unapproved payment, together with its proof objects.
+// Deleting one payment — Payment Request or Confirmed Payment, Admin only —
+// together with its proof objects. Requires a reason and the exact Payment ID
+// typed back (20261011000000 §3d); begin_finance_payment_deletion validates
+// both before any freeze is taken.
 //
 // WHY A ROUTE AND NOT A DELETE FROM THE BROWSER
 // ---------------------------------------------
@@ -70,6 +73,8 @@ const HTTP_FOR: Partial<Record<PaymentDeletionCode, number>> = {
   CLAIM_INVALID: 409,
   PROOF_PENDING: 409,
   IN_PROGRESS: 409,
+  REASON_REQUIRED: 400,
+  ID_MISMATCH: 400,
 }
 
 export async function POST(req: NextRequest) {
@@ -78,13 +83,23 @@ export async function POST(req: NextRequest) {
   if (!user) return fail({ code: 'UNAUTHORIZED', status: 401 })
 
   let paymentId: unknown
+  let reason: unknown
+  let confirmPaymentId: unknown
   try {
-    ({ paymentId } = await req.json() as { paymentId?: unknown })
+    ({ paymentId, reason, confirmPaymentId } = await req.json() as {
+      paymentId?: unknown; reason?: unknown; confirmPaymentId?: unknown
+    })
   } catch {
     return fail({ code: 'DELETE_FAILED', status: 400 })
   }
   if (typeof paymentId !== 'string' || !UUID_RE.test(paymentId)) {
     return fail({ code: 'DELETE_FAILED', status: 400 })
+  }
+  if (typeof reason !== 'string' || reason.trim() === '') {
+    return fail({ code: 'REASON_REQUIRED', status: 400 })
+  }
+  if (typeof confirmPaymentId !== 'string' || confirmPaymentId.trim() === '') {
+    return fail({ code: 'ID_MISMATCH', status: 400 })
   }
 
   // Step 3. The sweep must be ATTEMPTABLE before anything is frozen. A missing
@@ -96,9 +111,13 @@ export async function POST(req: NextRequest) {
   const service = createServiceClient(url, serviceKey)
 
   // Step 4. Authorize, freeze, and take the manifest. Run as the signed-in USER
-  // so auth.uid(), the ownership rule and the admin check all apply to them.
+  // so auth.uid(), the admin check, the reason gate and the typed-Payment-ID
+  // confirmation all apply to them. begin_finance_payment_deletion
+  // (20261011000000 §3d) validates both inputs itself — this route passes
+  // them through and adds no rule of its own.
   const { data: claim, error: claimErr } = await authClient.rpc(
-    'begin_finance_payment_deletion', { p_payment_id: paymentId })
+    'begin_finance_payment_deletion',
+    { p_payment_id: paymentId, p_reason: reason, p_confirm_payment_id: confirmPaymentId })
   if (claimErr) {
     const code = classifyPaymentDeletionError(claimErr)
     return fail({ code, status: HTTP_FOR[code] ?? 500 })

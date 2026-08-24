@@ -229,20 +229,24 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.ok(!sql().includes('20261008000000_finance_payment_classification'))
   })
 
-  test('109 AND 110 both live here, in that order, and neither is duplicated', () => {
+  test('109, 110 AND 111 all live here, in that order, and none is duplicated', () => {
     // THE WHOLE REASON THIS FEATURE IS ON THIS BRANCH. 110 must be applied after
     // 109; two unapplied migrations in one tree apply in filename order whatever
     // sequence the branches merge in, and a 110 sitting on a branch without 109
-    // makes that branch un-deployable on its own.
+    // makes that branch un-deployable on its own. 111 (Payment ID, admin-only
+    // payment deletion, multi-target allocation) extends 110's own durable
+    // claim protocol and so is stacked after it for the same reason.
     const files = readdirSync(join(ROOT, 'supabase/migrations'))
     assert.equal(files.filter(f => f.startsWith('20261009')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261010')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261011')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .sort()
     assert.deepEqual(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
+      '20261011000000_admin_payment_deletion_and_payment_id.sql',
     ])
   })
 

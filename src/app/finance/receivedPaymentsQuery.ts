@@ -65,12 +65,15 @@ export type { QueryClause } from './listQuery'
  * The columns a search term is matched against, in the order a reader would
  * expect them to be tried.
  *
- * `request_number` LEADS, and its absence was defect 3: it is the first column
- * the table draws, and a Finance user reading a payment reference off an email
- * types exactly that. `allocated_order_number` is here for the same reason —
- * the row displays it, so the row must be findable by it.
+ * `human_payment_id` LEADS — it is now THE Payment ID shown to users
+ * (20261011000000 §1), and the row's Payment ID column prints it, not
+ * `request_number`. `request_number` stays searchable too: it is still in the
+ * database and still on historical records somebody may have written down.
+ * `allocated_order_number` is here for the same reason as both — the row
+ * displays it, so the row must be findable by it.
  */
 export const RECEIVED_PAYMENTS_SEARCH_COLUMNS = [
+  'human_payment_id',
   'request_number',
   'client_name',
   'order_number',

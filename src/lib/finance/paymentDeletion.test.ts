@@ -1,27 +1,31 @@
-// Deleting one payment entry — the rule, the authority, and the sequence.
+// Deleting one payment entry — the rule, the authority, and the client-facing
+// policy over /api/finance/payments/delete.
 //
-// WHAT THIS SUITE IS FOR. A PI Draft could not be deleted, the dialog told the
-// operator to delete the payments holding it, and Finance had no control that
-// would do it. The capability is in the database, but reaching it safely from
-// two round trips is not — a count and a delete leave a gap a concurrent proof
-// upload can fall into and be cascaded away with no durable record. These tests
-// pin the parts this branch controls: which statuses the database really
-// allows, who it really allows, and that the delete action itself now touches
-// neither the database nor storage on any path.
+// REVISED RULE (20261011000000): deletion is ADMIN-ONLY, for a payment of ANY
+// status — Payment Requests and Confirmed Payments alike. Self-delete by the
+// submitter of an unapproved payment, which the previous rule allowed, is
+// withdrawn. deletePaymentEntry is a thin client over the durable claim
+// protocol route; every actual decision (authority, the reason gate, the typed
+// Payment ID) is the server's and the database's, re-derived on every call —
+// this suite pins the client-side policy (who sees the button) and the shape
+// of what the client sends and reports back, never a second copy of server
+// authority.
 
 import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { describe, test, afterEach } from 'node:test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   DELETABLE_PAYMENT_STATUSES,
-  PAYMENT_DELETE_UNAVAILABLE_MESSAGE,
   canDeletePayment,
   deletePaymentEntry,
   describePaymentAllocations,
+  isConfirmedPaymentStatus,
   isPaymentDeletableStatus,
+  paymentDeleteConfirmIdLabel,
 } from './paymentDeletion'
+import { REQUEST_STAGE_STATUSES } from '@/app/finance/paymentRouting'
+import { CONFIRMED_PAYMENT_STATUSES } from './paymentSurfaces'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
@@ -29,59 +33,55 @@ const code = (src: string) => src.split('\n')
   .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
   .join('\n')
 
-const ADMIN   = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
-const OWNER   = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
-const STRANGER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
-const PAYMENT = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
-
-const VERIFIED = ['approved_unlinked', 'approved_linked'] as const
+const PAYMENT_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+const HUMAN_ID = 'P-AA-0047'
 
 // ── The status rule is the database's, not this module's ─────────────────────
 
 describe('which statuses a payment may be deleted from', () => {
   const CHECK = read('supabase/migrations/20260628000200_create_finance_payment_requests.sql')
-  const VERIFIER = read('supabase/migrations/20260918000000_finance_payment_allocations.sql')
 
   /**
-   * THE LIST IS DERIVED, NOT REMEMBERED. Every status the CHECK constraint
-   * admits, minus every status finance_payment_status_is_verified() calls
-   * verified, must be exactly what this module offers. A sixth status added to
-   * the constraint tomorrow fails this test rather than quietly becoming
-   * deletable, and a verified one moved out of that function fails it rather
-   * than quietly losing its protection.
+   * EVERY STATUS, NOT THE UNAPPROVED THREE. Deletion stopped being status-gated
+   * (20261011000000 §3a: "admin, any status") and became actor-gated instead —
+   * so DELETABLE_PAYMENT_STATUSES is now exactly the CHECK constraint's full
+   * enum, derived rather than remembered, so a sixth status added tomorrow
+   * fails this test rather than quietly becoming unreachable.
    */
-  test('deletable is exactly the CHECK constraint minus the canonical verified pair', () => {
+  test('deletable is exactly the CHECK constraint, no status excluded', () => {
     const block = CHECK.slice(CHECK.indexOf('check (status in ('))
     const declared = [...block.slice(0, block.indexOf('))')).matchAll(/'([a-z_]+)'/g)].map(m => m[1])
     assert.equal(declared.length, 5, `the constraint should admit five statuses; saw ${declared.join(', ')}`)
-
-    const verifierBody = VERIFIER.slice(VERIFIER.indexOf('function public.finance_payment_status_is_verified'))
-    const verified = [...verifierBody.slice(0, verifierBody.indexOf('$$;')).matchAll(/'([a-z_]+)'/g)].map(m => m[1])
-    assert.deepEqual(verified.sort(), [...VERIFIED].sort(),
-      'the canonical definition of verified must still name exactly these two')
-
-    assert.deepEqual(
-      declared.filter(status => !verified.includes(status)).sort(),
-      [...DELETABLE_PAYMENT_STATUSES].sort(),
-      'deletable statuses must be the complement of verified, with nothing invented and nothing missed')
+    assert.deepEqual(declared.sort(), [...DELETABLE_PAYMENT_STATUSES].sort())
   })
 
-  test('a pending payment is deletable', () => {
+  test('DELETABLE_PAYMENT_STATUSES is the union of the request-stage and confirmed statuses', () => {
+    assert.deepEqual(
+      [...DELETABLE_PAYMENT_STATUSES].sort(),
+      [...REQUEST_STAGE_STATUSES, ...CONFIRMED_PAYMENT_STATUSES].sort())
+  })
+
+  test('a pending payment is a deletable status', () => {
     assert.equal(isPaymentDeletableStatus('pending_approval'), true)
   })
 
-  test('a payment awaiting clarification is deletable', () => {
+  test('a payment awaiting clarification is a deletable status', () => {
     assert.equal(isPaymentDeletableStatus('needs_clarification'), true)
   })
 
-  test('a rejected payment is deletable', () => {
+  test('a rejected payment is a deletable status', () => {
     assert.equal(isPaymentDeletableStatus('rejected'), true)
   })
 
-  test('neither verified status is', () => {
-    for (const status of VERIFIED) {
-      assert.equal(isPaymentDeletableStatus(status), false, `${status} must never be deletable`)
-    }
+  /**
+   * A CONFIRMED PAYMENT MAY NOW BE DELETED TOO — the reversal from the previous
+   * rule, which excluded approved_unlinked/approved_linked entirely. Whether it
+   * actually IS deleted still turns on canDeletePayment (admin-only) below, and
+   * on the server's reason + typed-Payment-ID gates.
+   */
+  test('both Confirmed Payment statuses are deletable statuses now', () => {
+    assert.equal(isPaymentDeletableStatus('approved_unlinked'), true)
+    assert.equal(isPaymentDeletableStatus('approved_linked'), true)
   })
 
   test('an unknown, absent or empty status is not', () => {
@@ -90,196 +90,192 @@ describe('which statuses a payment may be deleted from', () => {
     }
   })
 
+  test('isConfirmedPaymentStatus agrees with CONFIRMED_PAYMENT_STATUSES', () => {
+    assert.equal(isConfirmedPaymentStatus('approved_unlinked'), true)
+    assert.equal(isConfirmedPaymentStatus('approved_linked'), true)
+    assert.equal(isConfirmedPaymentStatus('pending_approval'), false)
+    assert.equal(isConfirmedPaymentStatus(null), false)
+  })
+
   /**
-   * THE DATABASE IS WHAT ACTUALLY REFUSES, and it refuses everybody. The guard
-   * carries no admin branch and no auth.uid() IS NULL branch — only the test
-   * data cleanup context, which is a different, gated feature entirely.
+   * THE DATABASE IS WHAT ACTUALLY REFUSES an approved delete for every OTHER
+   * caller. The base guard (20260705000000) carries no blanket admin branch and
+   * no auth.uid() IS NULL branch — 20261011000000 §3c widens it with exactly
+   * one narrow, scoped exemption (in_finance_payment_deletion_finalization),
+   * never a blanket one. This still asserts the ORIGINAL text never granted a
+   * bare admin bypass.
    */
-  test('the delete guard exempts nobody, so no UI mistake can reach verified money', () => {
+  test('the base delete guard exempts nobody outright, so no UI mistake could once have reached verified money', () => {
     const guard = read('supabase/migrations/20260705000000_protect_finalized_orders_and_payments.sql')
     const body = guard.slice(
       guard.indexOf('create or replace function public.finance_payment_requests_guard_approved_delete'),
       guard.indexOf('create trigger finance_payment_requests_guard_approved_delete'))
     assert.ok(body.includes('PAYMENT_APPROVED_PERMANENT'), 'it must refuse by name')
     assert.ok(body.includes("old.status in ('approved_unlinked', 'approved_linked')"))
-    assert.ok(!/u\.role = 'admin'/.test(body), 'an admin exemption would make the protection advisory')
+    assert.ok(!/u\.role = 'admin'/.test(body), 'a blanket admin exemption would make the protection advisory')
     assert.ok(!/v_actor is null/.test(body), 'a service-role exemption would do the same')
   })
 
   /**
-   * ORDERING IS LOAD-BEARING and the migration says so: the guard sorts before
-   * the release (g < r), so a verified payment is refused BEFORE its allocations
-   * are touched.
+   * THE WIDENED GUARD (20261011000000 §3c) exempts exactly one narrow,
+   * transaction-scoped case — never a blanket admin or unauthenticated one.
    */
-  test('the release trigger sorts after the guard, so nothing is released before the refusal', () => {
-    assert.ok('finance_payment_requests_guard_approved_delete'
-      < 'finance_payment_requests_release_allocations')
+  test('the widened guard exempts only the one finalize transaction, never a blanket role', () => {
+    const migration = read('supabase/migrations/20261011000000_admin_payment_deletion_and_payment_id.sql')
+    const body = migration.slice(
+      migration.indexOf('create or replace function public.finance_payment_requests_guard_approved_delete'),
+      migration.indexOf('revoke execute on function public.finance_payment_requests_guard_approved_delete'))
+    assert.ok(body.includes('in_finance_payment_deletion_finalization'),
+      'the exemption must be the narrow, scoped predicate — not a role check')
+    assert.ok(!/u\.role = 'admin'/.test(body), 'still no blanket admin exemption')
   })
 })
 
-// ── Who may delete ───────────────────────────────────────────────────────────
+// ── Who may delete — admin-only, for any status ───────────────────────────────
 
 describe('who the database lets delete a payment, and therefore who is offered it', () => {
-  const pending = { status: 'pending_approval', submitted_by: OWNER }
-
-  test('an administrator may delete any unapproved payment', () => {
-    assert.equal(canDeletePayment(pending, { isAdmin: true, userId: STRANGER }), true)
+  test('an administrator may delete an unapproved payment', () => {
+    assert.equal(canDeletePayment({ status: 'pending_approval' }, { isAdmin: true }), true)
   })
 
-  test('the person who raised it may delete their own', () => {
-    assert.equal(canDeletePayment(pending, { isAdmin: false, userId: OWNER }), true)
-  })
-
-  test('somebody else may not, however senior', () => {
-    assert.equal(canDeletePayment(pending, { isAdmin: false, userId: STRANGER }), false)
+  test('an administrator may delete a Confirmed Payment too — the reversal from the previous rule', () => {
+    assert.equal(canDeletePayment({ status: 'approved_unlinked' }, { isAdmin: true }), true)
+    assert.equal(canDeletePayment({ status: 'approved_linked' }, { isAdmin: true }), true)
   })
 
   /**
-   * NOT AN OVERSIGHT — A FINDING. No policy grants DELETE on
-   * finance_payment_requests by Finance permission, so a Finance manager who did
-   * not raise the payment gets a delete that matches zero rows and a message
-   * saying the payment is verified, which is the least true thing available.
-   * This is asserted so that widening it stays a deliberate database decision.
+   * SELF-DELETE IS WITHDRAWN. The previous rule let the submitter of their own
+   * unapproved payment delete it; canDeletePayment no longer takes a submitter
+   * or actor id at all, so there is no branch left that could grant it.
    */
-  test('no DELETE policy on the payments table is granted by Finance permission', () => {
-    const owner = read('supabase/migrations/20260700000000_finance_payment_request_owner_delete.sql')
-    const admin = read('supabase/migrations/20260654_finance_admin_delete_policy.sql')
-    assert.ok(owner.includes("submitted_by = auth.uid()"), 'the creator policy exists')
-    assert.ok(admin.includes("users.role = 'admin'"), 'the admin policy exists')
-    for (const src of [owner, admin]) {
-      assert.ok(!/actor_has_module_permission\s*\(\s*'finance'/.test(code(src)),
-        'a Finance-permission DELETE grant would be a business decision, not a UI convenience')
+  test('a non-admin may not delete their own unapproved payment', () => {
+    assert.equal(canDeletePayment({ status: 'pending_approval' }, { isAdmin: false }), false)
+  })
+
+  test('a non-admin may not delete any payment, of any status', () => {
+    for (const status of DELETABLE_PAYMENT_STATUSES) {
+      assert.equal(canDeletePayment({ status }, { isAdmin: false }), false, status)
     }
   })
 
-  test('a signed-out or still-loading reader is offered nothing', () => {
-    assert.equal(canDeletePayment(pending, { isAdmin: false, userId: null }), false)
-    assert.equal(canDeletePayment(pending, { isAdmin: false, userId: undefined }), false)
+  test('an admin may delete a payment of every status the database admits', () => {
+    for (const status of DELETABLE_PAYMENT_STATUSES) {
+      assert.equal(canDeletePayment({ status }, { isAdmin: true }), true, status)
+    }
   })
 
-  test('neither owner nor admin may delete a verified payment', () => {
-    for (const status of VERIFIED) {
-      assert.equal(canDeletePayment({ status, submitted_by: OWNER }, { isAdmin: true, userId: ADMIN }), false)
-      assert.equal(canDeletePayment({ status, submitted_by: OWNER }, { isAdmin: false, userId: OWNER }), false)
-    }
+  test('an unrecognised status is refused even for an admin — a drawing rule only, the RPC re-derives authority', () => {
+    assert.equal(canDeletePayment({ status: 'draft' }, { isAdmin: true }), false)
+  })
+
+  test('finance_payment_deletable_by (the real authority) grants no submitted_by branch', () => {
+    const migration = read('supabase/migrations/20261011000000_admin_payment_deletion_and_payment_id.sql')
+    const body = migration.slice(
+      migration.indexOf('create or replace function public.finance_payment_deletable_by'),
+      migration.indexOf('comment on function public.finance_payment_deletable_by'))
+    assert.ok(!code(body).includes('submitted_by'), 'self-delete must not survive anywhere in the real authority')
+    assert.ok(body.includes("u.role = 'admin'"), 'admin is the only branch')
   })
 })
 
-// ── The sequence ─────────────────────────────────────────────────────────────
-//
-// THE RACE THIS REPLACES. A count over the network, then a DELETE over a second
-// round trip, is two statements with no lock held between them — a proof
-// inserted in the gap is cascaded away by the DELETE along with the only row
-// that named its storage object. That is true whether the count read zero or
-// not: an "apparently zero-proof" payment is only a payment whose proof count
-// had not yet become nonzero at the moment it was asked. So this build makes no
-// distinction between the two, and no call at all.
+// ── The client-facing confirmation label ──────────────────────────────────────
 
-type Call = { kind: string; detail?: unknown }
+describe('paymentDeleteConfirmIdLabel', () => {
+  test('names the exact Payment ID to type', () => {
+    assert.equal(paymentDeleteConfirmIdLabel('P-AA-0047'), 'Type P-AA-0047 to confirm')
+  })
+})
 
-function trackedSupabase() {
-  const calls: Call[] = []
-  const supabase = {
-    from(table: string) {
-      calls.push({ kind: 'from', detail: { table } })
+// ── deletePaymentEntry — a thin client over the durable claim route ──────────
+
+describe('deletePaymentEntry', () => {
+  const payment = { id: PAYMENT_ID, human_payment_id: HUMAN_ID, status: 'approved_unlinked' }
+  let originalFetch: typeof fetch
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch
+  })
+
+  function stubFetch(handler: (url: string, init: RequestInit) => { status: number; body: unknown }) {
+    originalFetch = globalThis.fetch
+    globalThis.fetch = (async (url: string, init: RequestInit) => {
+      const { status, body } = handler(url, init)
       return {
-        select() { throw new Error(`must not query ${table}`) },
-        delete() { throw new Error(`must not delete from ${table}`) },
-      }
-    },
-    storage: {
-      from(bucket: string) {
-        calls.push({ kind: 'storage.from', detail: { bucket } })
-        return { remove() { throw new Error(`must not remove from ${bucket}`) } }
-      },
-    },
-  } as unknown as SupabaseClient
-  return { supabase, calls }
-}
+        ok: status >= 200 && status < 300,
+        status,
+        json: async () => body,
+      } as Response
+    }) as typeof fetch
+  }
 
-const describeError = (e: { code?: string; message: string }) => e.message
-const payment = { id: PAYMENT, request_number: 'PR-1', status: 'pending_approval' }
+  test('posts exactly {paymentId, reason, confirmPaymentId} to the delete route', async () => {
+    let sentBody: unknown = null
+    let sentUrl = ''
+    stubFetch((url, init) => {
+      sentUrl = url
+      sentBody = JSON.parse(String(init.body))
+      return { status: 200, body: { ok: true, allocationsReleased: 2, alreadyDeleted: false } }
+    })
 
-describe('the delete action, which refuses rather than racing', () => {
-  test('deletion performs no database call — no count, no DELETE', async () => {
-    const { supabase, calls } = trackedSupabase()
-    await deletePaymentEntry(supabase, payment, describeError)
-    assert.deepEqual(calls, [], 'nothing may be read or written for any payment, of any status')
+    await deletePaymentEntry(payment, 'Duplicate entry', HUMAN_ID)
+
+    assert.equal(sentUrl, '/api/finance/payments/delete')
+    assert.deepEqual(sentBody, {
+      paymentId: PAYMENT_ID,
+      reason: 'Duplicate entry',
+      confirmPaymentId: HUMAN_ID,
+    })
   })
 
-  test('deletion performs no storage call', async () => {
-    const { supabase, calls } = trackedSupabase()
-    await deletePaymentEntry(supabase, payment, describeError)
-    assert.ok(!calls.some(c => c.kind === 'storage.from'), 'no object in the bucket is ever touched')
+  test('a successful response reports success with the released count', async () => {
+    stubFetch(() => ({ status: 200, body: { ok: true, allocationsReleased: 3, alreadyDeleted: false } }))
+    const result = await deletePaymentEntry(payment, 'reason', HUMAN_ID)
+    assert.deepEqual(result, { outcome: 'success', allocationsReleased: 3, alreadyDeleted: false })
   })
 
-  test('a proof-backed payment refuses safely, and nothing is touched', async () => {
-    const { supabase, calls } = trackedSupabase()
-    const result = await deletePaymentEntry(supabase, payment, describeError)
-    assert.deepEqual(result, { outcome: 'unavailable', message: PAYMENT_DELETE_UNAVAILABLE_MESSAGE })
-    assert.deepEqual(calls, [])
+  test('a resumed (already-deleted) success is reported as such', async () => {
+    stubFetch(() => ({ status: 200, body: { ok: true, allocationsReleased: 0, alreadyDeleted: true } }))
+    const result = await deletePaymentEntry(payment, 'reason', HUMAN_ID)
+    assert.equal(result.outcome, 'success')
+    assert.ok(result.outcome === 'success' && result.alreadyDeleted === true)
   })
 
-  test('an apparently zero-proof payment refuses exactly the same way', async () => {
-    // "Apparently zero-proof" is a belief the screen holds, never verified here
-    // against the database — that is the point. The result is byte-for-byte the
-    // same as the proof-backed case, because nothing distinguishes the two
-    // without a query this module deliberately does not make.
-    const { supabase } = trackedSupabase()
-    const proofBacked = await deletePaymentEntry(supabase, payment, describeError)
-    const apparentlyZero = await deletePaymentEntry(
-      supabase, { ...payment, status: 'needs_clarification' }, describeError)
-    assert.deepEqual(apparentlyZero, proofBacked)
-    assert.equal(apparentlyZero.outcome, 'unavailable')
+  test('a REASON_REQUIRED refusal is reported as a failure, not thrown', async () => {
+    stubFetch(() => ({ status: 400, body: { ok: false, code: 'REASON_REQUIRED' } }))
+    const result = await deletePaymentEntry(payment, '', '')
+    assert.equal(result.outcome, 'failure')
+    assert.ok(result.outcome === 'failure' && result.code === 'REASON_REQUIRED')
   })
 
-  test('a rejected payment refuses the same way too', async () => {
-    const { supabase } = trackedSupabase()
-    const result = await deletePaymentEntry(supabase, { ...payment, status: 'rejected' }, describeError)
-    assert.equal(result.outcome, 'unavailable')
+  test('an ID_MISMATCH refusal is reported as a failure', async () => {
+    stubFetch(() => ({ status: 400, body: { ok: false, code: 'ID_MISMATCH' } }))
+    const result = await deletePaymentEntry(payment, 'reason', 'not the right id')
+    assert.equal(result.outcome, 'failure')
+    assert.ok(result.outcome === 'failure' && result.code === 'ID_MISMATCH')
   })
 
-  test('the message clearly says no data was removed', () => {
-    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /No data was removed\./)
-    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /next version/)
+  test('an APPROVED refusal is reported as non-retryable', async () => {
+    stubFetch(() => ({ status: 409, body: { ok: false, code: 'APPROVED' } }))
+    const result = await deletePaymentEntry(payment, 'reason', HUMAN_ID)
+    assert.equal(result.outcome, 'failure')
+    assert.ok(result.outcome === 'failure' && result.retryable === false)
   })
 
-  test('no “proof-orphaned” result exists, and no other outcome does either', () => {
-    const src = read('src/lib/finance/paymentDeletion.ts')
-    const outcomes = [...src.matchAll(/outcome: '([a-z-]+)'/g)].map(m => m[1])
-    assert.ok(!outcomes.includes('proof-orphaned'),
-      'an orphaned proof must never be reportable as a settled outcome')
-    assert.ok(!outcomes.includes('deleted'),
-      'this build never reports a payment as deleted, because it never deletes one')
-    assert.deepEqual([...new Set(outcomes)].sort(), ['unavailable'])
+  test('a network failure is reported as a retryable failure, never thrown', async () => {
+    originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => { throw new Error('network down') }) as typeof fetch
+    const result = await deletePaymentEntry(payment, 'reason', HUMAN_ID)
+    assert.equal(result.outcome, 'failure')
+    assert.ok(result.outcome === 'failure' && result.retryable === true)
   })
 
-  test('the module makes no storage call anywhere in its source', () => {
-    const src = code(read('src/lib/finance/paymentDeletion.ts'))
-    assert.ok(!src.includes('.storage'), 'nothing here may touch the bucket')
-    assert.ok(!src.includes('PROOF_BUCKET'), 'and it has no business naming one')
-  })
-
-  test('the module issues no DELETE and no SELECT against Supabase anywhere in its source', () => {
-    const src = code(read('src/lib/finance/paymentDeletion.ts'))
-    assert.ok(!/\.from\(/.test(src), 'no table may be reached at all — not to read, not to write')
-  })
-
-  test('a repeated attempt reports the same settled answer every time', async () => {
-    const { supabase } = trackedSupabase()
-    const first  = await deletePaymentEntry(supabase, payment, describeError)
-    const second = await deletePaymentEntry(supabase, payment, describeError)
-    assert.deepEqual(first, second, 'asking twice must not produce two different truths')
-  })
-
-  test('this module never writes to the allocations table', () => {
-    const src = code(read('src/lib/finance/paymentDeletion.ts'))
-    assert.ok(!src.includes('finance_payment_allocations'))
-  })
-
-  test('DELETABLE_PAYMENT_STATUSES is unchanged: visibility of the button is untouched by the refusal', () => {
-    assert.deepEqual([...DELETABLE_PAYMENT_STATUSES].sort(),
-      ['needs_clarification', 'pending_approval', 'rejected'])
+  test('an unparseable response body falls back to a generic retryable failure', async () => {
+    originalFetch = globalThis.fetch
+    globalThis.fetch = (async () => ({
+      ok: false, status: 500, json: async () => { throw new Error('not json') },
+    })) as unknown as typeof fetch
+    const result = await deletePaymentEntry(payment, 'reason', HUMAN_ID)
+    assert.equal(result.outcome, 'failure')
   })
 })
 

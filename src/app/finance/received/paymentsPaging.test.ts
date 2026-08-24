@@ -101,10 +101,13 @@ describe('exact counts', () => {
 // ══ 2. Server-side filtering ══════════════════════════════════════════════════
 
 describe('every narrowing is the database\'s', () => {
-  test('search, the view, the dates and the allocation state are all sent', () => {
+  test('search, the confirmed-allocation filter, the dates and the allocation state are all sent', () => {
+    // paymentViewFilterClauses(filters.view) — the four-view classification
+    // tab strip — is RETIRED for Confirmed Payments (Requirement 1) in favour
+    // of a real predicate over confirmed_allocation_status.
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
-      'paymentViewFilterClauses(filters.view)',
+      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
       'allocationFilterClauses(filters.allocation)',
@@ -116,7 +119,7 @@ describe('every narrowing is the database\'s', () => {
   test('and the page range is applied to the SAME query', () => {
     // So it is the narrowing that is paged, not the page that is narrowed.
     assert.ok(loader.includes('.range(range.from, range.to)'))
-    const filterAt = loader.indexOf('paymentViewFilterClauses')
+    const filterAt = loader.indexOf("scoped.eq('confirmed_allocation_status'")
     const rangeAt = loader.indexOf('.range(range.from, range.to)')
     assert.ok(filterAt > 0 && rangeAt > filterAt,
       'the range must be applied after the filters, to the same builder')
@@ -325,9 +328,23 @@ describe('deep links', () => {
 // ══ 7. The narrowing and the count cannot disagree ════════════════════════════
 
 describe('the list and the badge beside it are one predicate', () => {
-  test('both build their filters from paymentViewClauses, not from a copy', () => {
-    assert.ok(view.includes('paymentViewFilterClauses(filters.view)'))
+  /**
+   * REVISED (Requirement 1). The four-view classification tab strip is
+   * retired from the Confirmed Payments LIST — it now filters on
+   * confirmed_allocation_status instead — so the list no longer shares
+   * paymentViewFilterClauses with the sidebar's count hook. The count hook
+   * itself is unchanged and still builds every one of its four figures from
+   * paymentViewClauses, which is what the single "Confirmed Payments" sidebar
+   * badge (the 'all' case — no clause) now reads.
+   */
+  test('the sidebar badge hook still builds its filters from paymentViewClauses, not from a copy', () => {
     assert.ok(read(COUNTS).includes('paymentViewClauses(view)'))
+  })
+
+  test('the list itself no longer applies the four-view classification — it uses confirmed_allocation_status', () => {
+    assert.ok(!view.includes('paymentViewFilterClauses'),
+      'the retired mechanism must not survive anywhere in the list query')
+    assert.ok(view.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"))
   })
 
   test('and from the same status scope — the confirmed half, on both', () => {
