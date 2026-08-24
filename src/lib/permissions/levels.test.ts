@@ -31,7 +31,11 @@ import {
 // Real module action sets, mirroring what production registers (verified
 // against permission_modules / module_permission_actions).
 const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'allocate', 'allocate_correct']
-const ORDERS = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee', 'approve_order', 'approve_advance_exception']
+// Orders no longer registers `approve` or `can_be_order_assignee`: both existed
+// only for the retired Order Request workflow (20261007000000). The fixture
+// mirrors what production registers, so a preset applied to it produces exactly
+// what an administrator would see.
+const ORDERS = ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order', 'approve_advance_exception']
 const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
 const SAMPLES = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'dispatch', 'receive', 'mark_lost', 'close']
 const PAYROLL = ['view', 'edit', 'approve', 'export', 'manage', 'admin']
@@ -142,8 +146,14 @@ describe('Manager never receives a protected action', () => {
     }
   })
 
-  test('order-assignee authority is never granted by Manager', () => {
-    assert.equal(presetAllowedActions('manager', ORDERS).can_be_order_assignee, false)
+  test('the two retired Orders actions are not even in the module any more', () => {
+    // `approve` (Order Request conversion) and `can_be_order_assignee` were
+    // registered against Orders until the workflow was retired. An action a
+    // module does not declare is never invented by a preset — which is stronger
+    // than protecting it, and is why neither appears in the map at all.
+    const map = presetAllowedActions('manager', ORDERS)
+    assert.equal('approve' in map, false)
+    assert.equal('can_be_order_assignee' in map, false)
   })
 
   test('neither PI review nor advance-exception authority is granted by any preset', () => {
@@ -171,10 +181,17 @@ describe('Manager never receives a protected action', () => {
     // it the next time an administrator picks a preset.
     //
     // Grew by one again in 20260908000000: `orders.approve_order`, the
-    // authority to review an imported PI submission and — from the approval
-    // phase — to turn it into a numbered Order. It is a SEPARATE action from
-    // `approve`, which is Order Request conversion, precisely so that neither
-    // implies the other.
+    // authority to review an imported PI submission and turn it into a numbered
+    // Order. It was deliberately a SEPARATE action from `approve` — which meant
+    // Order Request conversion — precisely so that neither implied the other.
+    //
+    // AND SHRANK BY ONE when the Order Request workflow was retired
+    // (20261007000000): `can_be_order_assignee` named a request's assignee and
+    // is read by nothing now that no request can be created or edited. It is
+    // removed from the set because the Orders module no longer REGISTERS it —
+    // an action nothing declares cannot be granted, which is stronger than
+    // protecting it. Grants already made are not deleted; they resolve to
+    // nothing. `orders.approve` went the same way and was never protected.
     //
     // And by one more in 20260913000000: `orders.approve_advance_exception`,
     // the authority to decide whether BOE will start an order on less than its
@@ -192,7 +209,7 @@ describe('Manager never receives a protected action', () => {
     // that decision can be held by three different people.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
-      'approve_order', 'assign', 'can_be_order_assignee', 'close', 'delete',
+      'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
       'view_all', 'view_quotations',
     ])
@@ -495,7 +512,12 @@ describe('enabling a module preserves existing child permissions', () => {
   test('3. no protected action is ever cleared, in any module', () => {
     const cases: [string, readonly string[], string[]][] = [
       ['quotations',   TASKS,        ['view_quotations', 'manage_quotations']],
-      ['orders',       ORDERS_FULL,  ['view_all', 'can_be_order_assignee', 'delete', 'manage']],
+      // `can_be_order_assignee` is no longer in this list because Orders no
+      // longer REGISTERS it — the Order Request workflow it named an assignee
+      // for is retired (20261007000000). enableModuleEntry only ever describes
+      // the actions a module declares, so naming it here would assert that an
+      // action nobody can hold survives a change nobody can make.
+      ['orders',       ORDERS_FULL,  ['view_all', 'approve_order', 'delete', 'manage']],
       ['finance',      FINANCE_FULL, ['view_all', 'approve', 'delete', 'manage']],
       ['assets',       ASSETS,       ['assign', 'manage', 'delete']],
       ['payroll',      PAYROLL,      ['admin', 'manage']],

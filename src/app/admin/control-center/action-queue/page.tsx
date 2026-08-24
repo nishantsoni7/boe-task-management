@@ -9,7 +9,8 @@ import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
 import { useViewAs } from '@/hooks/useViewAs'
-import { RECEIVED_PAYMENTS_SOURCE, applyLinkageScope } from '@/app/finance/paymentRouting'
+import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
+import { paymentViewClauses } from '@/lib/finance/paymentClassification'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,7 @@ type QueueCategory =
   | 'finance_pending_approval'
   | 'finance_needs_clarification'
   | 'finance_suspense'
-  | 'order_request_conversion'
+  | 'order_pi_review'
   | 'order_change_request'
 
 type ActionQueueItem = {
@@ -36,23 +37,25 @@ const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string 
   finance_pending_approval:    { label: 'Payment approval',    actionLabel: 'Approve payment' },
   finance_needs_clarification: { label: 'Needs clarification', actionLabel: 'Review clarification' },
   finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Link suspense payment' },
-  order_request_conversion:    { label: 'Order Request',       actionLabel: 'Convert Order Request' },
+  order_pi_review:             { label: 'PI review',           actionLabel: 'Review submitted PI' },
   order_change_request:        { label: 'Order change',        actionLabel: 'Review change request' },
 }
 
 // Deep-links into the destination page's existing tab/record/modal query-param
 // handling (added alongside this queue) — never a new route or page.
 //
-// The Order Request link points at the request's own detail page, which owns
-// the Convert action; `action=convert` is re-checked there against the same
-// admin + status='submitted' condition the manual button requires, and `from`
-// is the list tab its Back control returns to.
+// THE ORDER REQUEST CONVERSION ROW IS GONE. It used to sit here, linking to
+// /orders/requests/[id]?action=convert — an action the database now refuses
+// (20261007000000). What replaced it in the business is the PI review queue, so
+// that is what this queue lists: a submitted PI Draft, linking to the PI's own
+// detail page, which owns the review decision and re-derives the authority for
+// itself.
 function buildHref(category: QueueCategory, id: string): string {
   switch (category) {
     case 'finance_pending_approval':    return `/finance?tab=pending&request=${id}`
     case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
     case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
-    case 'order_request_conversion':    return `/orders/requests/${id}?from=pending&action=convert`
+    case 'order_pi_review':             return `/orders/drafts/${id}`
     // The Order detail page owns the Review dialog, and its Change Requests
     // card is where the pending row already lives — so this links to the Order,
     // not to the request. `id` here is therefore the ORDER's id, which is why
@@ -90,13 +93,13 @@ type FinanceRow = {
   submitted_by_name?: string | null
 }
 
-type OrderRequestRow = {
+type PiReviewRow = {
   id: string
-  request_number: string
-  client_name: string
-  total_value: number | null
+  client_name: string | null
+  grand_total: number | null
   created_at: string
-  created_by_user: { full_name: string } | null
+  submitted_at: string | null
+  submitted_by_user: { full_name: string } | null
 }
 
 type OrderChangeRequestRow = {
@@ -124,7 +127,7 @@ export default function ActionQueuePage() {
     setError('')
 
     const [
-      pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes, changeRequestsRes,
+      pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes,
     ] = await Promise.all([
       supabase
         .from('finance_payment_requests')
@@ -134,35 +137,39 @@ export default function ActionQueuePage() {
         .from('finance_payment_requests')
         .select('id, request_number, client_name, amount, status, created_at, updated_at, clarification_requested_at, approved_at, submitted_by_user:users!submitted_by(full_name)')
         .eq('status', 'needs_clarification'),
-      // SUSPENSE — money received that nothing at all points at, which is the
-      // only payment state that still needs an administrator. Read through
-      // RECEIVED_PAYMENTS_SOURCE and scoped by the SAME applyLinkageScope the
-      // Non-Linked Payments page and its counter use, so this queue cannot
-      // disagree with the page it links into.
+      // SUSPENSE — money that still needs somebody, which is the only payment
+      // state that needs an administrator. Read through RECEIVED_PAYMENTS_SOURCE
+      // and scoped by the SAME canonical classification the payments list and
+      // its counters use, so this queue cannot disagree with the page it links
+      // into.
       //
-      // Reading the parent columns alone would list money that final PI approval
-      // has already moved onto a numbered Order: the allocation moves, the
-      // payment record deliberately does not (20260921000000 §7), so order_id
-      // stays null. The row would offer "Link suspense payment" for money that is
-      // already attached, and the obvious click would attach it twice.
+      // `available` AND NOT "unlinked". Reading the parent columns alone would
+      // list money that final PI approval has already moved onto a numbered
+      // Order: the allocation moves, the payment record deliberately does not
+      // (20260921000000 §7), so order_id stays null. The row would offer "Link
+      // suspense payment" for money that is already attached, and the obvious
+      // click would attach it twice.
       //
-      // A payment parked on an Order Request (20260698) is likewise not an
-      // actionable suspense item — it links itself on conversion — and that
-      // exclusion is part of the same shared predicate.
-      applyLinkageScope(
+      // It also catches what the old predicate MISSED: a partly allocated
+      // payment with a balance left over, and money parked on a retired Order
+      // Request that nothing will ever come to collect. Both need an
+      // administrator, and neither was in this queue before.
+      paymentViewClauses('available').reduce(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (query: any, clause) => clause.kind === 'eq' ? query.eq(clause.column, clause.value) : query,
         supabase
           .from(RECEIVED_PAYMENTS_SOURCE)
           .select('id, request_number, client_name, amount, status, created_at, approved_at, submitted_by_name')
           .eq('status', 'approved_unlinked'),
-        'unlinked',
       ),
+
+      // SUBMITTED PI DRAFTS — the pre-approval queue that replaced Order Request
+      // conversion. order_submissions_select already scopes this to the people
+      // who may see each PI, and this page is admin-only besides.
       supabase
-        .from('order_requests')
-        .select('id, request_number, client_name, total_value, created_at, created_by_user:users!created_by(full_name)')
-        .eq('status', 'submitted')
-        // Only finalized submissions are actionable; upload-stage drafts
-        // (finalized_at IS NULL) have no verified Main PI and are not yet real.
-        .not('finalized_at', 'is', null),
+        .from('order_submissions')
+        .select('id, client_name, grand_total, created_at, submitted_at, submitted_by_user:users!submitted_by(full_name)')
+        .eq('status', 'submitted'),
       // Pending amendments and cancellations raised against Confirmed Orders
       // (20260816000000). order_change_requests_select already scopes this to
       // admins (and to a requester's own rows), so no role filter is needed
@@ -178,7 +185,7 @@ export default function ActionQueuePage() {
     ])
 
     // Handle partial failure honestly rather than silently rendering an empty queue.
-    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, orderRequestsRes, changeRequestsRes]
+    const failures = [pendingApprovalRes, needsClarificationRes, suspenseRes, piReviewRes, changeRequestsRes]
       .filter(r => r.error)
       .map(r => r.error?.message)
     if (failures.length > 0) {
@@ -234,17 +241,23 @@ export default function ActionQueuePage() {
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const r of ((orderRequestsRes.data ?? []) as any[]) as OrderRequestRow[]) {
+    for (const r of ((piReviewRes.data ?? []) as any[]) as PiReviewRow[]) {
       combined.push({
-        id: `order_request_conversion:${r.id}`,
-        category: 'order_request_conversion',
-        actionLabel: CATEGORY_META.order_request_conversion.actionLabel,
-        clientName: r.client_name,
-        ownerName: r.created_by_user?.full_name ?? null,
+        id: `order_pi_review:${r.id}`,
+        category: 'order_pi_review',
+        actionLabel: CATEGORY_META.order_pi_review.actionLabel,
+        // A PI read out of a workbook may carry no client name. The row still
+        // belongs in the queue — it is waiting on somebody either way — so it
+        // is labelled rather than dropped.
+        clientName: r.client_name ?? 'Unnamed client',
+        ownerName: r.submitted_by_user?.full_name ?? null,
         module: 'Orders',
-        amount: r.total_value,
-        pendingSince: r.created_at,
-        href: buildHref('order_request_conversion', r.id),
+        amount: r.grand_total,
+        // When it reached review, falling back to when it was created for a row
+        // written before submitted_at existed — an unknown must not read as
+        // "waiting since today".
+        pendingSince: r.submitted_at ?? r.created_at,
+        href: buildHref('order_pi_review', r.id),
       })
     }
 
@@ -303,7 +316,7 @@ export default function ActionQueuePage() {
     <ControlCenterLayout
       profile={profile}
       title="Action Queue"
-      subtitle="Finance and Order Requests currently waiting on an admin action"
+      subtitle="Finance and Orders work currently waiting on an admin action"
       onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
     >
       {error && (

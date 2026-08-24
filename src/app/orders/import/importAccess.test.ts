@@ -198,13 +198,23 @@ describe('the route gate, not just the button', () => {
 
 // ── The entry point ───────────────────────────────────────────────────────────
 
-describe('the New Order entry point', () => {
+describe('the Upload PI entry point', () => {
   test('is gated on the same capability the route enforces', () => {
     const source = read(ORDERS_DASHBOARD)
     assert.ok(source.includes('ordersCaps.canCreateOrder'), 'the button must ask the capability helper')
-    assert.ok(source.includes("router.push('/orders/import')"), 'and lead to the import route')
+    assert.ok(source.includes('NEW_ORDER_ACTION.href'), 'and lead to the import route')
+    assert.ok(read('src/lib/orders/orderDashboard.ts').includes("href: UPLOAD_PI_PATH"))
+    assert.ok(read('src/lib/orders/orderDashboard.ts').includes("export const UPLOAD_PI_PATH = '/orders/import'"))
     assert.ok(source.includes('NO_ORDERS_CAPABILITIES'),
       'capabilities must start empty so the button cannot flash before they resolve')
+  })
+
+  test('it is called Upload PI, not New Order', () => {
+    // What the control does is upload one document. An Order comes into
+    // existence at APPROVAL, with a number, and a button promising one here
+    // would describe a step this action cannot reach — which is exactly what the
+    // retired Order Request path used to promise.
+    assert.ok(read('src/lib/orders/orderDashboard.ts').includes("label: 'Upload PI'"))
   })
 
   test('PI Drafts is reachable from the Orders sidebar', () => {
@@ -214,10 +224,12 @@ describe('the New Order entry point', () => {
     assert.ok(nav.includes('FileText'), 'with a document icon')
   })
 
-  test('Order Requests navigation is untouched', () => {
+  test('the retired Order Request entry is gone from the navigation', () => {
     const nav = read(ORDERS_NAV)
-    assert.ok(nav.includes("path: '/orders/requests'"), 'the Order Requests nav item must remain')
-    assert.ok(nav.includes("path: '/orders/all'"), 'Confirmed Orders must remain')
+    const items = nav.slice(nav.indexOf('const navItems'), nav.indexOf('return ('))
+    assert.equal(items.includes("path: '/orders/requests'"), false,
+      'the nav must not offer a workflow the database refuses')
+    assert.ok(items.includes("path: '/orders/all'"), 'Confirmed Orders must remain')
   })
 })
 

@@ -4,6 +4,25 @@
 
 Last Updated: September 2026 — Order Management state, routes, storage and permissions. See "Order Management — where it stands".
 
+**Branch — Order Requests retired, and one payment classification.** The Order
+Request workflow is retired; PI Drafts are the only pre-approval Order workflow,
+and a Confirmed Order arises only from an approved PI. Payments carry one
+canonical classification — Orders, PI Drafts, Available — computed by the
+database. Both arrive with migrations `20261007000000` and `20261008000000`, and
+**both were applied successfully to the linked Supabase database on 2026-08-23**;
+`supabase migration list --linked` shows Local and Remote matching through
+`20261008000000`.
+
+`20261007000000` had refused its own apply three times before that, rolling back
+completely each time — see "The policy set the retirement leaves", "Asking the
+schema the right question" and "RESET ROLE is not a restore". The successful
+apply means those apply-time assertion blocks ran against real rows and passed.
+
+**Both migrations are now immutable.** Their bytes are pinned by SHA-256 in
+`src/lib/finance/participantAndOrderTotalSecurity.test.ts`. Any later database
+correction must be a new forward-only migration after `20261008000000`; neither
+file may be edited again.
+
 ---
 
 # MODULE STATUS OVERVIEW
@@ -1232,20 +1251,23 @@ exception approval, PI/Order continuity, numbering or documents changed.
 
 | Route | What it is |
 | --- | --- |
-| `/orders` | Dashboard: running Orders, five figures above them |
+| `/orders` | Dashboard: PI Drafts, review queue, Confirmed Orders and the money. **Branch:** reworked around the PI workflow |
 | `/orders/all` | Every Order the viewer may see, filtered and sorted |
 | `/orders/[id]` | One Confirmed Order. **Branch:** gains the approved-PI handoff and the documents card |
-| `/orders/drafts` | PI drafts and submissions |
+| `/orders/drafts` | PI drafts and submissions, with the review queue at the top |
 | `/orders/drafts/[submissionId]` | One PI: review, decisions, payments, approval |
 | `/orders/import` | Upload a PI workbook and read it back |
-| `/orders/requests` | Order Requests list |
-| `/orders/requests/[id]` | One Order Request |
+| `/orders/requests` | **Branch:** the retired-workflow notice, with an `Open PI Drafts` action |
+| `/orders/requests/[id]` | **Branch:** the same notice, plus the Confirmed Order a converted request became where the reader may open it |
 | `/orders/notifications` | Order Management notifications |
 
 API routes: `/api/orders/[id]`, `/api/orders/import/process-draft`,
-`/api/orders/notify`, `/api/orders/requests/*`, `/api/orders/submissions/*`,
-`/api/orders/test-data-cleanup`, and — **branch** —
+`/api/orders/submissions/*`, `/api/orders/test-data-cleanup`, and — **branch** —
 `POST /api/orders/[id]/documents`.
+
+**Branch — removed:** `/api/orders/notify` and `/api/orders/requests/*`. Every
+one of them served a step in the retired workflow, and each was reachable by
+POST whatever the sidebar offered.
 
 ### Storage — the `order-files` bucket
 
@@ -1306,3 +1328,381 @@ them.
 Retry never creates an Order, never allocates a number and never moves a payment
 allocation — asserted structurally in the migration, and behaviourally in
 `supabase/tests/order_document_generation_assertions.sql`.
+
+---
+
+# ORDER REQUESTS — RETIRED (branch, not applied)
+
+## The only Order lifecycle
+
+```
+  PI upload / import
+      ▼
+  PI Draft                      ← anything not finally approved stays here
+      ▼
+  submit for review
+      ▼
+  Finance / payment conditions
+      ▼
+  management approval
+      ▼
+  Confirmed Order               ← only an approved PI becomes one
+```
+
+There is no active Order Request creation, list, dashboard card, action,
+navigation entry or workflow. **Finance Payment Requests are a different record
+on a different table with a different lifecycle and remain fully active** —
+raising one, verifying one, correcting one, allocating one and reversing an
+allocation all behave exactly as they did.
+
+## What the retirement actually closes
+
+Hiding a screen is not retirement: a route gone from the sidebar is still a POST
+away, and an RPC somebody holds a reference to still runs. `20261007000000`
+closes the write paths, for every caller including the service role and any
+SECURITY DEFINER function:
+
+| Guard | Refuses |
+| --- | --- |
+| `order_requests_refuse_new` (BEFORE INSERT) | every new Order Request |
+| `order_requests_refuse_conversion` (BEFORE UPDATE) | the transition into `converted`, and a new `converted_order_id` |
+| `orders_refuse_request_provenance` (BEFORE INSERT) | a NEW Order carrying request provenance |
+| `zz_finance_payment_requests_refuse_request_target` | a payment that NEWLY names an Order Request |
+
+Plus the two dropped **permissive** write policies — see below — and EXECUTE
+revoked from
+`public`, `anon` and `authenticated` on ten RPCs, across every overload:
+`finalize_order_request`, `resubmit_order_request`, `reapply_order_request`,
+`respond_to_clarification`, `edit_order_request`,
+`edit_order_request_attachments`, `request_order_request_clarification`,
+`reject_order_request`, `convert_order_request_to_order` and
+`link_finance_payment_to_order_request`.
+
+None of the guards reads `auth.uid()` and none exempts a role. A retirement an
+admin or the service role could step around would not be one.
+
+## The policy set the retirement leaves
+
+`public.order_requests` carried seven policies before the retirement, arrived at
+over nine migrations. Two are dropped and five remain:
+
+| Policy | Kind | After |
+| --- | --- | --- |
+| `order_requests_requester_insert` | PERMISSIVE INSERT | **dropped** |
+| `order_requests_admin_delete_unconverted` | PERMISSIVE DELETE | **dropped** |
+| `order_requests_requester_select` | PERMISSIVE SELECT | kept |
+| `order_requests_admin_select` | PERMISSIVE SELECT | kept |
+| `order_requests_assignee_select` | PERMISSIVE SELECT | kept |
+| `order_requests_view_all_select` | PERMISSIVE SELECT | kept |
+| `order_requests_module_entry_gate` | **RESTRICTIVE ALL** | kept |
+
+With RLS on and no permissive INSERT policy, PostgREST refuses the command
+outright; with no permissive UPDATE or DELETE policy, both filter to zero rows.
+The delete policy had no caller to lose: every SQL delete of an Order Request —
+in `20260705000000`, `20260706000000`, `20260711000000`, `20260901000000` and
+`20260916000000` — sits inside a `SECURITY DEFINER` function, which bypasses RLS
+and is unaffected by dropping it. `admin_delete_order_request` and the test-data
+cleanup protocol keep working unchanged.
+
+**`order_requests_module_entry_gate` is deliberately kept.** It is RESTRICTIVE:
+PostgreSQL AND-s a restrictive policy onto whatever the permissive policies
+allow, so it can only narrow and never grants anything. Its `cmd = ALL` is not
+INSERT authority — on a table with no permissive INSERT policy left there is
+nothing for it to narrow — and dropping it would *remove* a restriction and widen
+the retired table. It is also one of the 27 module gates `20260905000000` asserts
+the presence of.
+
+**The first form of `20261007000000` got this wrong and refused its own apply.**
+Its §5b counted every `pg_policies` row with `cmd in ('INSERT', 'ALL')` without
+filtering on `permissive`, matched the restrictive gate, and raised
+`order_requests still has 1 INSERT-capable polic(ies); the retired workflow would
+remain creatable`. The whole migration rolled back; nothing was left half-applied.
+The corrected form filters to `permissive = 'PERMISSIVE'`, names the offending
+policies instead of counting them, asserts the restrictive gate must *remain*,
+and asserts the exact expected five-policy set so an unknown policy fails the
+apply by name rather than being deleted dynamically.
+
+`supabase/tests/run_order_request_retirement_suite.sh` builds a production-shaped
+database from the replayed policy history, reproduces that failure verbatim,
+proves it rolled back to a byte-identical policy set, applies the corrected
+migration, and proves the retirement holds — including that `20261008000000`
+still applies on top of it.
+
+## Asking the schema the right question
+
+The second attempt got past the policy assertions and refused itself on the
+provenance one instead:
+
+```
+public.orders.source_order_request_id must not be dropped:
+confirmed Orders depend on it   (SQLSTATE P0001)
+```
+
+**The column is not missing, and no compatibility column was added.**
+`20260655_create_orders.sql` creates `public.orders`; `20260701000000` adds
+`source_order_request_id` and `source_request_number`, a partial unique index on
+the first, and `prevent_order_source_request_change()` to freeze both once set.
+No migration in the 201-file history drops or renames either. The Order detail
+page selects both (`src/app/orders/[id]/page.tsx`), and the Orders list filters
+on `source_request_number` (`src/app/orders/all/page.tsx`). The statement
+immediately before the failing one — the retirement's own row census — had just
+counted `orders where source_order_request_id is not null`, which cannot parse
+against a column that is not there.
+
+The assertion was asking the wrong oracle. `information_schema.columns` ends its
+definition with
+
+```sql
+AND c.relkind IN ('r', 'v', 'f', 'p')
+AND (pg_has_role(c.relowner, 'USAGE')
+     OR has_column_privilege(c.oid, a.attnum,
+                             'SELECT, INSERT, UPDATE, REFERENCES'))
+```
+
+so it answers *"is this column visible to whoever is asking"*, not *"does this
+column exist"*. A present column is reported absent whenever the applying role is
+neither the relation's owner nor a holder of a privilege on that column. That is
+a property of the connection, not of the schema — which is why the same file
+passed locally and refused itself on the linked database.
+
+`20261007000000` §5i now reads `pg_catalog.pg_attribute`, which is filtered by
+neither clause and is what every DDL statement resolves against, **and then reads
+the column**, because a catalog row proves existence and not reachability.
+`20261008000000` carried the same defect in three places and is corrected the
+same way: one positive existence check that would have failed the very next apply
+for the identical reason, and two checks that would have passed silently when
+they should not have.
+
+`supabase/tests/order_request_provenance_assertions.sql` demonstrates both
+directions — the same present column reported as 0 rows by `information_schema`
+and 1 row by `pg_catalog`, the first form reproducing the linked failure verbatim
+on a database that has the column, the corrected form passing for that same
+reader — and carries a mutation test that really drops the column and requires
+the corrected assertion to notice.
+
+## RESET ROLE is not a restore
+
+The third attempt got past both catalog checks and refused itself on the
+readability probe that had been added beside them:
+
+```
+public.orders.source_order_request_id is in the catalog but could not be read
+(permission denied for table orders)   (SQLSTATE P0001)
+At statement: 25
+```
+
+Statement 24 — the retirement's own row census — had read `public.orders`
+successfully. Statement 25 read the same table and column, with the same SQL, and
+was refused. The SQL was not the difference. **The role was.**
+
+`supabase db push` connects as a **login role** and then assumes the role that
+owns the schema, so for the whole run `session_user` and `current_user` are two
+different roles. §5f becomes an ordinary client (`SET LOCAL ROLE authenticated`)
+to prove the historical read still works, and then used `RESET ROLE` to put the
+role back.
+
+**`RESET ROLE` is `SET ROLE NONE`.** It returns to `SESSION_USER` — the login
+role — not to whatever role was set before it. It is not a save-and-restore. So
+every probe in §5f silently demoted the session to the login role, which holds
+nothing on the business tables, for the remainder of the transaction. The next
+statement to touch one got `permission denied`.
+
+§5f now captures `current_user` into `v_applier` before anything switches away,
+restores with `SET LOCAL ROLE <v_applier>` on **every** exit path including both
+exception branches, and never calls `RESET ROLE`. That matters well beyond the
+probe: §5m re-counts `public.orders` to compare against the census and would have
+been the very next casualty.
+
+**And the readability probe is gone.** It was the wrong instrument regardless of
+the role bug: *a migration must not require its applying role to hold `SELECT` on
+a business table in order to prove a column exists.* Schema questions go to
+`pg_catalog`, which is readable by PUBLIC and filtered by nothing. Row questions
+go to the census, which is taken once, as the applying role, before any assertion
+runs, and compared in §5m.
+
+`supabase/tests/run_order_request_retirement_suite.sh` now builds its harness with
+that role model — a `boe_cli` login role that is `NOINHERIT`, holds nothing on any
+business table, and may only *become* `boe_migrator`, which owns the schema — and
+applies both migrations as `boe_cli` having assumed `boe_migrator`. It reproduces
+all three linked failures verbatim before applying the corrected file. **A
+harness applied by a superuser proves almost nothing about a migration:** a
+superuser passes every privilege check and never sees `permission denied`.
+
+## What §5i asserts now
+
+`20260701000000` did not add a column. It added a five-part guarantee, and an
+assertion that checked only the column would let four fifths of it be removed
+without a word. All five are read from the catalog:
+
+| Part | Asserted |
+| --- | --- |
+| the pair | present, not dropped, **and still `uuid` / `text`** |
+| the foreign key | to `order_requests(id)`, `contype = 'f'`, **`confdeltype = 'a'` (NO ACTION)** |
+| `orders_source_order_request_id_uidx` | present, `indisunique`, **`indpred is not null`** (still partial) |
+| `orders_protect_source_request` | present, enabled, still backed by `prevent_order_source_request_change` |
+| the rows | census before and after, **both halves of the pair counted** |
+
+`supabase/tests/order_request_provenance_mutations.sql` breaks each part in turn —
+column dropped, column retyped, FK dropped, FK *redirected*, index dropped, index
+made non-unique, trigger dropped, trigger *disabled*, and three census changes —
+and requires the assertion to fail for the right reason each time.
+
+## The provenance contract, unchanged
+
+| Field | Where | Still true after the retirement |
+| --- | --- | --- |
+| `orders.source_order_request_id` | `20260701000000` §1 | present, NO ACTION FK to `order_requests(id)` |
+| `orders.source_request_number` | `20260701000000` §1 | present, denormalised copy of an immutable number |
+| `orders_source_order_request_id_uidx` | `20260701000000` §3 | one Order per source request |
+| `prevent_order_source_request_change()` | `20260701000000` §4 | both columns frozen once set |
+| `order_requests.converted_order_id` | `20260680000000` | the reverse link, still populated |
+
+The two foreign keys point in opposite directions and neither replaces the other:
+a converted request cannot be hard-deleted while an Order names it, and an Order
+carrying a source request cannot be deleted either. The retirement adds a guard
+refusing a *new* Order that carries provenance; it changes nothing about an
+existing one.
+
+## Historical compatibility
+
+**Nothing is deleted.** Not one table, column, foreign key, index, row, storage
+object or audit entry. `order_requests`, `order_request_activity`,
+`order_request_attachments`, `orders.source_order_request_id`,
+`orders.source_request_number`, `finance_payment_requests.order_request_id` and
+`order_request_number` all stay, and every SELECT policy on them is untouched —
+asserted at apply time, so the migration refuses itself rather than shipping a
+partial retirement.
+
+* A confirmed Order created by conversion keeps its provenance, and
+  `prevent_order_source_request_change` still refuses to alter it. Old Orders
+  open exactly as before.
+* `finance_payment_requests.order_request_id` is a historical fact about where
+  money was parked. Nulling it would rewrite the payment trail — and under the
+  canonical attribution rule it has never attributed a rupee, so such a payment
+  now reads as **Available**, which is the truth about it.
+* Five paths stay executable so nothing is stranded: `admin_delete_order_request`,
+  `cleanup_unfinalized_order_request`,
+  `remove_unfinalized_order_request_attachment`,
+  `admin_list_stale_order_request_drafts` and
+  `unlink_finance_payment_from_order_request`. None creates, advances or converts
+  a request; the last is the one way historical money reaches a real target.
+* If the remaining Order Request data is confirmed test data, it goes through the
+  **existing controlled test-data cleanup protocol** (`20260706000000`), not
+  through this migration and not as part of applying it.
+
+## Access Control
+
+Two options are no longer registered against Orders, because each existed only
+for the retired workflow and would now grant nothing:
+
+| Action | What it meant |
+| --- | --- |
+| `orders.approve` | convert an Order Request into an Order |
+| `orders.can_be_order_assignee` | may be NAMED as an Order Request assignee |
+
+Grants already stored are **not deleted**; they resolve to nothing. Offering
+them would be the defect — an administrator would choose an authority nobody can
+exercise. `orders.approve_order` is unaffected and is now the only approval
+authority in the pre-Order workflow; it was deliberately never `approve`, which
+is exactly why the retirement takes nothing away from anybody who reviews PIs.
+
+## Retired routes still answer
+
+`/orders/requests` and `/orders/requests/[id]` render a restrained explanation
+with a single `Open PI Drafts` action. Order Request notifications were sent for
+months and every one of them carries a request id, so a 404 would tell people
+their link is broken. Where the request was converted before the retirement and
+the reader can already open the resulting Order, the notice offers that Order
+too — a READ, under the reader's own RLS, naming nothing they could not already
+see. It offers no control that would restart the workflow and writes nothing.
+
+---
+
+# PAYMENT CLASSIFICATION (branch, not applied)
+
+## The four views
+
+One classification, defined once in `src/lib/finance/paymentClassification.ts`
+and mirrored by the `finance_received_payments` projection
+(`20261008000000`). Both Order Management and Finance read it.
+
+| View | Means |
+| --- | --- |
+| **All Payments** | every payment that is not rejected |
+| **Linked to Orders** | money attributed to one or more Confirmed Orders |
+| **Linked to PI Drafts** | money attributed to one or more PI Drafts |
+| **Available to Allocate** | a positive unallocated balance |
+
+**The first three are not a partition, and must not be.** A payment split
+between an Order and a PI belongs in BOTH linked views, and a partly allocated
+payment appears in `Available` as well as wherever its allocated half went. The
+four counts therefore do not sum to `All`, and each is its own exact query.
+
+## The canonical allocation rule
+
+Unchanged from PR #49. Every figure follows it; nothing restates it:
+
+1. Any active allocation → **the allocations are authoritative**, and the
+   payment's own `order_id` contributes nothing.
+2. No active allocation → the direct linkage attributes the **whole** payment to
+   the Order it names.
+3. A reversed allocation is a withdrawn claim and counts for nothing.
+4. What is left after active allocations is the **available balance**.
+5. Attributed + available = the payment amount, exactly.
+
+The two kind totals — to Orders, to PI Drafts — are that same attributed figure
+**split by target kind**, and are asserted to sum back to it for every payment in
+the database at apply time. A PI has no direct-link fallback, because the schema
+has no PI equivalent of `order_id`.
+
+**A retired Order Request attributes nothing**, and that is the rule rather than
+a special case: rule 2 names `order_id` and only `order_id`.
+
+## What is deliberately withheld
+
+The projection is `SECURITY INVOKER`, so its allocation sums are what THIS caller
+may read. A reader who reaches a payment through PI or Order participation sees
+only the allocations naming records they can open — their sum understates the
+attribution, which **overstates** the balance.
+
+Overstating free money is the one error direction that must never happen: it gets
+the same rupees allocated twice. So `available_balance` is `NULL`, never a
+number, unless the caller's sight is complete — company-wide Finance sight
+(admins included) or their own submitted payment, the same two cases
+`payment_active_allocation_totals()` already treats as complete. A withheld
+balance keeps the payment out of `Available` and out of the allocation control.
+
+## Verification is a second axis
+
+Whether the money ARRIVED and whose business it BELONGS TO are different
+questions decided by different people, and the surface never merges them.
+Awaiting-verification money is real, recorded and allocatable, so it classifies
+exactly like verified money and is reported under its own status. **Rejected
+money is in no view at all** — enforced by the projection's own booleans, in the
+database, so a client that forgot the status filter cannot inflate a total.
+
+**Over-allocated historical payments stay visible as an error state and are never
+silently capped.** The capacity trigger refuses to create that state, so a row in
+it is legacy data that needs a person, and rounding it away would erase the only
+evidence.
+
+## Where it is read
+
+`/finance/received` is one list with four views, selected by `?view=`.
+`/finance/received/linked` and `/finance/received/unlinked` forward to it with
+the query string intact, so existing bookmarks and `?payment=` deep links keep
+working. The Orders dashboard links into the same list; it does not rebuild it.
+
+## Allocation
+
+`allocate_payment_to_target()` is unchanged and remains the only door: it
+requires `finance.allocate`, locks the payment, re-derives the balance under that
+lock, re-validates that the target exists, is eligible and is visible to the
+caller, refuses a duplicate active claim and a rejected payment, and writes the
+activity trail itself. The picker offers a permitted Confirmed Order or a
+permitted PI Draft — **never an Order Request** — searching by order number, PI
+reference or client name, and shows what the target is worth, what it has already
+received under the canonical rule, and what is still outstanding.
+
+Neither `orders.view_all` nor `finance.view_all` is widened. A salesperson sees
+and allocates only within the scope RLS already gives them.

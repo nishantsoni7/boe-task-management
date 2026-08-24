@@ -9,6 +9,7 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
+import { deletePaymentEntry } from '@/lib/finance/paymentDeletion'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
@@ -1234,7 +1235,7 @@ function NewPaymentConfirmationModal({
           display: 'flex', flexDirection: 'column', gap: '14px',
         }}>
 
-          {/* Section: which of the three stages is this money against? */}
+          {/* Section: which stage is this money against? */}
           <PaymentTargetFields
             supabase={supabase}
             value={target}
@@ -1244,10 +1245,8 @@ function NewPaymentConfirmationModal({
 
           {/* A record was chosen but carries no client name. Submit is already
               blocked (isTargetComplete); this says why, and where to fix it. */}
-          {isLinkedTarget && (target.selectedRequest || target.selectedOrder) && !clientName && (
-            <ErrorBanner message={target.target === 'order_request'
-              ? 'This Order Request has no client name on file. Correct it on the request before submitting a payment against it.'
-              : 'This order has no client name on file. Correct it on the Order Details page before submitting a payment request.'} />
+          {isLinkedTarget && target.selectedOrder && !clientName && (
+            <ErrorBanner message="This order has no client name on file. Correct it on the Order Details page before submitting a payment request." />
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -1258,14 +1257,10 @@ function NewPaymentConfirmationModal({
                   {isLinkedTarget ? (
                     <>
                       <input className="boe-input" value={clientName} readOnly disabled
-                        placeholder={target.target === 'order_request'
-                          ? 'Select an Order Request first'
-                          : 'Select an order first'}
+                        placeholder="Select an order first"
                         style={{ width: '100%' }} />
                       <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                        {target.target === 'order_request'
-                          ? 'Client name is taken from the selected Order Request.'
-                          : 'Client name is taken from the selected order.'}
+                        Client name is taken from the selected order.
                       </span>
                     </>
                   ) : (
@@ -1407,26 +1402,24 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   // The target is editable here for the same reason the amount is: this modal
   // only ever opens on a payment that is still the submitter's to correct
   // (canManageRequest + the .in('status', UNAPPROVED_STATUSES) guard below), and
-  // picking the wrong Order Request is exactly the kind of mistake a
-  // clarification round is for. The database allows it in precisely the same
-  // window: finance_payment_requests_derive_target re-derives the target while
-  // the row is pre-approval and freezes it once approved.
+  // picking the wrong Order is exactly the kind of mistake a clarification round
+  // is for. The database allows it in precisely the same window:
+  // finance_payment_requests_derive_target re-derives the target while the row
+  // is pre-approval and freezes it once approved.
   //
   // Seeded from the row's stored linkage. status/total_value are not part of the
   // stored linkage and are not rendered for an already-selected record, so they
   // are left empty rather than invented.
+  //
+  // A HISTORICAL 'order_request' ROW OPENS AS 'unallocated', not as a target the
+  // form cannot draw. The retired linkage is not selectable and the payload
+  // clears it, which is exactly what correcting such a payment should do: the
+  // money stops naming a retired record and becomes allocatable to a real Order
+  // or PI Draft. Nothing is lost — the correction is a deliberate edit by
+  // somebody who may already edit this row, and the activity trail records it.
   const [target, setTarget] = useState<PaymentTargetState>(() => ({
-    target: readTargetType(r),
+    target: readTargetType(r) === 'confirmed_order' ? 'confirmed_order' : 'unallocated',
     manualClientName: r.client_name,
-    selectedRequest: r.order_request_id
-      ? {
-          id: r.order_request_id,
-          request_number: r.order_request_number ?? '',
-          client_name: r.client_name,
-          status: '',
-          total_value: null,
-        }
-      : null,
     selectedOrder: r.order_id
       ? {
           id: r.order_id,
@@ -1588,14 +1581,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         {isLinkedTarget ? (
           <>
             <input className="boe-input" value={clientName} readOnly disabled
-              placeholder={target.target === 'order_request'
-                ? 'Select an Order Request first'
-                : 'Select an order first'}
+              placeholder="Select an order first"
               style={{ width: '100%' }} />
             <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-              {target.target === 'order_request'
-                ? 'Client name is taken from the selected Order Request.'
-                : 'Client name is taken from the selected order.'}
+              Client name is taken from the selected order.
             </span>
           </>
         ) : (
@@ -2210,72 +2199,41 @@ type DeleteConfirmModalProps = {
 function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: DeleteConfirmModalProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  // Set once the outcome is final and the confirmation is spent — either the
-  // request was approved mid-flight (nothing was deleted) or it was deleted but
-  // its proof file could not be removed. Both collapse the footer to a single
-  // dismissal that refreshes the table; neither offers a retry that can help.
+  // Set once an attempt has run and the confirmation is spent: this build
+  // never deletes the request, so every attempt collapses the footer to a
+  // single dismissal that refreshes the table rather than offering a retry.
   const [settled, setSettled]   = useState(false)
   const [warning, setWarning]   = useState<string | null>(null)
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
 
+  // THE SEQUENCE LIVES IN ONE PLACE NOW. It used to live here, and Received
+  // Payments — where an allocated pending payment actually appears — had no
+  // Delete at all, so the PI deletion blocker's instruction to "delete that
+  // payment entry in Finance" pointed at a control the operator could not
+  // reach. Rather than grow a second copy on that page, the body moved to
+  // lib/finance/paymentDeletion and BOTH pages call it.
+  //
+  // THE SEQUENCE ITSELF CHANGED, and this page inherits the correction. It used
+  // to read the attachment count and then delete the request in a second round
+  // trip, which left a window where a proof inserted between the two calls was
+  // cascaded away with no durable record of its storage object. This build does
+  // not attempt the delete at all — see paymentDeletion.ts — so every attempt is
+  // a settled notice rather than a failure or a success.
   const handleDelete = async () => {
     setDeleting(true)
     setError(null)
 
-    // 1. Read the proof paths first: payment_proof_attachments cascades with
-    //    the request, so after the delete there is nothing left to read them
-    //    from. Only this request's own attachments are collected, so a file
-    //    belonging to any other record can never be touched.
-    const { data: proofs, error: proofErr } = await supabase
-      .from('payment_proof_attachments')
-      .select('storage_path')
-      .eq('payment_request_id', r.id)
-    if (proofErr) {
-      setDeleting(false)
-      setError('Could not read this request’s proof attachments. Nothing was deleted — please try again.')
-      return
-    }
-
-    // 2. Delete the request itself, filtered on status. RLS re-evaluates that
-    //    filter against the committed row, so an approval landing while this
-    //    modal was open makes this a zero-row no-op rather than destroying an
-    //    approved payment. The request goes first deliberately: deleting the
-    //    proof object first would destroy the evidence for a payment that then
-    //    turned out to be un-deletable.
-    const { error: dbError, count } = await supabase
-      .from('finance_payment_requests')
-      .delete({ count: 'exact' })
-      .eq('id', r.id)
-      .in('status', UNAPPROVED_STATUSES)
-    if (dbError) { setDeleting(false); setError(friendlyDbErrorMessage(dbError)); return }
-    if (count === 0) { setDeleting(false); setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
-
-    // 3. The request is gone; remove its now-orphaned proof objects. Authorized
-    //    by the parent-less branch of the payment_proofs_delete storage policy
-    //    (20260700000000). A failure here cannot be retried usefully and must
-    //    not be reported as a clean success.
-    const paths = ((proofs ?? []) as { storage_path: string }[])
-      .map(p => p.storage_path)
-      .filter(Boolean)
-    if (paths.length > 0) {
-      const { data: removed, error: rmErr } = await supabase.storage.from(PROOF_BUCKET).remove(paths)
-      if (rmErr || (removed?.length ?? 0) < paths.length) {
-        setDeleting(false)
-        setSettled(true)
-        setWarning(`Payment request ${r.request_number} was deleted, but its proof file could not be removed from storage. Please ask an admin to delete it from the payment-proofs bucket.`)
-        return
-      }
-    }
-
+    const result = await deletePaymentEntry(supabase, r, friendlyDbErrorMessage)
     setDeleting(false)
-    onDeleted()
+
+    setSettled(true)
+    setWarning(result.message)
   }
 
   return (
     // Once settled, EVERY dismissal path (✕, Escape, overlay click, the Close
-    // button) must refresh the table — in the partial-success case the request
-    // really is gone, and a plain close would leave a deleted row on screen
-    // that reports "already approved" if Delete is clicked again.
+    // button) refreshes the table — the request itself never changed, but a
+    // stale row on screen invites a second Delete that reports the same notice.
     <FinanceModal title="Delete Payment Request" onClose={settled ? onDeleted : onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
         Delete this Payment Request? This action cannot be undone.

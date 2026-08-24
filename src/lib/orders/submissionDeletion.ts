@@ -24,6 +24,24 @@
 // why there is no failure message here about files having been removed from a
 // PI that survived. That state is unreachable.
 //
+// A RACE IS NOT THE ONLY WAY THE THIRD CALL CAN BE REFUSED, and assuming it was
+// is what stranded a PI in production. The reservation freezes the submission
+// and its three own child tables. It does NOT freeze — and could not usefully
+// freeze — the records OTHER modules keep about this PI, and three of those name
+// it through a foreign key Postgres will not let go of:
+//
+//   finance_payment_allocations.order_submission_id        (20260918000000)
+//   order_submission_correction_requests.submission_id     (20260930000000)
+//   orders.source_order_submission_id                      (20260915000000)
+//
+// All three are NO ACTION, none of them is deleted by
+// finalize_order_submission_deletion(), and every one of them is a record this
+// system is right to protect: money, and what somebody asked to have corrected.
+// So finalization was refused with a raw constraint error AFTER the workbook and
+// every product image had already been destroyed, and the reservation — which is
+// deliberately kept on that path, because the files really are gone — had no
+// remaining route to completion. See BLOCKED below.
+//
 // THE MATRIX, and it is the whole of it:
 //
 //                     owner   admin   anybody else
@@ -102,6 +120,16 @@ export const DELETE_PI_DIALOG_TITLE = 'Delete PI?'
 export const DELETE_PI_CONFIRM_LABEL = 'Delete PI'
 export const DELETE_PI_CANCEL_LABEL = 'Cancel'
 export const DELETE_PI_BUSY_LABEL = 'Deleting…'
+/**
+ * What the destructive button says once an attempt has failed recoverably.
+ *
+ * IT IS A DIFFERENT WORD FOR A DIFFERENT ACT. Pressing Delete PI a second time
+ * looks, to the person doing it, like repeating something that did not work.
+ * "Retry deletion" says the thing they are actually doing: resuming an
+ * interrupted deletion, which the protocol is built to converge on rather than
+ * to compound.
+ */
+export const DELETE_PI_RETRY_LABEL = 'Retry deletion'
 
 /**
  * What is about to be destroyed, said in full.
@@ -143,8 +171,128 @@ export type SubmissionDeletionCode =
   | 'NOT_FOUND'
   | 'IN_PROGRESS'
   | 'CLAIM_INVALID'
+  | 'BLOCKED'
   | 'STORAGE_CLEANUP_FAILED'
   | 'DELETE_FAILED'
+
+// ── What still refers to this PI ──────────────────────────────────────────────
+
+/**
+ * The record kinds that keep a PI alive, and the reason each one does.
+ *
+ * ONE LIST, DERIVED FROM THE FOREIGN KEYS THEMSELVES, not from a guess about
+ * which modules care. Every NO ACTION foreign key pointing at
+ * public.order_submissions is here, and a kind that is not here is one Postgres
+ * would refuse silently — which is exactly the failure this list exists to end.
+ *
+ * NONE OF THEM IS EVER REMOVED TO MAKE A DELETION SUCCEED. An allocation records
+ * money that was received; a correction request records what somebody asked to
+ * have changed; a Confirmed Order is the business record the PI became. Deleting
+ * any of them to clear the way would be destroying the very history the refusal
+ * is protecting, so the refusal is the answer and the person is told what to do
+ * about it instead.
+ */
+export type DeletionBlockerKind =
+  | 'payment_allocation'
+  | 'correction_request'
+  | 'confirmed_order'
+
+export type DeletionBlocker = {
+  kind: DeletionBlockerKind
+  /** How many such records name this PI. Never an id, and never an amount. */
+  count: number
+}
+
+export const DELETION_BLOCKER_KINDS: readonly DeletionBlockerKind[] = [
+  'payment_allocation',
+  'correction_request',
+  'confirmed_order',
+]
+
+export function isDeletionBlockerKind(value: unknown): value is DeletionBlockerKind {
+  return typeof value === 'string'
+    && (DELETION_BLOCKER_KINDS as readonly string[]).includes(value)
+}
+
+/**
+ * Whatever the route returned, as blockers this module can describe.
+ *
+ * THE BROWSER IS NOT TRUSTED WITH ITS OWN RESPONSE EITHER. The dialog renders
+ * this text, so an unknown kind or a nonsense count must produce nothing rather
+ * than a sentence assembled out of it.
+ */
+export function parseDeletionBlockers(value: unknown): DeletionBlocker[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<DeletionBlockerKind>()
+  const blockers: DeletionBlocker[] = []
+  for (const entry of value) {
+    const kind = (entry as { kind?: unknown } | null)?.kind
+    const count = (entry as { count?: unknown } | null)?.count
+    if (!isDeletionBlockerKind(kind) || seen.has(kind)) continue
+    if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) continue
+    seen.add(kind)
+    blockers.push({ kind, count })
+  }
+  return DELETION_BLOCKER_KINDS
+    .map(kind => blockers.find(blocker => blocker.kind === kind))
+    .filter((blocker): blocker is DeletionBlocker => blocker !== undefined)
+}
+
+const BLOCKER_SENTENCE: Record<DeletionBlockerKind, (count: number) => string> = {
+  // THE REMEDY IS NAMED, because "a payment is allocated to this PI" is a
+  // dead end on its own: the allocation is never deleted in its own right, and
+  // the only thing that releases one is deleting the payment entry it belongs
+  // to — which Finance allows while that payment is still unapproved and
+  // refuses once it is not.
+  //
+  // IT NO LONGER TELLS THE READER TO GO AND DO IT. The earlier wording — "Delete
+  // that payment entry in Finance first" — was an instruction addressed to
+  // whoever happened to be looking, and two things made it a promise the product
+  // could not keep. The only DELETE policies on finance_payment_requests are the
+  // creator's own and an administrator's, so a reader who is neither cannot
+  // carry it out; and this count includes the allocations of VERIFIED payments,
+  // which nobody can delete at all. So the sentence now says who can do it and
+  // when it is possible, and leaves the reader to decide whether that is them.
+  payment_allocation: count => count === 1
+    ? 'A payment is allocated to this PI. That allocation is released only by deleting the'
+      + ' payment entry in Finance, which the person who raised it or an administrator can do'
+      + ' while the payment is still unapproved.'
+    : `${count} payments are allocated to this PI. Those allocations are released only by deleting`
+      + ' the payment entries in Finance, which the person who raised each one or an administrator'
+      + ' can do while that payment is still unapproved.',
+  correction_request: count => count === 1
+    ? 'A correction request belongs to this PI, and a correction request is kept permanently.'
+    : `${count} correction requests belong to this PI, and a correction request is kept permanently.`,
+  confirmed_order: () =>
+    'A Confirmed Order was created from this PI, so the PI is its source record and stays.',
+}
+
+/**
+ * Why this PI is still here, in the words the dialog shows.
+ *
+ * COUNTS AND KINDS ONLY. No id, no amount, no payment reference and no client
+ * name: the reader already knows which PI they are looking at, and everything
+ * else would be telling a browser about records its own row-level security may
+ * well forbid it to read.
+ */
+export function describeDeletionBlockers(blockers: readonly DeletionBlocker[]): string {
+  const sentences = parseDeletionBlockers(blockers)
+    .map(blocker => BLOCKER_SENTENCE[blocker.kind](blocker.count))
+  return sentences.length === 0
+    ? 'Another record still refers to this PI, so it cannot be deleted.'
+    : sentences.join(' ')
+}
+
+/**
+ * Where a reader goes to deal with a payment that is holding a PI.
+ *
+ * THE LIST, NOT A RECORD. It is the Received Payments list and nothing more
+ * specific: an allocated payment awaiting verification appears there, and a link
+ * to the page discloses nothing, whereas a link naming the payment would tell a
+ * browser about a row its own row-level security may forbid it to read.
+ */
+export const PAYMENT_BLOCKER_HREF = '/finance/received'
+export const PAYMENT_BLOCKER_LINK_LABEL = 'Open Received Payments'
 
 export type SubmissionDeletionFailure = {
   code: SubmissionDeletionCode
@@ -154,51 +302,83 @@ export type SubmissionDeletionFailure = {
    * refreshes rather than leaving a Delete control the database has refused.
    */
   refresh: boolean
+  /**
+   * Whether pressing the button again is a sensible thing to do.
+   *
+   * TRUE MEANS "THIS CONVERGES". Every stage of the deletion is idempotent — a
+   * key already removed is not removed twice, a claim already held by this
+   * caller is finished rather than retaken, a row already gone answers with
+   * success — so a second attempt at an interrupted deletion finishes it. FALSE
+   * means the answer will not change until something outside this dialog does,
+   * and offering a red button that cannot work is worse than offering none.
+   */
+  retryable: boolean
+  /**
+   * True for the one refusal that is not a fault: another record legitimately
+   * depends on this PI. Rendered differently, because nothing is wrong and
+   * nothing is going to be fixed by waiting.
+   */
+  blocked: boolean
+  /**
+   * Which kinds are in the way, when the route said. Lets a surface offer the
+   * Finance route for a payment blocker without re-parsing the message.
+   */
+  blockerKinds?: readonly DeletionBlockerKind[]
 }
 
-const FAILURE_COPY: Record<SubmissionDeletionCode, { message: string; refresh: boolean }> = {
+type FailureCopy = Omit<SubmissionDeletionFailure, 'code'>
+
+const FAILURE_COPY: Record<SubmissionDeletionCode, FailureCopy> = {
   UNAUTHORIZED: {
     message: 'Your session has expired. Sign in again and try once more.',
-    refresh: false,
+    refresh: false, retryable: false, blocked: false,
   },
   FORBIDDEN: {
     message: 'Only the person who owns this PI, or an administrator, can delete it.',
-    refresh: true,
+    refresh: true, retryable: false, blocked: false,
   },
   // The one an employee is most likely to meet: they opened the dialog on a
   // draft and submitted it in another tab while it was open.
   STATUS_CHANGED: {
     message: 'This PI is now under review and cannot be deleted. Its status has been refreshed.',
-    refresh: true,
+    refresh: true, retryable: false, blocked: false,
   },
   NOT_FOUND: {
     message: 'This PI has already been deleted.',
-    refresh: true,
+    refresh: true, retryable: false, blocked: false,
   },
-  // NEUTRAL, NOT AN ERROR. A second click, or a second tab, on a deletion that
-  // is already running. Nothing is wrong and nothing needs retrying — the PI is
-  // on its way out, and saying so is more use than an alarm.
+  // NEUTRAL, NOT AN ERROR, AND NOT A DEAD END EITHER. Another request holds the
+  // reservation and is still inside its time to live, which is what a second
+  // click and a second tab both meet. It is not retryable *now* — the honest
+  // instruction is to wait, because the attempt that holds it is either about to
+  // finish the job or about to go stale and let this one take it over.
   IN_PROGRESS: {
-    message: 'This PI is already being deleted.',
-    refresh: true,
+    message: 'Deletion is currently in progress. Please wait, then try again.',
+    refresh: true, retryable: false, blocked: false,
   },
   // The reservation was released or taken over by another attempt before this
   // one could finish. Nothing was deleted by THIS request.
   CLAIM_INVALID: {
-    message: 'This deletion was interrupted and did not complete. Try again.',
-    refresh: true,
+    message: 'The previous deletion did not finish. Retry deletion.',
+    refresh: true, retryable: true, blocked: false,
   },
-  // TRUTHFUL RATHER THAN REASSURING. The reservation is released, the record and
-  // every one of its file references survive, and saying so is what makes the
-  // retry safe: object removal is idempotent, so running it again converges
-  // instead of compounding.
+  // NOT A FAULT. Something the business is right to keep still names this PI,
+  // and the real reason replaces this sentence whenever the route could say
+  // which record it was — see describeDeletionFailure.
+  BLOCKED: {
+    message: 'Another record still refers to this PI, so it cannot be deleted.',
+    refresh: true, retryable: false, blocked: true,
+  },
+  // TRUTHFUL RATHER THAN REASSURING. The record and every one of its file
+  // references survive, and saying so is what makes the retry safe: object
+  // removal is idempotent, so running it again converges instead of compounding.
   STORAGE_CLEANUP_FAILED: {
-    message: 'The PI’s files could not be removed, so nothing was deleted. Try again in a moment.',
-    refresh: false,
+    message: 'The PI’s files could not be removed, so nothing was deleted. Retry deletion.',
+    refresh: false, retryable: true, blocked: false,
   },
   DELETE_FAILED: {
-    message: 'This PI could not be deleted just now. Try again in a moment.',
-    refresh: true,
+    message: 'This PI could not be deleted just now. Retry deletion in a moment.',
+    refresh: true, retryable: true, blocked: false,
   },
 }
 
@@ -222,6 +402,18 @@ const RPC_MARKERS: readonly { marker: string; code: SubmissionDeletionCode }[] =
   { marker: 'ORDER_SUBMISSION_DELETE_DENIED',  code: 'FORBIDDEN' },
   { marker: 'Authentication required',         code: 'UNAUTHORIZED' },
   { marker: 'This account is not active',      code: 'FORBIDDEN' },
+  // NOT A MARKER THIS SYSTEM CHOSE — Postgres wrote it, and it is the only
+  // notice given when a NO ACTION foreign key refuses to let a referenced row
+  // go. It is matched LAST so no deliberate marker is ever answered as a
+  // constraint failure, and it is matched at all because the alternative is what
+  // stranded a PI in production: a generic "could not be deleted just now" for a
+  // condition that will still be true in a year.
+  //
+  // The route establishes the blocking records itself and does not rely on this,
+  // but it can be beaten to the row by a payment allocated in the window between
+  // that check and finalization — which is precisely when a truthful answer
+  // matters most, because the files are already gone by then.
+  { marker: 'violates foreign key constraint', code: 'BLOCKED' },
 ]
 
 /** Which code a raw database error means. Used by the route, never by a page. */
@@ -243,7 +435,23 @@ export function isSubmissionDeletionCode(value: unknown): value is SubmissionDel
  * nothing at all — and always produces a sentence, so no failure path can leave
  * a dialog with an empty error box.
  */
-export function describeDeletionFailure(code: unknown): SubmissionDeletionFailure {
+export function describeDeletionFailure(
+  code: unknown,
+  /**
+   * What the route said is still referring to this PI, when it could say. Only
+   * consulted for BLOCKED: for every other code it would be noise, and for an
+   * unknown code it would be a sentence built on a value nothing has checked.
+   */
+  blockers?: unknown,
+): SubmissionDeletionFailure {
   const known: SubmissionDeletionCode = isSubmissionDeletionCode(code) ? code : 'DELETE_FAILED'
-  return { code: known, ...FAILURE_COPY[known] }
+  const copy = FAILURE_COPY[known]
+  if (known !== 'BLOCKED') return { code: known, ...copy }
+  const parsed = parseDeletionBlockers(blockers)
+  return {
+    code: known,
+    ...copy,
+    message: parsed.length === 0 ? copy.message : describeDeletionBlockers(parsed),
+    blockerKinds: parsed.map(blocker => blocker.kind),
+  }
 }

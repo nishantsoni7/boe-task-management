@@ -1,11 +1,18 @@
 'use client'
 
-import { ReceivedPaymentsView } from '../ReceivedPaymentsView'
+// /finance/received/unlinked — retired route, kept answerable.
+//
+// This page held "money with nothing at all pointing at it". Its successor is
+// the Available view, which is that set AND MORE: it also holds partly allocated
+// payments with a balance left over, and money parked on a retired Order Request
+// that nothing will ever come to collect. Both need somebody, and neither was
+// on this page.
+//
+// The query string is forwarded untouched, so a `?payment=…&action=link` deep
+// link from the Admin Action Queue still opens the record it names.
 
-// Received payments linked to neither an Order nor an Order Request —
-// order_id IS NULL AND order_request_id IS NULL. The genuinely unallocated
-// queue: money that arrived with nothing pointing at it, and the only set that
-// needs someone to act. Linking one here moves it to /finance/received/linked.
-export default function NonLinkedPaymentsPage() {
-  return <ReceivedPaymentsView mode="unlinked" />
+import { RetiredReceivedRoute } from '../RetiredReceivedRoute'
+
+export default function NonLinkedPaymentsRedirect() {
+  return <RetiredReceivedRoute view="available" />
 }

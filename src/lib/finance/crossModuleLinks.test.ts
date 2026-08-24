@@ -66,22 +66,37 @@ describe('no new route is invented', () => {
     assert.equal(piSubmissionHref('sub-1'), draftDetailHref('sub-1'))
   })
 
-  test('a Finance link goes to the PARENT route, which resolves the rest', () => {
-    // Whether a payment is Linked or Non-Linked changes the moment somebody
-    // allocates it. /finance/received looks that up and forwards; a caller that
-    // guessed a child page would send the reader to the list that does not hold
-    // the row.
+  test('a Finance link goes to the LIST route, with no view of its own', () => {
+    // The list resolves `?payment=` by id when the row is not on the current
+    // page, so a deep link no longer has to guess which set holds it — and must
+    // not, because a payment split between an Order and a PI is in several.
     assert.equal(financePaymentHref('pay-1'), '/finance/received?payment=pay-1')
     assert.ok(!financePaymentHref('pay-1').includes('/linked'))
     assert.ok(!financePaymentHref('pay-1').includes('/unlinked'))
+    assert.ok(!financePaymentHref('pay-1').includes('view='),
+      'a deep link names the record, never the view it happens to sit in')
   })
 
-  test('the Finance parameter is the one the route already reads', () => {
+  test('the Finance parameter is the one the list already reads', () => {
     // The Admin Action Queue and Finance notifications already deep-link with
     // it; a second spelling would quietly stop opening the modal.
     assert.equal(FINANCE_PAYMENT_PARAM, 'payment')
-    const route = readFileSync('src/app/finance/received/page.tsx', 'utf8')
-    assert.ok(route.includes(`searchParams.get('payment')`))
+    const list = readFileSync(FINANCE_VIEW, 'utf8')
+    assert.ok(list.includes(`searchParams.get('payment')`))
+  })
+
+  test('the two retired child routes still answer, and forward the whole query', () => {
+    // Bookmarks, old sidebar entries and links in somebody's message all point
+    // at /linked and /unlinked. A 404 would tell a reader their link is broken;
+    // dropping ?payment= would turn a working deep link into a plain list,
+    // which looks like nothing happened.
+    const forward = readFileSync('src/app/finance/received/RetiredReceivedRoute.tsx', 'utf8')
+    assert.ok(forward.includes('new URLSearchParams(searchParams.toString())'))
+    assert.ok(forward.includes('router.replace('), 'a forward, not a push — Back must still work')
+    for (const route of ['linked', 'unlinked']) {
+      const src = readFileSync(`src/app/finance/received/${route}/page.tsx`, 'utf8')
+      assert.ok(src.includes('RetiredReceivedRoute'), `${route} must forward rather than 404`)
+    }
   })
 
   test('ids are encoded, so a hostile id cannot become extra query parameters', () => {
@@ -152,22 +167,26 @@ describe('the Order screen links into Finance, and gates it', () => {
 describe('the Finance list links into Order Management, and gates it', () => {
   const view = readFileSync(FINANCE_VIEW, 'utf8')
 
-  test('a row attached to a Confirmed Order offers that Order', () => {
-    assert.ok(view.includes('onOpenLinked(orderDetailHref(linkedOrderId))'))
+  test('a row offers EVERY destination its money went to, not just one', () => {
+    // The row's destinations come from paymentLinks over the allocations, so a
+    // payment split three ways offers three doors. Building them from the
+    // projection's single LIMIT-1 label column would name one Order for a
+    // payment that reached three.
+    assert.ok(view.includes('paymentLinks({'))
+    assert.ok(view.includes('<DestinationsCell'))
   })
 
-  test('the Order it offers is resolved by the SAME priority as the badge', () => {
-    // resolveLinkedAgainst prefers the legacy link, then an active allocation.
-    // A link built from a different priority could point at a different Order
-    // than the badge beside it names.
-    assert.ok(view.includes('r.order_id ?? r.allocated_order_id'),
-      'legacy link first, then the active allocation — the badge\'s own order')
+  test('the destinations follow the canonical rule, not a second priority', () => {
+    // directOrderOf drops the legacy link the moment anything is allocated —
+    // rule 1 — so a row can never offer a door to an Order its own figures
+    // attribute nothing to.
+    assert.ok(view.includes('directOrder: directOrderOf(r)'))
   })
 
-  test('and only to a reader who holds Orders module entry', () => {
+  test('and a door only to a reader who holds Orders module entry', () => {
     assert.ok(view.includes('canOpenOrderRecord(ordersCaps.canAccessOrdersModule)'))
-    assert.ok(view.includes('canOpenLinkedRecord ? ('),
-      'the badge is a button only when the reader can follow it')
+    assert.ok(view.includes('const openable = link.href !== null && onOpen !== undefined'),
+      'a destination is a button only when the reader can follow it')
   })
 
   test('the allocation panel links to both an Order and a PI', () => {
@@ -176,7 +195,9 @@ describe('the Finance list links into Order Management, and gates it', () => {
   })
 
   test('a target the reader cannot NAME is never rendered as a link', () => {
-    // A door labelled "A Confirmed Order" is a door with no sign on it.
+    // A door labelled "A Confirmed Order" is a door with no sign on it. In the
+    // allocation panel the rule is written inline; in the row it is
+    // paymentLinks' own `named && canOpenOrders`.
     assert.ok(view.includes('canOpenLinkedRecord && target.label ? ('))
   })
 

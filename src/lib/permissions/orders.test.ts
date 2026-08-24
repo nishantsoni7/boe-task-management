@@ -1,9 +1,15 @@
 /**
  * Order Management capability derivation — behavioural tests.
  *
- * Pure data-in/data-out (no DB, no network). These assert the capability model
- * only; the Orders pages are not wired to it yet — module ENTRY already honours
- * the engine, everything inside still reads users.role.
+ * Pure data-in/data-out (no DB, no network).
+ *
+ * TWO CAPABILITIES ARE DELIBERATELY ABSENT and are asserted absent below:
+ * `canApproveOrder` (the `approve` action) meant "convert an Order Request into
+ * an Order", and `canBeOrderAssignee` meant "may be named as an Order Request
+ * assignee". The workflow is retired (20261007000000), the RPCs that read them
+ * are revoked from every client role, and an Access Control option that grants
+ * nothing is worse than no option: an administrator choosing it would believe
+ * they had given somebody something.
  *
  * Run:
  *   npx tsx --test src/lib/permissions/orders.test.ts
@@ -16,8 +22,11 @@ import { presetAllowedActions } from './levels'
 import type { EffectivePermission } from './types'
 
 const ORDERS_ACTIONS = [
-  'view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee',
+  'view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order',
 ]
+
+/** The two the module no longer registers. Never granted, never derived. */
+const RETIRED_ACTIONS = ['approve', 'can_be_order_assignee']
 
 const perms = (allowedActions: string[]): EffectivePermission[] =>
   ORDERS_ACTIONS.map(actionKey => ({
@@ -40,14 +49,13 @@ describe('module entry', () => {
     const caps = deriveOrdersCapabilities('member', perms(['view']))
     assert.equal(caps.canAccessOrdersModule, true)
     assert.equal(caps.canCreateOrder, false)
-    assert.equal(caps.canApproveOrder, false)
+    assert.equal(caps.canApproveOrderSubmission, false)
     assert.equal(caps.canDeleteOrder, false)
     assert.equal(caps.canManageOrders, false)
-    assert.equal(caps.canBeOrderAssignee, false)
   })
 
   test('a stronger action without view grants no module control', () => {
-    for (const action of ['create', 'edit', 'approve', 'export', 'manage', 'delete']) {
+    for (const action of ['create', 'edit', 'approve_order', 'export', 'manage', 'delete']) {
       const caps = deriveOrdersCapabilities('member', perms([action]))
       assert.equal(caps.canAccessOrdersModule, false, `${action} must not open the module`)
       assert.deepEqual(caps, NO_ORDERS_CAPABILITIES, `${action} must not produce a button`)
@@ -59,7 +67,7 @@ describe('each capability maps to exactly one action', () => {
   const cases: [string, keyof ReturnType<typeof deriveOrdersCapabilities>][] = [
     ['create', 'canCreateOrder'],
     ['edit', 'canEditOrder'],
-    ['approve', 'canApproveOrder'],
+    ['approve_order', 'canApproveOrderSubmission'],
     ['export', 'canExportOrders'],
     ['delete', 'canDeleteOrder'],
     ['manage', 'canManageOrders'],
@@ -77,47 +85,50 @@ describe('each capability maps to exactly one action', () => {
   }
 })
 
-describe('order-assignee authority is separate from everything else', () => {
-  test('it is not implied by manage, edit, or any other action', () => {
-    const caps = deriveOrdersCapabilities('member', perms(['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']))
-    assert.equal(caps.canManageOrders, true)
-    assert.equal(caps.canBeOrderAssignee, false, 'assignee eligibility must be granted explicitly')
+describe('the retired Order Request authorities are gone, not merely unused', () => {
+  test('neither action produces any capability, however it is granted', () => {
+    // A GRANT THAT CONFERS NOTHING IS THE FAILURE MODE. Rows for these actions
+    // may still exist in employee_permission_overrides — this change deletes no
+    // data — and they must resolve to nothing rather than to an authority the
+    // database will refuse.
+    const caps = deriveOrdersCapabilities('member', perms(['view']).concat(
+      RETIRED_ACTIONS.map(actionKey => ({ actionKey, allowed: true, source: 'employee_override' as const })),
+    ))
+    assert.deepEqual(caps, deriveOrdersCapabilities('member', perms(['view'])),
+      'a retired grant must change nothing about what somebody can do')
   })
 
-  test('it survives without module entry — it is read by other people’s forms', () => {
-    const caps = deriveOrdersCapabilities('member', perms(['can_be_order_assignee']))
-    assert.equal(caps.canAccessOrdersModule, false)
-    assert.equal(caps.canBeOrderAssignee, true)
-  })
-
-  test('no access level ever grants it', () => {
-    for (const level of ['no_access', 'viewer', 'contributor', 'manager'] as const) {
-      assert.equal(
-        deriveOrdersCapabilities('member', fromPreset(level)).canBeOrderAssignee,
-        false,
-        `${level} granted assignee authority`,
-      )
+  test('the capability names themselves no longer exist', () => {
+    const caps = deriveOrdersCapabilities('admin', [])
+    for (const name of ['canApproveOrder', 'canBeOrderAssignee']) {
+      assert.equal(name in caps, false, `${name} must not be derivable`)
     }
+    assert.equal('canApproveOrder' in NO_ORDERS_CAPABILITIES, false)
+    assert.equal('canBeOrderAssignee' in NO_ORDERS_CAPABILITIES, false)
   })
 
-  test('not even an admin holds it without the grant', () => {
-    assert.equal(deriveOrdersCapabilities('admin', []).canBeOrderAssignee, false)
-    assert.equal(deriveOrdersCapabilities('admin', perms(['can_be_order_assignee'])).canBeOrderAssignee, true)
+  test('PI review is untouched, and was deliberately never the `approve` action', () => {
+    // That separation is exactly why the retirement takes nothing away from
+    // anybody who reviews PIs today.
+    const caps = deriveOrdersCapabilities('member', perms(['view', 'approve_order']))
+    assert.equal(caps.canApproveOrderSubmission, true)
   })
 })
 
 describe('levels produce the expected Orders capabilities', () => {
-  test('Contributor can raise and edit, not approve', () => {
+  test('Contributor can raise and edit, not review a PI', () => {
     const caps = deriveOrdersCapabilities('member', fromPreset('contributor'))
     assert.equal(caps.canCreateOrder, true)
     assert.equal(caps.canEditOrder, true)
-    assert.equal(caps.canApproveOrder, false)
+    assert.equal(caps.canApproveOrderSubmission, false)
   })
 
-  test('Manager can approve and export, but cannot delete or manage', () => {
+  test('Manager can export, but cannot review a PI, delete or manage', () => {
+    // `approve_order` is PROTECTED, so no preset reaches it — approving a PI is
+    // what eventually brings an Order into existence and burns an order number.
     const caps = deriveOrdersCapabilities('member', fromPreset('manager'))
-    assert.equal(caps.canApproveOrder, true)
     assert.equal(caps.canExportOrders, true)
+    assert.equal(caps.canApproveOrderSubmission, false, 'approve_order is protected')
     assert.equal(caps.canDeleteOrder, false, 'delete is protected')
     assert.equal(caps.canManageOrders, false, 'manage is protected')
   })
@@ -127,7 +138,6 @@ describe('admin compatibility', () => {
   test('an admin holds every module capability with no rows at all', () => {
     const caps = deriveOrdersCapabilities('admin', [])
     for (const [name, value] of Object.entries(caps)) {
-      if (name === 'canBeOrderAssignee') continue // deliberately grant-driven
       assert.equal(value, true, `admin missing ${name}`)
     }
   })
@@ -137,12 +147,11 @@ describe('real production grants', () => {
   test("Dhruv's full Orders grant yields the administrative controls", () => {
     const caps = deriveOrdersCapabilities(
       'manager',
-      perms(['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee']),
+      perms(['view', 'create', 'edit', 'delete', 'export', 'manage']),
     )
-    assert.equal(caps.canApproveOrder, true)
     assert.equal(caps.canManageOrders, true)
     assert.equal(caps.canDeleteOrder, true)
-    assert.equal(caps.canBeOrderAssignee, true)
+    assert.equal(caps.canEditOrder, true)
   })
 
   test("Aditya's view-only Orders grant stays view-only", () => {

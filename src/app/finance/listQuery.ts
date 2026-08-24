@@ -123,6 +123,12 @@ export type QueryClause =
   | { kind: 'notNull'; column: string }
   | { kind: 'eq'; column: string; value: string }
   | { kind: 'in'; column: string; values: readonly string[] }
+  // Strictly greater than, for a NUMERIC column. Added for the payment
+  // classification, whose `Available to Allocate` narrowing is "a positive
+  // unallocated balance" — a comparison the database has to make, because a
+  // balance computed over the fifty rows in hand would narrow those fifty and
+  // hide every match on page two.
+  | { kind: 'gt'; column: string; value: string }
 
 // ── Date range ────────────────────────────────────────────────────────────────
 

@@ -1,7 +1,8 @@
 // ── What the Received Payments list asks the database ─────────────────────────
 //
 // What is SPECIFIC to Received Payments: which columns a search matches, what
-// the linkage filter means, and what an allocation state narrows to. The rules
+// each of the four classification views narrows to, and what an allocation state
+// narrows to. The rules
 // it shares with every other paged Finance list — paging, search sanitizing,
 // date bounds, the result line — live in ./listQuery and are re-exported here so
 // a caller needs one import for the whole read.
@@ -21,7 +22,9 @@
 //    to an Order by allocation displayed "Order ORD-…" in its own row, and then
 //    vanished from BOTH narrowings — it is not order_id, and it is not an Order
 //    Request either. Exactly the money PI conversion produces, unfindable by the
-//    filter that claims to find it.
+//    filter that claims to find it. That filter is now the canonical
+//    classification (src/lib/finance/paymentClassification.ts), computed by the
+//    projection, so the narrowing and the figures beside it are one statement.
 //
 // 3. SEARCH DID NOT COVER THE COLUMN THE TABLE LEADS WITH.
 //    The first column of the table is Payment Request #, and searching for one
@@ -36,7 +39,11 @@
 // decided the caller may see.
 
 import { dateBound, sanitizeSearchTerm, searchFilter, type QueryClause } from './listQuery'
-import type { PaymentLinkageMode } from './paymentRouting'
+import {
+  PAYMENT_CLASSIFICATION_COLUMNS,
+  paymentViewClauses,
+  type PaymentView,
+} from '@/lib/finance/paymentClassification'
 
 // The shared rules, re-exported so a caller needs one import for the whole read.
 export {
@@ -67,6 +74,11 @@ export const RECEIVED_PAYMENTS_SEARCH_COLUMNS = [
   'request_number',
   'client_name',
   'order_number',
+  // KEPT, THOUGH THE WORKFLOW IS RETIRED. Historical payments still carry a
+  // request number, a Finance user reconciling an old record still has it
+  // written down, and a search that could not find the row would be a search
+  // that lies about its own scope. Nothing here offers the workflow; it finds a
+  // record that exists.
   'order_request_number',
   'allocated_order_number',
 ] as const
@@ -76,63 +88,68 @@ export function receivedPaymentsSearchFilter(raw: string): string | null {
   return searchFilter(raw, RECEIVED_PAYMENTS_SEARCH_COLUMNS)
 }
 
-// ── The linkage narrowing, inside a page that is already one linkage mode ─────
+// ── The classification narrowing ─────────────────────────────────────────────
+//
+// THE FOUR VIEWS — All, Orders, PI Drafts, Available — are defined ONCE, in
+// src/lib/finance/paymentClassification.ts, and mirrored by the
+// finance_received_payments projection in SQL. This module re-exports them
+// rather than restating them, because the whole point of one canonical
+// classification is that Order Management and Finance cannot end up narrowing
+// differently.
+//
+// WHAT THEY REPLACED. A `LinkageFilter` of All / Confirmed Order / Order Request
+// lived here and split the Linked page's rows by which of two columns was set.
+// Both halves of that are now wrong: the Order Request workflow is retired
+// (20261007000000) so its branch narrows to a set nothing can add to, and the
+// pair could not express a payment SPLIT between an Order and a PI Draft, which
+// belongs in both views at once.
+
+export {
+  PAYMENT_VIEWS,
+  PAYMENT_VIEW_LABEL,
+  PAYMENT_VIEW_OPTIONS,
+  DEFAULT_PAYMENT_VIEW,
+  CLASSIFIED_PAYMENT_STATUSES,
+  isPaymentView,
+  readPaymentView,
+  paymentClassificationAvailable,
+  PAYMENT_CLASSIFICATION_COLUMNS,
+} from '@/lib/finance/paymentClassification'
+export type { PaymentView } from '@/lib/finance/paymentClassification'
 
 /**
- * What the Linked Payments page's filter narrows to.
+ * The classification narrowing as PostgREST filters.
  *
- * `all` is every row the page already holds. The other two split the page's rows
- * by WHAT they are attached to, and the split is the same one
- * resolveLinkedAgainst draws the badge from — a Confirmed Order wins over an
- * Order Request whenever both are somehow present, and an ACTIVE ALLOCATION onto
- * an Order counts as a Confirmed Order, because that is what it is.
+ * Re-exported under this module's name so a page needs one import for the whole
+ * read, and so the call site reads as "narrow this payments list", not as
+ * "reach into the classification module".
  */
-export type LinkageFilter = 'all' | 'order' | 'request'
-
-export const LINKAGE_FILTER_OPTIONS: { value: LinkageFilter; label: string }[] = [
-  { value: 'all',     label: 'All linked' },
-  { value: 'order',   label: 'Confirmed Order' },
-  { value: 'request', label: 'Order Request' },
-]
-
-export function isLinkageFilter(value: string): value is LinkageFilter {
-  return value === 'all' || value === 'order' || value === 'request'
+export function paymentViewFilterClauses(view: PaymentView): QueryClause[] {
+  return paymentViewClauses(view)
 }
 
-/**
- * The linkage narrowing as PostgREST filters.
- *
- * THE ORDER BRANCH INCLUDES THE ALLOCATION, which is defect 2 above. The REQUEST
- * branch is its exact complement within the page: an Order Request linkage
- * counts only when NEITHER Order attachment is present, mirroring
- * resolveLinkedAgainst's priority so a row can satisfy exactly one of the two.
- */
-export function linkageFilterClauses(filter: LinkageFilter): QueryClause[] {
-  if (filter === 'order') {
-    return [{ kind: 'or', filters: 'order_id.not.is.null,allocated_order_id.not.is.null' }]
-  }
-  if (filter === 'request') {
-    return [
-      { kind: 'isNull',  column: 'order_id' },
-      { kind: 'isNull',  column: 'allocated_order_id' },
-      { kind: 'notNull', column: 'order_request_id' },
-    ]
-  }
-  return []
-}
+/** The projection columns a classified row needs selected. Named once. */
+export const RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS = PAYMENT_CLASSIFICATION_COLUMNS
 
 // ── What the toolbar says it is doing ────────────────────────────────────────
 
-/** True when anything is narrowing the list, so the page can offer to clear it. */
+/**
+ * True when anything is narrowing the list, so the page can offer to clear it.
+ *
+ * THE VIEW IS NOT A NARROWING, and that is why it is absent here.
+ *
+ * A tab is where the reader IS; a filter is something they applied on top and
+ * can clear. Counting the tab as a narrowing would offer "Clear filters" on a
+ * freshly opened Available tab and then, on pressing it, leave them exactly
+ * where they were — the control would appear to do nothing.
+ */
 export function isNarrowed(state: {
   search: string
-  linkage: LinkageFilter
   dateFrom: string | null
   dateTo: string | null
   allocation?: AllocationFilter
 }): boolean {
   return sanitizeSearchTerm(state.search) !== ''
-    || state.linkage !== 'all'
     || dateBound(state.dateFrom) !== null
     || dateBound(state.dateTo) !== null
     || (state.allocation !== undefined && state.allocation !== 'all')
@@ -219,6 +236,3 @@ export function allocationFilterAvailable(
   return probe.columns.includes('allocation_state')
     && probe.columns.includes(ALLOCATED_TOTAL_COLUMN)
 }
-
-// ── Re-export, so a caller needs one import for the whole read ───────────────
-export type { PaymentLinkageMode }

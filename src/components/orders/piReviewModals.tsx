@@ -78,8 +78,12 @@ import {
   DELETE_PI_CANCEL_LABEL,
   DELETE_PI_CONFIRM_LABEL,
   DELETE_PI_DIALOG_TITLE,
+  DELETE_PI_RETRY_LABEL,
+  PAYMENT_BLOCKER_HREF,
+  PAYMENT_BLOCKER_LINK_LABEL,
   DELETE_PI_WARNING,
   deletionStatusLabel,
+  type SubmissionDeletionFailure,
 } from '@/lib/orders/submissionDeletion'
 import {
   REJECT_EXCEPTION_BUTTON_LABEL,
@@ -183,9 +187,9 @@ function ModalHeader({ title, subtitle, onClose, disabled }: {
   )
 }
 
-function FailureNote({ message }: { message: string }) {
+function FailureNote({ message, alert = false }: { message: string; alert?: boolean }) {
   return (
-    <div style={{
+    <div role={alert ? 'alert' : undefined} style={{
       fontSize: '12px', color: colors.primary, lineHeight: 1.5,
       background: colors.redTint, border: '1px solid rgba(217,79,79,0.25)',
       borderRadius: '6px', padding: '9px 12px',
@@ -1065,6 +1069,24 @@ export function PiApproveOrderModal({
  * and Escape, and the handler refuses re-entry — so a double click, an impatient
  * second press and a keyboard repeat all send exactly one request.
  *
+ * FOUR OUTCOMES, NOT TWO. "It failed, try again" was the only thing this dialog
+ * could say, and it said it for conditions that would never change:
+ *
+ *   running     — this request is in flight. Every control is disabled and the
+ *                 button says so.
+ *   retryable   — an attempt was interrupted. Every stage of the deletion
+ *                 converges rather than compounds, so the button becomes
+ *                 "Retry deletion" and says what it is really doing.
+ *   blocked     — a record the business keeps still refers to this PI. The
+ *                 destructive button is DISABLED, because pressing it again
+ *                 cannot help and offering it invites somebody to keep pressing.
+ *                 The reason names what to deal with instead.
+ *   completed   — the list removes the row and this dialog is gone; there is no
+ *                 completed state to render here.
+ *
+ * The four come from the failure the route returned, not from anything this
+ * component infers.
+ *
  * THE BOE FORM-MODAL DISMISSAL RULE APPLIES, as it does to the other two: a
  * backdrop click is inert, and shouldCloseFormModal owns the decision.
  *
@@ -1083,11 +1105,16 @@ export function PiDeleteConfirmModal({
   /** The record's raw status; rendered through the shared label map. */
   status: string
   deleting: boolean
-  failure: string | null
+  /** The route's last answer, described. Null before the first attempt. */
+  failure: SubmissionDeletionFailure | null
   onCancel: () => void
   onConfirm: () => void
 }) {
   useScrollLock(true)
+
+  // A protected relationship is the one refusal a second press cannot move.
+  const blocked = failure?.blocked === true
+  const disabled = deleting || blocked
 
   const dismiss = (reason: ModalDismissReason) => {
     if (deleting) return
@@ -1096,9 +1123,13 @@ export function PiDeleteConfirmModal({
   useEscapeDismiss(dismiss, !deleting)
 
   const confirm = () => {
-    if (deleting) return
+    if (disabled) return
     onConfirm()
   }
+
+  const confirmLabel = deleting
+    ? DELETE_PI_BUSY_LABEL
+    : failure?.retryable === true ? DELETE_PI_RETRY_LABEL : DELETE_PI_CONFIRM_LABEL
 
   return (
     // No onClick on the overlay: a click outside is inert, by rule.
@@ -1135,7 +1166,27 @@ export function PiDeleteConfirmModal({
             <span>{DELETE_PI_WARNING}</span>
           </div>
 
-          {failure && <FailureNote message={failure} />}
+          {/* role=alert, so a reason that appears after the button was pressed —
+              and that may have just disabled it — is announced rather than only
+              drawn. */}
+          {failure && <FailureNote message={failure.message} alert />}
+
+          {/* A ROUTE, NOT AN INSTRUCTION. Offered whenever a payment is what is
+              in the way, because the reader may well be the one who raised it —
+              and if they are not, the page will simply not show them a Delete.
+              It names the list and no payment, so it discloses nothing this
+              dialog has not already said. */}
+          {failure?.blockerKinds?.includes('payment_allocation') && (
+            <a
+              href={PAYMENT_BLOCKER_HREF}
+              style={{
+                alignSelf: 'flex-start', fontSize: '12px', fontWeight: 600,
+                color: colors.blue, textDecoration: 'none',
+              }}
+            >
+              {PAYMENT_BLOCKER_LINK_LABEL} →
+            </a>
+          )}
 
           <Footer>
             <button type="button" onClick={() => dismiss('cancel')} disabled={deleting} style={cancelStyle(deleting)}>
@@ -1144,11 +1195,11 @@ export function PiDeleteConfirmModal({
             <button
               type="button"
               onClick={confirm}
-              disabled={deleting}
-              style={{ ...confirmStyle('#DC1F2E', deleting), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
+              disabled={disabled}
+              style={{ ...confirmStyle('#DC1F2E', disabled), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <Trash2 size={13} strokeWidth={2} />
-              {deleting ? DELETE_PI_BUSY_LABEL : DELETE_PI_CONFIRM_LABEL}
+              {confirmLabel}
             </button>
           </Footer>
         </div>

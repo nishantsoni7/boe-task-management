@@ -392,7 +392,10 @@ const PROTECTED_ACTION_WORDS: Record<string, string> = {
   receive:               'Receive',
   mark_lost:             'Mark lost',
   close:                 'Close',
-  can_be_order_assignee: 'Be an order assignee',
+  // can_be_order_assignee is NOT here. It named Order Request assignees, and
+  // the module no longer registers it — an entry would label an option that is
+  // never offered. A grant made before the retirement is not deleted; it is
+  // simply read by nothing.
   view_quotations:       'View quotations and quoted prices',
   manage_quotations:     'Manage quotations',
   // One action key registered against two modules, so the words have to come

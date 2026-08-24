@@ -422,10 +422,26 @@ describe('the route reserves the record before it removes a single file', () => 
     assert.ok(route.includes('let removalAttempted = false'))
     assert.ok(route.includes('onRemoveAttempt: () => { removalAttempted = true }'),
       'the flag is set BEFORE each request, so a throw cannot hide it')
-    for (const match of [...route.matchAll(/await release\(\)/g)]) {
-      const line = route.slice(route.lastIndexOf('\n', match.index!) + 1, match.index! + 15)
+    // SCOPED TO THE SWEEP AND AFTER, which is the region this rule is about. A
+    // release becomes unsafe only once a remove request could have gone out, so
+    // from the sweep onwards every one must still be guarded — asserted here
+    // exactly as strictly as before. Step 5b releases BEFORE the sweep exists,
+    // where nothing can have been destroyed; that region gets its own rule in
+    // the next assertion rather than an exemption from this one.
+    const sweepAt = route.indexOf('await removeAllObjectsForSubmission(')
+    assert.ok(sweepAt > 0)
+    for (const match of [...route.slice(sweepAt).matchAll(/await release\(\)/g)]) {
+      const at = match.index! + sweepAt
+      const line = route.slice(route.lastIndexOf('\n', at) + 1, at + 15)
       assert.ok(/if \(!removalAttempted\)/.test(line),
-        `an unguarded release: ${line.trim()}`)
+        `an unguarded release after the sweep began: ${line.trim()}`)
+    }
+
+    // And every release before that point must sit ahead of the sweep entirely,
+    // so "nothing was attempted" is a fact of position rather than a claim.
+    for (const match of [...route.slice(0, sweepAt).matchAll(/await release\(\)/g)]) {
+      assert.ok(match.index! < sweepAt,
+        'a pre-sweep release must precede the storage call it is safe because of')
     }
   })
 
@@ -503,9 +519,18 @@ describe('the route survives a slow or failed sweep without losing the record', 
       .join('\n')
     const sweep = code.indexOf('await removeAllObjectsForSubmission(')
     assert.ok(sweep > 0)
+    // RESTATED, NOT RELAXED. The rule was written when the only releases were
+    // the sweep's own, so "after the sweep" and "safe" were the same sentence.
+    // Step 5b now releases before the sweep call site exists at all — a point at
+    // which no remove request can have been issued, because the code that issues
+    // them has not been reached. The invariant that matters is unchanged: NO
+    // release may run in the window where a request may already be in flight,
+    // which is from the sweep call until it has settled.
     for (const match of [...code.matchAll(/await release\(\)/g)]) {
-      assert.ok((match.index ?? -1) > sweep,
-        'no release may run before the sweep has finished settling')
+      const at = match.index ?? -1
+      assert.ok(at < sweep || /if \(!removalAttempted\)/.test(
+        code.slice(code.lastIndexOf('\n', at) + 1, at + 15)),
+        'a release inside the sweep window must be guarded by !removalAttempted')
     }
     assert.ok(!code.includes('finally'),
       'a finally-block release would fire on paths where storage never settled')
@@ -572,6 +597,284 @@ describe('the route survives a slow or failed sweep without losing the record', 
     const page = read('src/app/orders/drafts/page.tsx')
     assert.ok(page.includes('if (!entry || deletingRef.current) return'))
     assert.ok(page.includes('deletingRef.current = true'))
+  })
+})
+
+// ── The defect this fix exists for ────────────────────────────────────────────
+
+describe('a PI something else depends on is refused BEFORE a file is touched', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  /**
+   * THE PRODUCTION FAILURE, WRITTEN DOWN.
+   *
+   * A PI Draft would not delete. The dialog reported "already being deleted",
+   * the record stayed, and its workbook and product images were already gone.
+   *
+   * The reservation protocol was not at fault. It freezes the submission and its
+   * own three child tables, and did. What refused the deletion was a foreign key
+   * belonging to a different module — an allocated payment names the PI, with
+   * the default NO ACTION rule — arriving at finalization, as a raw constraint
+   * error, after the storage sweep had already succeeded. On that path the
+   * reservation is deliberately KEPT, because the files really are gone, so
+   * every later attempt inside the claim's time to live met the neutral
+   * in-progress refusal and every attempt after it was refused by the same
+   * foreign key.
+   */
+  test('the question is asked before the reservation, not after the sweep', () => {
+    const blockers = route.indexOf('readDeletionBlockers(service, submissionId)')
+    const begin    = route.indexOf("'begin_order_submission_deletion'")
+    const sweep    = route.indexOf('removeAllObjectsForSubmission(')
+    assert.ok(blockers > 0, 'the check must exist')
+    assert.ok(blockers < begin, 'a blocked PI must not have a reservation taken on it')
+    assert.ok(blockers < sweep, 'and must certainly not have its files removed first')
+  })
+
+  test('a blocked attempt returns before the sweep, so nothing is destroyed', () => {
+    const blocked = route.indexOf("return fail({ code: 'BLOCKED'")
+    const sweep   = route.indexOf('removeAllObjectsForSubmission(')
+    assert.ok(blocked > 0 && blocked < sweep)
+  })
+
+  test('a blocked attempt neither takes nor renews a reservation', () => {
+    // This is the whole reason the check sits before begin. begin renews
+    // deletion_claimed_at on every successful call, so a blocked attempt made
+    // after it would push the claim's expiry forward on each press — and the
+    // person clearing the blocking record would then be told to wait, by a
+    // reservation their own last click had refreshed.
+    const blocked = route.indexOf("return fail({ code: 'BLOCKED'")
+    const begin   = route.indexOf("'begin_order_submission_deletion'")
+    assert.ok(blocked < begin)
+    assert.ok(route.includes('NO RESERVATION IS TAKEN ON THIS PATH'))
+  })
+
+  test('the blocking records are read with the SERVICE role, and never deleted', () => {
+    assert.ok(route.includes('readDeletionBlockers(service, submissionId)'),
+      'two of the three tables are invisible to the person deleting the PI')
+    const helper = read('src/lib/orders/submissionDeletionBlockersServer.ts')
+    const code = helper.split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//')).join('\n')
+    assert.ok(!/\.delete\(|\.update\(|\.upsert\(|\.insert\(/.test(code),
+      'nothing is removed to make a deletion succeed')
+  })
+
+  test('what was found is disclosed only after the deletion predicate admits the caller', () => {
+    const read_ = route.indexOf('readDeletionBlockers(service, submissionId)')
+    const gate  = route.indexOf("'order_submission_deletable_by'")
+    const tell  = route.indexOf("return fail({ code: 'BLOCKED'")
+    assert.ok(read_ > 0 && gate > read_ && tell > gate,
+      'a caller who may not delete this PI learns nothing about what refers to it')
+    assert.ok(route.includes('if (permitted === true)'))
+  })
+
+  test('a check that cannot be authorized returns before anything is reserved', () => {
+    // A predicate that did not answer is not a "no" and is certainly not a
+    // "yes": the one thing that must not follow it is a storage sweep.
+    const gate = route.indexOf("'order_submission_deletable_by'")
+    const sweep = route.indexOf('removeAllObjectsForSubmission(')
+    const bail = route.indexOf('if (gateErr || permitted !== false)')
+    assert.ok(bail > gate && bail < sweep)
+    assert.ok(route.slice(bail, bail + 500).includes("code: 'DELETE_FAILED', status: 500"))
+  })
+
+  test('AND EVEN IF BEGIN DISAGREED, a blocked PI is never swept', () => {
+    // The last line between a protected relationship and a destroyed workbook.
+    // begin re-derives the same predicate under its own lock, so this cannot
+    // happen — which is exactly why it is worth a line rather than a comment.
+    // THE GUARD IS NOW A FRESH READ. It used to re-test the value the
+    // pre-reservation check produced, which could only ever repeat that check's
+    // answer; it now asks the database again, under the reservation, so it also
+    // catches a record created in the window between the two.
+    const guard = route.indexOf('if (held.length > 0) {',
+      route.indexOf("'begin_order_submission_deletion'"))
+    const sweep = route.indexOf('removeAllObjectsForSubmission(')
+    assert.ok(guard > 0 && guard < sweep)
+    const branch = route.slice(guard, guard + 300)
+    assert.ok(branch.includes("code: 'BLOCKED'"))
+    // AND RELEASING HERE IS NOW THE CORRECT ANSWER, where once it was not. The
+    // old guard was unreachable, so leaving the claim to go stale cost nothing.
+    // This one is reachable and nothing has been destroyed on it, so handing the
+    // record back is the difference between a PI the next attempt can delete and
+    // one frozen for the claim's whole time to live.
+    assert.ok(branch.includes('await release()'),
+      'nothing was touched, so the record is handed back rather than left frozen')
+  })
+
+  test('an unauthorized caller falls through to begin, which refuses in its own words', () => {
+    const gate = route.indexOf("'order_submission_deletable_by'")
+    const begin = route.indexOf("'begin_order_submission_deletion'")
+    assert.ok(gate < begin)
+    const branch = route.slice(gate, begin)
+    assert.ok(!/return fail\(\{ code: 'FORBIDDEN'/.test(branch),
+      'the route does not invent a refusal the database has not made')
+  })
+
+  test('a check that could not be run is never read as "nothing is in the way"', () => {
+    const at = route.indexOf('readDeletionBlockers(service, submissionId)')
+    const branch = route.slice(at, at + 500)
+    assert.ok(branch.includes('} catch {'))
+    assert.ok(branch.includes("return fail({ code: 'DELETE_FAILED', status: 500 })"))
+    const sweep = route.indexOf('removeAllObjectsForSubmission(')
+    assert.ok(route.indexOf("return fail({ code: 'DELETE_FAILED', status: 500 })", at) < sweep,
+      'and it returns before anything is destroyed')
+  })
+
+  test('a foreign key that beats the check is still answered truthfully', () => {
+    // The check is not a lock: an allocation created in the window between it
+    // and finalization would refuse the DELETE with a raw constraint error, at
+    // the one moment when the files are already gone. "Could not be deleted just
+    // now" for a condition that will still hold tomorrow is what stranded the PI.
+    assert.equal(classifyDeletionError(new Error(
+      'update or delete on table "order_submissions" violates foreign key constraint'
+      + ' "finance_payment_allocations_order_submission_fk" on table'
+      + ' "finance_payment_allocations"')), 'BLOCKED')
+    assert.equal(classifyDeletionError(new Error(
+      'update or delete on table "order_submission_activity" violates foreign key constraint'
+      + ' "order_submission_correction_requests_resolved_edit_activity_id_fkey"')), 'BLOCKED')
+    const at = route.indexOf("if (code === 'BLOCKED')")
+    assert.ok(at > route.indexOf("'finalize_order_submission_deletion'"))
+    assert.ok(route.slice(at, at + 600).includes('readDeletionBlockers(service, submissionId)'),
+      'and the reason is read back so the screen can name it')
+  })
+
+  test('a deliberate marker is never answered as a constraint failure', () => {
+    // The constraint text is matched last, so a status or permission refusal
+    // that happened to mention a foreign key still reads as itself.
+    for (const [message, code] of [
+      ['ORDER_SUBMISSION_DELETE_STATUS: violates foreign key constraint', 'STATUS_CHANGED'],
+      ['ORDER_SUBMISSION_DELETE_DENIED: violates foreign key constraint', 'FORBIDDEN'],
+      ['ORDER_SUBMISSION_DELETION_IN_PROGRESS: violates foreign key constraint', 'IN_PROGRESS'],
+    ] as const) {
+      assert.equal(classifyDeletionError(new Error(message)), code)
+    }
+  })
+
+  test('the reason names the record and the remedy, and carries nothing else', () => {
+    const failure = describeDeletionFailure('BLOCKED', [{ kind: 'payment_allocation', count: 1 }])
+    assert.equal(failure.blocked, true)
+    assert.equal(failure.retryable, false, 'pressing again cannot move a protected relationship')
+    assert.ok(/allocated to this PI/i.test(failure.message))
+    assert.ok(/Finance/.test(failure.message))
+    assert.ok(!/[0-9a-f]{8}-[0-9a-f]{4}-/i.test(failure.message), 'no id')
+    assert.ok(!/₹|\d+\.\d\d/.test(failure.message), 'no amount')
+  })
+
+  test('a BLOCKED answer with no usable detail still says something true', () => {
+    for (const nonsense of [undefined, null, 'yes', [], [{ kind: 'nope', count: 4 }],
+                            [{ kind: 'payment_allocation', count: 0 }],
+                            [{ kind: 'payment_allocation', count: 'many' }]]) {
+      const failure = describeDeletionFailure('BLOCKED', nonsense)
+      assert.equal(failure.code, 'BLOCKED')
+      assert.ok(failure.message.length > 0)
+      assert.ok(!/undefined|NaN|\[object/.test(failure.message))
+    }
+  })
+
+  test('blockers are only ever consulted for BLOCKED', () => {
+    for (const code of ['DELETE_FAILED', 'IN_PROGRESS', 'FORBIDDEN'] as const) {
+      assert.deepEqual(
+        describeDeletionFailure(code, [{ kind: 'payment_allocation', count: 9 }]),
+        describeDeletionFailure(code))
+    }
+  })
+
+  test('a repeated kind is counted once, and the order is the schema’s', () => {
+    const failure = describeDeletionFailure('BLOCKED', [
+      { kind: 'confirmed_order', count: 1 },
+      { kind: 'payment_allocation', count: 1 },
+      { kind: 'payment_allocation', count: 7 },
+    ])
+    assert.ok(failure.message.indexOf('allocated to this PI')
+      < failure.message.indexOf('Confirmed Order'))
+    assert.equal((failure.message.match(/allocated to this PI/g) ?? []).length, 1)
+  })
+})
+
+describe('a deletion that already happened is a success, not a 404', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  test('a missing record answers ok, from the claim and from finalization alike', () => {
+    assert.ok(route.includes('const alreadyGone ='))
+    const begin = route.indexOf("'begin_order_submission_deletion'")
+    const finalize = route.indexOf("'finalize_order_submission_deletion'")
+    const afterBegin = route.indexOf("if (code === 'NOT_FOUND') return alreadyGone(submissionId)", begin)
+    assert.ok(afterBegin > begin && afterBegin < finalize)
+    assert.ok(route.indexOf("return alreadyGone(submissionId)", finalize) > finalize)
+  })
+
+  test('it is marked, so the list can tell a completion from a deletion it did', () => {
+    assert.ok(route.includes('alreadyDeleted: true'))
+  })
+
+  test('and it says nothing about whether the id ever existed', () => {
+    // The same answer for an id that never was, so it cannot be used to learn
+    // which PIs are real.
+    const at = route.indexOf('const alreadyGone =')
+    const body = route.slice(at, route.indexOf('})', route.indexOf('NextResponse.json({', at)))
+    assert.ok(!body.includes('client_name'))
+    assert.ok(!body.includes('status'))
+    assert.ok(!body.includes('claim'))
+  })
+
+  test('the browser removes the row on it, exactly as on a real deletion', () => {
+    const page = read('src/app/orders/drafts/page.tsx')
+    const success = page.slice(page.indexOf('setEntries(current =>'))
+    assert.ok(success.includes('setPendingDelete(null)'))
+    assert.ok(success.includes('setDeleted(DELETE_PI_SUCCESS)'))
+  })
+})
+
+describe('the dialog tells the four outcomes apart', () => {
+  test('running, retryable, blocked — and the fourth is the row disappearing', () => {
+    const running = describeDeletionFailure('IN_PROGRESS')
+    assert.equal(running.retryable, false)
+    assert.equal(running.blocked, false)
+
+    for (const code of ['STORAGE_CLEANUP_FAILED', 'DELETE_FAILED', 'CLAIM_INVALID'] as const) {
+      const failure = describeDeletionFailure(code)
+      assert.equal(failure.retryable, true, `${code} converges on a second attempt`)
+      assert.equal(failure.blocked, false)
+    }
+
+    const blocked = describeDeletionFailure('BLOCKED')
+    assert.equal(blocked.blocked, true)
+    assert.equal(blocked.retryable, false)
+
+    for (const code of ['UNAUTHORIZED', 'FORBIDDEN', 'STATUS_CHANGED', 'NOT_FOUND'] as const) {
+      assert.equal(describeDeletionFailure(code).retryable, false,
+        `${code} does not change by being asked again`)
+    }
+  })
+
+  test('the destructive button is disabled while the request is out, and when blocked', () => {
+    const modal = read('src/components/orders/piReviewModals.tsx')
+    const panel = modal.slice(modal.indexOf('export function PiDeleteConfirmModal'))
+    assert.ok(panel.includes("const blocked = failure?.blocked === true"))
+    assert.ok(panel.includes('const disabled = deleting || blocked'))
+    assert.ok(panel.includes('disabled={disabled}'))
+    assert.ok(panel.includes('if (disabled) return'), 'and the handler refuses re-entry')
+  })
+
+  test('a retryable failure relabels the button rather than repeating itself', () => {
+    const modal = read('src/components/orders/piReviewModals.tsx')
+    const panel = modal.slice(modal.indexOf('export function PiDeleteConfirmModal'))
+    assert.ok(panel.includes('DELETE_PI_RETRY_LABEL'))
+    assert.ok(panel.includes("failure?.retryable === true ? DELETE_PI_RETRY_LABEL : DELETE_PI_CONFIRM_LABEL"))
+    assert.ok(/deleting\s*\n?\s*\? DELETE_PI_BUSY_LABEL/.test(panel),
+      'and an in-flight request wins over any of it')
+  })
+
+  test('the page keeps the whole answer, not just the sentence out of it', () => {
+    const page = read('src/app/orders/drafts/page.tsx')
+    assert.ok(page.includes('useState<SubmissionDeletionFailure | null>(null)'))
+    assert.ok(page.includes('describeDeletionFailure(body?.code, body?.detail?.blockers)'))
+    assert.ok(!page.includes('failure.message'), 'the dialog reads the object it was given')
+  })
+
+  test('and still knows nothing about claims', () => {
+    const page = read('src/app/orders/drafts/page.tsx')
+    assert.ok(!page.includes('claim'))
+    assert.ok(!page.includes('blockers.'), 'it forwards them; it does not interpret them')
   })
 })
 
@@ -891,9 +1194,17 @@ describe('the browser is told the truth about each outcome', () => {
       new Error('ORDER_SUBMISSION_DELETION_IN_PROGRESS: this PI is already being deleted')),
       'IN_PROGRESS')
     const failure = describeDeletionFailure('IN_PROGRESS')
-    assert.ok(/already being deleted/i.test(failure.message))
+    // REWORDED, because "This PI is already being deleted" was true of a
+    // reservation and false of the PI: the record it named had been stuck for
+    // days, and the sentence read as reassurance about a deletion that was never
+    // going to arrive. What is actually in progress is a REQUEST, and it holds
+    // the reservation only for as long as its time to live.
+    assert.ok(/currently in progress/i.test(failure.message))
+    assert.ok(/please wait/i.test(failure.message))
     assert.ok(!/error|fail|problem|wrong/i.test(failure.message),
       'a second click on a deletion that is already running is not a fault')
+    assert.equal(failure.retryable, false, 'the honest instruction is to wait, not to press again')
+    assert.equal(failure.blocked, false)
   })
 
   test('a guard refusal reads as the same in-flight state', () => {
@@ -906,8 +1217,10 @@ describe('the browser is told the truth about each outcome', () => {
     assert.equal(classifyDeletionError(
       new Error('ORDER_SUBMISSION_DELETION_CLAIM_INVALID: not valid for this PI')), 'CLAIM_INVALID')
     const failure = describeDeletionFailure('CLAIM_INVALID')
-    assert.ok(/did not complete/i.test(failure.message))
-    assert.ok(/try again/i.test(failure.message))
+    assert.ok(/did not finish/i.test(failure.message))
+    assert.ok(/retry/i.test(failure.message))
+    assert.equal(failure.retryable, true, 'every stage converges, so a second attempt finishes it')
+    assert.equal(failure.blocked, false)
   })
 
   test('a storage failure still says plainly that NOTHING was deleted', () => {
@@ -1170,5 +1483,112 @@ describe('the migration enforces the same rule the screen draws', () => {
     assert.ok(!/payment/i.test(code), 'no payment table is read or written')
     assert.ok(!/display_number|order_number/.test(code), 'no number is allocated')
     assert.ok(!/insert into/i.test(code), 'deletion writes nothing anywhere')
+  })
+})
+
+describe('the question is asked again once the record is frozen', () => {
+  const route = read('src/app/api/orders/submissions/delete/route.ts')
+
+  /**
+   * THE HALF THE FIRST FIX LEFT OPEN.
+   *
+   * Asking before the reservation is what lets a blocked PI be refused with its
+   * workbook still in the bucket, and that is why step 4 comes first. But a
+   * check taken before the record is frozen cannot see a row created after it:
+   * an allocation or a correction request written between step 4 and the
+   * reservation commit was invisible to the check and refusable by nothing else,
+   * and announced itself as a 23503 at finalization — with the sweep already
+   * done and the files already gone.
+   *
+   * The guard that used to sit after `begin` re-tested the value step 4 had
+   * produced, so it could only ever repeat step 4's answer. It is now a second
+   * read, against the database, under the reservation.
+   */
+  const FIRST  = route.indexOf('readDeletionBlockers(service, submissionId)')
+  const BEGIN  = route.indexOf("'begin_order_submission_deletion'")
+  const SECOND = route.indexOf('readDeletionBlockers(service, submissionId)', BEGIN)
+  const SWEEP  = route.indexOf('removeAllObjectsForSubmission(')
+
+  const block = route.slice(
+    route.indexOf('// Step 5b. ASK AGAIN'),
+    route.indexOf('// Step 6. Remove the objects'))
+
+  test('there is a second read, and it happens under the reservation', () => {
+    assert.ok(FIRST > 0 && FIRST < BEGIN, 'step 4 still asks before anything is reserved')
+    assert.ok(SECOND > BEGIN, 'the second read must come after the record is frozen')
+    assert.ok(SECOND < SWEEP, 'and before a single object is removed')
+    assert.notEqual(FIRST, SECOND, 'two distinct call sites, not one counted twice')
+  })
+
+  test('the second read asks the database; it does not re-test the first answer', () => {
+    assert.ok(block.includes('readDeletionBlockers(service, submissionId)'),
+      'step 5b must issue its own query')
+    assert.ok(/held\.length > 0/.test(block),
+      'and must branch on what IT found')
+    assert.ok(!/blockers\.length/.test(block),
+      're-testing step 4’s variable would answer with the stale state this exists to catch')
+    assert.ok(!/blockers\.length/.test(route.slice(BEGIN)),
+      'no path after the reservation may decide anything from the pre-reservation read')
+  })
+
+  test('both refusals hand the record back, because nothing has been destroyed', () => {
+    const releases = block.match(/await release\(\)/g) ?? []
+    assert.equal(releases.length, 2,
+      'the BLOCKED path and the read-error path must each release the claim')
+
+    const blockedAt = block.indexOf("return fail({ code: 'BLOCKED'")
+    const failedAt  = block.indexOf("return fail({ code: 'DELETE_FAILED'")
+    assert.ok(blockedAt > 0 && failedAt > 0, 'both refusals must exist')
+    assert.ok(block.lastIndexOf('await release()', blockedAt) > 0,
+      'the blocked refusal releases before it returns')
+    assert.ok(block.lastIndexOf('await release()', failedAt) > 0,
+      'the read-error refusal releases before it returns')
+  })
+
+  test('neither refusal touches storage', () => {
+    for (const call of ['removeAllObjectsForSubmission', '.storage', '.remove(']) {
+      assert.ok(!block.includes(call),
+        `step 5b must issue no storage request; found ${call}`)
+    }
+    const blockedAt = route.indexOf("detail: { blockers: held }")
+    assert.ok(blockedAt > 0 && blockedAt < SWEEP,
+      'the blocked refusal returns before the sweep, so no file can have gone')
+  })
+
+  test('a failed read is a refusal, never an answer of “nothing is in the way”', () => {
+    assert.ok(/catch \{[\s\S]*?await release\(\)[\s\S]*?DELETE_FAILED/.test(block),
+      'an unanswerable question must release and refuse, not proceed to the sweep')
+    assert.ok(!/catch \{[\s\S]*?held = \[\]/.test(block),
+      'it must never substitute an empty answer for a failed read')
+  })
+
+  test('the caller is not gated a second time, because begin already proved them', () => {
+    const afterBegin = route.slice(BEGIN).split('\n')
+      .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//'))
+      .join('\n')
+    assert.ok(!afterBegin.includes('order_submission_deletable_by'),
+      'begin re-derives the predicate under its own lock; a second gate would be dead code')
+  })
+
+  test('the refusal names what it found, and only what it found', () => {
+    assert.ok(block.includes('detail: { blockers: held }'),
+      'the screen must name the records the second read discovered')
+  })
+
+  /**
+   * THE LIMITATION, WRITTEN DOWN RATHER THAN IMPLIED. This route closes the
+   * window in FRONT of the reservation. A row inserted behind it by direct SQL
+   * or the service role is refused only by the triggers in 20261010000000, which
+   * is not applied. A reader of this file must not be able to conclude that the
+   * database race is closed here.
+   */
+  test('the header records which half of the race is still outstanding', () => {
+    const header = route.slice(0, route.indexOf('const SLOW_DELETION_MS'))
+    assert.ok(header.includes('20261010000000'),
+      'the migration that closes the other half must be named')
+    assert.ok(/NOT applied|not applied/.test(header),
+      'and its state must be stated, so nobody reads this as finished')
+    assert.ok(/Neither half is sufficient alone/i.test(header),
+      'the split must be explicit in both directions')
   })
 })

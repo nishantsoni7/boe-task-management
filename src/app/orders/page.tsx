@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -20,6 +20,15 @@ import {
   NO_ORDERS_CAPABILITIES,
   type OrdersCapabilities,
 } from '@/lib/permissions/orders'
+import {
+  NEW_ORDER_ACTION,
+  NO_ORDER_DASHBOARD_COUNTS,
+  ORDER_DASHBOARD_SUBTITLE,
+  orderDashboardCards,
+  type OrderDashboardCounts,
+} from '@/lib/orders/orderDashboard'
+import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
+import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -34,13 +43,13 @@ type Order = {
   status: string
 }
 
-type DashboardStats = {
-  activeOrders: number
-  runningValue: number
-  readyToDispatch: number
-  unlinkedPayments: number
-  overdueOrders: number
-}
+/**
+ * The figures above the list.
+ *
+ * `runningValue` is the only one that is not a card count — it is the money on
+ * the floor right now, and it sits beside the list it describes.
+ */
+type DashboardStats = OrderDashboardCounts & { runningValue: number }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -88,11 +97,18 @@ function StatusBadge({ status }: { status: string }) {
 
 // ── Dashboard stat card ───────────────────────────────────────────────────────
 
+/**
+ * `value` may be null, which renders as a quiet placeholder rather than a "0".
+ *
+ * A count that has not landed and a count that is genuinely zero are different
+ * statements, and printing "0" for the first is how a dashboard tells somebody
+ * there is nothing waiting when it simply has not asked yet.
+ */
 function StatCard({
   label, value, sub, accent, onClick,
 }: {
   label: string
-  value: string | number
+  value: string | number | null
   sub?: string
   accent?: string
   onClick?: () => void
@@ -116,8 +132,8 @@ function StatCard({
       <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
-      <div style={{ fontSize: '22px', fontWeight: 700, color: accent ?? colors.primary, letterSpacing: '-0.02em', lineHeight: 1.2 }}>
-        {value}
+      <div style={{ fontSize: '22px', fontWeight: 700, color: value === null ? colors.muted : (accent ?? colors.primary), letterSpacing: '-0.02em', lineHeight: 1.2 }}>
+        {value === null ? '—' : value}
       </div>
       {sub && <div style={{ fontSize: '11px', color: colors.muted }}>{sub}</div>}
     </div>
@@ -129,17 +145,17 @@ function StatCard({
 export default function OrdersDashboardPage() {
   const [pageLoading, setPageLoading] = useState(true)
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
-  // The unlinked-payments card reads Finance data, so it is gated on Finance
-  // `view` rather than on the admin role. Starts empty so it cannot flash.
+  // The three money cards read Finance data, so they are gated on Finance
+  // capabilities rather than on the admin role. Starts empty so none can flash.
   const [financeCaps, setFinanceCaps] = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
-  // Drives the "New Order" entry point only. Starts empty so the button cannot
-  // flash for somebody who is not allowed to raise an order; /orders/import
-  // enforces the same `create` grant in its own right, because hiding a button
-  // is not access control.
+  // Drives the Upload PI entry point and the Review Queue card. Starts empty so
+  // neither can flash for somebody who is not allowed them; /orders/import and
+  // the review controls each enforce their own grant server-side, because hiding
+  // a control is not access control.
   const [ordersCaps, setOrdersCaps] = useState<OrdersCapabilities>(NO_ORDERS_CAPABILITIES)
   const [orders,      setOrders]      = useState<Order[]>([])
   const [stats,       setStats]       = useState<DashboardStats>({
-    activeOrders: 0, runningValue: 0, readyToDispatch: 0, unlinkedPayments: 0, overdueOrders: 0,
+    ...NO_ORDER_DASHBOARD_COUNTS, runningValue: 0,
   })
   const [listLoading, setListLoading] = useState(false)
 
@@ -147,15 +163,21 @@ export default function OrdersDashboardPage() {
   const supabase = useMemo(() => createClient(), [])
 
   /**
-   * The list and the five figures above it.
+   * The list, and every figure above it.
    *
-   * ALL SIX TOGETHER. The list used to be awaited on its own and the stats
+   * ALL OF THEM TOGETHER. The list used to be awaited on its own and the stats
    * issued afterwards, which made the dashboard exactly as slow as its slowest
-   * query PLUS its list — for no reason, because not one of the six depends on
-   * another's answer. Every query below is the query it always was; only the
-   * waiting changed.
+   * query PLUS its list — for no reason, because not one of them depends on
+   * another's answer.
    *
-   * AND EVERY FIGURE IS STILL THE DATABASE'S. It would be tempting to derive
+   * AND IT TAKES NO CAPABILITIES, deliberately. Every query below is scoped by
+   * RLS, so each count is already exactly what this reader may see, and gating
+   * the queries on the permission resolver would put the whole dashboard behind
+   * a second round trip to save two `head: true` counts. WHICH CARDS ARE DRAWN
+   * is a separate decision, made by orderDashboardCards once the capabilities
+   * land — and a card that is not drawn shows nobody a number.
+   *
+   * EVERY FIGURE IS STILL THE DATABASE'S. It would be tempting to derive
    * `runningValue` from the list, which already carries total_value for exactly
    * the running Orders — but the list and the count answer to the SAME RLS and
    * a derived figure would silently become a client-side aggregate the day one
@@ -168,9 +190,11 @@ export default function OrdersDashboardPage() {
       { data: runningData },
       { count: activeCount },
       { data: runningValueData },
-      { count: readyCount },
-      { count: unlinkedCount },
       { count: overdueCount },
+      { count: draftCount },
+      { count: reviewCount },
+      { count: awaitingCount },
+      availableRes,
     ] = await Promise.all([
       supabase
         .from('orders')
@@ -185,16 +209,34 @@ export default function OrdersDashboardPage() {
         .in('status', ['running', 'on_hold', 'ready_for_dispatch']),
       supabase.from('orders').select('total_value').eq('status', 'running'),
       supabase.from('orders').select('*', { count: 'exact', head: true })
-        .eq('status', 'ready_for_dispatch'),
-      supabase.from('finance_payment_requests').select('*', { count: 'exact', head: true })
-        .is('order_id', null)
-        // A payment parked on an Order Request (20260698) links itself on
-        // conversion — it is no longer an actionable unlinked payment.
-        .is('order_request_id', null)
-        .in('status', ['approved_unlinked', 'approved_linked']),
-      supabase.from('orders').select('*', { count: 'exact', head: true })
         .in('status', ['running', 'on_hold'])
         .lt('due_date', new Date().toISOString().slice(0, 10)),
+
+      // PI Drafts, in exactly the statuses /orders/drafts lists — the same
+      // constant, so the card and the page it opens can never describe
+      // different sets.
+      supabase.from('order_submissions').select('*', { count: 'exact', head: true })
+        .in('status', PI_DRAFT_LIST_STATUSES as unknown as string[]),
+
+      // The review queue: submitted PIs, the same status splitDraftsForReview
+      // puts at the top of that page.
+      supabase.from('order_submissions').select('*', { count: 'exact', head: true })
+        .eq('status', 'submitted'),
+
+      // Money recorded but not yet verified. A DIFFERENT AXIS from allocation,
+      // and deliberately its own card: awaiting money must never be added to
+      // verified money just because both are attributed.
+      supabase.from('finance_payment_requests').select('*', { count: 'exact', head: true })
+        .eq('status', 'pending_approval'),
+
+      // Money with a positive unallocated balance, under the ONE canonical
+      // classification (src/lib/finance/paymentClassification.ts). Counted by
+      // the DATABASE over the whole set, so the figure survives paging — and
+      // read from the same projection the Finance list reads, so this card and
+      // the page it opens are one predicate rather than two kept in step by
+      // hand.
+      supabase.from(RECEIVED_PAYMENTS_SOURCE).select('id', { count: 'exact', head: true })
+        .eq('is_available_to_allocate', true),
     ])
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -210,11 +252,18 @@ export default function OrdersDashboardPage() {
     )
 
     setStats({
-      activeOrders:     activeCount   ?? 0,
       runningValue,
-      readyToDispatch:  readyCount    ?? 0,
-      unlinkedPayments: unlinkedCount ?? 0,
-      overdueOrders:    overdueCount  ?? 0,
+      activeOrders:         activeCount   ?? 0,
+      overdueOrders:        overdueCount  ?? 0,
+      piDrafts:             draftCount    ?? 0,
+      reviewQueue:          reviewCount   ?? 0,
+      awaitingVerification: awaitingCount ?? 0,
+      // AVAILABLE FUNDS DEGRADE TO ABSENT, NEVER TO ZERO.
+      // `is_available_to_allocate` arrives with 20261008000000; against a
+      // database without it PostgREST refuses the filter outright, and a card
+      // reading "0" would say there is nothing to allocate when the truth is
+      // that nothing was asked. `undefined` renders as a dash.
+      availableToAllocate:  availableRes.error ? undefined : (availableRes.count ?? 0),
     })
 
     setListLoading(false)
@@ -269,74 +318,69 @@ export default function OrdersDashboardPage() {
     ? '₹' + (stats.runningValue / 100000).toFixed(1) + 'L'
     : fmtAmount(stats.runningValue)
 
-  // finance_payment_requests RLS only returns rows to admins (or the
-  // submitter, which isn't meaningful for an org-wide count) — for anyone
-  // else the query already silently returns 0. Neutralize the card instead
-  // of showing a "0" that reads as "nothing unlinked" when it actually
-  // means "you can't see Finance data."
-  const canSeeFinance = financeCaps.canAccessFinanceModule
+  // ── WHICH CARDS THIS READER IS OFFERED ──
+  //
+  // One decision, made in one place (src/lib/orders/orderDashboard.ts) so what
+  // the dashboard offers is a statement a test can read rather than a set of
+  // conditionals spread through the markup. A card that is not in this list is
+  // not drawn at all — never drawn showing a dash, which would say "nothing is
+  // waiting" to somebody who simply cannot see Finance.
+  const cards = orderDashboardCards({ counts: stats, orders: ordersCaps, finance: financeCaps })
 
   return (
     <OrdersLayout
       profile={profile}
       title="Orders"
-      subtitle="Running orders and operational overview."
+      subtitle={ORDER_DASHBOARD_SUBTITLE}
       onSignOut={handleSignOut}
       onRefresh={loadData}
       actions={
-        // Order Requests navigation is untouched: this is an additional way in,
-        // not a replacement for it.
+        // ── THE ONE WAY A NEW ORDER BEGINS ──
+        //
+        // "Upload PI", not "New Order": what this control does is upload one
+        // document. The Order comes into existence at approval, with a number,
+        // and the retired path that used to promise one earlier is gone.
+        //
+        // /orders/import enforces the same `create` grant in its own right,
+        // because hiding a button is not access control.
         ordersCaps.canCreateOrder ? (
           <button
             className="boe-btn boe-btn-primary"
-            onClick={() => router.push('/orders/import')}
-            title="Upload the approved PI to start a new order"
+            onClick={() => router.push(NEW_ORDER_ACTION.href)}
+            title={NEW_ORDER_ACTION.title}
           >
-            <Plus size={13} strokeWidth={2.2} />
-            New Order
+            <Upload size={13} strokeWidth={2.2} />
+            {NEW_ORDER_ACTION.label}
           </button>
         ) : undefined
       }
     >
-      {/* ── Dashboard cards ── */}
+      {/* ── Quick access ──
+          The workflow in order: drafts, the review queue, confirmed Orders,
+          then the money. Every card is a link; the value is the database's own
+          count under this reader's RLS, and a dash means "not asked" rather
+          than "nothing there". */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
         gap: '12px',
-        marginBottom: '28px',
+        marginBottom: '20px',
       }}>
-        <StatCard
-          label="Active Orders"
-          value={stats.activeOrders}
-          sub="Running + Hold + Ready"
-          onClick={() => router.push('/orders/all')}
-        />
+        {cards.map(card => (
+          <StatCard
+            key={card.key}
+            label={card.label}
+            value={card.value}
+            sub={card.sub}
+            accent={card.tone === 'attention' ? colors.amber : card.tone === 'money' ? colors.blue : undefined}
+            onClick={() => router.push(card.href)}
+          />
+        ))}
         <StatCard
           label="Running Value"
           value={fmtRunningValue}
           sub="Orders in production"
           accent={colors.blue}
-        />
-        <StatCard
-          label="Ready to Dispatch"
-          value={stats.readyToDispatch}
-          accent="#5B21B6"
-          onClick={() => router.push('/orders/all?status=ready_for_dispatch')}
-        />
-        <StatCard
-          label="Unlinked Payments"
-          value={canSeeFinance ? stats.unlinkedPayments : '—'}
-          sub={canSeeFinance ? 'Payments without an order' : 'Finance only'}
-          accent={canSeeFinance && stats.unlinkedPayments > 0 ? colors.amber : colors.muted}
-          // Counted with the exact predicate Non-Linked Payments uses, so the
-          // card lands on the page that holds these rows, not on Linked.
-          onClick={canSeeFinance ? () => router.push('/finance/received/unlinked') : undefined}
-        />
-        <StatCard
-          label="Overdue"
-          value={stats.overdueOrders}
-          sub="Past due date"
-          accent={stats.overdueOrders > 0 ? colors.red : colors.muted}
         />
       </div>
 

@@ -30,11 +30,11 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
 
 const FINANCE_PAGE = 'src/app/finance/page.tsx'
 const RECEIVED_VIEW = 'src/app/finance/received/ReceivedPaymentsView.tsx'
-const ORDER_REQUEST_DETAIL = 'src/app/orders/requests/[id]/page.tsx'
 const ORDER_DETAIL = 'src/app/orders/[id]/page.tsx'
 const ORDERS_LIST = 'src/app/orders/page.tsx'
-const DELETE_ROUTE = 'src/app/api/orders/requests/delete/route.ts'
-const CLEANUP_ROUTE = 'src/app/api/orders/requests/attachments/cleanup/route.ts'
+const PI_DETAIL = 'src/app/orders/drafts/[submissionId]/page.tsx'
+const PI_DRAFTS = 'src/app/orders/drafts/page.tsx'
+const RETIRED_NOTICE = 'src/app/orders/requests/RetiredWorkflowNotice.tsx'
 
 describe('Finance controls ask the capability helper', () => {
   test('both Finance screens resolve capabilities for the signed-in user', () => {
@@ -108,20 +108,27 @@ describe('Finance ownership rules are unchanged', () => {
 })
 
 describe('Orders controls ask the capability helper', () => {
-  test('review is gated on canApproveOrder', () => {
-    const source = read(ORDER_REQUEST_DETAIL)
+  // THE ORDER REQUEST DETAIL PAGE IS GONE, and with it the two controls this
+  // block used to pin: review gated on `caps.canApproveOrder` and delete on
+  // `caps.canDeleteOrder`. Both authorized steps in the retired workflow
+  // (20261007000000), the RPCs behind them are revoked from every client role,
+  // and the module no longer registers `approve` at all. What replaced them is
+  // the PI review path, which is asserted here in their place.
+
+  test('PI review is gated on the capability, not the role', () => {
+    const source = read(PI_DETAIL)
     assert.ok(source.includes('deriveOrdersCapabilities'))
-    assert.ok(source.includes('caps.canApproveOrder && request.status === \'submitted\''))
-    assert.equal(
-      source.includes("const canReview       = !!request && isAdmin && request.status === 'submitted'"),
-      false,
-      'review must no longer be role-gated',
-    )
+    assert.ok(source.includes('canApproveOrderSubmission'),
+      'review must resolve orders.approve_order')
   })
 
-  test('delete is gated on canDeleteOrder', () => {
-    const source = read(ORDER_REQUEST_DETAIL)
-    assert.ok(source.includes('caps.canDeleteOrder && request.status !== \'converted\''))
+  test('PI deletion goes through one shared rule', () => {
+    // ONE RULE, read by the list, the dialog and the route alike — so a control
+    // cannot be offered on one surface and refused on another.
+    const rule = read('src/lib/orders/submissionDeletion.ts')
+    assert.ok(rule.includes('export function canDeleteSubmission'))
+    assert.ok(read(PI_DRAFTS).includes('canDeleteSubmission'),
+      'the drafts list must ask the shared deletion rule rather than its own')
   })
 
   test('the amendment door follows canManageOrders and ignores View As', () => {
@@ -131,70 +138,75 @@ describe('Orders controls ask the capability helper', () => {
     assert.ok(source.includes('canRequestOrderChange(actingAsAdmin ? profile : { role: \'member\' }, order, mayManageOrders)'))
   })
 
-  test('the Finance card inside Orders needs Finance view', () => {
+  test('the money cards inside Orders need Finance capabilities', () => {
     const source = read(ORDERS_LIST)
-    assert.ok(source.includes('const canSeeFinance = financeCaps.canAccessFinanceModule'))
+    assert.ok(source.includes('orderDashboardCards({ counts: stats, orders: ordersCaps, finance: financeCaps })'),
+      'which cards are drawn must be one decision, made from capabilities')
     assert.equal(source.includes("const canSeeFinance = profile?.role === 'admin'"), false)
+    const cards = read('src/lib/orders/orderDashboard.ts')
+    assert.ok(cards.includes('finance.canAccessFinanceModule'))
+    assert.ok(cards.includes('finance.canAllocatePayment && finance.canViewAllFinance'),
+      'the available-funds card needs both the authority and a trustworthy figure')
   })
 
   test('every Orders screen starts from no capabilities', () => {
-    for (const path of [ORDER_REQUEST_DETAIL, ORDER_DETAIL]) {
+    for (const path of [ORDERS_LIST, ORDER_DETAIL]) {
       assert.ok(read(path).includes('NO_ORDERS_CAPABILITIES'), `${path} must fail closed while loading`)
     }
   })
 
-  test('ordinary editing stays on the admin-or-assigned rule', () => {
-    const shared = read('src/app/orders/requests/components/shared.ts')
-    assert.ok(shared.includes('export function canEditRequest(r: OrderRequest, userId: string, isAdmin: boolean): boolean'))
-    assert.ok(shared.includes('return isAdmin || r.assigned_to === userId'))
-    assert.equal(
-      read(ORDER_REQUEST_DETAIL).includes('canEditOrder'),
-      false,
-      'an inert orders.edit row must not grant company-wide editing',
-    )
+  test('the primary new-Order action is Upload PI, and it needs orders.create', () => {
+    const source = read(ORDERS_LIST)
+    assert.ok(source.includes('ordersCaps.canCreateOrder ? ('))
+    assert.ok(source.includes('NEW_ORDER_ACTION.href'))
+    const action = read('src/lib/orders/orderDashboard.ts')
+    assert.ok(action.includes("label: 'Upload PI'"))
+    assert.ok(action.includes("href: UPLOAD_PI_PATH"))
   })
 })
 
-describe('server-side enforcement on the Orders delete route', () => {
-  const source = read(DELETE_ROUTE)
+describe('the retired Order Request routes answer, and offer no way back in', () => {
+  const notice = read(RETIRED_NOTICE)
 
-  test('it resolves the permission server-side for the token user', () => {
-    assert.ok(source.includes("p_module_key: 'orders'"))
-    assert.ok(source.includes("p_action_key: 'delete'"))
-    assert.ok(source.includes('p_user_id: user.id'), 'the actor must come from the bearer token')
+  test('the route explains the retirement and offers PI Drafts', () => {
+    assert.ok(notice.includes("export const OPEN_PI_DRAFTS_LABEL = 'Open PI Drafts'"))
+    assert.ok(notice.includes("export const PI_DRAFTS_PATH = '/orders/drafts'"))
+    assert.ok(notice.includes('RETIRED_HEADING'))
   })
 
-  test('it keeps the admin short-circuit', () => {
-    assert.ok(source.includes("let mayDelete = me.role === 'admin'"))
+  test('it offers no control that would restart the workflow', () => {
+    for (const forbidden of ['convert_order_request_to_order', 'finalize_order_request',
+                             'reject_order_request', 'resubmit_order_request',
+                             'edit_order_request', 'respond_to_clarification']) {
+      assert.equal(notice.includes(forbidden), false, `the notice must not call ${forbidden}`)
+    }
+    assert.equal(notice.includes('.insert('), false, 'the notice writes nothing at all')
   })
 
-  test('it fails closed on every uncertainty', () => {
-    assert.ok(source.includes("if (roleErr) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })"))
-    assert.ok(source.includes("if (!me) return NextResponse.json({ error: 'Authorization check failed.' }, { status: 500 })"))
-    assert.ok(source.includes('if (permErr) return NextResponse.json'))
-    assert.ok(source.includes('mayDelete = allowed === true'), 'anything but an explicit true must deny')
+  test('historical provenance is shown quietly, and only where it can be opened', () => {
+    // A request converted before the retirement became a Confirmed Order that
+    // still exists. The lookup runs under the reader's own RLS, so it can name
+    // no record they could not already open.
+    assert.ok(notice.includes("from('order_requests')"))
+    assert.ok(notice.includes("select('converted_order_id')"))
+    assert.ok(notice.includes('{converted && ('), 'the Order link appears only when there is one')
   })
 
-  test('it returns the project-standard 403', () => {
-    assert.ok(source.includes('{ status: 403 }'))
+  test('both retired routes render the notice rather than 404ing', () => {
+    for (const path of ['src/app/orders/requests/page.tsx',
+                        'src/app/orders/requests/[id]/page.tsx']) {
+      assert.ok(read(path).includes('RetiredWorkflowNotice'), `${path} must stay answerable`)
+    }
   })
 
-  test('it never reads a permission from the request body', () => {
-    const body = source.slice(source.indexOf('export async function POST'))
-    assert.equal(/req\.json\(\)[\s\S]{0,200}(allowed|permission|isAdmin|role)/.test(body), false)
-  })
-})
-
-describe('the attachment cleanup route stays admin-only', () => {
-  const source = read(CLEANUP_ROUTE)
-
-  test('it still requires the admin role', () => {
-    assert.ok(source.includes("if (!me || me.role !== 'admin')"))
-    assert.equal(source.includes('resolve_permission'), false)
-  })
-
-  test('the decision is documented rather than implied', () => {
-    assert.ok(source.includes('DELIBERATELY NOT moved onto orders.manage'))
+  test('no Orders navigation entry points at the retired workflow', () => {
+    const layout = read('src/components/layout/OrdersLayout.tsx')
+    const nav = layout.slice(layout.indexOf('const navItems'), layout.indexOf('return ('))
+    assert.equal(nav.includes('/orders/requests'), false, 'the nav must not offer the retired route')
+    assert.equal(nav.includes('Order Requests'), false)
+    for (const expected of ['/orders/drafts', '/orders/all', "path: '/orders'"]) {
+      assert.ok(nav.includes(expected), `the nav must still offer ${expected}`)
+    }
   })
 })
 
@@ -204,7 +216,9 @@ describe('the attachment cleanup route stays admin-only', () => {
 const perms = (moduleKey: 'finance' | 'orders', allowedActions: string[]): EffectivePermission[] => {
   const all = moduleKey === 'finance'
     ? ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-    : ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee']
+    // Orders no longer registers `approve` or `can_be_order_assignee`: both
+    // existed only for the retired Order Request workflow.
+    : ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order']
   return all.map(actionKey => ({
     actionKey,
     allowed: allowedActions.includes(actionKey),
@@ -214,7 +228,7 @@ const perms = (moduleKey: 'finance' | 'orders', allowedActions: string[]): Effec
 
 describe('the acceptance conditions, as capabilities', () => {
   const DHRUV_FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-  const DHRUV_ORDERS = [...DHRUV_FINANCE, 'can_be_order_assignee']
+  const DHRUV_ORDERS = ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order']
 
   test("Dhruv's stored grants authorize every protected Finance action", () => {
     const caps = deriveFinanceCapabilities('manager', perms('finance', DHRUV_FINANCE))
@@ -226,10 +240,9 @@ describe('the acceptance conditions, as capabilities', () => {
 
   test("Dhruv's stored grants authorize every protected Orders action", () => {
     const caps = deriveOrdersCapabilities('manager', perms('orders', DHRUV_ORDERS))
-    assert.equal(caps.canApproveOrder, true)
+    assert.equal(caps.canApproveOrderSubmission, true)
     assert.equal(caps.canManageOrders, true)
     assert.equal(caps.canDeleteOrder, true)
-    assert.equal(caps.canBeOrderAssignee, true)
   })
 
   test('a Contributor gets no protected action in either module', () => {
@@ -241,10 +254,9 @@ describe('the acceptance conditions, as capabilities', () => {
     assert.equal(finance.canDeletePaymentRecord, false)
 
     const orders = deriveOrdersCapabilities('member', perms('orders', contributor))
-    assert.equal(orders.canApproveOrder, false)
+    assert.equal(orders.canApproveOrderSubmission, false)
     assert.equal(orders.canManageOrders, false)
     assert.equal(orders.canDeleteOrder, false)
-    assert.equal(orders.canBeOrderAssignee, false)
   })
 
   test('a Viewer receives no mutation control at all', () => {
@@ -264,7 +276,7 @@ describe('the acceptance conditions, as capabilities', () => {
     for (const moduleKey of ['finance', 'orders'] as const) {
       const registered = moduleKey === 'finance'
         ? ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage']
-        : ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'can_be_order_assignee']
+        : ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order']
       const map = presetAllowedActions('manager', registered)
       const granted = registered.filter(a => map[a])
 
@@ -276,10 +288,11 @@ describe('the acceptance conditions, as capabilities', () => {
         assert.equal(caps.canDeletePaymentRecord, false)
       } else {
         const caps = deriveOrdersCapabilities('member', perms('orders', granted))
-        assert.equal(caps.canApproveOrder, true)
+        // PI review is PROTECTED, so no preset reaches it — the retirement
+        // removed the only preset-reachable approval Orders ever had.
+        assert.equal(caps.canApproveOrderSubmission, false)
         assert.equal(caps.canManageOrders, false)
         assert.equal(caps.canDeleteOrder, false)
-        assert.equal(caps.canBeOrderAssignee, false, 'assignee authority is never implied')
       }
     }
   })
@@ -290,7 +303,6 @@ describe('the acceptance conditions, as capabilities', () => {
 
     const orders = deriveOrdersCapabilities('admin', [])
     for (const [name, value] of Object.entries(orders)) {
-      if (name === 'canBeOrderAssignee') continue
       assert.equal(value, true, `admin must keep ${name}`)
     }
   })

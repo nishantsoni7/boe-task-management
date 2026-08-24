@@ -9,10 +9,10 @@
  *   1. THE LIST IS BOUNDED. Every read carries a page range, so PostgREST's
  *      silent 1000-row cap can never quietly drop the oldest payments out of
  *      Finance while the count beside them reads a confident "1000".
- *   2. THE LINKAGE FILTER SEES AN ALLOCATED PAYMENT. Money that reached a
- *      Confirmed Order through an ACTIVE ALLOCATION — the way PI conversion
- *      moves it — is found by the "Confirmed Order" filter, and is NOT also
- *      found by "Order Request". It used to be found by neither.
+ *   2. THE NARROWING SEES AN ALLOCATED PAYMENT. Money that reached a Confirmed
+ *      Order through an ACTIVE ALLOCATION — the way PI conversion moves it — is
+ *      found by the "Orders" view. It used to be found by neither half of a
+ *      linkage filter that tested order_id alone.
  *   3. SEARCH COVERS THE COLUMN THE TABLE LEADS WITH. A payment is findable by
  *      its own request number and by the Order number its row displays.
  *
@@ -30,7 +30,8 @@ import { readFileSync } from 'node:fs'
 import {
   ALLOCATED_TOTAL_COLUMN,
   ALLOCATION_FILTER_OPTIONS,
-  LINKAGE_FILTER_OPTIONS,
+  PAYMENT_VIEW_OPTIONS,
+  RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
   allocationFilterAvailable,
   allocationFilterClauses,
   isAllocationFilter,
@@ -39,9 +40,10 @@ import {
   RECEIVED_PAYMENTS_SEARCH_COLUMNS,
   dateBound,
   dateRange,
-  isLinkageFilter,
+  isPaymentView,
   isNarrowed,
-  linkageFilterClauses,
+  paymentViewFilterClauses,
+  readPaymentView,
   pageCount,
   pageRange,
   resultSummary,
@@ -95,42 +97,75 @@ describe('the list is bounded, so PostgREST cannot truncate it silently', () => 
   })
 })
 
-// ── 2. The linkage filter sees an allocated payment ──────────────────────────
+// ── 2. The classification narrowing sees an allocated payment ────────────────
 
-describe('the linkage filter and the badge answer the same question', () => {
-  test('THE DEFECT: an allocation-linked payment is found by "Confirmed Order"', () => {
+describe('the four views and the figures beside them answer the same question', () => {
+  test('THE DEFECT: an allocation-linked payment is found by "Orders"', () => {
     // A PI's money reaches its Order by the allocation MOVING — the payment row
     // keeps order_id NULL. The old filter tested order_id alone, so this money
-    // showed "Order ORD-…" in its row and then matched neither narrowing.
-    const clauses = linkageFilterClauses('order')
-    assert.equal(clauses.length, 1)
-    assert.deepEqual(clauses[0], {
-      kind: 'or',
-      filters: 'order_id.not.is.null,allocated_order_id.not.is.null',
-    })
+    // showed "Order ORD-…" in its row and then matched neither narrowing. The
+    // projection's own boolean is computed from the canonical attribution rule,
+    // so the narrowing and the row's figures are one statement.
+    assert.deepEqual(paymentViewFilterClauses('orders'), [
+      { kind: 'eq', column: 'is_linked_to_order', value: 'true' },
+    ])
   })
 
-  test('and is NOT also found by "Order Request" — the two are exclusive', () => {
-    // resolveLinkedAgainst gives a Confirmed Order priority over an Order
-    // Request, so the request branch must exclude BOTH Order attachments or a
-    // row would satisfy both filters and be counted twice by a reader.
-    const clauses = linkageFilterClauses('request')
-    assert.deepEqual(clauses, [
-      { kind: 'isNull',  column: 'order_id' },
-      { kind: 'isNull',  column: 'allocated_order_id' },
-      { kind: 'notNull', column: 'order_request_id' },
+  test('a payment split with a PI Draft is found by BOTH linked views', () => {
+    // NOT A PARTITION, deliberately. The two predicates are independent
+    // booleans, so a mixed payment satisfies both — which is the case a
+    // two-page linked/unlinked split could not express at all.
+    const orders = paymentViewFilterClauses('orders')
+    const pi = paymentViewFilterClauses('pi_drafts')
+    assert.deepEqual(pi, [{ kind: 'eq', column: 'is_linked_to_pi', value: 'true' }])
+    assert.notDeepEqual(orders, pi)
+    // Neither excludes the other's column, so nothing stops a row matching both.
+    for (const clause of [...orders, ...pi]) {
+      assert.equal(clause.kind, 'eq')
+    }
+  })
+
+  test('Available is a positive BALANCE, not an "is it allocated" flag', () => {
+    // A ₹10L payment with ₹4L allocated has ₹6L that still needs somebody, and a
+    // yes/no flag would hide it behind a confident "yes". The projection makes
+    // the balance comparison, because PostgREST cannot compare two columns.
+    assert.deepEqual(paymentViewFilterClauses('available'), [
+      { kind: 'eq', column: 'is_available_to_allocate', value: 'true' },
     ])
   })
 
   test('"all" narrows nothing', () => {
-    assert.deepEqual(linkageFilterClauses('all'), [])
+    assert.deepEqual(paymentViewFilterClauses('all'), [])
   })
 
-  test('every offered option is a filter the module implements', () => {
-    for (const option of LINKAGE_FILTER_OPTIONS) {
-      assert.ok(isLinkageFilter(option.value), option.value)
+  test('every offered view is one the module implements', () => {
+    for (const option of PAYMENT_VIEW_OPTIONS) {
+      assert.ok(isPaymentView(option.value), option.value)
     }
-    assert.ok(!isLinkageFilter('something-else'))
+    assert.ok(!isPaymentView('something-else'))
+  })
+
+  test('no view is named after the retired Order Request workflow', () => {
+    const copy = JSON.stringify(PAYMENT_VIEW_OPTIONS).toLowerCase()
+    assert.equal(copy.includes('order request'), false)
+    assert.equal(copy.includes('order_request'), false)
+  })
+
+  test('a URL somebody typed resolves to All rather than to an empty list', () => {
+    assert.equal(readPaymentView('nonsense'), 'all')
+    assert.equal(readPaymentView(null), 'all')
+    assert.equal(readPaymentView('pi_drafts'), 'pi_drafts')
+  })
+
+  test('every column a view filters on is one the list selects', () => {
+    for (const option of PAYMENT_VIEW_OPTIONS) {
+      for (const clause of paymentViewFilterClauses(option.value)) {
+        if (clause.kind !== 'eq') continue
+        assert.ok(
+          (RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS as readonly string[]).includes(clause.column),
+          `${clause.column} is filtered on but never selected`)
+      }
+    }
   })
 })
 
@@ -237,18 +272,23 @@ describe('the date filter', () => {
 
 describe('what the toolbar says it is doing', () => {
   test('narrowing is detected for every control', () => {
-    const none = { search: '', linkage: 'all' as const, dateFrom: null, dateTo: null }
+    const none = { search: '', dateFrom: null, dateTo: null }
     assert.equal(isNarrowed(none), false)
     assert.equal(isNarrowed({ ...none, search: 'REQ-1' }), true)
-    assert.equal(isNarrowed({ ...none, linkage: 'order' }), true)
     assert.equal(isNarrowed({ ...none, dateFrom: '2026-08-01' }), true)
     assert.equal(isNarrowed({ ...none, dateTo: '2026-08-31' }), true)
+  })
+
+  test('the VIEW is not a narrowing — a tab is where the reader is', () => {
+    // Counting it would offer "Clear filters" on a freshly opened Available tab
+    // and then leave the reader exactly where they were when they pressed it.
+    assert.equal(isNarrowed({ search: '', dateFrom: null, dateTo: null }), false)
   })
 
   test('a term of only stripped characters is not a narrowing', () => {
     // It matches nothing and filters nothing; offering "Clear filters" for it
     // would be describing a state the page is not in.
-    assert.equal(isNarrowed({ search: '%%%', linkage: 'all', dateFrom: null, dateTo: null }), false)
+    assert.equal(isNarrowed({ search: '%%%', dateFrom: null, dateTo: null }), false)
   })
 
   test('the count line never invents a total it does not have', () => {
@@ -360,7 +400,7 @@ describe('what each allocation state narrows to', () => {
 
 describe('the allocation state composes with every other narrowing', () => {
   test('it counts as a narrowing, so "Clear filters" appears', () => {
-    const base = { search: '', linkage: 'all' as const, dateFrom: null, dateTo: null }
+    const base = { search: '', dateFrom: null, dateTo: null }
     assert.equal(isNarrowed({ ...base, allocation: 'all' }), false)
     assert.equal(isNarrowed({ ...base, allocation: 'unallocated' }), true)
   })
@@ -368,17 +408,17 @@ describe('the allocation state composes with every other narrowing', () => {
   test('an absent allocation filter does not make a plain list look narrowed', () => {
     // Readers who are not offered the control pass nothing, and the toolbar must
     // not then claim the list is filtered.
-    assert.equal(isNarrowed({ search: '', linkage: 'all', dateFrom: null, dateTo: null }), false)
+    assert.equal(isNarrowed({ search: '', dateFrom: null, dateTo: null }), false)
   })
 
   test('it is applied as its own clause, alongside the others', () => {
-    // Search, linkage, dates and allocation all narrow the same query and
+    // Search, the view, dates and allocation all narrow the same query and
     // compose as AND. Each is a separate clause, so none can overwrite another.
     const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
     const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
-      'linkageFilterClauses(',
+      'paymentViewFilterClauses(',
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
       'allocationFilterClauses(filters.allocation)',

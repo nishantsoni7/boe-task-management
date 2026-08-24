@@ -456,6 +456,146 @@ describe('a partial removal is reported accurately, and stays retryable', () => 
   })
 })
 
+// ── Resuming an interrupted deletion ──────────────────────────────────────────
+
+/**
+ * THE STATE A CRASHED, CANCELLED OR REFUSED DELETION LEAVES BEHIND.
+ *
+ * The whole recovery design rests on one property of this sweep: run it again
+ * over a PI it has already partly cleaned and it converges instead of failing.
+ * The tests above prove the rule in the abstract — a recorded key the sweep did
+ * not find is already gone, not a failure. These prove it in the shapes a real
+ * interrupted deletion actually leaves: the workbook removed and the pictures
+ * not, one picture removed and the rest not, and everything already gone.
+ *
+ * "ALREADY REMOVED" IS CONCLUDED FROM THE EXACT KEY, never from the prefix. Each
+ * case below asks for the precise path the database recorded and asserts that
+ * the conclusion was drawn about that path alone.
+ */
+describe('a second attempt at a partly-completed deletion converges', () => {
+  const WORKBOOK = `${PREFIX}/original/abcd-Client PI.xlsx`
+  const IMAGE = (item: number) =>
+    `${PREFIX}/images/item-${item}/representative/0-${'a'.repeat(64)}.png`
+
+  /** The tree a PI leaves once some of its objects have gone. */
+  const partial = (keep: string[]): Record<string, Entry[]> => {
+    const tree: Record<string, Entry[]> = { [PREFIX]: [] }
+    const folders = new Set<string>()
+    for (const key of keep) {
+      const parts = key.slice(PREFIX.length + 1).split('/')
+      let prefix = PREFIX
+      for (const part of parts.slice(0, -1)) {
+        if (!tree[prefix]) tree[prefix] = []
+        if (!folders.has(`${prefix}/${part}`)) {
+          folders.add(`${prefix}/${part}`)
+          tree[prefix].push(folder(part))
+        }
+        prefix = `${prefix}/${part}`
+      }
+      if (!tree[prefix]) tree[prefix] = []
+      tree[prefix].push(file(parts[parts.length - 1]))
+    }
+    return tree
+  }
+
+  const recorded = [WORKBOOK, IMAGE(0), IMAGE(1)]
+
+  test('THE WORKBOOK IS ALREADY ABSENT: it is asked for, and it is not a failure', async () => {
+    // `unreported` is how the fake models an object that is not there: the
+    // storage API lists what it actually deleted, and a key that was already
+    // gone is simply missing from the reply.
+    const fake = fakeStorage({
+      tree: partial([IMAGE(0), IMAGE(1)]), unreported: new Set([WORKBOOK]),
+    })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, recorded)
+
+    assert.ok(fake.removeCalls.flat().includes(WORKBOOK),
+      'the exact recorded key is submitted, so absence is established rather than assumed')
+    assert.deepEqual(result.failed, [])
+    assert.deepEqual(result.removed.sort(), [IMAGE(0), IMAGE(1)].sort())
+  })
+
+  test('ONE PRODUCT IMAGE IS ALREADY ABSENT: the rest still go', async () => {
+    const fake = fakeStorage({
+      tree: partial([WORKBOOK, IMAGE(1)]), unreported: new Set([IMAGE(0)]),
+    })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, recorded)
+
+    assert.ok(fake.removeCalls.flat().includes(IMAGE(0)))
+    assert.deepEqual(result.failed, [])
+    assert.deepEqual(result.removed.sort(), [WORKBOOK, IMAGE(1)].sort())
+  })
+
+  test('EVERYTHING IS ALREADY ABSENT: a clean, complete no-op', async () => {
+    // The state the stranded PI is in: the sweep succeeded, finalization was
+    // refused, and the retry must reach finalization rather than stop here.
+    const fake = fakeStorage({ tree: {}, unreported: new Set(recorded) })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, recorded)
+
+    assert.deepEqual(result.failed, [], 'nothing survives, which is the outcome asked for')
+    assert.deepEqual(result.removed, [])
+    assert.ok(result.removalAttempted, 'the keys were still asked for')
+    assert.deepEqual(result.found.sort(), [...recorded].sort(),
+      'and each exact recorded key was named, so absence is established, not assumed')
+  })
+
+  test('A GENUINE FAILURE IS STILL A FAILURE, and the retry is preserved', async () => {
+    // The distinction the whole rule turns on: this object is in the bucket and
+    // the remove did not take it, so finalization must not follow.
+    const fake = fakeStorage({
+      tree: partial([WORKBOOK, IMAGE(0)]),
+      removeFails: () => true,
+    })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, recorded)
+
+    for (const key of [WORKBOOK, IMAGE(0)]) {
+      assert.ok(result.failed.includes(key), `${key} is still in the bucket and must be reported`)
+    }
+    assert.deepEqual(result.removed, [], 'nothing is claimed to have gone')
+    assert.ok(result.removalAttempted,
+      'so the reservation is kept and one more attempt finishes it')
+  })
+
+  test('NOTHING ORPHANED AFTER A SUCCESSFUL SWEEP: no key of this PI is left', async () => {
+    const fake = fakeStorage({ tree: piTree(3, 2) })
+    const result = await removeAllObjectsForSubmission(fake.client, SUBMISSION, [WORKBOOK])
+    const every = Object.values(piTree(3, 2)).flat().length > 0
+    assert.ok(every)
+
+    const swept = new Set(result.removed)
+    for (const [prefix, entries] of Object.entries(piTree(3, 2))) {
+      for (const entry of entries) {
+        if (entry.id === null) continue
+        assert.ok(swept.has(`${prefix}/${entry.name}`),
+          `${prefix}/${entry.name} would have been orphaned`)
+      }
+    }
+    assert.deepEqual(result.failed, [])
+  })
+
+  test('AND NOTHING ELSE: a neighbouring submission’s objects are never listed or removed',
+    async () => {
+      const neighbour = 'submissions/22222222-2222-4222-8222-222222222222'
+      const fake = fakeStorage({
+        tree: {
+          ...piTree(2),
+          [neighbour]: [folder('original')],
+          [`${neighbour}/original`]: [file('their-workbook.xlsx')],
+          [`${PREFIX}-lookalike`]: [file('not-ours.xlsx')],
+        },
+      })
+      const result = await removeAllObjectsForSubmission(
+        fake.client, SUBMISSION, [WORKBOOK, `${neighbour}/original/their-workbook.xlsx`])
+
+      for (const path of fake.removeCalls.flat()) {
+        assert.ok(path.startsWith(`${PREFIX}/`), `${path} is not this submission's`)
+      }
+      assert.ok(!result.found.some(path => path.includes(neighbour)))
+      assert.ok(fake.listCalls.every(call => call.prefix.startsWith(PREFIX)),
+        'and no neighbouring prefix was so much as listed')
+    })
+})
+
 // ── Diagnostics ───────────────────────────────────────────────────────────────
 
 describe('the sweep reports what it did, in counts only', () => {
@@ -662,12 +802,27 @@ describe('there is no timeout, and no timer-triggered release', () => {
 
   test('release is only ever reached from a settled outcome', () => {
     const body = code(route)
-    // Three release sites: a settled sweep failure, surviving objects, and a
-    // refused finalization. All three are downstream of an awaited sweep.
+    // FIVE release sites now, in two groups that are safe for different reasons.
+    //
+    // Downstream of the awaited sweep: a settled sweep failure and surviving
+    // objects. A release there may be overtaken by a remove request that already
+    // went out, so each one must be guarded by !removalAttempted — unchanged,
+    // and still asserted exactly as strictly.
+    //
+    // Upstream of it: step 5b's two refusals, taken under the reservation before
+    // the sweep call site is reached at all. No remove request can have been
+    // issued on those paths because the code that issues them has not run, so
+    // the record is provably whole and handing it straight back is correct.
     const sweep = body.indexOf('await removeAllObjectsForSubmission(')
+    assert.ok(sweep > 0)
     for (const match of [...body.matchAll(/await release\(\)/g)]) {
-      assert.ok(match.index !== undefined && match.index > sweep,
-        'no release may precede the point where the sweep has settled')
+      const at = match.index
+      assert.ok(at !== undefined)
+      if (at! > sweep) {
+        const line = body.slice(body.lastIndexOf('\n', at!) + 1, at! + 15)
+        assert.ok(/if \(!removalAttempted\)/.test(line),
+          'a release downstream of the sweep must be guarded by !removalAttempted')
+      }
     }
   })
 

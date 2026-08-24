@@ -736,14 +736,14 @@ approval chains, access-history screens, or permission exports.
 
 | Route | File | What it is |
 | --- | --- | --- |
-| `/orders` | `src/app/orders/page.tsx` | Dashboard — running Orders and five figures |
+| `/orders` | `src/app/orders/page.tsx` | Dashboard — **branch:** PI Drafts, review queue, Confirmed Orders and the money |
 | `/orders/all` | `src/app/orders/all/page.tsx` | Every Order the viewer may see |
 | `/orders/[id]` | `src/app/orders/[id]/page.tsx` | One Confirmed Order |
 | `/orders/drafts` | `src/app/orders/drafts/page.tsx` | PI drafts and submissions |
 | `/orders/drafts/[submissionId]` | `.../[submissionId]/page.tsx` | One PI — review, decisions, payments, approval |
 | `/orders/import` | `src/app/orders/import/page.tsx` | Upload a PI workbook and read it back |
-| `/orders/requests` | `src/app/orders/requests/page.tsx` | Order Requests list |
-| `/orders/requests/[id]` | `src/app/orders/requests/[id]/page.tsx` | One Order Request |
+| `/orders/requests` | `src/app/orders/requests/page.tsx` | **branch:** the retired-workflow notice |
+| `/orders/requests/[id]` | `src/app/orders/requests/[id]/page.tsx` | **branch:** the same notice, plus the Confirmed Order a converted request became |
 | `/orders/notifications` | `src/app/orders/notifications/page.tsx` | Module notifications |
 
 `src/app/orders/layout.tsx` is a guard on the critical path of all nine: it
@@ -758,7 +758,11 @@ entry, so every round trip it spends is spent by every route.
 | `/api/orders/import/process-draft` | node | **the trusted parse** — downloads the workbook, re-parses it server-side, persists only its own reading |
 | `/api/orders/[id]/documents` **(branch)** | node, `maxDuration = 60` | request → claim → generate → publish |
 | `/api/orders/test-data-cleanup` | node | claim → storage removal → finalize |
-| `/api/orders/requests/*`, `/api/orders/submissions/*`, `/api/orders/notify` | node | attachments, deletion, notifications |
+| `/api/orders/submissions/*` | node | attachments, deletion, notifications |
+
+**Branch — removed:** `/api/orders/requests/*` and `/api/orders/notify`. Each
+served a step in the retired Order Request workflow, and each was reachable by
+POST whatever the sidebar offered.
 
 ## Tables
 
@@ -770,7 +774,7 @@ entry, so every round trip it spends is spent by every route.
 | `order_submissions` | the PI record |
 | `order_submission_items` / `_item_images` | its product lines and photographs |
 | `order_submission_activity` | the PI's **review** trail — deliberately not visible through the Order door |
-| `order_requests` / `_attachments` / `_activity` | the older Order Request flow |
+| `order_requests` / `_attachments` / `_activity` | the RETIRED Order Request flow. **Branch:** read-only in practice — every write path is closed by `20261007000000` and nothing is deleted, so historical records and the provenance on the Orders they became stay readable |
 | `order_number_cycle` | single-row, admin-configured next number. RLS on, **no policies at all** |
 | `test_data_cleanup_claims` / `_audit` | the cleanup protocol |
 | `order_document_versions` **(branch)** | the document register |

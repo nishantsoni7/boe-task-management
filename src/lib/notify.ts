@@ -51,52 +51,21 @@ export async function notifyFinance(payload: FinanceNotifyPayload): Promise<void
   }
 }
 
-export type OrderNotifyEvent =
-  | 'order_submitted'
-  | 'order_reassigned'
-  | 'order_clarification'
-  | 'order_resubmitted'
-  | 'order_rejected'
-  | 'order_converted'
-
-export type OrderNotifyPayload = {
-  event: OrderNotifyEvent
-  requestNumber: string
-  /** The order-request UUID — stored as entity_id for exact deep-linking. */
-  entityId?: string | null
-  clientName?: string | null
-  /** The request creator (requested_by) — notified for outcome events. */
-  creatorId?: string | null
-  /** The assigned reviewer/user — notified on submit and conversion. */
-  assignedTo?: string | null
-  orderNumber?: string | null
-}
-
-// Returns true when the notification was accepted by the API, false on any
-// failure. NEVER throws — a notification is always non-fatal to the action that
-// triggered it, so callers can `void` it (fire-and-forget) OR await the boolean
-// to surface a soft "created, but not notified" message. A false result must not
-// roll back or fail the underlying action.
-export async function notifyOrders(payload: OrderNotifyPayload): Promise<boolean> {
-  try {
-    const res = await fetch('/api/orders/notify', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    if (!res.ok) {
-      // Non-fatal: mirrors notifyFinance — log HTTP status + event + server
-      // error so a swallowed notify (e.g. unapplied enum migration) is visible.
-      const detail = await res.json().catch(() => null)
-      console.error(`[notifyOrders] ${payload.event} not delivered (HTTP ${res.status}):`, detail?.error ?? res.statusText)
-      return false
-    }
-    return true
-  } catch (err) {
-    console.error('[notifyOrders] failed:', err)
-    return false
-  }
-}
+// ── Order Requests: retired ───────────────────────────────────────────────────
+//
+// `notifyOrders` and the six `order_*` events it sent lived here. Every one of
+// them announced a step in the Order Request workflow — submitted, reassigned,
+// clarification, resubmitted, rejected, converted — and that workflow is
+// retired (20261007000000): there is no longer an action that could raise one.
+//
+// The helper is gone rather than left unused, because a fire-and-forget
+// notifier nothing calls is an invitation to call it. HISTORICAL NOTIFICATIONS
+// ARE UNTOUCHED: the rows stay in `notifications`, getNotificationMeta still
+// badges and deep-links them, and their links land on the retired-workflow
+// notice at /orders/requests/[id], which offers PI Drafts and — where the
+// request was converted before the retirement — the Confirmed Order it became.
+//
+// The PI workflow's own notifications are below, and are unaffected.
 
 // ── PI submissions: the reduced-payment exception ─────────────────────────────
 //
