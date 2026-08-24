@@ -2212,9 +2212,16 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
   // Delete at all, so the PI deletion blocker's instruction to "delete that
   // payment entry in Finance" pointed at a control the operator could not
   // reach. Rather than grow a second copy on that page, the body moved to
-  // lib/finance/paymentDeletion and BOTH pages call it. The order, the
-  // status filter and the storage cleanup are unchanged, byte for byte in
-  // behaviour; only their address is new.
+  // lib/finance/paymentDeletion and BOTH pages call it.
+  //
+  // THE SEQUENCE ITSELF CHANGED, and this page inherits the correction. It used
+  // to delete the request and then remove its proof objects, reporting a storage
+  // failure as a partial success. That reported a leak as an outcome: the
+  // attachment rows cascade with the request, so by the time storage was asked
+  // the only record of which objects belonged to it was already gone and no
+  // retry was possible. A payment with proofs is now refused before anything is
+  // touched, and the durable claim that can delete one safely arrives with the
+  // pending Order/Finance migration.
   const handleDelete = async () => {
     setDeleting(true)
     setError(null)
@@ -2224,7 +2231,9 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
 
     if (result.outcome === 'failed')           { setError(result.message); return }
     if (result.outcome === 'already-verified') { setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
-    if (result.outcome === 'proof-orphaned')   { setSettled(true); setWarning(result.message); return }
+    // Nothing was deleted, so this is a notice rather than a failure — but it is
+    // settled: pressing again cannot change the answer in this build.
+    if (result.outcome === 'proof-backed')     { setSettled(true); setWarning(result.message); return }
 
     onDeleted()
   }

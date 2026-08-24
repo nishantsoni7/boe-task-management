@@ -97,7 +97,10 @@ export function DeletePaymentModal({
   }
 
   const message = result && result.outcome !== 'deleted' ? result.message : null
-  const isWarning = result?.outcome === 'proof-orphaned'
+  // A proof-backed refusal is not an error the operator made and not a partial
+  // outcome: nothing was touched, and the action becomes available through the
+  // protected flow. Drawn as a notice rather than a failure.
+  const isWarning = result?.outcome === 'proof-backed'
 
   return (
     <FinanceModal

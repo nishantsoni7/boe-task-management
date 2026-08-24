@@ -47,7 +47,6 @@
 // proof object in the payment-proofs bucket, which no cascade reaches.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { PROOF_BUCKET } from '@/lib/paymentProof'
 import { REQUEST_STAGE_STATUSES } from '@/app/finance/paymentRouting'
 
 /**
@@ -102,6 +101,27 @@ export const PAYMENT_DELETE_RACE_MESSAGE =
 export const PAYMENT_DELETE_PROOF_READ_MESSAGE =
   'Could not read this payment’s proof attachments. Nothing was deleted — please try again.'
 
+/**
+ * Shown when the payment has proof files and this build cannot delete it safely.
+ *
+ * THE OUTCOME THIS REPLACES WAS NOT SAFE. The first form of this module deleted
+ * the payment row and then removed the proof objects, and reported a storage
+ * failure as `proof-orphaned` — a "partial success". It was neither partial nor
+ * a success. By the time storage was asked, the payment row and its
+ * payment_proof_attachments rows had already cascaded away, so THE ONLY RECORD
+ * OF WHICH OBJECTS BELONGED TO THAT PAYMENT WAS GONE. Nothing could retry it,
+ * because nothing could still say what to retry. A file left in a private bucket
+ * with no row naming it is not a settled outcome; it is a leak with a friendly
+ * message attached.
+ *
+ * So this build does not attempt it. A payment with proofs is refused BEFORE
+ * anything is deleted, and the durable claim protocol that can do it safely
+ * arrives with migration 20261010000000 on the Order/Finance branch.
+ */
+export const PAYMENT_DELETE_PROOF_BACKED_MESSAGE =
+  'This unapproved payment has proof files attached and cannot yet be deleted through this version.'
+  + ' No data was removed.'
+
 export const PAYMENT_DELETE_ALLOCATION_WARNING =
   'Any allocations of this payment to an Order or a PI Draft are removed with it.'
 
@@ -110,14 +130,16 @@ export const PAYMENT_DELETE_BUSY_LABEL    = 'Deleting…'
 export const PAYMENT_DELETE_TITLE         = 'Delete Payment'
 
 export type PaymentDeletionResult =
-  /** Gone, proof and all. */
+  /** Gone, with its allocations released by the trigger in the same statement. */
   | { outcome: 'deleted' }
   /**
-   * The payment is gone and its proof object is not. Reported rather than
-   * swallowed, and NOT retryable: the row the storage policy resolved ownership
-   * through no longer exists, so pressing again cannot help.
+   * The payment has proof files, and nothing was touched.
+   *
+   * NOT A PARTIAL ANYTHING. No row was deleted, no allocation released and no
+   * storage request issued, so the payment is exactly as it was and the operator
+   * can act on it through the protected flow once that ships.
    */
-  | { outcome: 'proof-orphaned'; message: string }
+  | { outcome: 'proof-backed'; message: string }
   /** Nothing was deleted, and the state on screen is stale. */
   | { outcome: 'already-verified'; message: string }
   /** Nothing was deleted. */
@@ -130,45 +152,66 @@ export type DeletablePayment = {
 }
 
 /**
- * Delete one payment entry and clean up after it.
+ * Delete one payment entry — the zero-proof path, and only that.
  *
- * THE ORDER IS LOAD-BEARING, and it is the order the Payment Requests page has
- * used since 20260700000000:
+ * THE SEQUENCE THIS REPLACES DELETED FIRST AND ASKED STORAGE AFTERWARDS. That
+ * order was chosen for a good reason — removing the file first would destroy the
+ * evidence for a payment that then turns out to be un-deletable — but it bought
+ * that safety with a worse one. `payment_proof_attachments` cascades with the
+ * payment, so a storage failure arrived at a moment when the trusted manifest
+ * naming those objects had ALREADY BEEN DESTROYED. There was nothing left to
+ * retry from, and the module called that outcome a partial success.
  *
- *   1. READ THE PROOF PATHS FIRST. payment_proof_attachments cascades with the
- *      payment, so after the delete there is nothing left to read them from.
- *      Only this payment's own attachments are collected, and the paths come
- *      from the database — never from the browser, which has no business naming
- *      an object for the server to remove.
+ * Deleting a row that owns files is therefore not a two-call operation at all.
+ * It needs a durable claim: a record that outlives the payment, holds the frozen
+ * list of object keys, and can be resumed by a later attempt. That protocol is
+ * migration 20261010000000, which is NOT APPLIED, so this build cannot rely on
+ * it and does not pretend to.
  *
- *   2. DELETE THE PAYMENT, FILTERED ON STATUS. Row-level security and the guard
- *      trigger both re-evaluate against the committed row, so a verification
- *      landing while the dialog was open makes this a zero-row no-op instead of
- *      destroying confirmed bank history. The allocations are released by the
- *      trigger inside this same statement; this function never writes to
- *      finance_payment_allocations, because a release that is not atomic with
- *      the delete is a release that can be left half-done.
+ * WHAT IS LEFT IS STILL WORTH HAVING, and it is the case the stranded PI
+ * actually needs: a payment with NO proof files has nothing in storage to lose,
+ * so deleting it is one statement with no second system involved.
  *
- *   3. REMOVE THE NOW-ORPHANED PROOF OBJECTS. The payment goes FIRST on purpose:
- *      removing the file first would destroy the evidence for a payment that
- *      then turned out to be un-deletable.
+ *   1. READ THE ATTACHMENTS, from the database, keyed by this payment's id — the
+ *      browser names nothing. This is a fresh read taken immediately before the
+ *      delete, not a value the screen was holding.
+ *   2. IF THERE ARE ANY, REFUSE. No delete, no allocation release, no storage
+ *      request. The payment is exactly as it was found.
+ *   3. OTHERWISE DELETE, filtered on status. Row-level security and
+ *      finance_payment_requests_guard_approved_delete both re-evaluate against
+ *      the committed row, so a verification landing while the dialog was open is
+ *      a zero-row no-op rather than destroyed bank history. The allocations are
+ *      released by finance_payment_requests_release_allocations inside this same
+ *      statement.
  *
- * IDEMPOTENT AT BOTH ENDS. A payment that is already gone matches zero rows —
- * reported as 'already-verified' only when the row still exists, and callers
- * that re-read the list find it absent either way. A proof key already removed
- * is simply not there to remove again.
+ * NO STORAGE CALL IS MADE ON ANY PATH. There is nothing to remove when there
+ * were no attachments, and nothing is deleted when there were.
+ *
+ * THE RESIDUAL WINDOW, STATED. A proof uploaded between step 1 and step 3 is
+ * cascaded away by the delete and its object is left in the bucket. This build
+ * cannot close that — closing it needs a claim that freezes proof mutation,
+ * which is exactly what the pending migration adds. The window is one round trip
+ * wide and requires an upload against a payment somebody is deleting at that
+ * instant; the honest mitigation available here is to take the read as late as
+ * possible, which is what step 1 is.
+ *
+ * IDEMPOTENT. A payment already gone matches zero rows; callers re-read the list
+ * and find it absent either way.
  */
 export async function deletePaymentEntry(
   supabase: SupabaseClient,
   payment: DeletablePayment,
   describeError: (error: { code?: string; message: string }) => string,
 ): Promise<PaymentDeletionResult> {
-  const { data: proofs, error: proofErr } = await supabase
+  const { count: proofCount, error: proofErr } = await supabase
     .from('payment_proof_attachments')
-    .select('storage_path')
+    .select('id', { count: 'exact', head: true })
     .eq('payment_request_id', payment.id)
   if (proofErr) {
     return { outcome: 'failed', message: PAYMENT_DELETE_PROOF_READ_MESSAGE }
+  }
+  if ((proofCount ?? 0) > 0) {
+    return { outcome: 'proof-backed', message: PAYMENT_DELETE_PROOF_BACKED_MESSAGE }
   }
 
   const { error: dbError, count } = await supabase
@@ -181,21 +224,6 @@ export async function deletePaymentEntry(
   }
   if (count === 0) {
     return { outcome: 'already-verified', message: PAYMENT_DELETE_RACE_MESSAGE }
-  }
-
-  const paths = ((proofs ?? []) as { storage_path: string }[])
-    .map(proof => proof.storage_path)
-    .filter(Boolean)
-  if (paths.length > 0) {
-    const { data: removed, error: rmErr } = await supabase.storage.from(PROOF_BUCKET).remove(paths)
-    if (rmErr || (removed?.length ?? 0) < paths.length) {
-      const name = payment.request_number ? `Payment ${payment.request_number}` : 'The payment'
-      return {
-        outcome: 'proof-orphaned',
-        message: `${name} was deleted, but its proof file could not be removed from storage.`
-          + ' Please ask an admin to delete it from the payment-proofs bucket.',
-      }
-    }
   }
 
   return { outcome: 'deleted' }

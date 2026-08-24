@@ -10,6 +10,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { PAYMENT_DELETE_PROOF_BACKED_MESSAGE } from '@/lib/finance/paymentDeletion'
 import {
   PAYMENT_BLOCKER_HREF,
   describeDeletionBlockers,
@@ -45,10 +46,11 @@ describe('there is one deletion implementation, and every surface calls it', () 
     const offenders: string[] = []
     for (const file of [RECEIVED, REQUESTS, MODAL]) {
       const src = code(read(file))
-      // The signature of the sequence is READING the proof paths back — an
-      // upload's insert into the same table is a different operation entirely,
-      // and the Payment Requests page legitimately still does that.
-      const readsProofs = /from\('payment_proof_attachments'\)[\s\S]{0,80}\.select\(\s*'storage_path'/.test(src)
+      // The signature of the sequence is CONSULTING the attachment table before
+      // deleting — an upload's insert into the same table is a different
+      // operation entirely, and the Payment Requests page legitimately still
+      // does that.
+      const readsProofs = /from\('payment_proof_attachments'\)[\s\S]{0,120}\.select\(/.test(src)
       const deletes = /from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(src)
       if (readsProofs && deletes) offenders.push(file)
     }
@@ -224,5 +226,34 @@ describe('a surface that holds only confirmed money offers no ordinary Delete', 
     const modal = code(read(MODAL))
     assert.ok(!/approved_unlinked|approved_linked/.test(modal),
       'the modal must name no status at all; it renders a question and reports an answer')
+  })
+})
+
+// ── The outcome that was not an outcome ──────────────────────────────────────
+
+describe('an orphaned proof is not something any surface can report as settled', () => {
+  test('no surface names the retired partial-success outcome', () => {
+    for (const file of [RECEIVED, REQUESTS, MODAL, SHARED]) {
+      assert.ok(!read(file).includes("'proof-orphaned'"),
+        `${file} still knows about an outcome that reported a storage leak as a result`)
+    }
+  })
+
+  test('the modal draws the proof-backed refusal as a notice, not a failure', () => {
+    const src = code(read(MODAL))
+    assert.ok(src.includes("result?.outcome === 'proof-backed'"),
+      'nothing was touched, so it is not an error the operator made')
+  })
+
+  test('the Payment Requests page settles on it without claiming a deletion', () => {
+    const src = code(read(REQUESTS))
+    assert.ok(src.includes("result.outcome === 'proof-backed'"))
+    assert.ok(!/proof-backed'\)\s*\{[^}]*onDeleted\(\)/.test(src),
+      'a refusal must never call the deleted callback')
+  })
+
+  test('the refusal wording says plainly that nothing was removed', () => {
+    assert.match(PAYMENT_DELETE_PROOF_BACKED_MESSAGE, /No data was removed\./)
+    assert.match(PAYMENT_DELETE_PROOF_BACKED_MESSAGE, /cannot yet be deleted through this version/)
   })
 })
