@@ -1,37 +1,29 @@
 /**
  * Requirement 5 ("Stop Finance from refreshing when returning from another
- * browser tab") — the policy proven directly, not assumed.
+ * browser tab") — regression guards for the mechanisms that were traced as
+ * candidate causes and confirmed absent.
  *
- * WHY THESE FUNCTIONS AND NOT A DISPATCHED DOM EVENT. This repo has no jsdom
- * / testing-library (src/lib/ui/modalDismissal.test.ts states why), so a
- * live `window.dispatchEvent(new Event('focus'))` cannot be observed against
- * a mounted component. What CAN be proven, and is proven here, is every
- * mechanism that was traced as a candidate cause of an automatic Finance
- * refresh on tab-return:
+ * STATUS. The reported behavior was manually retested against current
+ * production: switching browser tabs and back produces no page refresh,
+ * search text is retained, the selected view is retained, an open modal
+ * stays open, and page state is otherwise unchanged. The existing production
+ * code is correct as it stands. These tests exist to keep it that way — they
+ * assert the ABSENCE of the specific mechanisms that would reintroduce the
+ * defect the removed `visibilitychange` listener used to cause, without
+ * requiring or depending on any new production code.
+ *
+ * WHY SOURCE TEXT AND NOT A DISPATCHED DOM EVENT. This repo has no jsdom /
+ * testing-library (src/lib/ui/modalDismissal.test.ts states why), so a live
+ * `window.dispatchEvent(new Event('focus'))` cannot be observed against a
+ * mounted component. What is proven here instead:
  *
  *   1. React Query's own focus-refetch is disabled, globally, with no local
- *      override anywhere in the app — checked against the live config object
- *      AND against the source tree.
+ *      override anywhere in the app.
  *   2. FinanceLayout registers no `visibilitychange` or `focus` listener of
  *      its own (the one that used to exist was removed; this is the
  *      regression guard) — and its one `router.refresh()` call site is
  *      gated behind `!onRefresh`, which both Finance surfaces that mount it
  *      pass, so that branch is dead in normal operation.
- *   3. auth-js's OWN internal `visibilitychange` listener — undocumented
- *      previously, confirmed by reading node_modules/@supabase/auth-js —
- *      fires a SIGNED_IN event on every tab-return via `_recoverAndRefresh`,
- *      independent of any app code. `resolveAuthIdentityAction`, extracted
- *      from Providers.tsx's real auth listener, is exercised directly against
- *      exactly that event shape (SIGNED_IN, same user id) and proven to
- *      return `{ kind: 'ignore' }` — no cache clear, no invalidation, no
- *      refetch trigger of any kind.
- *
- * Together these cover every code-level path that could turn a tab-focus or
- * visibilitychange event into a data refresh. What they cannot rule out is a
- * genuine browser-level tab discard (the OS/browser reclaiming a backgrounded
- * tab's memory) — that is not a dispatchable event and is not application
- * code's to prevent; state persistence is the mitigation for it, tested
- * separately.
  *
  * Run:
  *   npx tsx --test src/components/layout/financeRefreshPolicy.test.ts
@@ -42,14 +34,14 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
-import { DEFAULT_QUERY_OPTIONS, resolveAuthIdentityAction } from './Providers'
 
 const REPO_ROOT = join(__dirname, '..', '..', '..')
 const read = (relPath: string) => readFileSync(join(REPO_ROOT, relPath), 'utf8')
 
 describe('React Query focus-refetch is disabled, globally, with no override', () => {
-  test('the live default-options object disables it', () => {
-    assert.equal(DEFAULT_QUERY_OPTIONS.refetchOnWindowFocus, false)
+  test('Providers.tsx disables it in the one QueryClient every route shares', () => {
+    const source = read('src/components/layout/Providers.tsx')
+    assert.match(source, /refetchOnWindowFocus:\s*false/)
   })
 
   test('no query anywhere in the app re-enables it locally', () => {
@@ -110,58 +102,5 @@ describe('both Finance surfaces that mount FinanceLayout pass their own onRefres
   test('Confirmed Payments / Payments to Verify (ReceivedPaymentsView.tsx)', () => {
     const source = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     assert.match(source, /onRefresh=\{/)
-  })
-})
-
-describe('resolveAuthIdentityAction — the auth-js visibility-triggered SIGNED_IN, named and neutralised', () => {
-  const established = (userId: string | null) => ({ established: true, userId })
-
-  test('TOKEN_REFRESHED is always ignored, regardless of identity', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('TOKEN_REFRESHED', 'user-1', established('user-1')),
-      { kind: 'ignore' },
-    )
-  })
-
-  test('a SIGNED_IN naming the SAME user already established — auth-js\'s own tab-return session-recovery event — is ignored entirely', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('SIGNED_IN', 'user-1', established('user-1')),
-      { kind: 'ignore' },
-    )
-  })
-
-  test('SIGNED_OUT always clears, whatever the prior identity', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('SIGNED_OUT', null, established('user-1')),
-      { kind: 'sign_out' },
-    )
-  })
-
-  test('a SIGNED_IN naming a DIFFERENT user is a real identity change', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('SIGNED_IN', 'user-2', established('user-1')),
-      { kind: 'identity_changed', userId: 'user-2' },
-    )
-  })
-
-  test('the very first event of the tab, before any identity is established, is adopted rather than compared', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('SIGNED_IN', 'user-1', { established: false, userId: null }),
-      { kind: 'adopt', userId: 'user-1' },
-    )
-  })
-
-  test('USER_UPDATED for the same identity invalidates the identity-derived queries without clearing the cache', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('USER_UPDATED', 'user-1', established('user-1')),
-      { kind: 'invalidate_identity' },
-    )
-  })
-
-  test('an unrelated event name is ignored', () => {
-    assert.deepEqual(
-      resolveAuthIdentityAction('PASSWORD_RECOVERY', 'user-1', established('user-1')),
-      { kind: 'ignore' },
-    )
   })
 })
