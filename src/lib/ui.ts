@@ -1,4 +1,5 @@
 import type { TaskStatus, TaskPriority } from './types'
+import { accruesAssigneeOverdue } from './tasks/reviewTransitions'
 
 // ─── Status badge class ───────────────────────────────────────────────────────
 export function statusBadgeClass(status: TaskStatus | string): string {
@@ -113,7 +114,9 @@ export function timeSince(iso: string): string {
 // ─── Task state helpers ───────────────────────────────────────────────────────
 export function isOverdue(dueDate: string | null, status?: string): boolean {
   if (!dueDate) return false
-  if (status === 'completed' || status === 'cancelled') return false
+  // No status passed means the caller already filtered to open tasks itself
+  // (some list views do) — only a known status can exempt a task.
+  if (status !== undefined && !accruesAssigneeOverdue(status)) return false
   return dueDate < new Date().toISOString().slice(0, 10)
 }
 

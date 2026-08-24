@@ -22,6 +22,7 @@ import {
   type AdoptionMetrics, adoptionRate, avgFirstOpenLabel, hasAdoptionData,
 } from '@/lib/performanceAdoption'
 import { istDateOf, istDayStartUtc } from '@/lib/istDate'
+import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 
 // ─── Meaningful activity ──────────────────────────────────────────────────────
 
@@ -295,6 +296,26 @@ export function insufficientDataReason(m: MemberMetrics): string | null {
          + `(${MIN_SCORED_DAYS_FOR_RANKING} needed to rank)`
   }
   return null
+}
+
+/**
+ * The current-portfolio tasks that are both past due AND still the
+ * assignee's responsibility right now — i.e. excludes a task the assignee
+ * has already submitted for approval, even though it is still "active"
+ * (not completed/cancelled) and still past its due date.
+ *
+ * This is the direct, current-state counterpart to the per-day historical
+ * reconstruction in `buildDailyRiskSeries` (lib/performance.ts) — both must
+ * apply the same `accruesAssigneeOverdue` rule so Team Performance's
+ * headline overdue figures (`overdueCount`, `highPriorityOverdue`,
+ * `oldestOverdueDays`, all derived from this list) never disagree with the
+ * per-day risk series or with Personal Performance for the same portfolio.
+ */
+export function attributableOverdueTasks<T extends { due_date: string | null; status: string }>(
+  activeTasks: readonly T[],
+  today: string,
+): T[] {
+  return activeTasks.filter(t => t.due_date && t.due_date < today && accruesAssigneeOverdue(t.status))
 }
 
 // ─── Official ranking order ───────────────────────────────────────────────────

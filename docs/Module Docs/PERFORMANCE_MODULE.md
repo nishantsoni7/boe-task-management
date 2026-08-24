@@ -67,6 +67,30 @@ measured once as of now and copied across the window — that copying was what m
 historical scores change every time today changed. A regression test asserts the
 weights.
 
+### 2a. Overdue responsibility rule
+
+An overdue penalty may apply to an employee only while they still own an
+actionable, unfinished obligation. **A task stops accruing overdue
+responsibility against the assignee the moment the assignee submits it for
+approval** (`pending_approval`), same as `completed`/`cancelled`. Review/
+approval delay belongs to the review workflow and must not reduce the
+assignee's score. If the creator returns the task, normal task
+accountability resumes from that point.
+
+The task is still open operationally while awaiting approval — it keeps
+showing as Pending/Approval Pending (`taskStatusLabel`) — it simply cannot
+contribute to `overdueCount`, `highPriorityOverdue`, `oldestOverdueDays` or
+the Risk deduction while in that state.
+
+Single source of truth: `accruesAssigneeOverdue()` in
+`src/lib/tasks/reviewTransitions.ts`, used by the per-day historical
+reconstruction (`buildDailyRiskSeries`), Team Performance's current-portfolio
+overdue count (`attributableOverdueTasks` in `src/lib/teamPerformance.ts`),
+and the My Tasks / dashboard / manager overdue views (`isOverdue` in
+`src/lib/ui.ts` and the local predicate in `src/app/tasks/my/page.tsx`) — so
+"what My Tasks shows as overdue" and "what Performance scores as overdue"
+cannot independently drift out of agreement.
+
 ---
 
 ## 2a. What Team Performance reports, and what it deliberately does not

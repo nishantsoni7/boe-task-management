@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
+import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
@@ -56,7 +57,9 @@ const H48       = 48 * 60 * 60 * 1000
 
 function isOverdue(task: Task) {
   const d = normalizeDueDate(task.due_date)
-  return !!d && d < TODAY_STR && task.status !== 'completed' && task.status !== 'cancelled'
+  // A task submitted for approval is no longer the assignee's overdue
+  // responsibility — the same rule Performance uses (see accruesAssigneeOverdue).
+  return !!d && d < TODAY_STR && accruesAssigneeOverdue(task.status)
 }
 function needsUpdate(task: Task) {
   if (task.status === 'completed' || task.status === 'cancelled') return false
@@ -1277,8 +1280,10 @@ function MyTasksContent() {
     const sortImportantFirst = (arr: Task[]) =>
       [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
 
+    // Actionable = still the assignee's move. A submitted-for-approval task
+    // is waiting on the reviewer, same as it stops being overdue for scoring.
     const isActiveActionable = (t: Task) =>
-      t.status !== 'completed' && t.status !== 'cancelled' &&
+      accruesAssigneeOverdue(t.status) &&
       t.status !== 'waiting'   && t.status !== 'blocked'
 
     // Today Actionable: due today, active (not waiting/blocked/completed/cancelled)

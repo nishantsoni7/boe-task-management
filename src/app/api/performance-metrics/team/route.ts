@@ -62,6 +62,7 @@ import {
   buildRanksAndExplanations, movementExplanation, overallRanking,
   MIN_SCORED_DAYS_FOR_RANKING,
   RANKING_KEYS,
+  attributableOverdueTasks,
   type MemberMetrics, type EodDetail, type RankExplanation,
   type CoverageSummary, type AdoptionSummary, type MemberEvidence,
 } from '@/lib/teamPerformance'
@@ -457,7 +458,7 @@ export async function GET(req: NextRequest) {
 
     // ── Current portfolio state (now, not period totals) ──────────────────────
     const twoDaysAgo = new Date(now.getTime() - STALE_BLOCKED_DAYS * 86_400_000).toISOString()
-    const overdueTasks = userActiveTsk.filter(t => t.due_date && t.due_date < today)
+    const overdueTasks = attributableOverdueTasks(userActiveTsk, today)
     const staleBlockedTasks = userActiveTsk.filter(
       t => t.status === 'blocked' && t.last_update_at && t.last_update_at < twoDaysAgo
     )

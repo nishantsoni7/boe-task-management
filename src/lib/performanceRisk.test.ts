@@ -109,6 +109,98 @@ describe('overdue is counted per day, not copied from today', () => {
   })
 })
 
+// ─── Pending-approval fairness ─────────────────────────────────────────────────
+//
+// A task the assignee has submitted for approval must stop accruing overdue
+// against them, even though it is still open (not completed/cancelled) and
+// still past its due date — the outstanding action is a review, not work,
+// and belongs to the creator. See accruesAssigneeOverdue() in
+// lib/tasks/reviewTransitions.ts, the single source of truth this reuses.
+
+describe('a task submitted for approval does not accrue assignee overdue', () => {
+  test('overdue, then submitted for approval before the due date: no overdue at all', () => {
+    // Due the 27th; submitted on the 26th, still awaiting approval at week end.
+    const t = task({ id: 't1', due_date: '2026-07-27', status: 'pending_approval' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-26', 'working', 'pending_approval'),
+    ])
+    assert.deepEqual(counts(series, 'overdueCount'), [0, 0, 0, 0, 0, 0, 0])
+  })
+
+  test('overdue before submission, zero from the day it is submitted onward', () => {
+    // Due the 25th; nothing happens until the employee submits on the 27th.
+    const t = task({ id: 't1', due_date: '2026-07-25', status: 'pending_approval' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-27', 'working', 'pending_approval'),
+    ])
+    // Overdue on the 26th (before submission); clear from the 27th on.
+    assert.deepEqual(counts(series, 'overdueCount'), [0, 0, 1, 0, 0, 0, 0])
+  })
+
+  test('staying unapproved for the whole window never accrues, however overdue the due date', () => {
+    // Due well before the window; submitted before the window too, so every
+    // reconstructed day sees status = pending_approval already in force.
+    const t = task({ id: 't1', due_date: '2026-07-15', status: 'pending_approval' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-20', 'working', 'pending_approval'),
+    ])
+    assert.deepEqual(counts(series, 'overdueCount'), [0, 0, 0, 0, 0, 0, 0])
+  })
+
+  test('a reviewer approving days later does not retroactively penalise the assignee', () => {
+    // Due the 24th (before the window); submitted the 27th, three days late;
+    // approved the 30th, the last day of the window — a multi-day review delay.
+    const t = task({ id: 't1', due_date: '2026-07-24', status: 'completed' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-27', 'working', 'pending_approval'),
+      statusEvent('t1', '2026-07-30', 'pending_approval', 'completed'),
+    ])
+    // Overdue the 25th-26th, before submission; zero from submission on —
+    // including the three days (27th-29th) the reviewer sat on it.
+    assert.deepEqual(counts(series, 'overdueCount'), [0, 1, 1, 0, 0, 0, 0])
+  })
+
+  test('rejection returns responsibility to the assignee and overdue resumes', () => {
+    // Due before the window; submitted the 26th; the reviewer returns it
+    // (rejects) on the 29th; still unresolved through the end of the window.
+    const t = task({ id: 't1', due_date: '2026-07-21', status: 'working' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-26', 'working', 'pending_approval'),
+      statusEvent('t1', '2026-07-29', 'pending_approval', 'working'),
+    ])
+    // Overdue the 24th-25th (pre-submission), clear the 26th-28th (awaiting
+    // review), overdue again from the 29th once responsibility returns.
+    assert.deepEqual(counts(series, 'overdueCount'), [1, 1, 0, 0, 0, 1, 1])
+  })
+
+  test('a high-priority task awaiting approval still contributes 0 to overdueCount', () => {
+    // Priority is not modelled in RiskTask/overdueCount itself — this asserts the
+    // status exemption alone is what zeroes it, independent of priority.
+    // Due well before the window; submitted on the 26th.
+    const t = task({ id: 't1', due_date: '2026-07-18', status: 'pending_approval' })
+    const series = riskSeries([t], [
+      statusEvent('t1', '2026-07-26', 'working', 'pending_approval'),
+    ])
+    // Overdue the 24th-25th (pre-submission); exempt from the 26th on, however
+    // many days it then sits awaiting approval.
+    assert.deepEqual(counts(series, 'overdueCount'), [1, 1, 0, 0, 0, 0, 0])
+  })
+
+  test('mixture: only the genuinely overdue task counts, pending-approval ones do not', () => {
+    const genuinelyOverdue = task({ id: 'real', due_date: '2026-07-20', status: 'working' })
+    const awaiting1 = task({ id: 'p1', due_date: '2026-07-20', status: 'pending_approval' })
+    const awaiting2 = task({ id: 'p2', due_date: '2026-07-22', status: 'pending_approval' })
+    const series = riskSeries([genuinelyOverdue, awaiting1, awaiting2], [
+      statusEvent('p1', '2026-07-24', 'working', 'pending_approval'),
+      statusEvent('p2', '2026-07-24', 'working', 'pending_approval'),
+    ])
+    // p1/p2 are already pending_approval as of day-end on the 24th (the first
+    // day in this window), so they contribute 0 every day; `real` was never
+    // submitted and keeps accruing throughout. Only `real` shows up, all week.
+    assert.deepEqual(counts(series, 'overdueCount'), [1, 1, 1, 1, 1, 1, 1])
+  })
+})
+
 // ─── Deadline revisions ───────────────────────────────────────────────────────
 
 describe('the deadline that actually applied on each day', () => {

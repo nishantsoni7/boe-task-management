@@ -25,6 +25,7 @@ import {
   memberStrengths, memberConcerns,
   meaningfulActiveDays, isMeaningfulAction, classifyEodSubmission,
   STATUS_SEVERITY, SORT_KEYS, EOD_ONTIME_HOUR,
+  attributableOverdueTasks, overdueWeightedSeverity,
   type MemberMetrics, type OperationalStatus, type SortKey,
 } from './teamPerformance'
 import { computeBreakdown } from './performance'
@@ -54,6 +55,102 @@ function member(over: Partial<MemberMetrics> & { userId: string; userName: strin
 
 const at = (date: string, hour: number) =>
   new Date(Date.parse(istDayStartUtc(date)) + hour * 3600_000).toISOString()
+
+// ─── Team Performance's current-portfolio overdue count ───────────────────────
+//
+// team/route.ts computes overdueCount/highPriorityOverdue/oldestOverdueDays
+// directly from the current task portfolio (not via buildDailyRiskSeries), so
+// it needs its own exemption for a task the assignee has submitted for
+// approval — same rule, independent code path. See performanceRisk.test.ts
+// for the equivalent historical-reconstruction coverage.
+
+type OverdueFixtureTask = { id: string; due_date: string | null; status: string; priority?: string }
+
+function overdueTask(over: Partial<OverdueFixtureTask> & { id: string }): OverdueFixtureTask {
+  return { due_date: null, status: 'working', ...over }
+}
+
+describe('attributableOverdueTasks', () => {
+  const TODAY = '2026-08-24'
+
+  test('a pending_approval task past due is excluded even though it is still open', () => {
+    const tasks = [overdueTask({ id: 't1', due_date: '2026-08-20', status: 'pending_approval' })]
+    assert.deepEqual(attributableOverdueTasks(tasks, TODAY), [])
+  })
+
+  test('completed and cancelled are excluded the same way', () => {
+    const tasks = [
+      overdueTask({ id: 't1', due_date: '2026-08-20', status: 'completed' }),
+      overdueTask({ id: 't2', due_date: '2026-08-20', status: 'cancelled' }),
+    ]
+    assert.deepEqual(attributableOverdueTasks(tasks, TODAY), [])
+  })
+
+  test('working, waiting and blocked tasks past due remain attributable', () => {
+    const tasks = [
+      overdueTask({ id: 't1', due_date: '2026-08-20', status: 'working' }),
+      overdueTask({ id: 't2', due_date: '2026-08-20', status: 'waiting' }),
+      overdueTask({ id: 't3', due_date: '2026-08-20', status: 'blocked' }),
+    ]
+    assert.equal(attributableOverdueTasks(tasks, TODAY).length, 3)
+  })
+
+  test('a task due today is not yet overdue, regardless of status', () => {
+    const tasks = [overdueTask({ id: 't1', due_date: TODAY, status: 'working' })]
+    assert.deepEqual(attributableOverdueTasks(tasks, TODAY), [])
+  })
+
+  test('mixture: one real overdue task plus three pending-approval ones counts as 1', () => {
+    const tasks = [
+      overdueTask({ id: 'real',  due_date: '2026-08-20', status: 'working' }),
+      overdueTask({ id: 'p1',    due_date: '2026-08-18', status: 'pending_approval' }),
+      overdueTask({ id: 'p2',    due_date: '2026-08-19', status: 'pending_approval' }),
+      overdueTask({ id: 'p3',    due_date: '2026-08-21', status: 'pending_approval' }),
+    ]
+    const overdue = attributableOverdueTasks(tasks, TODAY)
+    assert.deepEqual(overdue.map(t => t.id), ['real'])
+  })
+
+  test('three past-due tasks all awaiting approval: 0 attributable overdue', () => {
+    const tasks = [
+      overdueTask({ id: 'p1', due_date: '2026-08-18', status: 'pending_approval' }),
+      overdueTask({ id: 'p2', due_date: '2026-08-19', status: 'pending_approval' }),
+      overdueTask({ id: 'p3', due_date: '2026-08-20', status: 'pending_approval' }),
+    ]
+    assert.deepEqual(attributableOverdueTasks(tasks, TODAY), [])
+  })
+
+  test('a high-priority pending_approval task is not high-priority overdue', () => {
+    const tasks = [overdueTask({ id: 't1', due_date: '2026-08-18', status: 'pending_approval', priority: 'high' })]
+    const overdue = attributableOverdueTasks(tasks, TODAY)
+    assert.equal(overdue.filter(t => t.priority === 'high').length, 0)
+  })
+
+  test('a pending_approval task does not extend oldestOverdueDays', () => {
+    const oldestOverdueDays = (tasks: OverdueFixtureTask[]) =>
+      attributableOverdueTasks(tasks, TODAY).reduce((max, t) => {
+        const days = Math.floor((Date.parse(`${TODAY}T00:00:00Z`) - Date.parse(`${t.due_date}T00:00:00Z`)) / 86_400_000)
+        return days > max ? days : max
+      }, 0)
+
+    const withoutPendingApproval = oldestOverdueDays([
+      overdueTask({ id: 'real', due_date: '2026-08-20', status: 'working' }),
+    ])
+    const withOldPendingApproval = oldestOverdueDays([
+      overdueTask({ id: 'real', due_date: '2026-08-20', status: 'working' }),
+      overdueTask({ id: 'ancient', due_date: '2026-07-01', status: 'pending_approval' }),
+    ])
+    assert.equal(withoutPendingApproval, withOldPendingApproval)
+  })
+
+  test('overdueWeightedSeverity reads 0 when every overdue task is pending_approval', () => {
+    const m = member({
+      userId: 'u1', userName: 'A',
+      overdueCount: 0, highPriorityOverdue: 0, oldestOverdueDays: 0,
+    })
+    assert.equal(overdueWeightedSeverity(m), 0)
+  })
+})
 
 // ─── Rates never fake a zero ──────────────────────────────────────────────────
 
