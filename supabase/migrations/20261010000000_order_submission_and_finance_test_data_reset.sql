@@ -65,7 +65,7 @@
 -- THIS ACTION, deliberately: it is what "clear all Finance data" means, and it
 -- is reachable only through all eight. Outside this context every ordinary
 -- protection is exactly as it was — finance_payment_requests_guard_approved_delete
--- still refuses to let anybody delete an approved payment, and §11 asserts that
+-- still refuses to let anybody delete an approved payment, and §12 asserts that
 -- it and its three siblings are still armed when this file finishes.
 --
 -- ── WHAT IS DELIBERATELY REUSED RATHER THAN REBUILT ────────────────────────
@@ -104,13 +104,25 @@
 --   §4  THE PI-DELETION RACE, closed in the database. Traced writer by writer:
 --       approve_order_submission() is already refused, because it UPDATEs the
 --       PI row and meets 20260914000000's claim guard. allocate_payment_to_target()
---       is NOT: it reads the PI without FOR UPDATE and writes only the
---       allocation, so nothing fires. request_order_submission_correction() is
---       NOT: it locks the PI row but never reads deletion_claim_token. Two of
---       the three external writers could therefore create a blocker AFTER the
---       delete route's check and BEFORE its storage sweep — the window that
---       ends with a destroyed workbook and a surviving PI. Two sequential API
---       checks cannot close that. Two triggers can, and do.
+--       DOES lock the PI row and DOES refuse a standing claim (20260921000000),
+--       so the ordinary allocation path is already safe — but it binds no
+--       direct SQL or service-role INSERT. request_order_submission_correction()
+--       is refused by nothing: it locks the PI row but never reads
+--       deletion_claim_token. So one RPC is open outright and neither is binding
+--       on a caller that bypasses it, and either can create a blocker AFTER the
+--       delete route's check and BEFORE its storage sweep — the window that ends
+--       with a destroyed workbook and a surviving PI. Two sequential API checks
+--       cannot close that. Two triggers can, and do.
+--
+--   §11 DELETING ONE PAYMENT THAT OWNS FILES. The same lesson as §4, applied to
+--       Finance's own two-system problem. Deleting a payment used to mean
+--       deleting the row and then removing its proof objects — but the
+--       attachment rows naming those objects cascade with the payment, so a
+--       storage failure arrived with the manifest already destroyed and nothing
+--       left to retry from. A durable claim now holds that manifest, taken
+--       before either system is touched and kept after the payment is gone, and
+--       three narrow guards freeze verification, proof mutation and allocation
+--       while it stands. Verified money never gets a claim at all.
 --
 -- ── WHAT THIS FILE DOES NOT DO ─────────────────────────────────────────────
 --
@@ -365,8 +377,13 @@ end $$;
 --
 --   approve_order_submission()              CLOSED — it UPDATEs the PI row and
 --                                           meets the existing claim guard
---   allocate_payment_to_target()            OPEN   — reads the PI without FOR
---                                           UPDATE, writes only the allocation
+--   allocate_payment_to_target()            HALF   — it DOES lock the PI row and
+--                                           refuse a standing claim
+--                                           (20260921000000), so the ordinary
+--                                           allocation path is already safe; it
+--                                           binds no direct SQL or service-role
+--                                           INSERT, which is what the trigger
+--                                           below adds
 --   request_order_submission_correction()   OPEN   — locks the PI row but never
 --                                           reads deletion_claim_token
 --
@@ -494,7 +511,7 @@ begin
   -- rejected, approved_unlinked and approved_linked are all Finance operational
   -- data, and "clear all Finance data" covers all five. A verified payment goes
   -- with the rest — see the header for the eight gates that stand in front of
-  -- this, and §11 for the proof that the ordinary protection against deleting
+  -- this, and §12 for the proof that the ordinary protection against deleting
   -- one is still armed afterwards.
   select coalesce(array_agg(f.id order by f.id), '{}')
     into v_payments
@@ -1376,7 +1393,541 @@ revoke all     on function public.release_order_finance_test_reset(uuid) from pu
 grant  execute on function public.release_order_finance_test_reset(uuid) to authenticated;
 
 
--- ═══ 11. Apply-time assertions ══════════════════════════════════════════════
+-- ═══ 11. Deleting ONE payment that owns files, safely ═══════════════════════
+--
+-- WHY THIS IS HERE, IN THE FILE THAT CLEARS A MODULE. §4 above already closes a
+-- deletion race that has nothing to do with test data: this file is where
+-- Order/Finance DELETION SAFETY lives, and the module reset is one caller of it.
+-- The facility below is the other, and the two share the idea that makes either
+-- one safe — a durable claim that outlives the row it is deleting.
+--
+-- THE DEFECT IT EXISTS TO FIX. Deleting a payment used to be: delete the row,
+-- then remove its proof objects from storage. payment_proof_attachments cascades
+-- with the payment (20260672), so by the time storage was asked THE ONLY RECORD
+-- OF WHICH OBJECTS BELONGED TO THAT PAYMENT WAS ALREADY GONE. A storage failure
+-- there could not be retried by anybody, because nothing could still say what to
+-- retry, and the application reported it as a partial success. A file left in a
+-- private bucket with no row naming it is a leak, not an outcome.
+--
+-- Reversing the order does not fix it either: removing the file first destroys
+-- the evidence for a payment that may then turn out to be undeletable — an
+-- approval landing in the gap.
+--
+-- SO THE MANIFEST IS WRITTEN DOWN BEFORE EITHER SYSTEM IS TOUCHED, into a row
+-- that survives the payment. From then on every stage is resumable, because the
+-- claim can still say what the payment owned after the payment is gone.
+--
+--   begin  → authorize, lock, verify unapproved, FREEZE, persist the manifest
+--   route  → remove exactly those object keys, server-side
+--   finalize → delete the payment; the release trigger fires inside the same
+--              statement; the claim is marked consumed and KEPT
+--
+-- WHAT THE FREEZE COVERS, and why each one is load-bearing:
+--
+--   verification      a payment that became verified after the claim was taken
+--                     would be permanent bank history whose proof this protocol
+--                     is about to delete. Refused.
+--   proof mutation    a proof added after the manifest was frozen would not be
+--                     in it, and finalization would leave it orphaned — the
+--                     exact defect, reintroduced. Refused. Removal of a proof is
+--                     refused too, so the manifest cannot go stale in either
+--                     direction.
+--   allocation change a new allocation against a payment being deleted would be
+--                     released by the delete without its owner ever seeing it.
+--                     Refused.
+--
+-- NOTHING HERE WEAKENS ANY EXISTING PROTECTION.
+-- finance_payment_requests_guard_approved_delete still refuses every verified
+-- payment for every caller, and this protocol never reaches it: begin refuses a
+-- verified payment before a claim exists at all. The ordinary creator/admin
+-- DELETE policies are untouched, and no Finance permission is widened.
+
+create table if not exists public.finance_payment_deletion_claims (
+  id                 uuid        primary key default gen_random_uuid(),
+  claim_token        uuid        not null unique default gen_random_uuid(),
+
+  payment_id         uuid        not null,
+  payment_number     text,
+  payment_status     text        not null,
+
+  -- THE MANIFEST. Frozen from payment_proof_attachments at claim time, which is
+  -- the last moment the rows are guaranteed to exist and the first moment they
+  -- are guaranteed not to change. This column is the whole point of the table.
+  storage_paths      text[]      not null default '{}',
+  -- Which of them storage has confirmed gone. A retry removes the difference.
+  storage_removed    text[]      not null default '{}',
+
+  -- What was released with the payment, recorded before it happens so the audit
+  -- is complete even when the two halves are minutes apart.
+  allocation_ids     uuid[]      not null default '{}',
+
+  claimed_by         uuid        references public.users(id) on delete set null,
+  claimed_by_email   text,
+  claimed_at         timestamptz not null default now(),
+
+  -- Set when the payment has actually been deleted. A claim with this set is
+  -- CONSUMED: it freezes nothing and cannot delete anything a second time.
+  finalized_at       timestamptz,
+  released_at        timestamptz,
+  result             jsonb       not null default '{}'::jsonb,
+
+  constraint finance_payment_deletion_claims_status_unapproved
+    check (payment_status in ('pending_approval', 'needs_clarification', 'rejected'))
+);
+
+-- NO FOREIGN KEY TO THE PAYMENT, and that is deliberate. The claim must outlive
+-- the row it describes — that is what makes the manifest readable after the
+-- deletion and what makes a completed deletion answerable a second time. A NO
+-- ACTION key would make finalization impossible; a CASCADE would destroy the
+-- audit at the exact moment it becomes the only record.
+
+create unique index if not exists finance_payment_deletion_claims_open_uidx
+  on public.finance_payment_deletion_claims (payment_id)
+  where finalized_at is null and released_at is null;
+
+comment on table public.finance_payment_deletion_claims is
+  'A durable reservation over one unapproved payment being deleted. Holds the frozen list of proof object keys, taken before storage or the row is touched, so a failure at any stage is resumable rather than a leak. Survives the payment on purpose.';
+
+alter table public.finance_payment_deletion_claims enable row level security;
+revoke all on table public.finance_payment_deletion_claims from public, anon, authenticated;
+
+-- ── 11a. Is this payment frozen right now ───────────────────────────────────
+
+create or replace function public.finance_payment_deletion_claimed(p_payment_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1 from public.finance_payment_deletion_claims c
+    where c.payment_id = p_payment_id
+      and c.finalized_at is null
+      and c.released_at is null
+  )
+$$;
+
+revoke execute on function public.finance_payment_deletion_claimed(uuid)
+  from public, anon, authenticated, service_role;
+
+-- ── 11b. The freeze ─────────────────────────────────────────────────────────
+--
+-- Three narrow guards, each refusing exactly one thing and only while a claim
+-- stands. A payment with no claim behaves precisely as it did before this file.
+-- Every one binds the service role and direct SQL, because a freeze that a
+-- privileged caller can step around is not a freeze.
+
+create or replace function public.finance_payment_requests_guard_deletion_claim()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if public.in_test_data_cleanup() then
+    return new;
+  end if;
+  if public.finance_payment_deletion_claimed(old.id) then
+    raise exception
+      'PAYMENT_DELETION_CLAIMED: this payment is being deleted and cannot be changed'
+      using errcode = '55P03';
+  end if;
+  return new;
+end;
+$$;
+
+revoke execute on function public.finance_payment_requests_guard_deletion_claim()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists finance_payment_requests_guard_deletion_claim
+  on public.finance_payment_requests;
+create trigger finance_payment_requests_guard_deletion_claim
+  before update on public.finance_payment_requests
+  for each row execute function public.finance_payment_requests_guard_deletion_claim();
+
+create or replace function public.payment_proof_attachments_guard_deletion_claim()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_payment uuid := coalesce(new.payment_request_id, old.payment_request_id);
+begin
+  if public.in_test_data_cleanup() then
+    return coalesce(new, old);
+  end if;
+  -- The finalizer deletes the payment, and these rows cascade with it. That
+  -- cascade must not meet this guard, so the finalizer clears the claim's grip
+  -- by marking it finalized BEFORE the delete — see 12e.
+  if public.finance_payment_deletion_claimed(v_payment) then
+    raise exception
+      'PAYMENT_DELETION_CLAIMED: this payment is being deleted; its proof files cannot change'
+      using errcode = '55P03';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function public.payment_proof_attachments_guard_deletion_claim()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists payment_proof_attachments_guard_deletion_claim
+  on public.payment_proof_attachments;
+create trigger payment_proof_attachments_guard_deletion_claim
+  before insert or update or delete on public.payment_proof_attachments
+  for each row execute function public.payment_proof_attachments_guard_deletion_claim();
+
+create or replace function public.finance_payment_allocations_guard_deletion_claim()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_payment uuid := coalesce(new.payment_request_id, old.payment_request_id);
+begin
+  if public.in_test_data_cleanup() then
+    return coalesce(new, old);
+  end if;
+  if public.finance_payment_deletion_claimed(v_payment) then
+    raise exception
+      'PAYMENT_DELETION_CLAIMED: this payment is being deleted and cannot be allocated'
+      using errcode = '55P03';
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function public.finance_payment_allocations_guard_deletion_claim()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists finance_payment_allocations_guard_deletion_claim
+  on public.finance_payment_allocations;
+create trigger finance_payment_allocations_guard_deletion_claim
+  before insert or update on public.finance_payment_allocations
+  for each row execute function public.finance_payment_allocations_guard_deletion_claim();
+
+-- ── 11c. Who may delete a payment ───────────────────────────────────────────
+--
+-- THE SAME TWO THE DELETE POLICIES ALREADY NAME, re-derived here so the RPC
+-- does not depend on the caller's policy set: an active administrator, or the
+-- person who raised the payment. No Finance permission is consulted, because no
+-- DELETE policy on finance_payment_requests grants one — widening that is a
+-- business decision and not something an RPC should assume.
+
+create or replace function public.finance_payment_deletable_by(
+  p_payment_id uuid,
+  p_actor_id   uuid
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (
+    select 1
+    from public.finance_payment_requests f
+    join public.users u on u.id = p_actor_id
+    where f.id = p_payment_id
+      and u.is_active
+      and coalesce(u.is_deleted, false) = false
+      and f.status in ('pending_approval', 'needs_clarification', 'rejected')
+      and (u.role = 'admin' or f.submitted_by = p_actor_id)
+  )
+$$;
+
+revoke execute on function public.finance_payment_deletable_by(uuid, uuid) from public, anon;
+grant  execute on function public.finance_payment_deletable_by(uuid, uuid) to authenticated;
+
+-- ── 11d. begin — authorize, freeze, and write the manifest ──────────────────
+
+create or replace function public.begin_finance_payment_deletion(p_payment_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor   uuid := auth.uid();
+  v_pay     public.finance_payment_requests%rowtype;
+  v_claim   public.finance_payment_deletion_claims%rowtype;
+  v_paths   text[];
+  v_allocs  uuid[];
+begin
+  if v_actor is null then
+    raise exception 'PAYMENT_DELETION_NOT_AUTHENTICATED: you must be signed in'
+      using errcode = '42501';
+  end if;
+
+  -- THE ROW IS LOCKED FIRST. Everything after this reads a state that cannot
+  -- change until this transaction ends, which is what lets the status check and
+  -- the manifest be taken as one decision rather than two guesses.
+  select * into v_pay from public.finance_payment_requests
+   where id = p_payment_id for update;
+  if not found then
+    raise exception 'PAYMENT_DELETION_NOT_FOUND: payment % not found', p_payment_id
+      using errcode = 'P0002';
+  end if;
+
+  if not public.finance_payment_deletable_by(p_payment_id, v_actor) then
+    raise exception 'PAYMENT_DELETION_DENIED: you may not delete this payment'
+      using errcode = '42501';
+  end if;
+
+  -- VERIFIED MONEY NEVER GETS A CLAIM. The delete guard would refuse it anyway;
+  -- refusing here means no freeze is ever taken over permanent bank history.
+  if public.finance_payment_status_is_verified(v_pay.status) then
+    raise exception
+      'PAYMENT_APPROVED_PERMANENT: payment % has been approved and is permanent bank payment history',
+      v_pay.request_number
+      using errcode = '42501';
+  end if;
+
+  -- RESUME RATHER THAN REFUSE. An attempt that died between begin and finalize
+  -- left a claim standing; the same caller asking again gets that claim and its
+  -- manifest back, which is what makes the whole operation retryable. The
+  -- authorization above has already been re-derived, so a resume is not a way
+  -- around it.
+  select * into v_claim from public.finance_payment_deletion_claims
+   where payment_id = p_payment_id and finalized_at is null and released_at is null
+   for update;
+  if found then
+    return jsonb_build_object(
+      'claim_token',     v_claim.claim_token,
+      'storage_paths',   to_jsonb(v_claim.storage_paths),
+      'storage_removed', to_jsonb(v_claim.storage_removed),
+      'resumed',         true
+    );
+  end if;
+
+  -- The manifest, from the rows themselves. Nothing a browser sent is consulted,
+  -- and every key is confined to this payment's own prefix by construction —
+  -- asserted below and re-checked by the finalizer.
+  select coalesce(array_agg(a.storage_path order by a.storage_path), '{}')
+    into v_paths
+  from public.payment_proof_attachments a
+  where a.payment_request_id = p_payment_id
+    and a.storage_path is not null;
+
+  select coalesce(array_agg(al.id order by al.id), '{}')
+    into v_allocs
+  from public.finance_payment_allocations al
+  where al.payment_request_id = p_payment_id;
+
+  insert into public.finance_payment_deletion_claims
+    (payment_id, payment_number, payment_status, storage_paths, allocation_ids,
+     claimed_by, claimed_by_email)
+  values
+    (p_payment_id, v_pay.request_number, v_pay.status, v_paths, v_allocs,
+     v_actor, (select email from public.users where id = v_actor))
+  returning * into v_claim;
+
+  return jsonb_build_object(
+    'claim_token',     v_claim.claim_token,
+    'storage_paths',   to_jsonb(v_claim.storage_paths),
+    'storage_removed', to_jsonb(v_claim.storage_removed),
+    'resumed',         false
+  );
+end;
+$$;
+
+revoke execute on function public.begin_finance_payment_deletion(uuid) from public, anon;
+grant  execute on function public.begin_finance_payment_deletion(uuid) to authenticated;
+
+-- ── 11e. Record what storage confirmed, and finalize ────────────────────────
+
+create or replace function public.record_finance_payment_proof_removed(
+  p_payment_id  uuid,
+  p_claim_token uuid,
+  p_removed     text[]
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_claim public.finance_payment_deletion_claims%rowtype;
+  v_key   text;
+begin
+  select * into v_claim from public.finance_payment_deletion_claims
+   where payment_id = p_payment_id and claim_token = p_claim_token
+     and finalized_at is null and released_at is null
+   for update;
+  if not found then
+    raise exception 'PAYMENT_DELETION_CLAIM_INVALID: this deletion claim is not current'
+      using errcode = '55P03';
+  end if;
+
+  -- ONLY KEYS THE MANIFEST ALREADY NAMES. A caller reporting a key that is not
+  -- in the frozen list is either confused or forging one, and either way this
+  -- must not become a way to describe an object the claim never owned.
+  foreach v_key in array coalesce(p_removed, '{}') loop
+    if not (v_key = any (v_claim.storage_paths)) then
+      raise exception
+        'PAYMENT_DELETION_PATH_UNKNOWN: % is not in this payment''s frozen manifest', v_key
+        using errcode = '42501';
+    end if;
+  end loop;
+
+  update public.finance_payment_deletion_claims
+     set storage_removed = (
+           select coalesce(array_agg(distinct k order by k), '{}')
+           from unnest(storage_removed || coalesce(p_removed, '{}')) k)
+   where id = v_claim.id
+   returning * into v_claim;
+
+  return jsonb_build_object(
+    'storage_paths',   to_jsonb(v_claim.storage_paths),
+    'storage_removed', to_jsonb(v_claim.storage_removed),
+    'complete',        v_claim.storage_paths <@ v_claim.storage_removed
+  );
+end;
+$$;
+
+revoke execute on function public.record_finance_payment_proof_removed(uuid, uuid, text[])
+  from public, anon;
+grant  execute on function public.record_finance_payment_proof_removed(uuid, uuid, text[])
+  to authenticated;
+
+create or replace function public.finalize_finance_payment_deletion(
+  p_payment_id  uuid,
+  p_claim_token uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor  uuid := auth.uid();
+  v_claim  public.finance_payment_deletion_claims%rowtype;
+  v_pay    public.finance_payment_requests%rowtype;
+  v_allocs integer;
+begin
+  if v_actor is null then
+    raise exception 'PAYMENT_DELETION_NOT_AUTHENTICATED: you must be signed in'
+      using errcode = '42501';
+  end if;
+
+  select * into v_claim from public.finance_payment_deletion_claims
+   where payment_id = p_payment_id and claim_token = p_claim_token
+   for update;
+  if not found then
+    raise exception 'PAYMENT_DELETION_CLAIM_INVALID: this deletion claim is not current'
+      using errcode = '55P03';
+  end if;
+
+  -- ALREADY DONE IS SUCCESS. A second finalize — a retried request, a second
+  -- tab — answers with what the first one did rather than an error about a
+  -- payment that is in exactly the state the caller asked for.
+  if v_claim.finalized_at is not null then
+    return v_claim.result || jsonb_build_object('already_deleted', true);
+  end if;
+  if v_claim.released_at is not null then
+    raise exception 'PAYMENT_DELETION_CLAIM_INVALID: this deletion claim was released'
+      using errcode = '55P03';
+  end if;
+
+  -- AUTHORIZATION IS RE-DERIVED ON EVERY ATTEMPT, not inherited from whoever
+  -- took the claim. A resumed deletion is still a deletion, and the person
+  -- finishing it must be entitled to start it.
+  select * into v_pay from public.finance_payment_requests
+   where id = p_payment_id for update;
+  if not found then
+    -- The row is gone and this claim never recorded finishing it: an earlier
+    -- attempt deleted it and lost its answer. Record the completion and report
+    -- it, because the state the caller asked for is the state the database is in.
+    update public.finance_payment_deletion_claims
+       set finalized_at = now(),
+           result = jsonb_build_object('allocations_released', 0, 'row_absent', true)
+     where id = v_claim.id;
+    return jsonb_build_object('allocations_released', 0, 'already_deleted', true);
+  end if;
+
+  if not public.finance_payment_deletable_by(p_payment_id, v_actor) then
+    raise exception 'PAYMENT_DELETION_DENIED: you may not delete this payment'
+      using errcode = '42501';
+  end if;
+
+  -- EVERY FILE FIRST. Finalizing while an object survives is the leak this whole
+  -- section exists to prevent, so it is refused and the caller retries the sweep
+  -- from the manifest that is still here.
+  if not (v_claim.storage_paths <@ v_claim.storage_removed) then
+    raise exception
+      'PAYMENT_DELETION_PROOF_PENDING: % proof object(s) are still in storage',
+      cardinality(v_claim.storage_paths) - cardinality(v_claim.storage_removed)
+      using errcode = '55P03';
+  end if;
+
+  select count(*) into v_allocs
+  from public.finance_payment_allocations where payment_request_id = p_payment_id;
+
+  -- THE CLAIM IS MARKED CONSUMED BEFORE THE DELETE, so the freeze in 11b is no
+  -- longer in force for the cascade the delete is about to cause. The row is
+  -- locked and this transaction is the only writer, so nothing can slip into the
+  -- instant between the two — and if the delete fails, the whole thing rolls
+  -- back, claim and all.
+  update public.finance_payment_deletion_claims
+     set finalized_at = now(),
+         result = jsonb_build_object('allocations_released', v_allocs)
+   where id = v_claim.id;
+
+  -- finance_payment_requests_release_allocations deletes the allocations inside
+  -- this statement, after finance_payment_requests_guard_approved_delete has had
+  -- its say. Neither is bypassed and neither is weakened.
+  delete from public.finance_payment_requests where id = p_payment_id;
+
+  return jsonb_build_object('allocations_released', v_allocs, 'already_deleted', false);
+end;
+$$;
+
+revoke execute on function public.finalize_finance_payment_deletion(uuid, uuid) from public, anon;
+grant  execute on function public.finalize_finance_payment_deletion(uuid, uuid) to authenticated;
+
+create or replace function public.release_finance_payment_deletion(
+  p_payment_id  uuid,
+  p_claim_token uuid
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_claim public.finance_payment_deletion_claims%rowtype;
+begin
+  select * into v_claim from public.finance_payment_deletion_claims
+   where payment_id = p_payment_id and claim_token = p_claim_token
+     and finalized_at is null and released_at is null
+   for update;
+  if not found then
+    return false;
+  end if;
+
+  -- RELEASED ONLY WHILE NOTHING HAS GONE. Once any object has been removed the
+  -- payment's proof is incomplete, and handing it back would produce a payment
+  -- that looks whole and is not. Such a claim stays open and is resumed instead.
+  if cardinality(v_claim.storage_removed) > 0 then
+    raise exception
+      'PAYMENT_DELETION_IN_PROGRESS: proof files have already been removed; this deletion must be finished'
+      using errcode = '55P03';
+  end if;
+
+  update public.finance_payment_deletion_claims
+     set released_at = now() where id = v_claim.id;
+  return true;
+end;
+$$;
+
+revoke execute on function public.release_finance_payment_deletion(uuid, uuid) from public, anon;
+grant  execute on function public.release_finance_payment_deletion(uuid, uuid) to authenticated;
+
+
+-- ═══ 12. Apply-time assertions ══════════════════════════════════════════════
 --
 -- The migration refuses ITSELF rather than shipping a partial facility. Every
 -- assertion below is about something this file claims in prose above, checked
@@ -1519,6 +2070,65 @@ begin
     select 1 from public.test_data_cleanup_claims where scope is not null)
   then
     raise exception 'a module reset claim already exists; this migration takes none';
+  end if;
+
+  -- ── The payment-deletion claim protocol is complete ──
+  --
+  -- A half-shipped version of §11 is worse than none: a freeze without a
+  -- finalizer strands payments, and a finalizer without the freeze is the leak
+  -- this file exists to close.
+  if to_regclass('public.finance_payment_deletion_claims') is null then
+    raise exception 'finance_payment_deletion_claims is missing; §11 did not ship';
+  end if;
+
+  foreach v_tbl in array array[
+    'begin_finance_payment_deletion(uuid)',
+    'finalize_finance_payment_deletion(uuid,uuid)',
+    'release_finance_payment_deletion(uuid,uuid)',
+    'record_finance_payment_proof_removed(uuid,uuid,text[])',
+    'finance_payment_deletable_by(uuid,uuid)',
+    'finance_payment_deletion_claimed(uuid)'
+  ] loop
+    if to_regprocedure('public.' || v_tbl) is null then
+      raise exception 'the payment deletion protocol is incomplete: public.% is missing', v_tbl;
+    end if;
+  end loop;
+
+  foreach v_tbl in array array[
+    'finance_payment_requests_guard_deletion_claim',
+    'payment_proof_attachments_guard_deletion_claim',
+    'finance_payment_allocations_guard_deletion_claim'
+  ] loop
+    if not exists (select 1 from pg_trigger where tgname = v_tbl and tgenabled <> 'D') then
+      raise exception 'the payment deletion freeze is not armed: % is missing or disabled', v_tbl;
+    end if;
+  end loop;
+
+  -- THE CLAIM MUST OUTLIVE THE PAYMENT. A foreign key from the claim to
+  -- finance_payment_requests would make finalization impossible (NO ACTION) or
+  -- destroy the audit at the moment it becomes the only record (CASCADE).
+  if exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.finance_payment_deletion_claims'::regclass
+      and contype = 'f'
+      and confrelid = 'public.finance_payment_requests'::regclass
+  ) then
+    raise exception
+      'finance_payment_deletion_claims must not reference the payment it describes; the claim outlives it';
+  end if;
+
+  -- EVERY PROOF KEY IS CONFINED TO ITS PAYMENT'S OWN PREFIX. buildProofPath
+  -- writes `{payment_id}/…`, the storage policy resolves ownership by
+  -- split_part(name,'/',1), and the manifest is only ever read from these rows —
+  -- so a key that breaks the convention would let a sweep reach outside. Checked
+  -- against the rows that actually exist rather than assumed.
+  if exists (
+    select 1 from public.payment_proof_attachments a
+    where a.storage_path is not null
+      and split_part(a.storage_path, '/', 1) <> a.payment_request_id::text
+  ) then
+    raise exception
+      'a payment proof object key is not under its own payment id prefix; the manifest cannot be confined';
   end if;
 
   -- ── The production protections are still armed ──

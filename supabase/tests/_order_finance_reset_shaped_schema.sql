@@ -220,6 +220,20 @@ create table public.finance_payment_allocations (
     check (num_nonnulls(order_submission_id, order_id) = 1)
 );
 
+-- The canonical definition of "verified", reproduced from 20260918000000 §5
+-- because §11 of the migration under test calls it rather than restating the
+-- status list. Byte-equivalent to the deployed body: two statuses, and nothing
+-- else is verified money.
+create or replace function public.finance_payment_status_is_verified(p_status text)
+returns boolean
+language sql
+immutable
+parallel safe
+set search_path = public, pg_temp
+as $$
+  select coalesce(p_status in ('approved_unlinked', 'approved_linked'), false)
+$$;
+
 -- ── The cleanup protocol, as 20260705/20260706/20260916 left it ─────────────
 create or replace function public.in_test_data_cleanup()
 returns boolean language sql stable set search_path = public as $$

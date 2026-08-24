@@ -481,10 +481,29 @@ describe('the PI deletion race is closed in the database', () => {
   })
 
   test('and the reasoning names which writer was already closed and which was not', () => {
+    // CORRECTED, AND STRENGTHENED. This used to accept the header calling
+    // allocate_payment_to_target() NOT closed or OPEN. That was wrong against
+    // the file: 20260921000000 takes `for update` on the PI row and raises
+    // ALLOCATION_TARGET_CLAIMED on a standing claim, so the ordinary allocation
+    // path is already refused. What it does NOT do is bind a caller that never
+    // goes through it. Asserting the true distinction is what makes this test
+    // worth having — a header that mislabels a writer sends the next reader
+    // looking for a hole that is not there, and past the one that is.
     const header = sql()
-    assert.ok(/approve_order_submission\(\)\s+CLOSED/.test(header))
-    assert.ok(/allocate_payment_to_target\(\)\s+NOT/.test(header)
-      || /allocate_payment_to_target\(\)\s+OPEN/.test(header))
+    assert.ok(/approve_order_submission\(\)\s+CLOSED/.test(header),
+      'the writer that meets the existing claim guard is named as closed')
+    assert.ok(/allocate_payment_to_target\(\)\s+HALF/.test(header),
+      'and the one that refuses through its RPC but binds no direct writer is not called open')
+    // The header wraps across comment lines, so each claim is checked on its own
+    // rather than as one adjacent phrase.
+    const prose = header.split('\n').map(l => l.replace(/^--\s*/, '')).join(' ')
+    assert.ok(/DOES lock the PI row and refuse a standing claim/.test(prose),
+      'the header must say what allocate_payment_to_target actually does')
+    assert.ok(/binds no direct SQL or service-role/.test(prose),
+      'and name the gap that is actually left')
+    assert.ok(/request_order_submission_correction\(\)/.test(prose)
+      && /never reads deletion_claim_token/.test(prose),
+      'the writer that genuinely checks nothing must still be named')
   })
 
   test('the guards are narrow: INSERT only, and only for the named PI', () => {

@@ -2991,11 +2991,9 @@ function ReceivedPaymentsViewInner(
           allocationSummary={describePaymentAllocations(
             rowView(deleteTarget, allocations, targetLabels,
               canOpenOrderRecord(ordersCaps.canAccessOrdersModule)).links)}
-          supabase={supabase}
           formatAmount={fmtAmount}
           formatDate={fmtDate}
           modeLabel={mode => PAYMENT_MODE_LABEL[mode] ?? mode}
-          describeError={friendlyDbErrorMessage}
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => { setDeleteTarget(null); refreshAfterMutation() }}
         />

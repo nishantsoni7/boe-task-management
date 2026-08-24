@@ -875,6 +875,179 @@ begin
     'M3. a row cannot be both a chain claim and a module claim');
 end $$;
 
+
+-- ═══ N. Deleting ONE payment that owns files (§11) ══════════════════════════
+--
+-- The defect: the payment was deleted and its proof objects removed afterwards,
+-- but payment_proof_attachments cascades with the payment — so a storage failure
+-- arrived with the manifest already destroyed and nothing left to retry from.
+-- These assertions pin the protocol that replaces it.
+
+do $$
+declare
+  v_pay    uuid;
+  v_pay2   uuid;
+  v_ord    uuid;
+  v_claim  jsonb;
+  v_token  uuid;
+  v_paths  text[];
+  v_err    text;
+  v_res    jsonb;
+begin
+  perform pg_temp.act_as(pg_temp.admin());
+
+  select id into v_ord from public.orders limit 1;
+
+  -- An unapproved payment with TWO proof objects and one allocation.
+  insert into public.finance_payment_requests
+    (request_number, client_name, amount, status, submitted_by, order_id)
+  values ('PR-N1', 'N Co', 5000, 'pending_approval', pg_temp.admin(), v_ord)
+  returning id into v_pay;
+
+  insert into public.payment_proof_attachments (payment_request_id, storage_path)
+  values (v_pay, v_pay::text || '/a.pdf'),
+         (v_pay, v_pay::text || '/b.pdf');
+
+  insert into public.finance_payment_allocations
+    (payment_request_id, order_id, allocated_amount, status, origin_target_type, created_by)
+  values (v_pay, v_ord, 1000, 'active', 'order', pg_temp.admin());
+
+  -- ── N1. The manifest is frozen from the rows, not from a caller ──
+  v_claim := public.begin_finance_payment_deletion(v_pay);
+  v_token := (v_claim->>'claim_token')::uuid;
+  select array_agg(x order by x) into v_paths
+  from jsonb_array_elements_text(v_claim->'storage_paths') x;
+  perform pg_temp.ok(v_paths = array[v_pay::text || '/a.pdf', v_pay::text || '/b.pdf'],
+    'N1. the claim carries both proof keys, read from the attachment rows');
+  perform pg_temp.ok(
+    (select cardinality(allocation_ids) from public.finance_payment_deletion_claims
+      where payment_id = v_pay) = 1,
+    'N1b. and records the allocation it will release');
+
+  -- ── N2. Verification is refused while the claim stands ──
+  v_err := pg_temp.fails_with(
+    format($q$update public.finance_payment_requests set status = 'approved_linked' where id = %L$q$, v_pay));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_CLAIMED%',
+    'N2. a payment being deleted cannot be verified; got: ' || v_err);
+
+  -- ── N3. Proof mutation is refused in BOTH directions ──
+  v_err := pg_temp.fails_with(
+    format($q$insert into public.payment_proof_attachments (payment_request_id, storage_path)
+             values (%L, %L)$q$, v_pay, v_pay::text || '/c.pdf'));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_CLAIMED%',
+    'N3a. a proof cannot be added after the manifest is frozen; got: ' || v_err);
+  v_err := pg_temp.fails_with(
+    format($q$delete from public.payment_proof_attachments where payment_request_id = %L$q$, v_pay));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_CLAIMED%',
+    'N3b. nor removed, so the manifest cannot go stale either way; got: ' || v_err);
+
+  -- ── N4. Allocation mutation is refused ──
+  v_err := pg_temp.fails_with(
+    format($q$insert into public.finance_payment_allocations
+             (payment_request_id, order_id, allocated_amount, status, origin_target_type, created_by)
+             values (%L, %L, 100, 'active', 'order', %L)$q$, v_pay, v_ord, pg_temp.admin()));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_CLAIMED%',
+    'N4. a payment being deleted cannot be allocated; got: ' || v_err);
+
+  -- ── N5. Finalizing with files still in storage is refused ──
+  v_err := pg_temp.fails_with(
+    format($q$select public.finalize_finance_payment_deletion(%L, %L)$q$, v_pay, v_token));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_PROOF_PENDING%',
+    'N5. the payment cannot go while its proof objects are still there; got: ' || v_err);
+  perform pg_temp.ok(exists (select 1 from public.finance_payment_requests where id = v_pay),
+    'N5b. and the payment survives the refusal');
+
+  -- ── N6. A forged path is refused ──
+  v_err := pg_temp.fails_with(
+    format($q$select public.record_finance_payment_proof_removed(%L, %L, array['%s/evil.pdf'])$q$,
+           v_pay, v_token, gen_random_uuid()));
+  perform pg_temp.ok(v_err like '42501|PAYMENT_DELETION_PATH_UNKNOWN%',
+    'N6. only keys the frozen manifest names may be reported removed; got: ' || v_err);
+
+  -- ── N7. A PARTIAL sweep leaves the deletion resumable ──
+  perform public.record_finance_payment_proof_removed(
+    v_pay, v_token, array[v_pay::text || '/a.pdf']);
+  v_err := pg_temp.fails_with(
+    format($q$select public.finalize_finance_payment_deletion(%L, %L)$q$, v_pay, v_token));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_PROOF_PENDING%',
+    'N7. one file gone is not all files gone; got: ' || v_err);
+  perform pg_temp.ok(exists (select 1 from public.finance_payment_requests where id = v_pay),
+    'N7b. the payment and its manifest both survive a partial sweep');
+
+  -- ── N8. RESUME. A second begin returns the SAME claim and manifest ──
+  v_claim := public.begin_finance_payment_deletion(v_pay);
+  perform pg_temp.ok((v_claim->>'claim_token')::uuid = v_token,
+    'N8. resuming returns the standing claim rather than starting a second one');
+  perform pg_temp.ok((v_claim->>'resumed')::boolean,
+    'N8b. and says so');
+  perform pg_temp.ok(
+    jsonb_array_length(v_claim->'storage_removed') = 1,
+    'N8c. carrying what storage has already confirmed, so a retry sweeps the difference');
+
+  -- ── N9. A key already reported is not double counted; missing is accepted ──
+  perform public.record_finance_payment_proof_removed(
+    v_pay, v_token, array[v_pay::text || '/a.pdf', v_pay::text || '/b.pdf']);
+  v_res := public.record_finance_payment_proof_removed(v_pay, v_token, array[]::text[]);
+  perform pg_temp.ok((v_res->>'complete')::boolean,
+    'N9. an already-removed key is accepted rather than counted twice');
+
+  -- ── N10. Release is refused once anything has gone ──
+  v_err := pg_temp.fails_with(
+    format($q$select public.release_finance_payment_deletion(%L, %L)$q$, v_pay, v_token));
+  perform pg_temp.ok(v_err like '55P03|PAYMENT_DELETION_IN_PROGRESS%',
+    'N10. a payment whose proof is already gone must be finished, not handed back; got: ' || v_err);
+
+  -- ── N11. Finalize deletes the payment and releases the allocation atomically ──
+  v_res := public.finalize_finance_payment_deletion(v_pay, v_token);
+  perform pg_temp.ok((v_res->>'allocations_released')::int = 1,
+    'N11. the allocation it recorded is the allocation it released');
+  perform pg_temp.ok(not exists (select 1 from public.finance_payment_requests where id = v_pay),
+    'N11b. the payment is gone');
+  perform pg_temp.ok(not exists (
+    select 1 from public.finance_payment_allocations where payment_request_id = v_pay),
+    'N11c. and so are its allocations, in the same statement');
+
+  -- ── N12. THE CLAIM SURVIVES THE PAYMENT ──
+  perform pg_temp.ok(exists (
+    select 1 from public.finance_payment_deletion_claims
+    where payment_id = v_pay and finalized_at is not null),
+    'N12. the claim outlives the row it deleted, which is what made every stage resumable');
+  perform pg_temp.ok((
+    select cardinality(storage_paths) from public.finance_payment_deletion_claims
+    where payment_id = v_pay) = 2,
+    'N12b. with the manifest still readable afterwards');
+
+  -- ── N13. A completed deletion answers success a second time ──
+  v_res := public.finalize_finance_payment_deletion(v_pay, v_token);
+  perform pg_temp.ok((v_res->>'already_deleted')::boolean,
+    'N13. finalizing twice is the state the caller asked for, not an error');
+
+  -- ── N14. A verified payment is never claimed ──
+  insert into public.finance_payment_requests
+    (request_number, client_name, amount, status, submitted_by, order_id)
+  values ('PR-N2', 'N Verified', 900, 'approved_linked', pg_temp.admin(), v_ord)
+  returning id into v_pay2;
+  v_err := pg_temp.fails_with(
+    format($q$select public.begin_finance_payment_deletion(%L)$q$, v_pay2));
+  perform pg_temp.ok(v_err like '42501|%',
+    'N14. verified money never gets a claim at all; got: ' || v_err);
+  perform pg_temp.ok(not exists (
+    select 1 from public.finance_payment_deletion_claims where payment_id = v_pay2),
+    'N14b. and no freeze is taken over it');
+  perform pg_temp.ok(exists (select 1 from public.finance_payment_requests where id = v_pay2),
+    'N14c. and it is untouched');
+
+  -- ── N15. Authorization is re-derived, not inherited ──
+  perform pg_temp.act_as(pg_temp.inactive());
+  v_err := pg_temp.fails_with(
+    format($q$select public.begin_finance_payment_deletion(%L)$q$, v_pay2));
+  perform pg_temp.ok(v_err like '42501|%',
+    'N15. an inactive administrator may not begin a deletion; got: ' || v_err);
+  perform pg_temp.act_as(pg_temp.admin());
+
+  raise notice 'PAYMENT DELETION CLAIM ASSERTIONS PASSED';
+end $$;
+
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;
 
 rollback;
