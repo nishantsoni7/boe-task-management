@@ -9,6 +9,7 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
+import { deletePaymentEntry } from '@/lib/finance/paymentDeletion'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
@@ -2206,56 +2207,25 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
   const [warning, setWarning]   = useState<string | null>(null)
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
 
+  // THE SEQUENCE LIVES IN ONE PLACE NOW. It used to live here, and Received
+  // Payments — where an allocated pending payment actually appears — had no
+  // Delete at all, so the PI deletion blocker's instruction to "delete that
+  // payment entry in Finance" pointed at a control the operator could not
+  // reach. Rather than grow a second copy on that page, the body moved to
+  // lib/finance/paymentDeletion and BOTH pages call it. The order, the
+  // status filter and the storage cleanup are unchanged, byte for byte in
+  // behaviour; only their address is new.
   const handleDelete = async () => {
     setDeleting(true)
     setError(null)
 
-    // 1. Read the proof paths first: payment_proof_attachments cascades with
-    //    the request, so after the delete there is nothing left to read them
-    //    from. Only this request's own attachments are collected, so a file
-    //    belonging to any other record can never be touched.
-    const { data: proofs, error: proofErr } = await supabase
-      .from('payment_proof_attachments')
-      .select('storage_path')
-      .eq('payment_request_id', r.id)
-    if (proofErr) {
-      setDeleting(false)
-      setError('Could not read this request’s proof attachments. Nothing was deleted — please try again.')
-      return
-    }
-
-    // 2. Delete the request itself, filtered on status. RLS re-evaluates that
-    //    filter against the committed row, so an approval landing while this
-    //    modal was open makes this a zero-row no-op rather than destroying an
-    //    approved payment. The request goes first deliberately: deleting the
-    //    proof object first would destroy the evidence for a payment that then
-    //    turned out to be un-deletable.
-    const { error: dbError, count } = await supabase
-      .from('finance_payment_requests')
-      .delete({ count: 'exact' })
-      .eq('id', r.id)
-      .in('status', UNAPPROVED_STATUSES)
-    if (dbError) { setDeleting(false); setError(friendlyDbErrorMessage(dbError)); return }
-    if (count === 0) { setDeleting(false); setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
-
-    // 3. The request is gone; remove its now-orphaned proof objects. Authorized
-    //    by the parent-less branch of the payment_proofs_delete storage policy
-    //    (20260700000000). A failure here cannot be retried usefully and must
-    //    not be reported as a clean success.
-    const paths = ((proofs ?? []) as { storage_path: string }[])
-      .map(p => p.storage_path)
-      .filter(Boolean)
-    if (paths.length > 0) {
-      const { data: removed, error: rmErr } = await supabase.storage.from(PROOF_BUCKET).remove(paths)
-      if (rmErr || (removed?.length ?? 0) < paths.length) {
-        setDeleting(false)
-        setSettled(true)
-        setWarning(`Payment request ${r.request_number} was deleted, but its proof file could not be removed from storage. Please ask an admin to delete it from the payment-proofs bucket.`)
-        return
-      }
-    }
-
+    const result = await deletePaymentEntry(supabase, r, friendlyDbErrorMessage)
     setDeleting(false)
+
+    if (result.outcome === 'failed')           { setError(result.message); return }
+    if (result.outcome === 'already-verified') { setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
+    if (result.outcome === 'proof-orphaned')   { setSettled(true); setWarning(result.message); return }
+
     onDeleted()
   }
 

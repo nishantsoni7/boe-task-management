@@ -14,6 +14,12 @@ import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
+  canDeletePayment,
+  describePaymentAllocations,
+  PAYMENT_DELETE_CONFIRM_LABEL,
+} from '@/lib/finance/paymentDeletion'
+import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
+import {
   ALLOCATION_FILTER_OPTIONS,
   PAYMENT_VIEW_OPTIONS,
   RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
@@ -682,11 +688,16 @@ function DetailsModal({
   canOpenLinkedRecord: boolean
   onOpenLinked: (href: string) => void
 }) {
-  // Every row on this page is approved_linked or approved_unlinked (the page
-  // query is scoped to exactly those two statuses), so this is always true
-  // here — the generic correction control below never renders on this page.
-  // Kept as an explicit, named check (rather than deleting the block) so the
-  // same guard reads identically to finance/page.tsx.
+  // CORRECTED. This used to say every row on this page is approved_linked or
+  // approved_unlinked, "scoped to exactly those two statuses". It is not:
+  // CLASSIFIED_PAYMENT_STATUSES also loads pending_approval and
+  // needs_clarification, and an allocated one of those is exactly the row a PI
+  // deletion blocker sends an operator here to deal with. Believing otherwise is
+  // what left this page with no Delete control for years.
+  //
+  // The check itself was always right and is unchanged — it is false for an
+  // unapproved row, so the linkage controls correctly do not render for one.
+  // Only the claim about what reaches this page was wrong.
   const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
 
   const [newStatus,       setNewStatus]       = useState(r.status)
@@ -1274,6 +1285,8 @@ function ReceivedPaymentsTable({
   onUnlink,
   onAllocate,
   onOpenLinked,
+  canDeleteRow,
+  onDelete,
 }: {
   rows: PaymentRequest[]
   /**
@@ -1306,6 +1319,14 @@ function ReceivedPaymentsTable({
   onUnlink: (r: PaymentRequest) => void
   onAllocate: (r: PaymentRequest) => void
   onOpenLinked: (href: string) => void
+  /**
+   * Whether THIS reader may delete THIS payment — canDeletePayment's answer,
+   * which is admin, or the person who raised it, and only in a status the
+   * database still allows a delete from. A drawing rule: row-level security and
+   * finance_payment_requests_guard_approved_delete both re-derive it.
+   */
+  canDeleteRow: (r: PaymentRequest) => boolean
+  onDelete: (r: PaymentRequest) => void
 }) {
   const TD: React.CSSProperties = { padding: '8px 12px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap' }
 
@@ -1458,11 +1479,32 @@ function ReceivedPaymentsTable({
                         >
                           Edit
                         </button>
-                        {/* No Delete. A row on this page is a Received Payment —
-                            money that actually arrived — and is permanent bank
-                            payment history (20260705000000). The database
-                            refuses the delete regardless of what the UI offers. */}
                       </>
+                    )}
+                    {/* DELETE — and note it sits OUTSIDE canManage on purpose.
+                        Deleting a payment is not the finance.manage correction
+                        authority that Link, Unlink and Edit are: the only DELETE
+                        policies on finance_payment_requests are the creator's
+                        own and the administrator's, so canDeletePayment answers
+                        this and finance.manage does not.
+
+                        THE PAGE IS NOT ONLY VERIFIED MONEY, which is what this
+                        control existed to admit. CLASSIFIED_PAYMENT_STATUSES
+                        loads pending_approval and needs_clarification too, and
+                        an allocated one of those is exactly what a PI deletion
+                        blocker tells the operator to come here and remove. A
+                        verified row is never offered it — the status test is the
+                        first thing canDeletePayment asks, and
+                        finance_payment_requests_guard_approved_delete refuses it
+                        for every caller regardless. */}
+                    {canDeleteRow(r) && (
+                      <button
+                        onClick={() => onDelete(r)}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500, color: colors.red }}
+                      >
+                        {PAYMENT_DELETE_CONFIRM_LABEL}
+                      </button>
                     )}
                   </div>
                 </td>
@@ -1487,6 +1529,7 @@ function ReceivedPaymentsTable({
 
 function ReceivedPaymentsCards({
   rows, canAllocate, canOpenLinkedRecord, allocations, labels, highlightId, onView, onAllocate, onOpenLinked,
+  canDeleteRow, onDelete,
 }: {
   rows: PaymentRequest[]
   canAllocate: boolean
@@ -1497,6 +1540,8 @@ function ReceivedPaymentsCards({
   onView: (r: PaymentRequest) => void
   onAllocate: (r: PaymentRequest) => void
   onOpenLinked: (href: string) => void
+  canDeleteRow: (r: PaymentRequest) => boolean
+  onDelete: (r: PaymentRequest) => void
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -1558,6 +1603,15 @@ function ReceivedPaymentsCards({
                   style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
                 >
                   {ALLOCATE_ACTION_LABEL}
+                </button>
+              )}
+              {canDeleteRow(r) && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete(r) }}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ marginLeft: canAllocate && view.canAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red }}
+                >
+                  {PAYMENT_DELETE_CONFIRM_LABEL}
                 </button>
               )}
             </div>
@@ -1633,6 +1687,7 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
   const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
   const [linkRequest,    setLinkRequest]    = useState<PaymentRequest | null>(null)
   const [unlinkTarget,   setUnlinkTarget]   = useState<PaymentRequest | null>(null)
+  const [deleteTarget,   setDeleteTarget]   = useState<PaymentRequest | null>(null)
   const [unlinkReason,   setUnlinkReason]   = useState('')
   const [unlinking,      setUnlinking]      = useState(false)
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
@@ -2013,6 +2068,18 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
     loadRequests()
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
   }
+
+  /**
+   * Whether this reader may delete this payment, asked once for the table, the
+   * cards and the modal so all three cannot disagree.
+   *
+   * `profile` is the signed-in user's own row, so role and id are this reader's
+   * — not a claim the browser was handed. A null profile (still loading, or a
+   * session that went away) answers false, which is the safe direction: the
+   * control simply is not there.
+   */
+  const canDeleteRow = (r: PaymentRequest) =>
+    canDeletePayment(r, { isAdmin: profile?.role === 'admin', userId: profile?.id })
 
   useEffect(() => {
     const init = async () => {
@@ -2477,6 +2544,8 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
               onView={r => setDetailRequest(r)}
               onAllocate={r => setAllocateTarget(r)}
               onOpenLinked={href => router.push(href)}
+              canDeleteRow={canDeleteRow}
+              onDelete={r => setDeleteTarget(r)}
             />
           ) : (
             <ReceivedPaymentsTable
@@ -2493,6 +2562,8 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
               onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
               onAllocate={r => setAllocateTarget(r)}
               onOpenLinked={href => router.push(href)}
+              canDeleteRow={canDeleteRow}
+              onDelete={r => setDeleteTarget(r)}
             />
           )
         )}
@@ -2644,6 +2715,28 @@ function ReceivedPaymentsViewInner({ view }: { view: PaymentView }) {
             </button>
           </div>
         </FinanceModal>
+      )}
+
+      {/* DELETE PAYMENT — the shared action, mounted here and on Payments to
+          Verify, so both surfaces run one sequence and show one set of words.
+          The allocation sentence is built from the SAME links the row drew, so
+          the dialog cannot name a destination the reader was not already shown
+          — and says nothing at all when this reader's allocation read was
+          incomplete, because `links` is empty then. */}
+      {deleteTarget && (
+        <DeletePaymentModal
+          payment={deleteTarget}
+          allocationSummary={describePaymentAllocations(
+            rowView(deleteTarget, allocations, targetLabels,
+              canOpenOrderRecord(ordersCaps.canAccessOrdersModule)).links)}
+          supabase={supabase}
+          formatAmount={fmtAmount}
+          formatDate={fmtDate}
+          modeLabel={mode => PAYMENT_MODE_LABEL[mode] ?? mode}
+          describeError={friendlyDbErrorMessage}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => { setDeleteTarget(null); refreshAfterMutation() }}
+        />
       )}
 
     </FinanceLayout>

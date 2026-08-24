@@ -79,6 +79,8 @@ import {
   DELETE_PI_CONFIRM_LABEL,
   DELETE_PI_DIALOG_TITLE,
   DELETE_PI_RETRY_LABEL,
+  PAYMENT_BLOCKER_HREF,
+  PAYMENT_BLOCKER_LINK_LABEL,
   DELETE_PI_WARNING,
   deletionStatusLabel,
   type SubmissionDeletionFailure,
@@ -1168,6 +1170,23 @@ export function PiDeleteConfirmModal({
               and that may have just disabled it — is announced rather than only
               drawn. */}
           {failure && <FailureNote message={failure.message} alert />}
+
+          {/* A ROUTE, NOT AN INSTRUCTION. Offered whenever a payment is what is
+              in the way, because the reader may well be the one who raised it —
+              and if they are not, the page will simply not show them a Delete.
+              It names the list and no payment, so it discloses nothing this
+              dialog has not already said. */}
+          {failure?.blockerKinds?.includes('payment_allocation') && (
+            <a
+              href={PAYMENT_BLOCKER_HREF}
+              style={{
+                alignSelf: 'flex-start', fontSize: '12px', fontWeight: 600,
+                color: colors.blue, textDecoration: 'none',
+              }}
+            >
+              {PAYMENT_BLOCKER_LINK_LABEL} →
+            </a>
+          )}
 
           <Footer>
             <button type="button" onClick={() => dismiss('cancel')} disabled={deleting} style={cancelStyle(deleting)}>

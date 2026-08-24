@@ -244,11 +244,22 @@ const BLOCKER_SENTENCE: Record<DeletionBlockerKind, (count: number) => string> =
   // the only thing that releases one is deleting the payment entry it belongs
   // to — which Finance allows while that payment is still unapproved and
   // refuses once it is not.
+  //
+  // IT NO LONGER TELLS THE READER TO GO AND DO IT. The earlier wording — "Delete
+  // that payment entry in Finance first" — was an instruction addressed to
+  // whoever happened to be looking, and two things made it a promise the product
+  // could not keep. The only DELETE policies on finance_payment_requests are the
+  // creator's own and an administrator's, so a reader who is neither cannot
+  // carry it out; and this count includes the allocations of VERIFIED payments,
+  // which nobody can delete at all. So the sentence now says who can do it and
+  // when it is possible, and leaves the reader to decide whether that is them.
   payment_allocation: count => count === 1
-    ? 'A payment is allocated to this PI. Delete that payment entry in Finance first —'
-      + ' possible while it is still unapproved — and the PI can then be deleted.'
-    : `${count} payments are allocated to this PI. Delete those payment entries in Finance first —`
-      + ' possible while they are still unapproved — and the PI can then be deleted.',
+    ? 'A payment is allocated to this PI. That allocation is released only by deleting the'
+      + ' payment entry in Finance, which the person who raised it or an administrator can do'
+      + ' while the payment is still unapproved.'
+    : `${count} payments are allocated to this PI. Those allocations are released only by deleting`
+      + ' the payment entries in Finance, which the person who raised each one or an administrator'
+      + ' can do while that payment is still unapproved.',
   correction_request: count => count === 1
     ? 'A correction request belongs to this PI, and a correction request is kept permanently.'
     : `${count} correction requests belong to this PI, and a correction request is kept permanently.`,
@@ -271,6 +282,17 @@ export function describeDeletionBlockers(blockers: readonly DeletionBlocker[]): 
     ? 'Another record still refers to this PI, so it cannot be deleted.'
     : sentences.join(' ')
 }
+
+/**
+ * Where a reader goes to deal with a payment that is holding a PI.
+ *
+ * THE LIST, NOT A RECORD. It is the Received Payments list and nothing more
+ * specific: an allocated payment awaiting verification appears there, and a link
+ * to the page discloses nothing, whereas a link naming the payment would tell a
+ * browser about a row its own row-level security may forbid it to read.
+ */
+export const PAYMENT_BLOCKER_HREF = '/finance/received'
+export const PAYMENT_BLOCKER_LINK_LABEL = 'Open Received Payments'
 
 export type SubmissionDeletionFailure = {
   code: SubmissionDeletionCode
@@ -297,6 +319,11 @@ export type SubmissionDeletionFailure = {
    * nothing is going to be fixed by waiting.
    */
   blocked: boolean
+  /**
+   * Which kinds are in the way, when the route said. Lets a surface offer the
+   * Finance route for a payment blocker without re-parsing the message.
+   */
+  blockerKinds?: readonly DeletionBlockerKind[]
 }
 
 type FailureCopy = Omit<SubmissionDeletionFailure, 'code'>
@@ -425,5 +452,6 @@ export function describeDeletionFailure(
     code: known,
     ...copy,
     message: parsed.length === 0 ? copy.message : describeDeletionBlockers(parsed),
+    blockerKinds: parsed.map(blocker => blocker.kind),
   }
 }
