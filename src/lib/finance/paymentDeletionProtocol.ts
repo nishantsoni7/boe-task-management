@@ -14,7 +14,13 @@ export type PaymentDeletionCode =
   | 'UNAUTHORIZED'
   | 'FORBIDDEN'
   | 'NOT_FOUND'
-  /** Verified money. Permanent bank history, and never claimable. */
+  /**
+   * Verified money deleted outside the durable claim protocol (a race, or a
+   * direct-SQL attempt) — the ordinary path now supports deleting a Confirmed
+   * Payment through begin/finalize_finance_payment_deletion (20261011000000),
+   * so this code should not occur from the normal UI flow, but the guard
+   * still raises it for anything that reaches the row outside that protocol.
+   */
   | 'APPROVED'
   /** The claim is not current — released, or belonging to another attempt. */
   | 'CLAIM_INVALID'
@@ -25,6 +31,10 @@ export type PaymentDeletionCode =
   /** The sweep left something behind. The claim stands and a retry resumes. */
   | 'STORAGE_INCOMPLETE'
   | 'STORAGE_UNAVAILABLE'
+  /** No reason was entered. */
+  | 'REASON_REQUIRED'
+  /** The typed Payment ID did not match. */
+  | 'ID_MISMATCH'
   | 'DELETE_FAILED'
 
 /**
@@ -63,6 +73,10 @@ const FAILURE_COPY: Record<PaymentDeletionCode, Copy> = {
   STORAGE_UNAVAILABLE: {
     message: 'Payment deletion is not configured on this deployment.'
       + ' Nothing was removed.', retryable: false },
+  REASON_REQUIRED: {
+    message: 'Enter a reason for deleting this payment.', retryable: true },
+  ID_MISMATCH: {
+    message: 'The typed Payment ID did not match. Nothing was deleted.', retryable: true },
   DELETE_FAILED: { message: PAYMENT_DELETE_RETRY_MESSAGE, retryable: true },
 }
 
@@ -90,6 +104,8 @@ const RPC_MARKERS: readonly { marker: string; code: PaymentDeletionCode }[] = [
   { marker: 'PAYMENT_DELETION_NOT_AUTHENTICATED', code: 'UNAUTHORIZED' },
   { marker: 'PAYMENT_DELETION_DENIED',           code: 'FORBIDDEN' },
   { marker: 'PAYMENT_DELETION_NOT_FOUND',        code: 'NOT_FOUND' },
+  { marker: 'PAYMENT_DELETION_REASON_REQUIRED',  code: 'REASON_REQUIRED' },
+  { marker: 'PAYMENT_DELETION_ID_MISMATCH',      code: 'ID_MISMATCH' },
   { marker: 'PAYMENT_DELETION_PROOF_PENDING',    code: 'PROOF_PENDING' },
   { marker: 'PAYMENT_DELETION_IN_PROGRESS',      code: 'IN_PROGRESS' },
   { marker: 'PAYMENT_DELETION_CLAIM_INVALID',    code: 'CLAIM_INVALID' },

@@ -128,18 +128,112 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  *                          wrap unpredictably and the table impossible to size.
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
+  { key: 'payment_id',   label: 'Payment ID',    align: 'left'  },
+  { key: 'customer',     label: 'Customer',      align: 'left'  },
   { key: 'amount',       label: 'Amount',        align: 'right' },
   { key: 'mode',         label: 'Mode',          align: 'left'  },
   { key: 'date',         label: 'Date',          align: 'left'  },
-  { key: 'to_orders',    label: 'To Orders',     align: 'right' },
-  { key: 'to_pi_draft',  label: 'To PI Draft',   align: 'right' },
-  { key: 'unallocated',  label: 'Unallocated',   align: 'right' },
+  { key: 'status',       label: 'Allocation',    align: 'left'  },
+  { key: 'total_allocated', label: 'Total Allocated', align: 'right' },
+  { key: 'unallocated',  label: 'Remaining',     align: 'right' },
   { key: 'initiated_by', label: 'Initiated by',  align: 'left'  },
   { key: 'approved_by',  label: 'Approved by',   align: 'left'  },
   { key: 'actions',      label: 'Actions',       align: 'right' },
 ] as const
 
+/**
+ * The breakdown fields shown only in the expandable row/card detail, so the
+ * primary row stays scrollable-free at 1024px. "To Orders" / "To PI Draft"
+ * are what "Allocated to Orders" / "Allocated to PI Drafts" mean per-row —
+ * exact monetary figures, never the retired "Linked Against" phrasing.
+ */
+export const CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS = [
+  { key: 'to_pi_draft', label: 'Allocated to PI Drafts', align: 'right' },
+  { key: 'to_orders',   label: 'Allocated to Orders',    align: 'right' },
+] as const
+
 export type ConfirmedPaymentColumn = (typeof CONFIRMED_PAYMENT_COLUMNS)[number]['key']
+
+/**
+ * The pure allocation-ledger classification a Confirmed Payment row carries —
+ * `confirmed_allocation_status` on `finance_received_payments`
+ * (20261011000000 §5). Deliberately NOT the same as `allocation_state`, which
+ * folds in the legacy direct-link fallback for a different purpose (Orders'
+ * conservation law); this is the literal "how much of the ledger total is
+ * allocated" figure Requirement 1's filters and badges read.
+ */
+export const CONFIRMED_ALLOCATION_STATUSES = ['zero', 'partial', 'full', 'over'] as const
+export type ConfirmedAllocationStatus = (typeof CONFIRMED_ALLOCATION_STATUSES)[number]
+
+export const CONFIRMED_ALLOCATION_FILTERS = ['all', ...CONFIRMED_ALLOCATION_STATUSES] as const
+export type ConfirmedAllocationFilter = (typeof CONFIRMED_ALLOCATION_FILTERS)[number]
+
+export const DEFAULT_CONFIRMED_ALLOCATION_FILTER: ConfirmedAllocationFilter = 'all'
+
+export const CONFIRMED_ALLOCATION_FILTER_LABEL: Record<ConfirmedAllocationFilter, string> = {
+  all: 'All',
+  zero: 'Zero Allocated',
+  partial: 'Partially Allocated',
+  full: 'Fully Allocated',
+  // 'over' has no filter chip of its own — see badge below; surfaced only as
+  // a flag on the row it belongs to, for Admin review, never as a silent
+  // reclassification into 'full'.
+  over: 'Over-allocated',
+}
+
+/**
+ * The badge text and tone for a Confirmed Payment's allocation status.
+ *
+ * 'over' IS NOT a filter choice — Requirement 1 defines exactly three filters
+ * (Zero / Partially / Fully Allocated) plus All. It still needs a badge,
+ * because a payment in that state must never be shown as confidently 'Fully
+ * Allocated': it is invalid legacy data and is flagged for Admin review
+ * wherever it appears, including under the "All" and "Fully Allocated"...
+ * actually never under Fully Allocated — see classifyForFilter below.
+ */
+export const CONFIRMED_ALLOCATION_BADGE: Record<ConfirmedAllocationStatus, { label: string; tone: 'neutral' | 'warning' | 'success' | 'danger' }> = {
+  zero:    { label: 'Zero Allocated',       tone: 'neutral' },
+  partial: { label: 'Partially Allocated',  tone: 'warning' },
+  full:    { label: 'Fully Allocated',      tone: 'success' },
+  over:    { label: 'Over-allocated — review', tone: 'danger' },
+}
+
+/**
+ * Whether a row belongs under a given filter chip. "All" always matches.
+ * An over-allocated row matches none of Zero/Partial/Full — it is flagged,
+ * never folded into any of the three, and is still reachable through "All".
+ */
+export function matchesConfirmedAllocationFilter(
+  status: ConfirmedAllocationStatus | null | undefined,
+  filter: ConfirmedAllocationFilter,
+): boolean {
+  if (filter === 'all') return true
+  return status === filter
+}
+
+/**
+ * The customer name shown in a Finance table or card: at most ~20 characters
+ * including spaces, cleanly ellipsized, with the untouched full name kept
+ * alongside for a tooltip. THE ONE PLACE this truncation rule lives — no
+ * other component should re-derive it. The stored value is never touched;
+ * this only shapes what is rendered.
+ */
+export const CUSTOMER_NAME_DISPLAY_LIMIT = 20
+
+export function formatCustomerName(
+  full: string | null | undefined,
+  limit: number = CUSTOMER_NAME_DISPLAY_LIMIT,
+): { display: string; full: string; truncated: boolean } {
+  const name = (full ?? '').trim().replace(/\s+/g, ' ')
+  if (name === '') return { display: '—', full: '', truncated: false }
+  if (name.length <= limit) return { display: name, full: name, truncated: false }
+  // Trim to the limit minus the ellipsis, then back off to the last full
+  // word so the cut never lands mid-word.
+  const cut = name.slice(0, Math.max(1, limit - 1))
+  const lastSpace = cut.lastIndexOf(' ')
+  const clean = lastSpace > Math.floor(limit / 2) ? cut.slice(0, lastSpace) : cut
+  return { display: `${clean}…`, full: name, truncated: true }
+}
 
 /**
  * Below this the table becomes cards.
