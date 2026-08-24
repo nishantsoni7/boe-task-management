@@ -96,17 +96,28 @@ describe('the control appears where a deletable payment is, and nowhere else', (
   test('Received Payments gates the control on canDeletePayment, not on finance.manage', () => {
     const src = code(read(RECEIVED))
     assert.ok(src.includes('canDeletePayment(r, { isAdmin:'),
-      'the shared predicate decides, so the button and the database agree')
-    const buttonAt = src.indexOf('onClick={() => onDelete(r)}')
-    assert.ok(buttonAt > 0, 'the table offers a Delete control')
-    const guardAt = src.lastIndexOf('canDeleteRow(r) &&', buttonAt)
-    assert.ok(guardAt > 0 && guardAt < buttonAt, 'and it is guarded by that predicate')
+      'the shared predicate decides, so the control and the database agree')
+    assert.ok(!/canManage &&[\s\S]{0,200}onDelete\(r\)/.test(src),
+      'delete authority is not the finance.manage correction authority')
   })
 
-  test('both the table and the cards offer it, so a phone is not a second rule', () => {
+  /**
+   * BOTH SURFACES, IN WHATEVER FORM EACH USES. The table draws its actions as a
+   * row of buttons on one branch and as an overflow menu on the other, and the
+   * cards draw a button either way — so this asserts the PROPERTY (every wiring
+   * of onDelete is guarded by canDeleteRow, and there are two of them: the table
+   * and the cards) rather than the markup of the day. A test written against one
+   * branch's syntax would fail on the other for no reason a reader could act on.
+   */
+  test('both the table and the cards offer it, and neither offers it unguarded', () => {
     const src = code(read(RECEIVED))
-    assert.equal((src.match(/canDeleteRow\(r\) &&/g) ?? []).length, 2,
-      'one guard for the table row and one for the card')
+    const wirings = [...src.matchAll(/onDelete\(r\)/g)].map(m => m.index ?? -1)
+    assert.equal(wirings.length, 2, 'one wiring for the table row and one for the card')
+    for (const at of wirings) {
+      const preceding = src.slice(Math.max(0, at - 260), at)
+      assert.match(preceding, /canDeleteRow\(r\)/,
+        'every Delete wiring must be guarded by the shared predicate')
+    }
   })
 
   test('the stale comment claiming this page never deletes is gone', () => {
