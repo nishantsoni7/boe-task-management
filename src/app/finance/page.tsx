@@ -9,11 +9,8 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { compressImageFile } from '@/lib/attachment-utils'
 import { PROOF_BUCKET, validateProofFile, buildProofPath, proofContentType } from '@/lib/paymentProof'
-import {
-  PAYMENT_DELETE_RETRY_LABEL,
-  describePaymentDeletionFailure,
-  type PaymentDeletionFailure,
-} from '@/lib/finance/paymentDeletionProtocol'
+import { canDeletePayment } from '@/lib/finance/paymentDeletion'
+import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
@@ -90,6 +87,10 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 type PaymentRequest = {
   id: string
   request_number: string
+  /** P-AA-0001 style, database-generated, immutable, unique — THE user-facing
+   *  Payment ID. request_number is retained in the database and this type only
+   *  because other logic still reads it; it is never the primary label. */
+  human_payment_id: string
   client_name: string
   amount: number
   payment_date: string
@@ -383,14 +384,6 @@ function AmountInput({ value, onChange }: { value: string; onChange: (v: string)
   )
 }
 
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
-    </div>
-  )
-}
 
 // Compact uppercase section label used throughout the details modal.
 function SectionHeader({ children }: { children: React.ReactNode }) {
@@ -541,6 +534,10 @@ function DetailsModal({
   // Same rule the table's action buttons use, so the two surfaces can never
   // disagree about whether a request is still manageable from this page.
   const canManage = canManageRequest(r, !!isAdmin, userId ?? '')
+  // DELETE IS A SEPARATE, NARROWER RULE (20261011000000 §3a): admin-only, for
+  // any status. Self-delete by the submitter of an unapproved request — which
+  // canManage still grants for Edit/Reapply — is withdrawn for Delete alone.
+  const canDelete = canDeletePayment(r, { isAdmin: !!isAdmin })
 
   const [newStatus,       setNewStatus]       = useState(r.status)
   const [correctionNote,  setCorrectionNote]  = useState('')
@@ -959,11 +956,12 @@ function DetailsModal({
   )
 
   // Actions live in the shell's pinned footer so they stay reachable while the
-  // body scrolls. Rendered only for a request this user may still act on — an
-  // approved one gets the note above and no controls at all.
-  const footer = canManage && (onEdit || onDelete) ? (
+  // body scrolls. Delete and Edit/Reapply are gated SEPARATELY — canDelete
+  // (admin-only) and canManage (edit/reapply) — so the footer renders whenever
+  // either offers something, not only when both do.
+  const footer = ((canManage && onEdit) || (canDelete && onDelete)) ? (
     <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-      {onDelete && (
+      {onDelete && canDelete && (
         <button
           onClick={() => onDelete(r)}
           style={{
@@ -974,7 +972,7 @@ function DetailsModal({
           Delete
         </button>
       )}
-      {onEdit && (
+      {onEdit && canManage && (
         <button onClick={() => onEdit(r)} className="boe-btn boe-btn-primary" style={{ padding: '7px 16px', fontSize: '13px' }}>
           {!isAdmin && r.status === 'rejected' ? 'Reapply' : 'Edit'}
         </button>
@@ -984,7 +982,7 @@ function DetailsModal({
 
   return (
     <RequestModalShell
-      requestNumber={r.request_number}
+      requestNumber={r.human_payment_id}
       submittedLine={submittedLine}
       statusBadge={<StatusBadge status={r.status} />}
       onClose={onClose}
@@ -2174,10 +2172,10 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 
   return (
     <RequestModalShell
-      requestNumber={r.request_number}
+      requestNumber={r.human_payment_id}
       submittedLine={submittedLine}
       statusBadge={<StatusBadge status={r.status} />}
-      ariaLabel={`Review payment request ${r.request_number}`}
+      ariaLabel={`Review payment ${r.human_payment_id}`}
       onClose={onClose}
       top={top}
       left={left}
@@ -2192,125 +2190,17 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 }
 
 // ── Delete confirm modal (admin only) ────────────────────────────────────────
-
-type DeleteConfirmModalProps = {
-  request: PaymentRequest
-  onClose: () => void
-  onDeleted: () => void
-}
-
-function DeleteConfirmModal({ request: r, onClose, onDeleted }: DeleteConfirmModalProps) {
-  const [deleting, setDeleting] = useState(false)
-  const [deleted, setDeleted]   = useState(false)
-  const [failure, setFailure]   = useState<PaymentDeletionFailure | null>(null)
-  const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
-
-  // A RETRYABLE FAILURE IS NOT SETTLED. The claim is still standing and the
-  // next press resumes from the frozen manifest, so the destructive button
-  // stays live and says what it is really doing.
-  const settled = deleted || (failure !== null && !failure.retryable)
-
-  // THE SEQUENCE LIVES IN ONE PLACE NOW. It used to live here, and Received
-  // Payments — where an allocated pending payment actually appears — had no
-  // Delete at all, so the PI deletion blocker's instruction to "delete that
-  // payment entry in Finance" pointed at a control the operator could not
-  // reach. Rather than grow a second copy on that page, the body moved to a
-  // shared route and both surfaces call it.
-  //
-  // THE ROUTE, NOT AN APPLICATION SEQUENCE. This branch carries migration
-  // 20261010000000 §11, so this page goes through the same durable claim
-  // protocol as Received Payments — for a request with proof files or without —
-  // rather than keeping its own copy of the count-then-delete sequence that
-  // race is exactly what the claim exists to close.
-  const handleDelete = async () => {
-    if (deleting || settled) return
-    setDeleting(true)
-    setFailure(null)
-
-    let code: unknown = 'DELETE_FAILED'
-    try {
-      const response = await fetch('/api/finance/payments/delete', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ paymentId: r.id }),
-      })
-      const body = await response.json().catch(() => null) as { ok?: boolean; code?: string } | null
-      if (body?.ok === true) {
-        setDeleting(false)
-        setDeleted(true)
-        onDeleted()
-        return
-      }
-      code = body?.code
-    } catch {
-      // A network failure is exactly as retryable as a storage one: the claim
-      // stands, nothing was reported deleted, and pressing again resumes.
-    }
-    setDeleting(false)
-    setFailure(describePaymentDeletionFailure(code))
-  }
-
-  const message = failure?.message ?? null
-
-  const deleteLabel = deleting
-    ? 'Deleting…'
-    : failure?.retryable === true ? PAYMENT_DELETE_RETRY_LABEL : 'Delete'
-
-  return (
-    // Once settled, EVERY dismissal path (✕, Escape, overlay click, the Close
-    // button) refreshes the table — a deleted row must not linger, and a
-    // permanently refused one invites a second Delete that reports the same
-    // answer.
-    <FinanceModal title="Delete Payment Request" onClose={settled ? onDeleted : onClose}>
-      <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
-        Delete this Payment Request? This action cannot be undone.
-      </div>
-      <div style={{
-        background: colors.raised, borderRadius: '8px', padding: '12px 14px',
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
-        border: `1px solid ${colors.border}`,
-      }}>
-        <DetailRow label="Request"      value={r.request_number} />
-        <DetailRow label="Client"       value={r.client_name} />
-        <DetailRow label="Amount"       value={fmtAmount(r.amount)} />
-        <DetailRow label="Payment Date" value={fmtDate(r.payment_date)} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</span>
-          <span style={{
-            display: 'inline-block', padding: '2px 8px', borderRadius: '5px', alignSelf: 'flex-start',
-            background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-            fontSize: '11px', fontWeight: 600,
-          }}>
-            {meta.label}
-          </span>
-        </div>
-      </div>
-      {message && <ErrorBanner message={message} />}
-      {settled ? (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onDeleted} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
-            Close
-          </button>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            style={{
-              padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-              border: `1px solid ${colors.red}`, background: colors.redTint, color: colors.red,
-              cursor: deleting ? 'default' : 'pointer', opacity: deleting ? 0.6 : 1,
-            }}
-          >
-            {deleteLabel}
-          </button>
-        </div>
-      )}
-    </FinanceModal>
-  )
-}
+//
+// THE SHARED MODAL NOW, not a bespoke copy. Deletion is admin-only for a
+// payment of ANY status (20261011000000 §3), requires a reason and the typed
+// Payment ID, and goes through the durable claim protocol at
+// /api/finance/payments/delete — exactly what
+// @/components/finance/DeletePaymentModal already implements, and what
+// Received Payments uses too. This page used to keep its own DeleteConfirmModal
+// calling the OLD 1-argument begin_finance_payment_deletion with no reason or
+// confirmation; that shape no longer exists server-side, so the bespoke copy is
+// retired in favour of the one shared implementation. See the render call site
+// near the bottom of this file for the wiring.
 
 // ── Payments table ────────────────────────────────────────────────────────────
 
@@ -2361,7 +2251,7 @@ function PaymentsTable({
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr>
-            <th style={TH_STYLE}>Request</th>
+            <th style={TH_STYLE}>Payment ID</th>
             <th style={TH_STYLE}>Client</th>
             <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
@@ -2387,7 +2277,10 @@ function PaymentsTable({
             const canManage   = canManageRequest(r, isAdmin, userId)
             const showReapply = canManage && !isAdmin && isRejected
             const showEdit    = canManage && !showReapply
-            const showDelete  = canManage
+            // DELETE IS ADMIN-ONLY, FOR ANY STATUS (20261011000000 §3a) — a
+            // narrower, separate rule from canManage, which still grants
+            // Edit/Reapply to the submitter of their own unapproved request.
+            const showDelete  = canDeletePayment(r, { isAdmin })
             const isHighlighted = r.id === highlightId
 
             return (
@@ -2399,8 +2292,8 @@ function PaymentsTable({
                 onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                 onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
               >
-                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontVariantNumeric: 'tabular-nums' }}>
-                  {r.request_number}
+                <td style={{ ...TD, fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums' }}>
+                  {r.human_payment_id}
                 </td>
                 <td style={TD}>
                   {/* Client truncates instead of widening the table; full name via title. */}
@@ -2643,7 +2536,7 @@ function FinancePageInner() {
         supabase
           .from('finance_payment_requests')
           .select(`
-            id, request_number, client_name, amount, payment_date, payment_mode,
+            id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
             received_in, collected_by_user_id, collected_from_text,
             handed_over_to_user_id, handed_over_at, collection_handover_note,
             proof_note, order_number, order_id,
@@ -2886,7 +2779,7 @@ function FinancePageInner() {
         const { data } = await supabase
           .from('finance_payment_requests')
           .select(`
-            id, request_number, client_name, amount, payment_date, payment_mode,
+            id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
             received_in, collected_by_user_id, collected_from_text,
             handed_over_to_user_id, handed_over_at, collection_handover_note,
             proof_note, order_number, order_id,
@@ -3186,9 +3079,17 @@ function FinancePageInner() {
           onSaved={() => { setEditRequest(null); refreshAfterMutation() }}
         />
       )}
+      {/* DELETE PAYMENT REQUEST — the shared modal (Requirement 4), admin-only
+          for any status. This page tracks no allocation-links data of its own
+          (that read lives on Received Payments), so allocationSummary is
+          withheld rather than guessed. */}
       {deleteRequest && (
-        <DeleteConfirmModal
-          request={deleteRequest}
+        <DeletePaymentModal
+          payment={deleteRequest}
+          allocationSummary={null}
+          formatAmount={fmtAmount}
+          formatDate={fmtDate}
+          modeLabel={mode => paymentDestinationLabel(mode, deleteRequest.received_in)}
           onClose={() => setDeleteRequest(null)}
           onDeleted={() => { setDeleteRequest(null); refreshAfterMutation() }}
         />

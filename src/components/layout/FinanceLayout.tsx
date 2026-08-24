@@ -13,7 +13,6 @@ import { useUnreadFinanceNotifications } from '@/hooks/queries/useUnreadNotifica
 import {
   useReceivedPaymentsCounts,
   RECEIVED_PAYMENTS_COUNTS_KEY,
-  PAYMENTS_TO_VERIFY_COUNT_KEY,
 } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { useQueryClient } from '@tanstack/react-query'
 

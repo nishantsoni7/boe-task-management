@@ -189,10 +189,19 @@ describe('the route sweeps the manifest and nothing else', () => {
       'the manifest is taken before storage is touched and the row goes last')
   })
 
-  test('the browser cannot name a path', () => {
-    assert.ok(/\{ paymentId \} = await req\.json\(\)/.test(route))
+  test('the browser cannot name a path — only a payment id, a reason and the typed Payment ID', () => {
+    // 20261011000000 §3d widened begin_finance_payment_deletion to require a
+    // reason and the typed Payment ID, alongside every payment's id — the
+    // route reads exactly those three from the body and nothing that could
+    // name a storage object.
+    assert.ok(/\{ paymentId, reason, confirmPaymentId \} = await req\.json\(\)/.test(route))
     assert.ok(!/storagePaths|paths\s*\}\s*=\s*await req\.json/.test(route),
-      'the only input is a payment id')
+      'no input may name a path')
+  })
+
+  test('the reason and the typed Payment ID are passed through to begin_finance_payment_deletion, not invented here', () => {
+    assert.ok(route.includes('p_reason: reason'))
+    assert.ok(route.includes('p_confirm_payment_id: confirmPaymentId'))
   })
 
   test('every key is re-checked against its own payment prefix before removal', () => {
@@ -286,10 +295,18 @@ describe('the words, and what they promise', () => {
       'a retryable failure must not settle the dialog')
   })
 
-  test('the modal reports success only when the route said ok', () => {
+  test('deletePaymentEntry reports success only when the route said ok', () => {
+    // The ok?true check itself now lives in paymentDeletion.ts's
+    // deletePaymentEntry, which DeletePaymentModal.tsx calls rather than
+    // parsing the route's response body itself.
+    const client = code(read('src/lib/finance/paymentDeletion.ts'))
+    assert.ok(client.includes("if (body?.ok === true)"))
+  })
+
+  test('the modal reports success only when deletePaymentEntry said success', () => {
     const modal = code(read('src/components/finance/DeletePaymentModal.tsx'))
-    assert.ok(modal.includes("if (body?.ok === true)"))
-    const okAt = modal.indexOf("if (body?.ok === true)")
+    assert.ok(modal.includes("if (result.outcome === 'success')"))
+    const okAt = modal.indexOf("if (result.outcome === 'success')")
     const deletedAt = modal.indexOf("onDeleted()", okAt)
     assert.ok(deletedAt > okAt && deletedAt - okAt < 200,
       'the deleted callback belongs inside the success branch and nowhere else')
