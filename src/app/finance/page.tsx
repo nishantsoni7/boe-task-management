@@ -2199,10 +2199,9 @@ type DeleteConfirmModalProps = {
 function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: DeleteConfirmModalProps) {
   const [deleting, setDeleting] = useState(false)
   const [error, setError]       = useState<string | null>(null)
-  // Set once the outcome is final and the confirmation is spent — either the
-  // request was approved mid-flight (nothing was deleted) or it was deleted but
-  // its proof file could not be removed. Both collapse the footer to a single
-  // dismissal that refreshes the table; neither offers a retry that can help.
+  // Set once an attempt has run and the confirmation is spent: this build
+  // never deletes the request, so every attempt collapses the footer to a
+  // single dismissal that refreshes the table rather than offering a retry.
   const [settled, setSettled]   = useState(false)
   const [warning, setWarning]   = useState<string | null>(null)
   const meta = STATUS_META[r.status] ?? { label: r.status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
@@ -2215,13 +2214,11 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
   // lib/finance/paymentDeletion and BOTH pages call it.
   //
   // THE SEQUENCE ITSELF CHANGED, and this page inherits the correction. It used
-  // to delete the request and then remove its proof objects, reporting a storage
-  // failure as a partial success. That reported a leak as an outcome: the
-  // attachment rows cascade with the request, so by the time storage was asked
-  // the only record of which objects belonged to it was already gone and no
-  // retry was possible. A payment with proofs is now refused before anything is
-  // touched, and the durable claim that can delete one safely arrives with the
-  // pending Order/Finance migration.
+  // to read the attachment count and then delete the request in a second round
+  // trip, which left a window where a proof inserted between the two calls was
+  // cascaded away with no durable record of its storage object. This build does
+  // not attempt the delete at all — see paymentDeletion.ts — so every attempt is
+  // a settled notice rather than a failure or a success.
   const handleDelete = async () => {
     setDeleting(true)
     setError(null)
@@ -2229,20 +2226,14 @@ function DeleteConfirmModal({ request: r, supabase, onClose, onDeleted }: Delete
     const result = await deletePaymentEntry(supabase, r, friendlyDbErrorMessage)
     setDeleting(false)
 
-    if (result.outcome === 'failed')           { setError(result.message); return }
-    if (result.outcome === 'already-verified') { setSettled(true); setError(APPROVED_RACE_MESSAGE); return }
-    // Nothing was deleted, so this is a notice rather than a failure — but it is
-    // settled: pressing again cannot change the answer in this build.
-    if (result.outcome === 'proof-backed')     { setSettled(true); setWarning(result.message); return }
-
-    onDeleted()
+    setSettled(true)
+    setWarning(result.message)
   }
 
   return (
     // Once settled, EVERY dismissal path (✕, Escape, overlay click, the Close
-    // button) must refresh the table — in the partial-success case the request
-    // really is gone, and a plain close would leave a deleted row on screen
-    // that reports "already approved" if Delete is clicked again.
+    // button) refreshes the table — the request itself never changed, but a
+    // stale row on screen invites a second Delete that reports the same notice.
     <FinanceModal title="Delete Payment Request" onClose={settled ? onDeleted : onClose}>
       <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.7 }}>
         Delete this Payment Request? This action cannot be undone.

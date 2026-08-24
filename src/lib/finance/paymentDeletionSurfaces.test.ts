@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { PAYMENT_DELETE_PROOF_BACKED_MESSAGE } from '@/lib/finance/paymentDeletion'
+import { PAYMENT_DELETE_UNAVAILABLE_MESSAGE } from '@/lib/finance/paymentDeletion'
 import {
   PAYMENT_BLOCKER_HREF,
   describeDeletionBlockers,
@@ -36,33 +36,34 @@ describe('there is one deletion implementation, and every surface calls it', () 
    * the copy that drifts is the one nobody is looking at. So the DELETE against
    * finance_payment_requests is allowed in exactly one file.
    */
-  test('only the shared module owns the delete-a-payment sequence', () => {
+  test('only the shared module owns the delete-a-payment sequence, and it now issues no call at all', () => {
     // THE SEQUENCE, NOT THE STATEMENT. One other DELETE against this table is
     // legitimate and stays: the Payment Requests submit path rolls back a row it
     // created moments earlier when the proof upload fails. It deletes by id
     // only, reads no attachments and touches no storage, so it is a compensation
     // for its own half-finished write rather than a second way to delete
-    // somebody's payment. What must exist once is the three-step sequence.
-    const offenders: string[] = []
-    for (const file of [RECEIVED, REQUESTS, MODAL]) {
+    // somebody's payment.
+    for (const file of [RECEIVED, MODAL]) {
       const src = code(read(file))
-      // The signature of the sequence is CONSULTING the attachment table before
-      // deleting — an upload's insert into the same table is a different
-      // operation entirely, and the Payment Requests page legitimately still
-      // does that.
-      const readsProofs = /from\('payment_proof_attachments'\)[\s\S]{0,120}\.select\(/.test(src)
-      const deletes = /from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(src)
-      if (readsProofs && deletes) offenders.push(file)
+      assert.ok(!/from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(src),
+        `${file} must not own a delete-a-payment sequence of its own`)
+      assert.ok(!/from\('payment_proof_attachments'\)[\s\S]{0,120}\.select\(/.test(src),
+        `${file} must not read the attachment table itself`)
     }
-    assert.deepEqual(offenders, [],
-      `these surfaces own their own delete sequence instead of calling the shared module: ${offenders.join(', ')}`)
 
+    // THE SHARED MODULE ITSELF NOW MAKES NO CALL EITHER. The count-then-delete
+    // sequence it used to own is exactly the race this branch was corrected to
+    // close, and closing it safely needs the durable claim protocol — not
+    // available here without a migration this branch must not add. So neither
+    // half of the old sequence survives in it.
     const shared = code(read(SHARED))
-    assert.ok(/from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(shared)
-      && shared.includes("from('payment_proof_attachments')"),
-      'the shared module is where the sequence lives')
+    assert.ok(!/from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(shared),
+      'the shared module must issue no DELETE, now that deletion is refused unconditionally')
+    assert.ok(!shared.includes("from('payment_proof_attachments')"),
+      'and no read of the attachment table, since nothing distinguishes a proof-backed payment any more')
 
-    // And the compensation path is still exactly that — by id, nothing else.
+    // The compensation path is unrelated to this feature and is still exactly
+    // that — by id, nothing else.
     const requests = code(read(REQUESTS))
     const at = requests.indexOf("from('finance_payment_requests')\n        .delete({ count: 'exact' })")
     assert.ok(at > 0, 'the compensation delete is still present')
@@ -239,21 +240,22 @@ describe('an orphaned proof is not something any surface can report as settled',
     }
   })
 
-  test('the modal draws the proof-backed refusal as a notice, not a failure', () => {
+  test('the modal draws the refusal as a notice, not a failure', () => {
     const src = code(read(MODAL))
-    assert.ok(src.includes("result?.outcome === 'proof-backed'"),
+    assert.ok(src.includes("result?.outcome === 'unavailable'"),
       'nothing was touched, so it is not an error the operator made')
   })
 
-  test('the Payment Requests page settles on it without claiming a deletion', () => {
+  test('the Payment Requests page settles on the refusal without ever claiming a deletion', () => {
     const src = code(read(REQUESTS))
-    assert.ok(src.includes("result.outcome === 'proof-backed'"))
-    assert.ok(!/proof-backed'\)\s*\{[^}]*onDeleted\(\)/.test(src),
-      'a refusal must never call the deleted callback')
+    const fn = src.slice(src.indexOf('const handleDelete = async'), src.indexOf('return (', src.indexOf('const handleDelete = async')))
+    assert.ok(fn.includes('deletePaymentEntry('), 'it calls the shared, now-unconditional refusal')
+    assert.ok(!fn.includes('onDeleted()'),
+      'a refusal must never call the deleted callback — nothing this build does is ever a deletion')
   })
 
   test('the refusal wording says plainly that nothing was removed', () => {
-    assert.match(PAYMENT_DELETE_PROOF_BACKED_MESSAGE, /No data was removed\./)
-    assert.match(PAYMENT_DELETE_PROOF_BACKED_MESSAGE, /cannot yet be deleted through this version/)
+    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /No data was removed\./)
+    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /next version/)
   })
 })

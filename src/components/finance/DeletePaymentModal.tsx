@@ -85,7 +85,9 @@ export function DeletePaymentModal({
   // gone or was never deletable, and neither offers a retry that can help. Every
   // dismissal path from here refreshes the list, because leaving a deleted row
   // on screen invites a second Delete that reports the wrong reason.
-  const settled = result !== null && result.outcome !== 'failed'
+  // The only outcome deletePaymentEntry ever returns is final: nothing was
+  // touched, and pressing again cannot change that in this build.
+  const settled = result !== null
 
   const confirm = async () => {
     if (deleting || settled) return
@@ -93,14 +95,13 @@ export function DeletePaymentModal({
     const outcome = await deletePaymentEntry(supabase, payment, describeError)
     setDeleting(false)
     setResult(outcome)
-    if (outcome.outcome === 'deleted') onDeleted()
   }
 
-  const message = result && result.outcome !== 'deleted' ? result.message : null
-  // A proof-backed refusal is not an error the operator made and not a partial
-  // outcome: nothing was touched, and the action becomes available through the
-  // protected flow. Drawn as a notice rather than a failure.
-  const isWarning = result?.outcome === 'proof-backed'
+  const message = result?.message ?? null
+  // Not an error the operator made and not a partial outcome: nothing was
+  // touched, and safe deletion arrives with the durable claim protocol. Drawn
+  // as a notice rather than a failure.
+  const isWarning = result?.outcome === 'unavailable'
 
   return (
     <FinanceModal

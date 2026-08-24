@@ -44,7 +44,8 @@
 //     not invent one — see canDeletePayment.
 //
 // WHAT IS LEFT FOR THE APPLICATION is the one thing Postgres cannot do: the
-// proof object in the payment-proofs bucket, which no cascade reaches.
+// proof object in the payment-proofs bucket, which no cascade reaches. That is
+// exactly why this build does not delete anything — see deletePaymentEntry.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { REQUEST_STAGE_STATUSES } from '@/app/finance/paymentRouting'
@@ -93,34 +94,39 @@ export function canDeletePayment(
   return !!actor.userId && payment.submitted_by === actor.userId
 }
 
-/** Shown when the DELETE matched zero rows: verified while the modal was open. */
-export const PAYMENT_DELETE_RACE_MESSAGE =
-  'This payment has already been verified and can no longer be deleted.'
-
-/** Shown when the proof attachments could not be read, before anything ran. */
-export const PAYMENT_DELETE_PROOF_READ_MESSAGE =
-  'Could not read this payment’s proof attachments. Nothing was deleted — please try again.'
-
 /**
- * Shown when the payment has proof files and this build cannot delete it safely.
+ * Shown on every attempt: this build refuses to delete any unapproved payment.
  *
- * THE OUTCOME THIS REPLACES WAS NOT SAFE. The first form of this module deleted
- * the payment row and then removed the proof objects, and reported a storage
- * failure as `proof-orphaned` — a "partial success". It was neither partial nor
- * a success. By the time storage was asked, the payment row and its
- * payment_proof_attachments rows had already cascaded away, so THE ONLY RECORD
- * OF WHICH OBJECTS BELONGED TO THAT PAYMENT WAS GONE. Nothing could retry it,
- * because nothing could still say what to retry. A file left in a private bucket
- * with no row naming it is not a settled outcome; it is a leak with a friendly
- * message attached.
+ * WHY EVERY PAYMENT, NOT JUST THE ONES WITH PROOFS ON SCREEN. The version this
+ * replaces read the attachment count in one round trip and issued the DELETE in
+ * a second one. A proof uploaded in the gap between those two calls is a proof
+ * whose payment_proof_attachments row is then cascaded away by the DELETE the
+ * count call decided was safe — the row naming that object is destroyed in the
+ * same statement that destroys the payment, and nothing is left that can say
+ * which object in the bucket used to belong to it. That is an orphan with no
+ * durable record, and no later attempt can find it, let alone retry it. An
+ * "apparently zero-proof" payment is not a safe case; it is a payment whose
+ * proof count was merely not yet nonzero at the moment it was read.
  *
- * So this build does not attempt it. A payment with proofs is refused BEFORE
- * anything is deleted, and the durable claim protocol that can do it safely
- * arrives with migration 20261010000000 on the Order/Finance branch.
+ * NO EXISTING DATABASE OBJECT CLOSES THIS. payment_proof_attachments does carry
+ * a foreign key to finance_payment_requests, which is real locking — but nothing
+ * already applied exposes "check for attachments and delete" as one atomic
+ * statement a client can call, and adding one is a migration, not an
+ * application change. Manufacturing that mechanism here — on a branch that must
+ * not gain a migration to keep a feature — would be inventing exactly the kind
+ * of unsafe workaround this message exists to avoid.
+ *
+ * So this build does not attempt the delete at all: no SELECT of the attachment
+ * count, no DELETE of the payment row, no storage call. The button stays, so an
+ * operator is not left wondering whether the capability exists; pressing it
+ * explains why it does not yet act, rather than acting unsafely. The durable
+ * claim protocol that can delete a payment safely — proof-backed or not — is
+ * migration 20261010000000 on the Order/Finance branch, which freezes proof
+ * mutation for the duration of the delete instead of racing it.
  */
-export const PAYMENT_DELETE_PROOF_BACKED_MESSAGE =
-  'This unapproved payment has proof files attached and cannot yet be deleted through this version.'
-  + ' No data was removed.'
+export const PAYMENT_DELETE_UNAVAILABLE_MESSAGE =
+  'Safe deletion is not available for this payment in this version.'
+  + ' It will be available in the next version. No data was removed.'
 
 export const PAYMENT_DELETE_ALLOCATION_WARNING =
   'Any allocations of this payment to an Order or a PI Draft are removed with it.'
@@ -130,20 +136,11 @@ export const PAYMENT_DELETE_BUSY_LABEL    = 'Deleting…'
 export const PAYMENT_DELETE_TITLE         = 'Delete Payment'
 
 export type PaymentDeletionResult =
-  /** Gone, with its allocations released by the trigger in the same statement. */
-  | { outcome: 'deleted' }
   /**
-   * The payment has proof files, and nothing was touched.
-   *
-   * NOT A PARTIAL ANYTHING. No row was deleted, no allocation released and no
-   * storage request issued, so the payment is exactly as it was and the operator
-   * can act on it through the protected flow once that ships.
+   * The only outcome this build has. Nothing was read, nothing was deleted, and
+   * no storage call was made — see deletePaymentEntry.
    */
-  | { outcome: 'proof-backed'; message: string }
-  /** Nothing was deleted, and the state on screen is stale. */
-  | { outcome: 'already-verified'; message: string }
-  /** Nothing was deleted. */
-  | { outcome: 'failed'; message: string }
+  { outcome: 'unavailable'; message: string }
 
 export type DeletablePayment = {
   id: string
@@ -152,81 +149,30 @@ export type DeletablePayment = {
 }
 
 /**
- * Delete one payment entry — the zero-proof path, and only that.
+ * Delete one payment entry — refused, unconditionally, in this build.
  *
- * THE SEQUENCE THIS REPLACES DELETED FIRST AND ASKED STORAGE AFTERWARDS. That
- * order was chosen for a good reason — removing the file first would destroy the
- * evidence for a payment that then turns out to be un-deletable — but it bought
- * that safety with a worse one. `payment_proof_attachments` cascades with the
- * payment, so a storage failure arrived at a moment when the trusted manifest
- * naming those objects had ALREADY BEEN DESTROYED. There was nothing left to
- * retry from, and the module called that outcome a partial success.
+ * THIS USED TO BE A TWO-CALL SEQUENCE: read the attachment count, then delete
+ * the payment if it read zero. Those are two round trips with no lock held
+ * between them, so a proof inserted in the gap is cascaded away by the second
+ * call along with the only row that named its storage object — an orphan with
+ * no durable record, in a build that was supposed to guarantee none. See
+ * PAYMENT_DELETE_UNAVAILABLE_MESSAGE for why nothing already in the database
+ * closes that gap without a migration, and why this branch does not add one.
  *
- * Deleting a row that owns files is therefore not a two-call operation at all.
- * It needs a durable claim: a record that outlives the payment, holds the frozen
- * list of object keys, and can be resumed by a later attempt. That protocol is
- * migration 20261010000000, which is NOT APPLIED, so this build cannot rely on
- * it and does not pretend to.
- *
- * WHAT IS LEFT IS STILL WORTH HAVING, and it is the case the stranded PI
- * actually needs: a payment with NO proof files has nothing in storage to lose,
- * so deleting it is one statement with no second system involved.
- *
- *   1. READ THE ATTACHMENTS, from the database, keyed by this payment's id — the
- *      browser names nothing. This is a fresh read taken immediately before the
- *      delete, not a value the screen was holding.
- *   2. IF THERE ARE ANY, REFUSE. No delete, no allocation release, no storage
- *      request. The payment is exactly as it was found.
- *   3. OTHERWISE DELETE, filtered on status. Row-level security and
- *      finance_payment_requests_guard_approved_delete both re-evaluate against
- *      the committed row, so a verification landing while the dialog was open is
- *      a zero-row no-op rather than destroyed bank history. The allocations are
- *      released by finance_payment_requests_release_allocations inside this same
- *      statement.
- *
- * NO STORAGE CALL IS MADE ON ANY PATH. There is nothing to remove when there
- * were no attachments, and nothing is deleted when there were.
- *
- * THE RESIDUAL WINDOW, STATED. A proof uploaded between step 1 and step 3 is
- * cascaded away by the delete and its object is left in the bucket. This build
- * cannot close that — closing it needs a claim that freezes proof mutation,
- * which is exactly what the pending migration adds. The window is one round trip
- * wide and requires an upload against a payment somebody is deleting at that
- * instant; the honest mitigation available here is to take the read as late as
- * possible, which is what step 1 is.
- *
- * IDEMPOTENT. A payment already gone matches zero rows; callers re-read the list
- * and find it absent either way.
+ * SO NOTHING HERE TOUCHES SUPABASE. Not a read of payment_proof_attachments,
+ * not a DELETE of the payment row, not a storage call — for a payment with
+ * proofs or without, since without this call there is no way to tell which of
+ * those a payment is at the instant it matters. Every caller still gets the
+ * async, awaitable shape it always had, so the surfaces that call this need no
+ * restructuring; they simply cannot make it delete anything until the durable
+ * claim protocol (migration 20261010000000, on the Order/Finance branch) ships.
  */
 export async function deletePaymentEntry(
-  supabase: SupabaseClient,
-  payment: DeletablePayment,
-  describeError: (error: { code?: string; message: string }) => string,
+  _supabase: SupabaseClient,
+  _payment: DeletablePayment,
+  _describeError: (error: { code?: string; message: string }) => string,
 ): Promise<PaymentDeletionResult> {
-  const { count: proofCount, error: proofErr } = await supabase
-    .from('payment_proof_attachments')
-    .select('id', { count: 'exact', head: true })
-    .eq('payment_request_id', payment.id)
-  if (proofErr) {
-    return { outcome: 'failed', message: PAYMENT_DELETE_PROOF_READ_MESSAGE }
-  }
-  if ((proofCount ?? 0) > 0) {
-    return { outcome: 'proof-backed', message: PAYMENT_DELETE_PROOF_BACKED_MESSAGE }
-  }
-
-  const { error: dbError, count } = await supabase
-    .from('finance_payment_requests')
-    .delete({ count: 'exact' })
-    .eq('id', payment.id)
-    .in('status', DELETABLE_PAYMENT_STATUSES)
-  if (dbError) {
-    return { outcome: 'failed', message: describeError(dbError) }
-  }
-  if (count === 0) {
-    return { outcome: 'already-verified', message: PAYMENT_DELETE_RACE_MESSAGE }
-  }
-
-  return { outcome: 'deleted' }
+  return { outcome: 'unavailable', message: PAYMENT_DELETE_UNAVAILABLE_MESSAGE }
 }
 
 /**

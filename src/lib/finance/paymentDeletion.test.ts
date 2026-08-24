@@ -2,11 +2,12 @@
 //
 // WHAT THIS SUITE IS FOR. A PI Draft could not be deleted, the dialog told the
 // operator to delete the payments holding it, and Finance had no control that
-// would do it. The capability was in the database the whole time; what was
-// missing was a way to reach it and a single place that defines who may. These
-// tests pin all three: which statuses the database really allows, who it really
-// allows, and that the sequence cannot destroy a proof for a payment that
-// survives.
+// would do it. The capability is in the database, but reaching it safely from
+// two round trips is not — a count and a delete leave a gap a concurrent proof
+// upload can fall into and be cascaded away with no durable record. These tests
+// pin the parts this branch controls: which statuses the database really
+// allows, who it really allows, and that the delete action itself now touches
+// neither the database nor storage on any path.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
@@ -15,8 +16,7 @@ import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   DELETABLE_PAYMENT_STATUSES,
-  PAYMENT_DELETE_PROOF_BACKED_MESSAGE,
-  PAYMENT_DELETE_RACE_MESSAGE,
+  PAYMENT_DELETE_UNAVAILABLE_MESSAGE,
   canDeletePayment,
   deletePaymentEntry,
   describePaymentAllocations,
@@ -166,58 +166,31 @@ describe('who the database lets delete a payment, and therefore who is offered i
 })
 
 // ── The sequence ─────────────────────────────────────────────────────────────
+//
+// THE RACE THIS REPLACES. A count over the network, then a DELETE over a second
+// round trip, is two statements with no lock held between them — a proof
+// inserted in the gap is cascaded away by the DELETE along with the only row
+// that named its storage object. That is true whether the count read zero or
+// not: an "apparently zero-proof" payment is only a payment whose proof count
+// had not yet become nonzero at the moment it was asked. So this build makes no
+// distinction between the two, and no call at all.
 
 type Call = { kind: string; detail?: unknown }
 
-function fakeSupabase(options: {
-  proofs?: { storage_path: string }[]
-  proofError?: boolean
-  deleteCount?: number
-  deleteError?: { code?: string; message: string }
-  removed?: number | null
-  removeError?: boolean
-} = {}) {
+function trackedSupabase() {
   const calls: Call[] = []
-  const filters: Record<string, unknown> = {}
   const supabase = {
     from(table: string) {
+      calls.push({ kind: 'from', detail: { table } })
       return {
-        select(columns: string, opts?: { count?: string; head?: boolean }) {
-          return {
-            eq(column: string, value: unknown) {
-              calls.push({ kind: 'select', detail: {
-                table, columns, column, value, head: opts?.head === true, count: opts?.count,
-              } })
-              return Promise.resolve(options.proofError
-                ? { count: null, data: null, error: { message: 'nope' } }
-                : { count: (options.proofs ?? []).length, data: null, error: null })
-            },
-          }
-        },
-        delete(opts?: { count?: string }) {
-          const chain = {
-            eq(column: string, value: unknown) { filters[column] = value; return chain },
-            in(column: string, values: readonly string[]) {
-              calls.push({ kind: 'delete', detail: { table, count: opts?.count, filters, statuses: [...values] } })
-              return Promise.resolve(options.deleteError
-                ? { error: options.deleteError, count: null }
-                : { error: null, count: options.deleteCount ?? 1 })
-            },
-          }
-          return chain
-        },
+        select() { throw new Error(`must not query ${table}`) },
+        delete() { throw new Error(`must not delete from ${table}`) },
       }
     },
     storage: {
       from(bucket: string) {
-        return {
-          remove(paths: string[]) {
-            calls.push({ kind: 'remove', detail: { bucket, paths } })
-            if (options.removeError) return Promise.resolve({ data: null, error: { message: 'gone' } })
-            const n = options.removed === undefined ? paths.length : options.removed
-            return Promise.resolve({ data: n === null ? null : paths.slice(0, n).map(p => ({ name: p })), error: null })
-          },
-        }
+        calls.push({ kind: 'storage.from', detail: { bucket } })
+        return { remove() { throw new Error(`must not remove from ${bucket}`) } }
       },
     },
   } as unknown as SupabaseClient
@@ -227,159 +200,86 @@ function fakeSupabase(options: {
 const describeError = (e: { code?: string; message: string }) => e.message
 const payment = { id: PAYMENT, request_number: 'PR-1', status: 'pending_approval' }
 
-describe('the delete sequence, which now refuses rather than leaking', () => {
-  test('a pending payment with no proof is deleted, and storage is never called', async () => {
-    const { supabase, calls } = fakeSupabase({ proofs: [] })
-    assert.deepEqual(await deletePaymentEntry(supabase, payment, describeError), { outcome: 'deleted' })
-    assert.deepEqual(calls.map(c => c.kind), ['select', 'delete'],
-      'the attachments are counted, the payment goes, and nothing else happens')
-    assert.equal(calls.filter(c => c.kind === 'remove').length, 0)
-  })
-
-  test('a clarification-stage payment deletes the same way', async () => {
-    const { supabase } = fakeSupabase({ proofs: [] })
-    const result = await deletePaymentEntry(
-      supabase, { ...payment, status: 'needs_clarification' }, describeError)
-    assert.equal(result.outcome, 'deleted')
-  })
-
-  test('a rejected payment deletes the same way', async () => {
-    const { supabase } = fakeSupabase({ proofs: [] })
-    assert.equal(
-      (await deletePaymentEntry(supabase, { ...payment, status: 'rejected' }, describeError)).outcome,
-      'deleted')
-  })
-
-  /**
-   * THE CORRECTION, IN ONE TEST. The previous sequence deleted the payment and
-   * then removed its proof objects, reporting a storage failure as a partial
-   * success. payment_proof_attachments cascades with the payment, so at that
-   * moment the trusted list of object keys had already been destroyed and no
-   * retry was possible. A payment with proofs is now refused before anything is
-   * touched.
-   */
-  test('a proof-backed payment is refused, and NOTHING is deleted', async () => {
-    const { supabase, calls } = fakeSupabase({ proofs: [{ storage_path: `${PAYMENT}/proof.pdf` }] })
-    const result = await deletePaymentEntry(supabase, payment, describeError)
-    assert.equal(result.outcome, 'proof-backed')
-    assert.equal((result as { message: string }).message, PAYMENT_DELETE_PROOF_BACKED_MESSAGE)
-    assert.deepEqual(calls.map(c => c.kind), ['select'],
-      'the refusal happens on the attachment count; no delete and no storage call follow')
-  })
-
-  test('no allocation can be released by a refusal, because no delete is issued', async () => {
-    const { supabase, calls } = fakeSupabase({ proofs: [{ storage_path: 'a' }, { storage_path: 'b' }] })
+describe('the delete action, which refuses rather than racing', () => {
+  test('deletion performs no database call — no count, no DELETE', async () => {
+    const { supabase, calls } = trackedSupabase()
     await deletePaymentEntry(supabase, payment, describeError)
-    assert.equal(calls.filter(c => c.kind === 'delete').length, 0,
-      'finance_payment_requests_release_allocations fires on DELETE; no DELETE, no release')
+    assert.deepEqual(calls, [], 'nothing may be read or written for any payment, of any status')
   })
 
-  test('“partial success” is gone from the result type altogether', () => {
+  test('deletion performs no storage call', async () => {
+    const { supabase, calls } = trackedSupabase()
+    await deletePaymentEntry(supabase, payment, describeError)
+    assert.ok(!calls.some(c => c.kind === 'storage.from'), 'no object in the bucket is ever touched')
+  })
+
+  test('a proof-backed payment refuses safely, and nothing is touched', async () => {
+    const { supabase, calls } = trackedSupabase()
+    const result = await deletePaymentEntry(supabase, payment, describeError)
+    assert.deepEqual(result, { outcome: 'unavailable', message: PAYMENT_DELETE_UNAVAILABLE_MESSAGE })
+    assert.deepEqual(calls, [])
+  })
+
+  test('an apparently zero-proof payment refuses exactly the same way', async () => {
+    // "Apparently zero-proof" is a belief the screen holds, never verified here
+    // against the database — that is the point. The result is byte-for-byte the
+    // same as the proof-backed case, because nothing distinguishes the two
+    // without a query this module deliberately does not make.
+    const { supabase } = trackedSupabase()
+    const proofBacked = await deletePaymentEntry(supabase, payment, describeError)
+    const apparentlyZero = await deletePaymentEntry(
+      supabase, { ...payment, status: 'needs_clarification' }, describeError)
+    assert.deepEqual(apparentlyZero, proofBacked)
+    assert.equal(apparentlyZero.outcome, 'unavailable')
+  })
+
+  test('a rejected payment refuses the same way too', async () => {
+    const { supabase } = trackedSupabase()
+    const result = await deletePaymentEntry(supabase, { ...payment, status: 'rejected' }, describeError)
+    assert.equal(result.outcome, 'unavailable')
+  })
+
+  test('the message clearly says no data was removed', () => {
+    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /No data was removed\./)
+    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /next version/)
+  })
+
+  test('no “proof-orphaned” result exists, and no other outcome does either', () => {
     const src = read('src/lib/finance/paymentDeletion.ts')
     const outcomes = [...src.matchAll(/outcome: '([a-z-]+)'/g)].map(m => m[1])
     assert.ok(!outcomes.includes('proof-orphaned'),
       'an orphaned proof must never be reportable as a settled outcome')
-    assert.deepEqual([...new Set(outcomes)].sort(),
-      ['already-verified', 'deleted', 'failed', 'proof-backed'])
+    assert.ok(!outcomes.includes('deleted'),
+      'this build never reports a payment as deleted, because it never deletes one')
+    assert.deepEqual([...new Set(outcomes)].sort(), ['unavailable'])
   })
 
-  test('the module makes no storage call on any path', () => {
+  test('the module makes no storage call anywhere in its source', () => {
     const src = code(read('src/lib/finance/paymentDeletion.ts'))
     assert.ok(!src.includes('.storage'), 'nothing here may touch the bucket')
     assert.ok(!src.includes('PROOF_BUCKET'), 'and it has no business naming one')
   })
 
-  test('the DELETE is filtered on status server-side, so the database re-decides', async () => {
-    const { supabase, calls } = fakeSupabase({ proofs: [] })
-    await deletePaymentEntry(supabase, payment, describeError)
-    const del = calls.find(c => c.kind === 'delete')!.detail as {
-      table: string; count?: string; filters: Record<string, unknown>; statuses: string[]
-    }
-    assert.equal(del.table, 'finance_payment_requests')
-    assert.equal(del.count, 'exact', 'the row count is what tells a race from a success')
-    assert.equal(del.filters.id, PAYMENT, 'this payment and no other')
-    assert.deepEqual(del.statuses.sort(), [...DELETABLE_PAYMENT_STATUSES].sort())
-  })
-
-  test('a payment verified while the dialog was open is refused', async () => {
-    const { supabase } = fakeSupabase({ proofs: [], deleteCount: 0 })
-    assert.deepEqual(await deletePaymentEntry(supabase, payment, describeError),
-      { outcome: 'already-verified', message: PAYMENT_DELETE_RACE_MESSAGE })
-  })
-
-  test('a database refusal is reported and deletes nothing', async () => {
-    const { supabase } = fakeSupabase({
-      proofs: [],
-      deleteError: { code: '42501', message: 'PAYMENT_APPROVED_PERMANENT: permanent history' },
-    })
-    const result = await deletePaymentEntry(supabase, payment, describeError)
-    assert.equal(result.outcome, 'failed')
-    assert.match((result as { message: string }).message, /PAYMENT_APPROVED_PERMANENT/)
-  })
-
-  /**
-   * A COUNT THAT COULD NOT BE TAKEN IS NOT A COUNT OF ZERO. The one thing this
-   * must never do is read "I could not ask whether there are proofs" as "there
-   * are none" and delete the payment anyway.
-   */
-  test('an unreadable attachment count stops before anything is deleted', async () => {
-    const { supabase, calls } = fakeSupabase({ proofError: true })
-    const result = await deletePaymentEntry(supabase, payment, describeError)
-    assert.equal(result.outcome, 'failed')
-    assert.deepEqual(calls.map(c => c.kind), ['select'], 'nothing after the failed read may run')
-  })
-
-  test('the attachment count is a HEAD request keyed by this payment alone', async () => {
-    const { supabase, calls } = fakeSupabase({ proofs: [] })
-    await deletePaymentEntry(supabase, payment, describeError)
-    const sel = calls.find(c => c.kind === 'select')!.detail as {
-      table: string; column: string; value: unknown; head: boolean; count?: string
-    }
-    assert.equal(sel.table, 'payment_proof_attachments')
-    assert.equal(sel.column, 'payment_request_id')
-    assert.equal(sel.value, PAYMENT, 'only this payment’s own attachments are counted')
-    assert.equal(sel.head, true, 'no row content is needed to answer “are there any”')
-    assert.equal(sel.count, 'exact')
-  })
-
-  /**
-   * CONCURRENCY, HONESTLY. The count is the LAST thing before the delete, so a
-   * proof that exists when the operator presses the button is always seen. A
-   * proof uploaded inside the one round trip between the two is not — this build
-   * cannot freeze proof mutation, which is precisely what the pending claim
-   * protocol adds. What is asserted here is the part this build controls: the
-   * read is fresh, taken inside the call rather than handed in, so a payment
-   * that gained a proof since the list was drawn is still refused.
-   */
-  test('a proof that appeared since the list was drawn is still caught', async () => {
-    const proofs: { storage_path: string }[] = []
-    const { supabase } = fakeSupabase({ proofs })
-    proofs.push({ storage_path: `${PAYMENT}/late.pdf` })   // uploaded after the row was rendered
-    const result = await deletePaymentEntry(supabase, payment, describeError)
-    assert.equal(result.outcome, 'proof-backed',
-      'the count is taken at delete time, not from what the screen was holding')
-  })
-
-  test('the ordering is asserted: count first, delete second, never the reverse', () => {
+  test('the module issues no DELETE and no SELECT against Supabase anywhere in its source', () => {
     const src = code(read('src/lib/finance/paymentDeletion.ts'))
-    const countAt  = src.indexOf("from('payment_proof_attachments')")
-    const deleteAt = src.indexOf("from('finance_payment_requests')")
-    assert.ok(countAt > 0 && deleteAt > 0)
-    assert.ok(countAt < deleteAt,
-      'deleting before knowing destroys the manifest that a retry would need')
+    assert.ok(!/\.from\(/.test(src), 'no table may be reached at all — not to read, not to write')
   })
 
-  test('a repeated request after the row is gone reports the same settled answer', async () => {
-    const { supabase } = fakeSupabase({ proofs: [], deleteCount: 0 })
+  test('a repeated attempt reports the same settled answer every time', async () => {
+    const { supabase } = trackedSupabase()
     const first  = await deletePaymentEntry(supabase, payment, describeError)
     const second = await deletePaymentEntry(supabase, payment, describeError)
     assert.deepEqual(first, second, 'asking twice must not produce two different truths')
   })
 
-  test('this module never writes to the allocations table itself', () => {
+  test('this module never writes to the allocations table', () => {
     const src = code(read('src/lib/finance/paymentDeletion.ts'))
-    assert.ok(!src.includes('finance_payment_allocations'),
-      'the release is the trigger’s, atomic with the delete; a second write could be left half-done')
+    assert.ok(!src.includes('finance_payment_allocations'))
+  })
+
+  test('DELETABLE_PAYMENT_STATUSES is unchanged: visibility of the button is untouched by the refusal', () => {
+    assert.deepEqual([...DELETABLE_PAYMENT_STATUSES].sort(),
+      ['needs_clarification', 'pending_approval', 'rejected'])
   })
 })
 
