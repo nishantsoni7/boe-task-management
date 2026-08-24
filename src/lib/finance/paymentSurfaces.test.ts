@@ -23,14 +23,22 @@ import { join } from 'node:path'
 import {
   ALL_PAYMENT_STATUSES,
   CONFIRMED_PAYMENTS_PATH,
+  CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS,
   CONFIRMED_PAYMENT_COLUMNS,
   CONFIRMED_PAYMENT_STATUSES,
+  CONFIRMED_ALLOCATION_FILTERS,
+  CONFIRMED_ALLOCATION_FILTER_LABEL,
+  CONFIRMED_ALLOCATION_BADGE,
+  CUSTOMER_NAME_DISPLAY_LIMIT,
+  DEFAULT_CONFIRMED_ALLOCATION_FILTER,
   PAYMENTS_TABLE_BREAKPOINT,
   PAYMENTS_TO_VERIFY_PATH,
   PAYMENT_SURFACE_STATUSES,
   TO_VERIFY_PAYMENT_STATUSES,
   conciseName,
+  formatCustomerName,
   isConfirmedPaymentStatus,
+  matchesConfirmedAllocationFilter,
   surfaceForStatus,
   surfaceHasClassificationViews,
 } from './paymentSurfaces'
@@ -116,20 +124,34 @@ describe('the status list is the database’s, not this module’s', () => {
   })
 })
 
-// ── The nine columns ─────────────────────────────────────────────────────────
+// ── The eleven columns ───────────────────────────────────────────────────────
+//
+// REVISED (Requirement 2). The table grew back to eleven columns — Payment ID
+// and Customer lead it, "Allocation" is the confirmed_allocation_status badge,
+// and the exact-figure pair is Total Allocated / Remaining rather than the
+// vague "Linked Against" split. The PI-Draft/Order breakdown that no longer
+// fits the primary row moved to CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS, shown in
+// an expandable per-row detail instead.
 
-describe('Confirmed Payments has exactly nine columns, in this order', () => {
-  test('the order is the specified one, and nothing else is in the table', () => {
+describe('Confirmed Payments has exactly eleven primary columns, in this order', () => {
+  test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Amount', 'Mode', 'Date', 'To Orders', 'To PI Draft',
-      'Unallocated', 'Initiated by', 'Approved by', 'Actions',
+      'Payment ID', 'Customer', 'Amount', 'Mode', 'Date', 'Allocation',
+      'Total Allocated', 'Remaining', 'Initiated by', 'Approved by', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 9)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 11)
+  })
+
+  test('the breakdown columns are the two exact allocation-destination figures, shown only in the expandable detail', () => {
+    assert.deepEqual(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(c => c.label), [
+      'Allocated to PI Drafts', 'Allocated to Orders',
+    ])
+    assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
   test('the money columns are right-aligned and the rest are not', () => {
     const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => c.align === 'right').map(c => c.key)
-    assert.deepEqual(right, ['amount', 'to_orders', 'to_pi_draft', 'unallocated', 'actions'])
+    assert.deepEqual(right, ['amount', 'total_allocated', 'unallocated', 'actions'])
   })
 
   test('the removed columns are gone from the rendered table', () => {
@@ -142,6 +164,28 @@ describe('Confirmed Payments has exactly nine columns, in this order', () => {
     }
     // The header is generated from the list, so it cannot drift from it.
     assert.ok(table.includes('CONFIRMED_PAYMENT_COLUMNS.map(column =>'))
+  })
+
+  test('never shows the raw UUID — the Payment ID column prints human_payment_id', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    const table = view.slice(
+      view.indexOf('function ReceivedPaymentsTable'),
+      view.indexOf('function RowActionsMenu'))
+    assert.ok(table.includes('{r.human_payment_id}'))
+    assert.ok(!/>\{r\.id\}</.test(table), 'the raw UUID must never be printed as a bare text label')
+  })
+
+  test('no vague "Linked Against" wording survives anywhere in Finance', () => {
+    for (const file of [
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/app/finance/page.tsx',
+    ]) {
+      const src = read(file)
+      const rendered = src.split('\n')
+        .filter(line => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
+        .join('\n')
+      assert.ok(!rendered.includes('Linked Against'), `${file} must render no such label`)
+    }
   })
 
   test('the table declares NO minWidth, so it cannot promise to scroll sideways', () => {
@@ -180,27 +224,32 @@ describe('Confirmed Payments has exactly nine columns, in this order', () => {
     assert.ok(menu.includes("role=\"menuitem\""))
   })
 
-  test('the two money columns carry a COUNT, never a list of names', () => {
+  test('the breakdown is exact figures, never a list of names', () => {
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(
       view.indexOf('function ReceivedPaymentsTable'),
       view.indexOf('function RowActionsMenu'))
-    assert.ok(table.includes('view.counts.orders > 1'))
-    assert.ok(table.includes('view.counts.submissions > 1'))
+    assert.ok(table.includes('figures.toPI'))
+    assert.ok(table.includes('figures.toOrders'))
     assert.ok(!table.includes('<DestinationsCell'),
-      'inline destination names are what made the row wrap unpredictably')
+      'inline destination names are what made the row wrap unpredictably; this is exact figures now')
   })
 
-  test('Unallocated is never overstated', () => {
+  test('Remaining is never overstated — withheld, not guessed, on an incomplete view', () => {
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    const table = view.slice(
-      view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function RowActionsMenu'))
-    // MoneyCell draws an em dash for null, and the projection returns null when
-    // the reader cannot see every allocation.
-    assert.ok(table.includes('<MoneyCell value={view.figures.available} />'))
-    assert.ok(table.includes('view.figures.overAllocated'),
-      'an over-allocated row is marked rather than capped')
+    // confirmedFigures is the one function both the table and the cards read
+    // Remaining from — gated on attribution_complete, never inferred.
+    const fn = view.slice(view.indexOf('function confirmedFigures'), view.indexOf('function confirmedFigures') + 700)
+    assert.ok(fn.includes("r.attribution_complete === true"))
+    assert.ok(fn.includes('remainderOf('))
+    assert.ok(/:\s*null/.test(fn), 'an incomplete view withholds Remaining rather than computing a guess')
+  })
+
+  test('an over-allocated row gets a visibly different badge tone and a review tooltip, never the reassuring "Fully Allocated" look', () => {
+    assert.equal(CONFIRMED_ALLOCATION_BADGE.over.tone, 'danger')
+    assert.notEqual(CONFIRMED_ALLOCATION_BADGE.over.tone, CONFIRMED_ALLOCATION_BADGE.full.tone)
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    assert.ok(view.includes('Allocated total exceeds payment amount — flagged for Admin review'))
   })
 })
 
@@ -244,12 +293,14 @@ describe('each page asks the database for its own half', () => {
     assert.deepEqual([...PAYMENT_SURFACE_STATUSES.to_verify], [...TO_VERIFY_PAYMENT_STATUSES])
   })
 
-  test('the classification views are applied only on Confirmed Payments', () => {
-    assert.ok(view.includes('if (surfaceHasClassificationViews(surface)) {'))
+  test('the allocation-status filter is applied only on Confirmed Payments (Requirement 1)', () => {
+    assert.ok(view.includes("if (surface === 'confirmed' && filters.confirmedFilter !== 'all') {"))
+    assert.ok(view.includes(".eq('confirmed_allocation_status', filters.confirmedFilter)"))
   })
 
-  test('the four tabs are not drawn on Payments to Verify', () => {
-    assert.ok(view.includes('classificationReady && surfaceHasClassificationViews(surface)'))
+  test('the filter chips are not drawn on Payments to Verify', () => {
+    assert.ok(view.includes("{surface === 'confirmed' && ("))
+    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTERS.map(f =>'))
   })
 
   test('Payments to Verify keeps Status and drops the money columns', () => {
@@ -285,14 +336,26 @@ describe('each page asks the database for its own half', () => {
       'its own cache key, so verifying a payment moves both numbers')
   })
 
-  test('the nav offers both, and Payment Requests is untouched', () => {
+  test('the sidebar offers EXACTLY two primary payment sections, and no standalone Payments to Verify entry', () => {
+    // Requirement: "Keep only two primary payment sections." Payments to
+    // Verify is reachable from Payment Requests, not from its own nav entry
+    // any more; its route still renders (see paymentDeletionSurfaces.test.ts)
+    // but nothing in the sidebar links to it directly.
     const nav = read('src/components/layout/FinanceLayout.tsx')
-    assert.ok(nav.includes('Payments to Verify'))
-    assert.ok(nav.includes('Confirmed Payments'))
-    assert.ok(nav.includes("{ label: 'Payment Requests', path: '/finance'"),
+    assert.ok(!codeOf(nav).includes("'Payments to Verify'"),
+      'the standalone top-level entry is retired')
+    assert.ok(nav.includes("label: 'Confirmed Payments'"))
+    assert.ok(/label: 'Payment Requests',\s*path: '\/finance'/.test(nav),
       'a structurally separate workflow, and nothing to do with retired Order Requests')
     assert.ok(!codeOf(nav).includes('Order Request'),
       'no Order Request surface is offered here — the workflow is retired')
+  })
+
+  test('the four Confirmed Payments sub-items (?view=) are gone from the sidebar', () => {
+    const nav = read('src/components/layout/FinanceLayout.tsx')
+    assert.ok(!nav.includes('PAYMENT_VIEW_OPTIONS'),
+      'the old view tab strip is replaced in-page by the allocation-status filter bar')
+    assert.ok(!nav.includes('receivedSubItems'))
   })
 
   test('deep links to the payments list still resolve', () => {
@@ -346,9 +409,11 @@ describe('returning to the browser tab refreshes nothing', () => {
 
   test('the explicit Refresh control still does exactly what it did', () => {
     assert.ok(finance.includes('const handleRefresh = useCallback'))
+    // ONE COUNT QUERY NOW. The sidebar carries a single Confirmed Payments
+    // badge (receivedCounts.all) since the standalone Payments to Verify nav
+    // entry is retired, so only RECEIVED_PAYMENTS_COUNTS_KEY needs invalidating
+    // here — usePaymentsToVerifyCount has no sidebar consumer left in this file.
     assert.ok(finance.includes('RECEIVED_PAYMENTS_COUNTS_KEY'))
-    assert.ok(finance.includes('PAYMENTS_TO_VERIFY_COUNT_KEY'),
-      'both counts, because verifying a payment moves it between them')
     assert.ok(finance.includes('onRefresh={loadRequests}')
       || read('src/app/finance/received/ReceivedPaymentsView.tsx').includes('onRefresh={loadRequests}'))
   })
@@ -362,5 +427,113 @@ describe('returning to the browser tab refreshes nothing', () => {
     assert.ok(!code.includes('onAuthStateChange'))
     const providers = read('src/components/layout/Providers.tsx')
     assert.ok(providers.includes('AuthIdentityBoundary'))
+  })
+})
+
+// ── formatCustomerName ────────────────────────────────────────────────────────
+
+describe('formatCustomerName — the one place customer-name truncation lives', () => {
+  test('a short name is unchanged', () => {
+    const result = formatCustomerName('Ravi Kumar')
+    assert.deepEqual(result, { display: 'Ravi Kumar', full: 'Ravi Kumar', truncated: false })
+  })
+
+  test('a long name is ellipsized cleanly, never mid-word', () => {
+    const result = formatCustomerName('Priyanka Srinivasan Chandrasekaran')
+    assert.equal(result.truncated, true)
+    assert.ok(result.display.endsWith('…'))
+    assert.ok(result.display.length <= CUSTOMER_NAME_DISPLAY_LIMIT + 1, 'display plus ellipsis fits the limit')
+    // Never a cut mid-word: the character before the ellipsis is never itself
+    // mid-token — the display is always a whitespace-free run of whole words
+    // (or a hard cut only when there is no earlier space to back off to).
+    assert.ok(!/\s$/.test(result.display.replace('…', '')), 'no trailing space before the ellipsis')
+  })
+
+  test('the full name is always preserved untouched, even when truncated', () => {
+    const long = 'Priyanka Srinivasan Chandrasekaran Venkataraman'
+    const result = formatCustomerName(long)
+    assert.equal(result.full, long)
+  })
+
+  test('a name exactly at the limit is not truncated', () => {
+    const exact = 'A'.repeat(CUSTOMER_NAME_DISPLAY_LIMIT)
+    const result = formatCustomerName(exact)
+    assert.equal(result.truncated, false)
+    assert.equal(result.display, exact)
+  })
+
+  test('whitespace is collapsed before measuring', () => {
+    const result = formatCustomerName('  Ravi    Kumar  ')
+    assert.equal(result.display, 'Ravi Kumar')
+  })
+
+  test('an absent name renders as an em dash, never truncated', () => {
+    for (const value of [null, undefined, '', '   ']) {
+      const result = formatCustomerName(value)
+      assert.equal(result.display, '—')
+      assert.equal(result.truncated, false)
+    }
+  })
+
+  test('CustomerName.tsx is the one caller for a Finance list row/card — no ad hoc substring logic elsewhere', () => {
+    const component = read('src/components/finance/CustomerName.tsx')
+    assert.ok(component.includes('formatCustomerName'))
+    for (const file of [
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/app/finance/page.tsx',
+    ]) {
+      const src = read(file)
+      // Scoped to CLIENT-NAME truncation specifically — a filename ellipsis
+      // elsewhere in these files (e.g. an attached-file label) is unrelated.
+      assert.ok(!/client_name[\s\S]{0,80}\.slice\(0,\s*\d+\)/.test(src),
+        `${file} must not re-derive a client-name truncation rule of its own`)
+    }
+  })
+})
+
+// ── matchesConfirmedAllocationFilter ──────────────────────────────────────────
+
+describe('matchesConfirmedAllocationFilter', () => {
+  test('"all" matches every status, including null', () => {
+    for (const status of [...CONFIRMED_ALLOCATION_FILTERS, null, undefined] as const) {
+      assert.equal(matchesConfirmedAllocationFilter(status as never, 'all'), true, String(status))
+    }
+  })
+
+  test('each named filter matches only its own status', () => {
+    assert.equal(matchesConfirmedAllocationFilter('zero', 'zero'), true)
+    assert.equal(matchesConfirmedAllocationFilter('zero', 'partial'), false)
+    assert.equal(matchesConfirmedAllocationFilter('partial', 'partial'), true)
+    assert.equal(matchesConfirmedAllocationFilter('full', 'full'), true)
+    assert.equal(matchesConfirmedAllocationFilter('full', 'zero'), false)
+  })
+
+  test('"over" matches none of the three named filters — flagged, never folded into "full"', () => {
+    assert.equal(matchesConfirmedAllocationFilter('over', 'zero'), false)
+    assert.equal(matchesConfirmedAllocationFilter('over', 'partial'), false)
+    assert.equal(matchesConfirmedAllocationFilter('over', 'full'), false)
+  })
+
+  test('but "over" is still reachable through "all"', () => {
+    assert.equal(matchesConfirmedAllocationFilter('over', 'all'), true)
+  })
+
+  test('a null status (withheld) matches only "all"', () => {
+    assert.equal(matchesConfirmedAllocationFilter(null, 'all'), true)
+    for (const filter of CONFIRMED_ALLOCATION_FILTERS) {
+      if (filter === 'all') continue
+      assert.equal(matchesConfirmedAllocationFilter(null, filter), false, filter)
+    }
+  })
+
+  test('DEFAULT_CONFIRMED_ALLOCATION_FILTER is "all"', () => {
+    assert.equal(DEFAULT_CONFIRMED_ALLOCATION_FILTER, 'all')
+  })
+
+  test('every filter has a label, and "all" reads plainly', () => {
+    assert.equal(CONFIRMED_ALLOCATION_FILTER_LABEL.all, 'All')
+    for (const filter of CONFIRMED_ALLOCATION_FILTERS) {
+      assert.ok(CONFIRMED_ALLOCATION_FILTER_LABEL[filter].length > 0, filter)
+    }
   })
 })

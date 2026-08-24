@@ -1,16 +1,24 @@
 // Where the Delete Payment action appears, and where it must never appear.
 //
 // The action is one implementation reached from more than one list, so these
-// assertions are about WIRING rather than logic: that each surface calls the
-// shared module instead of growing its own copy, that the surface which holds
-// only confirmed money offers nothing, and that the PI blocker no longer tells a
-// reader to do something the product may not let them do.
+// assertions are about WIRING rather than logic: that each surface renders the
+// SAME shared modal rather than growing its own copy, that the fetch to the
+// durable-claim route lives in exactly one place (deletePaymentEntry,
+// paymentDeletion.ts), and that the PI blocker no longer tells a reader to do
+// something the product may not let them do.
+//
+// REVISED FOR 20261011000000. Deletion is admin-only, for a payment of ANY
+// status — Payment Requests AND Confirmed Payments alike, both routed through
+// the exact same <DeletePaymentModal>. Payment Requests used to keep its own
+// bespoke DeleteConfirmModal calling the route directly with `{paymentId}`
+// only; that shape no longer exists server-side (begin_finance_payment_
+// deletion now requires a reason and the typed Payment ID), so the bespoke
+// copy is gone in favour of the one shared implementation.
 
 import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { PAYMENT_DELETE_UNAVAILABLE_MESSAGE } from '@/lib/finance/paymentDeletion'
 import {
   PAYMENT_BLOCKER_HREF,
   describeDeletionBlockers,
@@ -26,46 +34,33 @@ const code = (src: string) => src.split('\n')
 const RECEIVED = 'src/app/finance/received/ReceivedPaymentsView.tsx'
 const REQUESTS = 'src/app/finance/page.tsx'
 const MODAL    = 'src/components/finance/DeletePaymentModal.tsx'
-const SHARED   = 'src/lib/finance/paymentDeletion.ts'
+const CLIENT   = 'src/lib/finance/paymentDeletion.ts'
 
-// ── One route ────────────────────────────────────────────────────────────────
-//
-// THIS BRANCH CARRIES MIGRATION 20261010000000 §11, so the shared
-// implementation is no longer the application-level count-then-delete
-// sequence in lib/finance/paymentDeletion.ts — that module now refuses every
-// deletion unconditionally (see paymentDeletion.test.ts) and exists only for a
-// branch without the claim protocol. Here, EVERY deletion surface calls the
-// same durable claim route instead, so a proof-backed payment and an
-// apparently zero-proof one take the identical path.
+// ── One route, one client, two surfaces that both render the shared modal ────
 
 const ROUTE_PATH = '/api/finance/payments/delete'
 
-describe('there is one deletion route, and every surface calls it', () => {
+describe('there is one deletion route, reached through one client, from one shared modal', () => {
   /**
-   * THE SEQUENCE APPEARS ONCE, AND IT IS THE ROUTE. Two copies of a destructive
-   * sequence drift, and the copy that drifts is the one nobody is looking at.
-   * So the DELETE against finance_payment_requests is allowed in exactly one
-   * file — the route itself — and no surface may fall back to the shared
-   * module's now-unconditional refusal by calling deletePaymentEntry.
+   * THE FETCH APPEARS ONCE. deletePaymentEntry (paymentDeletion.ts) is the
+   * only place that calls the durable-claim route; every surface reaches
+   * deletion by rendering <DeletePaymentModal>, never by fetching the route
+   * itself. Two copies of a destructive fetch drift, and the copy nobody is
+   * looking at is the one that drifts.
    */
-  test('no surface owns a delete-a-payment sequence, and none falls back to deletePaymentEntry', () => {
-    // THE SEQUENCE, NOT THE STATEMENT. One other DELETE against this table is
-    // legitimate and stays: the Payment Requests submit path rolls back a row it
-    // created moments earlier when the proof upload fails. It deletes by id
-    // only, reads no attachments and touches no storage, so it is a compensation
-    // for its own half-finished write rather than a second way to delete
-    // somebody's payment.
-    for (const file of [RECEIVED, MODAL, REQUESTS]) {
+  test('only paymentDeletion.ts fetches the delete route — no surface duplicates the call', () => {
+    const client = code(read(CLIENT))
+    assert.ok(client.includes(`fetch('${ROUTE_PATH}'`), 'the one real client calls the claim-backed route')
+
+    for (const file of [RECEIVED, REQUESTS, MODAL]) {
       const src = code(read(file))
-      assert.ok(!/from\('payment_proof_attachments'\)[\s\S]{0,120}\.select\(/.test(src),
-        `${file} must not read the attachment table itself — that check now lives only in ` +
-        `begin_finance_payment_deletion, inside the same transaction as the claim`)
-      assert.ok(!src.includes('deletePaymentEntry('),
-        `${file} must not fall back to the application-level count-then-delete refusal`)
+      assert.ok(!src.includes(`fetch('${ROUTE_PATH}'`),
+        `${file} must not fetch the delete route itself — it renders DeletePaymentModal, which calls deletePaymentEntry`)
     }
 
-    // The compensation path is unrelated to this feature and is still exactly
-    // that — by id, nothing else, and it is not gated on the attachment table.
+    // The compensation path is unrelated to this feature: the Payment Requests
+    // submit flow rolls back a row it created moments earlier when the proof
+    // upload fails, by id only. It is not a second way to delete a payment.
     const requests = code(read(REQUESTS))
     const at = requests.indexOf("from('finance_payment_requests')\n        .delete({ count: 'exact' })")
     assert.ok(at > 0, 'the compensation delete is still present')
@@ -73,35 +68,33 @@ describe('there is one deletion route, and every surface calls it', () => {
       'it deletes only the row this same submit just created')
   })
 
-  test('the Payment Requests page calls the same protected route as Received Payments', () => {
-    const src = code(read(REQUESTS))
-    assert.ok(src.includes(`fetch('${ROUTE_PATH}'`), 'it must call the claim-backed route, not a copy')
-    assert.ok(src.includes('body: JSON.stringify({ paymentId: r.id })'),
-      'the only input to the route is the payment id')
+  test('deletePaymentEntry sends exactly {paymentId, reason, confirmPaymentId} — nothing that could name a storage path', () => {
+    const client = code(read(CLIENT))
+    assert.ok(/body: JSON\.stringify\(\{ paymentId: payment\.id, reason, confirmPaymentId \}\)/.test(client))
   })
 
-  test('Received Payments calls the shared modal, not a local one', () => {
-    const src = code(read(RECEIVED))
-    assert.ok(src.includes('<DeletePaymentModal'), 'the shared modal is mounted')
-    assert.ok(src.includes("from '@/components/finance/DeletePaymentModal'"))
-    assert.ok(!/function DeletePaymentModal/.test(src), 'and not redefined here')
+  test('both Payment Requests and Received Payments mount the SAME shared modal, and neither redefines it', () => {
+    for (const file of [RECEIVED, REQUESTS]) {
+      const src = code(read(file))
+      assert.ok(src.includes('<DeletePaymentModal'), `${file} must mount the shared modal`)
+      assert.ok(src.includes("from '@/components/finance/DeletePaymentModal'"), `${file} must import the shared one`)
+      assert.ok(!/function DeletePaymentModal/.test(src), `${file} must not redefine it`)
+    }
   })
 
-  test('the modal calls the protected route unconditionally — there is no flag to fall back with', () => {
-    const src = code(read(MODAL))
-    assert.ok(src.includes(`fetch('${ROUTE_PATH}'`), 'the modal calls the claim-backed route directly')
-    assert.ok(!src.includes('protectedFlow'),
-      'a flag would imply an unprotected path exists to fall back to; none does on this branch')
-    assert.ok(!src.includes('payment_proof_attachments'), 'and it knows nothing about the tables')
+  test('the route itself accepts a reason and the typed Payment ID, and passes both straight to begin_finance_payment_deletion', () => {
+    const route = code(read('src/app/api/finance/payments/delete/route.ts'))
+    assert.ok(/\{ paymentId, reason, confirmPaymentId \} = await req\.json\(\)/.test(route))
+    assert.ok(route.includes('p_reason: reason'))
+    assert.ok(route.includes('p_confirm_payment_id: confirmPaymentId'))
   })
 
   test('zero-proof deletion begins a claim exactly like proof-backed deletion — same route, same call', () => {
     // The route itself decides what a payment owns by reading
-    // payment_proof_attachments inside begin_finance_payment_deletion (see
-    // paymentDeletionProtocol.test.ts); the CLIENT never branches on a count,
-    // for either surface, so there is nothing here that could take a
-    // different, unsafe path for an apparently zero-proof payment.
-    for (const file of [MODAL, REQUESTS]) {
+    // payment_proof_attachments inside begin_finance_payment_deletion; the
+    // client never branches on a count, so there is nothing here that could
+    // take a different, unsafe path for an apparently zero-proof payment.
+    for (const file of [MODAL, REQUESTS, CLIENT]) {
       const src = code(read(file))
       assert.ok(!/proofCount|proof_count/.test(src),
         `${file} must not read or branch on an attachment count before calling the route`)
@@ -120,18 +113,30 @@ describe('the control appears where a deletable payment is, and nowhere else', (
       'delete authority is not the finance.manage correction authority')
   })
 
+  test('Payment Requests gates Delete on canDeletePayment too, separately from canManage (Edit/Reapply)', () => {
+    const src = code(read(REQUESTS))
+    assert.ok(src.includes('canDeletePayment(r, { isAdmin'),
+      'the same shared predicate, admin-only')
+    // The rule this replaced: canManageRequest also granted the submitter of
+    // their own unapproved request. That branch must not survive as the gate
+    // for Delete anywhere in this file.
+    assert.ok(!/showDelete\s*=\s*canManage\b/.test(src),
+      'Delete must no longer be governed by the self-or-admin manage rule')
+    assert.ok(!/const canDelete = canManage\b/.test(src))
+  })
+
   /**
-   * BOTH SURFACES, IN WHATEVER FORM EACH USES. The table draws its actions as a
-   * row of buttons on one branch and as an overflow menu on the other, and the
-   * cards draw a button either way — so this asserts the PROPERTY (every wiring
-   * of onDelete is guarded by canDeleteRow, and there are two of them: the table
-   * and the cards) rather than the markup of the day. A test written against one
-   * branch's syntax would fail on the other for no reason a reader could act on.
+   * BOTH SURFACES, IN WHATEVER FORM EACH USES. The table draws its actions as
+   * an overflow menu and the cards draw a button — so this asserts the
+   * PROPERTY (every wiring of onDelete is guarded by canDeleteRow, and there
+   * are two of them: the table and the cards) rather than the markup of the
+   * day.
    */
-  test('both the table and the cards offer it, and neither offers it unguarded', () => {
+  test('both the table and the cards offer it on Received Payments, and neither offers it unguarded', () => {
     const src = code(read(RECEIVED))
-    const wirings = [...src.matchAll(/onDelete\(r\)/g)].map(m => m.index ?? -1)
-    assert.equal(wirings.length, 2, 'one wiring for the table row and one for the card')
+    const wirings = [...src.matchAll(/onSelect: \(\) => onDelete\(r\), danger: true|onDelete\(r\) \}/g)]
+      .map(m => m.index ?? -1)
+    assert.ok(wirings.length >= 2, 'at least one wiring for the table row and one for the card')
     for (const at of wirings) {
       const preceding = src.slice(Math.max(0, at - 260), at)
       assert.match(preceding, /canDeleteRow\(r\)/,
@@ -139,22 +144,12 @@ describe('the control appears where a deletable payment is, and nowhere else', (
     }
   })
 
-  test('the stale comment claiming this page never deletes is gone', () => {
-    assert.ok(!read(RECEIVED).includes('No Delete. A row on this page is a Received Payment'),
-      'that comment was the defect, written down: the page also loads unapproved payments')
-  })
-
-  /**
-   * THE PAGE IS NOT ONLY CONFIRMED MONEY. This is the root cause in one
-   * assertion: Received Payments loads two unapproved statuses, so a payment
-   * that can be deleted really does appear on it.
-   */
-  test('Received Payments really does load statuses that are deletable', () => {
-    const src = read('src/lib/finance/paymentClassification.ts')
-    const block = src.slice(src.indexOf('CLASSIFIED_PAYMENT_STATUSES = ['))
+  test('Received Payments really does load statuses that are deletable, across every allocation filter', () => {
+    const src = read('src/lib/finance/paymentSurfaces.ts')
+    const block = src.slice(src.indexOf('CONFIRMED_PAYMENT_STATUSES = ['))
     const statuses = [...block.slice(0, block.indexOf(']')).matchAll(/'([a-z_]+)'/g)].map(m => m[1])
-    assert.ok(statuses.includes('pending_approval'))
-    assert.ok(statuses.includes('needs_clarification'))
+    assert.ok(statuses.includes('approved_unlinked'))
+    assert.ok(statuses.includes('approved_linked'))
   })
 })
 
@@ -212,29 +207,28 @@ describe('the PI blocker names who can clear it, and promises nothing else', () 
   })
 })
 
-// ── Confirmed Payments, on the branch that has it ────────────────────────────
+// ── Payments to Verify reuses the shared action ───────────────────────────────
 
-describe('a surface that holds only confirmed money offers no ordinary Delete', () => {
+describe('a surface reached only through the shared list component offers no second copy', () => {
   const TO_VERIFY = 'src/app/finance/payments-to-verify/page.tsx'
 
-  test('Payments to Verify, where it exists, reuses the shared action', () => {
-    if (!existsSync(join(ROOT, TO_VERIFY))) return // PR #50: the page arrives with the Order/Finance branch
+  test('Payments to Verify reuses the shared action, through ReceivedPaymentsView', () => {
+    if (!existsSync(join(ROOT, TO_VERIFY))) return
     const src = code(read(TO_VERIFY))
-    assert.ok(src.includes('DeletePaymentModal') || src.includes('ReceivedPaymentsView'),
-      'it must reach the action through the shared component, not a copy')
+    assert.ok(src.includes('ReceivedPaymentsView'),
+      'it must reach the action through the shared list component, not a copy')
     assert.ok(!/from\('finance_payment_requests'\)[\s\S]{0,120}\.delete\(/.test(src),
       'and must never issue its own delete')
   })
 
-  test('no surface decides deletability for itself', () => {
-    // canDeletePayment is the only gate any surface uses, and it refuses both
-    // verified statuses outright — asserted in paymentDeletion.test.ts. What is
-    // checked here is that no surface has invented a SECOND gate that could
-    // disagree with it. Naming a verified status elsewhere is fine and expected
-    // — Received Payments draws status badges and linkage controls from them —
-    // so the assertion is scoped to the delete wiring itself.
+  test('no surface decides deletability for itself with a second status test', () => {
+    // canDeletePayment is the only gate any surface uses. What is checked here
+    // is that no surface has invented a SECOND gate that could disagree with
+    // it. Naming a verified status elsewhere is fine and expected — Received
+    // Payments draws status badges and linkage controls from them — so the
+    // assertion is scoped to the delete wiring itself.
     const src = code(read(RECEIVED))
-    const deleteWiring = src.slice(src.indexOf('const canDeleteRow ='), src.indexOf('const canDeleteRow =') + 400)
+    const deleteWiring = src.slice(src.indexOf('const canDeleteRow ='), src.indexOf('const canDeleteRow =') + 300)
     assert.ok(deleteWiring.includes('canDeletePayment('),
       'the shared predicate is what the page asks')
     assert.ok(!/approved_unlinked|approved_linked|status ===/.test(deleteWiring),
@@ -250,33 +244,26 @@ describe('a surface that holds only confirmed money offers no ordinary Delete', 
 
 describe('an orphaned proof is not something any surface can report as settled', () => {
   test('no surface names the retired partial-success outcome', () => {
-    for (const file of [RECEIVED, REQUESTS, MODAL, SHARED]) {
+    for (const file of [RECEIVED, REQUESTS, MODAL, CLIENT]) {
       assert.ok(!read(file).includes("'proof-orphaned'"),
         `${file} still knows about an outcome that reported a storage leak as a result`)
     }
   })
 
-  test('the modal only reports a deletion once the route confirms it, never on a retryable failure', () => {
+  test('the modal only reports a deletion once deletePaymentEntry confirms success, never on a retryable failure', () => {
     const src = code(read(MODAL))
-    const okAt = src.indexOf('if (body?.ok === true)')
-    assert.ok(okAt > 0, 'success is read from the route response, not assumed')
+    const okAt = src.indexOf("if (result.outcome === 'success')")
+    assert.ok(okAt > 0, 'success is read from deletePaymentEntry\'s result, never assumed')
     const deletedAt = src.indexOf('onDeleted()', okAt)
     assert.ok(deletedAt > okAt && deletedAt - okAt < 200,
       'the deleted callback belongs inside the success branch and nowhere else')
   })
 
-  test('the Payment Requests page settles a deletion, and a retryable failure, without conflating the two', () => {
-    const src = code(read(REQUESTS))
-    const fn = src.slice(src.indexOf('const handleDelete = async'), src.indexOf('return (', src.indexOf('const handleDelete = async')))
-    assert.ok(fn.includes(`fetch('${ROUTE_PATH}'`), 'it calls the claim-backed route')
-    const okAt = fn.indexOf('body?.ok === true')
-    const deletedAt = fn.indexOf('onDeleted()', okAt)
-    assert.ok(okAt > 0 && deletedAt > okAt && deletedAt - okAt < 200,
-      'the deleted callback fires only inside the route-confirmed success branch')
-  })
-
-  test('the refusal wording says plainly that nothing was removed', () => {
-    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /No data was removed\./)
-    assert.match(PAYMENT_DELETE_UNAVAILABLE_MESSAGE, /next version/)
+  test('deletePaymentEntry itself settles success only from the route\'s ok:true', () => {
+    const client = code(read(CLIENT))
+    const okAt = client.indexOf('if (body?.ok === true)')
+    assert.ok(okAt > 0)
+    const outcomeAt = client.indexOf("outcome: 'success'", okAt)
+    assert.ok(outcomeAt > okAt && outcomeAt - okAt < 200)
   })
 })

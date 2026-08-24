@@ -27,6 +27,7 @@ import {
   allocationFilterClauses,
   ALLOCATED_TOTAL_COLUMN,
   dateRange,
+  isAllocationFilter,
   isNarrowed,
   pageCount,
   pageRange,
@@ -35,6 +36,7 @@ import {
   type AllocationFilter,
   type PaymentView,
 } from '@/app/finance/receivedPaymentsQuery'
+import { readFinanceViewState, writeFinanceViewState } from '@/lib/finance/financeViewState'
 import {
   PAYMENT_VERIFICATION_LABEL,
   paymentRowFigures,
@@ -1929,9 +1931,26 @@ function ReceivedPaymentsViewInner(
   const [unlinkReason,   setUnlinkReason]   = useState('')
   const [unlinking,      setUnlinking]      = useState(false)
   const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
-  const [search,         setSearch]         = useState('')
-  const [dateFrom,       setDateFrom]       = useState('')
-  const [dateTo,         setDateTo]         = useState('')
+  // ── Remembered across a remount (Requirement 5) ──
+  //
+  // NOT A CLAIM THAT ANYTHING CAUSES ONE. financeRefreshPolicy.test.ts proves
+  // an ordinary focus/visibilitychange event triggers no refetch, no
+  // router.refresh() and no auth-driven cache clear — so in normal operation
+  // this component never unmounts on tab-return and this code never runs. It
+  // is protection for the one case that IS a real remount and is not this
+  // component's to prevent: the browser discarding a backgrounded tab. Read
+  // once, lazily, on the FIRST render only (the initializer form of useState
+  // — never re-read on a later render, so a value the reader has since
+  // changed cannot be silently overwritten from storage).
+  //
+  // WHAT IS NOT HERE, on purpose: which modal was open, and — see
+  // DeletePaymentModal, which imports nothing from financeViewState.ts — any
+  // deletion reason or typed Payment ID. Restoring either after an
+  // unexplained remount is a surprise or a hazard, never a convenience.
+  const initialViewState = useState(() => readFinanceViewState(surface))[0]
+  const [search,         setSearch]         = useState(initialViewState.search)
+  const [dateFrom,       setDateFrom]       = useState(initialViewState.dateFrom)
+  const [dateTo,         setDateTo]         = useState(initialViewState.dateTo)
   // ── The allocation narrowing ──
   // How much of a payment has been given a home — the queue that needs somebody
   // to act. Answered by the DATABASE, because a state computed over the fifty
@@ -1945,7 +1964,8 @@ function ReceivedPaymentsViewInner(
   // because the view is security_invoker: a reader who may see a payment but not
   // its allocations sums to zero and would read "Unallocated" for money that is
   // fully spoken for.
-  const [allocation,     setAllocation]     = useState<AllocationFilter>('all')
+  const [allocation,     setAllocation]     = useState<AllocationFilter>(
+    isAllocationFilter(initialViewState.allocation) ? initialViewState.allocation : 'all')
   const [allocationReady, setAllocationReady] = useState(false)
   // ── The Confirmed Payments allocation-status filter (Requirement 1) ──
   // Replaces the old `?view=all|orders|pi_drafts|available` tab strip for the
@@ -1953,7 +1973,10 @@ function ReceivedPaymentsViewInner(
   // confirmed_allocation_status, never a client-side filter over the page in
   // hand — this list is paged. Meaningless for 'to_verify', which has not been
   // allocated to anything yet.
-  const [confirmedFilter, setConfirmedFilter] = useState<ConfirmedAllocationFilter>(DEFAULT_CONFIRMED_ALLOCATION_FILTER)
+  const [confirmedFilter, setConfirmedFilter] = useState<ConfirmedAllocationFilter>(
+    (CONFIRMED_ALLOCATION_FILTERS as readonly string[]).includes(initialViewState.confirmedFilter)
+      ? initialViewState.confirmedFilter as ConfirmedAllocationFilter
+      : DEFAULT_CONFIRMED_ALLOCATION_FILTER)
   const [highlightId,    setHighlightId]    = useState<string | null>(null)
   // ── Paging ──
   // The list was UNBOUNDED, and PostgREST truncates silently at 1000 rows: no
@@ -1971,7 +1994,8 @@ function ReceivedPaymentsViewInner(
   // state during a render it also caused, which is the cascading-render pattern
   // react-hooks/set-state-in-effect exists to catch. Deriving it instead costs
   // nothing and cannot render twice.
-  const [pageState, setPageState] = useState<{ view: PaymentView; page: number }>({ view, page: 1 })
+  const [pageState, setPageState] = useState<{ view: PaymentView; page: number }>(
+    { view, page: initialViewState.page })
   const page = pageState.view === view ? pageState.page : 1
   const setPage = (next: number | ((current: number) => number)) =>
     setPageState({ view, page: typeof next === 'function' ? next(page) : next })
@@ -2061,6 +2085,17 @@ function ReceivedPaymentsViewInner(
       confirmedFilter: surface === 'confirmed' ? confirmedFilter : DEFAULT_CONFIRMED_ALLOCATION_FILTER,
     }
   }, [search, view, dateFrom, dateTo, allocation, allocationOffered, surface, confirmedFilter])
+
+  // ── Remember this view, for the one case that is a real remount ──
+  //
+  // Writes on every change, reads only once (the lazy initializers above) —
+  // so a tab that never remounts never has its search box or scroll position
+  // fought over by a stale write, and one that does comes back exactly as it
+  // was. See the comment on initialViewState for what this is and is not
+  // protecting against.
+  useEffect(() => {
+    writeFinanceViewState(surface, { search, dateFrom, dateTo, allocation, confirmedFilter, page })
+  }, [surface, search, dateFrom, dateTo, allocation, confirmedFilter, page])
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for

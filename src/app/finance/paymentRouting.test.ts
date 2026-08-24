@@ -486,7 +486,15 @@ describe('the fifteen compatibility cases', () => {
     const counts = readFileSync(join(process.cwd(), 'src/hooks/queries/useReceivedPaymentsCounts.ts'), 'utf8')
     const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
     assert.ok(counts.includes('paymentViewClauses('), 'the counts must use the shared predicate')
-    assert.ok(view.includes('paymentViewFilterClauses('), 'the list must use the shared predicate')
+    // REVISED (Requirement 1): the LIST no longer applies the four-view
+    // classification at all — that mechanism is retired from Confirmed
+    // Payments in favour of a real predicate over confirmed_allocation_status.
+    // The sidebar badge hook (above) still counts the four views internally,
+    // but nothing in the list narrows by them any more.
+    assert.ok(!view.includes('paymentViewFilterClauses'),
+      'the retired four-view mechanism must not survive in the list')
+    assert.ok(view.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"),
+      'the list narrows Confirmed Payments by the pure allocation-ledger status instead')
     // AND THE SAME STATUS SCOPE, which is now the CONFIRMED half rather than
     // "everything except rejected". The four views classify money by where it
     // has been attributed, and a payment nobody has verified has been attributed
@@ -639,14 +647,22 @@ describe('the projection both pages read', () => {
     //   * exactly ONE read of the table on the whole page, and
     //   * keyed on the ids of the page already loaded, in one .in() —
     //     which is bounded twice over, since the list itself is paged.
+    // TWO READS NOW, BOTH BOUNDED, NEITHER PER-ROW. The second is
+    // refreshOneRow's — Requirement 3's narrow post-allocation refresh, which
+    // re-reads exactly the ONE payment a multi-target allocation just changed,
+    // never the whole page. It is triggered by a user action, not by the
+    // initial page load, and is keyed to a single id — the same bounded shape
+    // as the page-load read, just for a set of exactly one.
     const reads = view.split(".from('finance_payment_allocations')").length - 1
-    assert.equal(reads, 1, 'exactly one allocation read, for the whole page')
+    assert.equal(reads, 2, 'the page-load read, and refreshOneRow\'s single-payment read — nothing per-row')
     assert.ok(view.includes(".in('payment_request_id', rows.map(r => r.id))"),
-      'the allocation read is batched across the page, never issued per row')
+      'the page-load allocation read is batched across the page, never issued per row')
+    assert.ok(view.includes(".eq('payment_request_id', id)"),
+      'the narrow refresh is keyed to exactly the one payment id it is refreshing')
 
-    // And it is not inside anything that iterates rows.
+    // And neither is inside anything that iterates rows.
     const perRow = /rows\.map\([\s\S]{0,400}?\.from\('finance_payment_allocations'\)/
-    assert.ok(!perRow.test(view), 'the allocation read must not sit inside a row loop')
+    assert.ok(!perRow.test(view), 'no allocation read may sit inside a row loop')
   })
 
   test('the list still orders by created_at, newest first', () => {
