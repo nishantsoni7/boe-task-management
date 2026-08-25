@@ -3220,3 +3220,72 @@ body {
 .pi-detail-timeline-item:last-child .pi-detail-timeline-body {
   padding-bottom: 0;
 }
+
+/* ─────────────────────────────────────────────────────
+   ROW OVERFLOW MENU ITEMS
+   Additive only — nothing above is modified.
+
+   The entries inside RowActionsMenu, the shared ⋯ menu on the Confirmed
+   Payments and Payments to Verify tables. Styled here rather than inline
+   because :hover and :focus-visible cannot be expressed as inline styles, and
+   a keyboard user must get the same feedback a mouse user does.
+
+   NOTHING HERE CHANGES THE MENU'S SIZE. Only background, colour and outline
+   move; padding, font size, border-radius and border are the values the items
+   already had. The panel's measured width and height decide where it opens
+   (see src/lib/ui/menuPlacement.ts), so a hover treatment that changed them
+   would quietly change the collision placement too.
+───────────────────────────────────────────────────── */
+.boe-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 9px;
+  font-size: 12px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: #111318;
+  /* Background only, and short. The row should settle, not animate. */
+  transition: background-color 0.12s ease;
+}
+
+/* Hover and keyboard focus get the SAME surface, deliberately: pointing at a
+   row and tabbing to it are the same intent, and hover-only feedback leaves a
+   keyboard user guessing which action Enter will run. The token is the
+   established neutral hover (colors.hover). */
+.boe-menu-item:hover:not(:disabled),
+.boe-menu-item:focus-visible:not(:disabled) {
+  background: #E8EBF0;
+}
+
+/* Inset, so the ring sits inside the panel's 4px padding instead of spilling
+   over its rounded edge. Outlines do not affect layout, so this costs no size. */
+.boe-menu-item:focus-visible {
+  outline: 2px solid rgba(232,160,48,0.45);
+  outline-offset: -1px;
+}
+
+/* The destructive entry keeps its red text and takes a red-tinted surface, so
+   it never shares the neutral highlight with an ordinary action. The value is
+   the one .boe-btn-danger:hover already uses, not a new red. */
+.boe-menu-item--danger {
+  color: #D94F4F;
+}
+.boe-menu-item--danger:hover:not(:disabled),
+.boe-menu-item--danger:focus-visible:not(:disabled) {
+  background: rgba(217,79,79,0.14);
+}
+
+/* A disabled entry must not look pressable. RowActionsMenu offers no disabled
+   action today — a permission that is not held removes the entry entirely
+   rather than greying it — so this is the guard for the day one is added, and
+   it is why every rule above excludes :disabled rather than relying on there
+   being none. */
+.boe-menu-item:disabled {
+  color: #A3AAB8;
+  cursor: not-allowed;
+  background: transparent;
+}

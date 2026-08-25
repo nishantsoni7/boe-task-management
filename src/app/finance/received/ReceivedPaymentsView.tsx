@@ -1645,13 +1645,13 @@ function RowActionsMenu({ label, actions }: {
         <button
           key={action.label}
           role="menuitem"
+          // Hover and focus-visible live in globals.css (.boe-menu-item), because
+          // neither can be written as an inline style — and a keyboard user must
+          // see which action Enter will run, not only a mouse user. The class
+          // carries the same padding, font size and radius the inline style did,
+          // so the panel measures the same and opens in the same place.
+          className={`boe-menu-item${action.danger ? ' boe-menu-item--danger' : ''}`}
           onClick={() => { setOpen(false); action.onSelect() }}
-          style={{
-            display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px',
-            fontSize: '12px', color: action.danger ? colors.red : colors.primary,
-            background: 'transparent',
-            border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
-          }}
         >
           {action.label}
         </button>

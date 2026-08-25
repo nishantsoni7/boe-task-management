@@ -319,3 +319,134 @@ describe('the action lists are untouched', () => {
       'and still offer the same actions inline')
   })
 })
+
+// ══ 4. The hover and focus treatment ═════════════════════════════════════════
+
+describe('a menu entry shows which action is about to run', () => {
+  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+  const menu = view.slice(view.indexOf('function RowActionsMenu'))
+  const body = menu.slice(0, menu.indexOf('\n}\n'))
+
+  /** One CSS rule's declaration block, by exact selector. */
+  const ruleFor = (selector: string): string => {
+    const at = css.indexOf(selector)
+    assert.ok(at > -1, `missing rule: ${selector}`)
+    return css.slice(at, css.indexOf('}', at))
+  }
+
+  test('the styling is a class, not an inline style', () => {
+    // :hover and :focus-visible cannot be expressed inline at all, which is why
+    // the old inline block could only ever have had a mouse state.
+    assert.ok(body.includes("className={`boe-menu-item${action.danger ? ' boe-menu-item--danger' : ''}`}"),
+      'every entry takes the shared class, and a destructive one takes the modifier')
+    assert.ok(!body.includes("color: action.danger ? colors.red : colors.primary"),
+      'the inline colour branch is gone — the class carries it')
+  })
+
+  test('a normal action gets the established neutral hover', () => {
+    const rule = ruleFor('.boe-menu-item:hover:not(:disabled),')
+    assert.ok(rule.includes('#E8EBF0'),
+      'colors.hover — the token every other hover in the app uses')
+  })
+
+  test('KEYBOARD FOCUS GETS THE SAME SURFACE, not just an outline', () => {
+    // THE REQUIREMENT THIS PINS: hover must not be the only feedback. The
+    // selector list is shared, so the two states cannot drift apart.
+    const rule = ruleFor('.boe-menu-item:hover:not(:disabled),')
+    assert.ok(/\.boe-menu-item:hover:not\(:disabled\),\s*\n\s*\.boe-menu-item:focus-visible:not\(:disabled\)\s*\{/.test(css),
+      'hover and focus-visible share one declaration block')
+    assert.ok(rule.includes('#E8EBF0'))
+  })
+
+  test('and a focus ring that stays inside the panel', () => {
+    const rule = ruleFor('.boe-menu-item:focus-visible {')
+    assert.ok(rule.includes('outline: 2px solid rgba(232,160,48,0.45)'),
+      'the app-wide focus ring, not a new one')
+    assert.ok(rule.includes('outline-offset: -1px'),
+      'inset, so it does not spill over the panel’s rounded edge')
+  })
+
+  test('the destructive action keeps red text and takes a RED surface', () => {
+    assert.ok(ruleFor('.boe-menu-item--danger {').includes('#D94F4F'),
+      'colors.red, as before')
+    const rule = ruleFor('.boe-menu-item--danger:hover:not(:disabled),')
+    assert.ok(rule.includes('rgba(217,79,79,0.14)'),
+      'the value .boe-btn-danger:hover already uses — not a new red')
+    assert.ok(!rule.includes('#E8EBF0'),
+      'Delete Payment must never share the neutral highlight with an ordinary action')
+    assert.ok(/--danger:hover:not\(:disabled\),\s*\n\s*\.boe-menu-item--danger:focus-visible:not\(:disabled\)\s*\{/.test(css),
+      'and its focus state matches its hover state')
+  })
+
+  test('the red hover is the one the buttons already use', () => {
+    // Reuse, stated as an equality rather than a duplicated literal's comment:
+    // if .boe-btn-danger:hover ever moves, this fails and the two are realigned.
+    assert.ok(css.includes('.boe-btn-danger:hover { background: rgba(217,79,79,0.14); }'),
+      'the established danger hover this borrows from')
+  })
+
+  test('a disabled entry is never made to look pressable', () => {
+    // The component offers no disabled action today — an unheld permission drops
+    // the entry entirely — so this is the guard for the day one is added.
+    for (const selector of ['.boe-menu-item:hover:not(:disabled),',
+                            '.boe-menu-item--danger:hover:not(:disabled),']) {
+      assert.ok(selector.includes(':not(:disabled)'), `${selector} excludes disabled`)
+    }
+    const rule = ruleFor('.boe-menu-item:disabled {')
+    assert.ok(rule.includes('cursor: not-allowed'))
+    assert.ok(rule.includes('background: transparent'), 'and takes no highlight')
+    assert.ok(!/disabled\?/.test(body),
+      'the action type has no disabled flag yet; the CSS is defensive, not dead wiring')
+  })
+
+  test('the whole row is the target, with the padding and radius it always had', () => {
+    const rule = ruleFor('.boe-menu-item {')
+    assert.ok(rule.includes('display: block') && rule.includes('width: 100%'),
+      'the full row is clickable, not just the label')
+    assert.ok(rule.includes('padding: 6px 9px'), 'unchanged from the inline style')
+    assert.ok(rule.includes('border-radius: 6px'), 'unchanged')
+    assert.ok(rule.includes('font-size: 12px'), 'unchanged')
+    assert.ok(rule.includes('text-align: left'))
+  })
+
+  test('nothing that moves, grows or shouts', () => {
+    // Requirement: no excessive animation, shadow, scale, icon or layout shift.
+    const block = css.slice(css.indexOf('.boe-menu-item {'))
+    const section = block.slice(0, block.indexOf('.boe-menu-item:disabled'))
+    assert.ok(section.includes('transition: background-color 0.12s ease'),
+      'a short transition, and only on the background')
+    for (const forbidden of ['transform', 'box-shadow', 'scale(', 'translate']) {
+      assert.ok(!section.includes(forbidden), `${forbidden} must not appear`)
+    }
+  })
+
+  test('THE PANEL IS STILL THE SAME SIZE, so placement is unaffected', () => {
+    // The collision maths measures the rendered panel. A hover treatment that
+    // changed padding, font size or border would move where the menu opens —
+    // which is the defect this file was created for.
+    const rule = ruleFor('.boe-menu-item {')
+    assert.ok(rule.includes('border: none'), 'no border was added')
+    // Only colour-ish properties may appear in the interaction states.
+    for (const state of ['.boe-menu-item:hover:not(:disabled),',
+                         '.boe-menu-item--danger:hover:not(:disabled),']) {
+      const declarations = ruleFor(state)
+        .split('{')[1]
+        .split(';')
+        .map(d => d.split(':')[0].trim())
+        .filter(Boolean)
+      assert.deepEqual(declarations, ['background'],
+        `${state} may change the background and nothing else`)
+    }
+  })
+
+  test('both Finance tables get it, because both share this component', () => {
+    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 2)
+  })
+
+  test('the mobile inline actions were not touched', () => {
+    const cards = view.slice(view.indexOf('function ReceivedPaymentsCards'))
+    const cardBody = cards.slice(0, cards.indexOf('\n}\n'))
+    assert.ok(!cardBody.includes('boe-menu-item'),
+      'cards render inline buttons and keep their own styling')
+  })
+})
