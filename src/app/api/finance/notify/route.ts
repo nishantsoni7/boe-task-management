@@ -1,6 +1,11 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  recipientIds,
+  selectFreshNotifications,
+  type ExistingNotification,
+} from '@/lib/finance/notificationDedup'
 
 // Finance payment-request notifications. Reuses the shared `notifications`
 // table (task_id left null) and mirrors the Samples notify route: service-role
@@ -108,28 +113,33 @@ export async function POST(req: NextRequest) {
   // Duplicate identity is (user_id, type, entity_id) — the stable record the
   // notification is about, independent of title wording. A row without an
   // entity_id (legacy / missing) falls back to matching on title.
-  // ONE ROUND OF CHECKS, NOT ONE PER RECIPIENT. Each row's lookup is keyed to
-  // its own recipient and depends on no other row's answer, so they are asked
-  // together. On a submit/resubmit — which notifies every admin — this was N
-  // round trips in series, growing with headcount; it is now one wait.
+  // ONE QUERY FOR EVERY RECIPIENT, NOT ONE PER RECIPIENT.
   //
-  // The identity being matched, the window, and the "no answer means send"
-  // direction are all unchanged: only the waiting is.
+  // This check used to be issued once per row. Asking those together made the
+  // route wait once instead of N times, but it still SENT N queries —
+  // concurrency is not batching. Both are now one request: every row in a
+  // request carries the same `type`, so the read filters on that and the window
+  // once and narrows to the recipients actually being written to.
+  //
+  // The per-row identity is unchanged and is still decided per row, in
+  // selectFreshNotifications: entity_id when the row has one, title when it does
+  // not. Nothing here assumes the entity_id or the title is the same for
+  // everyone, only the type — which the route itself sets from `event`.
   const windowStart = new Date(Date.now() - 2 * 60 * 1000).toISOString()
-  const duplicates = await Promise.all(rows.map(row => {
-    let q = supabase
-      .from('notifications')
-      .select('id')
-      .eq('user_id', row.user_id)
-      .eq('type', row.type)
-      .gte('created_at', windowStart)
-    q = row.entity_id != null ? q.eq('entity_id', row.entity_id) : q.eq('title', row.title)
-    return q.limit(1)
-  }))
-  const fresh: NotifRow[] = rows.filter((_, i) => {
-    const dup = duplicates[i]?.data
-    return !dup || dup.length === 0
+  const { data: existing, error: dedupError } = await supabase
+    .from('notifications')
+    .select('user_id, entity_id, title')
+    .eq('type', event)
+    .gte('created_at', windowStart)
+    .in('user_id', recipientIds(rows))
+
+  // A read that failed tells us nothing about what exists, and a missing
+  // notification is worse than a duplicate one — so we send. Same direction the
+  // per-row code took when its query errored and left `dup` undefined.
+  const fresh = selectFreshNotifications(rows, (existing ?? []) as ExistingNotification[], {
+    readable: !dedupError,
   })
+  if (dedupError) console.error('[finance/notify] dedup read failed, sending anyway:', dedupError)
   if (fresh.length === 0) return NextResponse.json({ skipped: true, deduped: true })
 
   const { error } = await supabase.from('notifications').insert(fresh)

@@ -423,6 +423,56 @@ describe('product photographs were deliberately LEFT ALONE', () => {
 describe('a status change re-reads what it changed, and not the whole page', () => {
   const detail = stripComments(read(DETAIL))
 
+  test('the write answers for itself — the stored row comes back', () => {
+    // THE DEFECT A NARROW REFRESH INTRODUCES IF THE WRITE IS NOT AUTHORITATIVE:
+    // `updated_at` is written by the set_updated_at TRIGGER and displayed as
+    // "Last Updated". Applying the status that was ASKED for, and re-reading
+    // only the activity log, would leave a stale timestamp beside a fresh
+    // status. The row is read back by the update itself, so this costs no
+    // extra round trip and no trigger-written value is ever assumed.
+    assert.match(detail, /\.update\(\{ status: newStatus \}\)[\s\S]{0,300}?\.select\('status, updated_at'\)/,
+      'the update must return the row it stored')
+    assert.ok(detail.includes('setOrder(o => o ? { ...o, ...updated } : o)'),
+      'and the page must apply the DATABASE\'s values, not the requested one')
+    assert.ok(detail.includes('<MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />'),
+      'updated_at is displayed, which is why it may not be assumed')
+  })
+
+  test('a transition cannot apply against a status that has moved', () => {
+    // Compare and swap. A second click that raced the first, or somebody else's
+    // transition landing in between, matches no row and changes nothing —
+    // rather than applying a move computed from a status that is no longer
+    // true. `dispatched` is terminal, so a lost race is not recoverable by
+    // simply trying again.
+    assert.match(detail, /\.eq\('id', order\.id\)\s*\n?\s*\.eq\('status', oldStatus\)/,
+      'the update must be conditional on the status this screen was showing')
+    assert.ok(detail.includes('if (saving) return'),
+      'and a second click is refused while the first is in flight')
+  })
+
+  test('a refused or superseded transition re-reads everything and changes nothing', () => {
+    const fn = detail.slice(detail.indexOf('const doStatusChange'))
+    const body = fn.slice(0, fn.indexOf('\n  }\n'))
+    assert.ok(body.includes('if (error || !updated) {'),
+      'no row back means the transition did not happen')
+    assert.ok(/if \(error \|\| !updated\) \{[\s\S]{0,200}?onOutOfDate\(\)/.test(body),
+      'and the screen resyncs rather than showing a change that was refused')
+    const failAt = body.indexOf('if (error || !updated)')
+    assert.ok(!body.slice(0, failAt).includes('setOrder('),
+      'nothing is applied to the UI before the write is known to have succeeded')
+    assert.ok(!body.slice(0, failAt).includes("from('order_activity_log')"),
+      'and no activity row is written for a transition that did not happen')
+    assert.ok(detail.includes('onOutOfDate={() => { loadOrder() }}'),
+      'resync is the FULL reload — the screen cannot know which part went stale')
+  })
+
+  test('the activity entry records what was STORED, not what was asked', () => {
+    const fn = detail.slice(detail.indexOf('const doStatusChange'))
+    const body = fn.slice(0, fn.indexOf('\n  }\n'))
+    assert.ok(body.includes('payload:    { from: oldStatus, to: updated.status }'),
+      'the trail must not claim a transition the database did not make')
+  })
+
   test('the status transition refreshes only the activity trail', () => {
     // THE DEFECT: a transition wrote `orders.status` — already applied to the
     // row in hand on the line above — and one order_activity_log entry, then
@@ -431,14 +481,16 @@ describe('a status change re-reads what it changed, and not the whole page', () 
     // document versions, the change requests and the batched allocation
     // totals. Ten round trips to learn one new row, on the control an
     // operations user presses most.
-    assert.match(detail, /onStatusChanged=\{newStatus => \{[\s\S]{0,400}?reloadActivity\(\)/,
+    assert.match(detail, /onStatusChanged=\{updated => \{[\s\S]{0,900}?reloadActivity\(\)/,
       'the status handler must take the narrow refresh')
-    const handler = detail.slice(detail.indexOf('onStatusChanged={newStatus =>'))
-    const body = handler.slice(0, handler.indexOf('/>'))
+    // The SUCCESS handler only. onOutOfDate is a sibling prop and legitimately
+    // does reload everything, so the slice stops before it.
+    const handler = detail.slice(detail.indexOf('onStatusChanged={updated =>'))
+    const body = handler.slice(0, handler.indexOf('reloadActivity()'))
     assert.ok(!body.includes('loadOrder()'),
-      'and must not fall back to the full page load')
-    assert.ok(body.includes('setOrder(o => o ? { ...o, status: newStatus } : o)'),
-      'the new status is applied from the answer the server already gave')
+      'a SUCCESSFUL transition must not fall back to the full page load')
+    assert.ok(body.includes('setOrder(o => o ? { ...o, ...updated } : o)'),
+      'the row is applied from the answer the server gave, trigger-written columns included')
   })
 
   test('the narrow refresh reads the activity log and nothing else', () => {
