@@ -124,7 +124,7 @@ describe('the status list is the database’s, not this module’s', () => {
   })
 })
 
-// ── The eleven columns ───────────────────────────────────────────────────────
+// ── The eight columns ────────────────────────────────────────────────────────
 //
 // REVISED AGAIN. The table is now EIGHT columns. Customer, Total Allocated and
 // Remaining left the primary row together and live in the detail modal the
@@ -154,7 +154,7 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
       'a bank statement is reconciled against when the money moved')
   })
 
-  test('the breakdown columns are the two exact allocation-destination figures, shown only in the expandable detail', () => {
+  test('the breakdown columns are the two exact allocation-destination figures, shown only in the detail modal', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(c => c.label), [
       'Allocated to PI Drafts', 'Allocated to Orders',
     ])
@@ -264,13 +264,18 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
   })
 
   test('the breakdown is exact figures, never a list of names', () => {
+    // MOVED, NOT DROPPED. These two aggregates used to sit in a strip under the
+    // row, opened by a chevron. The chevron is gone — Payment ID is the first
+    // column, and the record is reached by the Allocation Status badge or by
+    // View — so the figures are asserted where they now live: the detail modal,
+    // beside the per-target list they are the totals of.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    const table = view.slice(
-      view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function RowActionsMenu'))
-    assert.ok(table.includes('figures.toPI'))
-    assert.ok(table.includes('figures.toOrders'))
-    assert.ok(!table.includes('<DestinationsCell'),
+    const modal = view.slice(
+      view.indexOf('function DetailsModal'),
+      view.indexOf('function EditPaymentModal'))
+    assert.ok(modal.includes('modalFigures.toPI'))
+    assert.ok(modal.includes('modalFigures.toOrders'))
+    assert.ok(!view.includes('<DestinationsCell'),
       'inline destination names are what made the row wrap unpredictably; this is exact figures now')
   })
 

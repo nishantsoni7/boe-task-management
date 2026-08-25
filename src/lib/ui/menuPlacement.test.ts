@@ -33,6 +33,7 @@ import { placeMenu, MENU_GAP, MENU_MARGIN } from './menuPlacement'
 import {
   CONFIRMED_ALLOCATION_BADGE,
   CONFIRMED_ALLOCATION_STATUSES,
+  CONFIRMED_PAYMENT_COLUMNS,
 } from '@/lib/finance/paymentSurfaces'
 
 const VIEW = 'src/app/finance/received/ReceivedPaymentsView.tsx'
@@ -497,11 +498,47 @@ describe('the primary row shows eight columns and no money detail', () => {
     assert.ok(table.includes('{r.human_payment_id}'))
   })
 
-  test('the expandable per-row breakdown is untouched', () => {
-    // The exact PI/Order split still lives where it lived; only the two totals
-    // beside it left the primary row.
-    assert.ok(table.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map'))
-    assert.ok(table.includes('figures.toPI') && table.includes('figures.toOrders'))
+  test('THE LEGACY EXPANDABLE ROW IS GONE, chevron and all', () => {
+    // THE DEFECT: a chevron column sat BEFORE Payment ID, so the required first
+    // column was second, and it opened a strip under the row duplicating what
+    // the detail modal now shows. Allocation detail is reached by the
+    // Allocation Status badge or by View — those two, and nothing else.
+    assert.ok(!table.includes('▶'), 'no expansion chevron in the table')
+    assert.ok(!table.includes('Expand allocation breakdown'))
+    assert.ok(!table.includes('Collapse allocation breakdown'))
+    assert.ok(!table.includes('colSpan'), 'no full-width detail row remains')
+    assert.ok(!/isExpanded|const \[expanded/.test(table), 'no expansion state')
+    assert.ok(!table.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS'),
+      'the breakdown does not render in the table any more')
+  })
+
+  test('and its figures moved into the modal rather than being dropped', () => {
+    const modal = view.slice(view.indexOf('function DetailsModal'),
+                             view.indexOf('function EditPaymentModal'))
+    assert.ok(modal.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map'))
+    assert.ok(modal.includes('modalFigures.toPI') && modal.includes('modalFigures.toOrders'))
+    assert.ok(modal.includes('const modalFigures = confirmedFigures(r)'),
+      'computed from the row already in hand — pure, no query')
+  })
+
+  test('PAYMENT ID IS THE FIRST COLUMN AND THE FIRST CELL', () => {
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS[0].key, 'payment_id')
+    // Nothing is rendered between <tr> and the Payment ID cell.
+    const row = table.slice(table.indexOf('id={`payment-row-${r.id}`}'))
+    const firstCell = row.indexOf('<td')
+    const paymentId = row.indexOf('{r.human_payment_id}')
+    const gap = row.slice(firstCell, paymentId)
+    assert.ok(paymentId > firstCell, 'the id is in a cell')
+    assert.ok(!gap.includes('</td>'),
+      'the FIRST cell of the row is the Payment ID cell — no chevron cell before it')
+    // And no leading spacer header either. Matched on the CHEVRON header
+    // specifically — `aria-hidden` on its own is legitimate and appears on
+    // every decorative action icon.
+    assert.ok(!/<th[^>]*width: '28px'[^>]*aria-hidden/.test(table),
+      'the empty chevron header column is gone')
+    const head = table.slice(table.indexOf('<thead>'), table.indexOf('</thead>'))
+    assert.ok(!head.includes('<th style={{ ...TH, width:'),
+      'the header row starts with the mapped columns, nothing before them')
   })
 
   test('NOTHING LEFT THE QUERY — the modal still gets every removed field', () => {

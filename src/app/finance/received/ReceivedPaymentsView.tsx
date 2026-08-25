@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Eye, Link2, Pencil, Split, Trash2, Unlink, type LucideIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -692,6 +692,11 @@ function DetailsModal({
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
+  // The PI-Draft / Order split, from the row the list already holds. No query:
+  // confirmedFigures is pure, and this is the same call the table row used to
+  // make for the expandable strip that no longer exists.
+  const modalFigures = confirmedFigures(r)
+
   const left = (
     <>
       {/* Primary summary card — amount + client lead, payment details below.
@@ -795,6 +800,26 @@ function DetailsModal({
           canOpenLinkedRecord={canOpenLinkedRecord}
           onOpen={onOpenLinked}
         />
+
+        {/* WHERE THE EXPANDABLE ROW'S FIGURES WENT.
+            The table used to carry a chevron that opened a strip under the row
+            showing these two aggregates. The chevron is gone — Payment ID is
+            the first column now, and this record is reached by the Allocation
+            Status badge or by View — so the figures moved here, beside the
+            per-target list they are the totals of. Nothing was lost with the
+            row; the same helper computes them from the same already-loaded
+            row. */}
+        <div style={{
+          display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px',
+          borderTop: `1px solid ${colors.border}`, paddingTop: '10px',
+        }}>
+          {CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(column => (
+            <span key={column.key}>
+              <span style={{ color: colors.muted }}>{column.label} </span>
+              <MoneyCell value={column.key === 'to_pi_draft' ? modalFigures.toPI : modalFigures.toOrders} />
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Activity panel — same bordered shell as the Payment Requests page's
@@ -1410,27 +1435,18 @@ function ReceivedPaymentsTable({
   // COMPACT, AND NO minWidth. Eleven columns at these paddings fit 1024px with
   // room over; the breakdown that would not fit lives in the expandable row
   // instead of being squeezed in or forcing a sideways scroll.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const toggle = (id: string) => setExpanded(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
-
   const TD: React.CSSProperties = {
     padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
   }
   const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
-  const columnCount = CONFIRMED_PAYMENT_COLUMNS.length + 1
 
   return (
     <div style={{ width: '100%' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
         <thead>
           <tr>
-            <th style={{ ...TH, width: '28px' }} aria-hidden="true" />
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
               <th key={column.key} style={{ ...TH, ...align(column.align) }}>
                 {column.label}
@@ -1440,34 +1456,21 @@ function ReceivedPaymentsTable({
         </thead>
         <tbody>
           {rows.map(r => {
-            const figures = confirmedFigures(r)
+            // confirmedFigures() is no longer read per row: the exact figures
+            // it computes were the expandable strip's, and that strip is gone.
+            // The helper is unchanged and now serves the detail modal, which is
+            // where those figures live.
             const isHighlighted = r.id === highlightId
-            const isExpanded = expanded.has(r.id)
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
             return (
-              <Fragment key={r.id}>
-                <tr
+              <tr
+                  key={r.id}
                   id={`payment-row-${r.id}`}
                   onClick={() => onView(r)}
                   style={{ cursor: 'pointer', background: isHighlighted ? colors.amberTint : undefined }}
                   onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                   onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
                 >
-                  <td style={TD} onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => toggle(r.id)}
-                      aria-label={isExpanded ? 'Collapse allocation breakdown' : 'Expand allocation breakdown'}
-                      aria-expanded={isExpanded}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                        color: colors.muted, fontSize: '11px', lineHeight: 1,
-                        transform: isExpanded ? 'rotate(90deg)' : undefined, transition: 'transform 0.12s',
-                      }}
-                    >
-                      ▶
-                    </button>
-                  </td>
-
                   {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
                       primary identifier now; request_number is retained in the
                       database but is no longer shown prominently. */}
@@ -1571,22 +1574,6 @@ function ReceivedPaymentsTable({
                     </div>
                   </td>
                 </tr>
-
-                {isExpanded && (
-                  <tr style={{ background: colors.raised }}>
-                    <td colSpan={columnCount} style={{ padding: '8px 14px 12px 42px', borderBottom: `1px solid ${colors.border}` }}>
-                      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px' }}>
-                        {CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(column => (
-                          <span key={column.key}>
-                            <span style={{ color: colors.muted }}>{column.label} </span>
-                            <MoneyCell value={column.key === 'to_pi_draft' ? figures.toPI : figures.toOrders} />
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
             )
           })}
         </tbody>
