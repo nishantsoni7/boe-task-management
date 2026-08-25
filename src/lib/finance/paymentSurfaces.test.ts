@@ -218,7 +218,21 @@ describe('Confirmed Payments has exactly eleven primary columns, in this order',
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const menu = view.slice(view.indexOf('function RowActionsMenu'),
                             view.indexOf('function PaymentsToVerifyTable'))
-    assert.ok(menu.includes('<details'), 'focus, Enter and Escape come free with details')
+    // WAS <details>, WHICH COULD NOT SURVIVE THE PORTAL. The panel now renders
+    // into <body> to escape the card's `overflow: hidden` (see
+    // src/lib/ui/menuPlacement.ts), so it is no longer a DOM descendant of the
+    // trigger and <details>'s built-in open/close could not reach it.
+    //
+    // The PROPERTY this test names is unchanged and is now stated explicitly
+    // rather than inherited: a real <button> is focusable and fires on Enter
+    // and Space, the popup state is announced, and Escape closes and hands
+    // focus back. <details> never actually closed on Escape — the claim it
+    // replaced was more than the element gave.
+    assert.ok(menu.includes('<button'), 'the trigger is natively focusable')
+    assert.ok(menu.includes('aria-haspopup="menu"'), 'and announces that it opens a menu')
+    assert.ok(menu.includes('aria-expanded={open}'), 'and reports whether it is open')
+    assert.ok(menu.includes("event.key === 'Escape'") && menu.includes('triggerRef.current?.focus()'),
+      'Escape closes it and returns focus to the trigger')
     assert.ok(menu.includes('aria-label={label}'))
     assert.ok(menu.includes("role=\"menu\""))
     assert.ok(menu.includes("role=\"menuitem\""))

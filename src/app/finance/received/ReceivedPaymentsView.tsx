@@ -1,7 +1,9 @@
 'use client'
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -1528,67 +1530,159 @@ function ReceivedPaymentsTable({
 /**
  * The overflow menu, and why it is a real one.
  *
- * A <details> element gives keyboard focus, Enter and Escape, and an accessible
- * name for free, and closes when focus leaves it. A div with an onClick would
- * have needed all four written by hand and would have been reachable by mouse
- * alone. Nothing is hidden that a reader could not otherwise do — the same four
- * actions, behind one control instead of beside each other.
+ * A <button> with aria-haspopup/aria-expanded gives the accessible name and the
+ * state; Enter, Escape, outside-click and focus-out are wired below. Nothing is
+ * hidden that a reader could not otherwise do — the same actions, behind one
+ * control instead of beside each other.
+ *
+ * ── WHY THE PANEL IS PORTALLED ────────────────────────────────────────────────
+ *
+ * THE DEFECT THIS FIXES. The panel used to be `position: absolute` inside the
+ * trigger. Both Finance tables sit inside `.boe-card`, which carries
+ * `overflow: hidden` so rows cannot bleed past its rounded corners — and an
+ * absolutely-positioned box is clipped by ANY ancestor whose overflow is not
+ * `visible`. On the last row the panel was cut off at the card's bottom edge:
+ * "Allocate Funds" showed, everything under it was rendered and unreachable.
+ * It also pinned `top: 100%`, so it never opened upward however little room
+ * was left.
+ *
+ * Widening the card's overflow was not an option — it is what keeps the corners
+ * clean and, on other Finance surfaces, what contains a horizontal scroll. So
+ * the panel leaves the container instead: it renders into `document.body`
+ * through a portal, `position: fixed`, at coordinates decided by placeMenu(),
+ * which prefers below, flips above when below does not fit, and clamps into the
+ * viewport either way.
+ *
+ * This is the whole fix, and it is in ONE component, so both the Confirmed
+ * Payments table and the Payments to Verify table get it — no call site
+ * changes, and no third table can reintroduce the bug by copying a clipped
+ * pattern.
+ *
+ * WHAT DID NOT CHANGE: the `actions` array is passed through untouched, in
+ * order, including which entries are `danger`. This component decides where the
+ * menu is drawn and never which actions exist — that is each call site's, and
+ * remains permission-derived.
  */
 function RowActionsMenu({ label, actions }: {
   label: string
   /** `danger` marks a destructive entry, which is drawn in red and sits last. */
   actions: { label: string; onSelect: () => void; danger?: boolean }[]
 }) {
+  const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  // Measured after paint, so the panel's real height decides the flip rather
+  // than a guess. Re-measured on scroll and resize because the panel is fixed
+  // and the row underneath it is not: without this, scrolling the page would
+  // leave the menu behind.
+  useLayoutEffect(() => {
+    if (!open) return
+    const reposition = () => {
+      const trigger = triggerRef.current
+      const panel = panelRef.current
+      if (!trigger || !panel) return
+      setPlacement(placeMenu({
+        anchor: trigger.getBoundingClientRect(),
+        menuWidth: panel.offsetWidth,
+        menuHeight: panel.offsetHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }))
+    }
+    reposition()
+    // `true` for capture: a scroll inside the table or any other scrollable
+    // ancestor does not bubble, and each of them moves the row.
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus() }
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [open])
+
   if (actions.length === 0) return null
-  return (
-    <details
-      style={{ position: 'relative', display: 'inline-block' }}
-      onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-          event.currentTarget.removeAttribute('open')
-        }
+
+  const panel = (
+    <div
+      ref={panelRef}
+      role="menu"
+      aria-label={label}
+      style={{
+        position: 'fixed',
+        top: placement?.top ?? 0,
+        left: placement?.left ?? 0,
+        // Above the app shell and any card, and out of every card's stacking
+        // context because the panel is a child of <body>.
+        zIndex: 1000,
+        // Hidden for the one frame between mount and measurement, so it cannot
+        // be seen at 0,0 before placeMenu has run.
+        visibility: placement ? 'visible' : 'hidden',
+        background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
+        boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
       }}
     >
-      <summary
+      {actions.map(action => (
+        <button
+          key={action.label}
+          role="menuitem"
+          onClick={() => { setOpen(false); action.onSelect() }}
+          style={{
+            display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px',
+            fontSize: '12px', color: action.danger ? colors.red : colors.primary,
+            background: 'transparent',
+            border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
+          }}
+        >
+          {action.label}
+        </button>
+      ))}
+    </div>
+  )
+
+  return (
+    <span style={{ display: 'inline-block' }}>
+      <button
+        ref={triggerRef}
+        type="button"
         aria-label={label}
         title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
         style={{
-          listStyle: 'none', cursor: 'pointer', padding: '3px 8px',
+          cursor: 'pointer', padding: '3px 8px',
           fontSize: '13px', lineHeight: '15px', color: colors.secondary,
           borderRadius: 6, userSelect: 'none',
+          background: 'transparent', border: 'none',
         }}
       >
         ⋯
-      </summary>
-      <div
-        role="menu"
-        style={{
-          position: 'absolute', right: 0, top: '100%', zIndex: 20, marginTop: 4,
-          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
-          boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
-        }}
-      >
-        {actions.map(action => (
-          <button
-            key={action.label}
-            role="menuitem"
-            onClick={event => {
-              (event.currentTarget.closest('details') as HTMLDetailsElement | null)
-                ?.removeAttribute('open')
-              action.onSelect()
-            }}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px',
-              fontSize: '12px', color: action.danger ? colors.red : colors.primary,
-              background: 'transparent',
-              border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </details>
+      </button>
+      {/* Rendered into <body>, so no ancestor's overflow can clip it. Guarded
+          on `open` AND on the document existing, because this component is
+          reached during server rendering too. */}
+      {open && typeof document !== 'undefined' && createPortal(panel, document.body)}
+    </span>
   )
 }
 
