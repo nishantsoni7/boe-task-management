@@ -557,6 +557,33 @@ grant execute on function public.submit_payment_request(text, uuid, numeric, dat
 -- ALL OR NOTHING. Any failure raises, and the caller's transaction — the whole
 -- approval — rolls back: no allocation, no consumed intent, no half-approved
 -- payment. That is why this does not catch anything.
+--
+-- ── THE CONVERSION ORDER, AND WHY IT CANNOT DOUBLE-COUNT ──────────────────────
+--
+-- The allocation is created FIRST and the intent is marked 'applied' second.
+-- That order is forced: finance_payment_allocation_intents_applied_pair requires
+-- an intent claiming 'applied' to name the allocation it became, and the id does
+-- not exist until the allocator has returned it. So for the width of one
+-- statement an intent row and its allocation row both exist.
+--
+-- NOTHING COUNTS BOTH, and the exclusion is explicit rather than incidental:
+--
+--   * finance_payment_allocations_enforce_capacity (20260918000000 §5) sums
+--     ACTIVE ALLOCATIONS ONLY. It does not read this table at all, and §9's
+--     apply-time assertion refuses to install a version that does — so the
+--     intent being converted is excluded from the allocator's arithmetic by
+--     construction, not by luck.
+--
+--   * finance_payment_allocation_intents_enforce_capacity sums pending intents
+--     AND active allocations, but returns early for any row whose new status is
+--     not 'pending'. The only intent write in this loop sets 'applied', so it
+--     never re-enters the check that would have seen its own allocation.
+--
+--   * The POST-CONDITION below closes the loop: after each conversion the
+--     payment's pending-intent-plus-active-allocation total is re-derived and
+--     required to be within the payment amount. A future change that made
+--     either trigger count both would fail here, in the transaction that caused
+--     it, rather than silently over-allocating a payment.
 
 create or replace function public.apply_payment_allocation_intents(p_payment_request_id uuid)
 returns jsonb
@@ -569,6 +596,9 @@ declare
   v_alloc   jsonb;
   v_applied jsonb := '[]'::jsonb;
   v_count   int := 0;
+  v_amount  numeric;
+  v_pending numeric;
+  v_active  numeric;
 begin
   for v_intent in
     select *
@@ -591,6 +621,32 @@ begin
            applied_at            = now()
      where id = v_intent.id;
 
+    -- ── POST-CONDITION: this payment is not over its own amount ──
+    --
+    -- Re-derived from the tables rather than from a running total, so it holds
+    -- whatever the two capacity triggers happen to do. If an intent and the
+    -- allocation it became were ever counted together, this is where it stops.
+    select f.amount into v_amount
+    from public.finance_payment_requests f
+    where f.id = p_payment_request_id;
+
+    select coalesce(sum(i.intended_amount), 0) into v_pending
+    from public.finance_payment_allocation_intents i
+    where i.payment_request_id = p_payment_request_id
+      and i.status = 'pending';
+
+    select coalesce(sum(a.allocated_amount), 0) into v_active
+    from public.finance_payment_allocations a
+    where a.payment_request_id = p_payment_request_id
+      and a.status = 'active';
+
+    if v_pending + v_active > v_amount then
+      raise exception
+        'INTENT_CONVERSION_DOUBLE_COUNTED: after converting intent %, this payment holds % pending and % allocated against an amount of %',
+        v_intent.id, v_pending, v_active, v_amount
+        using errcode = 'P0001';
+    end if;
+
     v_count  := v_count + 1;
     v_applied := v_applied || jsonb_build_array(jsonb_build_object(
       'intent_id',     v_intent.id,
@@ -604,7 +660,7 @@ begin
 end $$;
 
 comment on function public.apply_payment_allocation_intents(uuid) is
-  'Converts every PENDING allocation intent of one payment into an active allocation, through allocate_payment_to_target_internal so the target is re-validated and the balance re-checked by the canonical allocator. Idempotent: a retry finds nothing pending. Raises on any failure so the caller''s transaction rolls the whole approval back. Executable by no role — approval calls it.';
+  'Converts every PENDING allocation intent of one payment into an active allocation, through allocate_payment_to_target_internal so the target is re-validated and the balance re-checked by the canonical allocator. The allocation is created before the intent is marked applied (the applied_pair CHECK forces that order); nothing counts both, and a post-condition re-derives the pending-plus-allocated total after each conversion to prove it. Idempotent: a retry finds nothing pending. Raises on any failure so the caller''s transaction rolls the whole approval back. Executable by no role — approval calls it.';
 
 revoke execute on function public.apply_payment_allocation_intents(uuid)
   from public, anon, authenticated, service_role;
@@ -1197,7 +1253,377 @@ grant execute on function public.record_payment_with_allocations(numeric, date, 
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- §8. Apply-time assertions
+-- §8. edit_payment_request — correcting a pending request, destination included
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- WHY THIS EXISTS. §3 records what a request is FOR as a pending allocation
+-- intent rather than in the payment row's linkage columns. That left the edit
+-- form with no safe way to re-point a request: a client UPDATE could move
+-- order_id without moving the intent, and the payment would then approve onto a
+-- record it no longer claimed to be for. Delete-and-resubmit is not a correction
+-- workflow — it destroys the request number, the submission timestamp, the
+-- activity trail and any attached proof. So the correction becomes a protected
+-- RPC that moves the row and its intent together, or moves neither.
+--
+-- THE PERMISSION IS THE ONE THAT ALREADY EXISTS, restated rather than invented:
+-- the submitter, or an admin, and only while the request is unapproved. That is
+-- exactly what finance_payment_requests_own_update,
+-- finance_payment_requests_admin_update and
+-- finance_payment_requests_guard_pending_decision (20260901000000) already
+-- allow. This function is SECURITY DEFINER, so it re-derives that rule itself
+-- instead of inheriting it — and the guard trigger still fires underneath,
+-- which is the second reading of the same rule.
+--
+-- THE CUSTOMER IS STILL NEVER TYPED. There is no p_client_name parameter here
+-- either, for the reason §3 gives: a parameter that is ignored is a parameter
+-- somebody will eventually rely on. Changing the destination RE-DERIVES the
+-- customer from the new record, and a Suspense correction sets it to NULL.
+--
+-- IT CREATES NO ALLOCATION, EVER. An edit moves intentions. The post-condition
+-- at the end says so in the database rather than in this comment.
+--
+-- PROOF FILES ARE NOT ITS BUSINESS. payment_proof_attachments rows key on
+-- payment_request_id, which this never changes, and no storage object is
+-- touched: an edited request keeps exactly the proof it had.
+
+create or replace function public.edit_payment_request(
+  p_payment_request_id uuid,
+  p_destination     text,
+  p_target_id       uuid    default null,
+  p_amount          numeric default null,
+  p_payment_date    date    default null,
+  p_payment_mode    text    default null,
+  p_proof_note      text    default null,
+  p_sales_note      text    default null,
+  p_collected_by    uuid    default null,
+  p_collected_from  text    default null,
+  p_handed_over_to  uuid    default null,
+  p_handed_over_at  date    default null,
+  p_collection_note text    default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor    uuid := auth.uid();
+  v_dest     text := btrim(lower(coalesce(p_destination, '')));
+  v_mode     text := btrim(lower(coalesce(p_payment_mode, '')));
+  v_req      public.finance_payment_requests%rowtype;
+  v_sub      public.order_submissions%rowtype;
+  v_ord      public.orders%rowtype;
+  v_client   text;
+  v_target_t text;
+  v_cash     boolean;
+  v_is_admin boolean;
+  v_status   text;
+  v_intent   uuid;
+  v_pending  numeric;
+  v_active   numeric;
+  v_n        int;
+begin
+  -- ── 1. Actor and module entry ──
+  if v_actor is null then
+    raise exception 'Authentication required to edit a payment request'
+      using errcode = '28000';
+  end if;
+
+  if not public.module_entry_open('finance') then
+    raise exception 'FINANCE_MODULE_CLOSED: the Finance module is not open to you.'
+      using errcode = '42501';
+  end if;
+
+  -- ── 2. THE LOCK COMES BEFORE EVERY DECISION ──
+  --
+  -- Not a peek and then a lock: every rule below is read from the LOCKED row.
+  -- approve_finance_payment_request takes the same lock on the same row before
+  -- it re-reads the status, so an edit and an approval racing the same request
+  -- serialize on this line. Whichever arrives second sees what the first
+  -- committed and refuses by name — it cannot decide on a row it read earlier.
+  select * into v_req
+  from public.finance_payment_requests
+  where id = p_payment_request_id
+  for update;
+
+  if not found then
+    raise exception 'PAYMENT_NOT_FOUND: that payment request no longer exists.'
+      using errcode = 'P0002';
+  end if;
+
+  -- ── 3. Approved money is not editable, and that is the race's answer ──
+  if v_req.status in ('approved_linked', 'approved_unlinked') then
+    raise exception
+      'PAYMENT_ALREADY_APPROVED: payment % has been verified and can no longer be changed here.',
+      v_req.request_number
+      using errcode = 'P0001';
+  end if;
+
+  if v_req.status not in ('pending_approval', 'needs_clarification', 'rejected') then
+    raise exception 'PAYMENT_NOT_EDITABLE: payment % is % and cannot be corrected.',
+      v_req.request_number, v_req.status
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 4. The existing edit permission: the submitter, or an admin ──
+  select exists (
+    select 1 from public.users u where u.id = v_actor and u.role = 'admin'
+  ) into v_is_admin;
+
+  if not v_is_admin and v_req.submitted_by is distinct from v_actor then
+    raise exception
+      'PAYMENT_EDIT_NOT_PERMITTED: only the person who submitted this request, or an admin, may correct it.'
+      using errcode = '42501';
+  end if;
+
+  -- ── 5. The shape of the correction ──
+  if v_dest not in ('pi_draft', 'confirmed_order', 'suspense') then
+    raise exception
+      'PAYMENT_DESTINATION_INVALID: choose PI Draft, Confirmed Order or Suspense Entry.'
+      using errcode = 'P0001';
+  end if;
+
+  if v_dest = 'suspense' then
+    if p_target_id is not null then
+      raise exception
+        'PAYMENT_TARGET_FORBIDDEN: a Suspense Entry names no PI Draft and no Order.'
+        using errcode = 'P0001';
+    end if;
+  elsif p_target_id is null then
+    raise exception
+      'PAYMENT_TARGET_REQUIRED: choose the PI Draft or Order this payment is for.'
+      using errcode = 'P0001';
+  end if;
+
+  if p_amount is null or p_amount <= 0 then
+    raise exception 'PAYMENT_AMOUNT_INVALID: enter a positive amount in rupees and paise.'
+      using errcode = 'P0001';
+  end if;
+
+  if p_payment_date is null then
+    raise exception 'PAYMENT_DATE_REQUIRED: enter the date the payment was received.'
+      using errcode = 'P0001';
+  end if;
+
+  if v_mode not in ('bank_transfer', 'cash', 'upi', 'cheque', 'other') then
+    raise exception
+      'PAYMENT_MODE_INVALID: choose Bank Transfer, Cash, UPI, Cheque or Other.'
+      using errcode = 'P0001';
+  end if;
+
+  -- ── 6. Resolve the target, and with it the customer ──
+  --
+  -- The SAME eligibility rules §3 applies at submission, applied again to the
+  -- record that is being moved TO. A correction onto a converted PI or a
+  -- cancelled Order is refused here rather than days later at approval.
+  if v_dest = 'pi_draft' then
+    select * into v_sub from public.order_submissions where id = p_target_id;
+    if not found then
+      raise exception 'PAYMENT_TARGET_NOT_FOUND: that PI Draft no longer exists.'
+        using errcode = 'P0002';
+    end if;
+    if v_sub.status = 'rejected' then
+      raise exception 'PAYMENT_TARGET_NOT_ACTIVE: a rejected PI Draft cannot receive a payment.'
+        using errcode = 'P0001';
+    end if;
+    if v_sub.order_id is not null then
+      raise exception
+        'PAYMENT_TARGET_CONVERTED: that PI has been approved and is now an Order. Choose the Order instead.'
+        using errcode = 'P0001';
+    end if;
+    v_client   := nullif(btrim(coalesce(v_sub.client_name, '')), '');
+    v_target_t := 'pi_draft';
+    if v_client is null then
+      raise exception
+        'PAYMENT_TARGET_NO_CLIENT: that PI Draft has no customer on file. Correct the PI before pointing a payment at it.'
+        using errcode = 'P0001';
+    end if;
+
+  elsif v_dest = 'confirmed_order' then
+    select * into v_ord from public.orders where id = p_target_id;
+    if not found then
+      raise exception 'PAYMENT_TARGET_NOT_FOUND: that Order no longer exists.'
+        using errcode = 'P0002';
+    end if;
+    if v_ord.status = 'cancelled' then
+      raise exception 'PAYMENT_TARGET_NOT_ACTIVE: Order % is cancelled and cannot receive a payment.',
+        v_ord.display_number using errcode = 'P0001';
+    end if;
+    v_client   := nullif(btrim(coalesce(v_ord.client_name, '')), '');
+    v_target_t := 'confirmed_order';
+    if v_client is null then
+      raise exception
+        'PAYMENT_TARGET_NO_CLIENT: that Order has no customer on file. Correct it on the Order Details page first.'
+        using errcode = 'P0001';
+    end if;
+
+  else
+    -- SUSPENSE. The customer goes back to NULL, because the record it was read
+    -- from is no longer this payment's destination. Keeping the old name would
+    -- leave the payment claiming a customer it is no longer for.
+    v_client   := null;
+    v_target_t := null;
+  end if;
+
+  v_cash := v_mode = 'cash';
+
+  -- ── 7. Re-applying, exactly as the form did it ──
+  --
+  -- A submitter correcting a request that was sent back or rejected is
+  -- resubmitting it. An ADMIN correcting somebody else's does not silently
+  -- resubmit on their behalf — the same distinction the form drew.
+  v_status := v_req.status;
+  if v_req.status in ('needs_clarification', 'rejected')
+     and v_req.submitted_by = v_actor then
+    v_status := 'pending_approval';
+  end if;
+
+  -- ── 8. The payment row ──
+  --
+  -- WHAT IS DELIBERATELY ABSENT: order_id, order_number, order_request_id,
+  -- order_request_number, received_in, submitted_by, request_number, approved_by
+  -- and approved_at. The linkage columns are provenance since 20261012000000 and
+  -- an edit does not start writing money into them; received_in has no form
+  -- asking for it and nothing to fabricate; the rest are not a correction's to
+  -- make.
+  update public.finance_payment_requests
+     set client_name              = v_client,
+         amount                   = p_amount,
+         payment_date             = p_payment_date,
+         payment_mode             = v_mode,
+         proof_note               = nullif(btrim(coalesce(p_proof_note, '')), ''),
+         sales_note               = nullif(btrim(coalesce(p_sales_note, '')), ''),
+         collected_by_user_id     = case when v_cash then p_collected_by end,
+         collected_from_text      = case when v_cash then nullif(btrim(coalesce(p_collected_from, '')), '') end,
+         handed_over_to_user_id   = case when v_cash then p_handed_over_to end,
+         handed_over_at           = case when v_cash then p_handed_over_at end,
+         collection_handover_note = case when v_cash then nullif(btrim(coalesce(p_collection_note, '')), '') end,
+         status                   = v_status,
+         updated_at               = now()
+   where id = p_payment_request_id;
+
+  -- ── 9. The intent, reconciled in the same transaction ──
+  --
+  -- CANCEL FIRST, THEN PLACE. Cancelling every pending intent that is not the
+  -- new target is what makes each transition below one rule rather than six:
+  --
+  --   PI → another PI          the old intent is cancelled, the new one placed
+  --   PI → Confirmed Order     the old intent is cancelled, the new one placed
+  --   Order → PI               the old intent is cancelled, the new one placed
+  --   PI / Order → Suspense    every intent is cancelled, none is placed
+  --   Suspense → PI / Order    there was none to cancel; one is placed
+  --   Suspense → Suspense      nothing to cancel, nothing to place
+  --   the SAME target again    nothing matches the cancel, the amount is
+  --                            updated in place — so a repeated identical
+  --                            correction is a no-op and leaves one row
+  --
+  -- CANCELLED, NOT DELETED. §6 already treats a cancelled intent as the audit
+  -- record of an intention that did not happen; a correction is the same kind
+  -- of event as a rejection and is kept the same way.
+  update public.finance_payment_allocation_intents
+     set status           = 'cancelled',
+         cancelled_at     = now(),
+         cancelled_reason = 'destination_changed'
+   where payment_request_id = p_payment_request_id
+     and status = 'pending'
+     and (
+       v_target_t is null
+       or target_type is distinct from v_target_t
+       or coalesce(order_submission_id, order_id) is distinct from p_target_id
+     );
+
+  if v_target_t is not null then
+    -- The survivor, if the target did not change. The UPDATE re-fires the
+    -- capacity trigger, which re-reads the payment amount THIS FUNCTION JUST
+    -- WROTE — so lowering the amount below what is intended is refused here,
+    -- by the rule that already owns that arithmetic.
+    update public.finance_payment_allocation_intents
+       set intended_amount = p_amount
+     where payment_request_id = p_payment_request_id
+       and status = 'pending'
+       and target_type = v_target_t
+       and coalesce(order_submission_id, order_id) = p_target_id
+    returning id into v_intent;
+
+    if v_intent is null then
+      insert into public.finance_payment_allocation_intents
+        (payment_request_id, target_type, order_submission_id, order_id,
+         intended_amount, created_by)
+      values
+        (p_payment_request_id, v_target_t,
+         case when v_target_t = 'pi_draft'        then p_target_id end,
+         case when v_target_t = 'confirmed_order' then p_target_id end,
+         p_amount, v_actor)
+      returning id into v_intent;
+    end if;
+  end if;
+
+  -- ── 10. Post-conditions, re-derived from the tables ──
+  --
+  -- Not a restatement of what the code above intended to do: a read of what it
+  -- actually left behind. All three roll the whole correction back.
+  select count(*) into v_n
+  from public.finance_payment_allocation_intents
+  where payment_request_id = p_payment_request_id and status = 'pending';
+
+  if v_n > 1 then
+    raise exception 'PAYMENT_EDIT_DUPLICATE_INTENT: this correction left % pending intents on one request', v_n
+      using errcode = 'P0001';
+  end if;
+  if v_target_t is null and v_n <> 0 then
+    raise exception 'PAYMENT_EDIT_SUSPENSE_INTENT: a Suspense Entry must hold no pending intent'
+      using errcode = 'P0001';
+  end if;
+  if v_target_t is not null and v_n <> 1 then
+    raise exception 'PAYMENT_EDIT_MISSING_INTENT: a targeted request must hold exactly one pending intent'
+      using errcode = 'P0001';
+  end if;
+
+  -- AN EDIT ALLOCATES NOTHING. An unapproved payment has no active allocation
+  -- before this runs and must have none after it; only approval converts.
+  select coalesce(sum(a.allocated_amount), 0) into v_active
+  from public.finance_payment_allocations a
+  where a.payment_request_id = p_payment_request_id and a.status = 'active';
+
+  if v_active <> 0 then
+    raise exception
+      'PAYMENT_EDIT_ALLOCATED: correcting a request must not attach money (found % allocated)', v_active
+      using errcode = 'P0001';
+  end if;
+
+  select coalesce(sum(i.intended_amount), 0) into v_pending
+  from public.finance_payment_allocation_intents i
+  where i.payment_request_id = p_payment_request_id and i.status = 'pending';
+
+  if v_pending > p_amount then
+    raise exception
+      'INTENT_EXCEEDS_PAYMENT: this request now intends % against an amount of %', v_pending, p_amount
+      using errcode = 'P0001';
+  end if;
+
+  return jsonb_build_object(
+    'payment_request_id', p_payment_request_id,
+    'request_number',     v_req.request_number,
+    'destination',        v_dest,
+    'client_name',        v_client,
+    'status',             v_status,
+    'intent_id',          v_intent,
+    'pending_intents',    v_n,
+    'allocation_created', false
+  );
+end $$;
+
+comment on function public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text) is
+  'Corrects a pending payment request, destination included, moving the row and its allocation intent in one transaction. Locks the payment FIRST so an edit racing an approval serializes and the loser is told by name (PAYMENT_ALREADY_APPROVED). Re-derives the customer from the new target — there is no client-name parameter — and sets it NULL for Suspense. Cancels intents rather than deleting them, leaves exactly one pending intent for a targeted destination and none for Suspense, and creates no allocation. Permission is the existing one: the submitter, or an admin, while the request is unapproved.';
+
+revoke execute on function public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text)
+  from public, anon;
+grant execute on function public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text)
+  to authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- §9. Apply-time assertions
 -- ═══════════════════════════════════════════════════════════════════════════
 --
 -- Read back from the catalogue, not from this file: what matters is what the
@@ -1209,7 +1635,7 @@ declare
   v_n    int;
   v_name text;
 begin
-  -- ── 8a. client_name is nullable, and its neighbours were not disturbed ──
+  -- ── 9a. client_name is nullable, and its neighbours were not disturbed ──
   select is_nullable into v_def
   from information_schema.columns
   where table_schema = 'public' and table_name = 'finance_payment_requests'
@@ -1246,7 +1672,7 @@ begin
     raise exception 'payment_mode must NOT accept ''card'' — the canonical list is five values';
   end if;
 
-  -- ── 8b. The intent table exists with the shape the model needs ──
+  -- ── 9b. The intent table exists with the shape the model needs ──
   if to_regclass('public.finance_payment_allocation_intents') is null then
     raise exception 'finance_payment_allocation_intents was not created';
   end if;
@@ -1289,7 +1715,7 @@ begin
     end if;
   end loop;
 
-  -- ── 8c. INTENT IS NOT ALLOCATION ──
+  -- ── 9c. INTENT IS NOT ALLOCATION ──
   --
   -- The claim this whole migration rests on, checked against the definitions
   -- rather than asserted in a comment: no financial object may read the intent
@@ -1319,7 +1745,32 @@ begin
       'INTENT LEAKED INTO THE PROJECTION: finance_received_payments reads the intent table';
   end if;
 
-  -- ── 8d. 20261012000000 is not weakened ──
+  -- AND THE ALLOCATOR'S CAPACITY RULE MUST NOT READ IT EITHER.
+  --
+  -- This is what makes §4's conversion order safe rather than lucky. The
+  -- allocation is created while its intent is still 'pending' — the applied_pair
+  -- CHECK forces that order — so if finance_payment_allocations_enforce_capacity
+  -- ever started summing intents alongside allocations, every conversion of a
+  -- full-amount intent would refuse itself. It counts allocations only, and this
+  -- refuses to install a version that does not.
+  if exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'finance_payment_allocations_enforce_capacity'
+  ) then
+    if pg_get_functiondef('public.finance_payment_allocations_enforce_capacity()'::regprocedure)
+         ~* 'finance_payment_allocation_intents' then
+      raise exception
+        'DOUBLE COUNT: the allocation capacity rule reads the intent table. An intent and the allocation it becomes coexist for the width of one statement (see §4).';
+    end if;
+  end if;
+
+  -- …and the conversion must still assert its own post-condition.
+  select pg_get_functiondef('public.apply_payment_allocation_intents(uuid)'::regprocedure) into v_def;
+  if v_def !~* 'INTENT_CONVERSION_DOUBLE_COUNTED' then
+    raise exception 'the conversion must re-derive the pending-plus-allocated total after each intent';
+  end if;
+
+  -- ── 9d. 20261012000000 is not weakened ──
   -- The direct-link fallback must still be absent from both objects.
   select pg_get_functiondef('public.order_linked_payment_total(uuid)'::regprocedure) into v_def;
   if v_def ~* 'order_id\s*=\s*p_order_id\s+then\s+\S*amount' then
@@ -1330,7 +1781,7 @@ begin
     raise exception 'the direct-link fallback returned to finance_received_payments';
   end if;
 
-  -- ── 8e. The Link/Unlink surface stays gone ──
+  -- ── 9e. The Link/Unlink surface stays gone ──
   select count(*) into v_n
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public'
@@ -1342,7 +1793,7 @@ begin
     raise exception '% Link/Unlink function(s) came back', v_n;
   end if;
 
-  -- ── 8f. Exposure ──
+  -- ── 9f. Exposure ──
   -- The submission door is callable by a signed-in user; the conversion is
   -- callable by nobody; the intent table is readable and not writable.
   if not has_function_privilege('authenticated',
@@ -1372,7 +1823,37 @@ begin
     raise exception 'RLS must be enabled on finance_payment_allocation_intents';
   end if;
 
-  -- ── 8g. record_payment_with_allocations no longer demands a typed customer ──
+  -- ── The correction door: exposed, definer-safe, and customer-free ──
+  if not has_function_privilege('authenticated', 'public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text)', 'execute') then
+    raise exception 'authenticated cannot call edit_payment_request';
+  end if;
+  if has_function_privilege('anon', 'public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text)', 'execute') then
+    raise exception 'anon must not call edit_payment_request';
+  end if;
+
+  select pg_get_functiondef('public.edit_payment_request(uuid, text, uuid, numeric, date, text, text, text, uuid, text, uuid, date, text)'::regprocedure) into v_def;
+  if v_def !~* 'security definer' then
+    raise exception 'edit_payment_request must be SECURITY DEFINER — it re-derives the edit permission itself';
+  end if;
+  if v_def !~* 'search_path' then
+    raise exception 'edit_payment_request must pin its search_path';
+  end if;
+  if v_def ~* 'p_client_name' then
+    raise exception 'edit_payment_request must not accept a customer name — it re-derives one';
+  end if;
+  if v_def !~* 'for update' then
+    raise exception 'edit_payment_request must lock the payment row before it decides anything';
+  end if;
+  -- The columns a correction may never write. order_id and its friends are
+  -- provenance since 20261012000000; received_in has no form asking for it.
+  foreach v_name in array array['order_id', 'order_request_id', 'received_in', 'submitted_by'] loop
+    if (regexp_match(v_def, '\m' || v_name || '\s*=', 'i')) is not null
+       and v_def !~* ('coalesce\(order_submission_id, order_id\)') then
+      raise exception 'edit_payment_request must not assign %', v_name;
+    end if;
+  end loop;
+
+  -- ── 9g. record_payment_with_allocations no longer demands a typed customer ──
   select pg_get_functiondef(
     'public.record_payment_with_allocations(numeric, date, text, text, text, text, text, jsonb)'::regprocedure
   ) into v_def;
@@ -1385,7 +1866,7 @@ begin
     raise exception 'record_payment_with_allocations must derive the customer from its targets';
   end if;
 
-  -- ── 8h. Approval converts, and the deletion protocol is intact ──
+  -- ── 9h. Approval converts, and the deletion protocol is intact ──
   select pg_get_functiondef('public.approve_finance_payment_request(uuid, text)'::regprocedure) into v_def;
   if v_def !~* 'apply_payment_allocation_intents' then
     raise exception 'approval must convert pending intents';

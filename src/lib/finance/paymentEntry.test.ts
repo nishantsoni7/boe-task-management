@@ -26,6 +26,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
@@ -77,6 +78,17 @@ function modalSource(file: string): string {
   const to   = src.indexOf('function PaymentIntentSummary(')
   if (from < 0 || to < 0 || to < from) {
     throw new Error('the Payment Request modal could not be located — has it been renamed?')
+  }
+  return src.slice(from, to)
+}
+
+/** The correction form, sliced out of the same page. */
+function editModalSource(): string {
+  const src = code(read(REQUEST_FORM))
+  const from = src.indexOf('function EditPaymentModal(')
+  const to   = src.indexOf('function FigureBand(')
+  if (from < 0 || to < 0 || to < from) {
+    throw new Error('the Edit Payment Request modal could not be located — has it been renamed?')
   }
   return src.slice(from, to)
 }
@@ -642,5 +654,167 @@ describe('what a refused submission tells the person', () => {
   test('a null refusal is still a sentence', () => {
     assert.match(paymentEntryErrorMessage(null), /could not be submitted/)
     assert.match(paymentEntryErrorMessage(undefined), /could not be submitted/)
+  })
+})
+
+// ── Correcting a pending request ──────────────────────────────────────────────
+//
+// A destination chosen at submission is not final: it is corrected here, and the
+// row and its intent move together because a protected RPC moves them. What
+// these pin is that the form asks the SAME question the creation form asks, and
+// that it cannot reach the intent table by any other route.
+
+describe('the correction form', () => {
+  test('it offers the same three destinations, from the same component', () => {
+    const src = editModalSource()
+    assert.ok(src.includes('<PaymentEntryFields'),
+      'the Edit form must render the shared destination block, not a list of its own')
+    assert.equal(/'pi_draft'[\s\S]{0,120}'confirmed_order'[\s\S]{0,120}'suspense'/.test(src), false,
+      'and must not restate the destination list')
+  })
+
+  test('it preloads what the request was submitted with', () => {
+    const src = editModalSource()
+    assert.ok(src.includes('loadPaymentIntent(supabase, r.id)'),
+      'the current destination is read from the intent, not guessed from the row')
+    assert.ok(src.includes("{ destination: 'suspense', target: null }"),
+      'a request with no intent preloads as Suspense — which is what it is')
+    assert.ok(src.includes('found.targetId'), 'and a targeted one preloads its target')
+  })
+
+  test('nothing may be saved before the destination has been read back', () => {
+    const src = editModalSource()
+    assert.ok(src.includes('entry !== null && isPaymentEntryComplete(entry)'),
+      'a Save landing while the intent was still loading would write Suspense over a targeted request')
+  })
+
+  test('the customer is shown, never typed, and never sent', () => {
+    const src = editModalSource()
+    assert.equal(/label="Client Name"|setClientName|manualClientName/.test(src), false,
+      'the correction form must hold no typed customer name')
+    assert.equal(src.includes('p_client_name'), false,
+      'edit_payment_request has no client-name parameter, on purpose')
+    assert.ok(src.includes('clientName: customerDisplayName(r.client_name)'),
+      'the read-only line shows the customer the server already derived')
+  })
+
+  test('the correction goes through the protected door, and never touches the intent table', () => {
+    const src = editModalSource()
+    assert.ok(src.includes(".rpc('edit_payment_request'"))
+    // No client UPDATE of the payment row survives in this form: two writes
+    // that must both land cannot be made atomic from a browser.
+    assert.equal(/\.from\('finance_payment_requests'\)[\s\S]{0,80}\.update\(/.test(src), false,
+      'the correction must not issue its own UPDATE')
+  })
+
+  test('NO surface writes the intent table from the client, anywhere', () => {
+    // The table has a SELECT policy and no INSERT, UPDATE or DELETE policy at
+    // all, so such a call would fail — but a call that cannot succeed is still a
+    // call somebody wrote, and it would read as an authorized path.
+    const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+      .split('\n').filter(f => /\.tsx?$/.test(f) && !f.includes('.test.'))
+    for (const f of files) {
+      const src = code(read(f))
+      const at = src.indexOf("from('finance_payment_allocation_intents')")
+      if (at < 0) continue
+      const after = src.slice(at, at + 200)
+      for (const write of ['.insert(', '.update(', '.upsert(', '.delete(']) {
+        assert.equal(after.includes(write), false,
+          `${f} must not ${write} the intent table — every write is a definer function`)
+      }
+    }
+  })
+
+  test('an approval that won the race collapses the form instead of retrying', () => {
+    const src = editModalSource()
+    assert.ok(src.includes("PAYMENT_ALREADY_APPROVED"),
+      'the losing correction must recognise the conflict it was given')
+    assert.ok(src.includes('setStale(true)'),
+      'and stop offering a Save that can only fail the same way')
+  })
+
+  test('it keeps the same modal protection as the two entry forms', () => {
+    const src = editModalSource()
+    assert.ok(src.includes('useDiscardGuard'), 'dirty Escape/✕/Cancel must ask')
+    assert.ok(src.includes('guard.requestClose'))
+    assert.ok(src.includes('<DiscardConfirmation'))
+    assert.ok(src.includes('closeOnBackdropClick={false}'), 'the backdrop must stay inert')
+    assert.ok(src.includes('submitting.current'), 'a second click must not submit twice')
+    for (const api of ['localStorage', 'sessionStorage', 'indexedDB']) {
+      assert.equal(src.includes(api), false, `nothing about a correction belongs in ${api}`)
+    }
+  })
+
+  test('a validation error leaves the form open with everything in it', () => {
+    const src = editModalSource()
+    const failure = src.slice(src.indexOf('if (rpcError || !data)'))
+    assert.ok(failure.includes('setError('), 'it must say what went wrong')
+    assert.equal(/onSaved\(\)|onClose\(\)/.test(failure.slice(0, 500)), false,
+      'and must not close on a refusal')
+  })
+
+  test('proof files are not a correction\'s business', () => {
+    const src = editModalSource()
+    for (const gone of ['payment_proof_attachments', 'storage', 'PROOF_BUCKET', 'buildProofPath']) {
+      assert.equal(src.includes(gone), false,
+        `the correction form must not touch ${gone} — an edited request keeps the proof it had`)
+    }
+  })
+})
+
+// ── The intent, converted exactly once ────────────────────────────────────────
+
+describe('the migration keeps intents and allocations apart', () => {
+  test('the correction door is protected, definer-safe and customer-free', () => {
+    const sql = read(MIGRATION)
+    const fn = sql.slice(sql.indexOf('create or replace function public.edit_payment_request'),
+      sql.indexOf('comment on function public.edit_payment_request'))
+    assert.ok(fn.length > 0, 'edit_payment_request must be in the migration')
+    assert.ok(fn.includes('security definer'))
+    assert.ok(fn.includes('set search_path = public, pg_temp'))
+    assert.equal(fn.includes('p_client_name'), false)
+    // The lock comes before every decision, which is what makes the race safe.
+    const lock = fn.indexOf('for update')
+    const status = fn.indexOf("v_req.status in ('approved_linked', 'approved_unlinked')")
+    assert.ok(lock > -1 && status > lock,
+      'the status must be read from the LOCKED row, not from a row read earlier')
+    assert.ok(sql.includes("grant execute on function public.edit_payment_request"),
+      'and it must be callable by a signed-in user')
+  })
+
+  test('a correction cancels intents rather than deleting them', () => {
+    const sql = read(MIGRATION)
+    const fn = sql.slice(sql.indexOf('create or replace function public.edit_payment_request'),
+      sql.indexOf('comment on function public.edit_payment_request'))
+    assert.ok(fn.includes("set status           = 'cancelled'"),
+      'a replaced intent is audit, not litter')
+    assert.equal(/delete\s+from\s+public\.finance_payment_allocation_intents/i.test(fn), false,
+      'nothing about a correction deletes an intent')
+  })
+
+  test('the conversion proves it did not double-count', () => {
+    const sql = read(MIGRATION)
+    const fn = sql.slice(sql.indexOf('create or replace function public.apply_payment_allocation_intents'),
+      sql.indexOf('comment on function public.apply_payment_allocation_intents'))
+    assert.ok(fn.includes('INTENT_CONVERSION_DOUBLE_COUNTED'),
+      'the post-condition must re-derive the pending-plus-allocated total')
+    // …and the allocator's own capacity rule is refused if it ever reads intents.
+    assert.ok(sql.includes("'DOUBLE COUNT: the allocation capacity rule reads the intent table"),
+      'the apply-time assertion must forbid the arrangement that would double-count')
+  })
+
+  test('the correction asserts what it left behind, rather than what it meant to', () => {
+    const sql = read(MIGRATION)
+    const fn = sql.slice(sql.indexOf('create or replace function public.edit_payment_request'),
+      sql.indexOf('comment on function public.edit_payment_request'))
+    for (const post of [
+      'PAYMENT_EDIT_DUPLICATE_INTENT',
+      'PAYMENT_EDIT_SUSPENSE_INTENT',
+      'PAYMENT_EDIT_MISSING_INTENT',
+      'PAYMENT_EDIT_ALLOCATED',
+      'INTENT_EXCEEDS_PAYMENT',
+    ]) {
+      assert.ok(fn.includes(post), `the correction must assert ${post}`)
+    }
   })
 })

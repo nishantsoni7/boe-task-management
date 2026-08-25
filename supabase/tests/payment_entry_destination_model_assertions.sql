@@ -35,6 +35,13 @@ insert into public.order_submissions (id, client_name, status, created_by) value
   ('e0000000-0000-4000-8000-00000000000e', 'Rao Associates',   'draft',    '22222222-2222-4222-8222-222222222222'),
   ('f0000000-0000-4000-8000-00000000000f', 'Rejected Co',      'rejected', '22222222-2222-4222-8222-222222222222');
 
+-- ── Module entry ─────────────────────────────────────────────────────────────
+-- Admin has it by role. Sales has it by grant, because submitting and
+-- correcting a payment request is what a salesperson does; 'Nobody' has neither
+-- and is what §14 and §22 use to prove entry is actually checked.
+insert into public.finance_permission_grants (user_id, action) values
+  ('22222222-2222-4222-8222-222222222222', 'finance.create');
+
 select pg_temp.act_as('11111111-1111-4111-8111-111111111111');
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -654,6 +661,548 @@ begin
   end if;
 
   raise notice '17. CASH TRAIL — kept for cash, discarded otherwise; no invented account or Order number';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 18. Correcting a pending request: every destination transition
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- ONE REQUEST, WALKED ROUND THE WHOLE CYCLE. Each step asserts the same four
+-- things: the customer was RE-DERIVED from the new target, exactly one pending
+-- intent survives, it names the record just chosen, and nothing was allocated.
+do $$
+declare
+  v_res jsonb; v_pay uuid;
+  v_row public.finance_payment_requests%rowtype;
+  v_intent public.finance_payment_allocation_intents%rowtype;
+  v_pending int; v_cancelled int; v_allocs int;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+
+  -- Start on a PI Draft.
+  v_res := public.submit_payment_request(
+    p_destination => 'pi_draft',
+    p_target_id   => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi',
+    p_proof_note  => 'UTR-1', p_sales_note => 'first');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  -- ── 18a. PI Draft → another PI Draft ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'pi_draft',
+    p_target_id   => 'e0000000-0000-4000-8000-00000000000e',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.client_name <> 'Rao Associates' then
+    raise exception '18a: the customer must be re-derived from the new PI, got %', v_row.client_name;
+  end if;
+
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 1 then raise exception '18a: exactly one pending intent, got %', v_pending; end if;
+
+  select * into v_intent from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_intent.order_submission_id <> 'e0000000-0000-4000-8000-00000000000e'
+     or v_intent.order_id is not null then
+    raise exception '18a: the surviving intent must name the new PI and nothing else';
+  end if;
+
+  -- The old one is CANCELLED, not deleted: a correction is an auditable event.
+  select count(*) into v_cancelled from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'cancelled'
+     and order_submission_id = 'd0000000-0000-4000-8000-00000000000d';
+  if v_cancelled <> 1 then raise exception '18a: the replaced intent must be kept as cancelled'; end if;
+
+  -- ── 18b. PI Draft → Confirmed Order ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'confirmed_order',
+    p_target_id   => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.client_name <> 'Kalyan Interiors' then
+    raise exception '18b: the customer must come from the Order, got %', v_row.client_name;
+  end if;
+  select * into v_intent from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_intent.target_type <> 'confirmed_order'
+     or v_intent.order_id <> 'a0000000-0000-4000-8000-00000000000a'
+     or v_intent.order_submission_id is not null then
+    raise exception '18b: the intent must be an Order intent, and only that';
+  end if;
+
+  -- ── 18c. Confirmed Order → PI Draft ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'pi_draft',
+    p_target_id   => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.client_name <> 'Kalyan Interiors' then
+    raise exception '18c: the PI customer must be derived, got %', v_row.client_name;
+  end if;
+  select * into v_intent from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_intent.target_type <> 'pi_draft'
+     or v_intent.order_submission_id <> 'd0000000-0000-4000-8000-00000000000d' then
+    raise exception '18c: the intent must be a PI intent again';
+  end if;
+
+  -- ── 18d. Targeted → Suspense: no intent, and NO customer ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'suspense',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.client_name is not null then
+    raise exception '18d: a Suspense correction must clear the customer, got %', v_row.client_name;
+  end if;
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 0 then raise exception '18d: Suspense must hold no pending intent, got %', v_pending; end if;
+
+  -- ── 18e. Suspense → Suspense: still nothing ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'suspense',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'cash');
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 0 then raise exception '18e: Suspense → Suspense must create nothing'; end if;
+
+  -- ── 18f. Suspense → Confirmed Order: a new intent, a derived customer ──
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay,
+    p_destination => 'confirmed_order',
+    p_target_id   => 'b0000000-0000-4000-8000-00000000000b',
+    p_amount      => 50000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.client_name <> 'Menon Builders' then
+    raise exception '18f: the customer must be derived on the way back out of Suspense';
+  end if;
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 1 then raise exception '18f: exactly one pending intent, got %', v_pending; end if;
+
+  -- ── 18g. NOTHING WAS ALLOCATED BY ANY OF THAT ──
+  select count(*) into v_allocs from public.finance_payment_allocations
+   where payment_request_id = v_pay;
+  if v_allocs <> 0 then
+    raise exception '18g: an edit must never attach money (found % allocations)', v_allocs;
+  end if;
+
+  -- …and the proof note the request was submitted with is still its own
+  -- business: an edit that did not send one clears it, one that does keeps it.
+  raise notice '18. TRANSITIONS — PI↔PI, PI↔Order, ↔Suspense: customer re-derived, one intent, nothing allocated';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 19. A repeated identical correction is a no-op
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_first uuid; v_second uuid;
+  v_pending int; v_rows int;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+
+  v_res := public.submit_payment_request(
+    p_destination => 'confirmed_order',
+    p_target_id   => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount      => 20000, p_payment_date => current_date, p_payment_mode => 'cheque');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+  select id into v_first from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+
+  -- The same correction, twice.
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 20000, p_payment_date => current_date, p_payment_mode => 'cheque');
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 20000, p_payment_date => current_date, p_payment_mode => 'cheque');
+
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 1 then raise exception '19: a repeat must not duplicate the intent, got %', v_pending; end if;
+
+  select id into v_second from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_second <> v_first then
+    raise exception '19: an unchanged target must keep the SAME intent row, not replace it';
+  end if;
+
+  -- And no cancelled churn was left behind for a correction that changed nothing.
+  select count(*) into v_rows from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'cancelled';
+  if v_rows <> 0 then
+    raise exception '19: an unchanged correction must cancel nothing, found %', v_rows;
+  end if;
+
+  raise notice '19. IDEMPOTENT — the same correction twice leaves one intent, unchanged';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 20. The revised amount governs the intent's capacity
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_intent public.finance_payment_allocation_intents%rowtype;
+  v_failed boolean; v_amount numeric;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+
+  v_res := public.submit_payment_request(
+    p_destination => 'confirmed_order',
+    p_target_id   => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount      => 90000, p_payment_date => current_date, p_payment_mode => 'upi');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  -- Lowering the payment lowers what it intends, in the same transaction.
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 30000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_intent from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_intent.intended_amount <> 30000 then
+    raise exception '20: the intent must follow the revised amount, got %', v_intent.intended_amount;
+  end if;
+  select amount into v_amount from public.finance_payment_requests where id = v_pay;
+  if v_amount <> 30000 then raise exception '20: the payment amount must be the revised one'; end if;
+
+  -- A SECOND intent that would take the pair over the amount is still refused by
+  -- the capacity trigger, against the REVISED figure.
+  v_failed := false;
+  begin
+    insert into public.finance_payment_allocation_intents
+      (payment_request_id, target_type, order_id, intended_amount, created_by)
+    values (v_pay, 'confirmed_order', 'b0000000-0000-4000-8000-00000000000b', 1,
+            '22222222-2222-4222-8222-222222222222');
+  exception when others then v_failed := true; end;
+  if not v_failed then
+    raise exception '20: an intent beyond the revised amount must be refused';
+  end if;
+
+  raise notice '20. CAPACITY — the revised amount governs the intent, and the trigger re-checks it';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 21. An invalid correction changes nothing at all
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_before public.finance_payment_requests%rowtype;
+  v_after public.finance_payment_requests%rowtype;
+  v_intent_before uuid; v_intent_after uuid; v_failed boolean; v_state text; v_msg text;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+
+  v_res := public.submit_payment_request(
+    p_destination => 'pi_draft',
+    p_target_id   => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount      => 15000, p_payment_date => current_date, p_payment_mode => 'cash');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+  select * into v_before from public.finance_payment_requests where id = v_pay;
+  select id into v_intent_before from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+
+  -- A cancelled Order. The amount, the date and the mode in this call are all
+  -- different, so if any of it leaked the row would show it.
+  v_failed := false;
+  begin
+    perform public.edit_payment_request(
+      p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+      p_target_id => 'c0000000-0000-4000-8000-00000000000c',
+      p_amount => 999999, p_payment_date => current_date - 5, p_payment_mode => 'other');
+  exception when others then
+    v_failed := true;
+    get stacked diagnostics v_msg = message_text, v_state = returned_sqlstate;
+  end;
+  if not v_failed then raise exception '21: a cancelled Order must be refused'; end if;
+  if v_state <> 'P0001' or v_msg not like 'PAYMENT_TARGET_NOT_ACTIVE%' then
+    raise exception '21: expected PAYMENT_TARGET_NOT_ACTIVE/P0001, got %/%', v_state, v_msg;
+  end if;
+
+  select * into v_after from public.finance_payment_requests where id = v_pay;
+  if v_after.amount <> v_before.amount
+     or v_after.payment_date <> v_before.payment_date
+     or v_after.payment_mode <> v_before.payment_mode
+     or v_after.client_name is distinct from v_before.client_name then
+    raise exception '21: a refused correction must leave the payment exactly as it was';
+  end if;
+
+  select id into v_intent_after from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_intent_after is distinct from v_intent_before then
+    raise exception '21: a refused correction must leave the intent exactly as it was';
+  end if;
+
+  -- A converted PI is refused the same way.
+  update public.order_submissions set order_id = 'a0000000-0000-4000-8000-00000000000a'
+   where id = 'e0000000-0000-4000-8000-00000000000e';
+  v_failed := false;
+  begin
+    perform public.edit_payment_request(
+      p_payment_request_id => v_pay, p_destination => 'pi_draft',
+      p_target_id => 'e0000000-0000-4000-8000-00000000000e',
+      p_amount => 15000, p_payment_date => current_date, p_payment_mode => 'cash');
+  exception when others then v_failed := true; end;
+  if not v_failed then raise exception '21: a converted PI must be refused'; end if;
+  update public.order_submissions set order_id = null
+   where id = 'e0000000-0000-4000-8000-00000000000e';
+
+  raise notice '21. ROLLBACK — an invalid target changes neither the payment nor its intent';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 22. Who may correct, and when
+-- ═══════════════════════════════════════════════════════════════════════════
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_failed boolean; v_msg text; v_row public.finance_payment_requests%rowtype;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  v_res := public.submit_payment_request(
+    p_destination => 'confirmed_order',
+    p_target_id   => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount      => 12000, p_payment_date => current_date, p_payment_mode => 'upi');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  -- 22a. Somebody with no Finance entry at all.
+  perform pg_temp.act_as('33333333-3333-4333-8333-333333333333');
+  v_failed := false;
+  begin
+    perform public.edit_payment_request(
+      p_payment_request_id => v_pay, p_destination => 'suspense',
+      p_amount => 12000, p_payment_date => current_date, p_payment_mode => 'upi');
+  exception when others then v_failed := true; get stacked diagnostics v_msg = message_text; end;
+  if not v_failed then raise exception '22a: a user without Finance entry must not correct'; end if;
+  if v_msg not like 'FINANCE_MODULE_CLOSED%' then
+    raise exception '22a: expected FINANCE_MODULE_CLOSED, got %', v_msg;
+  end if;
+
+  -- 22b. The submitter may.
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'suspense',
+    p_amount => 12000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  -- 22c. An admin may, on somebody else's request.
+  perform pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 12000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  -- 22d. An APPROVED request cannot be corrected, by anybody.
+  perform public.approve_finance_payment_request(v_pay, null);
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.status not in ('approved_linked', 'approved_unlinked') then
+    raise exception '22d: the request should be approved by now, it is %', v_row.status;
+  end if;
+
+  v_failed := false;
+  begin
+    perform public.edit_payment_request(
+      p_payment_request_id => v_pay, p_destination => 'suspense',
+      p_amount => 1, p_payment_date => current_date, p_payment_mode => 'cash');
+  exception when others then v_failed := true; get stacked diagnostics v_msg = message_text; end;
+  if not v_failed then raise exception '22d: an approved payment must not be editable'; end if;
+  if v_msg not like 'PAYMENT_ALREADY_APPROVED%' then
+    raise exception '22d: expected PAYMENT_ALREADY_APPROVED, got %', v_msg;
+  end if;
+
+  -- …and the approval it already performed is untouched by the refusal.
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.amount <> 12000 then
+    raise exception '22d: the refused edit must not have changed the approved payment';
+  end if;
+
+  raise notice '22. AUTHORIZATION — no Finance entry no edit; submitter and admin may; approved is closed';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 23. Proof files survive a correction untouched
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- payment_proof_attachments keys on payment_request_id, and a correction never
+-- changes it. The row is not re-created, not duplicated, and its storage_path —
+-- the object in the private bucket — is never rewritten, so nothing is orphaned.
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_att uuid; v_path text; v_n int;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+
+  v_res := public.submit_payment_request(
+    p_destination => 'pi_draft',
+    p_target_id   => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount      => 7000, p_payment_date => current_date, p_payment_mode => 'cheque',
+    p_proof_note  => 'cheque 001234');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  insert into public.payment_proof_attachments (payment_request_id, storage_path)
+  values (v_pay, 'payment-proofs/' || v_pay || '/cheque.pdf')
+  returning id, storage_path into v_att, v_path;
+
+  -- Walk it across all three destinations.
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 7000, p_payment_date => current_date, p_payment_mode => 'cheque',
+    p_proof_note => 'cheque 001234');
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'suspense',
+    p_amount => 7000, p_payment_date => current_date, p_payment_mode => 'cheque',
+    p_proof_note => 'cheque 001234');
+
+  select count(*) into v_n from public.payment_proof_attachments where payment_request_id = v_pay;
+  if v_n <> 1 then raise exception '23: the proof must be neither dropped nor duplicated, found %', v_n; end if;
+
+  if not exists (
+    select 1 from public.payment_proof_attachments
+    where id = v_att and payment_request_id = v_pay and storage_path = v_path
+  ) then
+    raise exception '23: the proof row must be the SAME row, still pointing at the same object';
+  end if;
+
+  raise notice '23. PROOF — one attachment, same id, same storage path, across every correction';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 24. Conversion does not double-count the intent against its own allocation
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- THE SHARPEST FORM OF THE QUESTION. A payment whose intent is its ENTIRE
+-- amount leaves no headroom at all: if the pending intent were counted
+-- alongside the allocation it becomes, the conversion would refuse itself. It
+-- does not, and afterwards the payment holds exactly one allocation, for exactly
+-- the amount, with no pending intent left over.
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_allocs int; v_pending int;
+  v_alloc numeric; v_applied int;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  v_res := public.submit_payment_request(
+    p_destination => 'confirmed_order',
+    p_target_id   => 'b0000000-0000-4000-8000-00000000000b',
+    p_amount      => 100000, p_payment_date => current_date, p_payment_mode => 'bank_transfer');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  perform pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+  v_res := public.approve_finance_payment_request(v_pay, null);
+
+  if (v_res->>'allocations_applied')::int <> 1 then
+    raise exception '24: the full-amount intent must convert, got %', v_res->>'allocations_applied';
+  end if;
+
+  select count(*), coalesce(sum(allocated_amount), 0) into v_allocs, v_alloc
+  from public.finance_payment_allocations
+  where payment_request_id = v_pay and status = 'active';
+  if v_allocs <> 1 or v_alloc <> 100000 then
+    raise exception '24: expected one active allocation of 100000, got % of %', v_allocs, v_alloc;
+  end if;
+
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 0 then raise exception '24: the converted intent must not stay pending'; end if;
+
+  select count(*) into v_applied from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'applied' and applied_allocation_id is not null;
+  if v_applied <> 1 then raise exception '24: the intent must name the allocation it became'; end if;
+
+  -- And the exclusion is structural, not incidental: the allocator's own
+  -- capacity rule does not read the intent table at all.
+  if pg_get_functiondef('public.finance_payment_allocations_enforce_capacity()'::regprocedure)
+       ~* 'finance_payment_allocation_intents' then
+    raise exception '24: the allocation capacity rule must not count intents';
+  end if;
+
+  raise notice '24. CONVERSION — a full-amount intent converts once; nothing counts it twice';
+end $$;
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 25. Rejected, corrected, re-applied — the intent comes back
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- A rejection cancels the pending intent (§6/§8). The submitter then corrects
+-- the request and re-applies, which is the one path that has to PLACE an intent
+-- where none is pending rather than move one. It also crosses the reject
+-- trigger in the other direction, so this proves the trigger fires on the way
+-- IN to rejected and not on the way out.
+do $$
+declare
+  v_res jsonb; v_pay uuid; v_pending int; v_cancelled int;
+  v_row public.finance_payment_requests%rowtype;
+begin
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  v_res := public.submit_payment_request(
+    p_destination => 'pi_draft',
+    p_target_id   => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount      => 8000, p_payment_date => current_date, p_payment_mode => 'upi');
+  v_pay := (v_res->>'payment_request_id')::uuid;
+
+  perform pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+  perform public.reject_finance_payment_request(v_pay, 'wrong record');
+
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 0 then raise exception '25: rejection must leave no pending intent'; end if;
+
+  -- The submitter corrects it onto the right record and, by doing so, re-applies.
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  v_res := public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'confirmed_order',
+    p_target_id => 'b0000000-0000-4000-8000-00000000000b',
+    p_amount => 8000, p_payment_date => current_date, p_payment_mode => 'upi');
+
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.status <> 'pending_approval' then
+    raise exception '25: a submitter correcting a rejected request re-applies it, got %', v_row.status;
+  end if;
+  if v_row.client_name <> 'Menon Builders' then
+    raise exception '25: the customer must be re-derived on re-apply, got %', v_row.client_name;
+  end if;
+
+  select count(*) into v_pending from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'pending';
+  if v_pending <> 1 then
+    raise exception '25: the re-applied request must hold exactly one pending intent, got %', v_pending;
+  end if;
+
+  -- The rejection's own record survives the correction.
+  select count(*) into v_cancelled from public.finance_payment_allocation_intents
+   where payment_request_id = v_pay and status = 'cancelled'
+     and cancelled_reason = 'payment request rejected';
+  if v_cancelled <> 1 then
+    raise exception '25: the rejected intent must stay on the record';
+  end if;
+
+  -- An ADMIN correcting somebody else's rejected request does NOT resubmit it
+  -- on their behalf — the same distinction the form has always drawn.
+  perform pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+  perform public.reject_finance_payment_request(v_pay, 'still wrong');
+  perform public.edit_payment_request(
+    p_payment_request_id => v_pay, p_destination => 'suspense',
+    p_amount => 8000, p_payment_date => current_date, p_payment_mode => 'upi');
+  select * into v_row from public.finance_payment_requests where id = v_pay;
+  if v_row.status <> 'rejected' then
+    raise exception '25: an admin correction must not silently resubmit, got %', v_row.status;
+  end if;
+
+  raise notice '25. RE-APPLY — rejection cancels, correction places a fresh intent, admin does not resubmit';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

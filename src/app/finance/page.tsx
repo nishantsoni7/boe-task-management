@@ -83,6 +83,7 @@ import {
   isPaymentMode,
   paymentEntryErrorMessage,
   paymentModeLabel,
+  type PaymentDestination,
 } from '@/lib/finance/paymentEntry'
 import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import {
@@ -300,11 +301,11 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
 // money arrived, the record is a received payment, not an outstanding request,
 // and it leaves this page in the same breath.
 //
-// UNAPPROVED_STATUSES is the query scope AND the filter sent on every
-// update/delete this page issues, so the same rule is re-evaluated server-side
-// against the committed row at mutation time (see the race note on
-// APPROVED_RACE_MESSAGE) — a row approved between load and click is still
-// refused by the database, not merely hidden.
+// THE SAME RULE IS RE-EVALUATED SERVER-SIDE at mutation time. Corrections now
+// go through edit_payment_request, which locks the payment row and re-reads its
+// status under that lock — so a request approved between load and click is
+// refused by name (PAYMENT_ALREADY_APPROVED) rather than merely hidden. See the
+// race note on APPROVED_RACE_MESSAGE.
 
 /**
  * How long the search box waits before asking the database.
@@ -315,8 +316,6 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
  * an ordinary term costs one round of queries rather than one per character.
  */
 const SEARCH_DEBOUNCE_MS = 250
-
-const UNAPPROVED_STATUSES = REQUEST_STAGE_STATUSES
 
 function isApproved(status: string): boolean {
   return status === 'approved_unlinked' || status === 'approved_linked'
@@ -744,6 +743,12 @@ function DetailsModal({
           </div>
         </div>
       )}
+
+      {/* B2. WHAT THIS PAYMENT IS FOR. Its destination lives in the allocation
+          intent, so "Payment Against" above reads 'New Order' for every request
+          written through the new form — true of the row, and useless to a person
+          looking at it. This is the answer they actually want. */}
+      <PaymentIntentSummary supabase={supabase} request={r} />
 
       {/* C. Cash collection — only for money somebody physically carried, and
           the reason this popup exists for a PNB payment at all: the requester
@@ -1461,10 +1466,21 @@ function NewPaymentConfirmationModal({
 // back yet and the block says so; `null` means the payment carries none, which
 // is exactly what a Suspense Entry is. Collapsing the two would show "Suspense
 // Entry" for a moment on every targeted payment.
-function PaymentIntentSummary({ intent, request }: {
-  intent: StoredIntent | null | undefined
+function PaymentIntentSummary({ supabase, request }: {
+  supabase: ReturnType<typeof createClient>
   request: PaymentRequest
 }) {
+  const [intent, setIntent] = useState<StoredIntent | null | undefined>(undefined)
+
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const found = await loadPaymentIntent(supabase, request.id)
+      if (active) setIntent(found)
+    })()
+    return () => { active = false }
+  }, [supabase, request.id])
+
   const reference = intent === undefined ? null : intentReferenceLabel(intent)
   return (
     <div style={{
@@ -1502,9 +1518,8 @@ function PaymentIntentSummary({ intent, request }: {
       </div>
 
       <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-        Chosen when the request was submitted and read from that record — it is
-        not typed, and it is not editable here. To send this money somewhere
-        else, delete this request and submit it again.
+        Read from the record itself, never typed. Nothing is attached to it
+        until Finance verifies this payment.
       </span>
     </div>
   )
@@ -1521,37 +1536,59 @@ type EditPaymentModalProps = {
 }
 
 function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: EditPaymentModalProps) {
+  useModalScrollLock()
+
   const [form, setForm] = useState({
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     proofNote:   r.proof_note ?? '',
-    orderNumber: r.order_number ?? '',
     salesNote:   r.sales_note  ?? '',
   })
 
-  // ── THE DESTINATION IS NOT EDITABLE HERE, AND THAT IS DELIBERATE ──
+  // ── THE DESTINATION IS EDITABLE, THROUGH THE PROTECTED DOOR ──
   //
   // Since 20261013000000 a pending request's destination lives in its ALLOCATION
   // INTENT, not in the payment row's linkage columns — that is what keeps
   // unverified money out of finance_payment_allocations until Finance approves.
-  // A form that re-pointed order_id would move the row's label without moving
-  // the intent, and the payment would then approve onto the record it no longer
-  // claims to be for. Rather than show a control that can produce that
-  // disagreement, this form shows what was chosen and leaves it alone.
+  // So a correction has to move the row AND the intent together, which a client
+  // UPDATE cannot do atomically: edit_payment_request does it, re-derives the
+  // customer from whichever record is chosen, and refuses outright once the
+  // request has been approved.
   //
-  // Correcting a destination is therefore: delete this pending request (the
-  // creator may, while it is unapproved) and submit it again. One deliberate act
-  // instead of two records that disagree.
-  const [intent, setIntent] = useState<StoredIntent | null | undefined>(undefined)
+  // UNDEFINED IS NOT NULL HERE. `undefined` means the intent has not been read
+  // back yet; `null` means the request carries none, which is what a Suspense
+  // Entry is. Collapsing the two would show every request as Suspense for a
+  // moment and let a Save land before the form knew what it was editing.
+  const [entry, setEntry] = useState<PaymentEntryState | null>(null)
+
+  // What the form OPENED with, so "has the destination changed?" compares
+  // against the request rather than against a default.
+  const loadedDestination = useRef<PaymentDestination | null>(null)
+  const loadedTargetId    = useRef<string | undefined>(undefined)
 
   useEffect(() => {
     let active = true
     ;(async () => {
       const found = await loadPaymentIntent(supabase, r.id)
-      if (active) setIntent(found)
+      if (!active) return
+      loadedDestination.current = found ? found.targetType : 'suspense'
+      loadedTargetId.current    = found ? found.targetId : undefined
+      setEntry(found
+        ? {
+            destination: found.targetType,
+            target: {
+              id: found.targetId,
+              reference: found.reference ?? 'Not visible to you',
+              // The customer already ON THE ROW: the server derived it from
+              // this very record at submission. Nothing here re-reads or
+              // re-guesses it.
+              clientName: customerDisplayName(r.client_name),
+            },
+          }
+        : { destination: 'suspense', target: null })
     })()
     return () => { active = false }
-  }, [supabase, r.id])
+  }, [supabase, r.id, r.client_name])
 
   // The payment mode and its cash trail ARE editable, in exactly the window
   // every other field on this form is: the row is still pre-approval, which the
@@ -1574,76 +1611,105 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
+  // ONE SUBMISSION, NOT ONE PER CLICK. Read and written synchronously, so a
+  // second click inside the same tick finds the window already shut.
+  const submitting = useRef(false)
+
   // Same single blocking rule as the submission form, and for the same reason.
   const collectionError = collectionErrorForMode(paymentMode, collection, form.paymentDate)
 
-  const canSubmit = isValidAmount(form.amount) && !!form.paymentDate
+  // Nothing may be saved before the destination has been read back: a Save that
+  // landed while `entry` was still null would write Suspense over a targeted
+  // request that had simply not loaded yet.
+  const canSubmit = entry !== null && isPaymentEntryComplete(entry)
+    && isValidAmount(form.amount) && !!form.paymentDate
     && isPaymentMode(paymentMode) && !collectionError
 
+  // ── Not losing what was typed ──
+  const isDirty = () =>
+    form.amount !== String(r.amount) ||
+    form.paymentDate !== r.payment_date ||
+    form.proofNote.trim() !== (r.proof_note ?? '').trim() ||
+    form.salesNote.trim() !== (r.sales_note ?? '').trim() ||
+    paymentMode !== r.payment_mode ||
+    JSON.stringify(collection) !== JSON.stringify(readCollectionState(r)) ||
+    (entry !== null && (entry.destination !== loadedDestination.current
+      || entry.target?.id !== loadedTargetId.current))
+
+  const guard = useDiscardGuard({ isDirty, onClose: stale ? onSaved : onClose, disabled: saving })
+
+  // The SAME search the submission form and Allocate Funds use, narrowed to the
+  // one kind the chosen destination admits.
+  const searchTargets = async (kind: 'submission' | 'order', term: string): Promise<PaymentEntryTarget[]> => {
+    const found = await searchAllocationTargets(supabase, term, kind)
+    return found.map(c => ({
+      id: c.id,
+      reference: c.reference,
+      clientName: c.clientName,
+      totalValue: typeof c.value === 'string' ? Number(c.value) : c.value,
+    }))
+  }
+
   const handleSave = async () => {
-    if (!canSubmit) return
+    if (!canSubmit || !entry || saving || submitting.current) return
+    submitting.current = true
     setSaving(true)
     setError(null)
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
 
-    // NO LINKAGE AND NO CUSTOMER IN THIS PAYLOAD. order_id, order_request_id and
-    // client_name are all absent: the destination is fixed at submission (see
-    // the note on `intent` above) and the customer was derived from it
-    // server-side. Sending either would be this form claiming something it did
-    // not ask anybody.
+    // ONE CALL, ONE TRANSACTION. The payment row and its allocation intent move
+    // together or not at all — which a client cannot do, and which is why the
+    // direct UPDATE this form used to issue is gone. The RPC locks the payment
+    // first, so an approval that landed while the modal was open is seen under
+    // the lock and refused by name rather than half-applied.
     //
-    // order_number keeps its legacy meaning as free-form reference text for a
-    // row that carries no Order link, which is every row this page's own form
-    // now writes.
-    const linkage = r.order_id === null
-      ? { order_number: form.orderNumber.trim() || null }
-      : {}
+    // NO CUSTOMER IS SENT. There is no parameter for one: edit_payment_request
+    // re-derives it from whichever record the destination now names, and sets
+    // it NULL for Suspense.
+    const cash = buildCollectionPayloadForMode(paymentMode, collection)
 
-    // The status filter is the race guard: PostgREST re-evaluates it against
-    // the committed row, so an approval that landed while this modal was open
-    // turns the save into a zero-row no-op instead of overwriting the approved
-    // record. It applies to admins too, whose RLS policy alone would allow the
-    // write. Nothing protected is submitted: request_number, submitted_by,
-    // approved_by/at and created_at are all absent from the payload, and
-    // payment_target_type is derived server-side rather than sent.
-    const { data: updated, error: dbError } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        ...linkage,
-        amount:       Number(form.amount),
-        payment_date: form.paymentDate,
-        payment_mode: paymentMode,
-        // received_in IS NOT IN THIS PAYLOAD, for any row. The four-account
-        // picker that used to set it alongside payment_mode is gone, so this
-        // form has nothing true to say about the receiving account — and a
-        // correction to an amount must never restate where the money went. A
-        // legacy row keeps whatever account it was recorded with.
-        //
-        // All five cash-trail keys, always — moving a payment off Cash has to
-        // CLEAR the trail it recorded, and an omitted key would leave a
-        // handover attached to a bank transfer.
-        ...buildCollectionPayloadForMode(paymentMode, collection),
-        proof_note:   form.proofNote.trim() || null,
-        sales_note:   form.salesNote.trim() || null,
-        ...(isCreatorReapply ? { status: 'pending_approval' } : {}),
-        updated_at:   new Date().toISOString(),
-      })
-      .eq('id', r.id)
-      .in('status', UNAPPROVED_STATUSES)
-      .select('id')
-      .maybeSingle()
+    const { data, error: rpcError } = await supabase.rpc('edit_payment_request', {
+      p_payment_request_id: r.id,
+      p_destination:     entry.destination,
+      p_target_id:       entry.target?.id ?? null,
+      p_amount:          Number(form.amount),
+      p_payment_date:    form.paymentDate,
+      p_payment_mode:    paymentMode,
+      p_proof_note:      form.proofNote.trim() || null,
+      p_sales_note:      form.salesNote.trim() || null,
+      p_collected_by:    cash.collected_by_user_id,
+      p_collected_from:  cash.collected_from_text,
+      p_handed_over_to:  cash.handed_over_to_user_id,
+      p_handed_over_at:  cash.handed_over_at,
+      p_collection_note: cash.collection_handover_note,
+    })
+
     setSaving(false)
-    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
-    if (!updated) { setStale(true); setError(APPROVED_RACE_MESSAGE); return }
+    if (rpcError || !data) {
+      submitting.current = false
+      // An approval that won the race is not a retryable failure: the request
+      // has left this page's jurisdiction, so the form collapses to a single
+      // dismissal that refreshes the table.
+      if ((rpcError?.message ?? '').includes('PAYMENT_ALREADY_APPROVED')) {
+        setStale(true)
+        setError(APPROVED_RACE_MESSAGE)
+        return
+      }
+      setError(paymentEntryErrorMessage(rpcError?.message))
+      return
+    }
 
     // A creator editing a needs_clarification or rejected request moves it
     // back to pending_approval — notify approvers it is ready for review again.
+    // The customer named here is the one the SERVER just derived, not the one
+    // the row carried before the correction.
     if (isCreatorReapply) {
+      const saved = data as { client_name: string | null }
       void notifyFinance({
         event: 'finance_resubmitted',
         requestNumber: r.request_number,
         entityId: r.id,
-        clientName: customerDisplayName(r.client_name),
+        clientName: customerDisplayName(saved.client_name),
       })
     }
 
@@ -1654,7 +1720,14 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     // Once an approval has been detected, every dismissal path refreshes so the
     // table stops showing the request as still editable (see the same note on
     // DeleteConfirmModal).
-    <FinanceModal title={!isAdmin && r.status === 'rejected' ? 'Reapply Payment Request' : 'Edit Payment Request'} onClose={stale ? onSaved : onClose}>
+    <FinanceModal
+      title={!isAdmin && r.status === 'rejected' ? 'Reapply Payment Request' : 'Edit Payment Request'}
+      /* ✕ and Escape ask before discarding; a backdrop click does nothing at
+         all. The same rule both entry forms carry. */
+      onClose={guard.requestClose}
+      width="620px"
+      closeOnBackdropClick={false}
+    >
       {!isAdmin && r.status === 'needs_clarification' && (
         <div style={{
           padding: '12px 14px', borderRadius: '8px',
@@ -1687,10 +1760,26 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           </div>
         </div>
       )}
-      {/* What this payment is for, and who it is from — read-only, both of
-          them. The destination is fixed at submission and the customer follows
-          from it; neither is something this form can be asked to change. */}
-      <PaymentIntentSummary intent={intent} request={r} />
+      {/* WHAT THIS PAYMENT IS FOR — the same three cards the submission form
+          offers, preloaded with what was chosen. Changing one clears the target
+          the old one carried; the customer beneath is read-only and is
+          re-derived server-side from whichever record is picked. */}
+      {entry === null ? (
+        <div style={{
+          padding: '11px 12px', borderRadius: '8px',
+          border: `1px solid ${colors.border}`, background: colors.raised,
+          fontSize: '13px', color: colors.muted,
+        }}>
+          Reading what this payment is for…
+        </div>
+      ) : (
+        <PaymentEntryFields
+          state={entry}
+          onChange={next => { setEntry(next); setError(null) }}
+          onSearch={searchTargets}
+          disabled={saving}
+        />
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
           <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
@@ -1731,16 +1820,6 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
-      {/* Free-form reference text, and only meaningful for a row that carries no
-          Order link. For a linked legacy row the number belongs to the Order and
-          is written from it, so offering an editable field here would invite a
-          second, contradictory value. */}
-      {r.order_id === null && (
-        <Field label="Order Number (optional)">
-          <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
-            placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
-        </Field>
-      )}
       <Field label="Sales Note (optional)">
         <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
           placeholder="Any additional context for admin"
@@ -1758,7 +1837,8 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         </div>
       ) : (
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
+          <button onClick={guard.requestClose} disabled={saving}
+            className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>Cancel</button>
           <button onClick={handleSave} disabled={!canSubmit || saving}
             className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
             {!isAdmin && r.status === 'rejected'
@@ -1767,6 +1847,12 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           </button>
         </div>
       )}
+
+      <DiscardConfirmation
+        open={guard.asking}
+        onKeepEditing={guard.keepEditing}
+        onDiscard={guard.discard}
+      />
     </FinanceModal>
   )
 }
@@ -2026,6 +2112,12 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
 
   const left = (
     <>
+      {/* WHAT APPROVING THIS WILL ATTACH THE MONEY TO. First, above the routing
+          facts, because it is the one thing an approver is deciding about: the
+          allocation intent becomes a real allocation the moment they click
+          Approve, and until then the row's own linkage columns say nothing. */}
+      <PaymentIntentSummary supabase={supabase} request={r} />
+
       {/* Routing — where this payment is aimed and how it came in. Quiet,
           dense, and deliberately lighter than the band above it: these are
           facts to check, not the headline. Every field the previous layout

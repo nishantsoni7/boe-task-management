@@ -36,6 +36,8 @@ export type StoredIntent = {
   /** 'pi_draft' or 'confirmed_order'. Suspense creates no intent at all. */
   targetType: Extract<PaymentDestination, 'pi_draft' | 'confirmed_order'>
   status: IntentStatus
+  /** The PI Draft or the Order this intent names. */
+  targetId: string
   intendedAmount: number
   /**
    * How the target identifies itself: an Order's number, or a PI's own source
@@ -128,6 +130,7 @@ export async function loadPaymentIntent(
   return {
     id: row.id,
     targetType,
+    targetId: (targetType === 'pi_draft' ? row.order_submission_id : row.order_id) ?? '',
     status: (['pending', 'applied', 'cancelled'] as const).includes(row.status as IntentStatus)
       ? (row.status as IntentStatus)
       : 'pending',

@@ -421,8 +421,13 @@ describe('neither payment-entry form states an account any more', () => {
       .filter(token => token !== 'string')
     assert.deepEqual(written, [],
       `no form on this page may write received_in — the account picker is gone (found: ${written.join(', ')})`)
-    assert.ok(source.includes('...buildCollectionPayloadForMode(paymentMode, collection)'),
-      'the cash trail must be written from the MODE, all five keys, always')
+    // The five cash-trail values are derived from the MODE and handed to the
+    // protected door, which decides again for itself — so a form field left
+    // filled in on a bank transfer is discarded rather than stored.
+    assert.ok(source.includes('buildCollectionPayloadForMode(paymentMode, collection)'),
+      'the correction must derive its cash trail from the mode')
+    assert.ok(source.includes(".rpc('edit_payment_request'"),
+      'and send it through the protected door, not a client UPDATE')
   })
 
   test('the Payment Request form sends no client name and no account', () => {

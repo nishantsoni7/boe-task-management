@@ -235,6 +235,8 @@ revoke execute on function public.approve_finance_payment_request(uuid, text) fr
 grant execute on function public.approve_finance_payment_request(uuid, text) to authenticated;
 
 -- ── A reject path, so §6's cancel-on-reject trigger has something to fire on ──
+-- REVOKED BELOW, like the real one. A stand-in left open to `public` makes an
+-- exposure audit of the built fixture read as though the migration granted it.
 create or replace function public.reject_finance_payment_request(
   p_request_id uuid, p_reason text
 ) returns void language plpgsql security definer set search_path = public, pg_temp
@@ -319,6 +321,9 @@ revoke execute on function public.allocate_payment_to_target_internal(uuid, uuid
   from public, anon, authenticated, service_role;
 revoke execute on function public.allocate_payment_to_target_internal_payment_side(uuid, uuid, uuid, numeric)
   from public, anon, authenticated, service_role;
+
+revoke execute on function public.reject_finance_payment_request(uuid, text) from public, anon;
+grant execute on function public.reject_finance_payment_request(uuid, text) to authenticated;
 
 -- ── module_entry_open, with an actual answer ─────────────────────────────────
 -- The 111 fixture stubs this to `select true`, which is fine for a suite that
