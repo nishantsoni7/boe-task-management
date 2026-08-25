@@ -297,23 +297,17 @@ describe('the action lists are untouched', () => {
       'still permission-derived at the call site')
   })
 
-  test('the manage-only actions are still gated on canManage', () => {
+  test('the manage-only action is still gated on canManage', () => {
     // The conditions moved into visibleRowActions(); these assert the FUNCTION,
     // which is stronger than matching the JSX that used to hold them.
-    const base = { offerAllocate: false, canDelete: false,
-                   orderId: null, orderRequestId: null, paymentAgainst: null }
-    assert.ok(!visibleRowActions({ ...base, canManage: false }).includes('link'))
+    const base = { offerAllocate: false, canDelete: false }
     assert.ok(!visibleRowActions({ ...base, canManage: false }).includes('edit'))
-    assert.ok(visibleRowActions({ ...base, canManage: true }).includes('link'),
-      'linking is a manage capability, and only for an unlinked payment')
-    assert.ok(visibleRowActions({ ...base, canManage: true }).includes('edit'))
-    assert.ok(!visibleRowActions({ ...base, canManage: true, orderId: 'o' }).includes('link'),
-      'and never once the payment already has an Order')
+    assert.ok(visibleRowActions({ ...base, canManage: true }).includes('edit'),
+      'editing a recorded payment is the finance.manage authority')
   })
 
   test('the destructive action is still admin-gated and still last', () => {
-    const base = { offerAllocate: true, canManage: true,
-                   orderId: null, orderRequestId: null, paymentAgainst: null }
+    const base = { offerAllocate: true, canManage: true }
     assert.ok(!visibleRowActions({ ...base, canDelete: false }).includes('delete'))
     const withDelete = visibleRowActions({ ...base, canDelete: true })
     assert.ok(withDelete.includes('delete'))
@@ -357,70 +351,167 @@ describe('the action lists are untouched', () => {
   })
 })
 
-// ══ 3b. The Actions column is wide enough for the widest row it can draw ═════
+// ══ 3b. Four actions, and the column is sized for exactly those ══════════════
 //
-// This section exists because the fit was previously ASSERTED from a count made
-// by eye, and the count was wrong twice over: "six 24px icons fit the 110px
-// column" (6x24 + 5x2 = 154 > 110), and then "the maximum is five, because Link
-// and Unlink are mutually exclusive" (they are not — see rowActions.ts). So
-// nothing below restates a number. Each assertion either COMPUTES the width from
-// the visibility rules, or reads the declared width back out of the column
+// The Actions column was sized from a count made by eye twice, and was wrong
+// both times: "six 24px icons fit the 110px column" (6x24 + 5x2 = 154, before
+// any cell padding), then "the maximum is five, Link and Unlink being mutually
+// exclusive" (they were not). Both counts are now moot — Link and Unlink are
+// gone entirely, because one payment could point at only one Order and so
+// could not express a partial attachment, a split across records, a mixed
+// PI-Draft/Order division, or a remaining balance. Allocation expresses all
+// five and is the single attachment workflow.
+//
+// So nothing below restates a number. Each assertion either COMPUTES the width
+// from the visibility rules, or reads the declared width back out of the column
 // definition and compares the two.
+
+describe('Link and Unlink are gone from every active Finance surface', () => {
+  const SURFACES = [
+    'src/app/finance/received/ReceivedPaymentsView.tsx',
+    'src/app/finance/page.tsx',
+    'src/app/finance/received/AllocateFundsModal.tsx',
+    'src/app/finance/received/AllocatePaymentModal.tsx',
+    'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    'src/app/finance/components/PaymentTargetFields.tsx',
+    'src/lib/finance/rowActions.ts',
+    'src/lib/finance/paymentSurfaces.ts',
+  ]
+
+  test('no action key, icon or handler survives in the action model', () => {
+    assert.deepEqual([...ROW_ACTION_KEYS], ['view', 'allocate', 'edit', 'delete'],
+      'the whole action set, and neither link nor unlink is in it')
+    const rules = readFileSync(join(process.cwd(), 'src/lib/finance/rowActions.ts'), 'utf8')
+    const code = stripComments(rules)
+    for (const gone of ['Link2', 'Unlink', "'link'", "'unlink'", 'orderId', 'orderRequestId', 'paymentAgainst']) {
+      assert.equal(code.includes(gone), false,
+        `rowActions.ts must not still model ${gone}`)
+    }
+  })
+
+  test('no Link2 or Unlink icon is imported or drawn anywhere in Finance', () => {
+    for (const path of SURFACES) {
+      const code = stripComments(readFileSync(join(process.cwd(), path), 'utf8'))
+      assert.equal(/\bLink2\b/.test(code), false, `${path} must not draw the Link2 icon`)
+      assert.equal(/\bUnlink\b/.test(code), false, `${path} must not draw the Unlink icon`)
+    }
+  })
+
+  test('no link/unlink modal, state or handler remains without a caller', () => {
+    const code = stripComments(view)
+    for (const gone of [
+      'function LinkOrderModal', 'LinkOrderModal', 'LinkTarget',
+      'linkRequest', 'setLinkRequest',
+      'unlinkTarget', 'setUnlinkTarget', 'unlinkReason', 'unlinkError',
+      'handleUnlink', 'onLink', 'onUnlink',
+    ]) {
+      assert.equal(code.includes(gone), false, `${gone} must not survive`)
+    }
+    // An orphan is as bad as a caller: a modal nothing opens is dead weight
+    // that the next reader has to prove is dead.
+    assert.equal(code.includes('Unlink Payment?'), false, 'no unlink dialog title')
+    assert.equal(code.includes('Yes, Unlink'), false, 'no unlink confirm button')
+  })
+
+  test('no interface tells a reader to link or unlink a payment', () => {
+    // Copy, not code — the two are separate failures and this is the one a
+    // user would actually see.
+    for (const path of [...SURFACES, 'src/app/admin/control-center/action-queue/page.tsx']) {
+      const code = stripComments(readFileSync(join(process.cwd(), path), 'utf8'))
+      for (const phrase of ['Link / Unlink', 'Link to an Order', 'Link suspense', 'Unlinking', 'Managed by Link']) {
+        assert.equal(code.includes(phrase), false, `${path} must not say "${phrase}"`)
+      }
+    }
+  })
+
+  test('neither link RPC has a caller left in the app', () => {
+    // The DATABASE functions survive — retiring a UI is not a migration — so
+    // this asserts no call site, not that the name is never written down.
+    for (const path of SURFACES) {
+      const code = readFileSync(join(process.cwd(), path), 'utf8')
+      assert.equal(code.includes(".rpc('link_finance_payment_to_order"), false, path)
+      assert.equal(code.includes(".rpc('unlink_finance_payment_from_order"), false, path)
+    }
+  })
+
+  test('the Action Queue sends a suspense payment to Allocate, not to Link', () => {
+    const queue = readFileSync(join(process.cwd(), 'src/app/admin/control-center/action-queue/page.tsx'), 'utf8')
+    assert.equal(queue.includes('action=link'), false, 'the old deep link is gone')
+    assert.ok(queue.includes('action=allocate'), 'and it points at allocation instead')
+    assert.ok(queue.includes("actionLabel: 'Allocate suspense payment'"),
+      'and says so in the row the reader clicks')
+  })
+
+  test('an old ?action=link bookmark still resolves rather than dead-ending', () => {
+    // Removing a workflow should not break a link somebody was already sent.
+    const code = stripComments(view)
+    assert.ok(code.includes("const wantsAllocate = action === 'allocate' || action === 'link'"),
+      'the retired parameter is accepted and routed to allocation')
+    assert.ok(code.includes('caps.canAllocatePayment && canOfferAllocateFunds(match)'),
+      'and it is re-gated on permission AND allocatable balance, exactly as the button is')
+  })
+})
+
+describe('Allocate Funds is the only attachment workflow, and is unchanged', () => {
+  test('its permission and balance conditions are untouched', () => {
+    assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
+      'still permission-derived at the call site')
+    assert.ok(view.includes("return r.confirmed_allocation_status === 'zero' || r.confirmed_allocation_status === 'partial'"),
+      "and still offered only where there is balance to allocate — never on 'full' or 'over'")
+    assert.ok(visibleRowActions({ offerAllocate: true, canManage: false, canDelete: false }).includes('allocate'),
+      'allocation does not require finance.manage')
+    assert.ok(!visibleRowActions({ offerAllocate: false, canManage: true, canDelete: true }).includes('allocate'),
+      'and finance.manage does not grant it')
+  })
+
+  test('full, partial, multi-target and mixed allocation all still reach one atomic call', () => {
+    const modal = readFileSync(join(process.cwd(), 'src/app/finance/received/AllocateFundsModal.tsx'), 'utf8')
+    assert.ok(modal.includes('allocate_payment_to_targets'),
+      'still the multi-target RPC, not a loop of single writes')
+    assert.equal((modal.match(/\.rpc\(/g) ?? []).length, 1,
+      'exactly one RPC call — the allocation stays atomic')
+    assert.ok(modal.includes('searchAllocationTargets'),
+      'and the target picker is the shared one')
+    // The shared picker is what makes a MIXED PI-Draft/Order division possible.
+    const picker = readFileSync(join(process.cwd(), 'src/app/finance/received/AllocatePaymentModal.tsx'), 'utf8')
+    assert.ok(picker.includes("from('orders')") && picker.includes("from('order_submissions')"),
+      'both target kinds are still searchable, so a mixed division is still possible')
+    // Several rows in one call is what makes a MULTI-TARGET allocation possible.
+    assert.ok(modal.includes('toRpcAllocations'), 'the rows are sent as a set')
+    assert.ok(modal.includes('duplicateTargetKeys'), 'and the same target cannot be named twice')
+  })
+
+  test('no allocation read or write changed shape, and nothing became an N+1', () => {
+    // The allocation figures still ride ONE batched .in() per page load.
+    const batched = (view.match(/\.in\('payment_request_id'/g) ?? []).length
+    assert.ok(batched >= 1, 'the batched allocation read survives')
+    const perRow = stripComments(view).match(/rows\.map\([^)]*await/g) ?? []
+    assert.equal(perRow.length, 0, 'no per-row await crept in')
+  })
+})
 
 describe('the widest possible action group fits the declared Actions width', () => {
   test('the maximum is derived from the rules, not from a literal', () => {
-    // maxSimultaneousRowActions() searches the whole input space. If a rule is
-    // added or relaxed later, this number moves on its own and the fit
-    // assertion below fails until the column is re-sized.
     const max = maxSimultaneousRowActions()
     const byHand = Math.max(...allInputs().map(i => visibleRowActions(i).length))
     assert.equal(max, byHand,
       'the exhaustive search agrees with an independent sweep of the same rules')
-    assert.ok(max >= 1, 'every row offers at least View')
-    assert.ok(max <= ROW_ACTION_KEYS.length,
-      'and no row can show an action that does not exist')
-  })
-
-  test('Link and Unlink CAN appear together, so the maximum is six', () => {
-    // The premise that corrected the old count was itself wrong. A payment
-    // parked on a retired Order Request has order_request_id set and order_id
-    // NULL: link is offered (no Order yet) and unlink is offered (a linkage
-    // exists). Both conditions hold on the same row.
-    const parkedOnOrderRequest = {
-      offerAllocate: true,
-      canManage: true,
-      canDelete: true,
-      orderId: null,
-      orderRequestId: 'req-1',
-      paymentAgainst: 'new_order',
-    }
-    const actions = visibleRowActions(parkedOnOrderRequest)
-    assert.ok(actions.includes('link') && actions.includes('unlink'),
-      'Link and Unlink are NOT mutually exclusive on an Order-Request payment')
-    assert.equal(actions.length, 6, 'which makes six icons on one row')
-    assert.deepEqual(actions, [...ROW_ACTION_KEYS],
-      'and that row draws the full set, in declaration order')
-    assert.equal(maxSimultaneousRowActions(), 6,
-      'so the computed maximum is six, not five')
+    assert.equal(max, 4, 'four actions, which is the whole set')
+    assert.equal(max, ROW_ACTION_KEYS.length,
+      'every action is independently reachable, so the maximum IS the action count')
   })
 
   test('an Admin row with every action eligible fits the column on one line', () => {
-    const adminRow = {
-      offerAllocate: true,
-      canManage: true,
-      canDelete: true,
-      orderId: null,
-      orderRequestId: 'req-1',
-      paymentAgainst: 'new_order',
-    }
-    const needed = actionsColumnWidthPx(visibleRowActions(adminRow).length)
+    const adminRow = { offerAllocate: true, canManage: true, canDelete: true }
+    const actions = visibleRowActions(adminRow)
+    assert.deepEqual(actions, ['view', 'allocate', 'edit', 'delete'],
+      'View, Allocate Funds, Edit, Delete — in the order they are drawn')
+    const needed = actionsColumnWidthPx(actions.length)
     assert.ok(needed <= ACTIONS_COLUMN_WIDTH_PX,
       `the widest Admin row needs ${needed}px and the column declares ${ACTIONS_COLUMN_WIDTH_PX}px`)
   })
 
   test('NO reachable row can need more width than the column declares', () => {
-    // The Admin row above is the expected worst case; this proves no other
-    // combination beats it.
     for (const input of allInputs()) {
       const needed = actionsColumnWidthPx(visibleRowActions(input).length)
       assert.ok(needed <= ACTIONS_COLUMN_WIDTH_PX,
@@ -434,14 +525,24 @@ describe('the widest possible action group fits the declared Actions width', () 
   test('the arithmetic is targets, gaps and cell padding — nothing rounded away', () => {
     assert.equal(actionGroupWidthPx(0), 0, 'no icons, no group')
     assert.equal(actionGroupWidthPx(1), ROW_ACTION_TARGET_PX, 'one icon, no gaps')
-    assert.equal(actionGroupWidthPx(6),
-      6 * ROW_ACTION_TARGET_PX + 5 * ROW_ACTION_GAP_PX,
-      'six targets and the five gaps between them')
-    assert.equal(actionsColumnWidthPx(6),
-      actionGroupWidthPx(6) + 2 * TABLE_CELL_PADDING_X_PX,
-      'plus the cell padding on BOTH sides — the padding is what the old count dropped')
-    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 6 * 28 + 5 * 2 + 2 * 10,
-      'which is 198px today')
+    assert.equal(actionGroupWidthPx(4),
+      4 * ROW_ACTION_TARGET_PX + 3 * ROW_ACTION_GAP_PX,
+      'four targets and the three gaps between them')
+    assert.equal(actionsColumnWidthPx(4),
+      actionGroupWidthPx(4) + 2 * TABLE_CELL_PADDING_X_PX,
+      'plus the cell padding on BOTH sides — the padding is what the first count dropped')
+    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 4 * 28 + 3 * 2 + 2 * 10,
+      'which is 138px')
+  })
+
+  test('the column is no longer sized for the six obsolete actions', () => {
+    // 198px was the six-action width. Carrying it forward would leave a wide
+    // empty gutter beside four icons — the table has to take the room back.
+    assert.ok(ACTIONS_COLUMN_WIDTH_PX < 198,
+      'the six-action width must not survive the actions it was sized for')
+    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 138)
+    assert.ok(actionsColumnWidthPx(6) > ACTIONS_COLUMN_WIDTH_PX,
+      'and six icons would no longer fit, which is correct — there are only four')
   })
 
   test('the target is big enough to click and the CSS agrees', () => {
@@ -462,6 +563,9 @@ describe('the widest possible action group fits the declared Actions width', () 
     const surfaces = readFileSync(join(process.cwd(), 'src/lib/finance/paymentSurfaces.ts'), 'utf8')
     assert.ok(surfaces.includes('${ACTIONS_COLUMN_WIDTH_PX}px'),
       'and it INTERPOLATES the constant rather than hard-coding the pixels')
+    const actionsLine = surfaces.split('\n').find(l => l.includes("key: 'actions'")) ?? ''
+    assert.equal(/\d+px'/.test(actionsLine), false,
+      'the Actions row must carry no literal pixel width of its own')
   })
 
   test('the icon row cannot wrap, scroll or overflow its cell', () => {
@@ -469,8 +573,7 @@ describe('the widest possible action group fits the declared Actions width', () 
     const body = table.slice(0, table.indexOf('\n}\n'))
     const group = body.slice(body.indexOf('visibleRowActions({'))
     const container = body.slice(0, body.indexOf('visibleRowActions({'))
-    const lastDiv = container.lastIndexOf('<div')
-    const wrapper = container.slice(lastDiv)
+    const wrapper = container.slice(container.lastIndexOf('<div'))
     assert.ok(wrapper.includes("flexWrap: 'nowrap'"),
       'the icon row is pinned to one line — it never wraps to a second')
     assert.ok(wrapper.includes("display: 'inline-flex'"),
@@ -481,24 +584,34 @@ describe('the widest possible action group fits the declared Actions width', () 
       'and the icons it holds come from the shared rule set the width was computed from')
   })
 
-  test('non-Admin rows show only their permitted actions, and stay narrower', () => {
-    const readOnly = {
-      offerAllocate: false, canManage: false, canDelete: false,
-      orderId: 'o1', orderRequestId: null, paymentAgainst: 'new_order',
+  test('the call site passes capabilities only — no linkage fields survive it', () => {
+    const table = stripComments(view.slice(view.indexOf('function ReceivedPaymentsTable')))
+    const call = table.slice(table.indexOf('visibleRowActions({'))
+    const args = call.slice(0, call.indexOf('})'))
+    for (const gone of ['orderId', 'orderRequestId', 'paymentAgainst']) {
+      assert.equal(args.includes(gone), false,
+        `the visible-action model must not read ${gone} any more`)
     }
+    for (const kept of ['offerAllocate', 'canManage', 'canDelete']) {
+      assert.ok(args.includes(kept), `${kept} is still what decides the row`)
+    }
+  })
+
+  test('non-Admin rows show only their permitted actions, and stay narrower', () => {
+    const readOnly = { offerAllocate: false, canManage: false, canDelete: false }
     assert.deepEqual(visibleRowActions(readOnly), ['view'],
       'a viewer with no capabilities sees View and nothing else')
 
-    const financeNoDelete = {
-      offerAllocate: true, canManage: true, canDelete: false,
-      orderId: 'o1', orderRequestId: null, paymentAgainst: 'new_order',
-    }
+    const financeNoDelete = { offerAllocate: true, canManage: true, canDelete: false }
     const finance = visibleRowActions(financeNoDelete)
     assert.ok(!finance.includes('delete'), 'Delete stays admin-only')
-    assert.ok(!finance.includes('link'), 'and an already-linked payment offers no Link')
-    assert.deepEqual(finance, ['view', 'allocate', 'unlink', 'edit'])
+    assert.deepEqual(finance, ['view', 'allocate', 'edit'])
 
-    for (const input of [readOnly, financeNoDelete]) {
+    const fullyAllocatedAdmin = { offerAllocate: false, canManage: true, canDelete: true }
+    assert.deepEqual(visibleRowActions(fullyAllocatedAdmin), ['view', 'edit', 'delete'],
+      'a fully allocated row offers no Allocate, even to an Admin')
+
+    for (const input of [readOnly, financeNoDelete, fullyAllocatedAdmin]) {
       assert.ok(actionsColumnWidthPx(visibleRowActions(input).length) < ACTIONS_COLUMN_WIDTH_PX,
         'a restricted row needs strictly less width than the Admin worst case')
     }
@@ -513,18 +626,14 @@ function stripComments(src: string) {
 
 /** Every combination the visibility rules can distinguish. */
 function allInputs() {
-  const ids: (string | null)[] = [null, 'id']
-  const againsts: (string | null)[] = [null, 'new_order', 'existing_order']
   const out = []
   for (const offerAllocate of [false, true])
     for (const canManage of [false, true])
       for (const canDelete of [false, true])
-        for (const orderId of ids)
-          for (const orderRequestId of ids)
-            for (const paymentAgainst of againsts)
-              out.push({ offerAllocate, canManage, canDelete, orderId, orderRequestId, paymentAgainst })
+        out.push({ offerAllocate, canManage, canDelete })
   return out
 }
+
 
 // ══ 4. The hover and focus treatment ═════════════════════════════════════════
 
@@ -903,8 +1012,13 @@ describe('every action carries an icon and keeps its words', () => {
 
   test('the icons come from the project’s existing library', () => {
     assert.ok(view.includes("from 'lucide-react'"), 'no new icon dependency')
-    for (const icon of ['Eye', 'Link2', 'Pencil', 'Split', 'Trash2', 'Unlink']) {
+    for (const icon of ['Eye', 'Pencil', 'Split', 'Trash2']) {
       assert.ok(new RegExp(`\\b${icon}\\b`).test(view), `${icon} is imported`)
+    }
+    // The two that went with Link and Unlink must not linger as dead imports.
+    for (const icon of ['Link2', 'Unlink']) {
+      assert.equal(new RegExp(`\\b${icon}\\b`).test(view), false,
+        `${icon} must not still be imported`)
     }
   })
 
@@ -916,11 +1030,11 @@ describe('every action carries an icon and keeps its words', () => {
     const pairs: [RowActionKey, string, string][] = [
       ['view',     'Eye',    'View details for'],
       ['allocate', 'Split',  'ALLOCATE_FUNDS_ACTION_LABEL'],
-      ['link',     'Link2',  'to an Order'],
-      ['unlink',   'Unlink', 'Unlink '],
       ['edit',     'Pencil', 'Edit '],
       ['delete',   'Trash2', 'PAYMENT_DELETE_CONFIRM_LABEL'],
     ]
+    assert.equal(pairs.length, ROW_ACTION_KEYS.length,
+      'one pair per action — an action added without an icon fails here')
     for (const [key, icon, labelFragment] of pairs) {
       const at = block.indexOf(`${key}: {`)
       assert.ok(at > -1, `${key} must have an entry`)
@@ -1078,8 +1192,11 @@ describe('nothing about who may do what has moved', () => {
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'))
     assert.ok(view.includes('canDelete: canDeleteRow(r)'), 'deletion keeps its admin-only gate')
     assert.ok(view.includes('canManage,'), 'manage is passed through')
-    assert.ok(view.includes('paymentAgainst: r.payment_against'), 'unlink keeps its eligibility input')
-    assert.ok(view.includes('orderId: r.order_id') && view.includes('orderRequestId: r.order_request_id'))
+    // The linkage inputs went with the actions that read them: a row's actions
+    // no longer depend on which record the payment points at.
+    assert.equal(view.includes('paymentAgainst: r.payment_against'), false)
+    assert.equal(view.includes('orderId: r.order_id'), false)
+    assert.equal(view.includes('orderRequestId: r.order_request_id'), false)
   })
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {

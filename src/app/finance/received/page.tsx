@@ -15,10 +15,11 @@
 // most it affects which of VIEW_META's page-title strings is shown — never
 // which rows are returned.
 //
-// DEEP LINKS ARE UNCHANGED. `?payment=…&action=link|edit` still arrives here from
-// the Admin Action Queue and from Finance notifications, and still opens the
-// same modal it always did — the list resolves the row by id when it is not on
-// the current page.
+// DEEP LINKS STILL ARRIVE HERE from the Admin Action Queue and from Finance
+// notifications, and the list resolves the row by id when it is not on the
+// current page. `?action=link` became `?action=allocate` when linking was
+// retired in favour of the allocation ledger; the old value is still accepted
+// so a bookmark or an already-sent notification does not dead-end.
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'

@@ -36,7 +36,7 @@ type ActionQueueItem = {
 const CATEGORY_META: Record<QueueCategory, { label: string; actionLabel: string }> = {
   finance_pending_approval:    { label: 'Payment approval',    actionLabel: 'Approve payment' },
   finance_needs_clarification: { label: 'Needs clarification', actionLabel: 'Review clarification' },
-  finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Link suspense payment' },
+  finance_suspense:            { label: 'Suspense payment',    actionLabel: 'Allocate suspense payment' },
   order_pi_review:             { label: 'PI review',           actionLabel: 'Review submitted PI' },
   order_change_request:        { label: 'Order change',        actionLabel: 'Review change request' },
 }
@@ -54,7 +54,9 @@ function buildHref(category: QueueCategory, id: string): string {
   switch (category) {
     case 'finance_pending_approval':    return `/finance?tab=pending&request=${id}`
     case 'finance_needs_clarification': return `/finance?tab=clarification&request=${id}`
-    case 'finance_suspense':            return `/finance/received?payment=${id}&action=link`
+    // Suspense money is attached by ALLOCATION now — linking a payment to a
+    // single Order was retired, so this sends the reader to Allocate Funds.
+    case 'finance_suspense':            return `/finance/received?payment=${id}&action=allocate`
     case 'order_pi_review':             return `/orders/drafts/${id}`
     // The Order detail page owns the Review dialog, and its Change Requests
     // card is where the pending row already lives — so this links to the Order,

@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Link2, Pencil, Split, Trash2, Unlink, type LucideIcon } from 'lucide-react'
+import { Eye, Pencil, Split, Trash2, type LucideIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
 import {
@@ -18,7 +18,6 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { isValidAmount } from '@/lib/currency'
-import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
@@ -154,20 +153,6 @@ type PaymentRequest = {
   created_at: string
 }
 
-// A Link-modal search result. ONE KIND, because there is now one kind of direct
-// linkage a payment may carry: a Confirmed Order. The Order Request branch that
-// sat beside it is retired (20261007000000) — the database refuses the write, so
-// offering the choice would be an invitation to a submission that cannot land.
-type LinkTarget = {
-  kind: 'order'
-  id: string
-  display_number: string
-  client_name: string
-  total_value: number | null
-  status: string
-  confirm_date: string | null
-}
-
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /**
@@ -289,14 +274,6 @@ function viewHref(view: PaymentView): string {
   return `${RECEIVED_PATH}?view=${view}`
 }
 
-const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
-  running:            { label: 'Running',             color: '#1E40AF' },
-  on_hold:            { label: 'On Hold',             color: '#9A3412' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
-  dispatched:         { label: 'Dispatched',          color: '#166534' },
-  cancelled:          { label: 'Cancelled',           color: '#991B1B' },
-}
-
 const PAYMENT_MODE_OPTIONS = [
   { label: 'Bank Transfer', value: 'bank_transfer' },
   { label: 'Cash',          value: 'cash' },
@@ -318,8 +295,10 @@ const RECEIVED_IN_OPTIONS = [
 
 // approved_unlinked and approved_linked are deliberately excluded — see
 // isLinkageStatus below and 20260691000000: those two states may only be
-// reached through approve_finance_payment_request, link_finance_payment_to_order,
-// or unlink_finance_payment_from_order.
+// reached through the guarded RPCs, never through a status correction. Today
+// the only one of those RPCs the app still calls is
+// approve_finance_payment_request; the link/unlink pair remains in the database
+// with no caller, because retiring the UI is not a migration.
 const STATUS_CORRECTION_OPTIONS = [
   { value: 'pending_approval',    label: 'Pending' },
   { value: 'needs_clarification', label: 'Needs Clarification' },
@@ -386,15 +365,6 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
       {message}
-    </div>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
     </div>
   )
 }
@@ -904,7 +874,7 @@ function DetailsModal({
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
-          Order linkage is managed with Link / Unlink, not here.
+          Funds are attached to a PI Draft or an Order with Allocate Funds, not here.
         </div>
       )}
     </>
@@ -950,8 +920,8 @@ function EditPaymentModal({
 
   // Every row on this page is approved_unlinked or approved_linked (see the
   // page-level query), so this is always true here — order_number for those
-  // states is owned exclusively by link_finance_payment_to_order /
-  // unlink_finance_payment_from_order (20260691000000), never by this form.
+  // states was never this form's to write (20260691000000 gave it to the
+  // guarded RPCs), and with linking retired nothing writes it at all.
   const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
 
   const set = (key: keyof typeof form) => (
@@ -1029,7 +999,7 @@ function EditPaymentModal({
           readOnly={isLinkageStatus} disabled={isLinkageStatus} />
         {isLinkageStatus && (
           <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-            Managed by Link / Unlink.
+            Set when the payment was recorded. Funds are attached with Allocate Funds.
           </span>
         )}
       </Field>
@@ -1050,222 +1020,6 @@ function EditPaymentModal({
   )
 }
 
-// ── Link to Order modal ───────────────────────────────────────────────────────
-
-function LinkOrderModal({
-  payment,
-  supabase,
-  onClose,
-  onLinked,
-}: {
-  payment: PaymentRequest
-  supabase: ReturnType<typeof createClient>
-  onClose: () => void
-  onLinked: () => void
-}) {
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState<LinkTarget[]>([])
-  const [searching, setSearching] = useState(false)
-  const [selected,  setSelected]  = useState<LinkTarget | null>(null)
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
-  // Only the newest search may write results: a slow earlier query must never
-  // overwrite a later one with stale rows.
-  const searchToken = useRef(0)
-
-  // ── ONE SEARCH, AND ONLY CONFIRMED ORDERS ──
-  //
-  // An Order Request branch used to sit beside this, searching `order_requests`
-  // for a linkage the retirement now refuses (20261007000000 §3). It is gone
-  // rather than left to fail on submit.
-  //
-  // LINKING IS NOT ALLOCATING. This writes the payment's own `order_id` — the
-  // legacy direct linkage, which the canonical rule uses as a fallback only when
-  // nothing is allocated. Money that should be SPLIT, or that belongs to a PI
-  // Draft, goes through Allocate instead.
-  const handleSearch = async (q: string) => {
-    setQuery(q)
-    setSelected(null)
-    const trimmed = q.trim()
-    if (!trimmed) { setResults([]); return }
-
-    // ONLY THE NEWEST SEARCH MAY WRITE RESULTS. Without this, a slow earlier
-    // query returning after a later one replaces the list under the reader —
-    // and this list is the one an Order is picked from to LINK MONEY TO, so a
-    // stale row here is a payment attached to an Order nobody was looking at.
-    // The same guard the four sibling searches already carry
-    // (PaymentTargetFields, AllocatePaymentModal, AllocateFundsModal,
-    // RecordSplitPaymentModal); this call site was the one without it.
-    const token = ++searchToken.current
-    setSearching(true)
-    const { data } = await supabase
-      .from('orders')
-      .select('id, display_number, client_name, total_value, status, confirm_date')
-      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-      .not('status', 'in', '(cancelled)')
-      .order('created_at', { ascending: false })
-      .limit(20)
-    if (token !== searchToken.current) return
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setResults(((data ?? []) as any[]).map(o => ({
-      kind: 'order' as const,
-      id: o.id,
-      display_number: o.display_number,
-      client_name: o.client_name,
-      total_value: o.total_value,
-      status: o.status,
-      confirm_date: o.confirm_date ?? null,
-    })))
-    setSearching(false)
-  }
-
-  // Routed entirely through the guarded RPC (link_finance_payment_to_order,
-  // 20260691000000): it locks its rows, revalidates eligibility server-side, and
-  // writes the activity rows itself. No client-side .update() of
-  // finance_payment_requests or the activity tables remains.
-  const handleLink = async () => {
-    if (!selected) return
-    setSaving(true)
-    setError(null)
-
-    const { error: rpcError } = await supabase.rpc('link_finance_payment_to_order', {
-      p_payment_request_id: payment.id,
-      p_order_id:           selected.id,
-    })
-
-    setSaving(false)
-    if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
-
-    // Tell the submitter their payment is now attached.
-    void notifyFinance({
-      event: 'finance_linked',
-      requestNumber: payment.request_number,
-      entityId: payment.id,
-      creatorId: payment.submitted_by,
-      clientName: payment.client_name,
-      orderNumber: selected.display_number,
-    })
-
-    onLinked()
-  }
-
-  const isSuspense = !payment.order_id
-
-  return (
-    <FinanceModal title={isSuspense ? 'Link to Order' : 'Change Linked Order'} onClose={onClose}>
-      {/* Payment summary */}
-      <div style={{
-        background: colors.raised, borderRadius: '8px', padding: '12px 14px',
-        border: `1px solid ${colors.border}`,
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
-      }}>
-        <DetailRow label="Client" value={payment.client_name} />
-        <DetailRow label="Amount" value={fmtAmount(payment.amount)} />
-        <DetailRow label="Payment Date" value={fmtDate(payment.payment_date)} />
-        <DetailRow label="Mode" value={PAYMENT_MODE_LABEL[payment.payment_mode] ?? payment.payment_mode} />
-      </div>
-
-      {/* Search */}
-      <Field label="Search Confirmed Orders">
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
-          borderRadius: '6px', padding: '6px 10px',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            autoFocus
-            placeholder="Order number or client name…"
-            value={query}
-            onChange={e => handleSearch(e.target.value)}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
-          />
-          {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
-        </div>
-      </Field>
-
-      {results.length > 0 && (
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
-          maxHeight: '240px', overflowY: 'auto',
-        }}>
-          {results.map((t, idx) => {
-            const isSelected = selected?.id === t.id
-            const statusMeta = ORDER_STATUS_META[t.status] ?? { label: t.status, color: colors.muted }
-            const subline = [t.client_name, t.confirm_date ? `Confirmed ${fmtDate(t.confirm_date)}` : null]
-              .filter(Boolean).join(' · ')
-            return (
-              <div
-                key={t.id}
-                onClick={() => setSelected(isSelected ? null : t)}
-                style={{
-                  padding: '10px 14px',
-                  borderBottom: idx < results.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  cursor: 'pointer',
-                  background: isSelected ? colors.blueTint : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-                }}
-                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = colors.raised }}
-                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{
-                      display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-                      background: colors.blueTint, color: colors.blue, border: '1px solid rgba(85,133,232,0.25)',
-                      fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
-                    }}>
-                      Confirmed Order
-                    </span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{t.display_number}</span>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: statusMeta.color }}>{statusMeta.label}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {subline}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-                    {t.total_value != null ? fmtAmount(t.total_value) : '—'}
-                  </div>
-                  {isSelected && (
-                    <div style={{ fontSize: '10px', color: colors.blue, fontWeight: 600, marginTop: '2px' }}>Selected</div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {query.trim() && !searching && results.length === 0 && (
-        <div style={{ fontSize: '13px', color: colors.muted, textAlign: 'center', padding: '12px 0' }}>
-          No orders found for &ldquo;{query.trim()}&rdquo;.
-        </div>
-      )}
-
-      {error && <ErrorBanner message={error} />}
-
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleLink}
-          disabled={!selected || saving}
-          className="boe-btn boe-btn-primary"
-          style={{ padding: '8px 18px', fontSize: '13px', opacity: (!selected || saving) ? 0.6 : 1, cursor: (!selected || saving) ? 'not-allowed' : 'pointer' }}
-        >
-          {saving ? 'Linking…' : !selected ? 'Link' : `Link to Order ${selected.display_number}`}
-        </button>
-      </div>
-    </FinanceModal>
-  )
-}
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 
@@ -1404,16 +1158,14 @@ function ReceivedPaymentsTable({
   highlightId,
   onView,
   onEdit,
-  onLink,
-  onUnlink,
   onAllocateFunds,
   canDeleteRow,
   onDelete,
 }: {
   rows: PaymentRequest[]
   /**
-   * May link, unlink, and edit a recorded payment. Every one of those is a
-   * correction of an approved financial record — the finance.manage authority.
+   * May edit a recorded payment — a correction of an approved financial
+   * record, the finance.manage authority.
    */
   canManage: boolean
   /**
@@ -1426,8 +1178,6 @@ function ReceivedPaymentsTable({
   highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
-  onLink:   (r: PaymentRequest) => void
-  onUnlink: (r: PaymentRequest) => void
   onAllocateFunds: (r: PaymentRequest) => void
   /**
    * Whether THIS reader may delete THIS payment — canDeletePayment's answer,
@@ -1460,16 +1210,6 @@ function ReceivedPaymentsTable({
       Icon: Split,
       label: r => `${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`,
       run: r => onAllocateFunds(r),
-    },
-    link: {
-      Icon: Link2,
-      label: r => `Link ${r.human_payment_id ?? 'this payment'} to an Order`,
-      run: r => onLink(r),
-    },
-    unlink: {
-      Icon: Unlink,
-      label: r => `Unlink ${r.human_payment_id ?? 'this payment'}`,
-      run: r => onUnlink(r),
     },
     edit: {
       Icon: Pencil,
@@ -1577,12 +1317,14 @@ function ReceivedPaymentsTable({
                       two clicks and one of them was hidden.
 
                       WHICH actions appear is decided by visibleRowActions() in
-                      lib/finance/rowActions.ts, not by six guards written out
-                      here — because the column's WIDTH is arithmetic over the
+                      lib/finance/rowActions.ts, not by guards written out here
+                      — because the column's WIDTH is arithmetic over the
                       maximum number of icons a row can show at once, and that
                       maximum has to be derivable rather than counted by eye.
-                      The conditions inside it are unchanged, one for one, from
-                      the guards they replace.
+
+                      Four actions, and attaching money is not among them:
+                      allocation is the only way funds reach an Order or a PI
+                      Draft, and it has its own control.
 
                       An action a reader may not take is absent, not greyed: a
                       disabled control invites a click that will never work. */}
@@ -1602,9 +1344,6 @@ function ReceivedPaymentsTable({
                         offerAllocate,
                         canManage,
                         canDelete: canDeleteRow(r),
-                        orderId: r.order_id,
-                        orderRequestId: r.order_request_id,
-                        paymentAgainst: r.payment_against,
                       }).map(key => {
                         const action = ROW_ACTION_META[key]
                         return (
@@ -2153,7 +1892,7 @@ function rowView(
 // ── Page ──────────────────────────────────────────────────────────────────────
 // One component, two routes: /finance/received/linked and
 // /finance/received/unlinked each render it with their own `mode`. The table,
-// the detail modal and every link/unlink action are shared verbatim — only the
+// the detail modal and every row action are shared verbatim — only the
 // query predicate, the copy and the filter row differ.
 
 export function ReceivedPaymentsView(
@@ -2179,12 +1918,7 @@ function ReceivedPaymentsViewInner(
   const [listLoading,    setListLoading]    = useState(false)
   const [detailRequest,  setDetailRequest]  = useState<PaymentRequest | null>(null)
   const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
-  const [linkRequest,    setLinkRequest]    = useState<PaymentRequest | null>(null)
-  const [unlinkTarget,   setUnlinkTarget]   = useState<PaymentRequest | null>(null)
   const [deleteTarget,   setDeleteTarget]   = useState<PaymentRequest | null>(null)
-  const [unlinkReason,   setUnlinkReason]   = useState('')
-  const [unlinking,      setUnlinking]      = useState(false)
-  const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
@@ -2678,7 +2412,7 @@ function ReceivedPaymentsViewInner(
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
   }
 
-  // Every mutation on this page — link, unlink, edit, status correction — can
+  // Every mutation on this page — allocate, edit, status correction — can
   // move a row between the two Received Payments pages or in or out of them
   // entirely, so each re-reads the list AND invalidates the sidebar counts. The
   // initial load deliberately does not: the counts query is mounting alongside
@@ -2808,11 +2542,12 @@ function ReceivedPaymentsViewInner(
   const applyDateTo   = narrowBy(setDateTo)
   const applyConfirmedFilter = narrowBy(setConfirmedFilter)
 
-  // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
+  // ── Deep-link resolution (?payment=&action=allocate|edit) ───────────────────
   // Runs exactly once, once `requests` is loaded. Sources: the Admin Action
-  // Queue (action=link) and Finance notifications. Each modal auto-opens only when the loaded payment
-  // still satisfies the same rule the manual button uses — a stale, already
-  // linked, or not-permitted payment is simply highlighted, never a fatal error.
+  // Queue (action=allocate) and Finance notifications. Each modal auto-opens
+  // only when the loaded payment still satisfies the same rule the manual
+  // button uses — a stale, fully allocated, or not-permitted payment is simply
+  // highlighted, never a fatal error.
   useEffect(() => {
     const resolveDeepLink = async () => {
       if (pageLoading || deepLinkHandled.current) return
@@ -2868,15 +2603,22 @@ function ReceivedPaymentsViewInner(
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        if (caps.canManageFinance && action === 'link' && !match.order_id && !match.order_request_id) {
-          setLinkRequest(match)
+        // `?action=link` USED TO OPEN THE LINK MODAL. Linking is gone, and the
+        // Action Queue row that sent people here — a suspense payment waiting
+        // to be attached to something — is answered by ALLOCATION now, so the
+        // parameter it emits is `allocate`. `link` is still accepted, because
+        // an old bookmark or a notification sent before this change should not
+        // dead-end; it resolves to the same place a suspense row now belongs.
+        const wantsAllocate = action === 'allocate' || action === 'link'
+        if (wantsAllocate && caps.canAllocatePayment && canOfferAllocateFunds(match)) {
+          setAllocateFundsTarget(match)
         } else if (caps.canManageFinance && action === 'edit') {
           // Editing a received payment is admin-only here, exactly as the
           // table's own Edit button is.
           setEditRequest(match)
-        } else if (action === 'edit' || action === 'link') {
-          // Not permitted (or no longer eligible): fall back to the read-only
-          // view rather than silently doing nothing.
+        } else if (action === 'edit' || wantsAllocate) {
+          // Not permitted (or nothing left to allocate): fall back to the
+          // read-only view rather than silently doing nothing.
           setDetailRequest(match)
         } else if (!onThisPage) {
           // A bare ?payment= link used to be answered by highlighting the row.
@@ -2897,39 +2639,6 @@ function ReceivedPaymentsViewInner(
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
-  }
-
-  // Unlink a payment — routed entirely through the guarded RPCs
-  // (unlink_finance_payment_from_order, 20260691000000, or
-  // unlink_finance_payment_from_order_request, 20260698000000, depending on
-  // which linkage the row carries — the DB guarantees it is never both): each
-  // locks the payment row, requires a non-empty reason, enforces the
-  // new_order-origin gate, and records the activity rows itself. No
-  // client-side .update() of finance_payment_requests or the activity tables
-  // remains.
-  const handleUnlink = async () => {
-    if (!unlinkTarget) return
-    const reason = unlinkReason.trim()
-    if (!reason) { setUnlinkError('A reason is required to unlink this payment.'); return }
-    setUnlinking(true)
-    setUnlinkError(null)
-
-    const { error: rpcError } = unlinkTarget.order_id
-      ? await supabase.rpc('unlink_finance_payment_from_order', {
-          p_payment_request_id: unlinkTarget.id,
-          p_reason:             reason,
-        })
-      : await supabase.rpc('unlink_finance_payment_from_order_request', {
-          p_payment_request_id: unlinkTarget.id,
-          p_reason:             reason,
-        })
-
-    setUnlinking(false)
-    if (rpcError) { setUnlinkError(friendlyDbErrorMessage(rpcError)); return }
-
-    setUnlinkTarget(null)
-    setUnlinkReason('')
-    refreshAfterMutation()
   }
 
   // THE ROWS ARE THE ANSWER, not a starting point to filter.
@@ -3202,8 +2911,6 @@ function ReceivedPaymentsViewInner(
               highlightId={highlightId}
               onView={r  => setDetailRequest(r)}
               onEdit={r  => setEditRequest(r)}
-              onLink={r  => setLinkRequest(r)}
-              onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
               onAllocateFunds={r => setAllocateFundsTarget(r)}
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
@@ -3315,74 +3022,6 @@ function ReceivedPaymentsViewInner(
             refreshOneRow(id)
           }}
         />
-      )}
-
-      {linkRequest && (
-        <LinkOrderModal
-          payment={linkRequest}
-          supabase={supabase}
-          onClose={() => setLinkRequest(null)}
-          onLinked={() => { setLinkRequest(null); refreshAfterMutation() }}
-        />
-      )}
-
-      {/* Unlink confirmation — same shared modal shell as every other Finance
-          dialog; closing (backdrop, header ✕, or Escape) is guarded exactly
-          as before so it can't be dismissed mid-request. */}
-      {unlinkTarget && (
-        <FinanceModal
-          title="Unlink Payment?"
-          width="380px"
-          onClose={() => { if (!unlinking) { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) } }}
-        >
-          <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
-            This will remove the link between{' '}
-            <strong>{unlinkTarget.client_name}</strong> ({fmtAmount(unlinkTarget.amount)}) and{' '}
-            {unlinkTarget.order_id ? 'order' : 'order request'}{' '}
-            <strong>
-              {unlinkTarget.order_id
-                ? (unlinkTarget.order_number ?? unlinkTarget.order_id)
-                : (unlinkTarget.order_request_number ?? unlinkTarget.order_request_id)}
-            </strong>.
-            <br /><br />
-            The payment will return to suspense status.
-          </div>
-          <Field label="Reason" required>
-            <textarea
-              className="boe-input"
-              value={unlinkReason}
-              onChange={e => { setUnlinkReason(e.target.value); setUnlinkError(null) }}
-              placeholder="Why is this payment being unlinked? (required)"
-              rows={2}
-              disabled={unlinking}
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </Field>
-          {unlinkError && <ErrorBanner message={unlinkError} />}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) }}
-              disabled={unlinking}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '8px 18px', fontSize: '13px' }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleUnlink}
-              disabled={unlinking || !unlinkReason.trim()}
-              style={{
-                padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-                border: `1px solid ${colors.border}`, background: colors.raised,
-                color: colors.primary,
-                cursor: (unlinking || !unlinkReason.trim()) ? 'not-allowed' : 'pointer',
-                opacity: (unlinking || !unlinkReason.trim()) ? 0.6 : 1,
-              }}
-            >
-              {unlinking ? 'Unlinking…' : 'Yes, Unlink'}
-            </button>
-          </div>
-        </FinanceModal>
       )}
 
       {/* DELETE PAYMENT — the shared action, mounted here and on Payments to

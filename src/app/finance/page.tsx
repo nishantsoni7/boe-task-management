@@ -873,7 +873,7 @@ function DetailsModal({
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
-          Verify Payment, Link, and Unlink. */}
+          Verify Payment and Allocate Funds. */}
       {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
@@ -949,7 +949,7 @@ function DetailsModal({
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
           {APPROVED_LOCK_NOTE}
-          {isAdmin && ' Order linkage is managed there (Link / Unlink), not here.'}
+          {isAdmin && ' Funds are attached to a PI Draft or an Order there, with Allocate Funds.'}
         </div>
       )}
     </>

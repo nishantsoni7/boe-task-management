@@ -750,42 +750,38 @@ describe('multi-allocation behaviour', () => {
 describe('a slow search never repaints a newer one', () => {
   const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
 
-  test('the Link Order search discards a superseded answer', () => {
-    // THE DEFECT: LinkOrderModal's search wrote whatever came back, with no
-    // token. A slow query for "ORD" landing after a fast one for "ORD-2026"
-    // replaced the narrower list with the wider one under a reader who had
-    // already typed past it — and this is the list an Order is picked from to
-    // LINK MONEY TO. Picking the top row of a list that had silently changed
-    // attaches a payment to an Order nobody was looking at.
+  test('the Link Order search is gone, along with the modal that held it', () => {
+    // THE DEFECT this used to guard: LinkOrderModal's Order search wrote
+    // whatever came back, with no token, so a slow query for "ORD" landing
+    // after a fast one for "ORD-2026" replaced the narrower list under a
+    // reader who had already typed past it — and that was the list an Order
+    // was picked from to attach money to.
     //
-    // Its four siblings (PaymentTargetFields, AllocatePaymentModal,
-    // AllocateFundsModal, RecordSplitPaymentModal) all carried the guard
-    // already; this one call site did not.
-    const modal = view.slice(view.indexOf('function LinkOrderModal'))
-    const body = modal.slice(0, modal.indexOf('const handleLink'))
-    assert.ok(body.includes('const searchToken = useRef(0)'),
-      'the modal must hold a token')
-    assert.ok(body.includes('const token = ++searchToken.current'),
-      'each search must claim the newest token')
-    assert.ok(body.includes('if (token !== searchToken.current) return'),
-      'and a superseded search must return before it writes results')
+    // The modal is now removed outright: linking a payment to ONE Order could
+    // not express a partial attachment, a split across records, or a remaining
+    // balance, so allocation replaced it. The race cannot occur because the
+    // search does not exist.
+    assert.equal(view.includes('function LinkOrderModal'), false,
+      'the Link Order modal must not come back')
+    assert.equal(view.includes(".rpc('link_finance_payment_to_order"), false,
+      'and neither must the RPC call that was its submit')
   })
 
-  test('the guard is claimed before the query and checked after it', () => {
-    const modal = view.slice(view.indexOf('function LinkOrderModal'))
-    const body = modal.slice(0, modal.indexOf('const handleLink'))
-    const claimed = body.indexOf('const token = ++searchToken.current')
-    const queried = body.indexOf(".from('orders')")
-    const checked = body.indexOf('if (token !== searchToken.current) return')
-    assert.ok(claimed < queried, 'the token is claimed before the round trip starts')
-    assert.ok(queried < checked, 'and re-read after it returns')
-    // Nothing may write the ANSWER between the query and the check. The blank
-    // -query `setResults([])` sits above all three and is deliberately not
-    // covered: it is synchronous, clears rather than paints, and has no
-    // in-flight request to be overtaken by.
-    assert.ok(!body.slice(queried, checked).includes('setResults('),
-      'no result may reach state before the token is re-read')
-    assert.ok(body.indexOf('setResults(', checked) > checked,
-      'and the results are written after it')
+  test('the four surviving Order searches still carry the guard', () => {
+    // Removing the fifth call site must not quietly relax the other four.
+    for (const path of [
+      'src/app/finance/components/PaymentTargetFields.tsx',
+      'src/app/finance/received/AllocatePaymentModal.tsx',
+      'src/app/finance/received/AllocateFundsModal.tsx',
+      'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    ]) {
+      const body = readFileSync(join(process.cwd(), path), 'utf8')
+      assert.ok(body.includes('if (token !== searchToken.current) return'),
+        `${path} must still discard a superseded search`)
+      const claimed = body.indexOf('const token = ++searchToken.current')
+      const checked = body.indexOf('if (token !== searchToken.current) return')
+      assert.ok(claimed > -1 && claimed < checked,
+        `${path} must claim the token before it re-reads it`)
+    }
   })
 })

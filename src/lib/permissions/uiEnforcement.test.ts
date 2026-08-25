@@ -72,11 +72,18 @@ describe('Finance controls ask the capability helper', () => {
     }
   })
 
-  test('link and unlink are gated on canManageFinance', () => {
+  test('the deep-link actions are gated on the SAME capability as their buttons', () => {
+    // Link and unlink are gone. What replaced ?action=link is ?action=allocate,
+    // and it must be gated on the allocate capability — not on finance.manage,
+    // which would let a manager open a modal their own row action would not
+    // have drawn for them.
     const source = read(RECEIVED_VIEW)
     assert.ok(source.includes('canManage={caps.canManageFinance}'))
-    assert.ok(source.includes("caps.canManageFinance && action === 'link'"))
+    assert.ok(source.includes('canAllocate={caps.canAllocatePayment}'))
+    assert.ok(source.includes('caps.canAllocatePayment && canOfferAllocateFunds(match)'),
+      'the allocate deep link re-checks permission AND allocatable balance')
     assert.ok(source.includes("caps.canManageFinance && action === 'edit'"))
+    assert.equal(source.includes("action === 'unlink'"), false)
   })
 
   test('Export is never gated into existence — there is no protected server path', () => {
