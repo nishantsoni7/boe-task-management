@@ -101,19 +101,25 @@ describe('exact counts', () => {
 // ══ 2. Server-side filtering ══════════════════════════════════════════════════
 
 describe('every narrowing is the database\'s', () => {
-  test('search, the confirmed-allocation filter, the dates and the allocation state are all sent', () => {
+  test('search, the allocation-status tab and both date bounds are all sent', () => {
     // paymentViewFilterClauses(filters.view) — the four-view classification
-    // tab strip — is RETIRED for Confirmed Payments (Requirement 1) in favour
-    // of a real predicate over confirmed_allocation_status.
+    // tab strip — is RETIRED for Confirmed Payments in favour of a real
+    // predicate over confirmed_allocation_status.
+    //
+    // allocationFilterClauses(filters.allocation) is gone too, with the
+    // duplicate `<select>` that was its only caller: the tab strip narrows the
+    // same column in the same query, so the clause below IS the allocation
+    // narrowing now.
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
       "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
-      'allocationFilterClauses(filters.allocation)',
     ]) {
       assert.ok(loader.includes(applied), applied)
     }
+    assert.ok(!loader.includes('allocationFilterClauses'),
+      'the removed dropdown contributes no clause')
   })
 
   test('and the page range is applied to the SAME query', () => {
@@ -271,7 +277,9 @@ describe('a stale answer never repaints a newer page', () => {
     // Staying on page four of a set that now has one page shows an empty table
     // over a filter that matches plenty.
     assert.ok(view.includes('const narrowBy = <T,>(set: (value: T) => void) => (value: T) => { set(value); setPage(1) }'))
-    for (const control of ['applySearch', 'applyDateFrom', 'applyDateTo', 'applyAllocation']) {
+    // applyAllocation is gone with the duplicate dropdown; applyConfirmedFilter
+    // — the tab strip that replaced it — resets the page the same way.
+    for (const control of ['applySearch', 'applyDateFrom', 'applyDateTo', 'applyConfirmedFilter']) {
       // Aligned assignments in the source, so the spacing is not part of the
       // contract being asserted.
       assert.match(view, new RegExp(`const ${control}\\s*= narrowBy\\(`), control)

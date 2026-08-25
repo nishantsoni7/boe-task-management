@@ -143,9 +143,14 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
   { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '120px' },
-  // Right-aligned with tabular figures, as every money column in the app is:
-  // digits line up by place value, so magnitudes are comparable down the column.
-  { key: 'amount',       label: 'Amount',            align: 'right', width: '130px' },
+  // LEFT-ALIGNED, and deliberately so. The app's other money columns are
+  // right-aligned to line digits up by place value, but this table has ONE money
+  // column: there is no second figure beside it to compare against, and a lone
+  // right-aligned column pushes its values away from the identifier they belong
+  // to, leaving a gap the eye has to cross on every row. `tabular-nums` still
+  // does the place-value work within the column, and the Indian grouping is
+  // untouched — only the edge the digits start from moved.
+  { key: 'amount',       label: 'Amount',            align: 'left', width: '130px' },
   { key: 'date',         label: 'Received Date',     align: 'left',  width: '120px' },
   { key: 'mode',         label: 'Mode',              align: 'left',  width: '110px' },
   // The widest of the remaining columns because its content is a badge that is

@@ -32,6 +32,7 @@ import { join } from 'node:path'
 import { placeMenu, MENU_GAP, MENU_MARGIN } from './menuPlacement'
 import {
   CONFIRMED_ALLOCATION_BADGE,
+  CONFIRMED_ALLOCATION_FILTERS,
   CONFIRMED_ALLOCATION_STATUSES,
   CONFIRMED_PAYMENT_COLUMNS,
 } from '@/lib/finance/paymentSurfaces'
@@ -276,25 +277,28 @@ describe('the action lists are untouched', () => {
   })
 
   test('Allocate Funds is still offered from its own permission rule', () => {
-    // The reported symptom was that actions BELOW Allocate Funds were cut off.
-    // Allocate Funds itself is gated by canOfferAllocateFunds and canAllocate,
-    // and this fix must not have moved that decision into the menu.
-    assert.ok(view.includes('...(offerAllocate'))
-    assert.ok(view.includes('{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r), Icon: Split }'))
+    // Confirmed Payments draws its actions as DIRECT icon buttons now, so the
+    // gate moved from a menu-entry spread to a JSX guard — the CONDITION is
+    // unchanged, which is what this asserts.
+    assert.ok(view.includes('{offerAllocate && ('))
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
       'still permission-derived at the call site')
   })
 
   test('the manage-only actions are still gated on canManage', () => {
-    assert.ok(view.includes('...(canManage && !r.order_id'),
+    assert.ok(view.includes('{canManage && !r.order_id && ('),
       'linking is still a manage capability, and still only for an unlinked payment')
+    assert.ok(view.includes('{canManage && ('), 'edit is still manage-only')
   })
 
   test('the destructive action is still admin-gated and still last', () => {
-    // canDeleteRow is the admin-only rule; `danger: true` keeps Delete drawn in
-    // red at the foot of the list.
-    assert.ok(view.includes('canDeleteRow(r)'))
-    assert.ok(/danger: true/.test(view), 'the destructive entry keeps its marker')
+    assert.ok(view.includes('{canDeleteRow(r) && ('))
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
+    assert.ok(table.lastIndexOf('canDeleteRow(r)') > table.lastIndexOf('{canManage && ('),
+      'Delete is drawn after every other action')
+    assert.ok(view.includes('danger\n                        />'),
+      'and keeps its danger marker')
   })
 
   test('a non-admin sees exactly what they saw before', () => {
@@ -308,9 +312,16 @@ describe('the action lists are untouched', () => {
     }
   })
 
-  test('both Finance tables share this one menu, so both are fixed', () => {
-    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 2,
-      'Confirmed Payments and Payments to Verify')
+  test('Payments to Verify KEEPS the shared menu; Confirmed Payments no longer uses it', () => {
+    // The portalled, collision-aware menu is not deleted — it is still the right
+    // control for a table whose only action is Edit, and every assertion about
+    // its placement above still applies to it there.
+    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 1,
+      'exactly one caller left: the Payments to Verify table')
+    const toVerify = view.slice(view.indexOf('function PaymentsToVerifyTable'))
+    assert.ok(toVerify.slice(0, toVerify.indexOf('\n}\n')).includes('<RowActionsMenu'),
+      'and that caller is Payments to Verify')
+    assert.ok(view.includes('function RowActionsMenu'), 'the component itself survives')
   })
 
   test('the mobile cards keep their inline buttons and are unaffected', () => {
@@ -448,8 +459,9 @@ describe('a menu entry shows which action is about to run', () => {
     }
   })
 
-  test('both Finance tables get it, because both share this component', () => {
-    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 2)
+  test('the menu styling still serves its one remaining caller', () => {
+    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 1,
+      'Payments to Verify')
   })
 
   test('the mobile inline actions were not touched', () => {
@@ -482,7 +494,7 @@ describe('the primary row shows eight columns and no money detail', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
                    'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
                    'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)',
-                   '<RowActionsMenu']
+                   '<IconAction']
     let cursor = -1
     for (const marker of order) {
       const at = table.indexOf(marker, cursor + 1)
@@ -589,8 +601,8 @@ describe('every allocation status opens the payment record', () => {
   })
 
   test('the status colours are the badge’s own, in both shapes', () => {
-    assert.ok(body.includes('const shared: React.CSSProperties'),
-      'one style object serves the inert and the clickable badge')
+    assert.ok(body.includes('const chip: React.CSSProperties'),
+      'one chip style serves the inert and the clickable badge')
     assert.ok(body.includes('background: style.bg') && body.includes('color: style.color'),
       'the per-status tone is unchanged')
   })
@@ -706,19 +718,28 @@ describe('every action carries an icon and keeps its words', () => {
     }
   })
 
-  test('each action is paired with the right icon', () => {
+  test('each Confirmed Payments action is a direct button with the right icon', () => {
+    // The Actions column is icon buttons now, so the pairing is Icon={X} beside
+    // the label rather than a menu entry's `Icon:` field.
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
     const pairs: [string, string][] = [
-      ['ALLOCATE_FUNDS_ACTION_LABEL', 'Split'],
-      ["'Link to an Order'", 'Link2'],
-      ["'Unlink'", 'Unlink'],
-      ["'Edit'", 'Pencil'],
-      ['PAYMENT_DELETE_CONFIRM_LABEL', 'Trash2'],
+      ['Eye', 'View details for'],
+      ['Split', 'ALLOCATE_FUNDS_ACTION_LABEL'],
+      ['Link2', 'to an Order'],
+      ['Unlink', 'Unlink '],
+      ['Pencil', 'Edit '],
+      ['Trash2', 'PAYMENT_DELETE_CONFIRM_LABEL'],
     ]
-    for (const [label, icon] of pairs) {
-      assert.ok(new RegExp(`label: ${label.replace(/[$()*+.?[\\\]^{|}]/g, '\\$&')}[^}]*Icon: ${icon}`).test(view),
-        `${label} should carry ${icon}`)
+    for (const [icon, labelFragment] of pairs) {
+      const at = table.indexOf(`Icon={${icon}}`)
+      assert.ok(at > -1, `${icon} must be used`)
+      assert.ok(table.slice(at, at + 260).includes(labelFragment),
+        `${icon} should sit beside a label containing "${labelFragment}"`)
     }
-    assert.ok(view.includes('<Eye size={13}'), 'View Details takes the eye')
+    // The Payments to Verify menu keeps its own icon.
+    assert.ok(view.includes("{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }"),
+      'the remaining menu entry keeps its icon')
   })
 
   test('THE ICON SUPPORTS THE LABEL, it does not replace it', () => {
@@ -738,17 +759,39 @@ describe('every action carries an icon and keeps its words', () => {
     assert.ok(menuBody.includes('flexShrink: 0'))
   })
 
-  test('the icon-only-adjacent View control keeps a name and a tooltip', () => {
-    assert.ok(view.includes('title={`View details for ${r.human_payment_id ?? \'this payment\'}`}'))
-    assert.ok(view.includes('aria-label={`View details for ${r.human_payment_id ?? \'this payment\'}`}'))
+  test('EVERY icon-only control is named twice over', () => {
+    // The glyph is the whole control, so nothing else names it: aria-label for a
+    // screen reader, title for a pointer. IconAction applies both from one prop,
+    // so no call site can forget one.
+    const icon = view.slice(view.indexOf('function IconAction'))
+    const body = icon.slice(0, icon.indexOf('\n}\n'))
+    assert.ok(body.includes('aria-label={label}'))
+    assert.ok(body.includes('title={label}'))
+    assert.ok(body.includes('aria-hidden="true"'), 'and the glyph itself is not announced')
+    // Every label names the PAYMENT, not just the verb.
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
+    const labels = [...table.matchAll(/label=\{`([^`]+)`\}/g)].map(m => m[1])
+    assert.equal(labels.length, 6, 'six actions, six labels')
+    for (const label of labels) {
+      assert.ok(label.includes('human_payment_id'),
+        `"${label}" must name the payment, so forty identical glyphs are distinguishable`)
+    }
   })
 
-  test('the danger entry keeps its contract: red text, red hover', () => {
+  test('the danger action keeps its contract: red text, red hover', () => {
     const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+    // The menu entry's rule still exists for Payments to Verify's menu...
     assert.ok(css.includes('.boe-menu-item--danger {'))
-    assert.ok(css.slice(css.indexOf('.boe-menu-item--danger:hover')).startsWith('.boe-menu-item--danger:hover'))
-    assert.ok(view.includes('danger: true, Icon: Trash2'),
-      'Delete keeps both its danger marker and its icon')
+    // ...and the icon button has its own, using the same established red.
+    assert.ok(css.includes('.boe-icon-action--danger {'))
+    const rule = css.slice(css.indexOf('.boe-icon-action--danger:hover:not(:disabled),'))
+    assert.ok(rule.slice(0, rule.indexOf('}')).includes('rgba(217,79,79,0.14)'),
+      'the same red .boe-btn-danger:hover uses')
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
+    assert.ok(/Icon=\{Trash2\}[\s\S]{0,300}?danger/.test(table),
+      'Delete keeps both its icon and its danger marker')
   })
 })
 
@@ -834,10 +877,13 @@ describe('this is a presentation change, and costs no extra request', () => {
 
 describe('nothing about who may do what has moved', () => {
   test('each action keeps its own gate at the call site', () => {
+    // Same CONDITIONS as the menu entries they replaced — only the syntax moved
+    // from a spread into a JSX guard.
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'))
-    assert.ok(view.includes('...(canManage && !r.order_id'), 'linking is manage-only, unlinked only')
-    assert.ok(view.includes('...(canManage\n'), 'edit is manage-only')
-    assert.ok(view.includes('...(canDeleteRow(r)'), 'deletion keeps its admin-only gate')
+    assert.ok(view.includes('{canManage && !r.order_id && ('), 'linking is manage-only, unlinked only')
+    assert.ok(view.includes('{canManage && ('), 'edit is manage-only')
+    assert.ok(view.includes('{canDeleteRow(r) && ('), 'deletion keeps its admin-only gate')
+    assert.ok(view.includes("r.payment_against === 'new_order'"), 'unlink keeps its eligibility rule')
   })
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {
@@ -853,6 +899,172 @@ describe('nothing about who may do what has moved', () => {
     const body = menu.slice(0, menu.indexOf('\n}\n'))
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'profile']) {
       assert.ok(!body.includes(gate), `RowActionsMenu must not reference ${gate}`)
+    }
+  })
+})
+
+// ══ 12. The compact allocation control ═══════════════════════════════════════
+
+describe('the allocation status reads as a status, not a button', () => {
+  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+  const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
+  const body = badge.slice(0, badge.indexOf('\n}\n'))
+
+  test('the coloured chip sits at the table’s own muted typography', () => {
+    // IT WAS TOO BIG: an 11px chip with 2px/8px padding read as a button
+    // competing with the figures beside it, in a table whose muted text is 11px
+    // and whose cells are 12px.
+    const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
+    assert.ok(chip.includes("fontSize: '10.5px'"), 'smaller than the row’s own text')
+    assert.ok(chip.includes("padding: '1px 6px'"), 'and barely padded')
+    assert.ok(chip.includes("borderRadius: '4px'"))
+  })
+
+  test('but the TARGET did not shrink with it', () => {
+    // The wrapper is transparent and carries the extra pixels, with a negative
+    // margin so the bigger hit area costs the cell no extra width.
+    const rule = css.slice(css.indexOf('.boe-allocation-badge {'))
+    const decls = rule.slice(0, rule.indexOf('}'))
+    assert.ok(decls.includes('padding: 3px'), 'the button is bigger than its chip')
+    assert.ok(decls.includes('margin: -3px'), 'without pushing the column wider')
+    assert.ok(decls.includes('background: none') && decls.includes('border: none'),
+      'and is invisible around it')
+  })
+
+  test('every status keeps its own colour, and none wraps', () => {
+    const chip = body.slice(body.indexOf('const chip:'), body.indexOf('if (!onOpen)'))
+    assert.ok(chip.includes('background: style.bg'))
+    assert.ok(chip.includes('color: style.color'))
+    assert.ok(chip.includes('border: `1px solid ${style.border}`'))
+    assert.ok(chip.includes("whiteSpace: 'nowrap'"),
+      '"Partially Allocated" must never wrap inside a table cell')
+    for (const status of CONFIRMED_ALLOCATION_STATUSES) {
+      assert.ok(CONFIRMED_ALLOCATION_BADGE[status], `${status} keeps a badge`)
+    }
+  })
+
+  test('and it still opens the same modal, from all four statuses', () => {
+    assert.ok(body.includes('if (!onOpen) return'),
+      'the only branch is whether an opener was given — never which status it is')
+    assert.ok(view.includes('onOpen={() => onView(r)}'), 'the same door as View')
+    assert.ok(css.includes('.boe-allocation-badge:hover,'))
+    assert.ok(css.includes('.boe-allocation-badge:focus-visible {'))
+    assert.ok(body.includes('aria-label={`View allocation details for ${paymentId'))
+  })
+})
+
+// ══ 13. The toolbar ══════════════════════════════════════════════════════════
+
+describe('the toolbar puts narrowing left and the creating action far right', () => {
+  const toolbar = view.slice(view.indexOf('{/* ── Toolbar ──'),
+                             view.indexOf('{recordNotice &&'))
+
+  test('search and both date bounds share the left group, in that order', () => {
+    const left = toolbar.slice(0, toolbar.indexOf("marginLeft: 'auto'"))
+    const search = left.indexOf('meta.searchPlaceholder')
+    const from = left.indexOf('payment-date-from')
+    const to = left.indexOf('payment-date-to')
+    assert.ok(search > -1 && from > search && to > from,
+      'Search, then Paid From, then Paid To')
+    assert.ok(left.includes("flex: '1 1 auto'"), 'the narrowing group takes the slack')
+  })
+
+  test('Record Payment is pushed right by layout, not by a hardcoded gap', () => {
+    assert.ok(toolbar.includes("marginLeft: 'auto'"),
+      'the right group is separated by auto margin')
+    assert.ok(!/marginLeft: '\d{2,}px'/.test(toolbar), 'no hardcoded empty margin')
+    assert.ok(!toolbar.includes("position: 'absolute'"), 'and nothing is positioned absolutely')
+    const rightGroup = toolbar.slice(toolbar.indexOf("marginLeft: 'auto'"))
+    assert.ok(rightGroup.includes('RECORD_PAYMENT_ACTION_LABEL'),
+      'Record Payment lives in the right group')
+  })
+
+  test('the count sits near it but does not compete with it', () => {
+    const rightGroup = toolbar.slice(toolbar.indexOf("marginLeft: 'auto'"))
+    const count = rightGroup.indexOf('resultSummary(')
+    const button = rightGroup.indexOf('RECORD_PAYMENT_ACTION_LABEL')
+    assert.ok(count > -1 && button > count, 'the count reads before the button')
+    const countBlock = rightGroup.slice(count - 260, count)
+    assert.ok(countBlock.includes("fontSize: '11px'") && countBlock.includes('colors.muted'),
+      'muted 11px — an answer about the list, not an action')
+  })
+
+  test('it wraps rather than overlapping when there is no room', () => {
+    assert.ok(toolbar.includes("flexWrap: 'wrap'"))
+  })
+
+  test('Record Payment is still gated on the capability that records one', () => {
+    assert.ok(toolbar.includes('{caps.canAllocatePayment && ('),
+      'unchanged: Finance module entry plus finance.allocate')
+  })
+})
+
+// ══ 14. The five tabs are the only allocation filter ═════════════════════════
+
+describe('the allocation tabs', () => {
+  test('all five are still rendered from the shared list', () => {
+    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTERS.map(f => {'))
+    assert.ok(view.includes('role="tablist"') && view.includes('role="tab"'))
+    assert.ok(view.includes('CONFIRMED_ALLOCATION_FILTER_LABEL[f]'))
+    assert.deepEqual([...CONFIRMED_ALLOCATION_FILTERS],
+      ['all', ...CONFIRMED_ALLOCATION_STATUSES])
+  })
+
+  test('and they are the ONLY allocation narrowing left', () => {
+    const code = view.split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
+    assert.ok(!code.includes('aria-label="Filter by allocation state"'),
+      'the duplicate <select> is gone')
+    assert.ok(!code.includes('allocationFilterClauses'))
+    assert.ok(!code.includes('allocationOffered'))
+  })
+})
+
+// ══ 15. Nothing regressed from the previous passes ═══════════════════════════
+
+describe('the earlier corrections still hold', () => {
+  const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                           view.indexOf('function IconAction'))
+
+  test('Payment ID is still the first column and the first cell', () => {
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS[0].key, 'payment_id')
+    const row = table.slice(table.indexOf('id={`payment-row-${r.id}`}'))
+    const firstCell = row.indexOf('<td')
+    const paymentId = row.indexOf('{r.human_payment_id}')
+    assert.ok(!row.slice(firstCell, paymentId).includes('</td>'),
+      'no cell precedes the Payment ID cell')
+  })
+
+  test('no expansion chevron or inline breakdown row has returned', () => {
+    assert.ok(!table.includes('▶'))
+    assert.ok(!table.includes('Expand allocation breakdown'))
+    assert.ok(!table.includes('colSpan'))
+    assert.ok(!/isExpanded|const \[expanded/.test(table))
+  })
+
+  test('Customer, Total Allocated and Remaining are still absent from the table', () => {
+    assert.ok(!table.includes('<CustomerName'))
+    assert.ok(!table.includes('figures.totalAllocated'))
+    assert.ok(!table.includes('value={figures.remaining}'))
+  })
+
+  test('and all three are still in the modal', () => {
+    const modal = view.slice(view.indexOf('function DetailsModal'),
+                             view.indexOf('function EditPaymentModal'))
+    assert.ok(modal.includes('{r.client_name}'))
+    assert.ok(modal.includes('<AllocationPanel'))
+    assert.ok(modal.includes('modalFigures.toPI') && modal.includes('modalFigures.toOrders'))
+  })
+
+  test('NO NEW DATABASE REQUEST — and one fewer, now the probe is gone', () => {
+    const reads = (view.match(/\.from\('finance_payment_allocations'\)/g) ?? []).length
+    assert.equal(reads, 2, 'page-load batched read plus refreshOneRow — unchanged')
+    const perRow = /rows\.map\([\s\S]{0,400}?\.from\('finance_payment_allocations'\)/
+    assert.ok(!perRow.test(view), 'no allocation read inside a row loop')
+    assert.ok(!view.includes('const allocationProbe'), 'the dropdown’s probe query is gone')
+    const icon = view.slice(view.indexOf('function IconAction'))
+    const body = icon.slice(0, icon.indexOf('\n}\n'))
+    for (const call of ['.from(', '.rpc(', 'fetch(']) {
+      assert.ok(!body.includes(call), `an icon button must not ${call}`)
     }
   })
 })

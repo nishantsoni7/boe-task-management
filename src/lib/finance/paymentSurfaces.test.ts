@@ -161,10 +161,27 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
     assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
-  test('the money column is right-aligned and the rest are not', () => {
+  test('AMOUNT IS LEFT-ALIGNED; only Actions trails', () => {
+    // Deliberate, and a departure from the app's other money columns. This table
+    // has ONE money column: there is no second figure beside it to compare
+    // against, and a lone right-aligned column pushes its values away from the
+    // identifier they belong to. tabular-nums still lines the digits up.
+    const amount = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'amount')
+    assert.equal(amount?.align, 'left')
     const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => c.align === 'right').map(c => c.key)
-    assert.deepEqual(right, ['amount', 'actions'],
-      'Amount keeps the app-wide money alignment; Actions stays trailing')
+    assert.deepEqual(right, ['actions'], 'Actions is the only trailing column')
+  })
+
+  test('the Amount CELL is left-aligned too, and keeps tabular figures', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
+    const cell = table.slice(table.indexOf('{fmtAmount(r.amount)}') - 400,
+                             table.indexOf('{fmtAmount(r.amount)}'))
+    assert.ok(!cell.includes("textAlign: 'right'"),
+      'the header and the cell must agree')
+    assert.ok(cell.includes("fontVariantNumeric: 'tabular-nums'"),
+      'place-value alignment within the column is kept')
   })
 
   test('the columns carry width hints so eight do not drift apart on a wide screen', () => {
@@ -229,14 +246,19 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
     assert.ok(view.includes('isMobile ? ('), 'the cards are chosen, not a sideways table')
   })
 
-  test('Actions is one button and one menu, not a row of text buttons', () => {
+  test('Actions is a row of direct icon buttons, not a menu', () => {
+    // WAS a View button plus a "…" menu, so the common actions cost two clicks
+    // and one of them was hidden. Every permitted action is now one click.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(
       view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function RowActionsMenu'))
-    assert.ok(table.includes('<RowActionsMenu'))
-    assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 1,
-      'View is the only bare button; Link, Unlink, Edit and Allocate are in the menu')
+      view.indexOf('function IconAction'))
+    assert.ok(!table.includes('<RowActionsMenu'),
+      'Confirmed Payments has no ellipsis menu')
+    assert.equal((table.match(/<IconAction/g) ?? []).length, 6,
+      'View, Allocate, Link, Unlink, Edit, Delete — each its own direct button')
+    assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 0,
+      'and no bare text button is left in the Actions cell')
   })
 
   test('the overflow menu is keyboard reachable and named', () => {

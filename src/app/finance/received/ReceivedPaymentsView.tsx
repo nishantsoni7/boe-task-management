@@ -24,18 +24,13 @@ import {
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { CustomerName } from '@/components/finance/CustomerName'
 import {
-  ALLOCATION_FILTER_OPTIONS,
   RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
-  allocationFilterAvailable,
-  allocationFilterClauses,
-  ALLOCATED_TOTAL_COLUMN,
   dateRange,
   isNarrowed,
   pageCount,
   pageRange,
   resultSummary,
   receivedPaymentsSearchFilter,
-  type AllocationFilter,
   type PaymentView,
 } from '@/app/finance/receivedPaymentsQuery'
 import {
@@ -1327,17 +1322,23 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
     ? 'Allocated total exceeds payment amount — flagged for Admin review'
     : undefined
 
-  // THE SAME BADGE, IN BOTH SHAPES. The colours, padding, radius, weight and
-  // wrap behaviour below are shared, so a clickable badge and an inert one are
-  // the same object to the eye — the control adds a pointer and the interaction
-  // states, and takes nothing away from the status it is showing.
-  const shared: React.CSSProperties = {
-    display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+  // ── THE CHIP IS SMALL; THE TARGET IS NOT ──
+  //
+  // The coloured chip sits at the table's own muted-text size and a hair of
+  // padding, so it reads as a status in a row of text rather than as a button
+  // competing with the figures beside it. What makes it comfortably clickable
+  // is the TRANSPARENT wrapper around it, which carries the extra few pixels of
+  // target: the hit area grew while the colour shrank.
+  //
+  // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
+  // "Over-allocated" must never wrap inside a table cell.
+  const chip: React.CSSProperties = {
+    display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
     background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-    fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    fontSize: '10.5px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
   }
 
-  if (!onOpen) return <span title={overTitle} style={shared}>{meta.label}</span>
+  if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
 
   return (
     <button
@@ -1351,14 +1352,13 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
       aria-label={`View allocation details for ${paymentId ?? 'this payment'}`}
       title={overTitle ?? 'View allocation details'}
       onClick={event => {
-        // The row itself opens the record too, and the expand toggle sits in
-        // the same row. Neither may also fire from this one deliberate click.
+        // The row itself opens the record too. It must not also fire from this
+        // one deliberate click.
         event.stopPropagation()
         onOpen()
       }}
-      style={{ ...shared, cursor: 'pointer', font: 'inherit', fontSize: '11px', fontWeight: 600 }}
     >
-      {meta.label}
+      <span style={chip}>{meta.label}</span>
     </button>
   )
 }
@@ -1478,8 +1478,11 @@ function ReceivedPaymentsTable({
                     {r.human_payment_id}
                   </td>
 
+                  {/* Left-aligned, with tabular figures kept: the digits still
+                      line up by place value down the column, they simply start
+                      at its left edge beside the Payment ID. */}
                   <td style={{
-                    ...TD, textAlign: 'right', fontSize: '13.5px', fontWeight: 700,
+                    ...TD, fontSize: '13.5px', fontWeight: 700,
                     color: colors.primary, fontVariantNumeric: 'tabular-nums',
                   }}>
                     {fmtAmount(r.amount)}
@@ -1519,58 +1522,68 @@ function ReceivedPaymentsTable({
                     {conciseName(r.approved_by_name)}
                   </td>
 
-                  {/* ONE MENU, NOT FIVE BUTTONS. View stays a button because it
-                      is what the whole row already does; the rest live behind a
-                      keyboard-reachable overflow. */}
+                  {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
+                      a View button and a "…" menu, so the common actions cost
+                      two clicks and one of them was hidden. They are icon-only
+                      buttons now — the glyph IS the control, so each carries
+                      both an aria-label and a title, since nothing else names
+                      it.
+
+                      THE GATES ARE UNCHANGED, one for one, from the menu
+                      entries they replace. An action a reader may not take is
+                      not rendered at all rather than greyed: a disabled control
+                      invites a click that will never work. */}
                   <td style={{ ...TD, textAlign: 'right' }}>
                     <div
-                      style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                      style={{ display: 'inline-flex', gap: '2px', alignItems: 'center', justifyContent: 'flex-end' }}
                       onClick={e => e.stopPropagation()}
                     >
-                      {/* KEPT, NOT REDUNDANT. The Allocation Status badge now
-                          opens the same record, but it is a status first and
-                          only reads as a door once you know that; View is the
-                          row's explicit, unambiguous way in, and it is the ONLY
-                          one on a row whose status cell is "—". Its label stays
-                          visible — the icon supports it. */}
-                      <button
-                        onClick={() => onView(r)}
-                        className="boe-btn boe-btn-ghost"
-                        title={`View details for ${r.human_payment_id ?? 'this payment'}`}
-                        aria-label={`View details for ${r.human_payment_id ?? 'this payment'}`}
-                        style={{
-                          padding: '3px 8px', fontSize: '11px', fontWeight: 500,
-                          display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        }}
-                      >
-                        <Eye size={13} strokeWidth={2} aria-hidden="true" />
-                        View
-                      </button>
-                      <RowActionsMenu
-                        label={`Actions for ${r.client_name}`}
-                        actions={[
-                          ...(offerAllocate
-                            ? [{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r), Icon: Split }]
-                            : []),
-                          ...(canManage && !r.order_id
-                            ? [{ label: 'Link to an Order', onSelect: () => onLink(r), Icon: Link2 }]
-                            : []),
-                          ...(canManage && (r.order_id || r.order_request_id)
-                              && r.payment_against === 'new_order'
-                            ? [{ label: 'Unlink', onSelect: () => onUnlink(r), Icon: Unlink }]
-                            : []),
-                          ...(canManage
-                            ? [{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }]
-                            : []),
-                          // DELETE — last, admin-only for any status
-                          // (Requirement 4). Offered under every allocation
-                          // filter (zero/partial/full/over) — canDeleteRow is
-                          // the single gate, independent of allocation state.
-                          ...(canDeleteRow(r)
-                            ? [{ label: PAYMENT_DELETE_CONFIRM_LABEL, onSelect: () => onDelete(r), danger: true, Icon: Trash2 }]
-                            : []),
-                        ]}
+                      <IconAction
+                        Icon={Eye}
+                        label={`View details for ${r.human_payment_id ?? 'this payment'}`}
+                        onSelect={() => onView(r)}
                       />
+                      {offerAllocate && (
+                        <IconAction
+                          Icon={Split}
+                          label={`${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`}
+                          onSelect={() => onAllocateFunds(r)}
+                        />
+                      )}
+                      {canManage && !r.order_id && (
+                        <IconAction
+                          Icon={Link2}
+                          label={`Link ${r.human_payment_id ?? 'this payment'} to an Order`}
+                          onSelect={() => onLink(r)}
+                        />
+                      )}
+                      {canManage && (r.order_id || r.order_request_id)
+                        && r.payment_against === 'new_order' && (
+                        <IconAction
+                          Icon={Unlink}
+                          label={`Unlink ${r.human_payment_id ?? 'this payment'}`}
+                          onSelect={() => onUnlink(r)}
+                        />
+                      )}
+                      {canManage && (
+                        <IconAction
+                          Icon={Pencil}
+                          label={`Edit ${r.human_payment_id ?? 'this payment'}`}
+                          onSelect={() => onEdit(r)}
+                        />
+                      )}
+                      {/* DELETE — last, admin-only for any status. Offered under
+                          every allocation filter (zero/partial/full/over):
+                          canDeleteRow is the single gate, independent of
+                          allocation state. */}
+                      {canDeleteRow(r) && (
+                        <IconAction
+                          Icon={Trash2}
+                          label={`${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`}
+                          onSelect={() => onDelete(r)}
+                          danger
+                        />
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -1618,6 +1631,41 @@ function ReceivedPaymentsTable({
  * menu is drawn and never which actions exist — that is each call site's, and
  * remains permission-derived.
  */
+/**
+ * One row action, as an icon.
+ *
+ * ICON-ONLY, SO IT IS NAMED TWICE OVER: `aria-label` for a screen reader and
+ * `title` for a pointer, because the glyph carries no text of its own and a
+ * reader who does not recognise it has nothing else to go on. Both name the
+ * PAYMENT as well as the verb — "Edit P-AA-0002", not "Edit" — so forty
+ * identical pencils are distinguishable.
+ *
+ * It decides NO permission. Whether an action exists is the row's decision, and
+ * an action the reader may not take is not rendered at all rather than greyed:
+ * a disabled control invites a click that will never work.
+ */
+function IconAction({ Icon, label, onSelect, danger, disabled }: {
+  Icon: LucideIcon
+  label: string
+  onSelect: () => void
+  danger?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={`boe-icon-action${danger ? ' boe-icon-action--danger' : ''}`}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      // The row opens the record on click; an action must not also do that.
+      onClick={event => { event.stopPropagation(); onSelect() }}
+    >
+      <Icon size={14} strokeWidth={2} aria-hidden="true" />
+    </button>
+  )
+}
+
 function RowActionsMenu({ label, actions }: {
   label: string
   /** `danger` marks a destructive entry, which is drawn in red and sits last. */
@@ -2108,20 +2156,17 @@ function ReceivedPaymentsViewInner(
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
   // ── The allocation narrowing ──
-  // How much of a payment has been given a home — the queue that needs somebody
-  // to act. Answered by the DATABASE, because a state computed over the fifty
-  // rows in hand would narrow those fifty and hide every match on page two.
+  // REMOVED, AND NOT REPLACED — it was already here twice. A `<select>` offered
+  // Any allocation / Unallocated / Partly / Fully / Over-allocated, and the tab
+  // strip below offers the identical five states over the same
+  // `confirmed_allocation_status` column in the same query. Two controls for one
+  // narrowing meant they could be set to contradict each other, and the reader
+  // had to know which one won.
   //
-  // GATED TWICE, and both gates matter. The projection gains `allocation_state`
-  // only when 20261004000000 is applied, so `allocationReady` probes for it and
-  // the control is not drawn until it is there — an un-migrated database behaves
-  // exactly as it did before, with no query ever built against a missing column.
-  // And the control is offered only to a reader who can see EVERY allocation,
-  // because the view is security_invoker: a reader who may see a payment but not
-  // its allocations sums to zero and would read "Unallocated" for money that is
-  // fully spoken for.
-  const [allocation,     setAllocation]     = useState<AllocationFilter>('all')
-  const [allocationReady, setAllocationReady] = useState(false)
+  // The tabs are what survives. They are the more discoverable of the two, they
+  // are already the page's primary navigation, and they need no feature-probe:
+  // the dropdown's `allocationReady` check cost a round trip on every page load
+  // purely to decide whether to draw itself, and that query is gone with it.
   // ── The Confirmed Payments allocation-status filter (Requirement 1) ──
   // Replaces the old `?view=all|orders|pi_drafts|available` tab strip for the
   // 'confirmed' surface only. A real PostgREST predicate over
@@ -2227,7 +2272,6 @@ function ReceivedPaymentsViewInner(
    * that calls fully-allocated money "Unallocated" — the exact confusion
    * paymentAllocations.ts refuses to make on the per-payment panel.
    */
-  const allocationOffered = allocationReady && caps.canViewAllFinance
 
   const filters = useMemo(() => {
     const dates = dateRange(dateFrom, dateTo)
@@ -2240,12 +2284,11 @@ function ReceivedPaymentsViewInner(
       dateFrom: dates.from,
       dateTo: dates.to,
       // Never sent unless the column is there AND this reader may trust it.
-      allocation: allocationOffered ? allocation : ('all' as AllocationFilter),
       // Meaningless outside Confirmed Payments — Payments to Verify never
       // applies it, whatever a stray click set it to.
       confirmedFilter: surface === 'confirmed' ? confirmedFilter : DEFAULT_CONFIRMED_ALLOCATION_FILTER,
     }
-  }, [search, view, dateFrom, dateTo, allocation, allocationOffered, surface, confirmedFilter])
+  }, [search, view, dateFrom, dateTo, surface, confirmedFilter])
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for
@@ -2334,10 +2377,6 @@ function ReceivedPaymentsViewInner(
 
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
     if (filters.dateTo)   scoped = scoped.lte('payment_date', filters.dateTo)
-
-    for (const clause of allocationFilterClauses(filters.allocation)) {
-      if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
-    }
 
     // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET, which
     // makes no promise about row order unless the ordering is deterministic —
@@ -2663,14 +2702,6 @@ function ReceivedPaymentsViewInner(
       // exist. A filter that silently matched nothing, or a request PostgREST
       // refused outright, would both be worse than an absent control.
       //
-      // In this group, so it costs no wait.
-      const allocationProbe = supabase
-        .from(RECEIVED_PAYMENTS_SOURCE)
-        .select(`id, ${ALLOCATED_TOTAL_COLUMN}, allocation_state`)
-        .limit(1)
-        .then((result: { error: unknown }) => allocationFilterAvailable(
-          result.error ? null : { columns: [ALLOCATED_TOTAL_COLUMN, 'allocation_state'] }))
-        .catch(() => false)
 
       // THE ALLOCATION READ'S SAFETY FLAG, PUBLISHED BEFORE IT IS NEEDED.
       // loadAllocations must know whether an EMPTY allocation list is conclusive
@@ -2684,16 +2715,14 @@ function ReceivedPaymentsViewInner(
           deriveFinanceCapabilities((who as UserProfile | null)?.role, perms).canViewAllFinance)
         .catch(() => false)
 
-      const [{ data: me }, financePerms, ordersPerms, allocationAvailable] =
+      const [{ data: me }, financePerms, ordersPerms] =
         await Promise.all([
           profilePromise,
           financePromise,
           ordersPromise,
-          allocationProbe,
           loadRequests(),
         ])
 
-      setAllocationReady(allocationAvailable)
       setProfile(me as UserProfile)
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
@@ -2730,7 +2759,7 @@ function ReceivedPaymentsViewInner(
     const timer = setTimeout(() => { loadRequests() }, searchChanged ? SEARCH_DEBOUNCE_MS : 0)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.allocation, filters.confirmedFilter, page])
+  }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.confirmedFilter, page])
 
   // A narrowing change moves the reader back to page one — staying on page four
   // of a result set that now has one page would show an empty table over a
@@ -2744,7 +2773,6 @@ function ReceivedPaymentsViewInner(
   const applySearch   = narrowBy(setSearch)
   const applyDateFrom = narrowBy(setDateFrom)
   const applyDateTo   = narrowBy(setDateTo)
-  const applyAllocation = narrowBy(setAllocation)
   const applyConfirmedFilter = narrowBy(setConfirmedFilter)
 
   // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
@@ -2882,14 +2910,13 @@ function ReceivedPaymentsViewInner(
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
-  const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo, allocation: filters.allocation })
+  const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
   const pages = pageCount(total)
 
   const clearFilters = () => {
     setSearch('')
     setDateFrom('')
     setDateTo('')
-    setAllocation('all')
     setPage(1)
   }
 
@@ -2943,13 +2970,27 @@ function ReceivedPaymentsViewInner(
           })}
         </div>
       )}
-      {/* ── Toolbar ── search, the Linked-only linkage filter, and the result
-          count. Which linkage a page shows is now the route, so there is no
-          status navigation left inside the card below. */}
+      {/* ── Toolbar ──
+          TWO GROUPS, NOT A ROW OF EQUALS. Everything that NARROWS the list —
+          search, and the two date bounds — sits on the left in the order a
+          reader reaches for it. Record Payment is the one thing here that
+          CREATES rather than filters, so it is pushed to the far right by a
+          `margin-left: auto` on its group rather than by a hardcoded margin or
+          absolute placement, which keeps the two groups apart at any width and
+          lets them wrap onto separate lines when there is no room.
+
+          The count travels with the right-hand group but stays muted 11px text:
+          it is an answer about the list, not an action, and must not compete
+          with the primary button beside it. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
         marginBottom: '10px',
       }}>
+        {/* ── Narrowing: search, then the date range ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          flex: '1 1 auto', minWidth: 0,
+        }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           background: colors.raised, border: `1px solid ${colors.border}`,
@@ -2970,29 +3011,6 @@ function ReceivedPaymentsViewInner(
             <button onClick={() => applySearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
           )}
         </div>
-
-        {/* ── How much of it has a home ──
-            Answered by the database across the WHOLE narrowed set, so it
-            composes correctly with search, the date range, the view
-            and paging — a state computed over the loaded page would narrow
-            fifty rows and hide every match on page two.
-
-            Drawn only when the projection carries the column AND this reader can
-            see every allocation. Both gates are load-bearing; see
-            `allocationOffered`. */}
-        {allocationOffered && (
-          <select
-            className="boe-input"
-            aria-label="Filter by allocation state"
-            value={allocation}
-            onChange={e => applyAllocation(e.target.value as AllocationFilter)}
-            style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
-          >
-            {ALLOCATION_FILTER_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        )}
 
         {/* ── When the money arrived ──
             Bounds the list by payment_date, which is the date Finance
@@ -3036,6 +3054,24 @@ function ReceivedPaymentsViewInner(
             Clear filters
           </button>
         )}
+        </div>
+
+        {/* ── The far right: the count, then the one creating action ──
+            `marginLeft: 'auto'` is what separates the groups; nothing here is
+            positioned absolutely and no empty margin is hardcoded. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          marginLeft: 'auto', flexShrink: 0,
+        }}>
+        {/* The size of the WHOLE narrowed set, from the database's exact count —
+            not the length of the page in hand, which would understate it the
+            moment there is more than one page. */}
+        <div
+          aria-live="polite"
+          style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
+        >
+          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+        </div>
 
         {/* ── Record Payment ──
             ONE real payment, entered once and divided across every Order and PI
@@ -3053,15 +3089,6 @@ function ReceivedPaymentsViewInner(
             {RECORD_PAYMENT_ACTION_LABEL}
           </button>
         )}
-
-        {/* The size of the WHOLE narrowed set, from the database's exact count —
-            not the length of the page in hand, which would understate it the
-            moment there is more than one page. */}
-        <div
-          aria-live="polite"
-          style={{ marginLeft: 'auto', fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
-        >
-          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
         </div>
       </div>
 

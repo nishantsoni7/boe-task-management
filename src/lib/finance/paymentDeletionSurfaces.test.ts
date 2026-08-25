@@ -134,7 +134,10 @@ describe('the control appears where a deletable payment is, and nowhere else', (
    */
   test('both the table and the cards offer it on Received Payments, and neither offers it unguarded', () => {
     const src = code(read(RECEIVED))
-    const wirings = [...src.matchAll(/onSelect: \(\) => onDelete\(r\), danger: true|onDelete\(r\) \}/g)]
+    // The table row's Delete is a direct <IconAction> now, not a menu entry —
+    // `onSelect={() => onDelete(r)}` rather than `onSelect: () => onDelete(r)`.
+    // The card keeps its labelled inline button.
+    const wirings = [...src.matchAll(/onSelect=\{\(\) => onDelete\(r\)\}|onDelete\(r\) \}/g)]
       .map(m => m.index ?? -1)
     assert.ok(wirings.length >= 2, 'at least one wiring for the table row and one for the card')
     for (const at of wirings) {

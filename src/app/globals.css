@@ -3305,19 +3305,27 @@ body {
    the door to them, so it must invite a click while still being, first, a
    status.
 
-   Its own colours are set inline, per status, and are deliberately NOT touched
-   here — a hover that recoloured the badge would say the status had changed.
-   What moves is the ring and the lift, both of which are status-neutral.
+   THE BUTTON IS THE TARGET; THE CHIP INSIDE IT IS THE BADGE. The wrapper is
+   transparent and carries a few pixels of padding, so the clickable area stays
+   comfortable while the coloured chip itself is small enough to sit in a row of
+   ordinary table text. The chip's colours are set inline, per status, and are
+   deliberately NOT touched here — a hover that recoloured the badge would say
+   the status had changed.
 ─────────────────────────────────────────────────────── */
 .boe-allocation-badge {
+  /* Transparent hit area: bigger than the chip, invisible around it. */
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  margin: -3px;
+  background: none;
+  border: none;
+  border-radius: 6px;
   cursor: pointer;
-  /* Border-box so the 1px border the inline style sets is inside the box: the
-     badge is exactly the size the inert <span> version is, in both shapes. */
-  box-sizing: border-box;
   transition: box-shadow 0.12s ease, filter 0.12s ease;
 }
 
-/* Deepens the badge's own colour rather than replacing it, so a green badge
+/* Deepens the chip's own colour rather than replacing it, so a green badge
    stays green and a red one stays red — the status is never restyled into
    another status by pointing at it. */
 .boe-allocation-badge:hover,
@@ -3328,5 +3336,68 @@ body {
 
 .boe-allocation-badge:focus-visible {
   outline: 2px solid rgba(232,160,48,0.45);
-  outline-offset: 1px;
+  outline-offset: 0;
+}
+
+/* ─────────────────────────────────────────────────────
+   ROW ACTION ICON BUTTONS
+   Additive only — nothing above is modified.
+
+   Confirmed Payments shows every permitted action directly in the Actions
+   column instead of behind a "…" menu, so the common ones are one click rather
+   than two. They are icon-only and therefore each carries BOTH an aria-label
+   and a title: the glyph is the whole control, so nothing else names it.
+
+   Sized to the row, not to a toolbar — 24px keeps six of them on one line in a
+   110px column without a horizontal scrollbar.
+─────────────────────────────────────────────────────── */
+.boe-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: #4A5261;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+
+/* Hover and keyboard focus get the same surface, for the same reason the menu
+   entries do: pointing and tabbing are the same intent. */
+.boe-icon-action:hover:not(:disabled),
+.boe-icon-action:focus-visible:not(:disabled) {
+  background: #E8EBF0;
+  color: #111318;
+}
+
+.boe-icon-action:focus-visible {
+  outline: 2px solid rgba(232,160,48,0.45);
+  outline-offset: -1px;
+}
+
+/* The destructive action keeps red text and takes a red-tinted surface, so it
+   can never share the neutral highlight with an ordinary action. Same value
+   .boe-btn-danger:hover and the danger menu entry already use. */
+.boe-icon-action--danger {
+  color: #D94F4F;
+}
+.boe-icon-action--danger:hover:not(:disabled),
+.boe-icon-action--danger:focus-visible:not(:disabled) {
+  background: rgba(217,79,79,0.14);
+  color: #C13030;
+}
+
+/* An unavailable action must not look pressable. Confirmed Payments renders no
+   disabled icon today — an unheld permission removes the button entirely rather
+   than greying it — so this is the guard for the day one is added, and it is
+   why every rule above excludes :disabled. */
+.boe-icon-action:disabled {
+  color: #A3AAB8;
+  background: transparent;
+  cursor: not-allowed;
 }
