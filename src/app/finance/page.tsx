@@ -713,7 +713,7 @@ function DetailsModal({
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
             <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
-              {r.client_name}
+              {customerDisplayName(r.client_name)}
             </div>
           </div>
         </div>
@@ -860,8 +860,8 @@ function DetailsModal({
                 background: colors.greenTint, border: '1px solid rgba(69,168,112,0.2)',
                 borderRadius: '8px', padding: '10px 12px',
               }}>
-                Verify {fmtAmount(r.amount)} from {r.client_name}? This confirms the
-                money was checked and cannot be undone from this page.
+                Verify {fmtAmount(r.amount)} from {customerDisplayName(r.client_name)}? This
+                confirms the money was checked and cannot be undone from this page.
               </div>
               <textarea
                 className="boe-input"

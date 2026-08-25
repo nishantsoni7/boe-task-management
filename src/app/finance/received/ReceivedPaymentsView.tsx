@@ -23,6 +23,7 @@ import { isValidAmount } from '@/lib/currency'
 import {
   PAYMENT_MODES as PAYMENT_MODE_OPTIONS,
   PAYMENT_MODE_LABEL,
+  customerDisplayName,
 } from '@/lib/finance/paymentEntry'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
@@ -112,7 +113,12 @@ type PaymentRequest = {
   /** The pure allocation-ledger classification (20261011000000 §5): zero |
    *  partial | full | over. Null only when amount itself is null. */
   confirmed_allocation_status: ConfirmedAllocationStatus | null
-  client_name: string
+  /**
+   * NULLABLE since 20261013000000 §1. Null means no customer could be derived
+   * — the payment names no PI Draft and no Order. Rendered through
+   * <CustomerName>, which never prints a blank.
+   */
+  client_name: string | null
   amount: number
   payment_date: string
   payment_mode: string
@@ -677,7 +683,7 @@ function DetailsModal({
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
             <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
-              {r.client_name}
+              <CustomerName name={r.client_name} truncate={false} />
             </div>
           </div>
         </div>
@@ -898,7 +904,6 @@ function EditPaymentModal({
   onSaved: () => void
 }) {
   const [form, setForm] = useState({
-    clientName:  r.client_name,
     amount:      String(r.amount),
     paymentDate: r.payment_date,
     paymentMode: r.payment_mode,
@@ -921,7 +926,7 @@ function EditPaymentModal({
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const canSubmit = form.clientName.trim() && isValidAmount(form.amount) && form.paymentDate
+  const canSubmit = isValidAmount(form.amount) && form.paymentDate
 
   const handleSave = async () => {
     if (!canSubmit) return
@@ -930,7 +935,11 @@ function EditPaymentModal({
     const { data: updated, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
-        client_name:  form.clientName.trim(),
+        // THE CUSTOMER IS NOT IN THIS PAYLOAD. Since 20261013000000 it is
+        // derived server-side from the records this payment is allocated to,
+        // and is null when there are none. A typed correction here could only
+        // disagree with the allocations — so the field is gone and the stored
+        // value is left exactly as the server wrote it.
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
         payment_mode: form.paymentMode,
@@ -954,9 +963,13 @@ function EditPaymentModal({
 
   return (
     <FinanceModal title="Edit Received Payment" onClose={onClose}>
-      <Field label="Client Name" required>
-        <input className="boe-input" value={form.clientName} onChange={set('clientName')}
-          placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
+      <Field label="Customer">
+        <input className="boe-input" value={customerDisplayName(r.client_name)} readOnly disabled
+          style={{ width: '100%' }} />
+        <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+          Read from the records this payment is allocated to. Allocate or
+          reverse an allocation to change it.
+        </span>
       </Field>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
@@ -1651,7 +1664,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
                     Review
                   </button>
                   <RowActionsMenu
-                    label={`Actions for ${r.client_name}`}
+                    label={`Actions for ${customerDisplayName(r.client_name)}`}
                     actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }] : []}
                   />
                 </div>

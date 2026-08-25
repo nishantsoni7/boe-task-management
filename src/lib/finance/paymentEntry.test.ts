@@ -1,0 +1,646 @@
+/**
+ * The payment-entry destination model — the application half.
+ *
+ * TWO FORMS, ONE QUESTION. Payment Request (src/app/finance/page.tsx) and
+ * Record Payment (src/app/finance/received/RecordSplitPaymentModal.tsx) both ask
+ * where money is for and how it arrived. Before 20261013000000 they answered
+ * from different arrays in different files, and one of them asked for a customer
+ * name that the database was about to overwrite. These tests pin what makes that
+ * unrepeatable.
+ *
+ * HALF PURE, HALF SOURCE-SHAPE, and deliberately so. The vocabulary and the
+ * formatters are functions a test can call. "There is no Customer Name input" is
+ * not — it is a claim about a file, and the only honest way to check it is to
+ * read the file. Every source assertion below strips comments first, because a
+ * sentence explaining that a thing was removed is not the thing.
+ *
+ * NONE OF THIS IS A SECURITY BOUNDARY. Every rule the forms appear to enforce is
+ * re-derived server-side by submit_payment_request and
+ * record_payment_with_allocations, and proved there by
+ * supabase/tests/payment_entry_destination_model_assertions.sql. What these
+ * tests protect is that the browser asks the same question the server answers.
+ *
+ * Run:
+ *   npx tsx --test src/lib/finance/paymentEntry.test.ts
+ */
+
+import { describe, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import {
+  MULTIPLE_CUSTOMER_LABEL,
+  NO_CUSTOMER_LABEL,
+  PAYMENT_DESTINATIONS,
+  PAYMENT_DESTINATION_LABEL,
+  PAYMENT_DESTINATION_OPTIONS,
+  PAYMENT_MODES,
+  PAYMENT_MODE_VALUES,
+  SUSPENSE_NOTICE,
+  customerDisplayName,
+  destinationNeedsTarget,
+  destinationTargetKind,
+  isPaymentDestination,
+  isPaymentMode,
+  paymentEntryErrorMessage,
+  paymentModeLabel,
+} from './paymentEntry'
+
+const ROOT = process.cwd()
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
+
+/** A comment saying a thing was removed is not the thing. */
+const code = (src: string) =>
+  src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+
+const REQUEST_FORM   = 'src/app/finance/page.tsx'
+const RECORD_FORM    = 'src/app/finance/received/RecordSplitPaymentModal.tsx'
+const SHARED_FIELDS  = 'src/app/finance/components/PaymentEntryFields.tsx'
+const DISCARD_GUARD  = 'src/app/finance/components/DiscardGuard.tsx'
+const CASH_TRAIL     = 'src/app/finance/components/CashTrailFields.tsx'
+const MIGRATION      = 'supabase/migrations/20261013000000_payment_entry_destination_model.sql'
+
+const BOTH_FORMS = [REQUEST_FORM, RECORD_FORM]
+
+/**
+ * Just the modal, out of a file that holds a whole page.
+ *
+ * src/app/finance/page.tsx is three thousand lines: a list, five other modals
+ * and the page's own auth read. An assertion aimed at the SUBMISSION FORM has to
+ * be aimed at the submission form, or it fails on a legacy read three screens
+ * away and says something untrue about the form.
+ */
+function modalSource(file: string): string {
+  const src = code(read(file))
+  if (file !== REQUEST_FORM) return src
+  const from = src.indexOf('function NewPaymentConfirmationModal(')
+  const to   = src.indexOf('function PaymentIntentSummary(')
+  if (from < 0 || to < 0 || to < from) {
+    throw new Error('the Payment Request modal could not be located — has it been renamed?')
+  }
+  return src.slice(from, to)
+}
+
+// ── 1. Three destinations, and the same three on both forms ───────────────────
+
+describe('the destination vocabulary', () => {
+  test('there are exactly three, and they are the values the RPC accepts', () => {
+    assert.deepEqual([...PAYMENT_DESTINATIONS], ['pi_draft', 'confirmed_order', 'suspense'])
+    // The same three, spelled the same way, in the door they are sent to.
+    const sql = read(MIGRATION)
+    assert.ok(sql.includes("v_dest not in ('pi_draft', 'confirmed_order', 'suspense')"),
+      'submit_payment_request must accept exactly these three')
+  })
+
+  test('every destination has a label and a description that names the situation', () => {
+    assert.equal(PAYMENT_DESTINATION_OPTIONS.length, 3)
+    assert.deepEqual(PAYMENT_DESTINATION_OPTIONS.map(o => o.value), [...PAYMENT_DESTINATIONS])
+    assert.deepEqual(PAYMENT_DESTINATION_OPTIONS.map(o => o.label),
+      ['PI Draft', 'Confirmed Order', 'Suspense Entry'])
+    for (const o of PAYMENT_DESTINATION_OPTIONS) {
+      assert.ok(o.description.trim().length > 0, `${o.value} says nothing about when to choose it`)
+      assert.equal(PAYMENT_DESTINATION_LABEL[o.value], o.label)
+    }
+  })
+
+  test('an unknown destination is rejected rather than coerced', () => {
+    for (const bad of ['order_request', 'unallocated', 'new_order', '', null, undefined]) {
+      assert.equal(isPaymentDestination(bad as string), false, String(bad))
+    }
+  })
+
+  test('two destinations need a target and exactly one does not', () => {
+    assert.equal(destinationNeedsTarget('pi_draft'), true)
+    assert.equal(destinationNeedsTarget('confirmed_order'), true)
+    assert.equal(destinationNeedsTarget('suspense'), false)
+
+    assert.equal(destinationTargetKind('pi_draft'), 'submission')
+    assert.equal(destinationTargetKind('confirmed_order'), 'order')
+    assert.equal(destinationTargetKind('suspense'), null)
+  })
+
+  test('Suspense says what will happen to the money, in one sentence', () => {
+    assert.match(SUSPENSE_NOTICE, /unallocated/i)
+    assert.match(SUSPENSE_NOTICE, /Allocate Funds/)
+  })
+
+  test('both forms draw the cards from the shared component, not from their own list', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      assert.ok(/DestinationCards|PaymentEntryFields/.test(src),
+        `${file} must render the shared destination block`)
+      // No second list of destinations anywhere in either form.
+      assert.equal(/'pi_draft'[\s\S]{0,120}'confirmed_order'[\s\S]{0,120}'suspense'/.test(src), false,
+        `${file} must not restate the destination list`)
+    }
+  })
+})
+
+// ── 2. One payment-mode source ────────────────────────────────────────────────
+
+describe('the payment-mode vocabulary', () => {
+  test('exactly the five the database CHECK allows, and no Card', () => {
+    assert.deepEqual([...PAYMENT_MODE_VALUES],
+      ['bank_transfer', 'cash', 'upi', 'cheque', 'other'])
+    assert.deepEqual(PAYMENT_MODES.map(m => m.label),
+      ['Bank Transfer', 'Cash', 'UPI', 'Cheque', 'Other'])
+    assert.equal(isPaymentMode('card'), false, 'card is not in the constraint and must not be offered')
+  })
+
+  test('the migration refuses the same five, by name', () => {
+    const sql = read(MIGRATION)
+    assert.ok(sql.includes("v_mode not in ('bank_transfer', 'cash', 'upi', 'cheque', 'other')"),
+      'submit_payment_request must restate the canonical five')
+    // The migration NAMES 'card' once, in the apply-time assertion that refuses
+    // it — proving its absence is the point, so the check is that the domain
+    // never gains it, not that the word is unsaid.
+    assert.ok(sql.includes("raise exception 'payment_mode must NOT accept ''card'"),
+      'the migration must assert, at apply time, that the domain still refuses card')
+    assert.equal(/in \('bank_transfer'[^)]*'card'/.test(sql), false,
+      'no list in this migration may admit card')
+  })
+
+  test('an unrecognised stored mode is shown AS STORED, never relabelled', () => {
+    // A row carrying something this list does not know is a fact worth seeing.
+    assert.equal(paymentModeLabel('crypto'), 'crypto')
+    assert.equal(paymentModeLabel('bank_transfer'), 'Bank Transfer')
+    assert.equal(paymentModeLabel(''), '—')
+    assert.equal(paymentModeLabel(null), '—')
+  })
+
+  test('no surface keeps its own mode list any more', () => {
+    // Five files used to hold five arrays that happened to agree. They agreed;
+    // nothing made them.
+    for (const file of [
+      REQUEST_FORM,
+      RECORD_FORM,
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/app/orders/[id]/page.tsx',
+      'src/lib/finance/piPaymentView.ts',
+      'src/app/finance/paymentDestinations.ts',
+    ]) {
+      const src = code(read(file))
+      assert.equal(/'bank_transfer'[\s\S]{0,200}'cheque'/.test(src), false,
+        `${file} must not restate the payment-mode list — import it`)
+    }
+  })
+})
+
+// ── 3-5. The customer is never typed, and nothing is fabricated ───────────────
+
+describe('the customer is derived, never entered', () => {
+  test('neither form has a customer input', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      // No state holding a typed name…
+      assert.equal(/setClientName|clientName,\s*setClientName|manualClientName/.test(src), false,
+        `${file} must hold no typed customer name`)
+      // …and no labelled field asking for one.
+      assert.equal(/label="Client Name"/.test(src), false,
+        `${file} must not ask for a Client Name`)
+    }
+  })
+
+  test('the shared destination block shows the customer read-only and sends nothing', () => {
+    const src = code(read(SHARED_FIELDS))
+    assert.ok(src.includes('state.target.clientName'),
+      'the chosen record confirms which customer it names')
+    // The only input in the block is the target SEARCH box — never a name.
+    const inputs = [...src.matchAll(/<input\b/g)]
+    assert.equal(inputs.length, 1, 'the destination block has exactly one input: the target search')
+    const tag = src.slice(src.indexOf('<input'), src.indexOf('<input') + 600)
+    assert.ok(tag.includes('runSearch'), 'and it is the search box')
+    assert.equal(/value=\{[^}]*clientName/.test(tag), false, 'the customer is never editable')
+    // No <textarea> or <select> smuggles one in either.
+    assert.equal(/<textarea|<select/.test(src), false)
+  })
+
+  test('the Payment Request form sends no customer — the RPC has no parameter for one', () => {
+    const src = modalSource(REQUEST_FORM)
+    assert.ok(src.includes(".rpc('submit_payment_request'"))
+    assert.equal(src.includes('p_client_name'), false)
+    const sql = read(MIGRATION)
+    assert.equal(/create or replace function public\.submit_payment_request\([^)]*p_client_name/.test(sql), false,
+      'a parameter that is ignored is a parameter somebody will eventually rely on')
+  })
+
+  test('the Record Payment form sends NULL rather than a guess', () => {
+    const src = code(read(RECORD_FORM))
+    assert.ok(src.includes('p_client_name:  null'),
+      'the customer comes from the targets the RPC validates')
+    assert.ok(src.includes('p_received_in:  null'),
+      'and the account is not invented to fill a nullable column')
+  })
+
+  test('no Received In control survives on the Record Payment form', () => {
+    const src = code(read(RECORD_FORM))
+    for (const gone of ['RECEIVED_IN', 'receivedIn', 'setReceivedIn', 'Received in', 'Received In']) {
+      assert.equal(src.includes(gone), false, `${RECORD_FORM} must not still offer ${gone}`)
+    }
+  })
+
+  test('the Payment Request form states no receiving account either', () => {
+    const src = modalSource(REQUEST_FORM)
+    const written = [...src.matchAll(/received_in:\s*([A-Za-z_$][\w$]*)/g)]
+      .map(m => m[1]).filter(t => t !== 'string')
+    assert.deepEqual(written, [], 'the account picker is gone and nothing replaces its value')
+    assert.equal(src.includes('p_received_in'), false)
+  })
+
+  test('the migration stores NULL for both rather than inventing either', () => {
+    const sql = read(MIGRATION)
+    assert.ok(sql.includes('(v_client, p_amount, p_payment_date, v_mode, null,'),
+      'submit_payment_request writes a null received_in for every destination')
+    assert.ok(sql.includes('v_client   := null;'),
+      'and a null customer for Suspense')
+  })
+})
+
+describe('how a payment with no customer is written down', () => {
+  test('never blank, never null, never undefined', () => {
+    for (const value of [null, undefined, '', '   ']) {
+      const shown = customerDisplayName(value)
+      assert.equal(shown, NO_CUSTOMER_LABEL)
+      assert.ok(shown.trim().length > 0)
+      assert.equal(/null|undefined/i.test(shown), false)
+    }
+  })
+
+  test('a real name is returned untouched', () => {
+    assert.equal(customerDisplayName('Mehta Textiles'), 'Mehta Textiles')
+    assert.equal(customerDisplayName('  Mehta Textiles  '), 'Mehta Textiles')
+  })
+
+  test('several customers is a DISPLAY rule, never a stored value', () => {
+    // The database stores NULL when a payment's allocations name more than one
+    // customer, rather than a summary string that would then be searchable as a
+    // customer in its own right. The sentence belongs at the point of display.
+    assert.equal(customerDisplayName(null, { distinctAllocationCustomers: 2 }), MULTIPLE_CUSTOMER_LABEL)
+    assert.equal(customerDisplayName(null, { distinctAllocationCustomers: 1 }), NO_CUSTOMER_LABEL)
+    assert.equal(customerDisplayName(null, { distinctAllocationCustomers: 0 }), NO_CUSTOMER_LABEL)
+    // A stored name always wins: it is what the server derived.
+    assert.equal(customerDisplayName('Mehta Textiles', { distinctAllocationCustomers: 3 }), 'Mehta Textiles')
+  })
+
+  test('the migration stores one name only when it is unambiguous', () => {
+    const sql = read(MIGRATION)
+    assert.ok(sql.includes('case when count(distinct name) = 1 then min(name) end'),
+      'record_payment_with_allocations must store NULL rather than a fabricated summary')
+  })
+
+  test('every payment surface renders the customer through the one formatter', () => {
+    for (const file of [
+      REQUEST_FORM,
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/components/finance/DeletePaymentModal.tsx',
+      'src/app/admin/control-center/action-queue/page.tsx',
+      'src/app/orders/[id]/page.tsx',
+    ]) {
+      const src = code(read(file))
+      assert.ok(/customerDisplayName|<CustomerName/.test(src),
+        `${file} must name a missing customer through the shared formatter`)
+      // The two shapes that print a blank or an em dash for a real state.
+      assert.equal(/client_name \|\| '—'/.test(src), false,
+        `${file} must not fall back to an em dash for a customer that is genuinely absent`)
+      // As a JSX CHILD, which is what prints a blank. Passing it to a component
+      // that formats it — <CustomerName name={r.client_name} /> — is the fix,
+      // not the failure.
+      assert.equal(/>\s*\{r\.client_name\}/.test(src), false,
+        `${file} must not render a nullable customer raw`)
+    }
+  })
+})
+
+// ── 6-8. The target search ────────────────────────────────────────────────────
+
+describe('choosing the record a payment is for', () => {
+  test('the search is bounded, and by the same limit on both sources', () => {
+    const src = read('src/app/finance/received/AllocatePaymentModal.tsx')
+    const limits = [...src.matchAll(/\.limit\((\d+)\)/g)].map(m => Number(m[1]))
+    assert.ok(limits.length >= 2, 'both sources must be limited')
+    for (const n of limits) assert.ok(n > 0 && n <= 50, `an unbounded-ish limit: ${n}`)
+  })
+
+  test('it reads only the table the destination admits', () => {
+    const src = read('src/app/finance/received/AllocatePaymentModal.tsx')
+    assert.ok(src.includes("const wantOrders = kind !== 'submission'"))
+    assert.ok(src.includes("const wantDrafts = kind !== 'order'"))
+    assert.ok(src.includes("!wantOrders ? Promise.resolve({ data: [] })"),
+      'a form that has already asked PI-or-Order must not query the other table')
+    assert.ok(src.includes("!wantDrafts ? Promise.resolve({ data: [] })"))
+  })
+
+  test('a superseded search never overwrites a later one', () => {
+    for (const file of [SHARED_FIELDS, RECORD_FORM]) {
+      const src = read(file)
+      const claimed = src.indexOf('const token = ++searchToken.current')
+      const checked = src.indexOf('if (token !== searchToken.current) return')
+      assert.ok(claimed > -1, `${file} must claim a search token`)
+      assert.ok(checked > claimed, `${file} must re-read the token before writing results`)
+    }
+  })
+
+  test('and it is debounced, so a query is not fired per keystroke', () => {
+    for (const file of [SHARED_FIELDS, RECORD_FORM]) {
+      const src = code(read(file))
+      assert.ok(src.includes('clearTimeout(debounce.current)'), `${file} must debounce its search`)
+      assert.match(src, /setTimeout\([\s\S]{0,600}?\}, 250\)/, `${file} must use the shared 250ms delay`)
+    }
+  })
+
+  test('Suspense searches nothing and carries no target', () => {
+    const src = code(read(SHARED_FIELDS))
+    // destinationTargetKind returns null for suspense, and the block gates
+    // both the search and the results on it.
+    assert.ok(src.includes('if (!term || !kind) { setResults([]); return }'))
+    assert.ok(src.includes('{kind && !state.target && ('),
+      'no target picker is drawn when the destination has no target')
+    // Switching destination CLEARS the target rather than carrying it across.
+    assert.ok(src.includes('return { destination, target: null }'))
+  })
+
+  test('the Record Payment form refuses a Suspense entry that still holds rows', () => {
+    const src = code(read('src/lib/finance/splitPaymentEntry.ts'))
+    assert.ok(src.includes('A Suspense Entry holds no allocations'),
+      'a row left behind must be refused, not quietly dropped')
+    assert.ok(src.includes('targetKind ? toRpcAllocations(rows) : []')
+      || code(read(RECORD_FORM)).includes('targetKind ? toRpcAllocations(rows) : []'),
+      'and the payload must send an empty list for Suspense')
+  })
+})
+
+// ── 9-13. The modals ──────────────────────────────────────────────────────────
+
+describe('a form modal never throws away what somebody typed', () => {
+  test('backdrop click closes neither form', () => {
+    const record = code(read(RECORD_FORM))
+    assert.ok(record.includes('closeOnBackdropClick={false}'),
+      'Record Payment must opt out of backdrop dismissal')
+
+    // The Payment Request form draws its own overlay, so the proof is that the
+    // overlay carries no click handler at all.
+    // Read UNSTRIPPED: the overlay is located by the comment that labels it.
+    const request = read(REQUEST_FORM)
+    const overlay = request.slice(request.indexOf('{/* Full-page overlay'),
+      request.indexOf('{/* Modal */}'))
+    assert.ok(overlay.length > 0, 'the overlay must still be there to check')
+    assert.equal(/onClick=/.test(overlay), false,
+      'the Payment Request overlay must be inert — a stray click is not a decision')
+  })
+
+  test('Escape, ✕ and Cancel all go through the guard, never straight to onClose', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      assert.ok(src.includes('useDiscardGuard'), `${file} must wire the guard`)
+      assert.ok(src.includes('guard.requestClose'), `${file} must close through it`)
+      assert.ok(src.includes('<DiscardConfirmation'), `${file} must be able to ask`)
+    }
+  })
+
+  test('the question is the one the product specified, word for word', () => {
+    const src = read(DISCARD_GUARD)
+    assert.ok(src.includes("'Discard payment details?'"))
+    assert.ok(src.includes("'The information entered in this form will be lost.'"))
+    assert.ok(src.includes("'Continue Editing'"))
+    assert.ok(src.includes("'Discard'"))
+  })
+
+  test('a pristine form closes on Escape; a dirty one asks first', () => {
+    const src = code(read(DISCARD_GUARD))
+    assert.ok(src.includes('if (dirtyRef.current()) { setAsking(true); return }'),
+      'dirty asks')
+    assert.ok(src.includes('onClose()'), 'pristine closes')
+    // The dirtiness is read from a ref, so the handler asks the CURRENT form
+    // rather than the one the listener was attached to.
+    assert.ok(src.includes('useEffect(() => { dirtyRef.current = isDirty })'),
+      'the guard must not close over a stale form')
+  })
+
+  test('the confirmation itself cannot be dismissed by clicking past it', () => {
+    const src = code(read(DISCARD_GUARD))
+    const dialog = src.slice(src.indexOf('role="alertdialog"'))
+    const backdrop = dialog.slice(dialog.indexOf("position: 'absolute', inset: 0"))
+    assert.equal(/onClick=/.test(backdrop.slice(0, 200)), false,
+      'the question has two answers and clicking past it is not one of them')
+    assert.ok(src.includes('if (open) keepRef.current?.focus()'),
+      'the safe answer is the focused one')
+  })
+
+  test('nothing about a payment form reaches browser storage', () => {
+    for (const file of [...BOTH_FORMS, DISCARD_GUARD, SHARED_FIELDS, CASH_TRAIL]) {
+      const src = code(read(file))
+      for (const api of ['localStorage', 'sessionStorage', 'indexedDB']) {
+        assert.equal(src.includes(api), false,
+          `${file} must not leave a half-entered payment lying in ${api}`)
+      }
+    }
+  })
+
+  test('a second click cannot submit a second payment', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      assert.ok(src.includes('submitting.current'),
+        `${file} must guard duplicate submission with a ref, not with state`)
+      assert.ok(/if \(![\s\S]{0,40}\|\| saving \|\| submitting\.current\) return/.test(src)
+        || /if \(blocked \|\| saving \|\| submitting\.current\) return/.test(src),
+        `${file} must refuse a second submit synchronously`)
+    }
+  })
+
+  test('a refusal keeps the form open with everything still in it', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      // The error path releases the submit lock and sets a message; it never
+      // calls the close/saved callback.
+      const errorBranch = src.slice(src.indexOf('submitting.current = false'))
+      assert.ok(errorBranch.includes('setError('), `${file} must say what went wrong`)
+    }
+  })
+
+  test('focus enters the dialog, cycles inside it, and returns to the opener', () => {
+    const shell = code(read('src/app/finance/components/FinanceModalShell.tsx'))
+    assert.ok(shell.includes('export function useDialogFocus'))
+    assert.ok(shell.includes('const opener = document.activeElement'))
+    assert.ok(shell.includes('if (opener && document.contains(opener)) opener.focus()'))
+    assert.ok(shell.includes("if (e.key !== 'Tab') return"))
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      assert.ok(/useDialogFocus|FinanceModal/.test(src), `${file} must use the shared dialog focus`)
+    }
+  })
+})
+
+// ── 14. Layout ────────────────────────────────────────────────────────────────
+
+describe('both layouts stay usable', () => {
+  test('the destination cards wrap rather than overflowing a narrow dialog', () => {
+    const src = read(SHARED_FIELDS)
+    assert.ok(src.includes("flexWrap: 'wrap'"), 'three cards must wrap on a phone')
+    assert.ok(src.includes("flex: '1 1 180px'"), 'and each must have a floor, not a fixed width')
+  })
+
+  test('neither dialog can be wider than the viewport', () => {
+    // The Payment Request form draws its own frame; Record Payment uses the
+    // shared shell, so the shell is where its cap lives.
+    for (const file of [REQUEST_FORM, 'src/app/finance/components/FinanceModalShell.tsx']) {
+      const src = read(file)
+      assert.ok(/maxWidth: 'calc\(100vw - \d+px\)'/.test(src), `${file} must fit a narrow screen`)
+    }
+    assert.ok(code(read(RECORD_FORM)).includes('<FinanceModal'),
+      'Record Payment must use the shell that carries the cap')
+  })
+
+  test('the card is a real radio group, named and checkable by a screen reader', () => {
+    const src = read(SHARED_FIELDS)
+    assert.ok(src.includes('role="radiogroup"'))
+    assert.ok(src.includes('role="radio"'))
+    assert.ok(src.includes('aria-checked={selected}'))
+    assert.ok(src.includes('Where should this payment go?'),
+      'the group must be named, not just visually obvious')
+  })
+
+  test('the selected card is named by more than its colour', () => {
+    const src = read(SHARED_FIELDS)
+    assert.ok(src.includes('{selected && <Check'), 'a check mark, not a tint alone')
+    assert.ok(src.includes('aria-hidden="true"'), 'and the icons stay decorative')
+  })
+})
+
+// ── 15-16. Round trips ────────────────────────────────────────────────────────
+
+describe('what the forms cost to open and to submit', () => {
+  test('submitting a Payment Request is ONE call, not a payment plus an intent', () => {
+    const src = modalSource(REQUEST_FORM)
+    const submit = src.slice(src.indexOf('const handleSubmit ='), src.indexOf('return (\n    <>'))
+    const writes = [...submit.matchAll(/supabase\s*\n?\s*\.from\('finance_payment_requests'\)/g)]
+    // The only direct table write left in the submit path is the compensation
+    // delete when a proof upload fails — never an insert.
+    assert.equal(/\.insert\(\{[\s\S]{0,200}payment_date/.test(submit), false,
+      'the form must not insert the payment itself — two writes cannot be made atomic here')
+    assert.ok(submit.includes(".rpc('submit_payment_request'"))
+    assert.ok(writes.length <= 1, 'at most the compensation delete touches the table directly')
+  })
+
+  test('the cash trail asks the users table only when Cash is actually chosen', () => {
+    const src = code(read(CASH_TRAIL))
+    assert.ok(src.includes('if (!capturing || loaded.current) return'),
+      'a bank transfer must not read the users table at all')
+    assert.ok(src.includes('loaded.current = true'), 'and it must not re-read on every render')
+  })
+
+  test('no form re-reads the signed-in user or their profile', () => {
+    for (const file of [...BOTH_FORMS, SHARED_FIELDS, CASH_TRAIL]) {
+      const src = file === SHARED_FIELDS || file === CASH_TRAIL ? code(read(file)) : modalSource(file)
+      assert.equal(/auth\.getUser\(|auth\.getSession\(/.test(src), false,
+        `${file} must take the actor from its props, not re-fetch it`)
+      assert.equal(/from\('users'\)[\s\S]{0,120}\.eq\('id'/.test(src), false,
+        `${file} must not fetch a profile it was handed`)
+    }
+  })
+
+  test('reading a payment intent is a fixed cost, never one query per row', () => {
+    const src = code(read('src/app/finance/paymentIntents.ts'))
+    assert.ok(src.includes('.limit(1)'), 'one intent, for one payment')
+    const queries = [...src.matchAll(/\.from\('/g)]
+    assert.ok(queries.length <= 3,
+      'the intent, and at most one lookup for the record it names')
+    // And it is called from a modal, never from a list row.
+    const page = code(read(REQUEST_FORM))
+    assert.equal(/\.map\([\s\S]{0,200}loadPaymentIntent/.test(page), false,
+      'loadPaymentIntent must never be called inside a row map')
+  })
+})
+
+// ── 17. Nothing retired comes back ────────────────────────────────────────────
+
+describe('the retired workflows stay retired', () => {
+  test('no Link or Unlink RPC has a caller in either form', () => {
+    for (const file of [...BOTH_FORMS, SHARED_FIELDS]) {
+      const src = read(file)
+      assert.equal(src.includes(".rpc('link_finance_payment_to_order"), false, file)
+      assert.equal(src.includes(".rpc('unlink_finance_payment_from_order"), false, file)
+    }
+  })
+
+  test('the four-target selector is deleted, not merely unused', () => {
+    assert.equal(existsSync(join(ROOT, 'src/app/finance/components/PaymentTargetFields.tsx')), false)
+    assert.equal(existsSync(join(ROOT, 'src/app/finance/components/PaymentDestinationFields.tsx')), false)
+    const targets = read('src/app/finance/paymentTargets.ts')
+    assert.equal(/export const PAYMENT_TARGET_OPTIONS/.test(targets), false)
+    assert.equal(/export function buildTargetPayload/.test(targets), false)
+  })
+
+  test('neither form writes a linkage column', () => {
+    for (const file of BOTH_FORMS) {
+      const src = modalSource(file)
+      for (const column of ['order_request_id', 'order_request_number', 'payment_target_type']) {
+        assert.equal(new RegExp(`${column}:`).test(src), false,
+          `${file} must not write ${column} — the database derives it`)
+      }
+    }
+    // order_id is the one that matters most: money reaches a record through an
+    // allocation, and provenance columns stopped being read in 20261012000000.
+    const sql = read(MIGRATION)
+    const submit = sql.slice(sql.indexOf('create or replace function public.submit_payment_request'),
+      sql.indexOf('comment on function public.submit_payment_request'))
+    assert.equal(/insert into public\.finance_payment_requests[\s\S]{0,400}order_id/.test(submit), false,
+      'submit_payment_request must set no order_id for any destination')
+  })
+
+  test('an intent is never read as an allocation', () => {
+    // The migration asserts this against the live catalogue at apply time; this
+    // is the statement that the assertion is still in the file.
+    const sql = read(MIGRATION)
+    assert.ok(sql.includes('INTENT IS NOT ALLOCATION'))
+    assert.ok(sql.includes('finance_payment_allocation_intents'))
+    assert.ok(/pg_get_functiondef|pg_get_viewdef/.test(sql),
+      'the check must read the catalogue, not a list of names somebody maintains')
+  })
+})
+
+// ── 18. The refusals become sentences ─────────────────────────────────────────
+
+describe('what a refused submission tells the person', () => {
+  const CASES: [string, RegExp][] = [
+    ['FINANCE_MODULE_CLOSED: …',       /access to Finance/],
+    ['PAYMENT_DESTINATION_INVALID: …', /PI Draft, Confirmed Order or Suspense/],
+    ['PAYMENT_TARGET_REQUIRED: …',     /Choose the PI Draft or Order/],
+    ['PAYMENT_TARGET_FORBIDDEN: …',    /Suspense Entry names no/],
+    ['PAYMENT_TARGET_CONVERTED: …',    /now an Order/],
+    ['PAYMENT_TARGET_NO_CLIENT: …',    /no customer on file/],
+    ['PAYMENT_AMOUNT_INVALID: …',      /positive amount/],
+    ['PAYMENT_DATE_REQUIRED: …',       /date the payment was received/],
+    ['PAYMENT_MODE_INVALID: …',        /Bank Transfer, Cash, UPI, Cheque or Other/],
+  ]
+
+  for (const [raw, expected] of CASES) {
+    test(raw.split(':')[0], () => assert.match(paymentEntryErrorMessage(raw), expected))
+  }
+
+  test('every code the RPC raises has a sentence here', () => {
+    // Otherwise a real refusal degrades to the generic one, which is the failure
+    // mode this mapping exists to prevent.
+    const sql = read(MIGRATION)
+    const submit = sql.slice(sql.indexOf('create or replace function public.submit_payment_request'),
+      sql.indexOf('comment on function public.submit_payment_request'))
+    const codes = new Set([...submit.matchAll(/raise exception\s*\n?\s*'([A-Z_]+):/g)].map(m => m[1]))
+    assert.ok(codes.size >= 8, `expected the refusals to be greppable, found ${codes.size}`)
+    for (const c of codes) {
+      assert.notEqual(paymentEntryErrorMessage(`${c}: something`),
+        paymentEntryErrorMessage('something unrelated'),
+        `${c} has no sentence of its own`)
+    }
+  })
+
+  test('an unrecognised refusal leaks no database text and says nothing was saved', () => {
+    const message = paymentEntryErrorMessage(
+      'duplicate key value violates unique constraint "finance_payment_allocation_intents_pending_pi_idx"')
+    assert.doesNotMatch(message, /constraint|idx|duplicate key/)
+    assert.match(message, /Nothing was saved/)
+  })
+
+  test('a null refusal is still a sentence', () => {
+    assert.match(paymentEntryErrorMessage(null), /could not be submitted/)
+    assert.match(paymentEntryErrorMessage(undefined), /could not be submitted/)
+  })
+})

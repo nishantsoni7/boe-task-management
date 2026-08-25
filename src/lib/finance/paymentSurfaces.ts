@@ -1,4 +1,5 @@
 import { ACTIONS_COLUMN_WIDTH_PX } from './rowActions'
+import { customerDisplayName } from './paymentEntry'
 
 // WHICH PAGE A PAYMENT BELONGS ON, and the one status list that decides it.
 //
@@ -256,7 +257,12 @@ export function formatCustomerName(
   limit: number = CUSTOMER_NAME_DISPLAY_LIMIT,
 ): { display: string; full: string; truncated: boolean } {
   const name = (full ?? '').trim().replace(/\s+/g, ' ')
-  if (name === '') return { display: '—', full: '', truncated: false }
+  // NO CUSTOMER IS A FACT, NOT A GAP. client_name is nullable since
+  // 20261013000000 §1 and null means one thing: no customer could be derived,
+  // because the payment names no PI Draft and no Order. An em dash reads as
+  // "missing data"; customerDisplayName is the one place that decides how the
+  // real answer is written down, so a list row and a modal cannot disagree.
+  if (name === '') return { display: customerDisplayName(null), full: '', truncated: false }
   if (name.length <= limit) return { display: name, full: name, truncated: false }
   // Trim to the limit minus the ellipsis, then back off to the last full
   // word so the cut never lands mid-word.

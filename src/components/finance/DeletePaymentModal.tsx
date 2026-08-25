@@ -23,6 +23,7 @@
 
 import { useState } from 'react'
 import { colors } from '@/lib/tokens'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import {
   PAYMENT_DELETE_ALLOCATION_WARNING,
@@ -142,7 +143,11 @@ export function DeletePaymentModal({
         <Row label="Amount"       value={formatAmount(payment.amount)} />
         <Row label="Payment Date" value={formatDate(payment.payment_date)} />
         <Row label="Mode"         value={modeLabel(payment.payment_mode)} />
-        {payment.client_name ? <Row label="Customer" value={payment.client_name} /> : null}
+        {/* ALWAYS SHOWN, and never blank. A payment with no customer is a real
+            state since 20261013000000 — it names no PI Draft and no Order — and
+            somebody about to delete a payment should read that fact rather than
+            wonder whether a row is missing. */}
+        <Row label="Customer" value={customerDisplayName(payment.client_name)} />
       </div>
 
       {allocationSummary && (
