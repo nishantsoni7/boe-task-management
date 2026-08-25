@@ -255,8 +255,9 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
       view.indexOf('function IconAction'))
     assert.ok(!table.includes('<RowActionsMenu'),
       'Confirmed Payments has no ellipsis menu')
-    assert.equal((table.match(/<IconAction/g) ?? []).length, 6,
-      'View, Allocate, Link, Unlink, Edit, Delete — each its own direct button')
+    assert.ok(table.includes('visibleRowActions({'),
+      'the set is decided by the shared predicate, not by six guards written out here')
+    assert.ok(table.includes('<IconAction'), 'and each one is drawn as a direct icon button')
     assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 0,
       'and no bare text button is left in the Actions cell')
   })

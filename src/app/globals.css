@@ -3348,15 +3348,18 @@ body {
    than two. They are icon-only and therefore each carries BOTH an aria-label
    and a title: the glyph is the whole control, so nothing else names it.
 
-   Sized to the row, not to a toolbar — 24px keeps six of them on one line in a
-   110px column without a horizontal scrollbar.
+   28px targets: comfortable to hit without becoming toolbar buttons. The
+   Actions column is sized FROM this number rather than the other way round —
+   see ROW_ACTION_TARGET_PX and ACTIONS_COLUMN_WIDTH_PX in
+   lib/finance/rowActions.ts. Shrinking the target to make a narrower column fit
+   is the trade this deliberately refuses.
 ─────────────────────────────────────────────────────── */
 .boe-icon-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   padding: 0;
   background: transparent;
   border: none;

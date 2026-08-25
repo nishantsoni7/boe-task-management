@@ -5,6 +5,11 @@ import { createPortal } from 'react-dom'
 import { Eye, Link2, Pencil, Split, Trash2, Unlink, type LucideIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
+import {
+  ROW_ACTION_GAP_PX,
+  visibleRowActions,
+  type RowActionKey,
+} from '@/lib/finance/rowActions'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -1435,6 +1440,51 @@ function ReceivedPaymentsTable({
   // COMPACT, AND NO minWidth. Eleven columns at these paddings fit 1024px with
   // room over; the breakdown that would not fit lives in the expandable row
   // instead of being squeezed in or forcing a sideways scroll.
+  // ONE PLACE PER ACTION: its icon, how it names itself, what it runs, and
+  // whether it is destructive. visibleRowActions() decides WHICH of these are
+  // drawn; this decides what each one IS. Every label names the PAYMENT and not
+  // just the verb, because the glyph is the whole control and forty identical
+  // pencils are otherwise indistinguishable to a screen reader.
+  const ROW_ACTION_META: Record<RowActionKey, {
+    Icon: LucideIcon
+    label: (r: PaymentRequest) => string
+    run: (r: PaymentRequest) => void
+    danger?: boolean
+  }> = {
+    view: {
+      Icon: Eye,
+      label: r => `View details for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onView(r),
+    },
+    allocate: {
+      Icon: Split,
+      label: r => `${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onAllocateFunds(r),
+    },
+    link: {
+      Icon: Link2,
+      label: r => `Link ${r.human_payment_id ?? 'this payment'} to an Order`,
+      run: r => onLink(r),
+    },
+    unlink: {
+      Icon: Unlink,
+      label: r => `Unlink ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onUnlink(r),
+    },
+    edit: {
+      Icon: Pencil,
+      label: r => `Edit ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onEdit(r),
+    },
+    // Drawn last, and the only destructive one.
+    delete: {
+      Icon: Trash2,
+      label: r => `${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onDelete(r),
+      danger: true,
+    },
+  }
+
   const TD: React.CSSProperties = {
     padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
   }
@@ -1524,66 +1574,49 @@ function ReceivedPaymentsTable({
 
                   {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
                       a View button and a "…" menu, so the common actions cost
-                      two clicks and one of them was hidden. They are icon-only
-                      buttons now — the glyph IS the control, so each carries
-                      both an aria-label and a title, since nothing else names
-                      it.
+                      two clicks and one of them was hidden.
 
-                      THE GATES ARE UNCHANGED, one for one, from the menu
-                      entries they replace. An action a reader may not take is
-                      not rendered at all rather than greyed: a disabled control
-                      invites a click that will never work. */}
+                      WHICH actions appear is decided by visibleRowActions() in
+                      lib/finance/rowActions.ts, not by six guards written out
+                      here — because the column's WIDTH is arithmetic over the
+                      maximum number of icons a row can show at once, and that
+                      maximum has to be derivable rather than counted by eye.
+                      The conditions inside it are unchanged, one for one, from
+                      the guards they replace.
+
+                      An action a reader may not take is absent, not greyed: a
+                      disabled control invites a click that will never work. */}
                   <td style={{ ...TD, textAlign: 'right' }}>
                     <div
-                      style={{ display: 'inline-flex', gap: '2px', alignItems: 'center', justifyContent: 'flex-end' }}
+                      style={{
+                        display: 'inline-flex', gap: `${ROW_ACTION_GAP_PX}px`,
+                        alignItems: 'center', justifyContent: 'flex-end',
+                        // One line, always. The column is declared wide enough
+                        // for the widest row (ACTIONS_COLUMN_WIDTH_PX), so this
+                        // is belt and braces rather than a fallback.
+                        flexWrap: 'nowrap',
+                      }}
                       onClick={e => e.stopPropagation()}
                     >
-                      <IconAction
-                        Icon={Eye}
-                        label={`View details for ${r.human_payment_id ?? 'this payment'}`}
-                        onSelect={() => onView(r)}
-                      />
-                      {offerAllocate && (
-                        <IconAction
-                          Icon={Split}
-                          label={`${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`}
-                          onSelect={() => onAllocateFunds(r)}
-                        />
-                      )}
-                      {canManage && !r.order_id && (
-                        <IconAction
-                          Icon={Link2}
-                          label={`Link ${r.human_payment_id ?? 'this payment'} to an Order`}
-                          onSelect={() => onLink(r)}
-                        />
-                      )}
-                      {canManage && (r.order_id || r.order_request_id)
-                        && r.payment_against === 'new_order' && (
-                        <IconAction
-                          Icon={Unlink}
-                          label={`Unlink ${r.human_payment_id ?? 'this payment'}`}
-                          onSelect={() => onUnlink(r)}
-                        />
-                      )}
-                      {canManage && (
-                        <IconAction
-                          Icon={Pencil}
-                          label={`Edit ${r.human_payment_id ?? 'this payment'}`}
-                          onSelect={() => onEdit(r)}
-                        />
-                      )}
-                      {/* DELETE — last, admin-only for any status. Offered under
-                          every allocation filter (zero/partial/full/over):
-                          canDeleteRow is the single gate, independent of
-                          allocation state. */}
-                      {canDeleteRow(r) && (
-                        <IconAction
-                          Icon={Trash2}
-                          label={`${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`}
-                          onSelect={() => onDelete(r)}
-                          danger
-                        />
-                      )}
+                      {visibleRowActions({
+                        offerAllocate,
+                        canManage,
+                        canDelete: canDeleteRow(r),
+                        orderId: r.order_id,
+                        orderRequestId: r.order_request_id,
+                        paymentAgainst: r.payment_against,
+                      }).map(key => {
+                        const action = ROW_ACTION_META[key]
+                        return (
+                          <IconAction
+                            key={key}
+                            Icon={action.Icon}
+                            label={action.label(r)}
+                            onSelect={() => action.run(r)}
+                            danger={action.danger}
+                          />
+                        )
+                      })}
                     </div>
                   </td>
                 </tr>

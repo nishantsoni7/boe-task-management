@@ -1,3 +1,5 @@
+import { ACTIONS_COLUMN_WIDTH_PX } from './rowActions'
+
 // WHICH PAGE A PAYMENT BELONGS ON, and the one status list that decides it.
 //
 // THE CANONICAL DEFINITION IS THE DATABASE'S, NOT THIS FILE'S.
@@ -158,7 +160,16 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   { key: 'status',       label: 'Allocation Status', align: 'left',  width: '170px' },
   { key: 'initiated_by', label: 'Initiated By',      align: 'left'  },
   { key: 'approved_by',  label: 'Approved By',       align: 'left'  },
-  { key: 'actions',      label: 'Actions',           align: 'right', width: '110px' },
+  // WIDTH IS COMPUTED, NOT CHOSEN. The Actions cell must hold the widest row
+  // this table can draw, on one line: six icon targets and the five gaps
+  // between them, plus the cell's own padding. See ACTIONS_COLUMN_WIDTH_PX in
+  // lib/finance/rowActions.ts, which derives the six by enumerating the
+  // visibility rules rather than trusting a count made by eye — the count was
+  // made by eye twice and was wrong both times.
+  //
+  // The room comes from the three columns that left this table (Customer, Total
+  // Allocated, Remaining); no remaining column was squeezed to pay for it.
+  { key: 'actions',      label: 'Actions',           align: 'right', width: `${ACTIONS_COLUMN_WIDTH_PX}px` },
 ] as const
 
 /**
