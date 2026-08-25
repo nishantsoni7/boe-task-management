@@ -17,7 +17,7 @@
 --
 -- IT IS THE SAME RULE, NOT A SECOND ONE. Every figure comes from the canonical
 -- attribution rule (PR #49): active allocations are authoritative whenever any
--- exists, the payment's own order_id is the fallback only when none does, and a
+-- exists, the payment's own order_id is worth nothing at all (20261012000000), and a
 -- reversed allocation counts for nothing. The two kind totals must sum to
 -- `attributed_total` exactly — the assertion that would catch a second formula
 -- creeping in — and A–H below are the attribution suite's own fixtures, so the
@@ -207,11 +207,14 @@ begin
   for r in
     select * from (values
       -- id                                       label  order_att    pi_att     available   count
-      ('aaaaaaaa-0000-0000-0000-00000000000a', 'A', 1000000.00,       0.00,       0.00,  0),
+      -- A and E: a dormant order_id and no active allocation. Attributed to
+      -- NOBODY and free in full since 20261012000000; they read 1000000.00
+      -- attributed / 0.00 available while the direct-link fallback existed.
+      ('aaaaaaaa-0000-0000-0000-00000000000a', 'A',       0.00,       0.00, 1000000.00,  0),
       ('bbbbbbbb-0000-0000-0000-00000000000b', 'B',  500000.00,       0.00,  500000.00,  1),
       ('cccccccc-0000-0000-0000-00000000000c', 'C',  400000.00,       0.00,  600000.00,  1),
       ('dddddddd-0000-0000-0000-00000000000d', 'D', 1000000.00,       0.00,       0.00,  2),
-      ('eeeeeeee-0000-0000-0000-00000000000e', 'E', 1000000.00,       0.00,       0.00,  0),
+      ('eeeeeeee-0000-0000-0000-00000000000e', 'E',       0.00,       0.00, 1000000.00,  0),
       ('99999999-0000-0000-0000-000000000009', 'G',       0.00,  250000.00,  750000.00,  1),
       ('88888888-0000-0000-0000-000000000008', 'H',  300000.00,       0.00,  700000.00,  1),
       ('11111111-0000-0000-0000-000000000011', 'I',       0.00,  500000.00,       0.00,  1),
@@ -289,11 +292,14 @@ begin
   for r in
     select * from (values
       -- id                                       label  orders  pi     available
-      ('aaaaaaaa-0000-0000-0000-00000000000a', 'A', true,  false, false),
+      -- A and E move from "Linked to Orders" to "Available to Allocate":
+      -- with the fallback gone, a dormant link makes a payment neither
+      -- Order-linked nor spoken for. 20261012000000.
+      ('aaaaaaaa-0000-0000-0000-00000000000a', 'A', false, false, true),
       ('bbbbbbbb-0000-0000-0000-00000000000b', 'B', true,  false, true ),
       ('cccccccc-0000-0000-0000-00000000000c', 'C', true,  false, true ),
       ('dddddddd-0000-0000-0000-00000000000d', 'D', true,  false, false),
-      ('eeeeeeee-0000-0000-0000-00000000000e', 'E', true,  false, false),
+      ('eeeeeeee-0000-0000-0000-00000000000e', 'E', false, false, true),
       ('ffffffff-0000-0000-0000-00000000000f', 'F', true,  false, false),
       ('99999999-0000-0000-0000-000000000009', 'G', false, true,  true ),
       ('88888888-0000-0000-0000-000000000008', 'H', true,  false, true ),

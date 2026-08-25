@@ -2,16 +2,20 @@
 -- ===========================================================================
 -- Proves the canonical attribution rule, in the database, against real rows:
 --
---   1. If a payment has ANY active allocation, allocations are authoritative.
---      Each Order or PI receives only its own active allocated share, and the
---      payment's direct order_id is ignored entirely — including when it names
---      the same Order.
---   2. If it has NO active allocation, the direct linkage attributes the WHOLE
---      payment to the Order it names.
+--   1. ACTIVE ALLOCATION ROWS ARE THE ONLY SOURCE. Each Order or PI receives
+--      the sum of the active allocations naming it, and nothing else.
+--   2. A payment with NO active allocation is attributed to nobody. Its
+--      order_id / order_request_id are PROVENANCE, worth ₹0 — 20261012000000.
 --   3. Reversed allocations are withdrawn claims and count for nothing.
 --   4. What is left after active allocations is unallocated.
 --   5. Attribution summed across every target, plus what is unallocated, is
 --      exactly the payment amount — never more.
+--
+-- RULE 2 USED TO READ THE OTHER WAY: no active allocation meant the direct
+-- linkage attributed the WHOLE payment to the Order it named. 20261012000000
+-- removed that fallback from order_linked_payment_total() and from
+-- finance_received_payments, so the database now says what the application has
+-- said since PR #55. The figures below moved with it — see Order X.
 --
 -- THE DEFECT THIS EXISTS TO PREVENT RETURNING
 -- -------------------------------------------
@@ -158,14 +162,19 @@ begin
   v_x_total := public.order_linked_payment_total(v_x);
   v_y_total := public.order_linked_payment_total(v_y);
 
-  -- X: A ₹10L (legacy fallback) + B ₹5L (own allocation) + C ₹0 (overridden)
-  --    + D ₹4L (own share) + E ₹10L (fallback, reversal ignored)
-  --    + F ₹15L (over-allocation, preserved)
-  if v_x_total <> 4400000.00 then
-    raise exception 'Order X: expected 4400000.00, got %', v_x_total;
+  -- X: A ₹0 (a dormant link is not money) + B ₹5L (own allocation) + C ₹0
+  --    + D ₹4L (own share) + E ₹0 (reversed, and no fallback behind it)
+  --    + F ₹15L (over-allocation, preserved and still visible)
+  --
+  -- ₹24L, not the ₹44L this asserted before 20261012000000. The ₹20L that left
+  -- is exactly A and E — the two payments whose only claim on X was a dormant
+  -- order_id. Nothing was reallocated; a fallback stopped inventing attribution.
+  if v_x_total <> 2400000.00 then
+    raise exception 'Order X: expected 2400000.00, got %', v_x_total;
   end if;
 
-  -- Y: C ₹4L + D ₹6L. E's reversed ₹4L must NOT appear.
+  -- Y: C ₹4L + D ₹6L. E's reversed ₹4L must NOT appear. Unchanged by
+  -- 20261012000000 — Y never depended on a link.
   if v_y_total <> 1000000.00 then
     raise exception 'Order Y: expected 1000000.00, got %', v_y_total;
   end if;
@@ -192,7 +201,7 @@ begin
    where id = 'cccccccc-0000-0000-0000-00000000000c';
 
   -- X must be UNCHANGED by C's removal: C contributed nothing to X, because its
-  -- money went to Y. Under the old rule X would drop by ₹10,00,000.
+  -- money went to Y. Under the rule before PR #49 X would drop by ₹10,00,000.
   if public.order_linked_payment_total(v_x) <> v_x_share then
     raise exception
       'C: Order X changed by % when C was removed — the direct link is still being counted',
@@ -257,12 +266,15 @@ begin
              from public.finance_received_payments where id::text like 'aaaaaaaa%'
                 or id::text like 'bbbbbbbb%' or id::text like 'ffffffff%'
   loop
-    -- A: no allocations, but a direct link → attributed in FULL, not unallocated.
+    -- A: no allocations and only a dormant link → attributed to NOBODY.
+    -- This read 'full' before 20261012000000, on the strength of order_id alone.
     if r.id::text like 'aaaaaaaa%' then
       if r.allocated_total <> 0 then raise exception 'A: allocated_total should be 0'; end if;
-      if r.attributed_total <> r.amount then raise exception 'A: attributed_total should be the amount'; end if;
-      if r.allocation_state <> 'full' then
-        raise exception 'A: a linked payment with no allocations must read full, got %', r.allocation_state;
+      if r.attributed_total <> 0 then
+        raise exception 'A: attributed_total must be 0, got % — the fallback is back', r.attributed_total;
+      end if;
+      if r.allocation_state <> 'unallocated' then
+        raise exception 'A: a payment with no allocation must read unallocated, got %', r.allocation_state;
       end if;
     end if;
     -- B: allocations exist, so they decide.
@@ -274,7 +286,7 @@ begin
       raise exception 'F: expected over, got %', r.allocation_state;
     end if;
   end loop;
-  raise notice 'projection states: A=full B=partial F=over';
+  raise notice 'projection states: A=unallocated B=partial F=over';
 end $$;
 
 do $$ begin raise notice 'ALL ASSERTIONS PASSED'; end $$;

@@ -105,35 +105,14 @@ describe('every worked example appears in the SQL assertion file', () => {
     })
   }
 
-  test('the SQL still states the totals ITS OWN rule produces', () => {
-    // The SQL retains the direct-link fallback (see the divergence suite
-    // below), so its Order X total is the one the fallback produces. Computing
-    // it here from each fixture's `sqlExpected` — the recorded SQL answer —
-    // and requiring the file to state it keeps this a parity check of the SQL
-    // against the documented SQL rule, rather than a stale constant.
+  test('the SQL asserts the same per-Order totals the TypeScript rule produces', () => {
+    // ONE COMPUTATION, REQUIRED OF BOTH SIDES. Until 20261012000000 this test
+    // had to compute two figures — the app's and the SQL's — because the two
+    // implementations disagreed about a payment with a dormant link and no
+    // active allocation. They no longer do, so there is one total, derived from
+    // the rule, and the SQL file must state it.
     const lettered = FIXTURE_ORDER.filter(k => k.length === 1).map(k => ATTRIBUTION_FIXTURES[k])
-    const sqlTotalFor = (target: string) => lettered.reduce((sum, f) => {
-      const table = f.sqlExpected ?? f.expected
-      return sum + Number(table[target] ?? '0')
-    }, 0)
-
-    // A ₹10L + B ₹5L + C ₹0 + D ₹4L + E ₹10L + F ₹15L, under the fallback.
-    assert.equal(sqlTotalFor('ORDER_X'), 4400000)
-    // C ₹4L + D ₹6L; E's reversed allocation contributes nothing either way.
-    assert.equal(sqlTotalFor('ORDER_Y'), 1000000)
-
-    assert.ok(sqlAssertions.includes('4400000.00'),
-      'the SQL must assert the same Order X total its own rule produces')
-    assert.ok(sqlAssertions.includes('1000000.00'),
-      'the SQL must assert the same Order Y total its own rule produces')
-  })
-
-  test('THE APPLICATION TOTAL IS LOWER, and by exactly the fallback cases', () => {
-    // What the app now credits Order X across the same fixtures. The gap is
-    // A (₹10L) + E (₹10L) — the two payments with a dormant link and no active
-    // allocation. Nothing else moved.
-    const lettered = FIXTURE_ORDER.filter(k => k.length === 1).map(k => ATTRIBUTION_FIXTURES[k])
-    const appTotalFor = (target: string) => lettered.reduce((sum, f) => {
+    const totalFor = (target: string) => lettered.reduce((sum, f) => {
       const active = f.allocations.filter(a => a.status === 'active')
       return sum + Number(attributeToTarget({
         paymentId: f.paymentId,
@@ -141,10 +120,18 @@ describe('every worked example appears in the SQL assertion file', () => {
       }).share)
     }, 0)
 
-    assert.equal(appTotalFor('ORDER_X'), 2400000, 'allocations only')
-    assert.equal(appTotalFor('ORDER_Y'), 1000000, 'Y never depended on a link')
-    assert.equal(4400000 - appTotalFor('ORDER_X'), 2000000,
-      'the gap is exactly A + E, the two fallback fixtures')
+    // A ₹0 + B ₹5L + C ₹0 + D ₹4L + E ₹0 + F ₹15L. The ₹20L that used to sit
+    // here was A and E, attributed by a fallback rather than by an allocation.
+    assert.equal(totalFor('ORDER_X'), 2400000)
+    // C ₹4L + D ₹6L; E's reversed allocation contributes nothing.
+    assert.equal(totalFor('ORDER_Y'), 1000000)
+
+    assert.ok(sqlAssertions.includes('2400000.00'),
+      'the SQL must assert the same Order X total the rule produces')
+    assert.ok(sqlAssertions.includes('1000000.00'),
+      'the SQL must assert the same Order Y total the rule produces')
+    assert.equal(sqlAssertions.includes('4400000.00'), false,
+      'the fallback-era Order X total must not survive in the SQL assertions')
   })
 
   test('the SQL asserts the conservation law', () => {
@@ -189,53 +176,61 @@ describe('the TypeScript rule produces the documented figures', () => {
   }
 })
 
-// ══ The one place the two sides disagree, pinned so it cannot spread ═════════
+// ══ The two sides agree, and a returning fallback must break this file ══════
 //
-// The application dropped the direct-link fallback when Link/Unlink were
-// retired. order_linked_payment_total() still applies it, because changing a
-// database function needs a migration and none was in scope.
-//
-// This suite exists so the divergence is a STATED, BOUNDED fact rather than a
-// silent drift. When the follow-up migration removes the SQL fallback, delete
-// the `sqlExpected*` fields from the fixtures and this suite fails until it is
-// deleted too — which is the point.
+// PR #55 left one release in which the application and the database scored a
+// payment with a dormant link and no active allocation differently. This suite
+// used to PIN that divergence — which fixtures could differ, and by how much.
+// 20261012000000 closed it, so the suite's job inverts: prove the fallback is
+// absent from the SQL, and that nothing feeds a legacy field back into an
+// allocation figure.
 
-describe('the SQL fallback is a known, bounded divergence', () => {
-  test('exactly two fixtures diverge, and they are the fallback cases', () => {
-    const diverging = FIXTURE_ORDER.filter(k => ATTRIBUTION_FIXTURES[k].sqlExpected)
-    assert.deepEqual(diverging, ['A', 'E'],
-      'only a payment with a direct link AND no active allocation may differ')
+describe('the direct-link fallback is gone from the database too', () => {
+  const MIGRATION_112 = 'supabase/migrations/20261012000000_allocation_ledger_as_single_source.sql'
+  const migration112 = readFileSync(join(process.cwd(), MIGRATION_112), 'utf8')
+
+  test('order_linked_payment_total no longer attributes by the payment\'s own order_id', () => {
+    const fn = migration112.slice(migration112.indexOf('create or replace function public.order_linked_payment_total'))
+    const body = fn.slice(0, fn.indexOf('$$;'))
+    assert.equal(/order_id\s*=\s*p_order_id\s+then\s+\S*amount/.test(body), false,
+      'the fallback branch must not come back')
+    assert.ok(body.includes('finance_payment_allocations'), 'it reads the allocation ledger')
+    assert.ok(body.includes("a.status = 'active'"), 'active rows only')
+    assert.ok(body.includes('finance_payment_status_is_verified'),
+      'and still only Finance-verified payments')
   })
 
-  test('every diverging fixture is exactly that shape', () => {
-    for (const key of FIXTURE_ORDER) {
-      const f = ATTRIBUTION_FIXTURES[key]
-      const hasActive = f.allocations.some(a => a.status === 'active')
-      const shouldDiverge = f.directLinkTarget !== null && !hasActive
-      assert.equal(Boolean(f.sqlExpected), shouldDiverge,
-        `${f.label}: divergence must follow the rule, not be declared case by case`)
-    }
+  test('the view no longer substitutes the amount for a missing allocation', () => {
+    const view = migration112.slice(migration112.indexOf('create or replace view public.finance_received_payments'))
+    const body = view.slice(0, view.indexOf('\n) b;'))
+    assert.equal(/order_id\s+is\s+not\s+null\s+then\s+f\.amount/.test(body), false,
+      'no derived column may fall back to the ledger amount')
+    // The columns that carried it, each now reading the allocation figure.
+    assert.ok(body.includes('coalesce(totals.allocated_total, 0) as attributed_total'))
+    assert.ok(body.includes('coalesce(totals.order_allocated_total, 0) as order_attributed_total'))
+    assert.ok(body.includes('greatest(f.amount - coalesce(totals.allocated_total, 0), 0)'),
+      'available_balance is amount minus the ACTIVE allocation total')
   })
 
-  test('the application always attributes LESS, never more', () => {
-    // The safe direction. The SQL is used by amendment and status guards, so a
-    // higher SQL figure means those guards refuse MORE than the application
-    // would require — never less. No guard can be slipped past by this gap.
-    for (const key of FIXTURE_ORDER) {
-      const f = ATTRIBUTION_FIXTURES[key]
-      if (!f.sqlExpected) continue
-      for (const [target, sqlShare] of Object.entries(f.sqlExpected)) {
-        const appShare = Number(f.expected[target] ?? '0')
-        assert.ok(appShare <= Number(sqlShare),
-          `${f.label} / ${target}: the app must never attribute more than the SQL`)
-      }
-    }
+  test('the migration asserts its own result at apply time', () => {
+    // A migration that silently half-applied would be worse than one that
+    // failed, so it checks the catalogue rather than trusting its own text.
+    assert.ok(migration112.includes('pg_get_functiondef'), 'it reads the function back')
+    assert.ok(migration112.includes('pg_get_viewdef'), 'and the view')
+    assert.ok(migration112.includes('security_invoker'), 'and re-checks the security mode')
+  })
+
+  test('the legacy COLUMNS survive — this removes their meaning, not the data', () => {
+    assert.ok(migration112.includes("array['order_id', 'order_request_id', 'payment_against']"),
+      'the migration must assert the provenance columns are still present')
+    assert.equal(/alter table[\s\S]{0,120}drop column/i.test(migration112), false,
+      'migration 112 must not drop a column')
   })
 
   test('no application code reads the SQL total as an allocation figure', () => {
     // The two callers use it for the Order's OWN received total, which is what
     // it is for. Neither feeds it into an allocation state or an allocated
-    // total — that is what would let the fallback back into the ledger.
+    // total — that is what would let a legacy figure back into the ledger.
     for (const path of [
       'src/app/orders/[id]/OrderAmendmentModals.tsx',
       'src/app/finance/received/AllocatePaymentModal.tsx',
@@ -248,6 +243,23 @@ describe('the SQL fallback is a known, bounded divergence', () => {
         `${path} must not feed the SQL total into the allocation summary`)
       assert.equal(near.includes('confirmed_allocation_status'), false,
         `${path} must not derive an allocation state from it`)
+    }
+  })
+
+  test('no fixture carries a separate SQL expectation any more', () => {
+    // The mechanism that recorded the divergence is gone with the divergence.
+    // One expectation per fixture, for both implementations.
+    // Comments may still RECORD that the divergence once existed — that is
+    // history worth keeping. What must be gone is the field itself.
+    const strip = (src: string) =>
+      src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^[ \t]*\/\/.*$/gm, '')
+    for (const path of [
+      'src/lib/finance/attributionFixtures.ts',
+      'src/lib/finance/classificationFixtures.ts',
+    ]) {
+      const code = strip(readFileSync(join(process.cwd(), path), 'utf8'))
+      assert.equal(/sqlExpected/.test(code), false,
+        `${path} must not carry a separate SQL answer`)
     }
   })
 })
