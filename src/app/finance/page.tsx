@@ -25,7 +25,8 @@ import {
 import {
   FinanceModal,
   RequestModalShell,
-  useModalScrollLockAndEscape,
+  useDialogFocus,
+  useModalScrollLock,
   FINANCE_MODAL_OVERLAY_Z,
   FINANCE_MODAL_DIALOG_Z,
 } from '@/app/finance/components/FinanceModalShell'
@@ -52,32 +53,45 @@ import {
   type FilterTab,
 } from './paymentRequestsQuery'
 import {
-  EMPTY_TARGET_STATE,
   PAYMENT_TARGET_LABEL,
-  buildTargetPayload,
-  isTargetComplete,
   paymentTargetErrorMessage,
   readTargetType,
-  targetClientName,
-  type PaymentTargetState,
 } from './paymentTargets'
-import { PaymentTargetFields } from './components/PaymentTargetFields'
 import {
-  DEFAULT_DESTINATION_KEY,
-  buildCollectionPayload,
+  buildCollectionPayloadForMode,
   collectionDisplayFor,
-  collectionErrorFor,
-  destinationDbPair,
+  collectionErrorForMode,
   destinationFromDb,
   EMPTY_COLLECTION_STATE,
   paymentDestinationLabel,
   readCollectionState,
-  readDestinationKeyOrNull,
-  destinationWritePair,
   type CollectionState,
-  type PaymentDestinationKey,
 } from './paymentDestinations'
-import { DESTINATION_ICON, PaymentDestinationFields } from './components/PaymentDestinationFields'
+import { DESTINATION_ICON } from './components/AccountIcons'
+import {
+  EMPTY_PAYMENT_ENTRY,
+  PaymentEntryFields,
+  isPaymentEntryComplete,
+  type PaymentEntryState,
+  type PaymentEntryTarget,
+} from './components/PaymentEntryFields'
+import { CashTrailFields } from './components/CashTrailFields'
+import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
+import {
+  PAYMENT_MODES,
+  customerDisplayName,
+  isPaymentMode,
+  paymentEntryErrorMessage,
+  paymentModeLabel,
+} from '@/lib/finance/paymentEntry'
+import { searchAllocationTargets } from './received/AllocatePaymentModal'
+import {
+  INTENT_STATUS_LABEL,
+  intentDestinationLabel,
+  intentReferenceLabel,
+  loadPaymentIntent,
+  type StoredIntent,
+} from './paymentIntents'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -91,13 +105,24 @@ type PaymentRequest = {
    *  Payment ID. request_number is retained in the database and this type only
    *  because other logic still reads it; it is never the primary label. */
   human_payment_id: string
-  client_name: string
+  /**
+   * NULLABLE since 20261013000000 §1. Null means exactly one thing: no customer
+   * could be derived, because the payment names no PI Draft and no Order. It is
+   * never typed and never invented — render it through customerDisplayName so a
+   * blank, a 'null' or an 'undefined' can never reach a screen.
+   */
+  client_name: string | null
   amount: number
   payment_date: string
   // WHERE the money went. Read as a pair through paymentDestinations.ts — never
   // one column alone, since 'cash' does not say Paytm and 'other' does not say PNB.
   payment_mode: string
-  received_in: string
+  /**
+   * NULLABLE since 20260919000000, and null on EVERY payment written through
+   * the two redesigned entry forms: the four-account picker is gone and no
+   * account is fabricated in its place. A null pair reads as the payment mode.
+   */
+  received_in: string | null
   // WHO physically handled it, for the two cash destinations (20260716). A
   // separate fact from the destination above: the account says where the money
   // ended up, these say who is accountable for carrying it there.
@@ -411,7 +436,7 @@ function MetaItem({ label, value, muted }: { label: string; value: string; muted
 // A legacy pair no account matches has no icon and no helper; it still prints
 // the honest legacy label rather than being forced into an account it was never
 // recorded against.
-function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: string; received_in: string }) {
+function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: string; received_in: string | null }) {
   const d    = destinationFromDb(payment_mode, received_in)
   const Icon = d ? DESTINATION_ICON[d.iconKey] : null
   return (
@@ -993,22 +1018,41 @@ function DetailsModal({
   )
 }
 
-// ── New Payment Confirmation modal ────────────────────────────────────────────
-
-// Everything on the form that is NOT the target and NOT the destination. Client
-// name, both linkages and the origin flag live in PaymentTargetState; the
-// destination and its cash trail live in a PaymentDestinationKey plus a
-// CollectionState — each because it is one decision with several shapes rather
-// than a handful of independent fields.
+// ── New Payment Request modal ─────────────────────────────────────────────────
 //
-// There is no `paymentMode` / `receivedIn` here any more. The user picks ONE
-// destination and the stored pair is derived from it (destinationDbPair), the
-// same way payment_against is derived from the target.
+// THREE DESTINATIONS, THE SAME THREE RECORD PAYMENT OFFERS. PI Draft, Confirmed
+// Order, Suspense Entry — one list, one component (PaymentEntryFields), so the
+// two forms cannot drift into asking the same question in different words.
+//
+// THE CUSTOMER IS NOT TYPED, AND IS NOT SENT. submit_payment_request derives it
+// from the record this form validates against (20261013000000 §3): a name from
+// the browser would be a claim the browser is in no position to make, so the RPC
+// has no parameter for one. A Suspense Entry has none at all, and the column is
+// null rather than filled with something invented.
+//
+// AND IT IS NOT AN ALLOCATION. A payment request is unverified money. Submitting
+// one writes the payment and a pending ALLOCATION INTENT in a single
+// transaction; nothing reaches finance_payment_allocations until Finance
+// approves, so nothing here moves an Order's received total, closes a balance or
+// satisfies the 40% gate.
+//
+// ONE WRITE, ONE DOOR. The form used to INSERT into finance_payment_requests
+// directly. Two writes that must both land — the payment and its intent —
+// cannot be made atomic from a browser, so the insert is gone and the RPC is the
+// only way in. Every gate is still the database's: module entry, RLS, the
+// target's eligibility, the canonical five payment modes.
+
+// Everything on the form that is NOT the destination and NOT the cash trail.
+//
+// There is no `clientName` here, and there is no `receivedIn`. The customer is
+// derived server-side from the chosen record; the receiving account is no longer
+// asked for at all, and null is stored rather than a fabricated one.
 const EMPTY_FORM = {
   amount:          '',
   paymentDate:     '',
   proofNote:       '',
   salesNote:       '',
+  paymentMode:     'bank_transfer' as string,
 }
 
 type NewPaymentModalProps = {
@@ -1016,9 +1060,10 @@ type NewPaymentModalProps = {
   supabase: ReturnType<typeof createClient>
   onClose: () => void
   onSaved: () => void
-  // Optional prefill, used when the form is opened from an Order Request so
-  // the salesperson does not retype what that request already knows. The note
-  // and the client name are ordinary editable field values.
+  // Optional prefill, used when the form is opened from another module so the
+  // salesperson does not retype what that module already knows. The note is an
+  // ordinary editable field value; the client name only SEEDS THE SEARCH BOX —
+  // see PaymentEntryFields' initialQuery.
   initialClientName?: string
   initialSalesNote?: string
   contextLabel?: string
@@ -1028,22 +1073,20 @@ function NewPaymentConfirmationModal({
   userId, supabase, onClose, onSaved,
   initialClientName, initialSalesNote, contextLabel,
 }: NewPaymentModalProps) {
-  useModalScrollLockAndEscape(onClose)
+  useModalScrollLock()
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
+
   const [form, setForm] = useState(() => ({ ...EMPTY_FORM, salesNote: initialSalesNote ?? '' }))
-  // The three-way target choice. A prefilled client name only ever seeds the
-  // New Order branch — arriving from another module must never silently attach
-  // money to a record the person did not choose here.
-  const [target, setTarget] = useState<PaymentTargetState>(() => ({
-    ...EMPTY_TARGET_STATE,
-    manualClientName: initialClientName ?? '',
-  }))
-  // Where the money went, and — for the two cash destinations — who carried it.
-  // The collector starts as the submitter, which is the whole of the typing this
-  // section is meant to avoid in the common case.
-  const [destination, setDestination] = useState<PaymentDestinationKey>(DEFAULT_DESTINATION_KEY)
-  const [collection,  setCollection]  = useState<CollectionState>({ ...EMPTY_COLLECTION_STATE, collectedBy: userId })
+  const [entry, setEntry] = useState<PaymentEntryState>(EMPTY_PAYMENT_ENTRY)
+  const [collection, setCollection] = useState<CollectionState>({ ...EMPTY_COLLECTION_STATE })
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+
+  // ONE SUBMISSION, NOT ONE PER CLICK. `saving` re-renders and a second click
+  // can land inside the same tick; a ref is read and written synchronously, so
+  // it is what actually closes the window.
+  const submitting = useRef(false)
 
   // Optional payment-proof attachment (uploaded to the private payment-proofs bucket)
   const [attachFile,  setAttachFile]  = useState<File | null>(null)
@@ -1055,27 +1098,55 @@ function NewPaymentConfirmationModal({
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  const isLinkedTarget = target.target !== 'unallocated'
-  const clientName     = targetClientName(target)
-
   // The cash trail is optional in almost every respect, so this is the ONE
   // thing it can block on: a section that is internally inconsistent (a
   // handover recipient with no date, or the reverse). See collectionErrorFor.
-  const collectionError = collectionErrorFor(destination, collection, form.paymentDate)
+  const collectionError = collectionErrorForMode(form.paymentMode, collection, form.paymentDate)
 
   const canSubmit = !!(
-    isTargetComplete(target) &&
+    isPaymentEntryComplete(entry) &&
     isValidAmount(form.amount) &&
     form.paymentDate &&
+    isPaymentMode(form.paymentMode) &&
     !collectionError &&
     !attachError
   )
 
+  // ── Not losing what was typed ──
+  //
+  // The payment mode starts at a value nobody chose, so it counts as dirty only
+  // once it has been changed. A prefilled note does not count either: the person
+  // did not type it.
+  const isDirty = () =>
+    form.amount.trim() !== '' ||
+    form.paymentDate !== '' ||
+    form.proofNote.trim() !== '' ||
+    form.salesNote.trim() !== (initialSalesNote ?? '').trim() ||
+    form.paymentMode !== EMPTY_FORM.paymentMode ||
+    entry.destination !== EMPTY_PAYMENT_ENTRY.destination ||
+    entry.target !== null ||
+    attachFile !== null
+
+  const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
+
+  // The SAME search Record Payment and Allocate Funds use — same sources, same
+  // RLS scoping, same eligibility filters — narrowed to the one kind this
+  // destination admits.
+  const searchTargets = async (kind: 'submission' | 'order', term: string): Promise<PaymentEntryTarget[]> => {
+    const found = await searchAllocationTargets(supabase, term, kind)
+    return found.map(c => ({
+      id: c.id,
+      reference: c.reference,
+      clientName: c.clientName,
+      totalValue: typeof c.value === 'string' ? Number(c.value) : c.value,
+    }))
+  }
+
   // Uploads the selected proof to the private bucket and records its metadata.
   // Returns null on success, or an error string. On any failure it removes a
   // partially-uploaded object so no orphaned file remains; the CALLER is then
-  // responsible for removing the payment request (and reserved order) it made,
-  // so the user is never told success when the proof was not persisted.
+  // responsible for removing the payment request it made, so the user is never
+  // told success when the proof was not persisted.
   const persistProof = async (paymentRequestId: string): Promise<string | null> => {
     if (!attachFile) return null
     // Compression can change size/type, so re-validate the prepared file.
@@ -1114,64 +1185,58 @@ function NewPaymentConfirmationModal({
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit) return
+    if (!canSubmit || saving || submitting.current) return
+    submitting.current = true
     setSaving(true)
     setError(null)
 
-    // One choice, two stored columns. The pair is what the table has always
-    // held and what every other reader resolves the account name from.
-    const dbMode = destinationDbPair(destination)
+    // THE CASH TRAIL IS SENT ONLY FOR CASH — and the RPC decides that again for
+    // itself, so this agreement is a convenience and not the rule.
+    const cash = buildCollectionPayloadForMode(form.paymentMode, collection)
 
-    // sales_note is a note to the admin and nothing else now. The old
-    // ' | Payment mode: PNB' suffix this form used to append is gone: PNB is
-    // recorded as the destination pair, and the cash trail it was standing in
-    // for has its own columns below.
-    const finalSalesNote = form.salesNote.trim() || null
+    // ONE CALL, ONE TRANSACTION. The payment and its allocation intent are
+    // written together or not at all. No client name is sent: there is no
+    // parameter for one, deliberately.
+    const { data, error: rpcError } = await supabase.rpc('submit_payment_request', {
+      p_destination:     entry.destination,
+      p_target_id:       entry.target?.id ?? null,
+      p_amount:          Number(form.amount),
+      p_payment_date:    form.paymentDate,
+      p_payment_mode:    form.paymentMode,
+      p_proof_note:      form.proofNote.trim() || null,
+      p_sales_note:      form.salesNote.trim() || null,
+      p_collected_by:    cash.collected_by_user_id,
+      p_collected_from:  cash.collected_from_text,
+      p_handed_over_to:  cash.handed_over_to_user_id,
+      p_handed_over_at:  cash.handed_over_at,
+      p_collection_note: cash.collection_handover_note,
+    })
 
-    // The whole target — client name, origin flag, and AT MOST ONE of the two
-    // linkages — comes from one mapping (buildTargetPayload), so the "never
-    // both" rule is a property of the payload rather than a condition spread
-    // across four ternaries. Every value in it is re-derived server-side by
-    // finance_payment_requests_derive_target: the Order Request number is not
-    // sent at all, and the client name is overwritten from the selected record.
-    //
-    // No order number is reserved or allocated here for any target. A New Order
-    // or Order Request payment approves to suspense; a Confirmed Order payment
-    // carries the Order the user picked (20260688 / 20260690).
-    const { data: created, error: dbError } = await supabase
-      .from('finance_payment_requests')
-      .insert({
-        ...buildTargetPayload(target),
-        amount:          Number(form.amount),
-        payment_date:    form.paymentDate,
-        payment_mode:    dbMode.payment_mode,
-        received_in:     dbMode.received_in,
-        // Always all five keys. A destination that captures no cash trail sends
-        // nulls rather than omitting them, so this payload has one shape.
-        ...buildCollectionPayload(destination, collection),
-        proof_note:      form.proofNote.trim() || null,
-        sales_note:      finalSalesNote,
-        status:          'pending_approval',
-        submitted_by:    userId,
-      })
-      .select('id, request_number')
-      .single()
-    if (dbError || !created) {
-      setError(friendlyDbErrorMessage(dbError) || 'Failed to submit request.')
+    if (rpcError || !data) {
+      submitting.current = false
+      setError(paymentEntryErrorMessage(rpcError?.message))
       setSaving(false)
       return
     }
 
-    const proofErr = await persistProof(created.id)
+    const created = data as {
+      payment_request_id: string
+      request_number: string
+      client_name: string | null
+    }
+
+    const proofErr = await persistProof(created.payment_request_id)
     if (proofErr) {
       // Compensation: don't leave a request claiming a proof that wasn't saved.
-      // No order is ever created at submission time, so there is nothing else
-      // to roll back here.
+      // Deleting the payment cascades its intent away with it
+      // (payment_request_id ... on delete cascade), so no orphaned intent is
+      // left promising an allocation for a payment that no longer exists.
       const { error: delErr, count } = await supabase
         .from('finance_payment_requests')
         .delete({ count: 'exact' })
-        .eq('id', created.id)
+        .eq('id', created.payment_request_id)
       const cleaned = !delErr && count !== 0
+      submitting.current = false
       setError(cleaned
         ? proofErr
         : `${proofErr} The draft request could not be cleaned up automatically — please ask an admin to remove the duplicate.`)
@@ -1180,12 +1245,14 @@ function NewPaymentConfirmationModal({
     }
     setSaving(false)
 
-    // Notify approvers that a new request is waiting (non-blocking).
+    // Notify approvers that a new request is waiting (non-blocking). The
+    // customer named here is the one the SERVER derived, not one this form
+    // guessed — and it is honestly absent for a Suspense Entry.
     void notifyFinance({
       event: 'finance_submitted',
       requestNumber: created.request_number,
-      entityId: created.id,
-      clientName,
+      entityId: created.payment_request_id,
+      clientName: customerDisplayName(created.client_name),
     })
 
     onSaved()
@@ -1193,19 +1260,29 @@ function NewPaymentConfirmationModal({
 
   return (
     <>
-      {/* Full-page overlay */}
+      {/* Full-page overlay. INERT: this form holds unsaved input, and a
+          backdrop click is frequently an accident — a missed target, a stray
+          click while reading. There is no version of it that means "throw this
+          away". Escape and ✕ still close, and ask first when there is
+          something to lose. */}
       <div
-        onClick={onClose}
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }}
       />
 
       {/* Modal */}
-      <div style={{
-        position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
-        width: '660px', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 40px)',
-        background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
-        zIndex: FINANCE_MODAL_DIALOG_Z, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-      }}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Send Payment Request"
+        tabIndex={-1}
+        style={{
+          position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+          width: '660px', maxWidth: 'calc(100vw - 24px)', maxHeight: 'calc(100vh - 40px)',
+          background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
+          zIndex: FINANCE_MODAL_DIALOG_Z, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          outline: 'none',
+        }}>
 
         {/* ── Header ── */}
         <div style={{
@@ -1218,12 +1295,14 @@ function NewPaymentConfirmationModal({
             </div>
             {contextLabel && (
               <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
-                {contextLabel} · Finance verifies it before it can be linked
+                {contextLabel} · Finance verifies it before the money is attached
               </div>
             )}
           </div>
           <button
-            onClick={onClose}
+            onClick={guard.requestClose}
+            disabled={saving}
+            aria-label="Close"
             className="boe-btn boe-btn-ghost"
             style={{ padding: '4px 10px', fontSize: '13px', flexShrink: 0 }}
           >
@@ -1237,125 +1316,108 @@ function NewPaymentConfirmationModal({
           display: 'flex', flexDirection: 'column', gap: '14px',
         }}>
 
-          {/* Section: which stage is this money against? */}
-          <PaymentTargetFields
-            supabase={supabase}
-            value={target}
-            onChange={setTarget}
+          {/* 1. Where the money is for — and, for the two targeted
+              destinations, 2. which record. The customer follows from it and is
+              shown read-only; there is no field to type one into. */}
+          <PaymentEntryFields
+            state={entry}
+            onChange={next => { setEntry(next); setError(null) }}
+            onSearch={searchTargets}
             disabled={saving}
+            initialQuery={initialClientName}
           />
-
-          {/* A record was chosen but carries no client name. Submit is already
-              blocked (isTargetComplete); this says why, and where to fix it. */}
-          {isLinkedTarget && target.selectedOrder && !clientName && (
-            <ErrorBanner message="This order has no client name on file. Correct it on the Order Details page before submitting a payment request." />
-          )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
 
-            {/* Row 1: Client Name + Amount */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <Field label="Client Name" required>
-                  {isLinkedTarget ? (
-                    <>
-                      <input className="boe-input" value={clientName} readOnly disabled
-                        placeholder="Select an order first"
-                        style={{ width: '100%' }} />
-                      <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                        Client name is taken from the selected order.
-                      </span>
-                    </>
-                  ) : (
-                    <input className="boe-input" value={target.manualClientName}
-                      onChange={e => setTarget(prev => ({ ...prev, manualClientName: e.target.value }))}
-                      placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
-                  )}
-                </Field>
-                <Field label="Amount (₹)" required>
-                  <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
-                </Field>
-              </div>
-
-              {/* Row 2: Payment Date. Half width, so the date stays beside the
-                  amount's rhythm rather than stretching across the dialog. */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <Field label="Payment Date" required>
-                  <input className="boe-input" type="date" value={form.paymentDate}
-                    onChange={set('paymentDate')} style={{ width: '100%' }} />
-                </Field>
-              </div>
-
-              {/* Where the money went, and the cash trail behind it when the
-                  destination means somebody physically carried it. */}
-              <PaymentDestinationFields
-                supabase={supabase}
-                destination={destination}
-                onDestinationChange={setDestination}
-                collection={collection}
-                onCollectionChange={setCollection}
-                defaultCollectorId={userId}
-                paymentDate={form.paymentDate}
-                disabled={saving}
-              />
-
-              {/* Proof row: reference input + attachment (optional) */}
-              <Field label="Payment Proof / Reference">
-                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <input
-                    className="boe-input"
-                    value={form.proofNote}
-                    onChange={set('proofNote')}
-                    placeholder="UTR, cheque no., or short proof note (optional)"
-                    style={{ flex: 1, minWidth: 0 }}
-                  />
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*,.pdf"
-                    style={{ display: 'none' }}
-                    onChange={e => {
-                      const f = e.target.files?.[0] ?? null
-                      if (!f) { setAttachFile(null); setAttachError(null); return }
-                      const vErr = validateProofFile(f)
-                      if (vErr) {
-                        setAttachFile(null)
-                        setAttachError(vErr)
-                        if (fileInputRef.current) fileInputRef.current.value = ''
-                        return
-                      }
-                      setAttachError(null)
-                      setAttachFile(f)
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="boe-btn boe-btn-ghost"
-                    style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                  >
-                    {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
-                  </button>
-                </div>
-                {attachError && (
-                  <span style={{ fontSize: '11px', color: colors.red, marginTop: '2px' }}>{attachError}</span>
-                )}
-                {attachFile && !attachError && (
-                  <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                    Attached: {attachFile.name} — proof is optional and stored privately.
-                  </span>
-                )}
+            {/* 3. The payment itself. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <Field label="Amount (₹)" required>
+                <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
               </Field>
-
-              {/* Notes. Always offered now: it used to appear only for the two
-                  cash destinations, where it was doing double duty as the
-                  collection/handover record. That record has its own fields
-                  above, so this is once again a plain note to the admin — and
-                  it is the field an Order Request prefill lands in. */}
-              <Field label="Notes (optional)">
-                <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-                  placeholder="Any additional context for admin"
-                  rows={2} style={{ width: '100%', resize: 'vertical' }} />
+              <Field label="Payment Date" required>
+                <input className="boe-input" type="date" value={form.paymentDate}
+                  onChange={set('paymentDate')} style={{ width: '100%' }} />
               </Field>
+            </div>
+
+            {/* The canonical five, from the one shared list. There is no
+                receiving-account question any more: the four-account picker
+                answered payment_mode and received_in at once, and its second
+                half is no longer asked for or invented. */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <Field label="Payment Mode" required>
+                <select className="boe-input" value={form.paymentMode}
+                  onChange={set('paymentMode')} disabled={saving} style={{ width: '100%' }}>
+                  {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                </select>
+              </Field>
+            </div>
+
+            {/* Who carried it, for Cash only. */}
+            <CashTrailFields
+              supabase={supabase}
+              paymentMode={form.paymentMode}
+              collection={collection}
+              onCollectionChange={setCollection}
+              defaultCollectorId={userId}
+              paymentDate={form.paymentDate}
+              disabled={saving}
+            />
+
+            {/* 4. Proof row: reference input + attachment (optional) */}
+            <Field label="Payment Proof / Reference">
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  className="boe-input"
+                  value={form.proofNote}
+                  onChange={set('proofNote')}
+                  placeholder="UTR, cheque no., or short proof note (optional)"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0] ?? null
+                    if (!f) { setAttachFile(null); setAttachError(null); return }
+                    const vErr = validateProofFile(f)
+                    if (vErr) {
+                      setAttachFile(null)
+                      setAttachError(vErr)
+                      if (fileInputRef.current) fileInputRef.current.value = ''
+                      return
+                    }
+                    setAttachError(null)
+                    setAttachFile(f)
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                >
+                  {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
+                </button>
+              </div>
+              {attachError && (
+                <span style={{ fontSize: '11px', color: colors.red, marginTop: '2px' }}>{attachError}</span>
+              )}
+              {attachFile && !attachError && (
+                <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                  Attached: {attachFile.name} — proof is optional and stored privately.
+                </span>
+              )}
+            </Field>
+
+            {/* Notes to the admin, and the field an Order Request prefill lands in. */}
+            <Field label="Notes (optional)">
+              <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+                placeholder="Any additional context for admin"
+                rows={2} style={{ width: '100%', resize: 'vertical' }} />
+            </Field>
 
           </div>
 
@@ -1368,7 +1430,8 @@ function NewPaymentConfirmationModal({
           padding: '10px 20px', borderTop: `1px solid ${colors.border}`,
           display: 'flex', gap: '8px', justifyContent: 'flex-end', flexShrink: 0,
         }}>
-          <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
+          <button onClick={guard.requestClose} disabled={saving}
+            className="boe-btn boe-btn-ghost" style={{ padding: '7px 16px', fontSize: '13px' }}>
             Cancel
           </button>
           <button onClick={handleSubmit} disabled={!canSubmit || saving}
@@ -1378,7 +1441,72 @@ function NewPaymentConfirmationModal({
         </div>
 
       </div>
+
+      <DiscardConfirmation
+        open={guard.asking}
+        onKeepEditing={guard.keepEditing}
+        onDiscard={guard.discard}
+      />
     </>
+  )
+}
+
+// ── What a payment is for, read-only ──────────────────────────────────────────
+//
+// One block, shown wherever a person needs to know where a payment is headed
+// without being offered a control to change it: the creator's edit form, and
+// (through the same helpers) the detail and review modals.
+//
+// UNDEFINED IS NOT NULL HERE. `undefined` means the intent has not been read
+// back yet and the block says so; `null` means the payment carries none, which
+// is exactly what a Suspense Entry is. Collapsing the two would show "Suspense
+// Entry" for a moment on every targeted payment.
+function PaymentIntentSummary({ intent, request }: {
+  intent: StoredIntent | null | undefined
+  request: PaymentRequest
+}) {
+  const reference = intent === undefined ? null : intentReferenceLabel(intent)
+  return (
+    <div style={{
+      padding: '11px 12px', borderRadius: '8px',
+      border: `1px solid ${colors.border}`, background: colors.raised,
+      display: 'flex', flexDirection: 'column', gap: '6px',
+    }}>
+      <div style={{
+        fontSize: '10px', fontWeight: 700, color: colors.muted,
+        textTransform: 'uppercase', letterSpacing: '0.07em',
+      }}>
+        What this payment is for
+      </div>
+
+      {intent === undefined ? (
+        <div style={{ fontSize: '13px', color: colors.muted }}>Reading…</div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline' }}>
+          <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+            {intentDestinationLabel(intent)}
+          </span>
+          {reference && (
+            <span style={{ fontSize: '12.5px', color: colors.secondary }}>{reference}</span>
+          )}
+          {intent && (
+            <span style={{ fontSize: '11px', color: colors.muted }}>
+              {INTENT_STATUS_LABEL[intent.status]}
+            </span>
+          )}
+        </div>
+      )}
+
+      <div style={{ fontSize: '12.5px', color: colors.secondary }}>
+        {customerDisplayName(request.client_name)}
+      </div>
+
+      <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+        Chosen when the request was submitted and read from that record — it is
+        not typed, and it is not editable here. To send this money somewhere
+        else, delete this request and submit it again.
+      </span>
+    </div>
   )
 }
 
@@ -1401,58 +1529,41 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     salesNote:   r.sales_note  ?? '',
   })
 
-  // The target is editable here for the same reason the amount is: this modal
-  // only ever opens on a payment that is still the submitter's to correct
-  // (canManageRequest + the .in('status', UNAPPROVED_STATUSES) guard below), and
-  // picking the wrong Order is exactly the kind of mistake a clarification round
-  // is for. The database allows it in precisely the same window:
-  // finance_payment_requests_derive_target re-derives the target while the row
-  // is pre-approval and freezes it once approved.
+  // ── THE DESTINATION IS NOT EDITABLE HERE, AND THAT IS DELIBERATE ──
   //
-  // Seeded from the row's stored linkage. status/total_value are not part of the
-  // stored linkage and are not rendered for an already-selected record, so they
-  // are left empty rather than invented.
+  // Since 20261013000000 a pending request's destination lives in its ALLOCATION
+  // INTENT, not in the payment row's linkage columns — that is what keeps
+  // unverified money out of finance_payment_allocations until Finance approves.
+  // A form that re-pointed order_id would move the row's label without moving
+  // the intent, and the payment would then approve onto the record it no longer
+  // claims to be for. Rather than show a control that can produce that
+  // disagreement, this form shows what was chosen and leaves it alone.
   //
-  // A HISTORICAL 'order_request' ROW OPENS AS 'unallocated', not as a target the
-  // form cannot draw. The retired linkage is not selectable and the payload
-  // clears it, which is exactly what correcting such a payment should do: the
-  // money stops naming a retired record and becomes allocatable to a real Order
-  // or PI Draft. Nothing is lost — the correction is a deliberate edit by
-  // somebody who may already edit this row, and the activity trail records it.
-  const [target, setTarget] = useState<PaymentTargetState>(() => ({
-    target: readTargetType(r) === 'confirmed_order' ? 'confirmed_order' : 'unallocated',
-    manualClientName: r.client_name,
-    selectedOrder: r.order_id
-      ? {
-          id: r.order_id,
-          display_number: r.order_number ?? '',
-          client_name: r.client_name,
-          status: '',
-          total_value: null,
-        }
-      : null,
-  }))
+  // Correcting a destination is therefore: delete this pending request (the
+  // creator may, while it is unapproved) and submit it again. One deliberate act
+  // instead of two records that disagree.
+  const [intent, setIntent] = useState<StoredIntent | null | undefined>(undefined)
 
-  // The destination and its cash trail are editable in exactly the window every
-  // other field on this form is: the row is still pre-approval, which the
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      const found = await loadPaymentIntent(supabase, r.id)
+      if (active) setIntent(found)
+    })()
+    return () => { active = false }
+  }, [supabase, r.id])
+
+  // The payment mode and its cash trail ARE editable, in exactly the window
+  // every other field on this form is: the row is still pre-approval, which the
   // .in('status', UNAPPROVED_STATUSES) filter below re-checks server-side and
   // finance_payment_requests_guard_approved enforces independently. This is what
   // makes "collect today, hand over tomorrow, record it then" work — the
   // handover is filled in on a later visit to this same form.
-  // NULL when the stored pair names no account — which is what a payment
-  // recorded against a PI carries, because only amount, date and mode are
-  // mandatory there (20260919000000 §1). Defaulting it here would show an
-  // account the money never went to and write it back on save, together with a
-  // payment_mode the customer never used. The pair is left alone until somebody
-  // picks a real destination.
-  const [destination, setDestination] = useState<PaymentDestinationKey | null>(() => readDestinationKeyOrNull(r))
+  const [paymentMode, setPaymentMode] = useState<string>(r.payment_mode)
   const [collection,  setCollection]  = useState<CollectionState>(() => readCollectionState(r))
 
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
-
-  const isLinkedTarget = target.target !== 'unallocated'
-  const clientName     = targetClientName(target)
 
   // Set once an approval was detected mid-edit: the request is gone from this
   // page's jurisdiction, so retrying the save can only fail the same way.
@@ -1464,27 +1575,29 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   )
 
   // Same single blocking rule as the submission form, and for the same reason.
-  const collectionError = collectionErrorFor(destination, collection, form.paymentDate)
+  const collectionError = collectionErrorForMode(paymentMode, collection, form.paymentDate)
 
-  const canSubmit = isTargetComplete(target) && isValidAmount(form.amount)
-    && !!form.paymentDate && !collectionError
+  const canSubmit = isValidAmount(form.amount) && !!form.paymentDate
+    && isPaymentMode(paymentMode) && !collectionError
 
   const handleSave = async () => {
     if (!canSubmit) return
-    const editDbMode = destinationWritePair(destination)
     setSaving(true)
     setError(null)
     const isCreatorReapply = !isAdmin && (r.status === 'needs_clarification' || r.status === 'rejected')
 
-    // The linkage half comes from the SAME mapping the submission form uses, so
-    // a correction cannot produce a shape a submission could not. For the New
-    // Order target, order_number keeps its legacy meaning as free-form reference
-    // text and the field is still offered; for the two linked targets the number
-    // is authoritative and the payload's value wins.
-    const targetPayload = buildTargetPayload(target)
-    const linkage = target.target === 'unallocated'
-      ? { ...targetPayload, order_number: form.orderNumber.trim() || null }
-      : targetPayload
+    // NO LINKAGE AND NO CUSTOMER IN THIS PAYLOAD. order_id, order_request_id and
+    // client_name are all absent: the destination is fixed at submission (see
+    // the note on `intent` above) and the customer was derived from it
+    // server-side. Sending either would be this form claiming something it did
+    // not ask anybody.
+    //
+    // order_number keeps its legacy meaning as free-form reference text for a
+    // row that carries no Order link, which is every row this page's own form
+    // now writes.
+    const linkage = r.order_id === null
+      ? { order_number: form.orderNumber.trim() || null }
+      : {}
 
     // The status filter is the race guard: PostgREST re-evaluates it against
     // the committed row, so an approval that landed while this modal was open
@@ -1499,15 +1612,17 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         ...linkage,
         amount:       Number(form.amount),
         payment_date: form.paymentDate,
-        // BOTH KEYS OR NEITHER. With no destination chosen the stored pair is
-        // left exactly as it is, so correcting an amount on a PI-recorded
-        // payment cannot restate where the money went.
-        ...(editDbMode ?? {}),
-        // All five keys, always — switching a payment off a cash destination has
-        // to CLEAR the trail it recorded, and an omitted key would leave a
-        // handover attached to a bank transfer. Skipped entirely when no
-        // destination is chosen, for the same reason as the pair above.
-        ...(destination ? buildCollectionPayload(destination, collection) : {}),
+        payment_mode: paymentMode,
+        // received_in IS NOT IN THIS PAYLOAD, for any row. The four-account
+        // picker that used to set it alongside payment_mode is gone, so this
+        // form has nothing true to say about the receiving account — and a
+        // correction to an amount must never restate where the money went. A
+        // legacy row keeps whatever account it was recorded with.
+        //
+        // All five cash-trail keys, always — moving a payment off Cash has to
+        // CLEAR the trail it recorded, and an omitted key would leave a
+        // handover attached to a bank transfer.
+        ...buildCollectionPayloadForMode(paymentMode, collection),
         proof_note:   form.proofNote.trim() || null,
         sales_note:   form.salesNote.trim() || null,
         ...(isCreatorReapply ? { status: 'pending_approval' } : {}),
@@ -1528,7 +1643,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         event: 'finance_resubmitted',
         requestNumber: r.request_number,
         entityId: r.id,
-        clientName,
+        clientName: customerDisplayName(r.client_name),
       })
     }
 
@@ -1572,29 +1687,10 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           </div>
         </div>
       )}
-      <PaymentTargetFields
-        supabase={supabase}
-        value={target}
-        onChange={setTarget}
-        disabled={saving}
-        readOnlyNote="Changing the target moves this payment before it is approved. Switching clears the record currently selected."
-      />
-      <Field label="Client Name" required>
-        {isLinkedTarget ? (
-          <>
-            <input className="boe-input" value={clientName} readOnly disabled
-              placeholder="Select an order first"
-              style={{ width: '100%' }} />
-            <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-              Client name is taken from the selected order.
-            </span>
-          </>
-        ) : (
-          <input className="boe-input" value={target.manualClientName}
-            onChange={e => setTarget(prev => ({ ...prev, manualClientName: e.target.value }))}
-            placeholder="e.g. Raj Enterprises" style={{ width: '100%' }} />
-        )}
-      </Field>
+      {/* What this payment is for, and who it is from — read-only, both of
+          them. The destination is fixed at submission and the customer follows
+          from it; neither is something this form can be asked to change. */}
+      <PaymentIntentSummary intent={intent} request={r} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
           <AmountInput value={form.amount} onChange={v => setForm(prev => ({ ...prev, amount: v }))} />
@@ -1604,10 +1700,23 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
             onChange={set('paymentDate')} style={{ width: '100%' }} />
         </Field>
       </div>
-      <PaymentDestinationFields
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <Field label="Payment Mode" required>
+          <select className="boe-input" value={paymentMode} disabled={saving}
+            onChange={e => setPaymentMode(e.target.value)} style={{ width: '100%' }}>
+            {/* A legacy row carrying a value outside the canonical five keeps it
+                as an option of its own rather than being silently re-labelled —
+                otherwise opening this form would change what the row says. */}
+            {!isPaymentMode(paymentMode) && (
+              <option value={paymentMode}>{paymentModeLabel(paymentMode)}</option>
+            )}
+            {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+          </select>
+        </Field>
+      </div>
+      <CashTrailFields
         supabase={supabase}
-        destination={destination}
-        onDestinationChange={setDestination}
+        paymentMode={paymentMode}
         collection={collection}
         onCollectionChange={setCollection}
         // The submitter is who collected the cash, not whoever is editing —
@@ -1622,11 +1731,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
           placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
           rows={2} style={{ width: '100%', resize: 'vertical' }} />
       </Field>
-      {/* Free-form reference text, and only meaningful for a New Order payment.
-          For the two linked targets the number belongs to the selected record
-          and is written from it, so offering an editable field here would invite
-          a second, contradictory value. */}
-      {!isLinkedTarget && (
+      {/* Free-form reference text, and only meaningful for a row that carries no
+          Order link. For a linked legacy row the number belongs to the Order and
+          is written from it, so offering an editable field here would invite a
+          second, contradictory value. */}
+      {r.order_id === null && (
         <Field label="Order Number (optional)">
           <input className="boe-input" value={form.orderNumber} onChange={set('orderNumber')}
             placeholder="Leave blank if order not yet created" style={{ width: '100%' }} />
@@ -1907,7 +2016,10 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
   const top = (
     <FigureBand>
       <FigureCell label="Amount"       value={fmtAmount(r.amount)} lead />
-      <FigureCell label="Client"       value={r.client_name} />
+      {/* NEVER BLANK. A Suspense payment has no customer to name, and
+          customerDisplayName is the one place that decides what that reads as
+          — never an empty cell, a 'null' or an 'undefined'. */}
+      <FigureCell label="Client"       value={customerDisplayName(r.client_name)} />
       <FigureCell label="Payment Date" value={fmtDate(r.payment_date)} />
     </FigureBand>
   )
@@ -2299,10 +2411,17 @@ function PaymentsTable({
                   {/* Client truncates instead of widening the table; full name via title. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '220px' }}>
                     <span
-                      title={r.client_name}
-                      style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '13px', fontWeight: 600, color: colors.primary }}
+                      title={customerDisplayName(r.client_name)}
+                      style={{
+                        minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        fontSize: '13px', fontWeight: 600,
+                        // A payment with no customer is named in the muted tone
+                        // the rest of the page uses for "nothing recorded", so
+                        // it never reads as a customer actually called that.
+                        color: r.client_name ? colors.primary : colors.muted,
+                      }}
                     >
-                      {r.client_name}
+                      {customerDisplayName(r.client_name)}
                     </span>
                     {canApprove && isPending && (
                       <span style={{

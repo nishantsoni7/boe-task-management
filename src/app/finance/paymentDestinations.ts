@@ -1,44 +1,53 @@
-// ── Payment DESTINATION, and the cash trail behind it ─────────────────────────
-// Two facts that were previously tangled into one pair of columns, and are kept
-// apart here on purpose:
+// ── The BOE accounts a payment was recorded against, and the cash trail ───────
+//
+// TWO FACTS, KEPT APART ON PURPOSE:
 //
 //   1. WHERE THE MONEY WENT — one of four BOE accounts. HDFC, Canara, Paytm,
-//      PNB. This is a single choice, and the form asks it once.
-//   2. WHO PHYSICALLY HANDLED IT — for the two cash destinations, who collected
-//      the cash, from whom, and who it was later handed over to.
+//      PNB, stored as the (payment_mode, received_in) PAIR that
+//      finance_payment_requests has carried since 20260628000200.
+//   2. WHO PHYSICALLY HANDLED IT — for cash, who collected it, from whom, and
+//      who it was later handed over to. Five nullable columns since 20260716000000.
 //
-// (1) is stored the way it always has been: as the (payment_mode, received_in)
-// PAIR that finance_payment_requests has carried since 20260628000200. Neither
-// column is renamed, re-valued or dropped, because both are read by the approval
-// RPCs' row snapshots, by the post-approval freeze guard, by Received Payments,
-// and by the Orders module's own reader (paymentAccountLabel in
-// orders/requests/components/shared.ts, which resolves the same four pairs).
-// What changes is that the USER now picks one destination instead of picking a
-// "mode" and a "received in" that mostly repeated each other — the pair is
-// derived from that single choice, exactly as payment_against is derived from
-// the target in paymentTargets.ts.
+// NO FORM ASKS (1) ANY MORE, AND THIS FILE NO LONGER OFFERS IT. Since
+// 20261013000000 both payment-entry forms ask for the canonical five-value
+// Payment Mode instead — the account picker answered payment_mode and
+// received_in in one click, and its second half is now neither asked for nor
+// invented. So the CHOOSING half of this module (the default key, the pair
+// builder, the account-keyed capture rule, the edit-form readers and the write
+// pair) is deleted rather than left behind for something to call.
 //
-// (2) has no home in the existing schema at all. It was being written into
-// sales_note as free prose ("Payment mode: PNB", "who collected cash or handover
-// detail"), which cannot be queried, cannot be corrected without rewriting a
-// sentence, and loses the handover the moment someone edits the note. 20260716
-// adds five nullable columns for it; this module maps the form state onto them.
+// WHAT REMAINS IS THE READING HALF, and it is not optional: every row recorded
+// before the change still carries a real pair naming a real account, and it is
+// still read by the approval RPCs' row snapshots, by the post-approval freeze
+// guard, by Received Payments, and by the Orders module's own reader
+// (paymentAccountLabel in orders/requests/components/shared.ts, which resolves
+// the same four pairs). A screen that could not name those accounts would print
+// a blank where a financial fact belongs.
+//
+// (2) REMAINS A LIVE PROCESS, decided by the payment mode: cash, and only cash.
+// See captureForMode below and components/CashTrailFields.tsx.
+//
+// The names here are BOE_ACCOUNTS / BoeAccount / BoeAccountKey and not
+// "PaymentDestination", which since 20261013000000 means one of the three things
+// a payment can be FOR — PI Draft, Confirmed Order, Suspense Entry
+// (src/lib/finance/paymentEntry.ts). One word, two meanings, is how two screens
+// end up disagreeing.
 //
 // Nothing here touches Supabase, permissions or approval. Every rule it appears
-// to enforce is enforced again server-side: the destination pair by the table's
-// two CHECK constraints, the handover pair by
-// finance_payment_requests_handover_pair (20260716 §2), and the whole set by
+// to enforce is enforced again server-side: the payment-mode domain by the
+// table's CHECK, the handover pair by finance_payment_requests_handover_pair
+// (20260716 §2), the cash trail by submit_payment_request, and the whole set by
 // finance_payment_requests_guard_approved once the payment is approved.
 
-// ── The four destinations ─────────────────────────────────────────────────────
-// Order is the order they are offered in: the two bank accounts first, then the
-// two cash routes, so the list reads as "money that arrived in an account" then
-// "money someone carried". `capture` is what makes the form conditional — it
-// names what operational detail this destination needs, not which fields to
-// draw, so a fifth destination added later declares its own requirement rather
-// than being pattern-matched by name at three call sites.
+// ── The four accounts ─────────────────────────────────────────────────────────
+// Listed as they always were: the two bank accounts first, then the two cash
+// routes. `capture` names what operational detail a row recorded against this
+// account carries, which is what lets a historical row keep describing itself
+// exactly as it always has.
 
-export type PaymentDestinationKey = 'hdfc' | 'canara' | 'paytm' | 'pnb'
+import { paymentModeLabel } from '@/lib/finance/paymentEntry'
+
+export type BoeAccountKey = 'hdfc' | 'canara' | 'paytm' | 'pnb'
 
 /** What the cash trail behind this destination needs recording. */
 export type CollectionCapture =
@@ -46,21 +55,21 @@ export type CollectionCapture =
   | 'collection'  // cash collected internally — who collected it
   | 'handover'    // cash collected externally — who collected it, and the handover
 
-export type PaymentDestination = {
-  key: PaymentDestinationKey
+export type BoeAccount = {
+  key: BoeAccountKey
   /** The account name, as BOE says it out loud. */
   label: string
   /** What that account MEANS operationally. Short, and never colour-coded. */
   helper: string
   capture: CollectionCapture
-  /** Resolved to a component by DESTINATION_ICON in PaymentDestinationFields. */
+  /** Resolved to a component by DESTINATION_ICON in components/AccountIcons. */
   iconKey: 'landmark' | 'piggy-bank' | 'hand-coins' | 'users'
   /** The stored pair. Unchanged from what the form has always written. */
   payment_mode: string
   received_in: string
 }
 
-export const PAYMENT_DESTINATIONS: readonly PaymentDestination[] = [
+export const BOE_ACCOUNTS: readonly BoeAccount[] = [
   {
     key: 'hdfc',
     label: 'HDFC',
@@ -99,105 +108,31 @@ export const PAYMENT_DESTINATIONS: readonly PaymentDestination[] = [
   },
 ] as const
 
-/** The destination a fresh form starts on. HDFC, exactly as before. */
-export const DEFAULT_DESTINATION_KEY: PaymentDestinationKey = PAYMENT_DESTINATIONS[0].key
-
-export function isPaymentDestinationKey(value: string): value is PaymentDestinationKey {
-  return PAYMENT_DESTINATIONS.some(d => d.key === value)
-}
-
-function byKey(key: string): PaymentDestination | null {
-  return PAYMENT_DESTINATIONS.find(d => d.key === key) ?? null
-}
-
-/** The stored pair for a chosen destination. Both keys always present. */
-export function destinationDbPair(key: PaymentDestinationKey): { payment_mode: string; received_in: string } {
-  const d = byKey(key) ?? PAYMENT_DESTINATIONS[0]
-  return { payment_mode: d.payment_mode, received_in: d.received_in }
-}
-
-/**
- * `key` accepts null — an unstated destination — and resolves to 'none', which
- * is correct: there is no account for a cash trail to belong to.
- */
-export function captureFor(key: string | null): CollectionCapture {
-  return key === null ? 'none' : (byKey(key)?.capture ?? 'none')
-}
-
 // ── Reading a stored row back ─────────────────────────────────────────────────
 // The pair is only meaningful READ TOGETHER: `cash` alone does not say Paytm,
 // and `other` alone does not say PNB. A pair this form cannot produce (a legacy
 // row, or one written before the account options existed) resolves to null here
 // rather than being forced into an account it was never recorded against.
 
-export function destinationFromDb(payment_mode: string, received_in: string): PaymentDestination | null {
-  return PAYMENT_DESTINATIONS.find(
+export function destinationFromDb(payment_mode: string, received_in: string | null): BoeAccount | null {
+  return BOE_ACCOUNTS.find(
     d => d.payment_mode === payment_mode && d.received_in === received_in,
   ) ?? null
 }
 
-// The pre-destination payment_mode vocabulary, kept for exactly one purpose:
-// naming a legacy row whose pair no account matches. Never offered as a choice.
-const LEGACY_PAYMENT_MODE_LABEL: Record<string, string> = {
-  bank_transfer: 'Bank Transfer',
-  cash:          'Cash',
-  upi:           'UPI',
-  cheque:        'Cheque',
-  other:         'Other',
-}
+// Naming a legacy row whose pair no account matches. The five labels are the
+// shared ones (lib/finance/paymentEntry) rather than a sixth copy of them —
+// this file's job is the ACCOUNT vocabulary, not the mode vocabulary.
 
 /**
  * The account name to DISPLAY for a stored row. Falls back to the legacy mode
  * label, and finally to the raw stored value, so an unrecognised row still says
  * something true instead of being mislabelled as an account it never used.
  */
-export function paymentDestinationLabel(payment_mode: string, received_in: string): string {
+export function paymentDestinationLabel(payment_mode: string, received_in: string | null): string {
   const d = destinationFromDb(payment_mode, received_in)
   if (d) return d.label
-  return LEGACY_PAYMENT_MODE_LABEL[payment_mode] ?? payment_mode
-}
-
-/**
- * The destination a stored row should open the EDIT form on. Unlike the display
- * helper this must return a real, selectable choice — a legacy row has to land
- * on something the user can see and correct — so it falls back to the default.
- */
-export function readDestinationKey(row: { payment_mode: string; received_in: string }): PaymentDestinationKey {
-  return destinationFromDb(row.payment_mode, row.received_in)?.key ?? DEFAULT_DESTINATION_KEY
-}
-
-/**
- * The same read, but HONEST ABOUT NOT KNOWING: null when the stored pair matches
- * no account.
- *
- * WHY BOTH EXIST. readDestinationKey falls back to the default so a legacy row
- * lands on something a user can see and correct. That was safe while every row
- * carried a received_in; since 20260919000000 a payment recorded against a PI
- * carries NONE — the account was genuinely not stated — and defaulting it would
- * make an edit form display an account the money never went to, and write it
- * back on save along with a payment_mode the customer never used.
- *
- * An edit form must therefore use THIS one and leave the pair alone until
- * somebody chooses a real destination.
- */
-export function readDestinationKeyOrNull(
-  row: { payment_mode: string; received_in: string | null },
-): PaymentDestinationKey | null {
-  if (row.received_in === null) return null
-  return destinationFromDb(row.payment_mode, row.received_in)?.key ?? null
-}
-
-/**
- * The (payment_mode, received_in) pair to WRITE for a chosen destination, or
- * null when there is no chosen destination.
- *
- * Null means "do not touch either column" — spread as `...(pair ?? {})` — so a
- * correction to some other field cannot silently restate where the money went.
- */
-export function destinationWritePair(
-  key: PaymentDestinationKey | null,
-): { payment_mode: string; received_in: string } | null {
-  return key === null ? null : destinationDbPair(key)
+  return paymentModeLabel(payment_mode)
 }
 
 // ── The cash trail ────────────────────────────────────────────────────────────
@@ -246,35 +181,6 @@ function textOrNull(v: string): string | null {
   return t === '' ? null : t
 }
 
-/**
- * The cash-trail half of an insert/update payload. EVERY key is always present,
- * which is what makes this safe to spread over an UPDATE: switching from PNB to
- * HDFC has to clear the columns PNB used, and an omitted key would leave a
- * handover recorded against a bank transfer.
- *
- * Fields the chosen destination does not capture are nulled rather than carried:
- * a Paytm payment records who collected the cash internally and nothing about a
- * handover, because internally-collected cash has not been handed anywhere.
- */
-export function buildCollectionPayload(key: string, state: CollectionState): CollectionPayload {
-  const capture = captureFor(key)
-  if (capture === 'none') return { ...EMPTY_COLLECTION_PAYLOAD }
-
-  const base: CollectionPayload = {
-    ...EMPTY_COLLECTION_PAYLOAD,
-    collected_by_user_id:     textOrNull(state.collectedBy),
-    collection_handover_note: textOrNull(state.note),
-  }
-  if (capture === 'collection') return base
-
-  return {
-    ...base,
-    collected_from_text:    textOrNull(state.collectedFrom),
-    handed_over_to_user_id: textOrNull(state.handedOverTo),
-    handed_over_at:         textOrNull(state.handoverDate),
-  }
-}
-
 /** Seeds the form from a stored row. Nulls become '' so inputs stay controlled. */
 export function readCollectionState(row: {
   collected_by_user_id:     string | null
@@ -304,12 +210,19 @@ export function readCollectionState(row: {
 //
 // Returns null when the section is valid, or ONE sentence naming what is wrong.
 
-export function collectionErrorFor(
-  key: string | null,
+/**
+ * The rules, asked of a CAPTURE.
+ *
+ * The four-account picker is gone from both payment-entry forms
+ * (20261013000000): what a payment mode captures is now decided by the mode
+ * itself, so the rules are reachable without naming an account.
+ * collectionErrorForMode below is the one way in.
+ */
+export function collectionErrorForCapture(
+  capture: CollectionCapture,
   state: CollectionState,
   paymentDate: string,
 ): string | null {
-  const capture = captureFor(key)
   if (capture === 'none') return null
 
   if (!state.collectedBy.trim()) {
@@ -334,6 +247,64 @@ export function collectionErrorFor(
   return null
 }
 
+// ── The cash trail, decided by the PAYMENT MODE ───────────────────────────────
+//
+// WHY THIS EXISTS. The four accounts (HDFC, Canara, Paytm, PNB) each declared
+// what cash trail they needed. Both payment-entry forms now ask for a canonical
+// PAYMENT MODE instead — five values, no account — so the question "does this
+// payment need a collection record" has to be answerable from the mode alone.
+//
+// CASH, AND ONLY CASH. Somebody physically carried it, so who collected it,
+// from whom, and who it was handed to are real facts with real columns
+// (20260716000000). A bank transfer, a UPI payment, a cheque and 'other' carried
+// no cash and record none — and submit_payment_request decides the same thing
+// again server-side, so a stale form field cannot smuggle one in.
+//
+// The full HANDOVER shape, not the shorter collection one: without an account to
+// distinguish internally-collected cash from externally-collected cash, the
+// honest default is to OFFER the handover fields and leave them blank, rather
+// than to decide on the person's behalf that no handover can have happened.
+
+export function captureForMode(payment_mode: string): CollectionCapture {
+  return payment_mode === 'cash' ? 'handover' : 'none'
+}
+
+/** Does this payment mode ask for a cash trail at all? */
+export function modeCapturesCash(payment_mode: string): boolean {
+  return captureForMode(payment_mode) !== 'none'
+}
+
+export function collectionErrorForMode(
+  payment_mode: string,
+  state: CollectionState,
+  paymentDate: string,
+): string | null {
+  return collectionErrorForCapture(captureForMode(payment_mode), state, paymentDate)
+}
+
+/**
+ * The cash-trail half of an insert/update payload, chosen by MODE.
+ *
+ * Every key is always present, for the same reason buildCollectionPayload's are:
+ * switching a payment off Cash has to CLEAR the trail it recorded, and an
+ * omitted key would leave a handover attached to a bank transfer.
+ */
+export function buildCollectionPayloadForMode(
+  payment_mode: string,
+  state: CollectionState,
+): CollectionPayload {
+  const capture = captureForMode(payment_mode)
+  if (capture === 'none') return { ...EMPTY_COLLECTION_PAYLOAD }
+  return {
+    ...EMPTY_COLLECTION_PAYLOAD,
+    collected_by_user_id:     textOrNull(state.collectedBy),
+    collected_from_text:      textOrNull(state.collectedFrom),
+    handed_over_to_user_id:   textOrNull(state.handedOverTo),
+    handed_over_at:           textOrNull(state.handoverDate),
+    collection_handover_note: textOrNull(state.note),
+  }
+}
+
 // ── Reading the cash trail back OUT, for display ──────────────────────────────
 // One helper, so every read-only surface — the requester's details popup, and
 // the admin review popup after it — describes a collection the same way. The
@@ -346,7 +317,13 @@ export function collectionErrorFor(
 
 export type StoredCollection = {
   payment_mode: string
-  received_in: string
+  /**
+   * NULL since 20260919000000 for a payment recorded against a PI, and null for
+   * EVERY payment written through the two redesigned entry forms
+   * (20261013000000): the account picker is gone and nothing is invented in its
+   * place. A null pair falls through to the mode below.
+   */
+  received_in: string | null
   collected_by_user_id:     string | null
   collected_from_text:      string | null
   handed_over_to_user_id:   string | null
@@ -396,7 +373,14 @@ export function collectionDisplayFor(
   names: { collectedBy?: string | null; handedOverTo?: string | null },
   formatDate: (iso: string) => string,
 ): CollectionDisplay | null {
-  const capture = destinationFromDb(row.payment_mode, row.received_in)?.capture ?? 'none'
+  // THE STORED PAIR FIRST, THE MODE SECOND. A historical row whose pair names a
+  // real account keeps describing itself exactly as it always has — the account
+  // knew whether cash was collected internally or handed over, and that
+  // distinction is not re-decided years later. A row with no account (every new
+  // one) is described by its mode instead.
+  const capture = row.received_in === null
+    ? captureForMode(row.payment_mode)
+    : destinationFromDb(row.payment_mode, row.received_in)?.capture ?? 'none'
   const hasData = hasAnyCollectionData(row)
   if (capture === 'none' && !hasData) return null
 

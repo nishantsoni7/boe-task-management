@@ -241,6 +241,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.equal(files.filter(f => f.startsWith('20261010')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261011')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261012')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261013')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .sort()
@@ -253,6 +254,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // touches neither the reset protocol nor the deletion claim, and stacks
       // after 111 for the ordinary reason: it replaces the view 111 leaves.
       '20261012000000_allocation_ledger_as_single_source.sql',
+      // 113. The payment-entry destination model. It stacks after 112 for the
+      // ordinary reason — it restates functions 112 leaves behind — and it
+      // touches neither the reset protocol nor the deletion claim, both of
+      // which it re-asserts rather than changes.
+      '20261013000000_payment_entry_destination_model.sql',
     ])
   })
 

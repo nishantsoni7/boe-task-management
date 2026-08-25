@@ -175,13 +175,31 @@ describe('no Create Order Request action remains', () => {
   })
 
   test('the Finance payment form offers no Order Request target', () => {
+    // The selector that could have offered one is GONE, not merely emptied:
+    // 20261013000000 replaced the four-target model with three destinations
+    // (PI Draft, Confirmed Order, Suspense Entry) chosen from one shared list,
+    // and deleted PaymentTargetFields with it. So the stronger statement is
+    // that no form file names an Order Request as something to search or pick.
+    assert.equal(
+      existsSync(join(process.cwd(), 'src/app/finance/components/PaymentTargetFields.tsx')),
+      false,
+      'the four-target selector must not come back')
+
+    // The EXPORT, not the word: the module's own header explains what was
+    // removed and why, and a comment naming a deleted symbol is not the symbol.
     const targets = read('src/app/finance/paymentTargets.ts')
-    const options = targets.slice(targets.indexOf('export const PAYMENT_TARGET_OPTIONS'))
-      .slice(0, 900)
-    assert.equal(options.includes("value: 'order_request'"), false)
-    const fields = read('src/app/finance/components/PaymentTargetFields.tsx')
-    assert.equal(fields.includes("from('order_requests')"), false,
-      'the target selector must not search a workflow that cannot receive money')
+    assert.equal(/export const PAYMENT_TARGET_OPTIONS/.test(targets), false,
+      'the selectable-target list must not come back either')
+    assert.equal(/export const SELECTABLE_PAYMENT_TARGET_TYPES/.test(targets), false,
+      'nor the list of targets a form may choose from')
+
+    for (const path of [
+      'src/app/finance/components/PaymentEntryFields.tsx',
+      'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    ]) {
+      assert.equal(read(path).includes("from('order_requests')"), false,
+        `${path} must not search a workflow that cannot receive money`)
+    }
   })
 
   test('there is no Link modal at all any more', () => {

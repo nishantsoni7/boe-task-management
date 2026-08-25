@@ -1,40 +1,28 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  EMPTY_TARGET_STATE,
   PAYMENT_TARGET_LABEL,
-  PAYMENT_TARGET_OPTIONS,
   PAYMENT_TARGET_TYPES,
-  SELECTABLE_PAYMENT_TARGET_TYPES,
-  buildTargetPayload,
-  confirmedOrderResultLabel,
   isPaymentTargetType,
-  isSelectablePaymentTarget,
-  isTargetComplete,
   paymentAgainstFor,
   paymentTargetErrorMessage,
   readTargetType,
-  switchTarget,
-  targetClientName,
   targetTypeOf,
-  type ConfirmedOrderOption,
-  type PaymentTargetState,
 } from './paymentTargets'
 
-const ORDER: ConfirmedOrderOption = {
-  id: 'order-1',
-  display_number: '0020',
-  client_name: 'Mehta Textiles',
-  status: 'running',
-  total_value: 900000,
-}
+// WHAT IS NO LONGER TESTED HERE, AND WHY. This module used to hold the FORM
+// STATE for a two-card target selector — switchTarget, buildTargetPayload,
+// isTargetComplete, targetClientName and the option list — with a test each.
+// Since 20261013000000 no form chooses a target from here: both payment-entry
+// forms ask one question from one list (src/lib/finance/paymentEntry.ts, tested
+// in src/lib/finance/paymentEntry.test.ts) and a Payment Request's destination
+// is recorded as an allocation intent. The selector and its state are deleted
+// rather than left behind, so their tests go with them.
+//
+// WHAT REMAINS IS THE READING HALF: a stored value that historical rows still
+// carry, and the sentences its server-side refusals become.
 
-const state = (over: Partial<PaymentTargetState> = {}): PaymentTargetState => ({
-  ...EMPTY_TARGET_STATE,
-  ...over,
-})
-
-// ── The vocabulary, and what a form may choose from it ────────────────────────
+// ── The stored vocabulary ─────────────────────────────────────────────────────
 
 test('the stored vocabulary still has three values, so historical rows still name themselves', () => {
   // 'order_request' is RETIRED, not deleted. Payments submitted against an Order
@@ -45,28 +33,9 @@ test('the stored vocabulary still has three values, so historical rows still nam
   assert.equal(isPaymentTargetType('order_request'), true)
 })
 
-test('a form may choose only two of them, and Order Request is not one', () => {
-  assert.deepEqual([...SELECTABLE_PAYMENT_TARGET_TYPES], ['unallocated', 'confirmed_order'])
-  assert.equal(isSelectablePaymentTarget('order_request'), false)
-  assert.equal(PAYMENT_TARGET_OPTIONS.length, 2)
-  assert.deepEqual(PAYMENT_TARGET_OPTIONS.map(o => o.label), ['New Order', 'Confirmed Order'])
-  // Every option is a real stored target, and none of them is the retired one.
-  for (const o of PAYMENT_TARGET_OPTIONS) {
-    assert.equal(isPaymentTargetType(o.value), true)
-    assert.notEqual(o.value, 'order_request')
-  }
-})
-
-test('no card offers the retired workflow, in its label or its description', () => {
-  const copy = JSON.stringify(PAYMENT_TARGET_OPTIONS).toLowerCase()
-  assert.equal(copy.includes('order request'), false)
-  assert.equal(copy.includes('order_request'), false)
-})
-
 test('an unknown target string is rejected', () => {
   assert.equal(isPaymentTargetType('existing_order'), false)
   assert.equal(isPaymentTargetType(''), false)
-  assert.equal(isSelectablePaymentTarget(''), false)
 })
 
 // ── Origin flag derivation (must match the migration's trigger) ───────────────
@@ -103,147 +72,6 @@ test('the stored column wins over derivation, and derivation covers a row withou
     readTargetType({ payment_target_type: 'nonsense', payment_against: 'existing_order', order_request_id: null }),
     'confirmed_order',
   )
-})
-
-// ── 1. New Order submission stores no linkage ─────────────────────────────────
-
-test('New Order submits a manual client name and no linkage at all', () => {
-  const payload = buildTargetPayload(state({ target: 'unallocated', manualClientName: '  Raj Enterprises  ' }))
-  assert.equal(payload.client_name, 'Raj Enterprises')
-  assert.equal(payload.payment_against, 'new_order')
-  assert.equal(payload.order_id, null)
-  assert.equal(payload.order_number, null)
-  assert.equal(payload.order_request_id, null)
-  assert.equal(payload.order_request_number, null)
-})
-
-// ── 2. No reachable form state can produce a request linkage ──────────────────
-
-test('no payload this form can build ever names an Order Request', () => {
-  for (const target of SELECTABLE_PAYMENT_TARGET_TYPES) {
-    const payload = buildTargetPayload(state({
-      target,
-      manualClientName: 'Typed Client',
-      selectedOrder: ORDER,
-    }))
-    assert.equal(payload.order_request_id, null, `${target} produced a retired linkage`)
-    assert.equal(payload.order_request_number, null)
-  }
-})
-
-test('client name for a linked target comes from the selected record, never the typed field', () => {
-  const o = state({
-    target: 'confirmed_order',
-    selectedOrder: ORDER,
-    manualClientName: 'Something Else Entirely',
-  })
-  assert.equal(targetClientName(o), 'Mehta Textiles')
-  assert.equal(buildTargetPayload(o).client_name, 'Mehta Textiles')
-})
-
-// ── 3. Confirmed Order submission stores only confirmed-order linkage ─────────
-
-test('Confirmed Order submits the order id and its number, and no request linkage', () => {
-  const payload = buildTargetPayload(state({ target: 'confirmed_order', selectedOrder: ORDER }))
-  assert.equal(payload.order_id, 'order-1')
-  assert.equal(payload.order_number, '0020')
-  assert.equal(payload.order_request_id, null)
-  assert.equal(payload.order_request_number, null)
-  assert.equal(payload.payment_against, 'existing_order')
-})
-
-// ── 4. Both link targets can never coexist ────────────────────────────────────
-
-test('no reachable form state produces both an order_id and an order_request_id', () => {
-  for (const target of SELECTABLE_PAYMENT_TARGET_TYPES) {
-    const payload = buildTargetPayload(state({
-      target,
-      manualClientName: 'Typed Client',
-      selectedOrder: ORDER,
-    }))
-    assert.equal(
-      Number(payload.order_id !== null) + Number(payload.order_request_id !== null) <= 1,
-      true,
-      `${target} produced both link targets`,
-    )
-  }
-})
-
-test('every payload always carries both linkage keys, so an update clears the old target', () => {
-  // THE RETIRED KEYS ARE STILL SENT, and must be. Spreading this over an UPDATE
-  // is how a historical request-linked payment gets its retired linkage cleared
-  // and becomes allocatable to a real Order or PI Draft. An omitted key would
-  // leave it behind forever.
-  for (const target of SELECTABLE_PAYMENT_TARGET_TYPES) {
-    const payload = buildTargetPayload(state({ target, selectedOrder: ORDER, manualClientName: 'X' }))
-    for (const key of ['order_id', 'order_number', 'order_request_id', 'order_request_number']) {
-      assert.equal(key in payload, true, `${target} payload is missing ${key}`)
-    }
-  }
-})
-
-// ── 5. Switching target type clears incompatible fields ───────────────────────
-
-test('switching away from Confirmed Order clears the selected order and its number', () => {
-  const before = state({ target: 'confirmed_order', selectedOrder: ORDER })
-  const after  = switchTarget(before, 'unallocated')
-  assert.equal(after.selectedOrder, null)
-  const payload = buildTargetPayload(after)
-  assert.equal(payload.order_id, null)
-  assert.equal(payload.order_number, null)
-})
-
-test('switching to New Order clears the typed client name too', () => {
-  // The name belonged to the record that was selected, not to the person typing.
-  const before = state({ target: 'confirmed_order', selectedOrder: ORDER })
-  const after  = switchTarget(before, 'unallocated')
-  assert.equal(after.manualClientName, '')
-  assert.equal(targetClientName(after), '')
-})
-
-test('every switch leaves no selection standing', () => {
-  const populated = state({
-    target: 'unallocated',
-    manualClientName: 'Typed Client',
-    selectedOrder: ORDER,
-  })
-  for (const to of SELECTABLE_PAYMENT_TARGET_TYPES) {
-    for (const from of SELECTABLE_PAYMENT_TARGET_TYPES) {
-      if (from === to) continue
-      const after = switchTarget({ ...populated, target: from }, to)
-      assert.equal(after.target, to)
-      assert.equal(after.selectedOrder, null)
-    }
-  }
-})
-
-test('re-selecting the target already active never discards a selection', () => {
-  const before = state({ target: 'confirmed_order', selectedOrder: ORDER })
-  assert.equal(switchTarget(before, 'confirmed_order'), before)
-})
-
-// ── Completeness gate ─────────────────────────────────────────────────────────
-
-test('a linked target is incomplete until its record is selected', () => {
-  assert.equal(isTargetComplete(state({ target: 'confirmed_order' })), false)
-  assert.equal(isTargetComplete(state({ target: 'confirmed_order', selectedOrder: ORDER })), true)
-})
-
-test('New Order is incomplete until a client name is typed', () => {
-  assert.equal(isTargetComplete(state({ target: 'unallocated' })), false)
-  assert.equal(isTargetComplete(state({ target: 'unallocated', manualClientName: '   ' })), false)
-  assert.equal(isTargetComplete(state({ target: 'unallocated', manualClientName: 'Raj' })), true)
-})
-
-test('a selected record with no client name on file is incomplete, not silently blank', () => {
-  const namelessOrder = { ...ORDER, client_name: '' }
-  assert.equal(isTargetComplete(state({ target: 'confirmed_order', selectedOrder: namelessOrder })), false)
-})
-
-// ── Result display ────────────────────────────────────────────────────────────
-
-test('search results name the kind of record before its number', () => {
-  assert.equal(confirmedOrderResultLabel(ORDER), 'Confirmed Order · 0020 · Mehta Textiles')
 })
 
 // ── Failure messages ──────────────────────────────────────────────────────────

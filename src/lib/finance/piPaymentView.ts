@@ -23,6 +23,8 @@
 // them is whether the money is attached to a Confirmed Order, which is a Finance
 // concern and says nothing to somebody looking at their own PI.
 
+import { PAYMENT_MODES, type PaymentMode } from './paymentEntry'
+
 export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending_approval:    'Awaiting Verification',
   needs_clarification: 'Needs Clarification',
@@ -272,15 +274,13 @@ export function canAddPiPayment(actor: PiPaymentActor, pi: PiPaymentTarget): boo
 // and the RPC still re-derives every rule, because a browser check is a
 // convenience and never a boundary.
 
-export const PI_PAYMENT_MODES = [
-  { value: 'bank_transfer', label: 'Bank Transfer' },
-  { value: 'cash',          label: 'Cash' },
-  { value: 'upi',           label: 'UPI' },
-  { value: 'cheque',        label: 'Cheque' },
-  { value: 'other',         label: 'Other' },
-] as const
+// ONE SOURCE, RE-EXPORTED UNDER ITS OLD NAME. These five used to be declared
+// here as well as in four other files. The list is now lib/finance/paymentEntry
+// (20261013000000); this alias stays so PI callers need no edit, and so there is
+// exactly one place a sixth mode could ever be added.
+export const PI_PAYMENT_MODES = PAYMENT_MODES
 
-export type PiPaymentMode = typeof PI_PAYMENT_MODES[number]['value']
+export type PiPaymentMode = PaymentMode
 
 export function paymentModeLabel(mode: string | null | undefined): string {
   if (!mode) return '—'

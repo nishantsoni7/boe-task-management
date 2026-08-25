@@ -2,7 +2,7 @@
 // The pure half of the other question a payment record answers: which stage of
 // the sales lifecycle was this money submitted against?
 //
-// THREE STORED VALUES, TWO OF WHICH A FORM MAY STILL CHOOSE:
+// THREE STORED VALUES, NONE OF WHICH A FORM CHOOSES ANY MORE:
 //
 //   New Order       'unallocated'     money arrived with no Confirmed Order
 //                                     behind it. Nothing to link yet; it is
@@ -17,19 +17,32 @@
 // THE VALUE IS NOT REMOVED FROM THE VOCABULARY, and must not be. Payments
 // submitted against an Order Request before the retirement still carry
 // `payment_target_type = 'order_request'`, and a screen that could not name that
-// value would print a blank where a historical fact belongs. What is removed is
-// the CHOICE: PAYMENT_TARGET_OPTIONS no longer offers it, so no new payment can
-// be raised against one.
+// value would print a blank where a historical fact belongs.
 //
-// Nothing here touches Supabase, permissions or approval. It maps a form state
-// to a submission payload and back, so the modal, the edit form and the tests
-// all read one definition. Every gate stays where it already is: RLS, the
+// Nothing here touches Supabase, permissions or approval. It names a stored
+// value, so this page, the review modal and the tests all read one definition.
+// Every gate stays where it already is: RLS, the
 // finance_payment_requests_derive_target trigger (which re-derives every
-// authoritative value server-side and is what actually enforces the rules
-// below), and the approval / conversion RPCs.
+// authoritative value server-side), and the approval / conversion RPCs.
 //
 // See paymentRouting.ts for the SEPARATE question of where an already-submitted
 // record is displayed. Target is about origin; routing is about current state.
+
+// NO FORM CHOOSES A TARGET FROM HERE ANY MORE. Since 20261013000000 both
+// payment-entry forms ask ONE question, from ONE list — PI Draft, Confirmed
+// Order, Suspense Entry (src/lib/finance/paymentEntry.ts) — and a Payment
+// Request's chosen destination is recorded as an allocation INTENT rather than
+// in the payment row's linkage columns. So the selector this module used to
+// feed (PaymentTargetFields, PAYMENT_TARGET_OPTIONS, PaymentTargetState,
+// switchTarget, buildTargetPayload and the Confirmed-Order option type) is
+// deleted rather than left behind for something to call: two lists of
+// destinations is exactly the drift the redesign removed.
+//
+// WHAT REMAINS IS THE READING HALF. payment_target_type is still stored, still
+// derived server-side, and still names what a HISTORICAL row was raised
+// against — including 'order_request', which no form has offered since
+// 20261007000000. A screen that could not name that value would print a blank
+// where a fact belongs.
 
 // ── The three targets ─────────────────────────────────────────────────────────
 
@@ -50,47 +63,6 @@ export const PAYMENT_TARGET_LABEL: Record<PaymentTargetType, string> = {
   order_request:   'Order Request',
   confirmed_order: 'Confirmed Order',
 }
-
-/**
- * The targets a NEW payment may be raised against.
- *
- * TWO, NOT THREE. Order Request was the third and is retired: the workflow no
- * longer exists, the database refuses a payment that names one, and a card
- * offering it would be an invitation to a submission the trigger would reject.
- *
- * Money that belongs to a PI Draft is NOT a third card here. A PI is reached
- * through ALLOCATION, not through the payment's own linkage columns — the
- * schema has no `order_submission_id` on the payment row — so it is recorded as
- * New Order money and allocated afterwards, which is what the allocation
- * controls on the payments surface are for.
- */
-export const SELECTABLE_PAYMENT_TARGET_TYPES = ['unallocated', 'confirmed_order'] as const
-
-export type SelectablePaymentTargetType = typeof SELECTABLE_PAYMENT_TARGET_TYPES[number]
-
-export function isSelectablePaymentTarget(value: string): value is SelectablePaymentTargetType {
-  return (SELECTABLE_PAYMENT_TARGET_TYPES as readonly string[]).includes(value)
-}
-
-// Card copy for the selector. The description is what stops the choice from
-// being a guess: each names the situation it is for, not what it does to the
-// database.
-export const PAYMENT_TARGET_OPTIONS: {
-  value: SelectablePaymentTargetType
-  label: string
-  description: string
-}[] = [
-  {
-    value: 'unallocated',
-    label: PAYMENT_TARGET_LABEL.unallocated,
-    description: 'No confirmed Order yet — allocate it later',
-  },
-  {
-    value: 'confirmed_order',
-    label: PAYMENT_TARGET_LABEL.confirmed_order,
-    description: 'Against an approved, numbered Order',
-  },
-]
 
 // ── Origin flag ───────────────────────────────────────────────────────────────
 // payment_against predates the three-target model and still has exactly two
@@ -131,135 +103,6 @@ export function readTargetType(row: {
   const stored = row.payment_target_type
   if (typeof stored === 'string' && isPaymentTargetType(stored)) return stored
   return targetTypeOf(row)
-}
-
-// ── Selectable records ────────────────────────────────────────────────────────
-
-// THE ORDER REQUEST OPTION IS GONE. `OrderRequestOption`,
-// `ORDER_REQUEST_SELECTABLE_STATUSES`, `isSelectableOrderRequest` and
-// `orderRequestResultLabel` lived here and existed for one purpose: letting a
-// submission form search Order Requests and attach money to one. That is the
-// retired workflow, and the database now refuses the write
-// (20261007000000 §3) — so the search, its status whitelist and its result
-// label are removed rather than left behind for something to call.
-
-export type ConfirmedOrderOption = {
-  id: string
-  display_number: string
-  client_name: string
-  status: string
-  total_value: number | null
-}
-
-// Result rows, one line each, prefixed with what kind of record they are so a
-// reader scanning a dropdown never has to infer it from the number format.
-export function confirmedOrderResultLabel(o: Pick<ConfirmedOrderOption, 'display_number' | 'client_name'>): string {
-  return `Confirmed Order · ${o.display_number} · ${o.client_name}`
-}
-
-// ── Form state ────────────────────────────────────────────────────────────────
-// One object holding the choice AND both possible selections. Keeping the two
-// selections in the state rather than in a union is what makes switchTarget's
-// clearing rule explicit and testable — the alternative (dropping the field
-// when the variant changes) makes "did switching clear it?" unanswerable.
-
-export type PaymentTargetState = {
-  target: SelectablePaymentTargetType
-  /** Typed by hand. Used ONLY when target is 'unallocated'. */
-  manualClientName: string
-  selectedOrder: ConfirmedOrderOption | null
-}
-
-export const EMPTY_TARGET_STATE: PaymentTargetState = {
-  target: 'unallocated',
-  manualClientName: '',
-  selectedOrder: null,
-}
-
-// Switching target CLEARS every field the new target cannot carry — including
-// the client name, which belongs to the selected record for two of the three
-// targets and must never be a leftover from the one before.
-//
-// Switching to the SAME target is a no-op on the selections, so a re-render or
-// a double click on the active card cannot wipe a selection the user made.
-export function switchTarget(
-  state: PaymentTargetState,
-  target: SelectablePaymentTargetType,
-): PaymentTargetState {
-  if (target === state.target) return state
-  return {
-    target,
-    manualClientName: '',
-    selectedOrder: null,
-  }
-}
-
-// The client name that will actually be submitted. For the two linked targets it
-// comes from the selected record and the manual field is not consulted at all —
-// the database re-derives it either way (derive_target for a request,
-// enforce_finance_payment_request_client_name for an Order), so this only
-// decides what the form shows and sends.
-export function targetClientName(state: PaymentTargetState): string {
-  switch (state.target) {
-    case 'confirmed_order': return state.selectedOrder?.client_name?.trim() ?? ''
-    default:                return state.manualClientName.trim()
-  }
-}
-
-// Is the target half of the form complete? A linked target needs its record
-// selected, and every target needs a non-empty client name — which for a linked
-// target means the selected record actually has one on file, a condition the
-// database also refuses (ORDER_REQUEST_NO_CLIENT / the existing Order message).
-export function isTargetComplete(state: PaymentTargetState): boolean {
-  if (state.target === 'confirmed_order' && !state.selectedOrder) return false
-  return targetClientName(state) !== ''
-}
-
-// ── Submission payload ────────────────────────────────────────────────────────
-
-export type PaymentTargetPayload = {
-  client_name: string
-  payment_against: 'new_order' | 'existing_order'
-  order_id: string | null
-  order_number: string | null
-  order_request_id: string | null
-  order_request_number: string | null
-}
-
-// The linkage half of an insert/update payload, built so that AT MOST ONE of
-// order_id / order_request_id is ever non-null. Both are always PRESENT as keys,
-// which is what makes this safe to spread over an UPDATE: switching target has
-// to null the columns the previous target used, and an omitted key would leave
-// them behind.
-//
-// order_request_id and order_request_number are ALWAYS NULL now, and they are
-// still SENT. The keys have to be present so that spreading this over an UPDATE
-// clears a retired linkage a historical row is carrying rather than leaving it
-// behind — which is also the one way a request-linked payment can be moved onto
-// a real target. Sending them as null is not a write the retirement guard
-// refuses: it refuses ESTABLISHING a link, never clearing one.
-//
-// payment_target_type is NOT in this payload, and that is the design: the
-// database derives it from the linkage columns below, so there is exactly one
-// thing a caller has to get right instead of two that could contradict.
-export function buildTargetPayload(state: PaymentTargetState): PaymentTargetPayload {
-  const base = {
-    client_name: targetClientName(state),
-    payment_against: paymentAgainstFor(state.target),
-    order_id: null,
-    order_number: null,
-    order_request_id: null,
-    order_request_number: null,
-  } as PaymentTargetPayload
-
-  if (state.target === 'confirmed_order' && state.selectedOrder) {
-    return {
-      ...base,
-      order_id: state.selectedOrder.id,
-      order_number: state.selectedOrder.display_number,
-    }
-  }
-  return base
 }
 
 // ── Failure messages ──────────────────────────────────────────────────────────

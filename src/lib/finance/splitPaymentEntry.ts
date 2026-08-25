@@ -38,6 +38,7 @@ import {
   type ExactDecimal,
 } from './exactMoney'
 import { isValidAmount } from '@/lib/currency'
+import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
 
 /** The two kinds of destination the business has. There is no third. */
 export type SplitTargetKind = 'order' | 'submission'
@@ -142,18 +143,25 @@ export function splitPaymentTotals(input: {
  *
  * A POSITIVE REMAINDER IS NOT A REASON. Recording ₹5,00,000 and allocating
  * ₹2,00,000 of it is an ordinary, correct entry: the rest is an unallocated
- * balance Finance's own Allocate control spends later. An EMPTY list is
- * likewise fine — that is the plain unallocated payment the Finance form has
- * always written.
+ * balance Finance's own Allocate control spends later.
+ *
+ * AN EMPTY LIST IS A DESTINATION, NOT AN OVERSIGHT. It is exactly what Suspense
+ * Entry means, and it is refused under the other two: somebody who chose
+ * "Confirmed Order" and named none has not finished, and the server would
+ * refuse the same entry by name.
  */
 export function splitPaymentBlockedReason(input: {
+  /** Which of the three the person chose. Decides whether rows are required. */
+  destination: PaymentDestination
   amount: string
   paymentDate: string
   paymentMode: string
-  clientName: string
   rows: readonly SplitAllocationRow[]
 }): string | null {
-  if (!input.clientName.trim()) return 'Name the client this payment came from.'
+  // NO CUSTOMER CHECK. The customer is not typed any more: the server derives it
+  // from the targets, or the payment has none because it has no targets
+  // (20261013000000). A form that refused to submit without one would be
+  // demanding something it can no longer ask for.
   if (!isValidAmount(input.amount)) return 'Enter the amount received, in rupees and paise.'
   if (!input.paymentDate) return 'Choose the date the payment was received.'
   if (!input.paymentMode) return 'Choose how the payment was made.'
@@ -161,10 +169,40 @@ export function splitPaymentBlockedReason(input: {
   const rows = input.rows
   const filled = rows.filter(r => r.kind || r.targetId || r.amount.trim())
 
+  const wantedKind = destinationTargetKind(input.destination)
+
+  // SUSPENSE CARRIES NO TARGET. Not "may carry none" — carries none. If a row
+  // survived a destination change it would allocate money the person told the
+  // form not to allocate, so this is a refusal and not a quiet trim.
+  if (!wantedKind) {
+    if (filled.length > 0) {
+      return 'A Suspense Entry holds no allocations. Choose PI Draft or Confirmed Order, or remove the rows.'
+    }
+    return null
+  }
+
+  if (filled.length === 0) {
+    return input.destination === 'pi_draft'
+      ? 'Choose the PI Draft this payment is for.'
+      : 'Choose the Order this payment is for.'
+  }
+
+  // AND A TARGET OF THE WRONG KIND IS NOT A TARGET. The picker only offers one
+  // kind, so this can only be reached by a row left behind — which is the case
+  // worth refusing rather than sending.
+  for (const row of filled) {
+    if (row.kind && row.kind !== wantedKind) {
+      return input.destination === 'pi_draft'
+        ? 'One row names an Order. A PI Draft entry allocates to PI Drafts only.'
+        : 'One row names a PI Draft. A Confirmed Order entry allocates to Orders only.'
+    }
+  }
+
   for (let i = 0; i < filled.length; i++) {
     const row = filled[i]
     if (!row.kind || !row.targetId) {
-      return `Choose an Order or a PI Draft for allocation ${i + 1}, or remove it.`
+      const noun = input.destination === 'pi_draft' ? 'PI Draft' : 'Order'
+      return `Choose ${noun === 'Order' ? 'an' : 'a'} ${noun} for allocation ${i + 1}, or remove it.`
     }
     if (!isValidAmount(row.amount)) {
       return `Enter an amount for allocation ${i + 1}, in rupees and paise.`
@@ -233,7 +271,13 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
   if (m.includes('PAYMENT_ALLOCATIONS_INVALID')) {
     return 'The allocation list could not be read. Refresh and try again.'
   }
-  if (m.includes('PAYMENT_CLIENT_REQUIRED')) return 'Name the client this payment came from.'
+  // The form no longer has a customer field to send, so this refusal can only
+  // mean the page is older than the database it is talking to (or newer than
+  // it: 20261013000000 not applied). Telling somebody to name a client they
+  // cannot see would be worse than useless.
+  if (m.includes('PAYMENT_CLIENT_REQUIRED')) {
+    return 'This page is out of step with the server. Reload it and try again. Nothing was saved.'
+  }
   if (m.includes('PAYMENT_AMOUNT_INVALID'))  return 'Enter a positive amount in rupees and paise.'
   if (m.includes('PAYMENT_DATE_FUTURE'))     return 'A payment date cannot be in the future.'
   if (m.includes('PAYMENT_DATE_REQUIRED'))   return 'A payment date is required.'

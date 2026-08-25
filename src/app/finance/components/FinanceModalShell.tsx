@@ -15,19 +15,77 @@ import { colors } from '@/lib/tokens'
 export const FINANCE_MODAL_OVERLAY_Z = 200
 export const FINANCE_MODAL_DIALOG_Z  = 201
 
-// Locks background scroll and wires Escape-to-close for the lifetime of any
-// Finance modal. Scroll state is restored on close/unmount.
-export function useModalScrollLockAndEscape(onClose: () => void) {
+// Locks background scroll for the lifetime of any Finance modal, and restores
+// it on close/unmount. Split out from the pair below because a form modal wires
+// its own Escape through the discard guard — it must ASK before it closes — and
+// still needs the scroll lock.
+export function useModalScrollLock() {
   useEffect(() => {
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prevOverflow }
+  }, [])
+}
+
+// Locks background scroll and wires Escape-to-close for the lifetime of any
+// Finance modal. Scroll state is restored on close/unmount.
+export function useModalScrollLockAndEscape(onClose: () => void) {
+  useModalScrollLock()
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
     window.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = prevOverflow
-      window.removeEventListener('keydown', onKey)
-    }
+    return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
+}
+
+// ── Focus, for the lifetime of one dialog ─────────────────────────────────────
+//
+// THREE THINGS, and they are separate. On open the dialog takes focus, so a
+// keyboard or screen-reader user is inside it rather than still on the page
+// behind. While it is open Tab CYCLES WITHIN IT — a modal whose focus can walk
+// out onto the list underneath is not modal to anybody navigating by keyboard.
+// On close focus RETURNS TO WHATEVER OPENED IT, so the person's place in the
+// page is not lost.
+//
+// The trap moves focus and nothing else. It is an accessibility affordance, not
+// a security boundary: nothing below it depends on focus staying put.
+export function useDialogFocus<T extends HTMLElement>(ref: React.RefObject<T | null>) {
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
+    ref.current?.focus()
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return
+      const root = ref.current
+      if (!root) return
+      const focusable = Array.from(root.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]),' +
+        ' textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter(el => el.offsetParent !== null || el === document.activeElement)
+      if (focusable.length === 0) return
+
+      const first = focusable[0]
+      const last  = focusable[focusable.length - 1]
+      const active = document.activeElement
+
+      // Wrapping is the whole point: without it Tab from the last control lands
+      // on the browser chrome and then on the page behind the dialog.
+      if (e.shiftKey && (active === first || active === root)) {
+        e.preventDefault(); last.focus()
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault(); first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      // Only if the opener is still in the document: a row that was removed by
+      // the very action this dialog performed cannot be focused, and trying
+      // would move focus to <body> for no reason.
+      if (opener && document.contains(opener)) opener.focus()
+    }
+  }, [ref])
 }
 
 // ── Compact modal shell ───────────────────────────────────────────────────────
@@ -53,14 +111,17 @@ export function FinanceModal({
   closeOnBackdropClick?: boolean
 }) {
   useModalScrollLockAndEscape(onClose)
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useDialogFocus(dialogRef)
   return (
     <>
       <div onClick={closeOnBackdropClick ? onClose : undefined} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: FINANCE_MODAL_OVERLAY_Z }} />
-      <div style={{
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={title} tabIndex={-1} style={{
         position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
         width, maxWidth: 'calc(100vw - 32px)', maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
         background: colors.base, borderRadius: '12px', border: `1px solid ${colors.border}`,
         zIndex: FINANCE_MODAL_DIALOG_Z, padding: '24px', display: 'flex', flexDirection: 'column', gap: '14px',
+        outline: 'none',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: '15px', fontWeight: 700, color: colors.primary }}>{title}</div>
@@ -121,7 +182,7 @@ export function RequestModalShell({
 }) {
   useModalScrollLockAndEscape(onClose)
   const dialogRef = useRef<HTMLDivElement>(null)
-  useEffect(() => { dialogRef.current?.focus() }, [])
+  useDialogFocus(dialogRef)
 
   return (
     <>

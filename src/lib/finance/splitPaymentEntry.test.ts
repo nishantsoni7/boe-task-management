@@ -26,11 +26,13 @@ const row = (over: Partial<SplitAllocationRow> = {}): SplitAllocationRow => ({
   key: 'k1', kind: 'order', targetId: 'o-1', targetLabel: '0007', amount: '1000', ...over,
 })
 
+// Every row() defaults to an Order, so the base destination is the one that
+// admits them. The three destinations are exercised on their own below.
 const base = {
+  destination: 'confirmed_order' as const,
   amount: '100000',
   paymentDate: '2026-08-20',
   paymentMode: 'bank_transfer',
-  clientName: 'Acme',
 }
 
 describe('the three figures the form shows continuously', () => {
@@ -59,12 +61,13 @@ describe('the three figures the form shows continuously', () => {
     assert.equal(splitPaymentBlockedReason({ ...base, amount: '500000', rows: [row({ amount: '200000' })] }), null)
   })
 
-  test('an empty list is a plain unallocated payment, and saves', () => {
+  test('an empty list is a plain unallocated payment, and saves as Suspense', () => {
     const t = splitPaymentTotals({ amount: '1000', rows: [] })
     assert.equal(t.allocated, '0')
     assert.equal(t.remaining, '1000')
     assert.equal(t.fullyAllocated, false)
-    assert.equal(splitPaymentBlockedReason({ ...base, amount: '1000', rows: [] }), null)
+    assert.equal(
+      splitPaymentBlockedReason({ ...base, destination: 'suspense', amount: '1000', rows: [] }), null)
   })
 
   test('over-allocation shows a NEGATIVE remainder rather than a clamped zero', () => {
@@ -117,12 +120,14 @@ describe('one payment holds one allocation per record', () => {
   })
 
   test('an Order and a PI Draft are different targets even at the same position', () => {
+    // The KEY is kind-aware: an Order and a PI Draft can never collide. Whether
+    // one entry may hold both is a separate question, answered by the
+    // destination below — this is only about identity.
     const rows = [
       row({ key: 'a', kind: 'order', targetId: 'x' }),
       row({ key: 'b', kind: 'submission', targetId: 'x' }),
     ]
     assert.equal(duplicateTargetKeys(rows).size, 0)
-    assert.equal(splitPaymentBlockedReason({ ...base, rows }), null)
   })
 
   test('an incomplete row has no target key and cannot be a duplicate', () => {
@@ -134,10 +139,11 @@ describe('one payment holds one allocation per record', () => {
 
 describe('why the form cannot be saved', () => {
   test('payment-level facts are asked for before any row is judged', () => {
-    // Somebody who has typed nothing is told to name the client, not to fix
-    // row 3 — the order the form is filled in, not the order it is validated.
+    // Somebody who has typed nothing is told about the payment itself, not
+    // about row 3 — the order the form is filled in, not the order it is
+    // validated. The customer is no longer among those facts: the server
+    // derives it from the allocated PI or Order, so the form never asks.
     const broken = [row({ kind: null, targetId: null, amount: '' })]
-    assert.match(splitPaymentBlockedReason({ ...base, clientName: '  ', rows: broken }) ?? '', /client/)
     assert.match(splitPaymentBlockedReason({ ...base, amount: '', rows: broken }) ?? '', /amount received/)
     assert.match(splitPaymentBlockedReason({ ...base, paymentDate: '', rows: broken }) ?? '', /date/)
     assert.match(splitPaymentBlockedReason({ ...base, paymentMode: '', rows: broken }) ?? '', /how the payment was made/)
@@ -173,6 +179,61 @@ describe('why the form cannot be saved', () => {
   })
 })
 
+describe('the destination decides what a complete entry is', () => {
+  test('a targeted destination with no target named is not finished', () => {
+    const empty = [EMPTY_ALLOCATION_ROW('a')]
+    assert.match(
+      splitPaymentBlockedReason({ ...base, destination: 'pi_draft', rows: empty }) ?? '', /PI Draft/)
+    assert.match(
+      splitPaymentBlockedReason({ ...base, destination: 'confirmed_order', rows: empty }) ?? '', /Order/)
+  })
+
+  test('Suspense refuses a row rather than quietly dropping it', () => {
+    // A row that survived a destination change would allocate money the person
+    // told the form not to allocate. Refusing it is what makes the sentence on
+    // screen and the payload agree.
+    const reason = splitPaymentBlockedReason({
+      ...base, destination: 'suspense', rows: [row({ amount: '400' })] })
+    assert.match(reason ?? '', /Suspense Entry holds no allocations/)
+  })
+
+  test('a target of the wrong kind is refused by name, not sent', () => {
+    assert.match(
+      splitPaymentBlockedReason({
+        ...base, destination: 'pi_draft', rows: [row({ kind: 'order', amount: '400' })] }) ?? '',
+      /A PI Draft entry allocates to PI Drafts only/)
+    assert.match(
+      splitPaymentBlockedReason({
+        ...base, destination: 'confirmed_order', rows: [row({ kind: 'submission', amount: '400' })] }) ?? '',
+      /A Confirmed Order entry allocates to Orders only/)
+  })
+
+  test('several targets of the RIGHT kind remain one entry', () => {
+    // Splitting one payment across two Orders is the whole reason this form
+    // exists; narrowing the kind must not have narrowed the count.
+    const rows = [
+      row({ key: 'a', kind: 'order', targetId: 'o-1', amount: '400' }),
+      row({ key: 'b', kind: 'order', targetId: 'o-2', amount: '600' }),
+    ]
+    assert.equal(splitPaymentBlockedReason({ ...base, amount: '1000', rows }), null)
+
+    const drafts = [
+      row({ key: 'a', kind: 'submission', targetId: 's-1', amount: '400' }),
+      row({ key: 'b', kind: 'submission', targetId: 's-2', amount: '600' }),
+    ]
+    assert.equal(
+      splitPaymentBlockedReason({ ...base, destination: 'pi_draft', amount: '1000', rows: drafts }), null)
+  })
+
+  test('payment-level facts are still judged before the destination', () => {
+    // Somebody who has chosen nothing and typed nothing is told about the
+    // amount, not marched into a target search.
+    assert.match(
+      splitPaymentBlockedReason({ ...base, destination: 'pi_draft', amount: '', rows: [] }) ?? '',
+      /amount received/)
+  })
+})
+
 describe('what is sent to the RPC', () => {
   test('only complete rows, in the order they were added', () => {
     const rows = [
@@ -202,7 +263,7 @@ describe('server refusals become sentences that name the rule', () => {
     ['PAYMENT_ALLOCATIONS_TOO_MANY: …',           /at most 20 ways/],
     ['PAYMENT_ALLOCATION_KIND_INVALID: …',        /Confirmed Order or a PI Draft/],
     ['PAYMENT_ALLOCATION_AMOUNT_INVALID: …',      /positive amount/],
-    ['PAYMENT_CLIENT_REQUIRED: …',                /client/],
+    ['PAYMENT_CLIENT_REQUIRED: …',                /out of step with the server/],
     ['PAYMENT_DATE_FUTURE: …',                    /future/],
     ['ALLOCATION_DUPLICATE: …',                   /listed twice/],
     ['ALLOCATION_TARGET_CONVERTED: …',            /now an Order/],

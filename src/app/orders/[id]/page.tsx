@@ -71,6 +71,8 @@ import {
 import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
 import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
+// ONE payment-mode source for Order and Finance (20261013000000).
+import { PAYMENT_MODE_LABEL } from '@/lib/finance/paymentEntry'
 import {
   OrderDocumentsCard,
   OrderPiNoSource,
@@ -238,13 +240,6 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
   website:         'Website',
 }
 
-const PAYMENT_MODE_LABEL: Record<string, string> = {
-  bank_transfer: 'Bank Transfer',
-  cash:          'Cash',
-  upi:           'UPI',
-  cheque:        'Cheque',
-  other:         'Other',
-}
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   created:          'Order created',

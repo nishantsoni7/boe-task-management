@@ -18,6 +18,12 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { isValidAmount } from '@/lib/currency'
+// ONE payment-mode source for Order and Finance (20261013000000). This file
+// used to keep its own label map AND its own options array; both are gone.
+import {
+  PAYMENT_MODES as PAYMENT_MODE_OPTIONS,
+  PAYMENT_MODE_LABEL,
+} from '@/lib/finance/paymentEntry'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
@@ -165,13 +171,6 @@ type PaymentRequest = {
  */
 const SEARCH_DEBOUNCE_MS = 250
 
-const PAYMENT_MODE_LABEL: Record<string, string> = {
-  bank_transfer: 'Bank Transfer',
-  cash:          'Cash',
-  upi:           'UPI',
-  cheque:        'Cheque',
-  other:         'Other',
-}
 
 const RECEIVED_IN_LABEL: Record<string, string> = {
   company_account: 'HDFC',
@@ -274,13 +273,6 @@ function viewHref(view: PaymentView): string {
   return `${RECEIVED_PATH}?view=${view}`
 }
 
-const PAYMENT_MODE_OPTIONS = [
-  { label: 'Bank Transfer', value: 'bank_transfer' },
-  { label: 'Cash',          value: 'cash' },
-  { label: 'UPI',           value: 'upi' },
-  { label: 'Cheque',        value: 'cheque' },
-  { label: 'Other',         value: 'other' },
-]
 
 const RECEIVED_IN_OPTIONS = [
   // First, and empty-valued: a payment recorded against a PI states no account,
