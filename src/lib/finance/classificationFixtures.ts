@@ -89,19 +89,6 @@ export type ClassificationFixture = {
     /** Every view this payment must appear in. Order-insensitive. */
     views: string[]
   }
-  /**
-   * What the SQL projection still says, where it differs. It retains the
-   * direct-link fallback the application dropped, and changing it needs a
-   * migration. Absent when the two agree — which is every fixture with an
-   * active allocation. See attributionFixtures.ts for the full note; delete
-   * these together with the SQL fallback.
-   */
-  sqlExpected?: {
-    orderLinked: string
-    piLinked: string
-    available: string | null
-    views: string[]
-  }
   note: string
 }
 
@@ -146,18 +133,6 @@ function fromAttribution(key: keyof typeof ATTRIBUTION_FIXTURES, note: string): 
   if (!isZeroString(piLinked)) views.push('pi_drafts')
   if (!isZeroString(f.expectedUnallocated)) views.push('available')
 
-  // Where the attribution fixture records a SQL answer, carry it across in the
-  // same shape — the SQL fallback attributes the whole payment to the Order the
-  // dormant link names, so it is Order-linked with no available balance.
-  const sqlExpected = f.sqlExpected
-    ? {
-        orderLinked: f.amount,
-        piLinked: '0',
-        available: f.sqlExpectedUnallocated ?? '0',
-        views: ['all', 'orders'],
-      }
-    : undefined
-
   return {
     label: f.label,
     paymentId: f.paymentId,
@@ -175,7 +150,6 @@ function fromAttribution(key: keyof typeof ATTRIBUTION_FIXTURES, note: string): 
       overAllocated: f.expectedState === 'over',
       views,
     },
-    ...(sqlExpected ? { sqlExpected } : {}),
     note,
   }
 }

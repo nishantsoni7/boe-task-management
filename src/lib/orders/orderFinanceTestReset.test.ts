@@ -240,6 +240,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.equal(files.filter(f => f.startsWith('20261009')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261010')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261011')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261012')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .sort()
@@ -247,6 +248,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
       '20261011000000_admin_payment_deletion_and_payment_id.sql',
+      // 112. Makes active allocation rows the single financial source in SQL as
+      // well as in the application, and drops the Link/Unlink write surface. It
+      // touches neither the reset protocol nor the deletion claim, and stacks
+      // after 111 for the ordinary reason: it replaces the view 111 leaves.
+      '20261012000000_allocation_ledger_as_single_source.sql',
     ])
   })
 
