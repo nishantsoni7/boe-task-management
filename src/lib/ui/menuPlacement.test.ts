@@ -28,6 +28,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 import { placeMenu, MENU_GAP, MENU_MARGIN } from './menuPlacement'
 import {
@@ -434,21 +435,61 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
     }
   })
 
-  test('the Action Queue sends a suspense payment to Allocate, not to Link', () => {
+  test('the Action Queue generates ONLY action=allocate', () => {
     const queue = readFileSync(join(process.cwd(), 'src/app/admin/control-center/action-queue/page.tsx'), 'utf8')
     assert.equal(queue.includes('action=link'), false, 'the old deep link is gone')
     assert.ok(queue.includes('action=allocate'), 'and it points at allocation instead')
     assert.ok(queue.includes("actionLabel: 'Allocate suspense payment'"),
       'and says so in the row the reader clicks')
+    // Every action= this file emits, whatever the category.
+    const emitted = [...stripComments(queue).matchAll(/action=([a-z]+)/g)].map(m => m[1])
+    assert.deepEqual([...new Set(emitted)], ['allocate'],
+      'no other action parameter may be generated from this queue')
   })
 
-  test('an old ?action=link bookmark still resolves rather than dead-ending', () => {
-    // Removing a workflow should not break a link somebody was already sent.
+  test('NOTHING in the app generates an action=link URL', () => {
+    // Repo-wide, not just this queue: a notification builder or a nav helper
+    // could reintroduce it just as easily.
+    const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+      .split('\n').filter(f => /\.tsx?$/.test(f) && !f.includes('.test.'))
+    for (const f of files) {
+      const code = stripComments(readFileSync(join(process.cwd(), f), 'utf8'))
+      assert.equal(code.includes('action=link'), false, `${f} must not build an action=link URL`)
+      assert.equal(code.includes("action: 'link'"), false, `${f} must not name a link action`)
+    }
+  })
+
+  test('no application code calls a legacy Link or Unlink RPC', () => {
+    const files = execFileSync('git', ['ls-files', 'src'], { encoding: 'utf8' })
+      .split('\n').filter(f => /\.tsx?$/.test(f) && !f.includes('.test.'))
+    for (const f of files) {
+      const code = readFileSync(join(process.cwd(), f), 'utf8')
+      assert.equal(code.includes(".rpc('link_finance_payment"), false, `${f} calls a link RPC`)
+      assert.equal(code.includes(".rpc('unlink_finance_payment"), false, `${f} calls an unlink RPC`)
+    }
+  })
+
+  test('?action=allocate is the ONLY deep link that opens Allocate Funds', () => {
     const code = stripComments(view)
-    assert.ok(code.includes("const wantsAllocate = action === 'allocate' || action === 'link'"),
-      'the retired parameter is accepted and routed to allocation')
-    assert.ok(code.includes('caps.canAllocatePayment && canOfferAllocateFunds(match)'),
-      'and it is re-gated on permission AND allocatable balance, exactly as the button is')
+    assert.ok(code.includes("action === 'allocate' && caps.canAllocatePayment && canOfferAllocateFunds(match)"),
+      'allocate opens the modal, re-gated on permission AND allocatable balance')
+    assert.equal(/action === 'link'/.test(code), false,
+      'and `link` is not accepted — reinterpreting one action as another would ' +
+      'open a modal the URL did not ask for')
+    assert.equal(code.includes('wantsAllocate'), false, 'no alias variable survives')
+  })
+
+  test('an unrecognised action falls through to the ordinary page', () => {
+    // An old ?action=link URL is simply not an action this page knows. It must
+    // land on the list — highlighted, or opened read-only when the row is on
+    // another page — never on a modal chosen for it.
+    const code = stripComments(view)
+    const at = code.indexOf("action === 'allocate' && caps.canAllocatePayment")
+    const chain = code.slice(at, code.indexOf('// Drop the deep-link params', at))
+    assert.ok(chain.includes("action === 'edit' || action === 'allocate'"),
+      'only the two known actions reach the read-only fallback branch')
+    assert.ok(chain.includes('} else if (!onThisPage) {'),
+      'and anything else reaches the plain highlight/open branch')
   })
 })
 

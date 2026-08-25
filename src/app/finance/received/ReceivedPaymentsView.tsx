@@ -2236,11 +2236,9 @@ function ReceivedPaymentsViewInner(
     void loadTargetLabels(allocationRows, rows, token)
 
     setAllocations(summarizePaymentAllocations(
-      // `hasDirectLink` carries the payment's own order_id into the rule: a
-      // linked payment with no allocations is attributed in full to that Order
-      // by the canonical fallback, so it is not free money and must not read
-      // "Unallocated" here while the Order counts it.
-      rows.map(r => ({ id: r.id, amount: r.amount, hasDirectLink: r.order_id !== null })),
+      // ID AND AMOUNT ONLY. The payment's own order_id is not an input: a row
+      // with no active allocation is Zero Allocated whatever it points at.
+      rows.map(r => ({ id: r.id, amount: r.amount })),
       allocationRows, {
       readable: !error,
       // Only a reader who can see EVERY allocation may be told "unallocated" on
@@ -2366,7 +2364,7 @@ function ReceivedPaymentsViewInner(
     ])
     const allocationRows = (allocRows ?? []) as PaymentAllocationRow[]
     const summaryMap = summarizePaymentAllocations(
-      [{ id: mapped.id, amount: mapped.amount, hasDirectLink: mapped.order_id !== null }],
+      [{ id: mapped.id, amount: mapped.amount }],
       allocationRows, {
         readable: !allocErr,
         emptyIsConclusive,
@@ -2603,20 +2601,19 @@ function ReceivedPaymentsViewInner(
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        // `?action=link` USED TO OPEN THE LINK MODAL. Linking is gone, and the
-        // Action Queue row that sent people here — a suspense payment waiting
-        // to be attached to something — is answered by ALLOCATION now, so the
-        // parameter it emits is `allocate`. `link` is still accepted, because
-        // an old bookmark or a notification sent before this change should not
-        // dead-end; it resolves to the same place a suspense row now belongs.
-        const wantsAllocate = action === 'allocate' || action === 'link'
-        if (wantsAllocate && caps.canAllocatePayment && canOfferAllocateFunds(match)) {
+        // `?action=allocate` IS THE ONLY ATTACHMENT DEEP LINK. `link` is not an
+        // alias for it and is not accepted: reinterpreting one action as
+        // another would open a modal the URL did not ask for. An old `link` URL
+        // is simply not an action this page knows, so it falls through to the
+        // ordinary list — highlighted if the row is here, opened read-only if
+        // it is not.
+        if (action === 'allocate' && caps.canAllocatePayment && canOfferAllocateFunds(match)) {
           setAllocateFundsTarget(match)
         } else if (caps.canManageFinance && action === 'edit') {
           // Editing a received payment is admin-only here, exactly as the
           // table's own Edit button is.
           setEditRequest(match)
-        } else if (action === 'edit' || wantsAllocate) {
+        } else if (action === 'edit' || action === 'allocate') {
           // Not permitted (or nothing left to allocate): fall back to the
           // read-only view rather than silently doing nothing.
           setDetailRequest(match)

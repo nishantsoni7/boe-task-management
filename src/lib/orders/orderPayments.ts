@@ -36,10 +36,10 @@ export type OrderPaymentRow = {
   /**
    * How much of this payment belongs to THIS Order.
    *
-   * Equal to `amount` for a payment linked the legacy way, and to the
-   * allocation's own figure for one that arrived through an allocation — a
-   * payment may legitimately be split across targets, and summing the whole
-   * ledger amount would credit this Order with money that is not its own.
+   * The allocation's own figure, and ZERO for a row that reached this list only
+   * through the legacy `order_id` read — a payment may legitimately be split
+   * across targets, and nothing but an active allocation row attaches money to
+   * an Order. See the rule at the top of lib/finance/paymentAttribution.ts.
    */
   allocatedAmount: number
   /** True when this row is here because an allocation points at the Order. */
@@ -85,10 +85,11 @@ export function isVerifiedPaymentStatus(status: string | null | undefined): bool
  * The Order's payments: the legacy linked rows first, then anything its active
  * allocations point at that is not already among them.
  *
- * DEDUPLICATED BY PAYMENT ID, and the legacy row wins. A payment that was linked
- * the old way AND carries a backfilled allocation to the same Order is one
- * payment, and listing it twice would double every total a reader computes by
- * eye.
+ * DEDUPLICATED BY PAYMENT ID, and the ALLOCATION WINS. A payment that names this
+ * Order in the legacy column AND carries an allocation to it is one payment
+ * worth its allocated share — taking the legacy row's zero instead would hide
+ * money the Order really has. Listing it twice would double every total a
+ * reader computes by eye.
  *
  * REVERSED ALLOCATIONS ARE NOT INCLUDED. A reversed allocation is a claim that
  * was withdrawn; it stays in the Finance trail, where its reason is, and it is
@@ -114,18 +115,36 @@ export function mergeOrderPayments(
     payment_mode: p.payment_mode ?? '',
     order_number: p.order_number,
     status: p.status,
-    allocatedAmount: toNumber(p.amount),
+    // ZERO, NOT THE LEDGER AMOUNT. This row is here because the payment names
+    // this Order in a dormant column; it is not here because anything allocated
+    // money to it. Crediting the full amount was the direct-link fallback, and
+    // that fallback is gone — the row stays visible so an admin can see money
+    // that names this Order and allocate it, and counts for nothing until they
+    // do.
+    allocatedAmount: 0,
     viaAllocation: false,
   }))
 
-  const seen = new Set(rows.map(r => r.id))
+  const byId = new Map(rows.map(r => [r.id, r]))
 
   for (const allocation of allocations) {
     if (allocation.status !== 'active') continue
     const payment = allocation.payment
-    if (!payment || seen.has(payment.id)) continue
-    seen.add(payment.id)
-    rows.push({
+    if (!payment) continue
+
+    // ALREADY LISTED, from the legacy read. It is the same payment, so it stays
+    // one row — but the allocation is what attributes money to this Order, so
+    // the row takes the allocated share rather than the legacy zero. Shares ADD:
+    // the RPC refuses a duplicate active allocation to one target, so this is at
+    // most a defensive sum, never a doubling of a single claim.
+    const existing = byId.get(payment.id)
+    if (existing) {
+      existing.allocatedAmount += toNumber(allocation.allocated_amount)
+      existing.viaAllocation = true
+      continue
+    }
+
+    const row: OrderPaymentRow = {
       id: payment.id,
       client_name: payment.client_name ?? '',
       amount: toNumber(payment.amount),
@@ -135,7 +154,9 @@ export function mergeOrderPayments(
       status: payment.status,
       allocatedAmount: toNumber(allocation.allocated_amount),
       viaAllocation: true,
-    })
+    }
+    byId.set(payment.id, row)
+    rows.push(row)
   }
 
   // Newest first, which is how the screen has always listed them. A row with no

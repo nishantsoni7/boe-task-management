@@ -17,9 +17,10 @@
 //
 // DEEP LINKS STILL ARRIVE HERE from the Admin Action Queue and from Finance
 // notifications, and the list resolves the row by id when it is not on the
-// current page. `?action=link` became `?action=allocate` when linking was
-// retired in favour of the allocation ledger; the old value is still accepted
-// so a bookmark or an already-sent notification does not dead-end.
+// current page. The attachment action is `?action=allocate`, and that is the
+// only value that opens Allocate Funds — `link` was retired with the workflow
+// and is NOT an alias for it: an unrecognised action lands on the ordinary
+// list rather than being reinterpreted as a different one.
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'

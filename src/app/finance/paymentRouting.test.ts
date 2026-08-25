@@ -398,11 +398,27 @@ describe('the fifteen compatibility cases', () => {
     active_allocation_count: 0, attribution_complete: true, ...row,
   })
 
-  test('1. a legacy approved_linked payment with a parent order_id is Order money', () => {
+  test('1. a legacy approved_linked payment with a parent order_id is AVAILABLE money', () => {
+    // THE RULE THAT CHANGED. This used to be Order money, attributed in full by
+    // the direct-link fallback. Link and Unlink are gone and allocation rows are
+    // the only source of attribution, so a payment with none is money nobody
+    // has claimed — and the honest place for it is Available, where somebody
+    // can allocate it.
     const c = classify({ order_id: 'order-1', status: 'approved_linked' })
+    assert.deepEqual(c.views.sort(), ['all', 'available'])
+    assert.equal(Number(c.orderLinked), 0, 'a dormant order_id attributes nothing')
+    assert.equal(Number(c.available), 1000000, 'the whole payment is free to allocate')
+  })
+
+  test('1b. and it becomes Order money as soon as an allocation names the Order', () => {
+    // The same row, once the allocation the product actually creates exists.
+    const c = classify({
+      order_id: 'order-1', status: 'approved_linked',
+      allocated_total: '1000000.00', order_allocated_total: '1000000.00',
+      active_allocation_count: 1,
+    })
     assert.deepEqual(c.views.sort(), ['all', 'orders'])
     assert.equal(Number(c.orderLinked), 1000000)
-    // And attributed in FULL by rule 2 — so nothing about it is available.
     assert.equal(Number(c.available), 0)
   })
 

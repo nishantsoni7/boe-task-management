@@ -31,6 +31,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import { ATTRIBUTION_FIXTURES, FIXTURE_ORDER } from './attributionFixtures'
 import { attributeToTarget, paymentPosition } from './paymentAttribution'
@@ -104,34 +105,46 @@ describe('every worked example appears in the SQL assertion file', () => {
     })
   }
 
-  test('the SQL asserts the same per-Order totals the TypeScript rule produces', () => {
-    // The two Order totals in the SQL file are the sum of every fixture's share.
-    // Computing them here from the TypeScript rule and requiring the SQL to
-    // state the same numbers is what makes this a parity check rather than two
-    // independent guesses.
+  test('the SQL still states the totals ITS OWN rule produces', () => {
+    // The SQL retains the direct-link fallback (see the divergence suite
+    // below), so its Order X total is the one the fallback produces. Computing
+    // it here from each fixture's `sqlExpected` — the recorded SQL answer —
+    // and requiring the file to state it keeps this a parity check of the SQL
+    // against the documented SQL rule, rather than a stale constant.
     const lettered = FIXTURE_ORDER.filter(k => k.length === 1).map(k => ATTRIBUTION_FIXTURES[k])
-
-    const totalFor = (target: string) => lettered.reduce((sum, f) => {
-      const active = f.allocations.filter(a => a.status === 'active')
-      const share = attributeToTarget({
-        paymentId: f.paymentId,
-        amount: f.amount,
-        activeAllocationTotal: active.reduce((s, a) => s + Number(a.amount), 0).toFixed(2),
-        ownActiveAllocations: active.filter(a => a.targetId === target).map(a => a.amount),
-        directlyLinkedToTarget: f.directLinkTarget === target,
-      })
-      return sum + Number(share.share)
+    const sqlTotalFor = (target: string) => lettered.reduce((sum, f) => {
+      const table = f.sqlExpected ?? f.expected
+      return sum + Number(table[target] ?? '0')
     }, 0)
 
-    // A ₹10L + B ₹5L + C ₹0 + D ₹4L + E ₹10L + F ₹15L
-    assert.equal(totalFor('ORDER_X'), 4400000)
-    // C ₹4L + D ₹6L; E's reversed allocation contributes nothing
-    assert.equal(totalFor('ORDER_Y'), 1000000)
+    // A ₹10L + B ₹5L + C ₹0 + D ₹4L + E ₹10L + F ₹15L, under the fallback.
+    assert.equal(sqlTotalFor('ORDER_X'), 4400000)
+    // C ₹4L + D ₹6L; E's reversed allocation contributes nothing either way.
+    assert.equal(sqlTotalFor('ORDER_Y'), 1000000)
 
     assert.ok(sqlAssertions.includes('4400000.00'),
-      'the SQL must assert the same Order X total the rule produces')
+      'the SQL must assert the same Order X total its own rule produces')
     assert.ok(sqlAssertions.includes('1000000.00'),
-      'the SQL must assert the same Order Y total the rule produces')
+      'the SQL must assert the same Order Y total its own rule produces')
+  })
+
+  test('THE APPLICATION TOTAL IS LOWER, and by exactly the fallback cases', () => {
+    // What the app now credits Order X across the same fixtures. The gap is
+    // A (₹10L) + E (₹10L) — the two payments with a dormant link and no active
+    // allocation. Nothing else moved.
+    const lettered = FIXTURE_ORDER.filter(k => k.length === 1).map(k => ATTRIBUTION_FIXTURES[k])
+    const appTotalFor = (target: string) => lettered.reduce((sum, f) => {
+      const active = f.allocations.filter(a => a.status === 'active')
+      return sum + Number(attributeToTarget({
+        paymentId: f.paymentId,
+        ownActiveAllocations: active.filter(a => a.targetId === target).map(a => a.amount),
+      }).share)
+    }, 0)
+
+    assert.equal(appTotalFor('ORDER_X'), 2400000, 'allocations only')
+    assert.equal(appTotalFor('ORDER_Y'), 1000000, 'Y never depended on a link')
+    assert.equal(4400000 - appTotalFor('ORDER_X'), 2000000,
+      'the gap is exactly A + E, the two fallback fixtures')
   })
 
   test('the SQL asserts the conservation law', () => {
@@ -161,10 +174,7 @@ describe('the TypeScript rule produces the documented figures', () => {
       for (const [target, expected] of Object.entries(f.expected)) {
         const got = attributeToTarget({
           paymentId: f.paymentId,
-          amount: f.amount,
-          activeAllocationTotal: activeTotal,
           ownActiveAllocations: active.filter(a => a.targetId === target).map(a => a.amount),
-          directlyLinkedToTarget: f.directLinkTarget === target,
         })
         assert.equal(got.share, expected, `${f.label} / ${target}: ${f.note}`)
       }
@@ -172,12 +182,74 @@ describe('the TypeScript rule produces the documented figures', () => {
       const position = paymentPosition({
         amount: f.amount,
         activeAllocationTotal: activeTotal,
-        hasDirectLink: f.directLinkTarget !== null,
       })
       assert.equal(position.state, f.expectedState, `${f.label} state`)
       assert.equal(position.unallocated, f.expectedUnallocated, `${f.label} unallocated`)
     })
   }
+})
+
+// ══ The one place the two sides disagree, pinned so it cannot spread ═════════
+//
+// The application dropped the direct-link fallback when Link/Unlink were
+// retired. order_linked_payment_total() still applies it, because changing a
+// database function needs a migration and none was in scope.
+//
+// This suite exists so the divergence is a STATED, BOUNDED fact rather than a
+// silent drift. When the follow-up migration removes the SQL fallback, delete
+// the `sqlExpected*` fields from the fixtures and this suite fails until it is
+// deleted too — which is the point.
+
+describe('the SQL fallback is a known, bounded divergence', () => {
+  test('exactly two fixtures diverge, and they are the fallback cases', () => {
+    const diverging = FIXTURE_ORDER.filter(k => ATTRIBUTION_FIXTURES[k].sqlExpected)
+    assert.deepEqual(diverging, ['A', 'E'],
+      'only a payment with a direct link AND no active allocation may differ')
+  })
+
+  test('every diverging fixture is exactly that shape', () => {
+    for (const key of FIXTURE_ORDER) {
+      const f = ATTRIBUTION_FIXTURES[key]
+      const hasActive = f.allocations.some(a => a.status === 'active')
+      const shouldDiverge = f.directLinkTarget !== null && !hasActive
+      assert.equal(Boolean(f.sqlExpected), shouldDiverge,
+        `${f.label}: divergence must follow the rule, not be declared case by case`)
+    }
+  })
+
+  test('the application always attributes LESS, never more', () => {
+    // The safe direction. The SQL is used by amendment and status guards, so a
+    // higher SQL figure means those guards refuse MORE than the application
+    // would require — never less. No guard can be slipped past by this gap.
+    for (const key of FIXTURE_ORDER) {
+      const f = ATTRIBUTION_FIXTURES[key]
+      if (!f.sqlExpected) continue
+      for (const [target, sqlShare] of Object.entries(f.sqlExpected)) {
+        const appShare = Number(f.expected[target] ?? '0')
+        assert.ok(appShare <= Number(sqlShare),
+          `${f.label} / ${target}: the app must never attribute more than the SQL`)
+      }
+    }
+  })
+
+  test('no application code reads the SQL total as an allocation figure', () => {
+    // The two callers use it for the Order's OWN received total, which is what
+    // it is for. Neither feeds it into an allocation state or an allocated
+    // total — that is what would let the fallback back into the ledger.
+    for (const path of [
+      'src/app/orders/[id]/OrderAmendmentModals.tsx',
+      'src/app/finance/received/AllocatePaymentModal.tsx',
+    ]) {
+      const src = readFileSync(join(process.cwd(), path), 'utf8')
+      const at = src.indexOf('order_linked_payment_total')
+      assert.ok(at > -1, `${path} still calls it`)
+      const near = src.slice(at, at + 600)
+      assert.equal(near.includes('summarizePaymentAllocations'), false,
+        `${path} must not feed the SQL total into the allocation summary`)
+      assert.equal(near.includes('confirmed_allocation_status'), false,
+        `${path} must not derive an allocation state from it`)
+    }
+  })
 })
 
 describe('question 8: the reachable combinations', () => {

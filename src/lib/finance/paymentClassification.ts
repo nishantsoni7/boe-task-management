@@ -221,30 +221,25 @@ export type PaymentClassification = {
 /**
  * One payment, under the canonical rule.
  *
- * THE ALLOCATION BRANCH IS CHECKED FIRST AND IS TOTAL, exactly as
- * attributeToTarget does it: if the payment has any active allocation at all,
- * the legacy `order_id` contributes nothing — not even when no allocation names
- * an Order. That is what stops the same rupee being counted once as a link and
- * again as an allocation.
+ * ACTIVE ALLOCATION ROWS DECIDE EVERYTHING — the total, the Order/PI split and
+ * the balance. The legacy `order_id` contributes nothing at all, so a payment
+ * with no active allocation is attributed to nobody and its whole amount is
+ * available, whatever that column says.
  */
 export function classifyPayment(row: ClassifiablePayment): PaymentClassification {
   const verification = paymentVerification(row.status)
   const amount = parseExact(row.amount)
-  const activeTotal = parseExact(row.allocated_total)
   const orderAllocated = parseExact(row.order_allocated_total) ?? ZERO
   const piAllocated = parseExact(row.pi_allocated_total) ?? ZERO
   const complete = row.attribution_complete === true
 
-  const hasActive = activeTotal !== null && !isZero(activeTotal)
-
-  // Rule 1 — allocations decide, and they decide the SPLIT as well as the total.
-  // Rule 2 — no active allocation, so the legacy link attributes the whole
-  // payment to an Order. A PI has no legacy linkage column and therefore no
-  // fallback: an unallocated payment is never attributed to a PI.
-  const orderShare: ExactDecimal = hasActive
-    ? orderAllocated
-    : (row.order_id && amount ? amount : ZERO)
-  const piShare: ExactDecimal = hasActive ? piAllocated : ZERO
+  // ALLOCATIONS DECIDE, and they decide the SPLIT as well as the total. There
+  // is no second branch: a payment with no active allocation is attributed to
+  // nobody, so both shares are zero and the whole amount is available. The
+  // legacy `order_id` used to attribute the payment in full to an Order here;
+  // it no longer enters the calculation at all.
+  const orderShare: ExactDecimal = orderAllocated
+  const piShare: ExactDecimal = piAllocated
 
   const attributed = addExact(orderShare, piShare)
 
@@ -256,7 +251,6 @@ export function classifyPayment(row: ClassifiablePayment): PaymentClassification
   const position = paymentPosition({
     amount: row.amount,
     activeAllocationTotal: row.allocated_total,
-    hasDirectLink: row.order_id !== null,
   })
 
   // WITHHELD RATHER THAN GUESSED. An incomplete view of the allocations

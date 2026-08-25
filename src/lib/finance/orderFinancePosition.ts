@@ -49,6 +49,7 @@ import {
   clampAtZero,
   compareExact,
   exactToString,
+  isZero,
   parseExact,
   percentTrunc,
   subtractExact,
@@ -196,18 +197,15 @@ export function withExactAmounts(
     const amountRaw = ledgerAmount.get(row.id) ?? null
     const amount = parseExact(amountRaw)
 
-    // THE CANONICAL RULE, applied here and nowhere else on this screen — the
-    // same one order_linked_payment_total() applies in SQL. If the payment has
-    // any active allocation, this Order gets only its own share and the direct
-    // link is ignored; if it has none, the link attributes the whole payment.
+    // THE CANONICAL RULE, applied here and nowhere else on this screen: this
+    // Order is attributed the sum of the ACTIVE ALLOCATIONS naming it, and
+    // nothing else. A row that reached this list through the legacy `order_id`
+    // read and carries no allocation is attributed ZERO — it is still listed,
+    // so an admin can see money that names this Order and allocate it, but it
+    // counts for nothing until an allocation row stands behind it.
     const attribution = attributeToTarget({
       paymentId: row.id,
-      amount: amountRaw,
-      activeAllocationTotal: sources.activeTotals?.get(row.id) ?? null,
       ownActiveAllocations: ownShares.get(row.id) ?? [],
-      // `viaAllocation` is false exactly when the row came from the legacy read,
-      // which is the read scoped to `order_id = this Order`.
-      directlyLinkedToTarget: !row.viaAllocation,
     })
 
     const share = parseExact(attribution.share)
@@ -222,7 +220,11 @@ export function withExactAmounts(
       exactAmount: amount ? exactToString(amount) : String(row.amount),
       exactAllocatedAmount: attribution.share,
       attributionBasis: attribution.basis,
-      isPartialShare: Boolean(amount && share && compareExact(share, amount) < 0),
+      // A SHARE OF NOTHING IS NOT A PARTIAL SHARE. Zero attributed means this
+      // Order has no claim on the payment at all — calling that "split" would
+      // put a partial-payment marker on a row it has no part of.
+      isPartialShare: Boolean(
+        amount && share && !isZero(share) && compareExact(share, amount) < 0),
     }
   })
 }

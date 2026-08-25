@@ -1,49 +1,40 @@
 // ── Who a payment's money belongs to ──────────────────────────────────────────
 //
-// THE ONE RULE, stated once, for every screen and mirrored exactly by
-// order_linked_payment_total() and finance_received_payments in SQL.
+// THE ONE RULE, stated once, for every screen:
 //
-//   1. If a payment has ANY active allocation, the allocations are
-//      authoritative. Each Order or PI receives only its own active allocated
-//      share, and the legacy direct linkage is ignored entirely.
-//   2. If it has NO active allocation, the legacy direct linkage — the
-//      payment's own order_id — attributes the WHOLE payment to that Order.
-//   3. Reversed allocations are not active and count for nothing. A payment
-//      whose only allocation was reversed falls back to rule 2.
+//   1. ACTIVE ALLOCATION ROWS ARE THE ONLY SOURCE OF ATTRIBUTION. Each Order or
+//      PI receives the sum of the active allocations naming it, and nothing
+//      else.
+//   2. A payment with NO active allocation rows is attributed to nobody. It is
+//      Zero Allocated, and its whole amount is unallocated — whatever
+//      `order_id`, `order_request_id` or `payment_against` say.
+//   3. Reversed allocations are not active and count for nothing.
 //   4. Whatever is left over after active allocations is UNALLOCATED.
 //   5. The sum attributed across every target, plus what is unallocated, is
 //      exactly the payment amount — never more.
 //
-// THE DEFECT THIS REPLACES
-// ------------------------
-// The old rule was "the legacy link wins": a payment carrying order_id = X was
-// credited to X AT ITS FULL AMOUNT, whatever its allocations said. That is
-// arithmetically unsound the moment both exist, and both CAN exist —
-// allocate_payment_to_target() refuses a rejected payment, a duplicate active
-// allocation and an over-capacity one, but it does NOT refuse a payment that
-// already carries an order_id.
+// THE FALLBACK THIS REPLACES
+// --------------------------
+// Rule 2 used to read the other way: a payment with no active allocation was
+// attributed IN FULL to the Order its `order_id` named. That existed to protect
+// a real invariant while both mechanisms were live — money linked the old way
+// was genuinely committed, and calling it unallocated would have put it in
+// Finance's suspense queue while an Order still counted it.
 //
-// So a ₹10,00,000 payment linked to Order X and allocated ₹4,00,000 to Order Y
-// was credited ₹10,00,000 to X *and* ₹4,00,000 to Y — ₹14,00,000 of attribution
-// for ₹10,00,000 of money, with the overstatement landing on the Order that had
-// received nothing. Every screen agreed with every other screen, and all of them
-// were wrong together.
+// Both mechanisms are no longer live. Link and Unlink are gone from the
+// product, the allocation ledger is the only way funds are attached, and the
+// legacy columns are dormant data that nothing writes. Keeping the fallback
+// would mean money could still be reported as fully attributed with no
+// allocation row standing behind it — an attribution nothing in the current
+// product can create, correct or reverse, because reversal operates on
+// allocation rows and there are none. So the fallback is removed, and
+// attribution now has exactly one source.
 //
-// WHY THE WHOLE-PAYMENT TOTAL IS AN INPUT
-// ---------------------------------------
-// Rule 1 turns on a fact no single Order can see for itself: whether the payment
-// has active allocations ELSEWHERE. An Order reads only the allocations naming
-// it, and RLS would not show it an allocation onto somebody else's Order anyway.
-// `activeAllocationTotal` is that fact, supplied by the caller from a source
-// that can see the whole payment — payment_active_allocation_totals() in the
-// database, or the Finance projection's allocated_total.
-//
-// WHEN IT IS NOT KNOWN, THE FALLBACK IS NOT APPLIED. `null` means "we could not
-// determine this", and the rule then attributes only what is provably this
-// target's — its own active allocations. That under-states rather than
-// over-states, which is the only safe direction: rule 5 says the total may never
-// exceed the payment, and a wrong "this Order has been paid in full" is the
-// failure that matters.
+// WHAT FOLLOWS FROM THAT. Attribution to a target no longer depends on any fact
+// beyond the target's own allocations — there is no rule left that turns on
+// whether the payment has allocations elsewhere. `attributeToTarget` therefore
+// needs no whole-payment total, and cannot be indeterminate: a target's share is
+// the sum of the rows naming it, which the caller either has or has not read.
 
 import {
   ZERO,
@@ -59,18 +50,10 @@ import {
 
 /** How a target came to be attributed part of a payment. */
 export type AttributionBasis =
-  /** Active allocations naming this target. */
+  /** Active allocations naming this target. The only way money is attributed. */
   | 'allocation'
-  /** The payment's own direct linkage, used because it has no active allocation. */
-  | 'legacy'
-  /** Nothing attributes this payment to this target. */
+  /** No active allocation names this target, so it is attributed nothing. */
   | 'none'
-  /**
-   * The payment has a direct linkage to this target, but whether it has active
-   * allocations elsewhere could not be determined — so the fallback was withheld
-   * rather than guessed. Attributes only what is provably this target's.
-   */
-  | 'indeterminate'
 
 export type TargetAttribution = {
   paymentId: string
@@ -81,66 +64,32 @@ export type TargetAttribution = {
 
 export type AttributionInput = {
   paymentId: string
-  /** The payment's full ledger amount, exactly as `numeric` sent it. */
-  amount: string | number | null
-  /**
-   * The total of EVERY active allocation against this payment, wherever it
-   * points. Null when the caller could not determine it — see the note above.
-   */
-  activeAllocationTotal: string | number | null | undefined
   /** The active allocations naming THIS target. Empty when there are none. */
   ownActiveAllocations: readonly (string | number | null)[]
-  /** True when the payment's own direct linkage names this target. */
-  directlyLinkedToTarget: boolean
 }
 
 /**
  * What one Order or PI is attributed from one payment.
  *
- * THE ALLOCATION BRANCH IS CHECKED FIRST AND IS TOTAL. If the payment has any
- * active allocation at all, the direct linkage contributes nothing — not even
- * when this target is the one it names. That is rule 1, and it is what stops the
- * same rupee being counted once as a link and again as an allocation.
+ * The sum of the active allocations naming this target, and nothing else. No
+ * legacy linkage, and so no dependence on what the payment does elsewhere: this
+ * is the whole rule, which is why it takes one input.
  */
 export function attributeToTarget(input: AttributionInput): TargetAttribution {
   const own = sumOwnShares(input.ownActiveAllocations)
-  const activeTotal = parseExact(input.activeAllocationTotal)
-
-  // Rule 1 — allocations exist, so allocations decide. This target gets its own
-  // share, which is legitimately ZERO when the money went somewhere else.
-  if (own.count > 0 || (activeTotal && !isZero(activeTotal))) {
-    return { paymentId: input.paymentId, share: exactToString(own.total), basis: 'allocation' }
+  if (own.count === 0) {
+    return { paymentId: input.paymentId, share: exactToString(ZERO), basis: 'none' }
   }
-
-  // The total could not be determined. The fallback is withheld: what is
-  // provably this target's is its own allocations, which here is nothing.
-  if (activeTotal === null && input.directlyLinkedToTarget) {
-    return { paymentId: input.paymentId, share: exactToString(own.total), basis: 'indeterminate' }
-  }
-
-  // Rule 2 — no active allocation anywhere, so the direct linkage attributes the
-  // WHOLE payment to the target it names.
-  if (input.directlyLinkedToTarget) {
-    const amount = parseExact(input.amount)
-    return {
-      paymentId: input.paymentId,
-      share: amount ? exactToString(amount) : exactToString(ZERO),
-      basis: amount ? 'legacy' : 'none',
-    }
-  }
-
-  return { paymentId: input.paymentId, share: exactToString(ZERO), basis: 'none' }
+  return { paymentId: input.paymentId, share: exactToString(own.total), basis: 'allocation' }
 }
 
 /**
  * Where a payment stands as a whole: how much is spoken for, how much is free,
  * and what to call that.
  *
- * `unallocated` HONOURS THE DIRECT LINKAGE. A payment linked to an Order with no
- * allocations is fully attributed to that Order, so nothing about it is free —
- * reporting the whole amount as unallocated would put money into Finance's
- * suspense queue that is already committed, and would break rule 5 in the other
- * direction (the Order counts it, and so would "unallocated").
+ * `unallocated` READS THE ALLOCATION ROWS AND NOTHING ELSE. A payment with no
+ * active allocation is Zero Allocated and free in full, whatever legacy linkage
+ * columns it carries — see rule 2 at the top of this file.
  */
 export type PaymentPosition = {
   /** Total attributed across every target. Null when it could not be determined. */
@@ -154,8 +103,6 @@ export function paymentPosition(input: {
   amount: string | number | null
   /** Total of every active allocation, or null when unknown. */
   activeAllocationTotal: string | number | null | undefined
-  /** True when the payment carries a direct linkage to some Order. */
-  hasDirectLink: boolean
 }): PaymentPosition {
   const amount = parseExact(input.amount)
   const activeTotal = parseExact(input.activeAllocationTotal)
@@ -167,7 +114,7 @@ export function paymentPosition(input: {
     return { attributed: null, unallocated: null, state: 'unknown' }
   }
 
-  // Rule 1 — allocations decide.
+  // Rule 1 — active allocation rows decide, and are the only thing that does.
   if (!isZero(activeTotal)) {
     if (!amount) return { attributed: exactToString(activeTotal), unallocated: null, state: 'unknown' }
     const comparison = compareExact(activeTotal, amount)
@@ -182,16 +129,8 @@ export function paymentPosition(input: {
     }
   }
 
-  // Rule 2 — no active allocation. A direct linkage attributes the whole
-  // payment, so nothing is free.
-  if (input.hasDirectLink) {
-    return {
-      attributed: amount ? exactToString(amount) : null,
-      unallocated: amount ? exactToString(ZERO) : null,
-      state: amount ? 'full' : 'unknown',
-    }
-  }
-
+  // Rule 2 — no active allocation row, so nothing is attributed and the whole
+  // amount is free. Legacy linkage columns do not enter this.
   return {
     attributed: exactToString(ZERO),
     unallocated: amount ? exactToString(amount) : null,

@@ -82,6 +82,24 @@ const allocation = (over: {
   },
 })
 
+/**
+ * A payment WHOLLY allocated to this Order — the ordinary way money reaches an
+ * Order now that linking is retired.
+ *
+ * These fixtures used to use `linked()` for the same purpose, because a legacy
+ * link attributed the whole payment. It no longer attributes anything, so a
+ * test about totals, percentages or status has to make money the way the
+ * product makes it: with an allocation row.
+ */
+const allocated = (over: { id: string; amount: string; status?: string }): OrderAllocationRow =>
+  allocation({
+    id: `alloc-${over.id}`,
+    paymentId: over.id,
+    allocated_amount: over.amount,
+    paymentAmount: over.amount,
+    paymentStatus: over.status ?? 'approved_linked',
+  })
+
 /** The whole pipeline the Order page runs: merge, then re-read exact amounts. */
 function position(
   linkedRows: readonly LinkedRow[],
@@ -144,8 +162,9 @@ describe('the Order agrees with the PI it was approved from', () => {
   test('the verified percentage truncates exactly as the gate does', () => {
     // 39.999% of the Order value. Rounded it would print 40% beside a balance
     // that is not nought; truncated it prints 39.99 and the screen is coherent.
-    const { summary } = position(
-      [linked({ amount: '399990.00', status: 'approved_linked' })], [], '1000000.00')
+    const { summary } = position([], [
+      allocated({ id: 'p-1', amount: '399990.00' }),
+    ], '1000000.00')
     assert.equal(summary.verifiedPercent, '39.99')
     assert.equal(summary.fullyPaid, false)
   })
@@ -158,12 +177,10 @@ describe('the three states of money are three separate figures', () => {
     // The defect: an Order's summary counted only verified money but called it
     // "Received", so a payment the client had genuinely made and Finance had not
     // yet reached did not exist on this screen at all.
-    const { summary } = position(
-      [
-        linked({ id: 'p-verified', amount: '400000.00', status: 'approved_linked' }),
-        linked({ id: 'p-waiting',  amount: '100000.00', status: 'pending_approval' }),
-      ],
-      [], '1000000.00')
+    const { summary } = position([], [
+      allocated({ id: 'p-verified', amount: '400000.00', status: 'approved_linked' }),
+      allocated({ id: 'p-waiting',  amount: '100000.00', status: 'pending_approval' }),
+    ], '1000000.00')
 
     assert.equal(summary.verified, '400000.00')
     assert.equal(summary.awaitingVerification, '100000.00')
@@ -176,8 +193,9 @@ describe('the three states of money are three separate figures', () => {
   })
 
   test('needs_clarification counts as awaiting, exactly as the database does', () => {
-    const { summary } = position(
-      [linked({ amount: '100000.00', status: 'needs_clarification' })], [], '1000000.00')
+    const { summary } = position([], [
+      allocated({ id: 'p-1', amount: '100000.00', status: 'needs_clarification' }),
+    ], '1000000.00')
     assert.equal(summary.awaitingVerification, '100000.00')
     assert.equal(summary.verified, '0')
     assert.equal(summary.counts.awaiting, 1)
@@ -192,12 +210,10 @@ describe('the three states of money are three separate figures', () => {
   })
 
   test('a rejected payment counts in nothing but is still listed', () => {
-    const { rows, summary } = position(
-      [
-        linked({ id: 'p-ok', amount: '400000.00', status: 'approved_linked' }),
-        linked({ id: 'p-no', amount: '999999.00', status: 'rejected' }),
-      ],
-      [], '1000000.00')
+    const { rows, summary } = position([], [
+      allocated({ id: 'p-ok', amount: '400000.00', status: 'approved_linked' }),
+      allocated({ id: 'p-no', amount: '999999.00', status: 'rejected' }),
+    ], '1000000.00')
 
     assert.equal(summary.verified, '400000.00')
     assert.equal(summary.awaitingVerification, '0')
@@ -209,8 +225,9 @@ describe('the three states of money are three separate figures', () => {
   })
 
   test('an unrecognised status is counted in no total and is still shown', () => {
-    const { rows, summary } = position(
-      [linked({ amount: '50000.00', status: 'some_future_status' })], [], '1000000.00')
+    const { rows, summary } = position([], [
+      allocated({ id: 'p-1', amount: '50000.00', status: 'some_future_status' }),
+    ], '1000000.00')
     assert.equal(summary.verified, '0')
     assert.equal(summary.awaitingVerification, '0')
     assert.equal(summary.rejected, '0')
@@ -239,11 +256,16 @@ describe('a split payment credits this Order with only its own share', () => {
     assert.deepEqual(summary.splitPayments, [{ paymentId: 'pay-pi', elsewhere: '750000.00' }])
   })
 
-  test('a legacy linked payment is wholly this Order’s and is never marked split', () => {
+  test('a legacy linked payment with NO allocation is attributed nothing', () => {
+    // It used to be attributed in full through the direct-link fallback. The
+    // fallback is gone: the row is still listed — an admin has to see money
+    // that names this Order to allocate it — but it adds nothing to any total.
     const { rows, summary } = position([linked({ amount: '400000.00' })], [], '1000000.00')
-    assert.equal(rows[0].exactAllocatedAmount, '400000.00')
-    assert.equal(rows[0].isPartialShare, false)
+    assert.equal(rows[0].exactAllocatedAmount, '0')
+    assert.equal(rows[0].attributionBasis, 'none')
+    assert.equal(rows[0].isPartialShare, false, 'nothing attributed is not a partial share')
     assert.deepEqual(summary.splitPayments, [])
+    assert.equal(summary.verified, '0', 'and the Order counts none of it as received')
   })
 
   test('an allocation for the payment’s whole amount is not a split', () => {
@@ -304,7 +326,7 @@ describe('reversal and de-duplication', () => {
 
 describe('an Order with no value, and figures that cannot be read', () => {
   test('no order value: percentages and balance are NULL, totals still stand', () => {
-    const { summary } = position([linked({ amount: '400000.00' })], [], null)
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '400000.00' })], null)
     assert.equal(summary.orderValue, null)
     assert.equal(summary.verifiedPercent, null)
     assert.equal(summary.receivedPercent, null)
@@ -315,18 +337,16 @@ describe('an Order with no value, and figures that cannot be read', () => {
   })
 
   test('a zero order value yields no percentage rather than a divide', () => {
-    const { summary } = position([linked({ amount: '400000.00' })], [], '0.00')
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '400000.00' })], '0.00')
     assert.equal(summary.verifiedPercent, null)
     assert.equal(summary.pendingBalance, '0.00')
   })
 
   test('an unreadable amount is left OUT of the total, not counted as zero', () => {
-    const { rows, summary } = position(
-      [
-        linked({ id: 'p-good', amount: '400000.00', status: 'approved_linked' }),
-        linked({ id: 'p-bad',  amount: 'NaN',       status: 'approved_linked' }),
-      ],
-      [], '1000000.00')
+    const { rows, summary } = position([], [
+      allocated({ id: 'p-good', amount: '400000.00' }),
+      allocated({ id: 'p-bad',  amount: 'NaN' }),
+    ], '1000000.00')
 
     assert.equal(summary.verified, '400000.00')
     // Still listed, and still counted as a row, so nothing disappears silently.
@@ -345,7 +365,7 @@ describe('an Order with no value, and figures that cannot be read', () => {
   })
 
   test('an overpaid Order shows no negative balance and reports over 100%', () => {
-    const { summary } = position([linked({ amount: '1500000.00' })], [], '1000000.00')
+    const { summary } = position([], [allocated({ id: 'p-1', amount: '1500000.00' })], '1000000.00')
     assert.equal(summary.pendingBalance, '0.00')
     assert.equal(summary.verifiedPercent, '150.00')
     assert.equal(summary.fullyPaid, true)
@@ -363,34 +383,31 @@ describe('progressWidth', () => {
 })
 
 describe('withExactAmounts', () => {
-  test('WITHOUT the whole-payment fact, the legacy fallback is withheld', () => {
-    // The safety property, and the reason the defect was possible at all.
-    //
-    // A directly linked payment is attributed in full ONLY when we can prove it
-    // has no active allocation elsewhere. Absent that proof the rule attributes
-    // nothing rather than everything, because the failure that matters is an
-    // Order reporting money it has not been given — which is exactly how a ₹10L
-    // payment allocated elsewhere came to be counted twice.
-    //
-    // Under-stating is visible and recoverable; over-stating is not.
-    const merged = mergeOrderPayments(
-      [linked({ id: 'p1', amount: '400000.00' })] as Parameters<typeof mergeOrderPayments>[0], [])
-    const rows: OrderFinancePaymentRow[] = withExactAmounts(merged, { linked: [], allocations: [] })
-    assert.equal(rows[0].exactAllocatedAmount, '0')
-    assert.equal(rows[0].attributionBasis, 'indeterminate')
-  })
-
-  test('WITH it, a linked payment with no allocations is attributed in full', () => {
-    // Worked example A, through the same entry point.
+  test('a linked payment with no allocations is attributed NOTHING', () => {
+    // Worked example A, through this entry point. There is no longer a
+    // whole-payment fact to supply or withhold: attribution reads the
+    // allocations naming this Order, and there are none.
     const linkedRows = [linked({ id: 'p1', amount: '400000.00' })]
     const merged = mergeOrderPayments(linkedRows as Parameters<typeof mergeOrderPayments>[0], [])
-    const rows = withExactAmounts(merged, {
-      linked: linkedRows, allocations: [],
-      activeTotals: new Map([['p1', '0.00']]),
+    const rows: OrderFinancePaymentRow[] = withExactAmounts(merged, { linked: linkedRows, allocations: [] })
+    assert.equal(rows[0].exactAllocatedAmount, '0')
+    assert.equal(rows[0].attributionBasis, 'none')
+    assert.equal(rows[0].exactAmount, '400000.00', 'the ledger amount is still reported truthfully')
+  })
+
+  test('the answer does not depend on the whole-payment total any more', () => {
+    // It used to: supplying `activeTotals` turned the fallback on and omitting
+    // it withheld the fallback, so the same row scored two different ways. With
+    // one source of attribution there is one answer.
+    const linkedRows = [linked({ id: 'p1', amount: '400000.00' })]
+    const merged = mergeOrderPayments(linkedRows as Parameters<typeof mergeOrderPayments>[0], [])
+    const withTotals = withExactAmounts(merged, {
+      linked: linkedRows, allocations: [], activeTotals: new Map([['p1', '0.00']]),
     })
-    assert.equal(rows[0].exactAllocatedAmount, '400000.00')
-    assert.equal(rows[0].attributionBasis, 'legacy')
-    assert.equal(rows[0].isPartialShare, false)
+    const withoutTotals = withExactAmounts(merged, { linked: linkedRows, allocations: [] })
+    assert.equal(withTotals[0].exactAllocatedAmount, withoutTotals[0].exactAllocatedAmount)
+    assert.equal(withTotals[0].attributionBasis, withoutTotals[0].attributionBasis)
+    assert.equal(withTotals[0].exactAllocatedAmount, '0')
   })
 })
 
