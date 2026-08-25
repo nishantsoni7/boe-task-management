@@ -7,6 +7,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   CLASSIFICATION_FIXTURES,
@@ -133,7 +135,7 @@ describe('the four properties the classification exists for', () => {
 })
 
 describe('the canonical rule is not restated, it is obeyed', () => {
-  test('an active allocation suppresses the direct-link fallback entirely', () => {
+  test('a dormant link attributes nothing when an allocation names another Order', () => {
     // C: linked to X, allocated to Y. X must be attributed NOTHING — the ₹14L
     // defect PR #49 fixed.
     const c = classifyPayment(rowFor(CLASSIFICATION_FIXTURES.C))
@@ -141,19 +143,39 @@ describe('the canonical rule is not restated, it is obeyed', () => {
     assertMoney(c.available, '600000.00')
   })
 
-  test('the fallback applies when the only allocation was reversed', () => {
+  test('a reversed-only allocation leaves the payment attributed to nobody', () => {
+    // E. A withdrawn claim counts for nothing, and with the fallback gone there
+    // is nothing behind it — so the payment is wholly available, not full.
     const c = classifyPayment(rowFor(CLASSIFICATION_FIXTURES.E))
-    assertMoney(c.orderLinked, '1000000.00', 'a withdrawn claim does not suppress the link')
+    assertMoney(c.orderLinked, '0.00', 'a withdrawn claim attributes nothing')
+    assertMoney(c.available, '1000000.00', 'and the whole payment is free again')
     assert.equal(c.allocationCount, 0)
   })
 
-  test('a PI has no direct-link fallback, because the schema has no column for one', () => {
+  test('NEITHER an Order NOR a PI is attributed an unallocated payment', () => {
+    // The PI side never had a fallback — there is no linkage column for one.
+    // The Order side had one and no longer does, so both behave alike.
     const c = classifyPayment({
       id: 'p', amount: '100.00', status: 'approved_unlinked',
-      order_id: null, allocated_total: '0', order_allocated_total: '0', pi_allocated_total: '0',
+      order_id: 'ORDER_X', allocated_total: '0', order_allocated_total: '0', pi_allocated_total: '0',
       active_allocation_count: 0, attribution_complete: true,
     })
+    assertMoney(c.orderLinked, '0', 'a dormant order_id attributes nothing')
     assertMoney(c.piLinked, '0', 'an unallocated payment can never be attributed to a PI')
+    assertMoney(c.available, '100.00', 'it is free money awaiting allocation')
+    assert.equal(c.views.includes('orders'), false, 'and it is not an Order-linked payment')
+  })
+
+  test('the legacy columns cannot reach the calculation at all', () => {
+    // Proved by absence in the source, so no future edit can reintroduce the
+    // fallback without this failing.
+    const src = readFileSync(join(process.cwd(), 'src/lib/finance/paymentClassification.ts'), 'utf8')
+    const fn = src.slice(src.indexOf('export function classifyPayment'))
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    for (const col of ['row.order_id', 'order_request_id', 'payment_against']) {
+      assert.equal(body.includes(col), false,
+        `classifyPayment must not read ${col} — allocations are the only source`)
+    }
   })
 
   test('a retired Order Request attributes nothing, so its money reads as available', () => {

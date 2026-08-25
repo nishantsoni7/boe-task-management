@@ -8,8 +8,8 @@
 // that nothing will ever come to collect. Both need somebody, and neither was
 // on this page.
 //
-// The query string is forwarded untouched, so a `?payment=…&action=link` deep
-// link from the Admin Action Queue still opens the record it names.
+// The query string is forwarded untouched, so a `?payment=…&action=allocate`
+// deep link from the Admin Action Queue still opens the record it names.
 
 import { RetiredReceivedRoute } from '../RetiredReceivedRoute'
 

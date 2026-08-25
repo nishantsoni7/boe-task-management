@@ -89,6 +89,19 @@ export type ClassificationFixture = {
     /** Every view this payment must appear in. Order-insensitive. */
     views: string[]
   }
+  /**
+   * What the SQL projection still says, where it differs. It retains the
+   * direct-link fallback the application dropped, and changing it needs a
+   * migration. Absent when the two agree — which is every fixture with an
+   * active allocation. See attributionFixtures.ts for the full note; delete
+   * these together with the SQL fallback.
+   */
+  sqlExpected?: {
+    orderLinked: string
+    piLinked: string
+    available: string | null
+    views: string[]
+  }
   note: string
 }
 
@@ -120,17 +133,30 @@ function splitByKind(allocations: readonly FixtureAllocation[]) {
 function fromAttribution(key: keyof typeof ATTRIBUTION_FIXTURES, note: string): ClassificationFixture {
   const f = ATTRIBUTION_FIXTURES[key]
   const { orders, submissions, count } = splitByKind(f.allocations)
-  const hasActive = count > 0
 
-  const orderLinked = hasActive
-    ? sumStrings(orders.map(a => a.amount))
-    : (f.directLinkTarget ? f.amount : '0')
-  const piLinked = hasActive ? sumStrings(submissions.map(a => a.amount)) : '0'
+  // ACTIVE ALLOCATION ROWS, SUMMED BY KIND, AND NOTHING ELSE. This used to fall
+  // back to the whole amount when a payment had no active allocation but did
+  // carry a direct link. That fallback is gone from the rule, so it is gone
+  // from the fixtures that describe the rule.
+  const orderLinked = sumStrings(orders.map(a => a.amount))
+  const piLinked = sumStrings(submissions.map(a => a.amount))
 
   const views = ['all']
   if (!isZeroString(orderLinked)) views.push('orders')
   if (!isZeroString(piLinked)) views.push('pi_drafts')
   if (!isZeroString(f.expectedUnallocated)) views.push('available')
+
+  // Where the attribution fixture records a SQL answer, carry it across in the
+  // same shape — the SQL fallback attributes the whole payment to the Order the
+  // dormant link names, so it is Order-linked with no available balance.
+  const sqlExpected = f.sqlExpected
+    ? {
+        orderLinked: f.amount,
+        piLinked: '0',
+        available: f.sqlExpectedUnallocated ?? '0',
+        views: ['all', 'orders'],
+      }
+    : undefined
 
   return {
     label: f.label,
@@ -149,6 +175,7 @@ function fromAttribution(key: keyof typeof ATTRIBUTION_FIXTURES, note: string): 
       overAllocated: f.expectedState === 'over',
       views,
     },
+    ...(sqlExpected ? { sqlExpected } : {}),
     note,
   }
 }
@@ -156,28 +183,28 @@ function fromAttribution(key: keyof typeof ATTRIBUTION_FIXTURES, note: string): 
 export const CLASSIFICATION_FIXTURES: Record<string, ClassificationFixture> = {
   // ── A–H: the canonical attribution examples, split by target kind ──
   A: fromAttribution('A',
-    'Direct-link fallback with no active allocations: fully Order-linked, and '
-    + 'NOT available. Reporting it as available would offer committed money for '
-    + 'allocation.'),
+    'A dormant order_id and no active allocation: attributed to NOBODY, so it '
+    + 'is not Order-linked and its whole amount is available to allocate. It '
+    + 'used to read fully Order-linked through the direct-link fallback.'),
   B: fromAttribution('B',
     'Partially allocated with an available balance. Appears in Orders AND in '
     + 'Available at the same time — the two views are not a partition.'),
   C: fromAttribution('C',
-    'An active allocation suppresses the direct-link fallback. The Order the '
-    + 'link names is attributed nothing, and only Y appears under Orders.'),
+    'The Order the dormant link names is attributed nothing — no allocation '
+    + 'names it — and only Y appears under Orders.'),
   D: fromAttribution('D',
     'Split across two Orders, summing to the payment. Orders only; nothing left '
     + 'to allocate.'),
   E: fromAttribution('E',
-    'A reversed allocation counts for nothing, so the direct-link fallback '
-    + 'applies exactly as in A. The reversed row must not appear in the '
-    + 'allocation count.'),
+    'A reversed allocation counts for nothing, which leaves no active row at '
+    + 'all — so this behaves exactly as A: attributed to nobody, wholly '
+    + 'available. The reversed row must not appear in the allocation count.'),
   F: fromAttribution('F',
     'Historical over-allocation. It stays visible as an error state, is never '
     + 'silently capped, and reports no available balance.'),
   G_pi: fromAttribution('G_pi',
-    'Legacy-linked to an Order and actively allocated to a PI. The Order is '
-    + 'overridden, so this is a PI-linked payment with a balance — it must NOT '
+    'A dormant Order link and an active allocation to a PI. Only the allocation '
+    + 'attributes, so this is a PI-linked payment with a balance — it must NOT '
     + 'appear under Orders.'),
   H_replaced: fromAttribution('H_replaced',
     'A corrected allocation: the reversed row stays in the trail and only the '

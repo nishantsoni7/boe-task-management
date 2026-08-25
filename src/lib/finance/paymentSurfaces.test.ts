@@ -124,34 +124,76 @@ describe('the status list is the database’s, not this module’s', () => {
   })
 })
 
-// ── The eleven columns ───────────────────────────────────────────────────────
+// ── The eight columns ────────────────────────────────────────────────────────
 //
-// REVISED (Requirement 2). The table grew back to eleven columns — Payment ID
-// and Customer lead it, "Allocation" is the confirmed_allocation_status badge,
-// and the exact-figure pair is Total Allocated / Remaining rather than the
-// vague "Linked Against" split. The PI-Draft/Order breakdown that no longer
-// fits the primary row moved to CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS, shown in
-// an expandable per-row detail instead.
+// REVISED AGAIN. The table is now EIGHT columns. Customer, Total Allocated and
+// Remaining left the primary row together and live in the detail modal the
+// Allocation Status badge opens — Customer because it was the widest and most
+// truncated column, and the two money figures because they are halves of one
+// answer that cannot be acted on from a row. Nothing left the QUERY.
 
-describe('Confirmed Payments has exactly eleven primary columns, in this order', () => {
+describe('Confirmed Payments has exactly eight primary columns, in this order', () => {
   test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Payment ID', 'Customer', 'Amount', 'Mode', 'Date', 'Allocation',
-      'Total Allocated', 'Remaining', 'Initiated by', 'Approved by', 'Actions',
+      'Payment ID', 'Amount', 'Received Date', 'Mode', 'Allocation Status',
+      'Initiated By', 'Approved By', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 11)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 8)
   })
 
-  test('the breakdown columns are the two exact allocation-destination figures, shown only in the expandable detail', () => {
+  test('Customer and the two money columns are gone from the column set', () => {
+    const keys = CONFIRMED_PAYMENT_COLUMNS.map(c => c.key) as string[]
+    for (const gone of ['customer', 'total_allocated', 'unallocated']) {
+      assert.ok(!keys.includes(gone), `${gone} must not be a primary column`)
+    }
+  })
+
+  test('the date column is labelled Received Date', () => {
+    const date = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'date')
+    assert.equal(date?.label, 'Received Date',
+      'a bank statement is reconciled against when the money moved')
+  })
+
+  test('the breakdown columns are the two exact allocation-destination figures, shown only in the detail modal', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(c => c.label), [
       'Allocated to PI Drafts', 'Allocated to Orders',
     ])
     assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
-  test('the money columns are right-aligned and the rest are not', () => {
+  test('AMOUNT IS LEFT-ALIGNED; only Actions trails', () => {
+    // Deliberate, and a departure from the app's other money columns. This table
+    // has ONE money column: there is no second figure beside it to compare
+    // against, and a lone right-aligned column pushes its values away from the
+    // identifier they belong to. tabular-nums still lines the digits up.
+    const amount = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'amount')
+    assert.equal(amount?.align, 'left')
     const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => c.align === 'right').map(c => c.key)
-    assert.deepEqual(right, ['amount', 'total_allocated', 'unallocated', 'actions'])
+    assert.deepEqual(right, ['actions'], 'Actions is the only trailing column')
+  })
+
+  test('the Amount CELL is left-aligned too, and keeps tabular figures', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                             view.indexOf('function IconAction'))
+    const cell = table.slice(table.indexOf('{fmtAmount(r.amount)}') - 400,
+                             table.indexOf('{fmtAmount(r.amount)}'))
+    assert.ok(!cell.includes("textAlign: 'right'"),
+      'the header and the cell must agree')
+    assert.ok(cell.includes("fontVariantNumeric: 'tabular-nums'"),
+      'place-value alignment within the column is kept')
+  })
+
+  test('the columns carry width hints so eight do not drift apart on a wide screen', () => {
+    const widths = CONFIRMED_PAYMENT_COLUMNS
+      .filter(c => 'width' in c).map(c => c.key as string)
+    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'status', 'actions']) {
+      assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
+    }
+    // The two name columns deliberately take the slack.
+    for (const flexible of ['initiated_by', 'approved_by']) {
+      assert.ok(!widths.includes(flexible), `${flexible} should absorb remaining width`)
+    }
   })
 
   test('the removed columns are gone from the rendered table', () => {
@@ -204,34 +246,59 @@ describe('Confirmed Payments has exactly eleven primary columns, in this order',
     assert.ok(view.includes('isMobile ? ('), 'the cards are chosen, not a sideways table')
   })
 
-  test('Actions is one button and one menu, not a row of text buttons', () => {
+  test('Actions is a row of direct icon buttons, not a menu', () => {
+    // WAS a View button plus a "…" menu, so the common actions cost two clicks
+    // and one of them was hidden. Every permitted action is now one click.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(
       view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function RowActionsMenu'))
-    assert.ok(table.includes('<RowActionsMenu'))
-    assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 1,
-      'View is the only bare button; Link, Unlink, Edit and Allocate are in the menu')
+      view.indexOf('function IconAction'))
+    assert.ok(!table.includes('<RowActionsMenu'),
+      'Confirmed Payments has no ellipsis menu')
+    assert.ok(table.includes('visibleRowActions({'),
+      'the set is decided by the shared predicate, not by six guards written out here')
+    assert.ok(table.includes('<IconAction'), 'and each one is drawn as a direct icon button')
+    assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 0,
+      'and no bare text button is left in the Actions cell')
   })
 
   test('the overflow menu is keyboard reachable and named', () => {
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const menu = view.slice(view.indexOf('function RowActionsMenu'),
                             view.indexOf('function PaymentsToVerifyTable'))
-    assert.ok(menu.includes('<details'), 'focus, Enter and Escape come free with details')
+    // WAS <details>, WHICH COULD NOT SURVIVE THE PORTAL. The panel now renders
+    // into <body> to escape the card's `overflow: hidden` (see
+    // src/lib/ui/menuPlacement.ts), so it is no longer a DOM descendant of the
+    // trigger and <details>'s built-in open/close could not reach it.
+    //
+    // The PROPERTY this test names is unchanged and is now stated explicitly
+    // rather than inherited: a real <button> is focusable and fires on Enter
+    // and Space, the popup state is announced, and Escape closes and hands
+    // focus back. <details> never actually closed on Escape — the claim it
+    // replaced was more than the element gave.
+    assert.ok(menu.includes('<button'), 'the trigger is natively focusable')
+    assert.ok(menu.includes('aria-haspopup="menu"'), 'and announces that it opens a menu')
+    assert.ok(menu.includes('aria-expanded={open}'), 'and reports whether it is open')
+    assert.ok(menu.includes("event.key === 'Escape'") && menu.includes('triggerRef.current?.focus()'),
+      'Escape closes it and returns focus to the trigger')
     assert.ok(menu.includes('aria-label={label}'))
     assert.ok(menu.includes("role=\"menu\""))
     assert.ok(menu.includes("role=\"menuitem\""))
   })
 
   test('the breakdown is exact figures, never a list of names', () => {
+    // MOVED, NOT DROPPED. These two aggregates used to sit in a strip under the
+    // row, opened by a chevron. The chevron is gone — Payment ID is the first
+    // column, and the record is reached by the Allocation Status badge or by
+    // View — so the figures are asserted where they now live: the detail modal,
+    // beside the per-target list they are the totals of.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    const table = view.slice(
-      view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function RowActionsMenu'))
-    assert.ok(table.includes('figures.toPI'))
-    assert.ok(table.includes('figures.toOrders'))
-    assert.ok(!table.includes('<DestinationsCell'),
+    const modal = view.slice(
+      view.indexOf('function DetailsModal'),
+      view.indexOf('function EditPaymentModal'))
+    assert.ok(modal.includes('modalFigures.toPI'))
+    assert.ok(modal.includes('modalFigures.toOrders'))
+    assert.ok(!view.includes('<DestinationsCell'),
       'inline destination names are what made the row wrap unpredictably; this is exact figures now')
   })
 

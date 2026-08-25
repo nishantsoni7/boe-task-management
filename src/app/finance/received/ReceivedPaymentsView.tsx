@@ -1,7 +1,15 @@
 'use client'
 
-import { Fragment, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+import { Eye, Pencil, Split, Trash2, type LucideIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
+import {
+  ROW_ACTION_GAP_PX,
+  visibleRowActions,
+  type RowActionKey,
+} from '@/lib/finance/rowActions'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -10,7 +18,6 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { isValidAmount } from '@/lib/currency'
-import { notifyFinance } from '@/lib/notify'
 import { FinanceModal, RequestModalShell } from '@/app/finance/components/FinanceModalShell'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import {
@@ -21,18 +28,13 @@ import {
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { CustomerName } from '@/components/finance/CustomerName'
 import {
-  ALLOCATION_FILTER_OPTIONS,
   RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
-  allocationFilterAvailable,
-  allocationFilterClauses,
-  ALLOCATED_TOTAL_COLUMN,
   dateRange,
   isNarrowed,
   pageCount,
   pageRange,
   resultSummary,
   receivedPaymentsSearchFilter,
-  type AllocationFilter,
   type PaymentView,
 } from '@/app/finance/receivedPaymentsQuery'
 import {
@@ -149,20 +151,6 @@ type PaymentRequest = {
   approved_by_name?: string
   admin_note: string | null
   created_at: string
-}
-
-// A Link-modal search result. ONE KIND, because there is now one kind of direct
-// linkage a payment may carry: a Confirmed Order. The Order Request branch that
-// sat beside it is retired (20261007000000) — the database refuses the write, so
-// offering the choice would be an invitation to a submission that cannot land.
-type LinkTarget = {
-  kind: 'order'
-  id: string
-  display_number: string
-  client_name: string
-  total_value: number | null
-  status: string
-  confirm_date: string | null
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -286,14 +274,6 @@ function viewHref(view: PaymentView): string {
   return `${RECEIVED_PATH}?view=${view}`
 }
 
-const ORDER_STATUS_META: Record<string, { label: string; color: string }> = {
-  running:            { label: 'Running',             color: '#1E40AF' },
-  on_hold:            { label: 'On Hold',             color: '#9A3412' },
-  ready_for_dispatch: { label: 'Ready for Dispatch',  color: '#5B21B6' },
-  dispatched:         { label: 'Dispatched',          color: '#166534' },
-  cancelled:          { label: 'Cancelled',           color: '#991B1B' },
-}
-
 const PAYMENT_MODE_OPTIONS = [
   { label: 'Bank Transfer', value: 'bank_transfer' },
   { label: 'Cash',          value: 'cash' },
@@ -315,8 +295,10 @@ const RECEIVED_IN_OPTIONS = [
 
 // approved_unlinked and approved_linked are deliberately excluded — see
 // isLinkageStatus below and 20260691000000: those two states may only be
-// reached through approve_finance_payment_request, link_finance_payment_to_order,
-// or unlink_finance_payment_from_order.
+// reached through the guarded RPCs, never through a status correction. Today
+// the only one of those RPCs the app still calls is
+// approve_finance_payment_request; the link/unlink pair remains in the database
+// with no caller, because retiring the UI is not a migration.
 const STATUS_CORRECTION_OPTIONS = [
   { value: 'pending_approval',    label: 'Pending' },
   { value: 'needs_clarification', label: 'Needs Clarification' },
@@ -383,15 +365,6 @@ function ErrorBanner({ message }: { message: string }) {
   return (
     <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
       {message}
-    </div>
-  )
-}
-
-function DetailRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</span>
-      <span style={{ fontSize: '13px', color: colors.primary }}>{value}</span>
     </div>
   )
 }
@@ -526,10 +499,16 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
     )
   }
 
+  // ZERO ALLOCATED — an empty state, not an empty panel. It still states the
+  // figure that matters (how much is free), because "nothing allocated" and
+  // "how much is there to allocate" are two different facts and the second is
+  // the one somebody acts on.
   if (summary.targets.length === 0) {
     return (
       <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-        <strong style={{ color: '#9A3412' }}>{ALLOCATION_STATE_LABEL.unallocated}.</strong>{' '}
+        <strong style={{ color: '#9A3412' }}>
+          No funds from this payment have been allocated yet.
+        </strong>{' '}
         The whole of {formatMoney(String(amount))} is still free to be assigned to a PI or an Order.
       </div>
     )
@@ -571,6 +550,14 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
                   </button>
                 ) : (
                   <span style={{ fontSize: '13px', color: colors.primary, wordBreak: 'break-word' }}>{name}</span>
+                )}
+                {/* When the money was assigned here. Absent on a reader whose
+                    select did not ask for it, and absent is simply nothing —
+                    it is a display fact and no total depends on it. */}
+                {target.allocatedAt && (
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                    Allocated {fmtDate(target.allocatedAt)}
+                  </div>
                 )}
               </div>
               <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -675,6 +662,11 @@ function DetailsModal({
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
+  // The PI-Draft / Order split, from the row the list already holds. No query:
+  // confirmedFigures is pure, and this is the same call the table row used to
+  // make for the expandable strip that no longer exists.
+  const modalFigures = confirmedFigures(r)
+
   const left = (
     <>
       {/* Primary summary card — amount + client lead, payment details below.
@@ -701,14 +693,34 @@ function DetailsModal({
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
           borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
         }}>
-          <MetaItem label="Payment Date" value={fmtDate(r.payment_date)} />
+          {/* PAYMENT ID leads, because it is what the table now leads with and
+              what somebody types to confirm a deletion. The human id, never the
+              row's UUID. */}
+          <MetaItem label="Payment ID"   value={r.human_payment_id ?? '—'} muted={!r.human_payment_id} />
+          <MetaItem label="Received Date" value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
           <MetaItem label="Received In"  value={receivedInLabel(r.received_in)} />
+          {/* THE TWO PEOPLE. The table abbreviates both to fit a column; here
+              they are whole, which is half the reason the columns may abbreviate
+              at all. */}
+          <MetaItem label="Initiated By" value={r.submitted_by_name ?? '—'} muted={!r.submitted_by_name} />
+          <MetaItem label="Approved By"  value={r.approved_by_name ?? '—'} muted={!r.approved_by_name} />
           {r.order_request_number && !r.order_number ? (
             <MetaItem label="Linked Order Request" value={r.order_request_number} />
           ) : (
             <MetaItem label="Order Number" value={r.order_number ?? '—'} muted={!r.order_number} />
           )}
+          {/* The status the badge in the row shows, restated inside the record
+              it opens — the same component, inert here because this IS the
+              destination. */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Allocation Status
+            </div>
+            <div style={{ marginTop: '5px' }}>
+              <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -758,6 +770,26 @@ function DetailsModal({
           canOpenLinkedRecord={canOpenLinkedRecord}
           onOpen={onOpenLinked}
         />
+
+        {/* WHERE THE EXPANDABLE ROW'S FIGURES WENT.
+            The table used to carry a chevron that opened a strip under the row
+            showing these two aggregates. The chevron is gone — Payment ID is
+            the first column now, and this record is reached by the Allocation
+            Status badge or by View — so the figures moved here, beside the
+            per-target list they are the totals of. Nothing was lost with the
+            row; the same helper computes them from the same already-loaded
+            row. */}
+        <div style={{
+          display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px',
+          borderTop: `1px solid ${colors.border}`, paddingTop: '10px',
+        }}>
+          {CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(column => (
+            <span key={column.key}>
+              <span style={{ color: colors.muted }}>{column.label} </span>
+              <MoneyCell value={column.key === 'to_pi_draft' ? modalFigures.toPI : modalFigures.toOrders} />
+            </span>
+          ))}
+        </div>
       </div>
 
       {/* Activity panel — same bordered shell as the Payment Requests page's
@@ -842,7 +874,7 @@ function DetailsModal({
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
-          Order linkage is managed with Link / Unlink, not here.
+          Funds are attached to a PI Draft or an Order with Allocate Funds, not here.
         </div>
       )}
     </>
@@ -888,8 +920,8 @@ function EditPaymentModal({
 
   // Every row on this page is approved_unlinked or approved_linked (see the
   // page-level query), so this is always true here — order_number for those
-  // states is owned exclusively by link_finance_payment_to_order /
-  // unlink_finance_payment_from_order (20260691000000), never by this form.
+  // states was never this form's to write (20260691000000 gave it to the
+  // guarded RPCs), and with linking retired nothing writes it at all.
   const isLinkageStatus = r.status === 'approved_unlinked' || r.status === 'approved_linked'
 
   const set = (key: keyof typeof form) => (
@@ -967,7 +999,7 @@ function EditPaymentModal({
           readOnly={isLinkageStatus} disabled={isLinkageStatus} />
         {isLinkageStatus && (
           <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-            Managed by Link / Unlink.
+            Set when the payment was recorded. Funds are attached with Allocate Funds.
           </span>
         )}
       </Field>
@@ -988,210 +1020,6 @@ function EditPaymentModal({
   )
 }
 
-// ── Link to Order modal ───────────────────────────────────────────────────────
-
-function LinkOrderModal({
-  payment,
-  supabase,
-  onClose,
-  onLinked,
-}: {
-  payment: PaymentRequest
-  supabase: ReturnType<typeof createClient>
-  onClose: () => void
-  onLinked: () => void
-}) {
-  const [query,   setQuery]   = useState('')
-  const [results, setResults] = useState<LinkTarget[]>([])
-  const [searching, setSearching] = useState(false)
-  const [selected,  setSelected]  = useState<LinkTarget | null>(null)
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState<string | null>(null)
-
-  // ── ONE SEARCH, AND ONLY CONFIRMED ORDERS ──
-  //
-  // An Order Request branch used to sit beside this, searching `order_requests`
-  // for a linkage the retirement now refuses (20261007000000 §3). It is gone
-  // rather than left to fail on submit.
-  //
-  // LINKING IS NOT ALLOCATING. This writes the payment's own `order_id` — the
-  // legacy direct linkage, which the canonical rule uses as a fallback only when
-  // nothing is allocated. Money that should be SPLIT, or that belongs to a PI
-  // Draft, goes through Allocate instead.
-  const handleSearch = async (q: string) => {
-    setQuery(q)
-    setSelected(null)
-    const trimmed = q.trim()
-    if (!trimmed) { setResults([]); return }
-
-    setSearching(true)
-    const { data } = await supabase
-      .from('orders')
-      .select('id, display_number, client_name, total_value, status, confirm_date')
-      .or(`display_number.ilike.%${trimmed}%,client_name.ilike.%${trimmed}%`)
-      .not('status', 'in', '(cancelled)')
-      .order('created_at', { ascending: false })
-      .limit(20)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    setResults(((data ?? []) as any[]).map(o => ({
-      kind: 'order' as const,
-      id: o.id,
-      display_number: o.display_number,
-      client_name: o.client_name,
-      total_value: o.total_value,
-      status: o.status,
-      confirm_date: o.confirm_date ?? null,
-    })))
-    setSearching(false)
-  }
-
-  // Routed entirely through the guarded RPC (link_finance_payment_to_order,
-  // 20260691000000): it locks its rows, revalidates eligibility server-side, and
-  // writes the activity rows itself. No client-side .update() of
-  // finance_payment_requests or the activity tables remains.
-  const handleLink = async () => {
-    if (!selected) return
-    setSaving(true)
-    setError(null)
-
-    const { error: rpcError } = await supabase.rpc('link_finance_payment_to_order', {
-      p_payment_request_id: payment.id,
-      p_order_id:           selected.id,
-    })
-
-    setSaving(false)
-    if (rpcError) { setError(friendlyDbErrorMessage(rpcError)); return }
-
-    // Tell the submitter their payment is now attached.
-    void notifyFinance({
-      event: 'finance_linked',
-      requestNumber: payment.request_number,
-      entityId: payment.id,
-      creatorId: payment.submitted_by,
-      clientName: payment.client_name,
-      orderNumber: selected.display_number,
-    })
-
-    onLinked()
-  }
-
-  const isSuspense = !payment.order_id
-
-  return (
-    <FinanceModal title={isSuspense ? 'Link to Order' : 'Change Linked Order'} onClose={onClose}>
-      {/* Payment summary */}
-      <div style={{
-        background: colors.raised, borderRadius: '8px', padding: '12px 14px',
-        border: `1px solid ${colors.border}`,
-        display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px',
-      }}>
-        <DetailRow label="Client" value={payment.client_name} />
-        <DetailRow label="Amount" value={fmtAmount(payment.amount)} />
-        <DetailRow label="Payment Date" value={fmtDate(payment.payment_date)} />
-        <DetailRow label="Mode" value={PAYMENT_MODE_LABEL[payment.payment_mode] ?? payment.payment_mode} />
-      </div>
-
-      {/* Search */}
-      <Field label="Search Confirmed Orders">
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
-          borderRadius: '6px', padding: '6px 10px',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="text"
-            autoFocus
-            placeholder="Order number or client name…"
-            value={query}
-            onChange={e => handleSearch(e.target.value)}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
-          />
-          {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
-        </div>
-      </Field>
-
-      {results.length > 0 && (
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '8px', overflow: 'hidden',
-          maxHeight: '240px', overflowY: 'auto',
-        }}>
-          {results.map((t, idx) => {
-            const isSelected = selected?.id === t.id
-            const statusMeta = ORDER_STATUS_META[t.status] ?? { label: t.status, color: colors.muted }
-            const subline = [t.client_name, t.confirm_date ? `Confirmed ${fmtDate(t.confirm_date)}` : null]
-              .filter(Boolean).join(' · ')
-            return (
-              <div
-                key={t.id}
-                onClick={() => setSelected(isSelected ? null : t)}
-                style={{
-                  padding: '10px 14px',
-                  borderBottom: idx < results.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  cursor: 'pointer',
-                  background: isSelected ? colors.blueTint : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-                }}
-                onMouseEnter={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = colors.raised }}
-                onMouseLeave={e => { if (!isSelected) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                    <span style={{
-                      display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-                      background: colors.blueTint, color: colors.blue, border: '1px solid rgba(85,133,232,0.25)',
-                      fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
-                    }}>
-                      Confirmed Order
-                    </span>
-                    <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{t.display_number}</span>
-                    <span style={{ fontSize: '11px', fontWeight: 600, color: statusMeta.color }}>{statusMeta.label}</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {subline}
-                  </div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
-                    {t.total_value != null ? fmtAmount(t.total_value) : '—'}
-                  </div>
-                  {isSelected && (
-                    <div style={{ fontSize: '10px', color: colors.blue, fontWeight: 600, marginTop: '2px' }}>Selected</div>
-                  )}
-                </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-
-      {query.trim() && !searching && results.length === 0 && (
-        <div style={{ fontSize: '13px', color: colors.muted, textAlign: 'center', padding: '12px 0' }}>
-          No orders found for &ldquo;{query.trim()}&rdquo;.
-        </div>
-      )}
-
-      {error && <ErrorBanner message={error} />}
-
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
-          Cancel
-        </button>
-        <button
-          onClick={handleLink}
-          disabled={!selected || saving}
-          className="boe-btn boe-btn-primary"
-          style={{ padding: '8px 18px', fontSize: '13px', opacity: (!selected || saving) ? 0.6 : 1, cursor: (!selected || saving) ? 'not-allowed' : 'pointer' }}
-        >
-          {saving ? 'Linking…' : !selected ? 'Link' : `Link to Order ${selected.display_number}`}
-        </button>
-      </div>
-    </FinanceModal>
-  )
-}
 
 // ── Table ─────────────────────────────────────────────────────────────────────
 
@@ -1239,23 +1067,58 @@ const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'success' 
  * different (red/amber) tone and a tooltip explaining why, never the
  * reassuring green "Fully Allocated" look.
  */
-function ConfirmedAllocationBadge({ status }: { status: ConfirmedAllocationStatus | null }) {
+function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
+  status: ConfirmedAllocationStatus | null
+  /** The human Payment ID, for the accessible name. Never the raw UUID. */
+  paymentId?: string | null
+  /** Opens the payment's detail record. Omit to render a plain, inert badge. */
+  onOpen?: () => void
+}) {
   if (!status) return <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
   const meta = CONFIRMED_ALLOCATION_BADGE[status]
   const style = CONFIRMED_ALLOCATION_TONE_STYLE[meta.tone]
+  const overTitle = status === 'over'
+    ? 'Allocated total exceeds payment amount — flagged for Admin review'
+    : undefined
+
+  // ── THE CHIP IS SMALL; THE TARGET IS NOT ──
+  //
+  // The coloured chip sits at the table's own muted-text size and a hair of
+  // padding, so it reads as a status in a row of text rather than as a button
+  // competing with the figures beside it. What makes it comfortably clickable
+  // is the TRANSPARENT wrapper around it, which carries the extra few pixels of
+  // target: the hit area grew while the colour shrank.
+  //
+  // `whiteSpace: nowrap` is load-bearing — "Partially Allocated" and
+  // "Over-allocated" must never wrap inside a table cell.
+  const chip: React.CSSProperties = {
+    display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
+    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
+    fontSize: '10.5px', fontWeight: 600, lineHeight: '15px', whiteSpace: 'nowrap',
+  }
+
+  if (!onOpen) return <span title={overTitle} style={chip}>{meta.label}</span>
+
   return (
-    <span
-      title={status === 'over'
-        ? 'Allocated total exceeds payment amount — flagged for Admin review'
-        : undefined}
-      style={{
-        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-        background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    <button
+      type="button"
+      // Enter and Space come free with a real <button>; hover and
+      // focus-visible are in globals.css, because neither can be inline.
+      className="boe-allocation-badge"
+      // Names the RECORD, not the state: a screen reader hears which payment it
+      // is about to open, which is the thing that distinguishes forty rows all
+      // reading "Fully Allocated".
+      aria-label={`View allocation details for ${paymentId ?? 'this payment'}`}
+      title={overTitle ?? 'View allocation details'}
+      onClick={event => {
+        // The row itself opens the record too. It must not also fire from this
+        // one deliberate click.
+        event.stopPropagation()
+        onOpen()
       }}
     >
-      {meta.label}
-    </span>
+      <span style={chip}>{meta.label}</span>
+    </button>
   )
 }
 
@@ -1295,16 +1158,14 @@ function ReceivedPaymentsTable({
   highlightId,
   onView,
   onEdit,
-  onLink,
-  onUnlink,
   onAllocateFunds,
   canDeleteRow,
   onDelete,
 }: {
   rows: PaymentRequest[]
   /**
-   * May link, unlink, and edit a recorded payment. Every one of those is a
-   * correction of an approved financial record — the finance.manage authority.
+   * May edit a recorded payment — a correction of an approved financial
+   * record, the finance.manage authority.
    */
   canManage: boolean
   /**
@@ -1317,8 +1178,6 @@ function ReceivedPaymentsTable({
   highlightId?: string | null
   onView:   (r: PaymentRequest) => void
   onEdit:   (r: PaymentRequest) => void
-  onLink:   (r: PaymentRequest) => void
-  onUnlink: (r: PaymentRequest) => void
   onAllocateFunds: (r: PaymentRequest) => void
   /**
    * Whether THIS reader may delete THIS payment — canDeletePayment's answer,
@@ -1331,12 +1190,40 @@ function ReceivedPaymentsTable({
   // COMPACT, AND NO minWidth. Eleven columns at these paddings fit 1024px with
   // room over; the breakdown that would not fit lives in the expandable row
   // instead of being squeezed in or forcing a sideways scroll.
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const toggle = (id: string) => setExpanded(prev => {
-    const next = new Set(prev)
-    if (next.has(id)) next.delete(id); else next.add(id)
-    return next
-  })
+  // ONE PLACE PER ACTION: its icon, how it names itself, what it runs, and
+  // whether it is destructive. visibleRowActions() decides WHICH of these are
+  // drawn; this decides what each one IS. Every label names the PAYMENT and not
+  // just the verb, because the glyph is the whole control and forty identical
+  // pencils are otherwise indistinguishable to a screen reader.
+  const ROW_ACTION_META: Record<RowActionKey, {
+    Icon: LucideIcon
+    label: (r: PaymentRequest) => string
+    run: (r: PaymentRequest) => void
+    danger?: boolean
+  }> = {
+    view: {
+      Icon: Eye,
+      label: r => `View details for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onView(r),
+    },
+    allocate: {
+      Icon: Split,
+      label: r => `${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onAllocateFunds(r),
+    },
+    edit: {
+      Icon: Pencil,
+      label: r => `Edit ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onEdit(r),
+    },
+    // Drawn last, and the only destructive one.
+    delete: {
+      Icon: Trash2,
+      label: r => `${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onDelete(r),
+      danger: true,
+    },
+  }
 
   const TD: React.CSSProperties = {
     padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
@@ -1344,14 +1231,12 @@ function ReceivedPaymentsTable({
   const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
-  const columnCount = CONFIRMED_PAYMENT_COLUMNS.length + 1
 
   return (
     <div style={{ width: '100%' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
         <thead>
           <tr>
-            <th style={{ ...TH, width: '28px' }} aria-hidden="true" />
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
               <th key={column.key} style={{ ...TH, ...align(column.align) }}>
                 {column.label}
@@ -1361,34 +1246,21 @@ function ReceivedPaymentsTable({
         </thead>
         <tbody>
           {rows.map(r => {
-            const figures = confirmedFigures(r)
+            // confirmedFigures() is no longer read per row: the exact figures
+            // it computes were the expandable strip's, and that strip is gone.
+            // The helper is unchanged and now serves the detail modal, which is
+            // where those figures live.
             const isHighlighted = r.id === highlightId
-            const isExpanded = expanded.has(r.id)
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
             return (
-              <Fragment key={r.id}>
-                <tr
+              <tr
+                  key={r.id}
                   id={`payment-row-${r.id}`}
                   onClick={() => onView(r)}
                   style={{ cursor: 'pointer', background: isHighlighted ? colors.amberTint : undefined }}
                   onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                   onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = isHighlighted ? colors.amberTint : 'transparent' }}
                 >
-                  <td style={TD} onClick={e => e.stopPropagation()}>
-                    <button
-                      onClick={() => toggle(r.id)}
-                      aria-label={isExpanded ? 'Collapse allocation breakdown' : 'Expand allocation breakdown'}
-                      aria-expanded={isExpanded}
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
-                        color: colors.muted, fontSize: '11px', lineHeight: 1,
-                        transform: isExpanded ? 'rotate(90deg)' : undefined, transition: 'transform 0.12s',
-                      }}
-                    >
-                      ▶
-                    </button>
-                  </td>
-
                   {/* PAYMENT ID — human_payment_id, never the raw UUID. THE
                       primary identifier now; request_number is retained in the
                       database but is no longer shown prominently. */}
@@ -1396,19 +1268,14 @@ function ReceivedPaymentsTable({
                     {r.human_payment_id}
                   </td>
 
-                  <td style={{ ...TD, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <CustomerName name={r.client_name} style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }} />
-                  </td>
-
+                  {/* Left-aligned, with tabular figures kept: the digits still
+                      line up by place value down the column, they simply start
+                      at its left edge beside the Payment ID. */}
                   <td style={{
-                    ...TD, textAlign: 'right', fontSize: '13.5px', fontWeight: 700,
+                    ...TD, fontSize: '13.5px', fontWeight: 700,
                     color: colors.primary, fontVariantNumeric: 'tabular-nums',
                   }}>
                     {fmtAmount(r.amount)}
-                  </td>
-
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
                   {/* THE PAYMENT DATE, not created_at. When the money moved is a
@@ -1418,21 +1285,20 @@ function ReceivedPaymentsTable({
                     {fmtDate(r.payment_date)}
                   </td>
 
-                  <td style={TD}>
-                    <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
+                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
-                  <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
-                    <MoneyCell value={figures.totalAllocated} />
-                  </td>
-
-                  {/* REMAINING IS NEVER OVERSTATED. "—" (withheld, muted) when
-                      this reader's view of the allocation ledger is
-                      incomplete — never a computed guess. */}
-                  <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
-                    <MoneyCell
-                      value={figures.remaining}
-                      title={figures.remaining === null ? 'Complete picture not available' : undefined}
+                  {/* THE BADGE IS THE DOOR TO THE FIGURES THE ROW NO LONGER
+                      PRINTS. Total Allocated and Remaining left the table
+                      together — they are two halves of one answer and neither
+                      can be acted on from a row — so the status that summarises
+                      them opens the record that shows them in full. */}
+                  <td style={TD} onClick={e => e.stopPropagation()}>
+                    <ConfirmedAllocationBadge
+                      status={r.confirmed_allocation_status}
+                      paymentId={r.human_payment_id}
+                      onOpen={() => onView(r)}
                     />
                   </td>
 
@@ -1446,65 +1312,53 @@ function ReceivedPaymentsTable({
                     {conciseName(r.approved_by_name)}
                   </td>
 
-                  {/* ONE MENU, NOT FIVE BUTTONS. View stays a button because it
-                      is what the whole row already does; the rest live behind a
-                      keyboard-reachable overflow. */}
+                  {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
+                      a View button and a "…" menu, so the common actions cost
+                      two clicks and one of them was hidden.
+
+                      WHICH actions appear is decided by visibleRowActions() in
+                      lib/finance/rowActions.ts, not by guards written out here
+                      — because the column's WIDTH is arithmetic over the
+                      maximum number of icons a row can show at once, and that
+                      maximum has to be derivable rather than counted by eye.
+
+                      Four actions, and attaching money is not among them:
+                      allocation is the only way funds reach an Order or a PI
+                      Draft, and it has its own control.
+
+                      An action a reader may not take is absent, not greyed: a
+                      disabled control invites a click that will never work. */}
                   <td style={{ ...TD, textAlign: 'right' }}>
                     <div
-                      style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
+                      style={{
+                        display: 'inline-flex', gap: `${ROW_ACTION_GAP_PX}px`,
+                        alignItems: 'center', justifyContent: 'flex-end',
+                        // One line, always. The column is declared wide enough
+                        // for the widest row (ACTIONS_COLUMN_WIDTH_PX), so this
+                        // is belt and braces rather than a fallback.
+                        flexWrap: 'nowrap',
+                      }}
                       onClick={e => e.stopPropagation()}
                     >
-                      <button
-                        onClick={() => onView(r)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
-                      >
-                        View
-                      </button>
-                      <RowActionsMenu
-                        label={`Actions for ${r.client_name}`}
-                        actions={[
-                          ...(offerAllocate
-                            ? [{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r) }]
-                            : []),
-                          ...(canManage && !r.order_id
-                            ? [{ label: 'Link to an Order', onSelect: () => onLink(r) }]
-                            : []),
-                          ...(canManage && (r.order_id || r.order_request_id)
-                              && r.payment_against === 'new_order'
-                            ? [{ label: 'Unlink', onSelect: () => onUnlink(r) }]
-                            : []),
-                          ...(canManage
-                            ? [{ label: 'Edit', onSelect: () => onEdit(r) }]
-                            : []),
-                          // DELETE — last, admin-only for any status
-                          // (Requirement 4). Offered under every allocation
-                          // filter (zero/partial/full/over) — canDeleteRow is
-                          // the single gate, independent of allocation state.
-                          ...(canDeleteRow(r)
-                            ? [{ label: PAYMENT_DELETE_CONFIRM_LABEL, onSelect: () => onDelete(r), danger: true }]
-                            : []),
-                        ]}
-                      />
+                      {visibleRowActions({
+                        offerAllocate,
+                        canManage,
+                        canDelete: canDeleteRow(r),
+                      }).map(key => {
+                        const action = ROW_ACTION_META[key]
+                        return (
+                          <IconAction
+                            key={key}
+                            Icon={action.Icon}
+                            label={action.label(r)}
+                            onSelect={() => action.run(r)}
+                            danger={action.danger}
+                          />
+                        )
+                      })}
                     </div>
                   </td>
                 </tr>
-
-                {isExpanded && (
-                  <tr style={{ background: colors.raised }}>
-                    <td colSpan={columnCount} style={{ padding: '8px 14px 12px 42px', borderBottom: `1px solid ${colors.border}` }}>
-                      <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px' }}>
-                        {CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(column => (
-                          <span key={column.key}>
-                            <span style={{ color: colors.muted }}>{column.label} </span>
-                            <MoneyCell value={column.key === 'to_pi_draft' ? figures.toPI : figures.toOrders} />
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-              </Fragment>
             )
           })}
         </tbody>
@@ -1516,67 +1370,202 @@ function ReceivedPaymentsTable({
 /**
  * The overflow menu, and why it is a real one.
  *
- * A <details> element gives keyboard focus, Enter and Escape, and an accessible
- * name for free, and closes when focus leaves it. A div with an onClick would
- * have needed all four written by hand and would have been reachable by mouse
- * alone. Nothing is hidden that a reader could not otherwise do — the same four
- * actions, behind one control instead of beside each other.
+ * A <button> with aria-haspopup/aria-expanded gives the accessible name and the
+ * state; Enter, Escape, outside-click and focus-out are wired below. Nothing is
+ * hidden that a reader could not otherwise do — the same actions, behind one
+ * control instead of beside each other.
+ *
+ * ── WHY THE PANEL IS PORTALLED ────────────────────────────────────────────────
+ *
+ * THE DEFECT THIS FIXES. The panel used to be `position: absolute` inside the
+ * trigger. Both Finance tables sit inside `.boe-card`, which carries
+ * `overflow: hidden` so rows cannot bleed past its rounded corners — and an
+ * absolutely-positioned box is clipped by ANY ancestor whose overflow is not
+ * `visible`. On the last row the panel was cut off at the card's bottom edge:
+ * "Allocate Funds" showed, everything under it was rendered and unreachable.
+ * It also pinned `top: 100%`, so it never opened upward however little room
+ * was left.
+ *
+ * Widening the card's overflow was not an option — it is what keeps the corners
+ * clean and, on other Finance surfaces, what contains a horizontal scroll. So
+ * the panel leaves the container instead: it renders into `document.body`
+ * through a portal, `position: fixed`, at coordinates decided by placeMenu(),
+ * which prefers below, flips above when below does not fit, and clamps into the
+ * viewport either way.
+ *
+ * This is the whole fix, and it is in ONE component, so both the Confirmed
+ * Payments table and the Payments to Verify table get it — no call site
+ * changes, and no third table can reintroduce the bug by copying a clipped
+ * pattern.
+ *
+ * WHAT DID NOT CHANGE: the `actions` array is passed through untouched, in
+ * order, including which entries are `danger`. This component decides where the
+ * menu is drawn and never which actions exist — that is each call site's, and
+ * remains permission-derived.
  */
+/**
+ * One row action, as an icon.
+ *
+ * ICON-ONLY, SO IT IS NAMED TWICE OVER: `aria-label` for a screen reader and
+ * `title` for a pointer, because the glyph carries no text of its own and a
+ * reader who does not recognise it has nothing else to go on. Both name the
+ * PAYMENT as well as the verb — "Edit P-AA-0002", not "Edit" — so forty
+ * identical pencils are distinguishable.
+ *
+ * It decides NO permission. Whether an action exists is the row's decision, and
+ * an action the reader may not take is not rendered at all rather than greyed:
+ * a disabled control invites a click that will never work.
+ */
+function IconAction({ Icon, label, onSelect, danger, disabled }: {
+  Icon: LucideIcon
+  label: string
+  onSelect: () => void
+  danger?: boolean
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      className={`boe-icon-action${danger ? ' boe-icon-action--danger' : ''}`}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      // The row opens the record on click; an action must not also do that.
+      onClick={event => { event.stopPropagation(); onSelect() }}
+    >
+      <Icon size={14} strokeWidth={2} aria-hidden="true" />
+    </button>
+  )
+}
+
 function RowActionsMenu({ label, actions }: {
   label: string
   /** `danger` marks a destructive entry, which is drawn in red and sits last. */
-  actions: { label: string; onSelect: () => void; danger?: boolean }[]
+  actions: { label: string; onSelect: () => void; danger?: boolean; Icon?: LucideIcon }[]
 }) {
+  const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<MenuPlacement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+
+  // Measured after paint, so the panel's real height decides the flip rather
+  // than a guess. Re-measured on scroll and resize because the panel is fixed
+  // and the row underneath it is not: without this, scrolling the page would
+  // leave the menu behind.
+  useLayoutEffect(() => {
+    if (!open) return
+    const reposition = () => {
+      const trigger = triggerRef.current
+      const panel = panelRef.current
+      if (!trigger || !panel) return
+      setPlacement(placeMenu({
+        anchor: trigger.getBoundingClientRect(),
+        menuWidth: panel.offsetWidth,
+        menuHeight: panel.offsetHeight,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      }))
+    }
+    reposition()
+    // `true` for capture: a scroll inside the table or any other scrollable
+    // ancestor does not bubble, and each of them moves the row.
+    window.addEventListener('scroll', reposition, true)
+    window.addEventListener('resize', reposition)
+    return () => {
+      window.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('resize', reposition)
+    }
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setOpen(false); triggerRef.current?.focus() }
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (panelRef.current?.contains(target) || triggerRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [open])
+
   if (actions.length === 0) return null
-  return (
-    <details
-      style={{ position: 'relative', display: 'inline-block' }}
-      onBlur={event => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-          event.currentTarget.removeAttribute('open')
-        }
+
+  const panel = (
+    <div
+      ref={panelRef}
+      role="menu"
+      aria-label={label}
+      style={{
+        position: 'fixed',
+        top: placement?.top ?? 0,
+        left: placement?.left ?? 0,
+        // Above the app shell and any card, and out of every card's stacking
+        // context because the panel is a child of <body>.
+        zIndex: 1000,
+        // Hidden for the one frame between mount and measurement, so it cannot
+        // be seen at 0,0 before placeMenu has run.
+        visibility: placement ? 'visible' : 'hidden',
+        background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
+        boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
       }}
     >
-      <summary
+      {actions.map(action => (
+        <button
+          key={action.label}
+          role="menuitem"
+          // Hover and focus-visible live in globals.css (.boe-menu-item), because
+          // neither can be written as an inline style — and a keyboard user must
+          // see which action Enter will run, not only a mouse user. The class
+          // carries the same padding, font size and radius the inline style did,
+          // so the panel measures the same and opens in the same place.
+          className={`boe-menu-item${action.danger ? ' boe-menu-item--danger' : ''}`}
+          onClick={() => { setOpen(false); action.onSelect() }}
+        >
+          {/* THE ICON SUPPORTS THE LABEL, IT DOES NOT REPLACE IT. The text is
+              always rendered; the glyph is decorative and hidden from screen
+              readers, which would otherwise announce it twice. A fixed 14px box
+              keeps every label starting on the same x, including an action that
+              has no icon. */}
+          {action.Icon
+            ? <action.Icon size={14} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
+            : <span aria-hidden="true" style={{ width: 14, flexShrink: 0 }} />}
+          <span>{action.label}</span>
+        </button>
+      ))}
+    </div>
+  )
+
+  return (
+    <span style={{ display: 'inline-block' }}>
+      <button
+        ref={triggerRef}
+        type="button"
         aria-label={label}
         title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(o => !o)}
         style={{
-          listStyle: 'none', cursor: 'pointer', padding: '3px 8px',
+          cursor: 'pointer', padding: '3px 8px',
           fontSize: '13px', lineHeight: '15px', color: colors.secondary,
           borderRadius: 6, userSelect: 'none',
+          background: 'transparent', border: 'none',
         }}
       >
         ⋯
-      </summary>
-      <div
-        role="menu"
-        style={{
-          position: 'absolute', right: 0, top: '100%', zIndex: 20, marginTop: 4,
-          background: '#fff', border: `1px solid ${colors.border}`, borderRadius: 8,
-          boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
-        }}
-      >
-        {actions.map(action => (
-          <button
-            key={action.label}
-            role="menuitem"
-            onClick={event => {
-              (event.currentTarget.closest('details') as HTMLDetailsElement | null)
-                ?.removeAttribute('open')
-              action.onSelect()
-            }}
-            style={{
-              display: 'block', width: '100%', textAlign: 'left', padding: '6px 9px',
-              fontSize: '12px', color: action.danger ? colors.red : colors.primary,
-              background: 'transparent',
-              border: 'none', borderRadius: 6, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
-          >
-            {action.label}
-          </button>
-        ))}
-      </div>
-    </details>
+      </button>
+      {/* Rendered into <body>, so no ancestor's overflow can clip it. Guarded
+          on `open` AND on the document existing, because this component is
+          reached during server rendering too. */}
+      {open && typeof document !== 'undefined' && createPortal(panel, document.body)}
+    </span>
   )
 }
 
@@ -1671,7 +1660,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
                   </button>
                   <RowActionsMenu
                     label={`Actions for ${r.client_name}`}
-                    actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r) }] : []}
+                    actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }] : []}
                   />
                 </div>
               </td>
@@ -1774,7 +1763,10 @@ function ReceivedPaymentsCards({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(r => {
-        const figures = confirmedFigures(r)
+        // confirmedFigures() is deliberately NOT read here any more: the exact
+        // Total Allocated / Remaining / per-destination figures moved into the
+        // detail modal, which the card's own allocation badge opens. The helper
+        // is unchanged and still serves the desktop expandable row.
         const offerAllocate = canAllocate && canOfferAllocateFunds(r)
         return (
           <div
@@ -1789,43 +1781,44 @@ function ReceivedPaymentsCards({
               display: 'flex', flexDirection: 'column', gap: '8px',
             }}
           >
+            {/* PAYMENT ID LEADS, AND THE CUSTOMER IS NOT A CARD FIELD.
+                The card follows the table's information priority exactly:
+                identifier, amount, when, how, how much is spoken for, and the
+                two people. The customer name is in the detail modal, whole —
+                on a phone it was the field most likely to be truncated, which
+                is the worst place to abbreviate a name somebody is trying to
+                match against a bank statement. */}
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-              <CustomerName
-                name={r.client_name}
-                style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
-              />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.human_payment_id}
+              </span>
               <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
                 {fmtAmount(r.amount)}
               </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
-              <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
-                {r.human_payment_id}
-              </span>
               <span style={{ fontSize: '11px', color: colors.muted }}>
-                {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} · {fmtDate(r.payment_date)}
+                {fmtDate(r.payment_date)} · {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
               </span>
             </div>
 
-            {/* The exact figures, wrapped rather than scrolled. */}
-            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px' }}>
-              <span>
-                <span style={{ color: colors.muted }}>Total allocated </span>
-                <MoneyCell value={figures.totalAllocated} />
+            {/* The same control as the desktop cell, opening the same record —
+                which is where the exact figures the card no longer prints live. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <ConfirmedAllocationBadge
+                status={r.confirmed_allocation_status}
+                paymentId={r.human_payment_id}
+                onOpen={() => onView(r)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: colors.muted }}>
+              <span title={r.submitted_by_name ?? undefined}>
+                Initiated by <span style={{ color: colors.secondary }}>{conciseName(r.submitted_by_name)}</span>
               </span>
-              <span>
-                <span style={{ color: colors.muted }}>Remaining </span>
-                <MoneyCell value={figures.remaining} title={figures.remaining === null ? 'Complete picture not available' : undefined} />
-              </span>
-              <span>
-                <span style={{ color: colors.muted }}>To PI Drafts </span>
-                <MoneyCell value={figures.toPI} />
-              </span>
-              <span>
-                <span style={{ color: colors.muted }}>To Orders </span>
-                <MoneyCell value={figures.toOrders} />
+              <span title={r.approved_by_name ?? undefined}>
+                Approved by <span style={{ color: colors.secondary }}>{conciseName(r.approved_by_name)}</span>
               </span>
             </div>
 
@@ -1834,8 +1827,9 @@ function ReceivedPaymentsCards({
                 <button
                   onClick={e => { e.stopPropagation(); onAllocateFunds(r) }}
                   className="boe-btn boe-btn-ghost"
-                  style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                  style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 >
+                  <Split size={13} strokeWidth={2} aria-hidden="true" />
                   {ALLOCATE_FUNDS_ACTION_LABEL}
                 </button>
               )}
@@ -1843,8 +1837,9 @@ function ReceivedPaymentsCards({
                 <button
                   onClick={e => { e.stopPropagation(); onDelete(r) }}
                   className="boe-btn boe-btn-ghost"
-                  style={{ marginLeft: offerAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red }}
+                  style={{ marginLeft: offerAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 >
+                  <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
                   {PAYMENT_DELETE_CONFIRM_LABEL}
                 </button>
               )}
@@ -1897,7 +1892,7 @@ function rowView(
 // ── Page ──────────────────────────────────────────────────────────────────────
 // One component, two routes: /finance/received/linked and
 // /finance/received/unlinked each render it with their own `mode`. The table,
-// the detail modal and every link/unlink action are shared verbatim — only the
+// the detail modal and every row action are shared verbatim — only the
 // query predicate, the copy and the filter row differ.
 
 export function ReceivedPaymentsView(
@@ -1923,30 +1918,22 @@ function ReceivedPaymentsViewInner(
   const [listLoading,    setListLoading]    = useState(false)
   const [detailRequest,  setDetailRequest]  = useState<PaymentRequest | null>(null)
   const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
-  const [linkRequest,    setLinkRequest]    = useState<PaymentRequest | null>(null)
-  const [unlinkTarget,   setUnlinkTarget]   = useState<PaymentRequest | null>(null)
   const [deleteTarget,   setDeleteTarget]   = useState<PaymentRequest | null>(null)
-  const [unlinkReason,   setUnlinkReason]   = useState('')
-  const [unlinking,      setUnlinking]      = useState(false)
-  const [unlinkError,    setUnlinkError]    = useState<string | null>(null)
   const [search,         setSearch]         = useState('')
   const [dateFrom,       setDateFrom]       = useState('')
   const [dateTo,         setDateTo]         = useState('')
   // ── The allocation narrowing ──
-  // How much of a payment has been given a home — the queue that needs somebody
-  // to act. Answered by the DATABASE, because a state computed over the fifty
-  // rows in hand would narrow those fifty and hide every match on page two.
+  // REMOVED, AND NOT REPLACED — it was already here twice. A `<select>` offered
+  // Any allocation / Unallocated / Partly / Fully / Over-allocated, and the tab
+  // strip below offers the identical five states over the same
+  // `confirmed_allocation_status` column in the same query. Two controls for one
+  // narrowing meant they could be set to contradict each other, and the reader
+  // had to know which one won.
   //
-  // GATED TWICE, and both gates matter. The projection gains `allocation_state`
-  // only when 20261004000000 is applied, so `allocationReady` probes for it and
-  // the control is not drawn until it is there — an un-migrated database behaves
-  // exactly as it did before, with no query ever built against a missing column.
-  // And the control is offered only to a reader who can see EVERY allocation,
-  // because the view is security_invoker: a reader who may see a payment but not
-  // its allocations sums to zero and would read "Unallocated" for money that is
-  // fully spoken for.
-  const [allocation,     setAllocation]     = useState<AllocationFilter>('all')
-  const [allocationReady, setAllocationReady] = useState(false)
+  // The tabs are what survives. They are the more discoverable of the two, they
+  // are already the page's primary navigation, and they need no feature-probe:
+  // the dropdown's `allocationReady` check cost a round trip on every page load
+  // purely to decide whether to draw itself, and that query is gone with it.
   // ── The Confirmed Payments allocation-status filter (Requirement 1) ──
   // Replaces the old `?view=all|orders|pi_drafts|available` tab strip for the
   // 'confirmed' surface only. A real PostgREST predicate over
@@ -2015,6 +2002,16 @@ function ReceivedPaymentsViewInner(
   // the bottom of init) so it can never re-fire and reopen a closed modal.
   const deepLinkHandled = useRef(false)
 
+  /**
+   * The search term the last re-read was delayed for.
+   *
+   * Lets the re-read effect tell a KEYSTROKE — which needs coalescing — from a
+   * filter chip or a page step, which is one deliberate click and should start
+   * its request immediately. `undefined` until the first change, which no real
+   * filter value equals.
+   */
+  const debouncedSearch = useRef<string | null | undefined>(undefined)
+
   // ── Wide table, or cards ──
   //
   // Measured rather than guessed at from a user-agent string, and re-measured on
@@ -2042,7 +2039,6 @@ function ReceivedPaymentsViewInner(
    * that calls fully-allocated money "Unallocated" — the exact confusion
    * paymentAllocations.ts refuses to make on the per-payment panel.
    */
-  const allocationOffered = allocationReady && caps.canViewAllFinance
 
   const filters = useMemo(() => {
     const dates = dateRange(dateFrom, dateTo)
@@ -2055,12 +2051,11 @@ function ReceivedPaymentsViewInner(
       dateFrom: dates.from,
       dateTo: dates.to,
       // Never sent unless the column is there AND this reader may trust it.
-      allocation: allocationOffered ? allocation : ('all' as AllocationFilter),
       // Meaningless outside Confirmed Payments — Payments to Verify never
       // applies it, whatever a stray click set it to.
       confirmedFilter: surface === 'confirmed' ? confirmedFilter : DEFAULT_CONFIRMED_ALLOCATION_FILTER,
     }
-  }, [search, view, dateFrom, dateTo, allocation, allocationOffered, surface, confirmedFilter])
+  }, [search, view, dateFrom, dateTo, surface, confirmedFilter])
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for
@@ -2150,10 +2145,6 @@ function ReceivedPaymentsViewInner(
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
     if (filters.dateTo)   scoped = scoped.lte('payment_date', filters.dateTo)
 
-    for (const clause of allocationFilterClauses(filters.allocation)) {
-      if (clause.kind === 'eq') scoped = scoped.eq(clause.column, clause.value)
-    }
-
     // ORDERED BY created_at AND THEN BY id. range() maps to LIMIT/OFFSET, which
     // makes no promise about row order unless the ordering is deterministic —
     // two payments recorded in the same instant could otherwise swap between
@@ -2222,7 +2213,7 @@ function ReceivedPaymentsViewInner(
     const [{ data, error }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
         .in('payment_request_id', rows.map(r => r.id))
         .eq('status', 'active'),
       canViewAllRef.current,
@@ -2245,11 +2236,9 @@ function ReceivedPaymentsViewInner(
     void loadTargetLabels(allocationRows, rows, token)
 
     setAllocations(summarizePaymentAllocations(
-      // `hasDirectLink` carries the payment's own order_id into the rule: a
-      // linked payment with no allocations is attributed in full to that Order
-      // by the canonical fallback, so it is not free money and must not read
-      // "Unallocated" here while the Order counts it.
-      rows.map(r => ({ id: r.id, amount: r.amount, hasDirectLink: r.order_id !== null })),
+      // ID AND AMOUNT ONLY. The payment's own order_id is not an input: a row
+      // with no active allocation is Zero Allocated whatever it points at.
+      rows.map(r => ({ id: r.id, amount: r.amount })),
       allocationRows, {
       readable: !error,
       // Only a reader who can see EVERY allocation may be told "unallocated" on
@@ -2368,14 +2357,14 @@ function ReceivedPaymentsViewInner(
     const [{ data: allocRows, error: allocErr }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
         .eq('payment_request_id', id)
         .eq('status', 'active'),
       canViewAllRef.current,
     ])
     const allocationRows = (allocRows ?? []) as PaymentAllocationRow[]
     const summaryMap = summarizePaymentAllocations(
-      [{ id: mapped.id, amount: mapped.amount, hasDirectLink: mapped.order_id !== null }],
+      [{ id: mapped.id, amount: mapped.amount }],
       allocationRows, {
         readable: !allocErr,
         emptyIsConclusive,
@@ -2421,7 +2410,7 @@ function ReceivedPaymentsViewInner(
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
   }
 
-  // Every mutation on this page — link, unlink, edit, status correction — can
+  // Every mutation on this page — allocate, edit, status correction — can
   // move a row between the two Received Payments pages or in or out of them
   // entirely, so each re-reads the list AND invalidates the sidebar counts. The
   // initial load deliberately does not: the counts query is mounting alongside
@@ -2478,14 +2467,6 @@ function ReceivedPaymentsViewInner(
       // exist. A filter that silently matched nothing, or a request PostgREST
       // refused outright, would both be worse than an absent control.
       //
-      // In this group, so it costs no wait.
-      const allocationProbe = supabase
-        .from(RECEIVED_PAYMENTS_SOURCE)
-        .select(`id, ${ALLOCATED_TOTAL_COLUMN}, allocation_state`)
-        .limit(1)
-        .then((result: { error: unknown }) => allocationFilterAvailable(
-          result.error ? null : { columns: [ALLOCATED_TOTAL_COLUMN, 'allocation_state'] }))
-        .catch(() => false)
 
       // THE ALLOCATION READ'S SAFETY FLAG, PUBLISHED BEFORE IT IS NEEDED.
       // loadAllocations must know whether an EMPTY allocation list is conclusive
@@ -2499,16 +2480,14 @@ function ReceivedPaymentsViewInner(
           deriveFinanceCapabilities((who as UserProfile | null)?.role, perms).canViewAllFinance)
         .catch(() => false)
 
-      const [{ data: me }, financePerms, ordersPerms, allocationAvailable] =
+      const [{ data: me }, financePerms, ordersPerms] =
         await Promise.all([
           profilePromise,
           financePromise,
           ordersPromise,
-          allocationProbe,
           loadRequests(),
         ])
 
-      setAllocationReady(allocationAvailable)
       setProfile(me as UserProfile)
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
@@ -2531,10 +2510,21 @@ function ReceivedPaymentsViewInner(
   // issue the same query twice.
   useEffect(() => {
     if (pageLoading) return
-    const timer = setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)
+    // ONLY THE SEARCH IS DEBOUNCED, which is what the paragraph above always
+    // said and what the delay did not do: every dependency here shared the
+    // 250ms timer, so paging and each of the five filter chips — all of them a
+    // single deliberate click, with no keystroke to coalesce — waited a quarter
+    // of a second before their request even started.
+    //
+    // Compared by VALUE rather than assumed from which dependency fired,
+    // because a filter chip also clears the term; the same technique, and the
+    // same reason, as countedSearch on the Payment Requests page.
+    const searchChanged = debouncedSearch.current !== filters.search
+    debouncedSearch.current = filters.search
+    const timer = setTimeout(() => { loadRequests() }, searchChanged ? SEARCH_DEBOUNCE_MS : 0)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.allocation, filters.confirmedFilter, page])
+  }, [filters.search, filters.view, filters.dateFrom, filters.dateTo, filters.confirmedFilter, page])
 
   // A narrowing change moves the reader back to page one — staying on page four
   // of a result set that now has one page would show an empty table over a
@@ -2548,14 +2538,14 @@ function ReceivedPaymentsViewInner(
   const applySearch   = narrowBy(setSearch)
   const applyDateFrom = narrowBy(setDateFrom)
   const applyDateTo   = narrowBy(setDateTo)
-  const applyAllocation = narrowBy(setAllocation)
   const applyConfirmedFilter = narrowBy(setConfirmedFilter)
 
-  // ── Deep-link resolution (?payment=&action=link|edit) ────────────────────────
+  // ── Deep-link resolution (?payment=&action=allocate|edit) ───────────────────
   // Runs exactly once, once `requests` is loaded. Sources: the Admin Action
-  // Queue (action=link) and Finance notifications. Each modal auto-opens only when the loaded payment
-  // still satisfies the same rule the manual button uses — a stale, already
-  // linked, or not-permitted payment is simply highlighted, never a fatal error.
+  // Queue (action=allocate) and Finance notifications. Each modal auto-opens
+  // only when the loaded payment still satisfies the same rule the manual
+  // button uses — a stale, fully allocated, or not-permitted payment is simply
+  // highlighted, never a fatal error.
   useEffect(() => {
     const resolveDeepLink = async () => {
       if (pageLoading || deepLinkHandled.current) return
@@ -2611,15 +2601,21 @@ function ReceivedPaymentsViewInner(
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        if (caps.canManageFinance && action === 'link' && !match.order_id && !match.order_request_id) {
-          setLinkRequest(match)
+        // `?action=allocate` IS THE ONLY ATTACHMENT DEEP LINK. `link` is not an
+        // alias for it and is not accepted: reinterpreting one action as
+        // another would open a modal the URL did not ask for. An old `link` URL
+        // is simply not an action this page knows, so it falls through to the
+        // ordinary list — highlighted if the row is here, opened read-only if
+        // it is not.
+        if (action === 'allocate' && caps.canAllocatePayment && canOfferAllocateFunds(match)) {
+          setAllocateFundsTarget(match)
         } else if (caps.canManageFinance && action === 'edit') {
           // Editing a received payment is admin-only here, exactly as the
           // table's own Edit button is.
           setEditRequest(match)
-        } else if (action === 'edit' || action === 'link') {
-          // Not permitted (or no longer eligible): fall back to the read-only
-          // view rather than silently doing nothing.
+        } else if (action === 'edit' || action === 'allocate') {
+          // Not permitted (or nothing left to allocate): fall back to the
+          // read-only view rather than silently doing nothing.
           setDetailRequest(match)
         } else if (!onThisPage) {
           // A bare ?payment= link used to be answered by highlighting the row.
@@ -2642,39 +2638,6 @@ function ReceivedPaymentsViewInner(
     router.replace('/login')
   }
 
-  // Unlink a payment — routed entirely through the guarded RPCs
-  // (unlink_finance_payment_from_order, 20260691000000, or
-  // unlink_finance_payment_from_order_request, 20260698000000, depending on
-  // which linkage the row carries — the DB guarantees it is never both): each
-  // locks the payment row, requires a non-empty reason, enforces the
-  // new_order-origin gate, and records the activity rows itself. No
-  // client-side .update() of finance_payment_requests or the activity tables
-  // remains.
-  const handleUnlink = async () => {
-    if (!unlinkTarget) return
-    const reason = unlinkReason.trim()
-    if (!reason) { setUnlinkError('A reason is required to unlink this payment.'); return }
-    setUnlinking(true)
-    setUnlinkError(null)
-
-    const { error: rpcError } = unlinkTarget.order_id
-      ? await supabase.rpc('unlink_finance_payment_from_order', {
-          p_payment_request_id: unlinkTarget.id,
-          p_reason:             reason,
-        })
-      : await supabase.rpc('unlink_finance_payment_from_order_request', {
-          p_payment_request_id: unlinkTarget.id,
-          p_reason:             reason,
-        })
-
-    setUnlinking(false)
-    if (rpcError) { setUnlinkError(friendlyDbErrorMessage(rpcError)); return }
-
-    setUnlinkTarget(null)
-    setUnlinkReason('')
-    refreshAfterMutation()
-  }
-
   // THE ROWS ARE THE ANSWER, not a starting point to filter.
   //
   // This used to hold a client-side search and linkage filter over whatever the
@@ -2686,14 +2649,13 @@ function ReceivedPaymentsViewInner(
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
-  const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo, allocation: filters.allocation })
+  const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
   const pages = pageCount(total)
 
   const clearFilters = () => {
     setSearch('')
     setDateFrom('')
     setDateTo('')
-    setAllocation('all')
     setPage(1)
   }
 
@@ -2747,13 +2709,27 @@ function ReceivedPaymentsViewInner(
           })}
         </div>
       )}
-      {/* ── Toolbar ── search, the Linked-only linkage filter, and the result
-          count. Which linkage a page shows is now the route, so there is no
-          status navigation left inside the card below. */}
+      {/* ── Toolbar ──
+          TWO GROUPS, NOT A ROW OF EQUALS. Everything that NARROWS the list —
+          search, and the two date bounds — sits on the left in the order a
+          reader reaches for it. Record Payment is the one thing here that
+          CREATES rather than filters, so it is pushed to the far right by a
+          `margin-left: auto` on its group rather than by a hardcoded margin or
+          absolute placement, which keeps the two groups apart at any width and
+          lets them wrap onto separate lines when there is no room.
+
+          The count travels with the right-hand group but stays muted 11px text:
+          it is an answer about the list, not an action, and must not compete
+          with the primary button beside it. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
         marginBottom: '10px',
       }}>
+        {/* ── Narrowing: search, then the date range ── */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+          flex: '1 1 auto', minWidth: 0,
+        }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px',
           background: colors.raised, border: `1px solid ${colors.border}`,
@@ -2774,29 +2750,6 @@ function ReceivedPaymentsViewInner(
             <button onClick={() => applySearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
           )}
         </div>
-
-        {/* ── How much of it has a home ──
-            Answered by the database across the WHOLE narrowed set, so it
-            composes correctly with search, the date range, the view
-            and paging — a state computed over the loaded page would narrow
-            fifty rows and hide every match on page two.
-
-            Drawn only when the projection carries the column AND this reader can
-            see every allocation. Both gates are load-bearing; see
-            `allocationOffered`. */}
-        {allocationOffered && (
-          <select
-            className="boe-input"
-            aria-label="Filter by allocation state"
-            value={allocation}
-            onChange={e => applyAllocation(e.target.value as AllocationFilter)}
-            style={{ fontSize: '12px', padding: '6px 10px', width: 'auto', flexShrink: 0 }}
-          >
-            {ALLOCATION_FILTER_OPTIONS.map(o => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </select>
-        )}
 
         {/* ── When the money arrived ──
             Bounds the list by payment_date, which is the date Finance
@@ -2840,6 +2793,24 @@ function ReceivedPaymentsViewInner(
             Clear filters
           </button>
         )}
+        </div>
+
+        {/* ── The far right: the count, then the one creating action ──
+            `marginLeft: 'auto'` is what separates the groups; nothing here is
+            positioned absolutely and no empty margin is hardcoded. */}
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '10px',
+          marginLeft: 'auto', flexShrink: 0,
+        }}>
+        {/* The size of the WHOLE narrowed set, from the database's exact count —
+            not the length of the page in hand, which would understate it the
+            moment there is more than one page. */}
+        <div
+          aria-live="polite"
+          style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
+        >
+          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+        </div>
 
         {/* ── Record Payment ──
             ONE real payment, entered once and divided across every Order and PI
@@ -2857,15 +2828,6 @@ function ReceivedPaymentsViewInner(
             {RECORD_PAYMENT_ACTION_LABEL}
           </button>
         )}
-
-        {/* The size of the WHOLE narrowed set, from the database's exact count —
-            not the length of the page in hand, which would understate it the
-            moment there is more than one page. */}
-        <div
-          aria-live="polite"
-          style={{ marginLeft: 'auto', fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
-        >
-          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
         </div>
       </div>
 
@@ -2946,8 +2908,6 @@ function ReceivedPaymentsViewInner(
               highlightId={highlightId}
               onView={r  => setDetailRequest(r)}
               onEdit={r  => setEditRequest(r)}
-              onLink={r  => setLinkRequest(r)}
-              onUnlink={r => { setUnlinkTarget(r); setUnlinkReason(''); setUnlinkError(null) }}
               onAllocateFunds={r => setAllocateFundsTarget(r)}
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
@@ -3059,74 +3019,6 @@ function ReceivedPaymentsViewInner(
             refreshOneRow(id)
           }}
         />
-      )}
-
-      {linkRequest && (
-        <LinkOrderModal
-          payment={linkRequest}
-          supabase={supabase}
-          onClose={() => setLinkRequest(null)}
-          onLinked={() => { setLinkRequest(null); refreshAfterMutation() }}
-        />
-      )}
-
-      {/* Unlink confirmation — same shared modal shell as every other Finance
-          dialog; closing (backdrop, header ✕, or Escape) is guarded exactly
-          as before so it can't be dismissed mid-request. */}
-      {unlinkTarget && (
-        <FinanceModal
-          title="Unlink Payment?"
-          width="380px"
-          onClose={() => { if (!unlinking) { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) } }}
-        >
-          <div style={{ fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
-            This will remove the link between{' '}
-            <strong>{unlinkTarget.client_name}</strong> ({fmtAmount(unlinkTarget.amount)}) and{' '}
-            {unlinkTarget.order_id ? 'order' : 'order request'}{' '}
-            <strong>
-              {unlinkTarget.order_id
-                ? (unlinkTarget.order_number ?? unlinkTarget.order_id)
-                : (unlinkTarget.order_request_number ?? unlinkTarget.order_request_id)}
-            </strong>.
-            <br /><br />
-            The payment will return to suspense status.
-          </div>
-          <Field label="Reason" required>
-            <textarea
-              className="boe-input"
-              value={unlinkReason}
-              onChange={e => { setUnlinkReason(e.target.value); setUnlinkError(null) }}
-              placeholder="Why is this payment being unlinked? (required)"
-              rows={2}
-              disabled={unlinking}
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </Field>
-          {unlinkError && <ErrorBanner message={unlinkError} />}
-          <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-            <button
-              onClick={() => { setUnlinkTarget(null); setUnlinkReason(''); setUnlinkError(null) }}
-              disabled={unlinking}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '8px 18px', fontSize: '13px' }}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleUnlink}
-              disabled={unlinking || !unlinkReason.trim()}
-              style={{
-                padding: '8px 18px', fontSize: '13px', fontWeight: 600, borderRadius: '8px',
-                border: `1px solid ${colors.border}`, background: colors.raised,
-                color: colors.primary,
-                cursor: (unlinking || !unlinkReason.trim()) ? 'not-allowed' : 'pointer',
-                opacity: (unlinking || !unlinkReason.trim()) ? 0.6 : 1,
-              }}
-            >
-              {unlinking ? 'Unlinking…' : 'Yes, Unlink'}
-            </button>
-          </div>
-        </FinanceModal>
       )}
 
       {/* DELETE PAYMENT — the shared action, mounted here and on Payments to

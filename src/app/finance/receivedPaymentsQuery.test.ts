@@ -28,14 +28,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 import {
-  ALLOCATED_TOTAL_COLUMN,
-  ALLOCATION_FILTER_OPTIONS,
   PAYMENT_VIEW_OPTIONS,
   RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
-  allocationFilterAvailable,
-  allocationFilterClauses,
-  isAllocationFilter,
-  type AllocationFilter,
   RECEIVED_PAYMENTS_PAGE_SIZE,
   RECEIVED_PAYMENTS_SEARCH_COLUMNS,
   dateBound,
@@ -321,126 +315,8 @@ describe('what the toolbar says it is doing', () => {
 
 // ── The allocation narrowing ─────────────────────────────────────────────────
 
-describe('the allocation filter is gated, and fails closed', () => {
-  test('it is unavailable until the projection carries the column', () => {
-    // The control must not be drawn against a database where 20261004000000 has
-    // not been applied: a query naming a missing column is refused outright by
-    // PostgREST, which would blank the list rather than narrow it.
-    assert.equal(allocationFilterAvailable(null), false)
-    assert.equal(allocationFilterAvailable(undefined), false)
-    assert.equal(allocationFilterAvailable({ columns: [] }), false)
-  })
 
-  test('a half-applied projection is still unavailable', () => {
-    // Both columns or neither. One without the other is a state no migration
-    // produces, and guessing which half is missing is not this module's job.
-    assert.equal(allocationFilterAvailable({ columns: ['allocation_state'] }), false)
-    assert.equal(allocationFilterAvailable({ columns: [ALLOCATED_TOTAL_COLUMN] }), false)
-  })
 
-  test('and available once both columns are there', () => {
-    assert.equal(allocationFilterAvailable({
-      columns: ['id', ALLOCATED_TOTAL_COLUMN, 'allocation_state'],
-    }), true)
-  })
-
-  test('the page draws the control only when the reader can trust it', () => {
-    // The view is security_invoker, so the sum behind the state is evaluated as
-    // the CALLER. A reader who may see a payment but not its allocations sums to
-    // zero and would be shown "Unallocated" for money that is fully spoken for.
-    // finance.view_all (and admin, which short-circuits inside the helper) are
-    // exactly the readers for whom the invoker sum IS the true sum.
-    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
-    assert.ok(view.includes('const allocationOffered = allocationReady && caps.canViewAllFinance'),
-      'both gates must be required')
-    assert.ok(view.includes('{allocationOffered && ('),
-      'the control is drawn only when offered')
-  })
-
-  test('and never sends the filter when it is not offered', () => {
-    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
-    assert.ok(view.includes("allocation: allocationOffered ? allocation : ('all' as AllocationFilter)"),
-      'an ungated reader must query as if no allocation filter existed')
-  })
-})
-
-describe('what each allocation state narrows to', () => {
-  test('"all" narrows nothing', () => {
-    assert.deepEqual(allocationFilterClauses('all'), [])
-  })
-
-  test('every other state is one equality against the view column', () => {
-    // A single eq, not a numeric comparison assembled here: PostgREST cannot
-    // compare two columns in a filter, so the comparison against the payment's
-    // own amount is the VIEW's job. That is the whole reason the state is a
-    // column.
-    for (const state of ['unallocated', 'partial', 'full', 'over'] as const) {
-      assert.deepEqual(allocationFilterClauses(state),
-        [{ kind: 'eq', column: 'allocation_state', value: state }], state)
-    }
-  })
-
-  test('the four real states are all offered, over-allocation included', () => {
-    // The capacity trigger refuses to CREATE an over-allocation, so a row in
-    // that state means something has gone wrong — which is exactly why it must
-    // be findable rather than rounded into "Fully".
-    const offered = ALLOCATION_FILTER_OPTIONS.map(o => o.value)
-    for (const state of ['all', 'unallocated', 'partial', 'full', 'over']) {
-      assert.ok(offered.includes(state as AllocationFilter), state)
-    }
-  })
-
-  test('every offered option is a state the module implements', () => {
-    for (const option of ALLOCATION_FILTER_OPTIONS) {
-      assert.ok(isAllocationFilter(option.value), option.value)
-    }
-    assert.ok(!isAllocationFilter('mostly'))
-  })
-})
-
-describe('the allocation state composes with every other narrowing', () => {
-  test('it counts as a narrowing, so "Clear filters" appears', () => {
-    const base = { search: '', dateFrom: null, dateTo: null }
-    assert.equal(isNarrowed({ ...base, allocation: 'all' }), false)
-    assert.equal(isNarrowed({ ...base, allocation: 'unallocated' }), true)
-  })
-
-  test('an absent allocation filter does not make a plain list look narrowed', () => {
-    // Readers who are not offered the control pass nothing, and the toolbar must
-    // not then claim the list is filtered.
-    assert.equal(isNarrowed({ search: '', dateFrom: null, dateTo: null }), false)
-  })
-
-  test('it is applied as its own clause, alongside the others', () => {
-    // Search, the confirmed-allocation filter, dates and allocation state all
-    // narrow the same query and compose as AND. Each is a separate clause, so
-    // none can overwrite another. (paymentViewFilterClauses — the retired
-    // four-view classification tab strip — is gone from the list entirely;
-    // see receivedPaymentsView's own describe block.)
-    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
-    const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
-    for (const applied of [
-      'if (filters.search) scoped = scoped.or(filters.search)',
-      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
-      "scoped.gte('payment_date', filters.dateFrom)",
-      "scoped.lte('payment_date', filters.dateTo)",
-      'allocationFilterClauses(filters.allocation)',
-    ]) {
-      assert.ok(loader.includes(applied), applied)
-    }
-    // And the page range is applied to the same query, so the narrowing is what
-    // is paged — not the page that is narrowed.
-    assert.ok(loader.includes('.range(range.from, range.to)'))
-  })
-
-  test('changing it returns the reader to page one', () => {
-    const view = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
-    assert.ok(view.includes('const applyAllocation = narrowBy(setAllocation)'),
-      'narrowing must reset the page, or page four of a one-page result shows nothing')
-    assert.ok(view.includes('filters.allocation, filters.confirmedFilter, page]'),
-      'a change to the allocation filter (or the confirmed-allocation filter) must re-issue the query')
-  })
-})
 
 describe('the migration that backs the filter', () => {
   const sql = readFileSync(
@@ -503,5 +379,70 @@ describe('the migration that backs the filter', () => {
     assert.ok(assertions.includes('ALL ASSERTIONS PASSED'))
     // The equality case is the one a float or an epsilon comparison gets wrong.
     assert.ok(assertions.includes('THE EQUALITY CASE'))
+  })
+})
+
+// ── The dropdown that used to live beside the tabs ───────────────────────────
+
+describe('the duplicate allocation dropdown is gone', () => {
+  const raw = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
+  // Comments stripped: the file DOCUMENTS the control it no longer draws, and a
+  // scan of the raw text would fail on the very paragraph explaining why.
+  const view = raw.split('\n').filter(line => !line.trim().startsWith('//')).join('\n')
+
+  test('the page draws no allocation <select>', () => {
+    // THE DUPLICATION: this select offered Any allocation / Unallocated /
+    // Partly / Fully / Over-allocated, and the tab strip above it offers the
+    // identical five states over the same column in the same query. Two
+    // controls for one narrowing can be set to contradict each other, and the
+    // reader has to know which one wins.
+    assert.ok(!view.includes('aria-label="Filter by allocation state"'))
+    assert.ok(!view.includes('ALLOCATION_FILTER_OPTIONS'))
+    assert.ok(!view.includes('applyAllocation'))
+    assert.ok(!view.includes('allocationOffered'))
+  })
+
+  test('and its query clause and feature-probe went with it', () => {
+    assert.ok(!view.includes('allocationFilterClauses'),
+      'the clause the dropdown contributed is gone from the loader')
+    assert.ok(!view.includes('allocationFilterAvailable'),
+      'and so is the probe that decided whether to draw it')
+    assert.ok(!view.includes('allocationReady'))
+  })
+
+  test('THE PROBE WAS A QUERY, so removing it removes a request', () => {
+    // It read one row from the projection on every page load purely to decide
+    // whether the control could be drawn.
+    assert.ok(!view.includes('const allocationProbe'))
+    assert.ok(!/\.select\(`id, \$\{ALLOCATED_TOTAL_COLUMN\}/.test(view))
+  })
+
+  test('the tabs are now the only allocation narrowing, and still a real predicate', () => {
+    const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
+    assert.ok(loader.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"),
+      'narrowed by the database, never over the page in hand')
+    assert.ok(view.includes('const applyConfirmedFilter = narrowBy(setConfirmedFilter)'),
+      'and choosing a tab still returns the reader to page one')
+  })
+
+  test('search and both date bounds still narrow, and still compose', () => {
+    const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
+    for (const applied of [
+      'if (filters.search) scoped = scoped.or(filters.search)',
+      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
+      "scoped.gte('payment_date', filters.dateFrom)",
+      "scoped.lte('payment_date', filters.dateTo)",
+    ]) {
+      assert.ok(loader.includes(applied), applied)
+    }
+    assert.ok(loader.includes('.range(range.from, range.to)'),
+      'the narrowing is what is paged, not the page that is narrowed')
+  })
+
+  test('"Clear filters" no longer offers to clear a control that does not exist', () => {
+    assert.equal(isNarrowed({ search: '', dateFrom: null, dateTo: null }), false)
+    assert.equal(isNarrowed({ search: 'PAY', dateFrom: null, dateTo: null }), true)
+    assert.equal(isNarrowed({ search: '', dateFrom: '2026-01-01', dateTo: null }), true)
+    assert.ok(!view.includes("setAllocation('all')"))
   })
 })

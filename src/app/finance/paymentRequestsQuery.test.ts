@@ -389,4 +389,41 @@ describe('the page issues a bounded, server-filtered read', () => {
     assert.ok(page.includes('tabMatches('),
       'a locally stale row must not linger in a tab the query would not return it for')
   })
+
+  // ── The badges are counted for the SEARCH, not for the open tab ─────────────
+
+  test('the four badges do not depend on which tab is open', () => {
+    // The premise the saving below rests on, asserted rather than assumed:
+    // loadCounts walks COUNTED_TABS — a fixed list — and never reads activeTab,
+    // so every badge is already correct whichever tab the reader is on.
+    const loadCounts = page.slice(page.indexOf('const loadCounts ='))
+    const body = loadCounts.slice(0, loadCounts.indexOf('\n  }\n'))
+    assert.ok(body.includes('COUNTED_TABS.map('), 'the counts are per COUNTED_TABS')
+    assert.ok(!body.includes('activeTab'),
+      'a count that read the open tab would have to be recomputed when it changed')
+  })
+
+  test('a tab click re-reads the rows and keeps the counts already on screen', () => {
+    // THE DEFECT: selecting a tab ran the full reload — one list query AND four
+    // head-count queries — to arrive at the same four numbers it started with.
+    // Five round trips where one was needed, on the most-clicked control on the
+    // page.
+    assert.ok(page.includes('if (countedSearch.current === filters.search) {'),
+      'the counts are re-run only when the set they describe has moved')
+    assert.ok(page.includes('const countedSearch = useRef<string | null | undefined>(undefined)'),
+      'undefined until the first count, which no real filter value equals')
+    assert.ok(page.includes('countedSearch.current = filters.search'),
+      'and the search the badges describe is recorded by the function that counts them')
+  })
+
+  test('a search change still recounts, because the badges describe the searched set', () => {
+    // Selecting a tab also clears the search, so the two genuinely do move
+    // together when a search was active. Comparing the VALUE is what keeps that
+    // case counting instead of showing badges for a term no longer applied.
+    const effect = page.slice(page.indexOf('const delay = filters.search === null'))
+    const body = effect.slice(0, effect.indexOf('}, [filters.search, activeTab])'))
+    assert.ok(body.includes('reload()'), 'a changed search runs the full reload')
+    assert.ok(body.includes('loadRequests(new Date(cutoffMs).toISOString())'),
+      'and an unchanged one re-reads only the rows, against the cutoff the badges were counted with')
+  })
 })

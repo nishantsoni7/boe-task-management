@@ -873,7 +873,7 @@ function DetailsModal({
 
       {/* F. Admin controls — compact action panel. Never for
           approved_unlinked/approved_linked rows; those are managed only via
-          Verify Payment, Link, and Unlink. */}
+          Verify Payment and Allocate Funds. */}
       {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
@@ -949,7 +949,7 @@ function DetailsModal({
           fontSize: '12px', color: colors.muted, lineHeight: 1.5,
         }}>
           {APPROVED_LOCK_NOTE}
-          {isAdmin && ' Order linkage is managed there (Link / Unlink), not here.'}
+          {isAdmin && ' Funds are attached to a PI Draft or an Order there, with Allocate Funds.'}
         </div>
       )}
     </>
@@ -2454,6 +2454,24 @@ function FinancePageInner() {
   // modal the admin already closed.
   const deepLinkHandled = useRef(false)
 
+  /**
+   * The search the four badges were last counted against.
+   *
+   * THE BADGES DO NOT DEPEND ON THE ACTIVE TAB. loadCounts walks COUNTED_TABS —
+   * a fixed list — and never reads activeTab, so every tab's badge is already
+   * correct whichever tab is open. Re-running it on a tab click cost four head
+   * requests to arrive at the four numbers already on screen.
+   *
+   * It DOES depend on the search, because the badges describe the searched set.
+   * Selecting a tab also clears the search, so the two genuinely do move
+   * together when a search was active — which is why this compares the value
+   * rather than assuming a tab click never affects the counts.
+   *
+   * `undefined` until the first count, which no real filter value can equal, so
+   * the first change after mount always counts.
+   */
+  const countedSearch = useRef<string | null | undefined>(undefined)
+
   // The narrowing, as the DATABASE will be asked it. One instant decides the
   // archive cutoff for the list AND for all four counts, so a record on the
   // boundary cannot be in one answer and out of the other.
@@ -2627,6 +2645,12 @@ function FinancePageInner() {
 
     if (token !== loadToken.current) return
     setCounts(Object.fromEntries(results))
+    // What the badges now describe. Recorded by the function that computes
+    // them, so the two can never disagree about which narrowing they are for.
+    // A discarded round (token moved) deliberately leaves it alone: the counts
+    // on screen are still the previous search's, and the next change must
+    // recount. Erring toward recounting is the safe direction.
+    countedSearch.current = filters.search
   }
 
   /**
@@ -2713,8 +2737,18 @@ function FinancePageInner() {
   useEffect(() => {
     if (pageLoading) return
     const delay = filters.search === null ? 0 : SEARCH_DEBOUNCE_MS
-    // The badges describe the SEARCHED set, so they move with the narrowing.
-    const timer = setTimeout(() => { reload() }, delay)
+    const timer = setTimeout(() => {
+      // The badges describe the SEARCHED set, so they move with the narrowing —
+      // and with NOTHING else. A tab click that leaves the search where it was
+      // re-reads the rows for the newly selected tab and keeps the four counts
+      // already on screen, which are still exactly right (see countedSearch).
+      // That turns a tab click from five round trips into one.
+      if (countedSearch.current === filters.search) {
+        loadRequests(new Date(cutoffMs).toISOString())
+      } else {
+        reload()
+      }
+    }, delay)
     return () => clearTimeout(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, activeTab])

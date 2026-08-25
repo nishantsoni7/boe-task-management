@@ -109,13 +109,30 @@ describe('one payment is one row, however many ways it reaches the Order', () =>
   test('a legacy-linked payment that also carries an allocation appears once', () => {
     // Phase 1 backfilled an allocation for every approved_linked payment, so
     // this is the ORDINARY case for a legacy Order, not an edge one.
+    //
+    // THE ALLOCATION WINS NOW, not the legacy row. The dormant order_id
+    // attributes nothing, so taking the legacy row's figure would report ₹0
+    // for money the Order genuinely has an allocation for.
     const rows = mergeOrderPayments(
       [linked({ id: 'pay-A' })],
       [allocation({ id: 'alloc-A', payment: { id: 'pay-A' } })],
     )
-    assert.equal(rows.length, 1)
-    assert.equal(rows[0].viaAllocation, false, 'the legacy row wins, with its own amount')
-    assert.equal(receivedFromPayments(rows), 400000)
+    assert.equal(rows.length, 1, 'still one payment, one row')
+    assert.equal(rows[0].viaAllocation, true, 'the allocation is what attributes it')
+    assert.equal(rows[0].allocatedAmount, 250000, "the allocation's figure, not the ledger amount")
+    assert.equal(receivedFromPayments(rows), 250000)
+  })
+
+  test('a legacy-linked payment with NO allocation is listed but worth nothing', () => {
+    // It still appears — an admin has to be able to see money that names this
+    // Order in order to allocate it — but it counts for nothing until an
+    // allocation row stands behind it.
+    const rows = mergeOrderPayments([linked({ id: 'pay-A' })], [])
+    assert.equal(rows.length, 1, 'still visible')
+    assert.equal(rows[0].viaAllocation, false)
+    assert.equal(rows[0].amount, 400000, 'the ledger amount is still shown')
+    assert.equal(rows[0].allocatedAmount, 0, 'but none of it is attributed to this Order')
+    assert.equal(receivedFromPayments(rows), 0, 'and it adds nothing to the Order total')
   })
 
   test('two allocations naming the same payment still yield one row', () => {

@@ -460,11 +460,15 @@ function StatusControl({
   order,
   profile,
   onStatusChanged,
+  onOutOfDate,
   onRequestCancel,
 }: {
   order: Order
   profile: UserProfile
-  onStatusChanged: (newStatus: string) => void
+  /** The row AS THE DATABASE STORED IT, never the value that was asked for. */
+  onStatusChanged: (updated: { status: string; updated_at: string }) => void
+  /** The Order moved underneath this screen: re-read everything. */
+  onOutOfDate: () => void
   onRequestCancel: () => void
 }) {
   const [open,           setOpen]           = useState(false)
@@ -475,26 +479,54 @@ function StatusControl({
   if (targets.length === 0) return null
 
   const doStatusChange = async (newStatus: OrderStatus) => {
+    if (saving) return
     setSaving(true)
     const oldStatus = order.status
 
-    const { error } = await supabase
+    // ── THE WRITE ANSWERS FOR ITSELF ──
+    //
+    // Two things this shape buys, neither of which a bare update gives:
+    //
+    // 1. COMPARE AND SWAP. `.eq('status', oldStatus)` means the row is only
+    //    moved if it is still where this screen thinks it is. A second click
+    //    that raced the first, or another person's transition landing in
+    //    between, matches no row and changes nothing — instead of applying a
+    //    move computed from a status that is no longer true.
+    //
+    // 2. THE STORED ROW COMES BACK. `set_updated_at` writes `updated_at` in a
+    //    trigger, and the page displays it as "Last Updated". Applying the
+    //    status we ASKED for and leaving the timestamp alone would put a stale
+    //    time beside a fresh status, so the row is read back in the same
+    //    request — no extra round trip — and the screen takes the database's
+    //    values rather than its own assumption.
+    const { data: updated, error } = await supabase
       .from('orders')
       .update({ status: newStatus })
       .eq('id', order.id)
+      .eq('status', oldStatus)
+      .select('status, updated_at')
+      .maybeSingle()
 
-    if (!error) {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        await supabase.from('order_activity_log').insert({
-          order_id:   order.id,
-          actor_id:   session.user.id,
-          event_type: 'status_changed',
-          payload:    { from: oldStatus, to: newStatus },
-        })
-      }
-      onStatusChanged(newStatus)
+    // No row came back: the transition did not happen. Either it was refused,
+    // or the Order had already moved. The screen cannot know which from here,
+    // and both are answered the same way — re-read, so what is on screen is
+    // what the database holds, and let the person decide again from that.
+    if (error || !updated) {
+      setSaving(false)
+      onOutOfDate()
+      return
     }
+
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session) {
+      await supabase.from('order_activity_log').insert({
+        order_id:   order.id,
+        actor_id:   session.user.id,
+        event_type: 'status_changed',
+        payload:    { from: oldStatus, to: updated.status },
+      })
+    }
+    onStatusChanged(updated as { status: string; updated_at: string })
     setSaving(false)
   }
 
@@ -731,6 +763,49 @@ export default function OrderDetailPage() {
     }))
   }
 
+  /**
+   * The Order's own trail, as one query and one mapping — named once so the
+   * full page load and the narrow refresh below cannot read or shape it
+   * differently.
+   */
+  const activityQuery = () =>
+    supabase
+      .from('order_activity_log')
+      .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
+      .eq('order_id', id)
+      .order('created_at', { ascending: false })
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapActivityRows = (rows: any): ActivityEntry[] =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((rows ?? []) as any[]).map(a => ({
+      id:         a.id,
+      event_type: a.event_type,
+      payload:    a.payload ?? {},
+      created_at: a.created_at,
+      actor_name: a.actor?.full_name ?? undefined,
+    }))
+
+  /**
+   * WHAT A STATUS CHANGE ACTUALLY CHANGED, and nothing else.
+   *
+   * A transition writes two things: `orders.status`, which the caller has
+   * already applied to the row in hand, and one `order_activity_log` entry.
+   * It touches no payment, no allocation, no document version, no change
+   * request and no PI handoff — so re-running the whole page load to see it
+   * spent ten round trips to learn one new row.
+   *
+   * Deliberately NOT used by the amendment, cancellation or change-request
+   * paths: each of those can move commercial columns on the Order itself, and
+   * a narrow refresh there would leave the screen stating figures the database
+   * no longer holds. Those keep the full loadOrder(). The header's explicit
+   * Refresh is also unchanged and still re-reads everything.
+   */
+  const reloadActivity = async () => {
+    const { data } = await activityQuery()
+    setActivity(mapActivityRows(data))
+  }
+
   const loadOrder = async () => {
     const { data: o } = await supabase
       .from('orders')
@@ -809,11 +884,7 @@ export default function OrderDetailPage() {
         .eq('order_id', id)
         .eq('status', 'active'),
 
-      supabase
-        .from('order_activity_log')
-        .select(`id, event_type, payload, created_at, actor:users!actor_id(full_name)`)
-        .eq('order_id', id)
-        .order('created_at', { ascending: false }),
+      activityQuery(),
 
       supabase
         .from('order_document_versions')
@@ -890,15 +961,7 @@ export default function OrderDetailPage() {
       linked: linkedRows, allocations: allocationRows, activeTotals,
     }))
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mappedActivity: ActivityEntry[] = ((aData ?? []) as any[]).map(a => ({
-      id:         a.id,
-      event_type: a.event_type,
-      payload:    a.payload ?? {},
-      created_at: a.created_at,
-      actor_name: a.actor?.full_name ?? undefined,
-    }))
-    setActivity(mappedActivity)
+    setActivity(mapActivityRows(aData))
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     setChangeRequests(((cData ?? []) as any[]).map(c => ({
@@ -1253,10 +1316,21 @@ export default function OrderDetailPage() {
                 order={order}
                 profile={profile}
                 onRequestCancel={() => setCancelOpen(true)}
-                onStatusChanged={newStatus => {
-                  setOrder(o => o ? { ...o, status: newStatus } : o)
-                  loadOrder()
+                onStatusChanged={updated => {
+                  // Both values are the DATABASE's, read back by the update
+                  // itself — `updated_at` is written by a trigger and is shown
+                  // as "Last Updated", so it cannot be assumed. Every other
+                  // status-derived thing on this page (the badge, the allowed
+                  // transitions, the amend and cancel controls) is computed
+                  // from `order.status`, so all of them follow from this.
+                  setOrder(o => o ? { ...o, ...updated } : o)
+                  // A transition writes the row above and one activity entry.
+                  // Nothing else on this page moved, so nothing else is re-read.
+                  reloadActivity()
                 }}
+                // The Order was not where this screen thought it was. Re-read
+                // everything rather than guess which part is stale.
+                onOutOfDate={() => { loadOrder() }}
               />
             )}
 

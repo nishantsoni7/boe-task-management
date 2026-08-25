@@ -28,6 +28,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   attributeToTarget,
@@ -46,36 +48,46 @@ function targetsOf(f: AttributionFixture): string[] {
   return [...seen].sort()
 }
 
-/** What one target is attributed, under the rule, for one fixture. */
+/** What one target is attributed, under the rule, for one fixture.
+ *
+ *  ONE INPUT. The rule reads the active allocations naming this target and
+ *  nothing else — not the payment's amount, not what it does elsewhere, and not
+ *  its dormant `order_id`. `directLinkTarget` stays in the fixtures because the
+ *  SQL still reads it; the application does not. */
 function shareFor(f: AttributionFixture, target: string) {
   const active = f.allocations.filter(a => a.status === 'active')
   return attributeToTarget({
     paymentId: f.paymentId,
-    amount: f.amount,
-    // The whole-payment fact, as the database supplies it.
-    activeAllocationTotal: active
-      .reduce((sum, a) => sum + Number(a.amount), 0)
-      .toFixed(2),
     ownActiveAllocations: active.filter(a => a.targetId === target).map(a => a.amount),
-    directlyLinkedToTarget: f.directLinkTarget === target,
+  })
+}
+
+/** The whole-payment position for a fixture, from its active allocations. */
+function positionFor(f: AttributionFixture) {
+  const active = f.allocations.filter(a => a.status === 'active')
+  return paymentPosition({
+    amount: f.amount,
+    activeAllocationTotal: active.reduce((sum, a) => sum + Number(a.amount), 0).toFixed(2),
   })
 }
 
 // ── Examples A–F, verbatim from the business decision ────────────────────────
 
 describe('the worked examples', () => {
-  test('A. ₹10L legacy-linked to X, no active allocations', () => {
+  test('A. ₹10L with a dormant link to X and no active allocations — ZERO ALLOCATED', () => {
+    // THE RULE THAT CHANGED. This used to attribute the whole payment to X
+    // through the direct-link fallback. Link and Unlink are gone, allocation
+    // rows are the only source of attribution, and a payment with none is
+    // free money that somebody still has to allocate.
     const f = ATTRIBUTION_FIXTURES.A
-    assert.equal(shareFor(f, 'ORDER_X').share, L(10))
-    assert.equal(shareFor(f, 'ORDER_X').basis, 'legacy')
+    assert.equal(shareFor(f, 'ORDER_X').share, '0',
+      'a dormant order_id attributes nothing')
+    assert.equal(shareFor(f, 'ORDER_X').basis, 'none')
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: '0.00', hasDirectLink: true,
-    })
-    // Fully attributed by the fallback, so NOTHING is free. Reporting ₹10L as
-    // unallocated would put committed money into Finance's suspense queue.
-    assert.equal(position.unallocated, '0')
-    assert.equal(position.state, 'full')
+    const position = positionFor(f)
+    assert.equal(position.attributed, '0')
+    assert.equal(position.unallocated, L(10), 'the whole payment is free')
+    assert.equal(position.state, 'unallocated')
   })
 
   test('B. ₹10L legacy-linked to X, ₹5L actively allocated to X', () => {
@@ -85,9 +97,7 @@ describe('the worked examples', () => {
     assert.equal(shareFor(f, 'ORDER_X').share, L(5))
     assert.equal(shareFor(f, 'ORDER_X').basis, 'allocation')
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: L(5), hasDirectLink: true,
-    })
+    const position = positionFor(f)
     assert.equal(position.attributed, L(5))
     assert.equal(position.unallocated, L(5))
     assert.equal(position.state, 'partial')
@@ -98,16 +108,16 @@ describe('the worked examples', () => {
     // total across Orders is ₹4L, never ₹14L.
     const f = ATTRIBUTION_FIXTURES.C
     assert.equal(shareFor(f, 'ORDER_X').share, '0')
-    assert.equal(shareFor(f, 'ORDER_X').basis, 'allocation')
+    assert.equal(shareFor(f, 'ORDER_X').basis, 'none',
+      'no allocation names X, so nothing attributes this payment to it')
     assert.equal(shareFor(f, 'ORDER_Y').share, L(4))
+    assert.equal(shareFor(f, 'ORDER_Y').basis, 'allocation')
 
     const total = targetsOf(f).reduce((sum, t) => sum + Number(shareFor(f, t).share), 0)
     assert.equal(total, 400000)
     assert.notEqual(total, 1400000)
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: L(4), hasDirectLink: true,
-    })
+    const position = positionFor(f)
     assert.equal(position.unallocated, L(6))
   })
 
@@ -116,24 +126,23 @@ describe('the worked examples', () => {
     assert.equal(shareFor(f, 'ORDER_X').share, L(4))
     assert.equal(shareFor(f, 'ORDER_Y').share, L(6))
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: L(10), hasDirectLink: true,
-    })
+    const position = positionFor(f)
     assert.equal(position.unallocated, '0.00')
     assert.equal(position.state, 'full')
   })
 
-  test('E. a reversed allocation is the only allocation — the fallback applies', () => {
+  test('E. a reversed allocation is the only allocation — ZERO ALLOCATED', () => {
+    // A withdrawn claim counts for nothing, which leaves no active row at all.
+    // There is no fallback behind it any more, so this is A.
     const f = ATTRIBUTION_FIXTURES.E
-    assert.equal(shareFor(f, 'ORDER_X').share, L(10))
-    assert.equal(shareFor(f, 'ORDER_X').basis, 'legacy',
-      'a withdrawn claim must not suppress the direct linkage')
+    assert.equal(shareFor(f, 'ORDER_X').share, '0')
+    assert.equal(shareFor(f, 'ORDER_X').basis, 'none')
+    assert.equal(shareFor(f, 'ORDER_Y').share, '0',
+      'and the reversed target gets nothing either')
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: '0.00', hasDirectLink: true,
-    })
-    assert.equal(position.state, 'full')
-    assert.equal(position.unallocated, '0')
+    const position = positionFor(f)
+    assert.equal(position.state, 'unallocated')
+    assert.equal(position.unallocated, L(10))
   })
 
   test('F. active allocations exceeding the payment stay visible', () => {
@@ -143,9 +152,7 @@ describe('the worked examples', () => {
     const f = ATTRIBUTION_FIXTURES.F
     assert.equal(shareFor(f, 'ORDER_X').share, L(15))
 
-    const position = paymentPosition({
-      amount: f.amount, activeAllocationTotal: L(15), hasDirectLink: false,
-    })
+    const position = positionFor(f)
     assert.equal(position.state, 'over')
     assert.equal(position.attributed, L(15))
     // Not negative, and not silently rebalanced.
@@ -158,13 +165,7 @@ describe('the worked examples', () => {
 describe('conservation: attribution + unallocated === the payment', () => {
   for (const [name, f] of Object.entries(ATTRIBUTION_FIXTURES)) {
     test(`${name} conserves the payment amount exactly`, () => {
-      const active = f.allocations.filter(a => a.status === 'active')
-      const activeTotal = active.reduce((s, a) => s + Number(a.amount), 0).toFixed(2)
-      const position = paymentPosition({
-        amount: f.amount,
-        activeAllocationTotal: activeTotal,
-        hasDirectLink: f.directLinkTarget !== null,
-      })
+      const position = positionFor(f)
 
       // Every target's share must sum to what the position calls attributed.
       const summed = targetsOf(f).reduce((s, t) => s + Number(shareFor(f, t).share), 0)
@@ -200,38 +201,41 @@ describe('conservation: attribution + unallocated === the payment', () => {
 
 // ── The safety property when the whole-payment total is unknown ──────────────
 
-describe('an unknown allocation total withholds the fallback', () => {
-  test('a directly linked payment attributes nothing rather than everything', () => {
-    // The failure that matters is "this Order has been paid in full" when it has
-    // not. Under-stating is recoverable; over-stating is what let ₹14L of
-    // attribution exist for ₹10L of money.
-    const result = attributeToTarget({
-      paymentId: 'p', amount: L(10),
-      activeAllocationTotal: null,
-      ownActiveAllocations: [],
-      directlyLinkedToTarget: true,
-    })
+describe('a target is attributed its own rows and nothing else', () => {
+  test('no allocation naming this target means nothing is attributed to it', () => {
+    const result = attributeToTarget({ paymentId: 'p', ownActiveAllocations: [] })
     assert.equal(result.share, '0')
-    assert.equal(result.basis, 'indeterminate')
+    assert.equal(result.basis, 'none')
   })
 
-  test('but a target with its own allocations still gets them', () => {
-    // Its own share is provable from its own read, whatever is unknown
-    // elsewhere.
-    const result = attributeToTarget({
-      paymentId: 'p', amount: L(10),
-      activeAllocationTotal: null,
-      ownActiveAllocations: [L(3)],
-      directlyLinkedToTarget: true,
-    })
+  test('a target with its own allocations gets exactly them', () => {
+    const result = attributeToTarget({ paymentId: 'p', ownActiveAllocations: [L(3)] })
     assert.equal(result.share, L(3))
     assert.equal(result.basis, 'allocation')
   })
 
-  test('and the position reports unknown rather than unallocated', () => {
-    const position = paymentPosition({
-      amount: L(10), activeAllocationTotal: null, hasDirectLink: true,
-    })
+  test('attribution cannot be indeterminate any more', () => {
+    // It used to be: the fallback needed to know whether the payment had
+    // allocations ELSEWHERE, a fact a single Order cannot see, and 'null' meant
+    // "withhold the fallback". With no fallback there is no such dependency —
+    // a target's share is the rows naming it, which the caller has read or has
+    // not. The whole-payment total is no longer an input at all.
+    const source = readFileSync(join(process.cwd(), 'src/lib/finance/paymentAttribution.ts'), 'utf8')
+    const fn = source.slice(source.indexOf('export function attributeToTarget'))
+    const body = fn.slice(0, fn.indexOf('\n}'))
+    assert.equal(body.includes('activeAllocationTotal'), false,
+      'attributeToTarget must not read the whole-payment total')
+    assert.equal(body.includes('directlyLinkedToTarget'), false,
+      'nor any direct linkage')
+    assert.equal(source.includes("'indeterminate'"), false, 'the basis is gone')
+    assert.equal(source.includes("'legacy'"), false, 'and so is the legacy basis')
+  })
+
+  test('the whole-payment position still reports unknown on an unreadable total', () => {
+    // This distinction survives: paymentPosition DOES take the total, because
+    // "how much of this payment is spoken for" genuinely needs it. Null still
+    // means unknown and must never read as unallocated.
+    const position = paymentPosition({ amount: L(10), activeAllocationTotal: null })
     assert.equal(position.state, 'unknown')
     assert.equal(position.unallocated, null)
   })
@@ -242,10 +246,8 @@ describe('an unknown allocation total withholds the fallback', () => {
 describe('the arithmetic is exact to the paise', () => {
   test('shares that floats cannot add come out right', () => {
     const result = attributeToTarget({
-      paymentId: 'p', amount: '0.60',
-      activeAllocationTotal: '0.60',
+      paymentId: 'p',
       ownActiveAllocations: ['0.10', '0.20', '0.30'],
-      directlyLinkedToTarget: false,
     })
     assert.equal(result.share, '0.60')
     assert.notEqual(String(0.1 + 0.2 + 0.3), '0.6')
@@ -253,14 +255,14 @@ describe('the arithmetic is exact to the paise', () => {
 
   test('an unallocated remainder is exact', () => {
     const position = paymentPosition({
-      amount: '1000.00', activeAllocationTotal: '333.33', hasDirectLink: false,
+      amount: '1000.00', activeAllocationTotal: '333.33',
     })
     assert.equal(position.unallocated, '666.67')
   })
 
   test('a payment whose amount cannot be read never becomes zero', () => {
     const position = paymentPosition({
-      amount: null, activeAllocationTotal: '100.00', hasDirectLink: false,
+      amount: null, activeAllocationTotal: '100.00',
     })
     assert.equal(position.state, 'unknown')
     assert.equal(position.unallocated, null)

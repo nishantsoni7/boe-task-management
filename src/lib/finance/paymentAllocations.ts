@@ -46,17 +46,14 @@ import {
 /**
  * One payment, as the summary reads it.
  *
- * `hasDirectLink` is the payment's own order_id. It matters because the
- * canonical attribution rule (paymentAttribution.ts) uses the direct link as a
- * FALLBACK when a payment has no active allocation — so a linked payment with no
- * allocations is attributed in full to that Order and is NOT free money. Calling
- * it "Unallocated" here would put committed rupees into Finance's suspense
- * queue and would count the same money twice across the two modules.
+ * The payment's own `order_id` is deliberately NOT an input. It used to be:
+ * attribution once fell back to the direct linkage when a payment had no active
+ * allocation. That fallback is gone — allocation rows are the only source — so
+ * the summary needs nothing from the payment but its id and its amount.
  */
 export type SummarisablePayment = {
   id: string
   amount: string | number | null
-  hasDirectLink?: boolean
 }
 
 /** One allocation row, as the bounded read returns it. */
@@ -67,6 +64,12 @@ export type PaymentAllocationRow = {
   status: string
   order_id: string | null
   order_submission_id: string | null
+  /**
+   * When the allocation was recorded. Optional because it is a display fact,
+   * never an input to a figure: every total here is summed from
+   * `allocated_amount`, and a missing date changes none of them.
+   */
+  created_at?: string | null
 }
 
 /**
@@ -85,6 +88,8 @@ export type AllocationTarget = {
   /** The display number, when the caller could read the target. */
   label: string | null
   amount: string
+  /** When this allocation was recorded, when the caller selected the column. */
+  allocatedAt?: string | null
 }
 
 export type PaymentAllocationState = 'unknown' | 'unallocated' | 'partial' | 'full' | 'over'
@@ -203,6 +208,7 @@ export function summarizePaymentAllocations(
         targetId,
         label: labels.get(targetId) ?? null,
         amount: share ? exactToString(share) : String(row.allocated_amount ?? ''),
+        allocatedAt: row.created_at ?? null,
       })
     }
 
@@ -222,22 +228,11 @@ export function summarizePaymentAllocations(
     const remaining = subtractExact(amount, allocated)
     const comparison = compareExact(allocated, amount)
 
-    // THE DIRECT-LINK FALLBACK, so this panel and the Orders describe the same
-    // money. A payment with no active allocation but a direct link is attributed
-    // in full to the Order that link names — worked example A — so nothing about
-    // it is free. Reporting it as unallocated would have the same rupees
-    // counted by an Order AND sitting in Finance's suspense queue.
-    if (isZero(allocated) && payment.hasDirectLink) {
-      result.set(payment.id, {
-        paymentId: payment.id,
-        state: 'full',
-        allocated: exactToString(ZERO),
-        unallocated: exactToString(ZERO),
-        targets,
-      })
-      continue
-    }
-
+    // NO DIRECT-LINK FALLBACK. A payment with no active allocation row is
+    // 'unallocated' below, whatever legacy linkage columns it carries — the
+    // allocation ledger is the only source of attribution, so there is nothing
+    // here for a dormant column to stand in for. See the rule at the top of
+    // paymentAttribution.ts.
     result.set(payment.id, {
       paymentId: payment.id,
       state: isZero(allocated) ? 'unallocated'

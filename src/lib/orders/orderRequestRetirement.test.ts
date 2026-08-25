@@ -184,12 +184,17 @@ describe('no Create Order Request action remains', () => {
       'the target selector must not search a workflow that cannot receive money')
   })
 
-  test('the Link modal offers Confirmed Orders and nothing else', () => {
+  test('there is no Link modal at all any more', () => {
+    // This used to assert the Link modal searched Orders and never Order
+    // Requests. Linking is retired outright — allocation is the only way funds
+    // reach a record — so the stronger statement is that neither RPC has a
+    // caller left in the app.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    const modal = view.slice(view.indexOf('function LinkOrderModal'), view.indexOf('// ── Table ─'))
-    assert.equal(modal.includes("from('order_requests')"), false)
-    assert.equal(modal.includes('link_finance_payment_to_order_request'), false)
-    assert.ok(modal.includes('link_finance_payment_to_order'))
+    assert.equal(view.includes('function LinkOrderModal'), false)
+    // The database functions themselves survive — retiring a UI is not a
+    // migration — so this asserts no CALL remains, not that the name is unsaid.
+    assert.equal(view.includes(".rpc('link_finance_payment_to_order"), false)
+    assert.equal(view.includes(".rpc('unlink_finance_payment_from_order"), false)
   })
 
   test('the allocation picker offers Confirmed Orders and PI Drafts only', () => {

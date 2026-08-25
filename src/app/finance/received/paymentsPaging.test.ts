@@ -101,19 +101,25 @@ describe('exact counts', () => {
 // ══ 2. Server-side filtering ══════════════════════════════════════════════════
 
 describe('every narrowing is the database\'s', () => {
-  test('search, the confirmed-allocation filter, the dates and the allocation state are all sent', () => {
+  test('search, the allocation-status tab and both date bounds are all sent', () => {
     // paymentViewFilterClauses(filters.view) — the four-view classification
-    // tab strip — is RETIRED for Confirmed Payments (Requirement 1) in favour
-    // of a real predicate over confirmed_allocation_status.
+    // tab strip — is RETIRED for Confirmed Payments in favour of a real
+    // predicate over confirmed_allocation_status.
+    //
+    // allocationFilterClauses(filters.allocation) is gone too, with the
+    // duplicate `<select>` that was its only caller: the tab strip narrows the
+    // same column in the same query, so the clause below IS the allocation
+    // narrowing now.
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
       "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
-      'allocationFilterClauses(filters.allocation)',
     ]) {
       assert.ok(loader.includes(applied), applied)
     }
+    assert.ok(!loader.includes('allocationFilterClauses'),
+      'the removed dropdown contributes no clause')
   })
 
   test('and the page range is applied to the SAME query', () => {
@@ -243,16 +249,37 @@ describe('a stale answer never repaints a newer page', () => {
 
   test('the search box is debounced, so a fast typist issues one query, not eight', () => {
     assert.ok(view.includes('SEARCH_DEBOUNCE_MS'))
-    assert.ok(view.includes('setTimeout(() => { loadRequests() }, SEARCH_DEBOUNCE_MS)'))
+    assert.ok(view.includes('setTimeout(() => { loadRequests() }, searchChanged ? SEARCH_DEBOUNCE_MS : 0)'),
+      'a keystroke still waits SEARCH_DEBOUNCE_MS before it costs a query')
     assert.ok(view.includes('return () => clearTimeout(timer)'),
       'and an abandoned keystroke cancels its own query')
+  })
+
+  test('and ONLY the search box is — a click is not made to wait for a typist', () => {
+    // THE DEFECT: every dependency of the re-read effect shared the keystroke
+    // timer, so paging and each of the five filter chips — one deliberate click
+    // apiece, with nothing to coalesce — sat idle for 250ms before their
+    // request even started. The paragraph above the effect always said the
+    // non-search controls were not debounced; the delay did not agree.
+    //
+    // Told apart BY VALUE rather than by which dependency fired, because
+    // selecting a filter also clears the term: comparing is what keeps a
+    // genuine search change debounced even when it arrives with a chip.
+    assert.ok(view.includes('const searchChanged = debouncedSearch.current !== filters.search'),
+      'the delay is decided by whether the SEARCH TERM moved')
+    assert.ok(view.includes('debouncedSearch.current = filters.search'),
+      'and the term it was last delayed for is recorded for the next comparison')
+    assert.ok(view.includes('const debouncedSearch = useRef<string | null | undefined>(undefined)'),
+      'undefined until the first change, which no real filter value equals')
   })
 
   test('changing a narrowing returns the reader to page one', () => {
     // Staying on page four of a set that now has one page shows an empty table
     // over a filter that matches plenty.
     assert.ok(view.includes('const narrowBy = <T,>(set: (value: T) => void) => (value: T) => { set(value); setPage(1) }'))
-    for (const control of ['applySearch', 'applyDateFrom', 'applyDateTo', 'applyAllocation']) {
+    // applyAllocation is gone with the duplicate dropdown; applyConfirmedFilter
+    // — the tab strip that replaced it — resets the page the same way.
+    for (const control of ['applySearch', 'applyDateFrom', 'applyDateTo', 'applyConfirmedFilter']) {
       // Aligned assignments in the source, so the spacing is not part of the
       // contract being asserted.
       assert.match(view, new RegExp(`const ${control}\\s*= narrowBy\\(`), control)

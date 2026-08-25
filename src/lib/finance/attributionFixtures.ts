@@ -12,6 +12,19 @@
 // tested against subtly different scenarios. attributionParity.test.ts asserts
 // that the SQL fixture file really does carry every one of them.
 //
+// THE TWO SIDES NOW DISAGREE, DELIBERATELY AND IN ONE PLACE. The application
+// dropped the direct-link fallback when Link/Unlink were retired: attribution
+// comes from active allocation rows and nothing else. The SQL function
+// order_linked_payment_total() STILL APPLIES THE FALLBACK, because changing it
+// needs a migration and none was in scope.
+//
+// So a fixture whose payment has a direct link and NO active allocation is
+// scored differently by the two sides, and `sqlExpected` records what the SQL
+// still says. Exactly two fixtures are affected — A and E — and the parity test
+// asserts that: it pins the SIZE of the divergence, so the follow-up migration
+// that removes the SQL fallback can delete these fields and the test will
+// confirm the two sides agree again.
+//
 // Amounts are strings, because that is how `numeric` crosses the wire and the
 // whole point is that nothing passes through a float on its way to a decision.
 
@@ -32,11 +45,20 @@ export type AttributionFixture = {
   /** The Order the payment's own order_id names, or null. */
   directLinkTarget: string | null
   allocations: FixtureAllocation[]
-  /** What each target must be attributed, by the canonical rule. */
+  /** What each target must be attributed, by the rule the APPLICATION applies. */
   expected: Record<string, string>
-  /** The whole-payment figures. */
+  /** The whole-payment figures, as the application computes them. */
   expectedUnallocated: string
   expectedState: 'unallocated' | 'partial' | 'full' | 'over'
+  /**
+   * What order_linked_payment_total() still says, where it differs — it retains
+   * the direct-link fallback the application dropped. Absent when the two agree,
+   * which is every fixture that has an active allocation. Delete these along
+   * with the SQL fallback.
+   */
+  sqlExpected?: Record<string, string>
+  sqlExpectedUnallocated?: string
+  sqlExpectedState?: 'unallocated' | 'partial' | 'full' | 'over'
   /** F alone: conservation is deliberately broken and must stay visible. */
   overAllocated?: true
   /** Why this case exists, for the reader of a failing assertion. */
@@ -54,12 +76,16 @@ export const ATTRIBUTION_FIXTURES: Record<string, AttributionFixture> = {
     amount: '1000000.00',
     directLinkTarget: X,
     allocations: [],
-    expected: { [X]: '1000000.00' },
-    expectedUnallocated: '0',
-    expectedState: 'full',
-    note: 'Legacy link with no allocations: the fallback attributes the whole '
-        + 'payment, so nothing is free. Reporting it as unallocated would put '
-        + 'committed money into the suspense queue.',
+    expected: { [X]: '0' },
+    expectedUnallocated: '1000000.00',
+    expectedState: 'unallocated',
+    sqlExpected: { [X]: '1000000.00' },
+    sqlExpectedUnallocated: '0',
+    sqlExpectedState: 'full',
+    note: 'A dormant link and no allocation row. THE APPLICATION ATTRIBUTES '
+        + 'NOTHING: allocation rows are the only source, so this is Zero '
+        + 'Allocated and free in full. The SQL still applies the fallback and '
+        + 'credits X the whole payment — the one divergence, recorded above.',
   },
 
   B: {
@@ -112,11 +138,15 @@ export const ATTRIBUTION_FIXTURES: Record<string, AttributionFixture> = {
     amount: '1000000.00',
     directLinkTarget: X,
     allocations: [{ status: 'reversed', targetId: Y, targetKind: 'order', amount: '400000.00' }],
-    expected: { [X]: '1000000.00', [Y]: '0' },
-    expectedUnallocated: '0',
-    expectedState: 'full',
-    note: 'A reversed allocation is a withdrawn claim. It does not suppress the '
-        + 'direct linkage, so the fallback applies exactly as in A.',
+    expected: { [X]: '0', [Y]: '0' },
+    expectedUnallocated: '1000000.00',
+    expectedState: 'unallocated',
+    sqlExpected: { [X]: '1000000.00', [Y]: '0' },
+    sqlExpectedUnallocated: '0',
+    sqlExpectedState: 'full',
+    note: 'A reversed allocation is a withdrawn claim and counts for nothing, '
+        + 'which leaves no active row at all — so this behaves exactly as A: '
+        + 'Zero Allocated for the application, fallback for the SQL.',
   },
 
   F: {

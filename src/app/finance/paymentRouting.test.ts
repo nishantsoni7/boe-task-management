@@ -398,11 +398,27 @@ describe('the fifteen compatibility cases', () => {
     active_allocation_count: 0, attribution_complete: true, ...row,
   })
 
-  test('1. a legacy approved_linked payment with a parent order_id is Order money', () => {
+  test('1. a legacy approved_linked payment with a parent order_id is AVAILABLE money', () => {
+    // THE RULE THAT CHANGED. This used to be Order money, attributed in full by
+    // the direct-link fallback. Link and Unlink are gone and allocation rows are
+    // the only source of attribution, so a payment with none is money nobody
+    // has claimed — and the honest place for it is Available, where somebody
+    // can allocate it.
     const c = classify({ order_id: 'order-1', status: 'approved_linked' })
+    assert.deepEqual(c.views.sort(), ['all', 'available'])
+    assert.equal(Number(c.orderLinked), 0, 'a dormant order_id attributes nothing')
+    assert.equal(Number(c.available), 1000000, 'the whole payment is free to allocate')
+  })
+
+  test('1b. and it becomes Order money as soon as an allocation names the Order', () => {
+    // The same row, once the allocation the product actually creates exists.
+    const c = classify({
+      order_id: 'order-1', status: 'approved_linked',
+      allocated_total: '1000000.00', order_allocated_total: '1000000.00',
+      active_allocation_count: 1,
+    })
     assert.deepEqual(c.views.sort(), ['all', 'orders'])
     assert.equal(Number(c.orderLinked), 1000000)
-    // And attributed in FULL by rule 2 — so nothing about it is available.
     assert.equal(Number(c.available), 0)
   })
 
@@ -742,5 +758,46 @@ describe('multi-allocation behaviour', () => {
     assert.deepEqual(links.map(l => l.label), ['An Order', 'ORD-B', 'A PI Draft'])
     assert.deepEqual(linkCounts(links),
       { total: 3, openable: 1, hidden: 2, orders: 2, submissions: 1 })
+  })
+})
+
+// ══ Every Order search on this page is race-guarded ═══════════════════════════
+
+describe('a slow search never repaints a newer one', () => {
+  const view = readFileSync(join(process.cwd(), 'src/app/finance/received/ReceivedPaymentsView.tsx'), 'utf8')
+
+  test('the Link Order search is gone, along with the modal that held it', () => {
+    // THE DEFECT this used to guard: LinkOrderModal's Order search wrote
+    // whatever came back, with no token, so a slow query for "ORD" landing
+    // after a fast one for "ORD-2026" replaced the narrower list under a
+    // reader who had already typed past it — and that was the list an Order
+    // was picked from to attach money to.
+    //
+    // The modal is now removed outright: linking a payment to ONE Order could
+    // not express a partial attachment, a split across records, or a remaining
+    // balance, so allocation replaced it. The race cannot occur because the
+    // search does not exist.
+    assert.equal(view.includes('function LinkOrderModal'), false,
+      'the Link Order modal must not come back')
+    assert.equal(view.includes(".rpc('link_finance_payment_to_order"), false,
+      'and neither must the RPC call that was its submit')
+  })
+
+  test('the four surviving Order searches still carry the guard', () => {
+    // Removing the fifth call site must not quietly relax the other four.
+    for (const path of [
+      'src/app/finance/components/PaymentTargetFields.tsx',
+      'src/app/finance/received/AllocatePaymentModal.tsx',
+      'src/app/finance/received/AllocateFundsModal.tsx',
+      'src/app/finance/received/RecordSplitPaymentModal.tsx',
+    ]) {
+      const body = readFileSync(join(process.cwd(), path), 'utf8')
+      assert.ok(body.includes('if (token !== searchToken.current) return'),
+        `${path} must still discard a superseded search`)
+      const claimed = body.indexOf('const token = ++searchToken.current')
+      const checked = body.indexOf('if (token !== searchToken.current) return')
+      assert.ok(claimed > -1 && claimed < checked,
+        `${path} must claim the token before it re-reads it`)
+    }
   })
 })

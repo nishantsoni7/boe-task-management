@@ -154,13 +154,17 @@ describe('the SQL assertion file carries every fixture the TypeScript side asser
     for (const [, id, label, orderAtt, piAtt, available, count] of rows) {
       const fixture = Object.values(CLASSIFICATION_FIXTURES).find(f => f.paymentId === id)
       assert.ok(fixture, `SQL fixture ${label} (${id}) has no TypeScript counterpart`)
-      assert.equal(Number(orderAtt).toFixed(2), Number(fixture.expected.orderLinked).toFixed(2),
-        `${label}: order attribution disagrees between SQL and TypeScript`)
-      assert.equal(Number(piAtt).toFixed(2), Number(fixture.expected.piLinked).toFixed(2),
-        `${label}: PI attribution disagrees between SQL and TypeScript`)
+      // `sqlExpected` where the two sides deliberately differ — the projection
+      // keeps the direct-link fallback the application dropped. Everywhere else
+      // it is absent and this compares against the one shared expectation.
+      const expect = fixture.sqlExpected ?? fixture.expected
+      assert.equal(Number(orderAtt).toFixed(2), Number(expect.orderLinked).toFixed(2),
+        `${label}: order attribution disagrees with the SQL's own documented answer`)
+      assert.equal(Number(piAtt).toFixed(2), Number(expect.piLinked).toFixed(2),
+        `${label}: PI attribution disagrees with the SQL's own documented answer`)
       assert.equal(Number(available).toFixed(2),
-        Number(fixture.expected.available ?? '0').toFixed(2),
-        `${label}: available balance disagrees between SQL and TypeScript`)
+        Number(expect.available ?? '0').toFixed(2),
+        `${label}: available balance disagrees with the SQL's own documented answer`)
       assert.equal(Number(count), fixture.expected.allocationCount,
         `${label}: allocation count disagrees between SQL and TypeScript`)
     }
@@ -179,12 +183,34 @@ describe('the SQL assertion file carries every fixture the TypeScript side asser
     for (const [, id, label, inOrders, inPi, inAvailable] of rows) {
       const fixture = Object.values(CLASSIFICATION_FIXTURES).find(f => f.paymentId === id)
       assert.ok(fixture, `SQL view row ${label} (${id}) has no TypeScript counterpart`)
-      assert.equal(inOrders === 'true', fixture.expected.views.includes('orders'),
-        `${label}: "Linked to Orders" disagrees between SQL and TypeScript`)
-      assert.equal(inPi === 'true', fixture.expected.views.includes('pi_drafts'),
-        `${label}: "Linked to PI Drafts" disagrees between SQL and TypeScript`)
-      assert.equal(inAvailable === 'true', fixture.expected.views.includes('available'),
-        `${label}: "Available to Allocate" disagrees between SQL and TypeScript`)
+      const expect = fixture.sqlExpected ?? fixture.expected
+      assert.equal(inOrders === 'true', expect.views.includes('orders'),
+        `${label}: "Linked to Orders" disagrees with the SQL's own documented answer`)
+      assert.equal(inPi === 'true', expect.views.includes('pi_drafts'),
+        `${label}: "Linked to PI Drafts" disagrees with the SQL's own documented answer`)
+      assert.equal(inAvailable === 'true', expect.views.includes('available'),
+        `${label}: "Available to Allocate" disagrees with the SQL's own documented answer`)
+    }
+  })
+
+  test('the divergence is bounded to the fallback fixtures, and the app claims LESS', () => {
+    // Same bound as attributionParity.test.ts, restated over the classification
+    // figures: only a payment with a dormant link and no active allocation may
+    // differ, and where it differs the application must attribute less and
+    // offer MORE as available — never the other way round.
+    for (const key of CLASSIFICATION_FIXTURE_ORDER) {
+      const f = CLASSIFICATION_FIXTURES[key]
+      const hasActive = f.allocations.some(a => a.status === 'active')
+      const shouldDiverge = f.directLinkTarget !== null && !hasActive
+      assert.equal(Boolean(f.sqlExpected), shouldDiverge,
+        `${f.label}: divergence must follow the rule, not be declared case by case`)
+      if (!f.sqlExpected) continue
+      assert.ok(Number(f.expected.orderLinked) < Number(f.sqlExpected.orderLinked),
+        `${f.label}: the app must attribute strictly less to the Order`)
+      assert.ok(Number(f.expected.available ?? '0') > Number(f.sqlExpected.available ?? '0'),
+        `${f.label}: and must report the money as available instead`)
+      assert.equal(f.expected.views.includes('orders'), false,
+        `${f.label}: it is not an Order-linked payment for the application`)
     }
   })
 

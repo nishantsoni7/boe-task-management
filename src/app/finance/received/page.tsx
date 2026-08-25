@@ -15,10 +15,12 @@
 // most it affects which of VIEW_META's page-title strings is shown — never
 // which rows are returned.
 //
-// DEEP LINKS ARE UNCHANGED. `?payment=…&action=link|edit` still arrives here from
-// the Admin Action Queue and from Finance notifications, and still opens the
-// same modal it always did — the list resolves the row by id when it is not on
-// the current page.
+// DEEP LINKS STILL ARRIVE HERE from the Admin Action Queue and from Finance
+// notifications, and the list resolves the row by id when it is not on the
+// current page. The attachment action is `?action=allocate`, and that is the
+// only value that opens Allocate Funds — `link` was retired with the workflow
+// and is NOT an alias for it: an unrecognised action lands on the ordinary
+// list rather than being reinterpreted as a different one.
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'

@@ -150,92 +150,23 @@ export function isNarrowed(state: {
   search: string
   dateFrom: string | null
   dateTo: string | null
-  allocation?: AllocationFilter
 }): boolean {
   return sanitizeSearchTerm(state.search) !== ''
     || dateBound(state.dateFrom) !== null
     || dateBound(state.dateTo) !== null
-    || (state.allocation !== undefined && state.allocation !== 'all')
 }
 
-// ── The allocation narrowing ─────────────────────────────────────────────────
+// ── The allocation narrowing, and why it is not here any more ────────────────
 //
-// HOW MUCH OF A PAYMENT HAS BEEN GIVEN A HOME — Finance's question, and only
-// Finance's: an Order screen reads its own allocations, so it can never say what
-// the REST of a payment is doing.
+// A `<select>` used to offer Any allocation / Unallocated / Partly / Fully /
+// Over-allocated, backed by ALLOCATION_FILTER_OPTIONS, allocationFilterClauses()
+// and a feature-probe, allocationFilterAvailable(). All of it is gone.
 //
-// THIS IS THE ONE NARROWING THAT NEEDS THE DATABASE TO CHANGE, and that is why
-// it is gated. finance_received_payments deliberately exposes no allocated
-// amount and no split (20260921000000 §8a), so the state cannot be filtered
-// server-side against the projection as it stands. Filtering it in the browser
-// is not an alternative: over a PAGED list that narrows fifty rows and silently
-// hides every match on page two, which is precisely the class of defect the
-// paging was introduced to end.
+// It was the SECOND control for one narrowing. CONFIRMED_ALLOCATION_FILTERS in
+// paymentSurfaces.ts offers the identical five states over the same
+// `confirmed_allocation_status` column in the same query, as the tab strip the
+// page leads with — so the two could be set to contradict each other and the
+// reader had to know which won. The tabs are what survives.
 //
-// So the states below are computed by a forward-only migration that adds
-// `allocated_total` to the projection, and `allocationFilterAvailable` reports
-// whether that migration has been applied. Until it has, the control is not
-// offered at all — see the note on it. Nothing degrades to a wrong answer.
-
-export type AllocationFilter = 'all' | 'unallocated' | 'partial' | 'full' | 'over'
-
-export const ALLOCATION_FILTER_OPTIONS: { value: AllocationFilter; label: string }[] = [
-  { value: 'all',         label: 'Any allocation' },
-  { value: 'unallocated', label: 'Unallocated' },
-  { value: 'partial',     label: 'Partly allocated' },
-  { value: 'full',        label: 'Fully allocated' },
-  // Kept, because the state is real even though the database refuses to create
-  // it: the capacity trigger (20260918000000 §2) rejects an allocation that
-  // would exceed its payment, so a row in this state is a signal that something
-  // is wrong and must be findable rather than rounded into "Fully".
-  { value: 'over',        label: 'Over-allocated' },
-]
-
-export function isAllocationFilter(value: string): value is AllocationFilter {
-  return ALLOCATION_FILTER_OPTIONS.some(o => o.value === value)
-}
-
-/**
- * The projection column the allocation narrowing reads.
- *
- * `allocated_total` — the sum of a payment's ACTIVE allocations, computed in
- * `numeric` in the view. Named once so the filter, the availability probe and
- * the select list cannot disagree about it.
- */
-export const ALLOCATED_TOTAL_COLUMN = 'allocated_total'
-
-/**
- * The allocation narrowing as PostgREST filters.
- *
- * COMPARED AGAINST THE PAYMENT'S OWN AMOUNT, not against a constant, so the
- * boundaries are exact at any figure. PostgREST cannot compare two columns in a
- * filter, so the comparison is expressed as a boolean the VIEW computes —
- * `allocation_state` — for the three states that need it, and a plain numeric
- * test for the one that does not.
- *
- * `unallocated` IS A ZERO TEST, not an "is null" test. A payment with no
- * allocations sums to 0 through the view's coalesce, and null would mean the
- * column is missing rather than the money being free.
- */
-export function allocationFilterClauses(filter: AllocationFilter): QueryClause[] {
-  if (filter === 'all') return []
-  return [{ kind: 'eq', column: 'allocation_state', value: filter }]
-}
-
-/**
- * Whether the allocation control may be offered.
- *
- * FAILS CLOSED. The projection gains `allocation_state` only when the
- * forward-only migration is applied; until then a probe of the view does not
- * return the column and this is false, so the control is not drawn and no query
- * is ever built against a column that does not exist. A filter that silently
- * matched nothing, or a request PostgREST refused outright, would both be worse
- * than an absent control.
- */
-export function allocationFilterAvailable(
-  probe: { columns: readonly string[] } | null | undefined,
-): boolean {
-  if (!probe) return false
-  return probe.columns.includes('allocation_state')
-    && probe.columns.includes(ALLOCATED_TOTAL_COLUMN)
-}
+// The probe went with it, and that is a round trip saved on every page load: it
+// existed only to decide whether to draw the dropdown.
