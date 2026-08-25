@@ -109,36 +109,51 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
 // ── The Confirmed Payments table ─────────────────────────────────────────────
 
 /**
- * NINE COLUMNS, IN THIS ORDER, AND NO OTHERS.
+ * EIGHT COLUMNS, IN THIS ORDER, AND NO OTHERS.
  *
  * The table carried eleven and was honestly wide: at 1024px it either scrolled
  * sideways inside its own box or squeezed every figure into an unreadable
- * column, and two of the eleven — the payment reference and the client name —
- * were repeated in the row a reader opens anyway. What survives is what a
- * Finance reader scans for: how much, how, when, where it went, what is left,
- * who raised it, who confirmed it, and what they can do about it.
+ * column. What survives is what a Finance reader scans a LIST for — how much,
+ * when, how, how much of it is spoken for, who raised it, who confirmed it —
+ * with everything else one click away on the row itself.
  *
  * WHAT WAS REMOVED AND WHERE IT WENT, so nothing is silently lost:
  *
- *   Payment (reference)  → the detail panel, and search still matches it
- *   Client               → the detail panel; the card view still leads with it
+ *   Payment (reference)  → the detail modal, and search still matches it
  *   Status               → the page IS the status now. Every row is confirmed.
- *   Goes To              → replaced by counts beside the two money columns.
- *                          A list of Order names inline is what made the row
- *                          wrap unpredictably and the table impossible to size.
+ *   Goes To              → the detail modal's allocation breakdown
+ *   Customer             → the detail modal, UNABRIDGED. It was the widest
+ *                          column and the most often truncated, which made it
+ *                          the one column that cost width and still could not
+ *                          be trusted to be read in full.
+ *   Total Allocated  }   → the detail modal, beside the per-target breakdown
+ *   Remaining        }     they are the totals OF. Two money columns that only
+ *                          make sense together, and neither of which can be
+ *                          acted on from the row, are a detail view's job; the
+ *                          Allocation Status badge is the row's summary of both
+ *                          and is now the door to them.
+ *
+ * NOTHING WAS DROPPED FROM THE QUERY. Customer, both totals and every linkage
+ * field are still selected by the one bounded read and still reach the modal —
+ * this is a change to what the TABLE draws, not to what the page knows.
+ *
+ * `width` is a hint for the header cell, not a hard size: the table lays out
+ * `auto`, so these keep the eight columns from drifting apart on a wide screen
+ * while still letting a long name take the room it needs.
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
-  { key: 'payment_id',   label: 'Payment ID',    align: 'left'  },
-  { key: 'customer',     label: 'Customer',      align: 'left'  },
-  { key: 'amount',       label: 'Amount',        align: 'right' },
-  { key: 'mode',         label: 'Mode',          align: 'left'  },
-  { key: 'date',         label: 'Date',          align: 'left'  },
-  { key: 'status',       label: 'Allocation',    align: 'left'  },
-  { key: 'total_allocated', label: 'Total Allocated', align: 'right' },
-  { key: 'unallocated',  label: 'Remaining',     align: 'right' },
-  { key: 'initiated_by', label: 'Initiated by',  align: 'left'  },
-  { key: 'approved_by',  label: 'Approved by',   align: 'left'  },
-  { key: 'actions',      label: 'Actions',       align: 'right' },
+  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '120px' },
+  // Right-aligned with tabular figures, as every money column in the app is:
+  // digits line up by place value, so magnitudes are comparable down the column.
+  { key: 'amount',       label: 'Amount',            align: 'right', width: '130px' },
+  { key: 'date',         label: 'Received Date',     align: 'left',  width: '120px' },
+  { key: 'mode',         label: 'Mode',              align: 'left',  width: '110px' },
+  // The widest of the remaining columns because its content is a badge that is
+  // also a control, and because four different labels have to fit without wrap.
+  { key: 'status',       label: 'Allocation Status', align: 'left',  width: '170px' },
+  { key: 'initiated_by', label: 'Initiated By',      align: 'left'  },
+  { key: 'approved_by',  label: 'Approved By',       align: 'left'  },
+  { key: 'actions',      label: 'Actions',           align: 'right', width: '110px' },
 ] as const
 
 /**

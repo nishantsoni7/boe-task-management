@@ -126,20 +126,32 @@ describe('the status list is the database’s, not this module’s', () => {
 
 // ── The eleven columns ───────────────────────────────────────────────────────
 //
-// REVISED (Requirement 2). The table grew back to eleven columns — Payment ID
-// and Customer lead it, "Allocation" is the confirmed_allocation_status badge,
-// and the exact-figure pair is Total Allocated / Remaining rather than the
-// vague "Linked Against" split. The PI-Draft/Order breakdown that no longer
-// fits the primary row moved to CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS, shown in
-// an expandable per-row detail instead.
+// REVISED AGAIN. The table is now EIGHT columns. Customer, Total Allocated and
+// Remaining left the primary row together and live in the detail modal the
+// Allocation Status badge opens — Customer because it was the widest and most
+// truncated column, and the two money figures because they are halves of one
+// answer that cannot be acted on from a row. Nothing left the QUERY.
 
-describe('Confirmed Payments has exactly eleven primary columns, in this order', () => {
+describe('Confirmed Payments has exactly eight primary columns, in this order', () => {
   test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Payment ID', 'Customer', 'Amount', 'Mode', 'Date', 'Allocation',
-      'Total Allocated', 'Remaining', 'Initiated by', 'Approved by', 'Actions',
+      'Payment ID', 'Amount', 'Received Date', 'Mode', 'Allocation Status',
+      'Initiated By', 'Approved By', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 11)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 8)
+  })
+
+  test('Customer and the two money columns are gone from the column set', () => {
+    const keys = CONFIRMED_PAYMENT_COLUMNS.map(c => c.key) as string[]
+    for (const gone of ['customer', 'total_allocated', 'unallocated']) {
+      assert.ok(!keys.includes(gone), `${gone} must not be a primary column`)
+    }
+  })
+
+  test('the date column is labelled Received Date', () => {
+    const date = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'date')
+    assert.equal(date?.label, 'Received Date',
+      'a bank statement is reconciled against when the money moved')
   })
 
   test('the breakdown columns are the two exact allocation-destination figures, shown only in the expandable detail', () => {
@@ -149,9 +161,22 @@ describe('Confirmed Payments has exactly eleven primary columns, in this order',
     assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
-  test('the money columns are right-aligned and the rest are not', () => {
+  test('the money column is right-aligned and the rest are not', () => {
     const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => c.align === 'right').map(c => c.key)
-    assert.deepEqual(right, ['amount', 'total_allocated', 'unallocated', 'actions'])
+    assert.deepEqual(right, ['amount', 'actions'],
+      'Amount keeps the app-wide money alignment; Actions stays trailing')
+  })
+
+  test('the columns carry width hints so eight do not drift apart on a wide screen', () => {
+    const widths = CONFIRMED_PAYMENT_COLUMNS
+      .filter(c => 'width' in c).map(c => c.key as string)
+    for (const sized of ['payment_id', 'amount', 'date', 'mode', 'status', 'actions']) {
+      assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
+    }
+    // The two name columns deliberately take the slack.
+    for (const flexible of ['initiated_by', 'approved_by']) {
+      assert.ok(!widths.includes(flexible), `${flexible} should absorb remaining width`)
+    }
   })
 
   test('the removed columns are gone from the rendered table', () => {

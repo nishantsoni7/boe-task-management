@@ -2,6 +2,7 @@
 
 import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Eye, Link2, Pencil, Split, Trash2, Unlink, type LucideIcon } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
 import { createClient } from '@/lib/supabase/client'
@@ -528,10 +529,16 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
     )
   }
 
+  // ZERO ALLOCATED — an empty state, not an empty panel. It still states the
+  // figure that matters (how much is free), because "nothing allocated" and
+  // "how much is there to allocate" are two different facts and the second is
+  // the one somebody acts on.
   if (summary.targets.length === 0) {
     return (
       <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
-        <strong style={{ color: '#9A3412' }}>{ALLOCATION_STATE_LABEL.unallocated}.</strong>{' '}
+        <strong style={{ color: '#9A3412' }}>
+          No funds from this payment have been allocated yet.
+        </strong>{' '}
         The whole of {formatMoney(String(amount))} is still free to be assigned to a PI or an Order.
       </div>
     )
@@ -573,6 +580,14 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
                   </button>
                 ) : (
                   <span style={{ fontSize: '13px', color: colors.primary, wordBreak: 'break-word' }}>{name}</span>
+                )}
+                {/* When the money was assigned here. Absent on a reader whose
+                    select did not ask for it, and absent is simply nothing —
+                    it is a display fact and no total depends on it. */}
+                {target.allocatedAt && (
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                    Allocated {fmtDate(target.allocatedAt)}
+                  </div>
                 )}
               </div>
               <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
@@ -703,14 +718,34 @@ function DetailsModal({
           display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
           borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
         }}>
-          <MetaItem label="Payment Date" value={fmtDate(r.payment_date)} />
+          {/* PAYMENT ID leads, because it is what the table now leads with and
+              what somebody types to confirm a deletion. The human id, never the
+              row's UUID. */}
+          <MetaItem label="Payment ID"   value={r.human_payment_id ?? '—'} muted={!r.human_payment_id} />
+          <MetaItem label="Received Date" value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
           <MetaItem label="Received In"  value={receivedInLabel(r.received_in)} />
+          {/* THE TWO PEOPLE. The table abbreviates both to fit a column; here
+              they are whole, which is half the reason the columns may abbreviate
+              at all. */}
+          <MetaItem label="Initiated By" value={r.submitted_by_name ?? '—'} muted={!r.submitted_by_name} />
+          <MetaItem label="Approved By"  value={r.approved_by_name ?? '—'} muted={!r.approved_by_name} />
           {r.order_request_number && !r.order_number ? (
             <MetaItem label="Linked Order Request" value={r.order_request_number} />
           ) : (
             <MetaItem label="Order Number" value={r.order_number ?? '—'} muted={!r.order_number} />
           )}
+          {/* The status the badge in the row shows, restated inside the record
+              it opens — the same component, inert here because this IS the
+              destination. */}
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Allocation Status
+            </div>
+            <div style={{ marginTop: '5px' }}>
+              <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1253,23 +1288,53 @@ const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'success' 
  * different (red/amber) tone and a tooltip explaining why, never the
  * reassuring green "Fully Allocated" look.
  */
-function ConfirmedAllocationBadge({ status }: { status: ConfirmedAllocationStatus | null }) {
+function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
+  status: ConfirmedAllocationStatus | null
+  /** The human Payment ID, for the accessible name. Never the raw UUID. */
+  paymentId?: string | null
+  /** Opens the payment's detail record. Omit to render a plain, inert badge. */
+  onOpen?: () => void
+}) {
   if (!status) return <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
   const meta = CONFIRMED_ALLOCATION_BADGE[status]
   const style = CONFIRMED_ALLOCATION_TONE_STYLE[meta.tone]
+  const overTitle = status === 'over'
+    ? 'Allocated total exceeds payment amount — flagged for Admin review'
+    : undefined
+
+  // THE SAME BADGE, IN BOTH SHAPES. The colours, padding, radius, weight and
+  // wrap behaviour below are shared, so a clickable badge and an inert one are
+  // the same object to the eye — the control adds a pointer and the interaction
+  // states, and takes nothing away from the status it is showing.
+  const shared: React.CSSProperties = {
+    display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+    background: style.bg, color: style.color, border: `1px solid ${style.border}`,
+    fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+  }
+
+  if (!onOpen) return <span title={overTitle} style={shared}>{meta.label}</span>
+
   return (
-    <span
-      title={status === 'over'
-        ? 'Allocated total exceeds payment amount — flagged for Admin review'
-        : undefined}
-      style={{
-        display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
-        background: style.bg, color: style.color, border: `1px solid ${style.border}`,
-        fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+    <button
+      type="button"
+      // Enter and Space come free with a real <button>; hover and
+      // focus-visible are in globals.css, because neither can be inline.
+      className="boe-allocation-badge"
+      // Names the RECORD, not the state: a screen reader hears which payment it
+      // is about to open, which is the thing that distinguishes forty rows all
+      // reading "Fully Allocated".
+      aria-label={`View allocation details for ${paymentId ?? 'this payment'}`}
+      title={overTitle ?? 'View allocation details'}
+      onClick={event => {
+        // The row itself opens the record too, and the expand toggle sits in
+        // the same row. Neither may also fire from this one deliberate click.
+        event.stopPropagation()
+        onOpen()
       }}
+      style={{ ...shared, cursor: 'pointer', font: 'inherit', fontSize: '11px', fontWeight: 600 }}
     >
       {meta.label}
-    </span>
+    </button>
   )
 }
 
@@ -1410,19 +1475,11 @@ function ReceivedPaymentsTable({
                     {r.human_payment_id}
                   </td>
 
-                  <td style={{ ...TD, maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    <CustomerName name={r.client_name} style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }} />
-                  </td>
-
                   <td style={{
                     ...TD, textAlign: 'right', fontSize: '13.5px', fontWeight: 700,
                     color: colors.primary, fontVariantNumeric: 'tabular-nums',
                   }}>
                     {fmtAmount(r.amount)}
-                  </td>
-
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
-                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
                   {/* THE PAYMENT DATE, not created_at. When the money moved is a
@@ -1432,21 +1489,20 @@ function ReceivedPaymentsTable({
                     {fmtDate(r.payment_date)}
                   </td>
 
-                  <td style={TD}>
-                    <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
+                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                    {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
-                  <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
-                    <MoneyCell value={figures.totalAllocated} />
-                  </td>
-
-                  {/* REMAINING IS NEVER OVERSTATED. "—" (withheld, muted) when
-                      this reader's view of the allocation ledger is
-                      incomplete — never a computed guess. */}
-                  <td style={{ ...TD, textAlign: 'right', fontSize: '12px' }}>
-                    <MoneyCell
-                      value={figures.remaining}
-                      title={figures.remaining === null ? 'Complete picture not available' : undefined}
+                  {/* THE BADGE IS THE DOOR TO THE FIGURES THE ROW NO LONGER
+                      PRINTS. Total Allocated and Remaining left the table
+                      together — they are two halves of one answer and neither
+                      can be acted on from a row — so the status that summarises
+                      them opens the record that shows them in full. */}
+                  <td style={TD} onClick={e => e.stopPropagation()}>
+                    <ConfirmedAllocationBadge
+                      status={r.confirmed_allocation_status}
+                      paymentId={r.human_payment_id}
+                      onOpen={() => onView(r)}
                     />
                   </td>
 
@@ -1468,35 +1524,47 @@ function ReceivedPaymentsTable({
                       style={{ display: 'inline-flex', gap: '4px', alignItems: 'center' }}
                       onClick={e => e.stopPropagation()}
                     >
+                      {/* KEPT, NOT REDUNDANT. The Allocation Status badge now
+                          opens the same record, but it is a status first and
+                          only reads as a door once you know that; View is the
+                          row's explicit, unambiguous way in, and it is the ONLY
+                          one on a row whose status cell is "—". Its label stays
+                          visible — the icon supports it. */}
                       <button
                         onClick={() => onView(r)}
                         className="boe-btn boe-btn-ghost"
-                        style={{ padding: '3px 8px', fontSize: '11px', fontWeight: 500 }}
+                        title={`View details for ${r.human_payment_id ?? 'this payment'}`}
+                        aria-label={`View details for ${r.human_payment_id ?? 'this payment'}`}
+                        style={{
+                          padding: '3px 8px', fontSize: '11px', fontWeight: 500,
+                          display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        }}
                       >
+                        <Eye size={13} strokeWidth={2} aria-hidden="true" />
                         View
                       </button>
                       <RowActionsMenu
                         label={`Actions for ${r.client_name}`}
                         actions={[
                           ...(offerAllocate
-                            ? [{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r) }]
+                            ? [{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r), Icon: Split }]
                             : []),
                           ...(canManage && !r.order_id
-                            ? [{ label: 'Link to an Order', onSelect: () => onLink(r) }]
+                            ? [{ label: 'Link to an Order', onSelect: () => onLink(r), Icon: Link2 }]
                             : []),
                           ...(canManage && (r.order_id || r.order_request_id)
                               && r.payment_against === 'new_order'
-                            ? [{ label: 'Unlink', onSelect: () => onUnlink(r) }]
+                            ? [{ label: 'Unlink', onSelect: () => onUnlink(r), Icon: Unlink }]
                             : []),
                           ...(canManage
-                            ? [{ label: 'Edit', onSelect: () => onEdit(r) }]
+                            ? [{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }]
                             : []),
                           // DELETE — last, admin-only for any status
                           // (Requirement 4). Offered under every allocation
                           // filter (zero/partial/full/over) — canDeleteRow is
                           // the single gate, independent of allocation state.
                           ...(canDeleteRow(r)
-                            ? [{ label: PAYMENT_DELETE_CONFIRM_LABEL, onSelect: () => onDelete(r), danger: true }]
+                            ? [{ label: PAYMENT_DELETE_CONFIRM_LABEL, onSelect: () => onDelete(r), danger: true, Icon: Trash2 }]
                             : []),
                         ]}
                       />
@@ -1566,7 +1634,7 @@ function ReceivedPaymentsTable({
 function RowActionsMenu({ label, actions }: {
   label: string
   /** `danger` marks a destructive entry, which is drawn in red and sits last. */
-  actions: { label: string; onSelect: () => void; danger?: boolean }[]
+  actions: { label: string; onSelect: () => void; danger?: boolean; Icon?: LucideIcon }[]
 }) {
   const [open, setOpen] = useState(false)
   const [placement, setPlacement] = useState<MenuPlacement | null>(null)
@@ -1653,7 +1721,15 @@ function RowActionsMenu({ label, actions }: {
           className={`boe-menu-item${action.danger ? ' boe-menu-item--danger' : ''}`}
           onClick={() => { setOpen(false); action.onSelect() }}
         >
-          {action.label}
+          {/* THE ICON SUPPORTS THE LABEL, IT DOES NOT REPLACE IT. The text is
+              always rendered; the glyph is decorative and hidden from screen
+              readers, which would otherwise announce it twice. A fixed 14px box
+              keeps every label starting on the same x, including an action that
+              has no icon. */}
+          {action.Icon
+            ? <action.Icon size={14} strokeWidth={2} aria-hidden="true" style={{ flexShrink: 0 }} />
+            : <span aria-hidden="true" style={{ width: 14, flexShrink: 0 }} />}
+          <span>{action.label}</span>
         </button>
       ))}
     </div>
@@ -1777,7 +1853,7 @@ function PaymentsToVerifyTable({ rows, canManage, highlightId, onView, onEdit }:
                   </button>
                   <RowActionsMenu
                     label={`Actions for ${r.client_name}`}
-                    actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r) }] : []}
+                    actions={canManage ? [{ label: 'Edit', onSelect: () => onEdit(r), Icon: Pencil }] : []}
                   />
                 </div>
               </td>
@@ -1880,7 +1956,10 @@ function ReceivedPaymentsCards({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(r => {
-        const figures = confirmedFigures(r)
+        // confirmedFigures() is deliberately NOT read here any more: the exact
+        // Total Allocated / Remaining / per-destination figures moved into the
+        // detail modal, which the card's own allocation badge opens. The helper
+        // is unchanged and still serves the desktop expandable row.
         const offerAllocate = canAllocate && canOfferAllocateFunds(r)
         return (
           <div
@@ -1895,43 +1974,44 @@ function ReceivedPaymentsCards({
               display: 'flex', flexDirection: 'column', gap: '8px',
             }}
           >
+            {/* PAYMENT ID LEADS, AND THE CUSTOMER IS NOT A CARD FIELD.
+                The card follows the table's information priority exactly:
+                identifier, amount, when, how, how much is spoken for, and the
+                two people. The customer name is in the detail modal, whole —
+                on a phone it was the field most likely to be truncated, which
+                is the worst place to abbreviate a name somebody is trying to
+                match against a bank statement. */}
             <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px' }}>
-              <CustomerName
-                name={r.client_name}
-                style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}
-              />
+              <span style={{ fontSize: '12px', fontWeight: 600, color: colors.secondary, fontFamily: 'monospace, monospace', fontVariantNumeric: 'tabular-nums', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {r.human_payment_id}
+              </span>
               <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
                 {fmtAmount(r.amount)}
               </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
-              <span style={{ fontSize: '11px', color: colors.muted, fontFamily: 'monospace, monospace' }}>
-                {r.human_payment_id}
-              </span>
               <span style={{ fontSize: '11px', color: colors.muted }}>
-                {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} · {fmtDate(r.payment_date)}
+                {fmtDate(r.payment_date)} · {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
               </span>
             </div>
 
-            {/* The exact figures, wrapped rather than scrolled. */}
-            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11.5px' }}>
-              <span>
-                <span style={{ color: colors.muted }}>Total allocated </span>
-                <MoneyCell value={figures.totalAllocated} />
+            {/* The same control as the desktop cell, opening the same record —
+                which is where the exact figures the card no longer prints live. */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <ConfirmedAllocationBadge
+                status={r.confirmed_allocation_status}
+                paymentId={r.human_payment_id}
+                onOpen={() => onView(r)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: colors.muted }}>
+              <span title={r.submitted_by_name ?? undefined}>
+                Initiated by <span style={{ color: colors.secondary }}>{conciseName(r.submitted_by_name)}</span>
               </span>
-              <span>
-                <span style={{ color: colors.muted }}>Remaining </span>
-                <MoneyCell value={figures.remaining} title={figures.remaining === null ? 'Complete picture not available' : undefined} />
-              </span>
-              <span>
-                <span style={{ color: colors.muted }}>To PI Drafts </span>
-                <MoneyCell value={figures.toPI} />
-              </span>
-              <span>
-                <span style={{ color: colors.muted }}>To Orders </span>
-                <MoneyCell value={figures.toOrders} />
+              <span title={r.approved_by_name ?? undefined}>
+                Approved by <span style={{ color: colors.secondary }}>{conciseName(r.approved_by_name)}</span>
               </span>
             </div>
 
@@ -1940,8 +2020,9 @@ function ReceivedPaymentsCards({
                 <button
                   onClick={e => { e.stopPropagation(); onAllocateFunds(r) }}
                   className="boe-btn boe-btn-ghost"
-                  style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue }}
+                  style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 >
+                  <Split size={13} strokeWidth={2} aria-hidden="true" />
                   {ALLOCATE_FUNDS_ACTION_LABEL}
                 </button>
               )}
@@ -1949,8 +2030,9 @@ function ReceivedPaymentsCards({
                 <button
                   onClick={e => { e.stopPropagation(); onDelete(r) }}
                   className="boe-btn boe-btn-ghost"
-                  style={{ marginLeft: offerAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red }}
+                  style={{ marginLeft: offerAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
                 >
+                  <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
                   {PAYMENT_DELETE_CONFIRM_LABEL}
                 </button>
               )}
@@ -2338,7 +2420,7 @@ function ReceivedPaymentsViewInner(
     const [{ data, error }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
         .in('payment_request_id', rows.map(r => r.id))
         .eq('status', 'active'),
       canViewAllRef.current,
@@ -2484,7 +2566,7 @@ function ReceivedPaymentsViewInner(
     const [{ data: allocRows, error: allocErr }, emptyIsConclusive] = await Promise.all([
       supabase
         .from('finance_payment_allocations')
-        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id')
+        .select('id, payment_request_id, allocated_amount, status, order_id, order_submission_id, created_at')
         .eq('payment_request_id', id)
         .eq('status', 'active'),
       canViewAllRef.current,

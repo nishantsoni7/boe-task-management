@@ -30,6 +30,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { placeMenu, MENU_GAP, MENU_MARGIN } from './menuPlacement'
+import {
+  CONFIRMED_ALLOCATION_BADGE,
+  CONFIRMED_ALLOCATION_STATUSES,
+} from '@/lib/finance/paymentSurfaces'
 
 const VIEW = 'src/app/finance/received/ReceivedPaymentsView.tsx'
 const view = readFileSync(join(process.cwd(), VIEW), 'utf8')
@@ -275,7 +279,7 @@ describe('the action lists are untouched', () => {
     // Allocate Funds itself is gated by canOfferAllocateFunds and canAllocate,
     // and this fix must not have moved that decision into the menu.
     assert.ok(view.includes('...(offerAllocate'))
-    assert.ok(view.includes('{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r) }'))
+    assert.ok(view.includes('{ label: ALLOCATE_FUNDS_ACTION_LABEL, onSelect: () => onAllocateFunds(r), Icon: Split }'))
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
       'still permission-derived at the call site')
   })
@@ -401,8 +405,12 @@ describe('a menu entry shows which action is about to run', () => {
 
   test('the whole row is the target, with the padding and radius it always had', () => {
     const rule = ruleFor('.boe-menu-item {')
-    assert.ok(rule.includes('display: block') && rule.includes('width: 100%'),
+    // Flex since the icons landed — an icon and its label on one aligned row.
+    // Still the full row: width:100% and a block-level flex container.
+    assert.ok(rule.includes('display: flex') && rule.includes('width: 100%'),
       'the full row is clickable, not just the label')
+    assert.ok(rule.includes('align-items: center') && rule.includes('gap: 8px'),
+      'icon and label share one baseline')
     assert.ok(rule.includes('padding: 6px 9px'), 'unchanged from the inline style')
     assert.ok(rule.includes('border-radius: 6px'), 'unchanged')
     assert.ok(rule.includes('font-size: 12px'), 'unchanged')
@@ -448,5 +456,366 @@ describe('a menu entry shows which action is about to run', () => {
     const cardBody = cards.slice(0, cards.indexOf('\n}\n'))
     assert.ok(!cardBody.includes('boe-menu-item'),
       'cards render inline buttons and keep their own styling')
+  })
+})
+
+// ══ 5. The eight-column table, and where the removed columns went ════════════
+
+describe('the primary row shows eight columns and no money detail', () => {
+  const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
+                           view.indexOf('function RowActionsMenu'))
+
+  test('Customer, Total Allocated and Remaining are gone from the table body', () => {
+    // THE CHANGE: all three moved into the detail modal the Allocation Status
+    // badge opens. Customer was the widest and most-truncated column; the two
+    // money figures are halves of one answer that cannot be acted on from a row.
+    assert.ok(!table.includes('<CustomerName'),
+      'the customer name is not a primary column any more')
+    assert.ok(!table.includes('figures.totalAllocated'),
+      'Total Allocated is not a primary column')
+    assert.ok(!table.includes('value={figures.remaining}'),
+      'Remaining is not a primary column')
+  })
+
+  test('but the row still renders the eight that remain, in order', () => {
+    const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
+                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)',
+                   '<RowActionsMenu']
+    let cursor = -1
+    for (const marker of order) {
+      const at = table.indexOf(marker, cursor + 1)
+      assert.ok(at > cursor, `${marker} must appear, after the column before it`)
+      cursor = at
+    }
+  })
+
+  test('the raw UUID is never printed', () => {
+    // human_payment_id is the identifier; r.id addresses rows and anchors, and
+    // must not be rendered as text.
+    assert.ok(!/>\{r\.id\}</.test(table), 'the row id is not shown to anyone')
+    assert.ok(table.includes('{r.human_payment_id}'))
+  })
+
+  test('the expandable per-row breakdown is untouched', () => {
+    // The exact PI/Order split still lives where it lived; only the two totals
+    // beside it left the primary row.
+    assert.ok(table.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map'))
+    assert.ok(table.includes('figures.toPI') && table.includes('figures.toOrders'))
+  })
+
+  test('NOTHING LEFT THE QUERY — the modal still gets every removed field', () => {
+    // The point of the whole change: this is what the TABLE draws, not what the
+    // page knows. All three removed fields are still selected and still used.
+    assert.ok(view.includes('client_name'), 'customer is still selected')
+    assert.ok(view.includes('allocated_total'), 'the allocation total is still selected')
+    assert.ok(view.includes('confirmedFigures'), 'the figures helper still exists')
+  })
+})
+
+// ══ 6. The Allocation Status badge is a door ═════════════════════════════════
+
+describe('every allocation status opens the payment record', () => {
+  const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
+  const body = badge.slice(0, badge.indexOf('\n}\n'))
+
+  test('all four statuses render the same control — none is special-cased', () => {
+    // zero / partial / full / over all reach the same <button>: the component
+    // branches on whether an opener was GIVEN, never on which status it is.
+    assert.ok(body.includes('if (!onOpen) return'),
+      'the only branch is whether the badge was given something to open')
+    assert.ok(!/status === 'zero'|status === 'partial'|status === 'full'/.test(body),
+      'no status may be excluded from being clickable')
+    for (const status of CONFIRMED_ALLOCATION_STATUSES) {
+      assert.ok(CONFIRMED_ALLOCATION_BADGE[status], `${status} has a badge`)
+    }
+  })
+
+  test('it is a real button, so Enter and Space work without wiring', () => {
+    assert.ok(body.includes('<button'))
+    assert.ok(body.includes('type="button"'), 'never a submit inside a form')
+  })
+
+  test('the accessible name identifies the PAYMENT, not just the state', () => {
+    // Forty rows reading "Fully Allocated" are indistinguishable to a screen
+    // reader unless the name carries the record.
+    assert.ok(body.includes('aria-label={`View allocation details for ${paymentId ?? \'this payment\'}`}'))
+    assert.ok(!body.includes('aria-label={meta.label}'), 'the state alone is not a name')
+  })
+
+  test('clicking it opens the record and nothing else', () => {
+    // The row itself opens the record, and the expand toggle is in the same
+    // row. A click on the badge must reach neither.
+    assert.ok(body.includes('event.stopPropagation()'))
+    assert.ok(view.includes('<td style={TD} onClick={e => e.stopPropagation()}>'),
+      'the cell stops the row handler too')
+  })
+
+  test('the status colours are the badge’s own, in both shapes', () => {
+    assert.ok(body.includes('const shared: React.CSSProperties'),
+      'one style object serves the inert and the clickable badge')
+    assert.ok(body.includes('background: style.bg') && body.includes('color: style.color'),
+      'the per-status tone is unchanged')
+  })
+
+  test('hover and focus deepen the badge rather than recolouring it', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+    const rule = css.slice(css.indexOf('.boe-allocation-badge:hover,'))
+    const decls = rule.slice(0, rule.indexOf('}'))
+    assert.ok(decls.includes('filter: brightness(0.96)'),
+      'a green badge stays green — the status is never restyled into another status')
+    assert.ok(!decls.includes('background:'), 'and its own background is not replaced')
+    assert.ok(css.includes('.boe-allocation-badge:focus-visible {'), 'keyboard focus is visible')
+  })
+
+  test('OVER-ALLOCATED keeps its warning', () => {
+    assert.ok(body.includes("status === 'over'"))
+    assert.ok(body.includes('Allocated total exceeds payment amount — flagged for Admin review'),
+      'the admin-review warning survives the badge becoming a control')
+    assert.ok(body.includes('overTitle ?? '), 'and it takes precedence over the generic tooltip')
+  })
+
+  test('a row with no status stays inert rather than opening nothing', () => {
+    assert.ok(body.includes("if (!status) return <span"), 'an unknown status is a dash, not a button')
+  })
+})
+
+// ══ 7. The modal is the existing one, extended ═══════════════════════════════
+
+describe('the detail modal carries what the table stopped showing', () => {
+  const modal = view.slice(view.indexOf('function DetailsModal'),
+                           view.indexOf('function EditPaymentModal'))
+
+  test('the badge opens the EXISTING modal — no competing duplicate', () => {
+    // onView is what the row and the View button already called.
+    assert.ok(view.includes('onOpen={() => onView(r)}'))
+    assert.equal((view.match(/function DetailsModal/g) ?? []).length, 1,
+      'there is exactly one payment detail modal')
+    assert.equal((view.match(/function AllocationPanel/g) ?? []).length, 1,
+      'and exactly one allocation breakdown component')
+  })
+
+  test('the customer name is there, unabridged', () => {
+    // Not <CustomerName>, which truncates for a column — the whole name.
+    assert.ok(modal.includes('{r.client_name}'))
+    assert.ok(modal.includes("wordBreak: 'break-word'"), 'it wraps rather than clipping')
+  })
+
+  test('Payment ID, both people and the status are in the summary', () => {
+    for (const field of ['Payment ID', 'Received Date', 'Payment Mode',
+                         'Initiated By', 'Approved By', 'Allocation Status']) {
+      assert.ok(modal.includes(field), `${field} must be in the modal summary`)
+    }
+    assert.ok(modal.includes('r.human_payment_id'), 'the human id, never the UUID')
+    assert.ok(modal.includes('r.submitted_by_name') && modal.includes('r.approved_by_name'))
+  })
+
+  test('the allocation breakdown reaches it through the shared panel', () => {
+    assert.ok(modal.includes('<AllocationPanel'))
+    assert.ok(modal.includes('summary={allocation}') && modal.includes('amount={r.amount}'))
+  })
+})
+
+describe('the allocation breakdown', () => {
+  const panel = view.slice(view.indexOf('function AllocationPanel'),
+                           view.indexOf('function DetailsModal'))
+
+  test('every active allocation is listed, with its type, name and amount', () => {
+    assert.ok(panel.includes('summary.targets.map'), 'one line per allocation, never a summary')
+    assert.ok(panel.includes("target.kind === 'order' ? 'Order' : 'PI'"), 'the target type')
+    assert.ok(panel.includes('{name}'), 'the human-readable number where it could be read')
+    assert.ok(panel.includes('formatMoney(target.amount)'), 'and the amount allocated to it')
+  })
+
+  test('the allocation date is shown when it was selected', () => {
+    assert.ok(panel.includes('target.allocatedAt &&'),
+      'absent is simply nothing — no total depends on it')
+    assert.ok(panel.includes('Allocated {fmtDate(target.allocatedAt)}'))
+  })
+
+  test('the totals reconcile the lines to the payment', () => {
+    assert.ok(panel.includes('formatMoney(summary.allocated)'), 'total of all allocations')
+    assert.ok(panel.includes('formatMoney(summary.unallocated)'), 'and what is left')
+  })
+
+  test('ZERO ALLOCATED gets an empty state, and still states the figure', () => {
+    assert.ok(panel.includes('summary.targets.length === 0'))
+    assert.ok(panel.includes('No funds from this payment have been allocated yet.'))
+    assert.ok(panel.includes('The whole of {formatMoney(String(amount))} is still free'),
+      'the remaining amount is the thing somebody acts on')
+  })
+
+  test('OVER-ALLOCATED is called over, never rounded into fully', () => {
+    assert.ok(panel.includes("summary.state === 'over' ? 'Over the payment by '"))
+    assert.ok(panel.includes("summary.state === 'over' ? colors.red"), 'and shown in red')
+  })
+
+  test('a restricted viewer is told the limit of their own sight', () => {
+    assert.ok(panel.includes("summary.state === 'unknown'"))
+    assert.ok(panel.includes('ALLOCATION_STATE_LABEL.unknown'))
+  })
+})
+
+// ══ 8. Icons support the labels ══════════════════════════════════════════════
+
+describe('every action carries an icon and keeps its words', () => {
+  const menu = view.slice(view.indexOf('function RowActionsMenu'))
+  const menuBody = menu.slice(0, menu.indexOf('\n}\n'))
+
+  test('the icons come from the project’s existing library', () => {
+    assert.ok(view.includes("from 'lucide-react'"), 'no new icon dependency')
+    for (const icon of ['Eye', 'Link2', 'Pencil', 'Split', 'Trash2', 'Unlink']) {
+      assert.ok(new RegExp(`\\b${icon}\\b`).test(view), `${icon} is imported`)
+    }
+  })
+
+  test('each action is paired with the right icon', () => {
+    const pairs: [string, string][] = [
+      ['ALLOCATE_FUNDS_ACTION_LABEL', 'Split'],
+      ["'Link to an Order'", 'Link2'],
+      ["'Unlink'", 'Unlink'],
+      ["'Edit'", 'Pencil'],
+      ['PAYMENT_DELETE_CONFIRM_LABEL', 'Trash2'],
+    ]
+    for (const [label, icon] of pairs) {
+      assert.ok(new RegExp(`label: ${label.replace(/[$()*+.?[\\\]^{|}]/g, '\\$&')}[^}]*Icon: ${icon}`).test(view),
+        `${label} should carry ${icon}`)
+    }
+    assert.ok(view.includes('<Eye size={13}'), 'View Details takes the eye')
+  })
+
+  test('THE ICON SUPPORTS THE LABEL, it does not replace it', () => {
+    assert.ok(menuBody.includes('<span>{action.label}</span>'),
+      'the text is always rendered')
+    assert.ok(menuBody.includes('aria-hidden="true"'),
+      'and the glyph is decorative, so it is not announced twice')
+  })
+
+  test('labels line up whether or not an action has an icon', () => {
+    assert.ok(menuBody.includes("<span aria-hidden=\"true\" style={{ width: 14, flexShrink: 0 }} />"),
+      'an icon-less action reserves the same box')
+  })
+
+  test('icons are sized consistently and cannot squash', () => {
+    assert.ok(menuBody.includes('size={14}'), 'one size inside the menu')
+    assert.ok(menuBody.includes('flexShrink: 0'))
+  })
+
+  test('the icon-only-adjacent View control keeps a name and a tooltip', () => {
+    assert.ok(view.includes('title={`View details for ${r.human_payment_id ?? \'this payment\'}`}'))
+    assert.ok(view.includes('aria-label={`View details for ${r.human_payment_id ?? \'this payment\'}`}'))
+  })
+
+  test('the danger entry keeps its contract: red text, red hover', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
+    assert.ok(css.includes('.boe-menu-item--danger {'))
+    assert.ok(css.slice(css.indexOf('.boe-menu-item--danger:hover')).startsWith('.boe-menu-item--danger:hover'))
+    assert.ok(view.includes('danger: true, Icon: Trash2'),
+      'Delete keeps both its danger marker and its icon')
+  })
+})
+
+// ══ 9. Mobile cards follow the same priority ═════════════════════════════════
+
+describe('the mobile card matches the table’s information order', () => {
+  const cards = view.slice(view.indexOf('function ReceivedPaymentsCards'))
+  const body = cards.slice(0, cards.indexOf('\n}\n'))
+
+  test('Payment ID leads and the customer is not a card field', () => {
+    assert.ok(!body.includes('<CustomerName'),
+      'the customer name belongs to the modal, whole, not to a truncating card line')
+    assert.ok(body.includes('{r.human_payment_id}'))
+  })
+
+  test('the fields appear in the required order', () => {
+    const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
+                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)']
+    let cursor = -1
+    for (const marker of order) {
+      const at = body.indexOf(marker, cursor + 1)
+      assert.ok(at > cursor, `${marker} must appear, after the field before it`)
+      cursor = at
+    }
+  })
+
+  test('the badge opens the SAME modal on mobile', () => {
+    assert.ok(/<ConfirmedAllocationBadge[\s\S]{0,200}?onOpen=\{\(\) => onView\(r\)\}/.test(body))
+    assert.ok(/<ConfirmedAllocationBadge[\s\S]{0,200}?paymentId=\{r\.human_payment_id\}/.test(body))
+  })
+
+  test('the inline actions survive, with matching icons and their labels', () => {
+    assert.ok(body.includes('{ALLOCATE_FUNDS_ACTION_LABEL}') && body.includes('<Split size={13}'))
+    assert.ok(body.includes('{PAYMENT_DELETE_CONFIRM_LABEL}') && body.includes('<Trash2 size={13}'))
+    assert.ok(!body.includes('RowActionsMenu'), 'cards keep inline buttons, not a dropdown')
+  })
+
+  test('the card no longer computes figures it does not draw', () => {
+    assert.ok(!body.includes('const figures = confirmedFigures(r)'),
+      'the exact figures moved to the modal; the card must not compute them for nothing')
+  })
+})
+
+// ══ 10. No new database work ═════════════════════════════════════════════════
+
+describe('this is a presentation change, and costs no extra request', () => {
+  test('the allocation read is still ONE batched query per page load', () => {
+    assert.ok(view.includes(".in('payment_request_id', rows.map(r => r.id))"),
+      'batched across the page, never per row')
+    const perRow = /rows\.map\([\s\S]{0,400}?\.from\('finance_payment_allocations'\)/
+    assert.ok(!perRow.test(view), 'no allocation read may sit inside a row loop')
+  })
+
+  test('the allocation date rides the SAME select — one more column, not one more call', () => {
+    const reads = (view.match(/\.from\('finance_payment_allocations'\)/g) ?? []).length
+    assert.equal(reads, 2, 'the page-load read and refreshOneRow’s single-row read — unchanged')
+    assert.equal((view.match(/allocated_amount, status, order_id, order_submission_id, created_at/g) ?? []).length, 2,
+      'created_at was added to both existing selects rather than fetched separately')
+  })
+
+  test('the modal fetches nothing of its own for the new fields', () => {
+    // Payment ID, customer, both people and the status all come from the row
+    // the list already holds.
+    const modal = view.slice(view.indexOf('function DetailsModal'),
+                             view.indexOf('function EditPaymentModal'))
+    for (const field of ['r.human_payment_id', 'r.client_name', 'r.submitted_by_name',
+                         'r.approved_by_name', 'r.confirmed_allocation_status']) {
+      assert.ok(modal.includes(field), `${field} is read from the row in hand`)
+    }
+  })
+
+  test('opening the badge triggers no query at all', () => {
+    const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
+    const body = badge.slice(0, badge.indexOf('\n}\n'))
+    for (const call of ['.from(', '.rpc(', 'fetch(']) {
+      assert.ok(!body.includes(call), `${call} must not appear in a badge`)
+    }
+  })
+})
+
+// ══ 11. Permission gates are exactly as they were ════════════════════════════
+
+describe('nothing about who may do what has moved', () => {
+  test('each action keeps its own gate at the call site', () => {
+    assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'))
+    assert.ok(view.includes('...(canManage && !r.order_id'), 'linking is manage-only, unlinked only')
+    assert.ok(view.includes('...(canManage\n'), 'edit is manage-only')
+    assert.ok(view.includes('...(canDeleteRow(r)'), 'deletion keeps its admin-only gate')
+  })
+
+  test('the badge confers nothing — it opens a record, it does not act on one', () => {
+    const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
+    const body = badge.slice(0, badge.indexOf('\n}\n'))
+    for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===']) {
+      assert.ok(!body.includes(gate), `a status badge must not reference ${gate}`)
+    }
+  })
+
+  test('the menu still decides no permission of its own', () => {
+    const menu = view.slice(view.indexOf('function RowActionsMenu'))
+    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'profile']) {
+      assert.ok(!body.includes(gate), `RowActionsMenu must not reference ${gate}`)
+    }
   })
 })

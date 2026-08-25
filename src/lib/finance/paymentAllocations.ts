@@ -67,6 +67,12 @@ export type PaymentAllocationRow = {
   status: string
   order_id: string | null
   order_submission_id: string | null
+  /**
+   * When the allocation was recorded. Optional because it is a display fact,
+   * never an input to a figure: every total here is summed from
+   * `allocated_amount`, and a missing date changes none of them.
+   */
+  created_at?: string | null
 }
 
 /**
@@ -85,6 +91,8 @@ export type AllocationTarget = {
   /** The display number, when the caller could read the target. */
   label: string | null
   amount: string
+  /** When this allocation was recorded, when the caller selected the column. */
+  allocatedAt?: string | null
 }
 
 export type PaymentAllocationState = 'unknown' | 'unallocated' | 'partial' | 'full' | 'over'
@@ -203,6 +211,7 @@ export function summarizePaymentAllocations(
         targetId,
         label: labels.get(targetId) ?? null,
         amount: share ? exactToString(share) : String(row.allocated_amount ?? ''),
+        allocatedAt: row.created_at ?? null,
       })
     }
 
