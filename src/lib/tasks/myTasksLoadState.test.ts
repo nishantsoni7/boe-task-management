@@ -100,14 +100,22 @@ describe('identity is resolved once, and shared', () => {
       'no page-local identity state gating the task query')
   })
 
-  test('it no longer issues its own profile request', () => {
-    assert.equal(CONTENT_CODE.includes('useProfile'), false,
-      'the profile row comes from the shared permission context, same columns')
+  test('the profile read is served from the cache the shell already filled', () => {
+    // /tasks/my sits under src/app/tasks/layout.tsx's ModuleGuard, which
+    // resolves the permission context in a PARENT and publishes the users row
+    // into useProfile's cache entry — so this mount issues nothing.
+    const guardLayout = read('src/app/tasks/layout.tsx')
+    assert.ok(guardLayout.includes('ModuleGuard'))
+    const ctx = read('src/hooks/queries/usePermissionContext.ts')
+    assert.ok(ctx.includes('publishProfile(qc, userId, profile)'))
+    assert.ok(read('src/hooks/queries/useProfile.ts').includes('queryKey: profileKey(userId)'))
   })
 
-  test('it reads the shared resolution instead', () => {
-    assert.ok(PAGE_CODE.includes('usePermissionContext'))
-    assert.ok(PAGE_CODE.includes('const { ready: authReady, userId: loggedInId, profile } = usePermissionContext()'))
+  test('it reads identity from the shared session query', () => {
+    assert.ok(PAGE_CODE.includes('useSignedInUserId'))
+    assert.ok(PAGE_CODE.includes('const { data: loggedInId, isPending: idPending } = useSignedInUserId()'))
+    // And does NOT drag the permission resolution along with it.
+    assert.equal(PAGE_CODE.includes('usePermissionContext('), false)
   })
 
   test('a signed-out visitor is still sent to /login, but only once resolved', () => {

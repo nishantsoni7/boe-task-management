@@ -12,7 +12,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
-import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
 import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
 import {
   AWAITING_APPROVAL_LABEL,
@@ -1097,13 +1098,22 @@ function MyTasksContent() {
   // module shell around this page had already resolved the very same identity
   // and the very same profile row on the same navigation.
   //
-  // usePermissionContext is that shared resolution: the id comes from the
-  // stored session, and on any navigation within the app it is already in the
-  // query cache, so `userId` is known on the FIRST render and the task query
-  // starts immediately. The profile comes from the same cached entry (identical
-  // column list), so the separate `useProfile` request is gone rather than
-  // moved.
-  const { ready: authReady, userId: loggedInId, profile } = usePermissionContext()
+  // useSignedInUserId is that shared resolution: the id comes from the stored
+  // session with no request, and on any navigation within the app it is already
+  // in the query cache, so `loggedInId` is known on the FIRST render and the
+  // task query starts immediately instead of third in a chain.
+  //
+  // The profile is still read through useProfile, but /tasks/my sits under
+  // src/app/tasks/layout.tsx's ModuleGuard, which resolves the permission
+  // context in a PARENT — and that now publishes the row into useProfile's
+  // cache entry. So this is a cache hit and issues nothing.
+  //
+  // Identity here is presentational and for query keys only. The task query
+  // runs against PostgREST with the user's own JWT, so row access is decided by
+  // RLS on the server, not by this value.
+  const { data: loggedInId, isPending: idPending } = useSignedInUserId()
+  const authReady = !idPending
+  const { data: profile = null } = useProfile(loggedInId)
 
   // Resolve the effective user ID — view-as overrides the logged-in user
   const userId = viewAsUserId ?? loggedInId ?? ''

@@ -85,6 +85,14 @@ export async function GET(req: NextRequest) {
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
     .order('created_at', { ascending: false })
+    // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
+    // (every admin notified of one objection, the warranty sweep) writes many
+    // rows on the same transaction timestamp. Ordering by it alone leaves ties
+    // in whatever order the plan happens to produce, so two requests for
+    // overlapping windows can disagree about which side of the LIMIT a tied row
+    // falls on, and "Load older" could come back missing a row it had already
+    // shown. `id` is the primary key, so this makes the sort total.
+    .order('id', { ascending: false })
     .limit(limit + 1)
 
   if (error) {

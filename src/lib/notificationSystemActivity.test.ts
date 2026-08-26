@@ -14,7 +14,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   SYSTEM_GENERATED_NOTIFICATION_TYPES,
@@ -209,6 +209,92 @@ describe('the read side excludes system types too', () => {
   test('SYSTEM_TYPE_EXCLUSION is a PostgREST in-list of exactly the system types', () => {
     assert.equal(SYSTEM_TYPE_EXCLUSION, `(${SYSTEM_GENERATED_NOTIFICATION_TYPES.join(',')})`)
     assert.match(SYSTEM_TYPE_EXCLUSION, /^\([a-z_,]+\)$/)
+  })
+
+  test('every unread-count path goes through the filtered endpoint', () => {
+    // One hook, one endpoint, one filter. Every module sidebar badge and the
+    // mobile bottom nav read this, so there is no second place a system row
+    // could be counted.
+    const unread = read('src/hooks/queries/useUnreadNotifications.ts')
+    assert.ok(unread.includes('`/api/notifications?count=1&category=${category}`'))
+    for (const f of ['src/components/layout/NotificationsNavItem.tsx',
+                     'src/components/layout/MobileBottomNav.tsx',
+                     'src/components/layout/IssueNotificationBell.tsx']) {
+      assert.equal(/from\('notifications'\)/.test(read(f)), false,
+        `${f} must not count notifications itself`)
+    }
+  })
+
+  test('the list response’s own unreadCount is derived from filtered rows', () => {
+    const list = read('src/app/api/notifications/route.ts')
+    assert.ok(list.includes('const unreadCount = notifications.filter(n => !n.is_read).length'),
+      'counted from the rows that survived the filter, not from a separate query')
+  })
+
+  test('no visible notification can become undeletable', () => {
+    // Single-delete and delete-selected are scoped by id + user_id and apply NO
+    // type filter, so anything the list showed can always be removed. Only the
+    // sweeping operations carry the filter, and they carry exactly the same one
+    // the list does — so their reach is precisely what is on screen.
+    const one      = read('src/app/api/notifications/[id]/route.ts')
+    const selected = read('src/app/api/notifications/delete-selected/route.ts')
+    for (const [name, src] of [['single', one], ['selected', selected]] as const) {
+      assert.equal(src.includes('SYSTEM_TYPE_EXCLUSION'), false,
+        `${name} delete must not filter by type — it would strand a listed row`)
+      assert.ok(src.includes(".eq('user_id', user.id)"), `${name} delete is scoped to the caller`)
+    }
+  })
+
+  test('delete-all and mark-all-read reach exactly what the list shows', () => {
+    const list = read('src/app/api/notifications/route.ts')
+    const mark = read('src/app/api/notifications/mark-read/route.ts')
+    // Same category filter AND same type exclusion in all three places, so the
+    // sweeping operations cannot be narrower than the feed (a row nobody could
+    // clear) or wider (touching rows the feed never showed).
+    assert.equal((list.match(/getNotificationCategoryFilter\(categoryResult\.category\)/g) ?? []).length, 2)
+    assert.ok(mark.includes('getNotificationCategoryFilter(categoryResult.category)'))
+    assert.equal((list.match(/SYSTEM_TYPE_EXCLUSION\)/g) ?? []).length, 3)
+    assert.ok(mark.includes('SYSTEM_TYPE_EXCLUSION)'))
+  })
+
+  test('historical system rows are left in place, not deleted', () => {
+    // Deliberate: they are invisible either way, deleting them is irreversible,
+    // and they are the only evidence of what the cron job has been doing.
+    const list = read('src/app/api/notifications/route.ts')
+    assert.equal(/delete\(\)[\s\S]{0,200}type', 'in'/.test(list) &&
+                 !list.includes(".not('type', 'in', SYSTEM_TYPE_EXCLUSION)"), false)
+    assert.ok(list.includes(".not('type', 'in', SYSTEM_TYPE_EXCLUSION)"),
+      'delete-all excludes them, so it cannot remove history nobody asked to remove')
+  })
+
+  test('no repo migration installs a trigger, webhook or job that sends one', () => {
+    // NOTE: this asserts what is IN THE REPOSITORY. run_task_health_check is
+    // not here — it was installed directly against the database — so a green
+    // result here is not a statement about the live schema. See
+    // docs/proposals/NOTIFICATION_NOISE_AND_PAGE_SPEED.md for the read-only SQL
+    // that answers that question.
+    const dir = 'supabase/migrations'
+    const files = readdirSync(join(ROOT, dir)).filter(f => f.endsWith('.sql'))
+    assert.ok(files.length > 0)
+    const inserters: string[] = []
+    for (const f of files) {
+      const sql = read(join(dir, f))
+      if (/create\s+(or\s+replace\s+)?trigger[\s\S]{0,200}on\s+(public\.)?notifications/i.test(sql)) {
+        assert.fail(`${f} installs a trigger on notifications`)
+      }
+      if (/cron\.schedule|pg_net|net\.http_|supabase_functions\./i.test(sql)) {
+        assert.fail(`${f} schedules a job or an outbound call`)
+      }
+      if (/insert\s+into\s+(public\.)?notifications/i.test(sql)) inserters.push(f)
+    }
+    // Exactly one, and it is the human-invoked creator-approval RPC.
+    assert.deepEqual(inserters, ['20260833000000_task_creator_approval.sql'])
+    const rpc = read(join(dir, inserters[0]))
+    assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), 'it acts as a signed-in person')
+    assert.ok(rpc.includes("type"), 'and writes a task type, never a system one')
+    for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
+      assert.equal(rpc.includes(`'${t}'`), false, `the RPC must not write ${t}`)
+    }
   })
 
   test('list, count, delete-all and mark-all-read all apply it', () => {

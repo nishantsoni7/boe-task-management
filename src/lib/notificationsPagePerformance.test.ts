@@ -26,6 +26,7 @@ import {
   NOTIFICATION_MAX_ROWS,
   nextNotificationLimit,
 } from './notificationPaging'
+import { profileKey } from '../hooks/queries/useProfile'
 import {
   fetchNotificationPage,
   fetchNotificationList,
@@ -260,14 +261,56 @@ describe('no duplicate auth / profile / permission requests', () => {
     assert.equal(VIEW_CODE.includes('auth.getSession()'), false)
   })
 
-  test('it reads identity and profile from the one shared resolution', () => {
-    assert.ok(VIEW.includes("usePermissionContext"))
-    assert.ok(VIEW.includes('const { ready: authReady, userId, profile } = usePermissionContext()'))
+  test('it reads identity from the shared session query, not a request', () => {
+    assert.ok(VIEW.includes('useSignedInUserId'))
+    assert.ok(VIEW.includes('const { data: userId, isPending: idPending } = useSignedInUserId()'))
+    const hook = read('src/hooks/queries/usePermissionContext.ts')
+    assert.ok(hook.includes('export function useSignedInUserId()'), 'exported for identity-only callers')
+    assert.ok(hook.includes('auth.getSession()'), 'a stored-session read, not an auth-server round trip')
   })
 
-  test('the separate profile query is gone', () => {
-    assert.equal(VIEW_CODE.includes('useProfile'), false,
-      'the profile row comes from the permission context, same columns')
+  test('it does NOT pull the permission resolution in behind it', () => {
+    // OrdersLayout and AttendancePayrollLayout resolve no permissions, and
+    // /orders|/attendance|/payroll|/my-issues notifications sit under no
+    // ModuleGuard. Taking usePermissionContext here would add a
+    // resolve_effective_permissions_for_user RPC to their cold load.
+    // The module PATH still contains the name — the hook it imports lives
+    // there. What must be absent is the call.
+    assert.equal(VIEW_CODE.includes('usePermissionContext('), false)
+    assert.equal(VIEW_CODE.includes('permissionsByModule'), false)
+  })
+
+  test('the profile read is a cache hit wherever a shell already resolved it', () => {
+    const ctx     = read('src/hooks/queries/usePermissionContext.ts')
+    const profile = read('src/hooks/queries/useProfile.ts')
+    // Both read the same users row with the same columns; one shared key means
+    // the second reader pays nothing and the two cannot disagree.
+    assert.ok(profile.includes("export const profileKey = (userId: string | null | undefined) => ['profile', userId] as const"))
+    assert.ok(profile.includes('queryKey: profileKey(userId)'))
+    assert.ok(ctx.includes('publishProfile(qc, userId, profile)'))
+    assert.ok(ctx.includes('qc.setQueryData(profileKey(userId), profile)'))
+    // Publish only — the context must never SUBSCRIBE to the profile query, or
+    // it would start one on a route that only wanted permissions.
+    assert.equal(ctx.includes('useProfile('), false)
+  })
+
+  test('the published key IS the key useProfile reads', () => {
+    // Behavioural, not textual: if these two ever drifted apart the publish
+    // would be writing into a cache entry nobody observes, and the profile
+    // would silently be fetched twice again.
+    const qc = new QueryClient()
+    const profile = { id: 'u1', full_name: 'Ada', role: 'admin' }
+    qc.setQueryData(profileKey('u1'), profile)
+    assert.deepEqual(qc.getQueryData(['profile', 'u1']), profile)
+    // And it is per-user, so one person's row can never be served for another.
+    assert.equal(qc.getQueryData(profileKey('u2')), undefined)
+    qc.clear()
+  })
+
+  test('a failed profile read is not published as an answer', () => {
+    const ctx = read('src/hooks/queries/usePermissionContext.ts')
+    assert.ok(ctx.includes('if (!profile) return'),
+      '"the read failed" and "this person has no row" are not the same answer')
   })
 
   test('it still redirects a signed-out visitor, and only once resolved', () => {
@@ -304,6 +347,42 @@ describe('failures stay legible', () => {
     assert.equal(readApiErrorMessage(new Error('boom'), 'fallback'), 'boom')
     assert.equal(readApiErrorMessage(new Error(''), 'fallback'), 'fallback')
     assert.equal(readApiErrorMessage('nope', 'fallback'), 'fallback')
+  })
+
+  test('"Load older" cannot resurrect a row a mutation has optimistically removed', () => {
+    // A widening re-read returns server state, which during an in-flight delete
+    // or mark-read is still the OLD state.
+    assert.ok(VIEW_CODE.includes('const mutationInFlight ='))
+    assert.ok(VIEW_CODE.includes('pendingDeletes.size > 0 || markingAll || deletingBulk || deletingAll'))
+    assert.ok(VIEW_CODE.includes('useNotifications(category, mutationInFlight)'))
+    assert.ok(HOOK_CODE.includes('if (loadingOlder || blocked) return'))
+    assert.ok(HOOK_CODE.includes('&& !blocked'), 'the control is also hidden, not just inert')
+  })
+
+  test('"Load older" replaces rather than appends, so duplicates are impossible', () => {
+    // There is no merge step. A row arriving between loads is simply included
+    // at the top; with an OFFSET it would shift every later row and repeat one.
+    assert.ok(HOOK_CODE.includes('qc.setQueryData<Notification[]>(notificationKeys.list(category), page.notifications)'))
+    assert.equal(/\.\.\.(prev|old|current)/.test(HOOK_CODE), false, 'nothing is concatenated')
+    assert.equal(/offset|range\(/.test(HOOK_CODE), false)
+  })
+
+  test('the server sort is total, so overlapping windows agree', () => {
+    // created_at is not unique — batch inserts share a transaction timestamp —
+    // so ordering by it alone lets a tied row fall on either side of the LIMIT.
+    const listAt = LIST_ROUTE.indexOf(".order('created_at', { ascending: false })")
+    const idAt   = LIST_ROUTE.indexOf(".order('id', { ascending: false })")
+    assert.ok(listAt > -1 && idAt > listAt, 'id breaks the tie, after created_at')
+  })
+
+  test('the ceiling the query function reads is updated before the cache is', () => {
+    // Otherwise an invalidation landing between setQueryData and the next
+    // render would re-request the narrower page and shrink the list back.
+    const ref   = HOOK_CODE.indexOf('limitRef.current = next')
+    const write = HOOK_CODE.indexOf('qc.setQueryData<Notification[]>')
+    assert.ok(ref > -1 && write > ref)
+    assert.ok(HOOK_CODE.includes('fetchNotificationPage(category, limitRef.current)'),
+      'the query function reads the ref, not the render-time state')
   })
 
   test('a failed "Load older" surfaces in the banner without dropping the list', () => {

@@ -11,7 +11,8 @@ import { getNotificationMeta } from '@/lib/notificationMeta'
 import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
 import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle, ChevronDown } from 'lucide-react'
-import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
 import { useNotifications } from '@/hooks/queries/useNotifications'
 import { useNotificationMutations } from '@/hooks/queries/useNotificationMutations'
 import { notificationKeys } from '@/lib/notificationCache'
@@ -61,20 +62,55 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   const queryClient = useQueryClient()
   const { refreshKey } = useRefresh()
 
-  // ONE identity resolution, shared with the surrounding module shell.
+  // IDENTITY ONLY — deliberately not the permission context.
   //
-  // This replaces a per-mount `supabase.auth.getUser()` — a NETWORK call to the
-  // auth server — whose only job was to produce a user id, which then gated a
-  // second request for the profile row. Entering Notifications therefore cost
-  // an auth round trip and a users read that the layout rendering around this
-  // view had already made on the same navigation.
+  // What this replaces is a per-mount `supabase.auth.getUser()`: a NETWORK call
+  // to the auth server whose only output was a user id, which then gated a
+  // second request for the profile row. useSignedInUserId answers the same
+  // question from the STORED session with no request at all, and it is the same
+  // cached query every module shell already uses, so on any in-app navigation
+  // the id is known on the first render.
   //
-  // usePermissionContext resolves the id from the STORED session (no request)
-  // and returns the profile from the same uid-keyed cache DashboardLayout /
-  // FinanceLayout / ModuleGuard read, so both requests disappear rather than
-  // moving. Identity freshness is held by the auth listener in Providers.tsx,
-  // which drops the cache when the signed-in user actually changes.
-  const { ready: authReady, userId, profile } = usePermissionContext()
+  // It would have been tempting to take usePermissionContext instead and get
+  // the profile from it for free. That is free only where a shell already
+  // resolves permissions — under a ModuleGuard, or inside DashboardLayout. This
+  // component also renders inside OrdersLayout and AttendancePayrollLayout,
+  // which resolve neither, so it would have added a
+  // `resolve_effective_permissions_for_user` RPC to the cold load of four
+  // module notification pages that never made one. The profile is instead read
+  // through useProfile, whose cache entry usePermissionContext now publishes
+  // into — so where a shell HAS resolved it, this is a cache hit and costs
+  // nothing, and where none has, it is exactly the one request it always was.
+  //
+  // Identity freshness is held by the auth listener in Providers.tsx, which
+  // drops the cache when the signed-in user actually changes. Nothing here is
+  // an access decision: every /api/notifications* route independently verifies
+  // the caller with its own server-side auth.getUser() and scopes every query
+  // to `user_id = <that verified id>`. No user id is ever sent from here.
+  const { data: userId, isPending: idPending } = useSignedInUserId()
+  const authReady = !idPending
+  const { data: profile = null } = useProfile(userId)
+
+  // All list/count cache work lives in this hook: optimistic update, snapshot,
+  // rollback on any failure, per-id pending locks, and narrow reconciliation.
+  //
+  // Declared BEFORE the list query because the list query needs to know whether
+  // any of it is in flight — see `mutationInFlight`.
+  const {
+    markRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
+    pendingDeletes, markingAll, deletingBulk, deletingAll,
+    error: mutationError, clearError,
+  } = useNotificationMutations(category)
+
+  // A widening re-read while the server has not yet applied an optimistic
+  // delete or mark-read would return those rows in their old state and put them
+  // back on screen — the exact "deleted notifications come back" symptom the
+  // mutation machinery exists to prevent. So "Load older" stands down until
+  // every mutation has settled. Single deletes are covered by `pendingDeletes`
+  // (which also hides those rows at render time); the three bulk operations
+  // have no per-id set, which is why they are listed individually.
+  const mutationInFlight =
+    pendingDeletes.size > 0 || markingAll || deletingBulk || deletingAll
 
   const {
     data: notifications = [],
@@ -82,15 +118,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     isError: notifError,
     error: notifErrorObj,
     loadOlder, hasOlder, loadingOlder, olderError,
-  } = useNotifications(category)
-
-  // All list/count cache work lives in this hook: optimistic update, snapshot,
-  // rollback on any failure, per-id pending locks, and narrow reconciliation.
-  const {
-    markRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
-    pendingDeletes, markingAll, deletingBulk, deletingAll,
-    error: mutationError, clearError,
-  } = useNotificationMutations(category)
+  } = useNotifications(category, mutationInFlight)
 
   // TRUE ONLY BEFORE THE FIRST RESULT EXISTS.
   //
