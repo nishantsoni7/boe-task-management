@@ -321,11 +321,45 @@ describe('one rule, one place', () => {
   for (const path of TASK_ROUTES) {
     test(`${path} writes through the shared guard`, () => {
       const src = read(path)
-      assert.ok(src.includes("insertUserNotifications"), 'uses the guard')
+      // Either directly, or via createAssignmentNotification — which is itself
+      // a builder plus insertUserNotifications (asserted below).
+      assert.ok(src.includes('insertUserNotifications') || src.includes('createAssignmentNotification'),
+        'uses the guard')
       assert.equal(/\.from\('notifications'\)\s*\.insert/.test(src), false,
         'no direct notifications insert bypasses the guard')
     })
   }
+
+  test('the assignment operation is guard-backed, and no browser writes the table', () => {
+    // The privileged half. Split out of the browser-safe module so the writer
+    // cannot ride into a client bundle — see assignmentServerBoundary.test.ts.
+    const writer = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
+    assert.ok(writer.includes('insertUserNotifications'),
+      'the trusted operation inserts through the guard')
+    const browser = read('src/lib/tasks/assignmentNotification.ts')
+    assert.equal(/\.from\(['"]notifications['"]\)/.test(browser), false,
+      'the browser half writes nothing')
+
+    // The four browser task creators. These are the paths whose direct insert
+    // the database refused — a notifications row addressed to somebody else.
+    // They now ask the server route instead and touch the table nowhere.
+    for (const path of [
+      'src/app/tasks/create/page.tsx',
+      'src/app/tasks/assigned-by-me/page.tsx',
+      'src/app/tasks/quotation-requests/new/page.tsx',
+      'src/components/meetings/MeetingTaskModal.tsx',
+    ]) {
+      const src = read(path)
+      assert.ok(src.includes('requestAssignmentNotification'), `${path} calls the server route`)
+      assert.equal(/\.from\(['"]notifications['"]\)/.test(src), false,
+        `${path} must not touch the notifications table at all`)
+    }
+
+    // And the route itself goes through the operation, not around it.
+    const route = read('src/app/api/tasks/[id]/notify-assignment/route.ts')
+    assert.ok(route.includes('createAssignmentNotification'))
+    assert.equal(/\.from\(['"]notifications['"]\)/.test(route), false)
+  })
 
   test('the guard names the rule once, by import', () => {
     const guard = read('src/lib/notificationWrites.ts')

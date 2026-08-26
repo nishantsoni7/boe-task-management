@@ -1,5 +1,7 @@
 'use client'
 
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
+import { AssignmentNotificationNotice, AssignmentNotificationRecovered } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -45,6 +47,9 @@ export default function NewQuotationRequestPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [success,     setSuccess]     = useState(false)
   const [createdId,   setCreatedId]   = useState<string | null>(null)
+  // Outcome B. Task id only — see the create screen and the notice component.
+  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
+  const [notifyRecovered, setNotifyRecovered] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
@@ -115,6 +120,8 @@ export default function NewQuotationRequestPage() {
 
     setLoading(true)
     setSubmitError(null)
+    setNotifyFailedFor(null)
+    setNotifyRecovered(false)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setLoading(false); return }
@@ -162,14 +169,19 @@ export default function NewQuotationRequestPage() {
       task_id: task.id, actor_id: session.user.id,
       action: 'created', note: 'Quotation request submitted',
     })
-    await supabase.from('notifications').insert({
-      user_id:      quotationOwnerId,
-      task_id:      task.id,
-      type:         'task_assigned',
-      title:        'New quotation request',
-      body:         autoTitle,
-      is_push_sent: true,
-    })
+    // Server-side write: a browser may not address a notifications row to
+    // somebody else. The route derives the recipient from tasks.assigned_to,
+    // which this screen has just set to the quotation owner.
+    const notified = await requestAssignmentNotification(task.id)
+    // The request is KEPT — it was submitted successfully. What changes is that
+    // the screen no longer claims the owner was told when they were not.
+    // Outcome B. Deliberately NOT setSubmitError: the request was submitted,
+    // and an error banner here would read as a failed submission and invite a
+    // duplicate. Same sentence and same Retry action as every other screen.
+    if (!notified.ok) {
+      console.error('[quotation request] assignment notification failed:', notified.reason)
+      setNotifyFailedFor(task.id)
+    }
 
     // Upload attachments
     const { ready } = await prepareFiles(attachFiles)
@@ -235,6 +247,21 @@ export default function NewQuotationRequestPage() {
             onClick={() => setSuccess(false)}
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, fontSize: '16px' }}
           >×</button>
+        </div>
+      )}
+
+      {notifyFailedFor && (
+        <div style={{ maxWidth: '520px' }}>
+          <AssignmentNotificationNotice
+            taskId={notifyFailedFor}
+            onResolved={() => { setNotifyFailedFor(null); setNotifyRecovered(true) }}
+            onDismiss={() => setNotifyFailedFor(null)}
+          />
+        </div>
+      )}
+      {notifyRecovered && (
+        <div style={{ maxWidth: '520px' }}>
+          <AssignmentNotificationRecovered onDismiss={() => setNotifyRecovered(false)} />
         </div>
       )}
 

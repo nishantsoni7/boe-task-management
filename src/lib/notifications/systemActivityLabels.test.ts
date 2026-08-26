@@ -48,9 +48,14 @@ describe('class C — the recipient must act — is named, not labelled "System"
   }
 
   test('and both are still IN the task feed — the label changed, not the delivery', () => {
-    const filter = getNotificationCategoryFilter('task')
-    assert.ok(filter.includes('submitted task for approval'))
-    assert.ok(filter.includes('returned task to working'))
+    // Feed membership is now structural: both rows carry the task's id, which
+    // is the whole Task rule. The filter deliberately names no title, so this
+    // asserts the property rather than the wording — a reworded sentence must
+    // keep its delivery, which is the defect the hotfix fixes.
+    assert.equal(getNotificationCategoryFilter('task'), 'task_id.not.is.null')
+    for (const title of ['Asha submitted task for approval', 'Dhruv returned task to Working']) {
+      assert.notEqual(row(title).task_id, null, `"${title}" must carry a task_id`)
+    }
     // Neither is a suppressed system type.
     assert.equal(isSystemGeneratedNotificationType('task_acknowledged'), false)
   })

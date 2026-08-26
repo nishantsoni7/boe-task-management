@@ -1,5 +1,7 @@
 'use client'
 
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
+import { AssignmentNotificationNotice, AssignmentNotificationRecovered } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -36,6 +38,10 @@ export default function CreateTaskPage() {
   const [success,        setSuccess]        = useState(false)
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [submitError,    setSubmitError]    = useState<string | null>(null)
+  // OUTCOME B. The task id is all this holds — no recipient, no title, no
+  // notification content — and it is what the Retry action sends back.
+  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
+  const [notifyRecovered, setNotifyRecovered] = useState(false)
   const [isMobile,       setIsMobile]       = useState(false)
   const [attachFiles,    setAttachFiles]    = useState<File[]>([])
   const [attachError,    setAttachError]    = useState<string | null>(null)
@@ -109,6 +115,8 @@ export default function CreateTaskPage() {
     if (!title.trim() || !assigneeId || !priority) return
     setLoading(true)
     setSubmitError(null)
+    setNotifyFailedFor(null)
+    setNotifyRecovered(false)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
@@ -178,22 +186,30 @@ export default function CreateTaskPage() {
     // separate tables with no ordering requirement between them. Running them
     // together removes one full round-trip from every task creation. Both are
     // still awaited, so a failure in either is still observable here.
-    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
+    //
+    // The notification is NOT written here. A browser may not insert a
+    // notifications row addressed to somebody else, so this used to fail
+    // silently and the assignee was never told. The server route owns the
+    // write, the recipient rule and the self-task skip; see
+    // src/lib/tasks/assignmentNotification.ts.
+    const [{ error: logErr }, notified] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
       }),
-      supabase.from('notifications').insert({
-        user_id:      assigneeId,
-        task_id:      task.id,
-        type:         'task_assigned',
-        title:        'New task assigned to you',
-        body:         title.trim(),
-        is_push_sent: true,
-      }),
+      requestAssignmentNotification(task.id),
     ])
-    if (logErr)   console.error('[tasks create] activity log insert failed:', logErr.message)
-    if (notifErr) console.error('[tasks create] notification insert failed:', notifErr.message)
+    if (logErr) console.error('[tasks create] activity log insert failed:', logErr.message)
+    // The task is KEPT — it was created successfully and deleting it over a
+    // notification would lose real work. What must not happen is the screen
+    // reporting unqualified success while the assignee sits unaware.
+    // Outcome B, NOT outcome A: the success banner still shows, and the warning
+    // sits beside it saying exactly what did not happen. Putting this in
+    // `submitError` would read as "task creation failed" and invite a duplicate.
+    if (!notified.ok) {
+      console.error('[tasks create] assignment notification failed:', notified.reason)
+      setNotifyFailedFor(task.id)
+    }
 
     // Upload attachments and link to the new task. Files go up a few at a time
     // instead of strictly one after another; `ready` is the already-compressed
@@ -292,6 +308,23 @@ export default function CreateTaskPage() {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* Outcome B — created, not notified. Sits BELOW the success banner so
+          both facts are on screen at once. */}
+      {notifyFailedFor && (
+        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
+          <AssignmentNotificationNotice
+            taskId={notifyFailedFor}
+            onResolved={() => { setNotifyFailedFor(null); setNotifyRecovered(true) }}
+            onDismiss={() => setNotifyFailedFor(null)}
+          />
+        </div>
+      )}
+      {notifyRecovered && (
+        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
+          <AssignmentNotificationRecovered onDismiss={() => setNotifyRecovered(false)} />
         </div>
       )}
 

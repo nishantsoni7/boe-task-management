@@ -15,7 +15,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { insertUserNotifications } from '@/lib/notificationWrites'
+import { createAssignmentNotification, supabaseAssignmentStore } from '@/lib/tasks/assignmentNotificationWriter.server'
 import { resolveAttachmentPath, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 const VALID_PRIORITIES = ['high', 'medium', 'low'] as const
@@ -190,15 +190,34 @@ export async function POST(
   if (logErr) console.error('[copy] activity log insert failed (non-fatal):', logErr.message)
 
   // 10. Standard assignment notification for the new assignee (best-effort).
-  const { error: notifErr } = await insertUserNotifications(supabase, {
-    user_id:      assigneeId,
-    task_id:      newTask.id,
-    type:         'task_assigned',
-    title:        'New task assigned to you',
-    body:         source.title,
-    is_push_sent: true,
-  })
-  if (notifErr) console.error('[copy] notification insert failed (non-fatal):', notifErr.message)
+  // The SAME trusted operation the /notify-assignment route runs, called
+  // in-process because this route already holds a service-role client and has
+  // already authorized the caller as an admin. Going through it rather than
+  // inserting directly means the copy path gets the recipient derivation and
+  // the duplicate check for free, and there is one rule, not two.
+  const notified = await createAssignmentNotification(
+    supabaseAssignmentStore(supabase), { taskId: newTask.id, callerId: user.id })
+  if (notified.status === 'error') {
+    // Non-fatal: the copied task and its attachments are real work and are
+    // kept. The response says the notification did not happen rather than
+    // reporting an unqualified success.
+    console.error('[copy] assignment notification failed:', notified.message)
+  }
 
-  return NextResponse.json({ taskId: newTask.id, assigneeName: assignee.full_name })
+  return NextResponse.json({
+    taskId: newTask.id,
+    assigneeName: assignee.full_name,
+    // Reported, not swallowed. The caller can say "copied, but not notified"
+    // instead of presenting the whole operation as clean.
+    //
+    // `assignmentNotified` means strictly "a notification row exists for the
+    // assignee" — true for a fresh insert and equally for one that was already
+    // there. It is FALSE for `skipped_self`, and that is accurate: a task whose
+    // assignee is its own creator notifies nobody, by rule.
+    assignmentNotified: notified.status === 'created' || notified.status === 'skipped_duplicate',
+    // …which is why a caller deciding whether to WARN should read this instead.
+    // Only `error` leaves something outstanding to retry.
+    assignmentNotificationPending: notified.status === 'error',
+    assignmentNotification: notified.status,
+  })
 }
