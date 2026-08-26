@@ -374,7 +374,7 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
     'src/app/finance/received/AllocateFundsModal.tsx',
     'src/app/finance/received/AllocatePaymentModal.tsx',
     'src/app/finance/received/RecordSplitPaymentModal.tsx',
-    'src/app/finance/components/PaymentTargetFields.tsx',
+    'src/app/finance/components/PaymentEntryFields.tsx',
     'src/lib/finance/rowActions.ts',
     'src/lib/finance/paymentSurfaces.ts',
   ]

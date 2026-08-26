@@ -20,6 +20,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { NO_CUSTOMER_LABEL, customerDisplayName } from './paymentEntry'
 import {
   ALL_PAYMENT_STATUSES,
   CONFIRMED_PAYMENTS_PATH,
@@ -534,11 +535,18 @@ describe('formatCustomerName — the one place customer-name truncation lives', 
     assert.equal(result.display, 'Ravi Kumar')
   })
 
-  test('an absent name renders as an em dash, never truncated', () => {
+  test('an absent name is NAMED, never left blank and never an em dash', () => {
+    // client_name is nullable since 20261013000000 §1, and null means "this
+    // payment has no target to read a customer from" — a real answer, not a
+    // gap. It comes from customerDisplayName so every surface says it the same
+    // way, and it is short enough that it is never truncated.
     for (const value of [null, undefined, '', '   ']) {
       const result = formatCustomerName(value)
-      assert.equal(result.display, '—')
+      assert.equal(result.display, NO_CUSTOMER_LABEL)
+      assert.equal(result.display, customerDisplayName(value))
       assert.equal(result.truncated, false)
+      assert.notEqual(result.display, '—')
+      assert.ok(result.display.trim().length > 0)
     }
   })
 

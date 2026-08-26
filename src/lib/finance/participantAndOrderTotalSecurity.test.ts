@@ -619,16 +619,29 @@ describe('the applied migrations are frozen', () => {
       // 109 and 110: this list is exact, so its arrival is a decision on
       // record rather than a file nobody noticed.
       '20261011000000_admin_payment_deletion_and_payment_id.sql',
-      // 112. NOT APPLIED. Removes the direct-link fallback from
-      // order_linked_payment_total() and finance_received_payments, so active
-      // allocation rows are the only financial source in the database as well
-      // as in the application, and drops the four obsolete Link/Unlink RPCs.
-      // Recorded here for the same reason as 109-111: the list is exact.
+      // 112. Removes the direct-link fallback from order_linked_payment_total()
+      // and finance_received_payments, so active allocation rows are the only
+      // financial source in the database as well as in the application, and
+      // drops the four obsolete Link/Unlink RPCs. Recorded here for the same
+      // reason as 109-111: the list is exact.
       '20261012000000_allocation_ledger_as_single_source.sql',
+      // 113. NOT APPLIED. The payment-entry destination model: client_name
+      // becomes nullable, a pending Payment Request records an allocation
+      // INTENT rather than an allocation, approval converts it, and both entry
+      // forms derive the customer server-side. Recorded here for the same
+      // reason as the four above: this list is exact, so a new migration
+      // cannot appear unnoticed.
+      '20261013000000_payment_entry_destination_model.sql',
+      // 114. NOT APPLIED. The destination a payment SHOWS (derived from the
+      // allocation ledger and the pending intent, never from the provenance
+      // columns), the four current payment modes with the five legacy values
+      // kept storable for history, and the PNB/Paytm custody event log.
+      // Recorded here for the same reason as the five above: this list is exact.
+      '20261014000000_payment_destination_display_modes_and_custody.sql',
     ])
   })
 
-  test('109 to 112 are in ascending order, and none is pinned as applied', () => {
+  test('109 to 114 are in ascending order, and none is pinned as applied', () => {
     // The whole reason the module reset lives on this branch rather than on
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
@@ -641,10 +654,12 @@ describe('the applied migrations are frozen', () => {
       '20261010000000_order_submission_and_finance_test_data_reset.sql',
       '20261011000000_admin_payment_deletion_and_payment_id.sql',
       '20261012000000_allocation_ledger_as_single_source.sql',
+      '20261013000000_payment_entry_destination_model.sql',
+      '20261014000000_payment_destination_display_modes_and_custody.sql',
     ])
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
-        || !/2026100900|2026101000|2026101100|2026101200/.test(file),
+        || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400/.test(file),
         `${file} is unapplied and must not be pinned as frozen`)
     }
   })

@@ -64,7 +64,7 @@ describe('there is one deletion route, reached through one client, from one shar
     const requests = code(read(REQUESTS))
     const at = requests.indexOf("from('finance_payment_requests')\n        .delete({ count: 'exact' })")
     assert.ok(at > 0, 'the compensation delete is still present')
-    assert.ok(requests.slice(at, at + 200).includes(".eq('id', created.id)"),
+    assert.ok(requests.slice(at, at + 200).includes(".eq('id', created.payment_request_id)"),
       'it deletes only the row this same submit just created')
   })
 

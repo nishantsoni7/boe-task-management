@@ -784,9 +784,12 @@ describe('a slow search never repaints a newer one', () => {
   })
 
   test('the four surviving Order searches still carry the guard', () => {
-    // Removing the fifth call site must not quietly relax the other four.
+    // Removing a call site must not quietly relax the others. The Payment
+    // Request form's own selector was deleted with the four-target model
+    // (20261013000000); the shared destination block that replaced it is the
+    // fourth entry here and carries the same guard.
     for (const path of [
-      'src/app/finance/components/PaymentTargetFields.tsx',
+      'src/app/finance/components/PaymentEntryFields.tsx',
       'src/app/finance/received/AllocatePaymentModal.tsx',
       'src/app/finance/received/AllocateFundsModal.tsx',
       'src/app/finance/received/RecordSplitPaymentModal.tsx',

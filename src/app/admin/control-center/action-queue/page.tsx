@@ -8,6 +8,7 @@ import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
 import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
 import { useViewAs } from '@/hooks/useViewAs'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { paymentViewClauses } from '@/lib/finance/paymentClassification'
@@ -204,7 +205,10 @@ export default function ActionQueuePage() {
         id: `finance_pending_approval:${r.id}`,
         category: 'finance_pending_approval',
         actionLabel: CATEGORY_META.finance_pending_approval.actionLabel,
-        clientName: r.client_name,
+        // NEVER BLANK. client_name is nullable since 20261013000000 §1: a
+        // Suspense payment names no customer, and the row still belongs in the
+        // queue because somebody is still waiting on it either way.
+        clientName: customerDisplayName(r.client_name),
         ownerName: r.submitted_by_user?.full_name ?? null,
         module: 'Finance',
         amount: r.amount,
@@ -218,7 +222,7 @@ export default function ActionQueuePage() {
         id: `finance_needs_clarification:${r.id}`,
         category: 'finance_needs_clarification',
         actionLabel: CATEGORY_META.finance_needs_clarification.actionLabel,
-        clientName: r.client_name,
+        clientName: customerDisplayName(r.client_name),
         ownerName: r.submitted_by_user?.full_name ?? null,
         module: 'Finance',
         amount: r.amount,
@@ -232,7 +236,7 @@ export default function ActionQueuePage() {
         id: `finance_suspense:${r.id}`,
         category: 'finance_suspense',
         actionLabel: CATEGORY_META.finance_suspense.actionLabel,
-        clientName: r.client_name,
+        clientName: customerDisplayName(r.client_name),
         // Flat on the projection rather than embedded; same value, same null.
         ownerName: r.submitted_by_name ?? null,
         module: 'Finance',

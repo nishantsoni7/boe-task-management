@@ -187,13 +187,22 @@ export function allocationErrorMessage(raw: string | null | undefined): string {
  * these at once and must offer exactly the same candidates under exactly the
  * same scoping. Two pickers would be two answers to "what may I allocate to",
  * which is the arrangement this whole area has been removing.
+ *
+ * `kind` NARROWS THE SOURCES, IT DOES NOT NARROW THE RULES. A form that has
+ * already asked "PI Draft or Confirmed Order?" knows the answer, and reading
+ * the other table would be a query whose every row is discarded. The filters,
+ * the limits and the RLS scoping on the table that IS read are unchanged.
  */
 export async function searchAllocationTargets(
   supabase: ReturnType<typeof createClient>,
   term: string,
+  kind?: AllocationTargetKind | null,
 ): Promise<AllocationCandidate[]> {
+  const wantOrders = kind !== 'submission'
+  const wantDrafts = kind !== 'order'
+
   const [ordersRes, draftsRes] = await Promise.all([
-    supabase
+    !wantOrders ? Promise.resolve({ data: [] }) : supabase
       .from('orders')
       .select('id, display_number, client_name, total_value, status')
       .or(`display_number.ilike.%${term}%,client_name.ilike.%${term}%`)
@@ -206,7 +215,7 @@ export async function searchAllocationTargets(
     // number typed into the document, and the file name the employee uploaded.
     // Both are searchable because a salesperson identifies a draft by whichever
     // of the two they have.
-    supabase
+    !wantDrafts ? Promise.resolve({ data: [] }) : supabase
       .from('order_submissions')
       .select('id, source_order_number, source_workbook_name, client_name, grand_total, status')
       .or(`source_order_number.ilike.%${term}%,source_workbook_name.ilike.%${term}%,client_name.ilike.%${term}%`)

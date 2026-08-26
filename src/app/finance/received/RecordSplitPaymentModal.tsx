@@ -34,6 +34,23 @@
 // has no parameter for one, the allocation table has no such column, and the
 // picker offers only the two kinds of target the business has.
 //
+// THREE DESTINATIONS, THE SAME THREE THE PAYMENT REQUEST FORM ASKS FOR. PI
+// Draft, Confirmed Order, Suspense Entry — one list, one component, so the two
+// forms cannot drift into asking the same question in different words. The
+// destination narrows the picker to one kind and decides whether the entry
+// carries allocations at all; it does NOT narrow it to one target, because
+// dividing one payment across several Orders is the reason this form exists.
+//
+// A PAYMENT THAT COVERS BOTH A PI DRAFT AND AN ORDER is recorded as a Suspense
+// Entry and then divided through Allocate Funds, which offers both kinds. That
+// is one round trip more than the old mixed list allowed, and it is the price
+// of the three destinations being the same three everywhere.
+//
+// THE CUSTOMER IS NOT ASKED FOR. record_payment_with_allocations derives it
+// from the targets it has already validated (20261013000000), and leaves it
+// null when there are none. Nothing here types a name, sends one, or invents an
+// account to put in received_in.
+//
 // VERIFICATION IS NOT BYPASSED. This records that money was reported. Whether it
 // arrived is still Finance's decision, taken afterwards through the existing
 // verify / correct-and-verify / reject authority, which this touches in no way.
@@ -53,7 +70,33 @@ import {
   targetKey,
   toRpcAllocations,
   type SplitAllocationRow,
+  type SplitTargetKind,
 } from '@/lib/finance/splitPaymentEntry'
+import {
+  EMPTY_PAYMENT_ENTRY,
+  DestinationCards,
+} from '@/app/finance/components/PaymentEntryFields'
+import { DiscardConfirmation, useDiscardGuard } from '@/app/finance/components/DiscardGuard'
+import {
+  DEFAULT_PAYMENT_MODE,
+  SUSPENSE_NOTICE,
+  destinationTargetKind,
+  paymentModeOptionsFor,
+  type PaymentDestination,
+} from '@/lib/finance/paymentEntry'
+import {
+  custodyDraftsError,
+  modeRequiresCustodyTrail,
+  toRpcCustodyEvents,
+  type CustodyDraft,
+} from '@/lib/finance/custodyTrail'
+import { attachPaymentProof } from '@/lib/finance/paymentProof'
+import { validateProofFile } from '@/lib/paymentProof'
+import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
+import {
+  ProofReferenceField,
+  ProofReferenceSection,
+} from '@/app/finance/components/ProofReferenceSection'
 import {
   KindBadge,
   loadTargetPosition,
@@ -68,43 +111,45 @@ export const RECORD_PAYMENT_MODAL_TITLE = 'Record Payment'
 /** The label on the control that opens this. Named once so tests read the product's word. */
 export const RECORD_PAYMENT_ACTION_LABEL = 'Record Payment'
 
-/** The existing closed domain, in the product's words. Neither is new. */
-const PAYMENT_MODES: [string, string][] = [
-  ['bank_transfer', 'Bank Transfer'],
-  ['cash',          'Cash'],
-  ['upi',           'UPI'],
-  ['cheque',        'Cheque'],
-  ['other',         'Other'],
-]
-
-const RECEIVED_IN: [string, string][] = [
-  ['',                'Not stated'],
-  ['company_account', 'Company Account'],
-  ['cash_in_hand',    'Cash in Hand'],
-  ['savings_account', 'Savings Account'],
-  ['other',           'Other'],
-]
 
 let rowSeq = 0
 const nextRowKey = () => `alloc-${++rowSeq}`
 
 export function RecordSplitPaymentModal({
   supabase,
+  userId,
   onClose,
   onRecorded,
 }: {
   supabase: ReturnType<typeof createClient>
+  /** Whoever is recording this. Seeds the first custody activity and the proof row. */
+  userId?: string | null
   onClose: () => void
   onRecorded: (summary: { requestNumber: string; allocationCount: number }) => void
 }) {
+  // ── Where the money is for ──
+  //
+  // The SAME three the Payment Request form offers, from the same list, drawn by
+  // the same component. What differs below is only how many targets the answer
+  // admits: a request names one, and this form divides one payment across
+  // several of that one kind.
+  const [destination, setDestination] = useState<PaymentDestination>(EMPTY_PAYMENT_ENTRY.destination)
+
   // ── The payment, entered once ──
-  const [clientName,  setClientName]  = useState('')
   const [amount,      setAmount]      = useState('')
   const [paymentDate, setPaymentDate] = useState('')
-  const [paymentMode, setPaymentMode] = useState('bank_transfer')
-  const [receivedIn,  setReceivedIn]  = useState('')
+  const [paymentMode, setPaymentMode] = useState<string>(DEFAULT_PAYMENT_MODE)
   const [reference,   setReference]   = useState('')
   const [remarks,     setRemarks]     = useState('')
+
+  // ── The custody trail, for the two modes a person carries ──
+  const [custody, setCustody] = useState<CustodyDraft[]>([])
+
+  // ── The optional proof, attached after the payment exists ──
+  const [attachFile,  setAttachFile]  = useState<File | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [proofNotice, setProofNotice] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
   const [rows, setRows] = useState<SplitAllocationRow[]>([EMPTY_ALLOCATION_ROW(nextRowKey())])
@@ -113,11 +158,53 @@ export function RecordSplitPaymentModal({
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
 
+  // ONE SUBMISSION, NOT ONE PER CLICK. `saving` re-renders and a second click can
+  // land inside the same tick; a ref is read and written synchronously, so it is
+  // the thing that actually closes the window.
+  const submitting = useRef(false)
+
+  const targetKind = destinationTargetKind(destination)
+
+  // SUSPENSE SENDS NOTHING, AND HOLDS NOTHING. Switching to it empties the list
+  // rather than hiding it, so what is on screen and what is in the payload are
+  // the same set of rows.
   const totals     = splitPaymentTotals({ amount, rows })
   const duplicates = duplicateTargetKeys(rows)
-  const blocked    = splitPaymentBlockedReason({
-    amount, paymentDate, paymentMode, clientName, rows,
-  })
+  // A HALF-ENTERED CUSTODY ACTIVITY BLOCKS THE SAVE, for the same reason a
+  // half-entered allocation does: the server refuses it and takes the whole
+  // entry with it, so the person is told here instead of after a round trip.
+  const custodyError = custodyDraftsError(custody)
+  const blocked    = splitPaymentBlockedReason({ destination, amount, paymentDate, paymentMode, rows })
+    ?? custodyError ?? attachError
+
+  // ── Not losing what was typed ──
+  //
+  // Dirty means "there is something here worth a question". The payment mode
+  // starts at a value nobody chose, so it counts only once it has been changed.
+  const isDirty = () =>
+    amount.trim() !== '' ||
+    paymentDate !== '' ||
+    paymentMode !== DEFAULT_PAYMENT_MODE ||
+    reference.trim() !== '' ||
+    remarks.trim() !== '' ||
+    destination !== EMPTY_PAYMENT_ENTRY.destination ||
+    custody.length > 0 ||
+    attachFile !== null ||
+    rows.some(r => r.kind || r.targetId || r.amount.trim())
+
+  const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
+
+  const changeDestination = (next: PaymentDestination) => {
+    if (next === destination) return
+    setError(null)
+    setDestination(next)
+    // A row chosen under one destination is not an answer to another: an Order
+    // left behind under "PI Draft" would be refused by the server after the
+    // person had stopped looking, and one left behind under "Suspense Entry"
+    // would allocate money they had said not to allocate.
+    setRows([EMPTY_ALLOCATION_ROW(nextRowKey())])
+    setPickerFor(null)
+  }
 
   const patchRow = (key: string, patch: Partial<SplitAllocationRow>) => {
     setError(null)
@@ -128,14 +215,15 @@ export function RecordSplitPaymentModal({
     setError(null)
     setRows(prev => {
       const next = prev.filter(r => r.key !== key)
-      // Never zero rows: an empty list is a legitimate SAVE, but a form with no
-      // row at all offers nowhere to start and reads as a bug.
+      // Never zero rows: a targeted entry with no row at all offers nowhere to
+      // start and reads as a bug. An entry that should carry none is Suspense.
       return next.length > 0 ? next : [EMPTY_ALLOCATION_ROW(nextRowKey())]
     })
   }
 
   const handleSave = async () => {
-    if (blocked || saving) return
+    if (blocked || saving || submitting.current) return
+    submitting.current = true
     setSaving(true)
     setError(null)
 
@@ -143,21 +231,65 @@ export function RecordSplitPaymentModal({
       p_amount:       Number(amount),
       p_payment_date: paymentDate,
       p_payment_mode: paymentMode,
-      p_client_name:  clientName.trim(),
-      p_received_in:  receivedIn || null,
+      // THE CUSTOMER IS NOT SENT. record_payment_with_allocations derives it
+      // from the targets it validates (20261013000000); a name from here would
+      // be a claim this form is in no position to make.
+      p_client_name:  null,
+      // AND NEITHER IS THE ACCOUNT. received_in has been nullable since
+      // 20260919000000 and this form no longer asks for it. null means "not
+      // stated", which is true — nothing is fabricated to fill it.
+      p_received_in:  null,
       p_reference:    reference.trim() || null,
       p_remarks:      remarks.trim() || null,
-      p_allocations:  toRpcAllocations(rows),
+      // A SUSPENSE ENTRY IS AN EMPTY LIST, not a hidden one. There is no branch
+      // here that could send a row the person cannot see.
+      p_allocations:  targetKind ? toRpcAllocations(rows) : [],
+      // THE CUSTODY TRAIL, in the same transaction as the payment and its
+      // allocations. Sent only for a mode somebody carries — and the RPC decides
+      // that again for itself, so a section left on screen after the mode changed
+      // has its rows refused rather than stored.
+      p_custody_events: modeRequiresCustodyTrail(paymentMode) ? toRpcCustodyEvents(custody) : [],
     })
 
     setSaving(false)
 
     // A FAILURE HERE IS A COMPLETE FAILURE, and is reported as one. The RPC is a
     // single transaction: there is no partial state to describe and nothing for
-    // this screen to compensate for.
-    if (rpcError || !data) { setError(splitPaymentErrorMessage(rpcError?.message)); return }
+    // this screen to compensate for. The form STAYS OPEN with everything in it,
+    // so a refusal costs a correction and not a re-entry.
+    if (rpcError || !data) {
+      submitting.current = false
+      setError(splitPaymentErrorMessage(rpcError?.message))
+      return
+    }
 
-    const result = data as { request_number?: string; allocation_count?: number }
+    const result = data as {
+      request_number?: string
+      allocation_count?: number
+      payment_request_id?: string
+    }
+
+    // ── THE PROOF, AFTER THE PAYMENT EXISTS ──
+    //
+    // A storage object needs the payment's id in its path and the payment row
+    // for its policy, so it cannot be written first. attachPaymentProof NEVER
+    // removes the payment if it fails: the money is recorded, and discarding a
+    // recorded payment because a file did not upload would throw away the fact
+    // that matters. The person is told, and the proof can be attached from the
+    // payment's own screen.
+    if (attachFile && result.payment_request_id) {
+      const proofError = await attachPaymentProof(supabase, {
+        paymentRequestId: result.payment_request_id,
+        file: attachFile,
+        userId: userId ?? null,
+      })
+      if (proofError) {
+        submitting.current = false
+        setProofNotice(`${proofError} The payment itself was recorded.`)
+        return
+      }
+    }
+
     onRecorded({
       requestNumber:   result.request_number ?? '',
       allocationCount: result.allocation_count ?? 0,
@@ -167,31 +299,37 @@ export function RecordSplitPaymentModal({
   return (
     <FinanceModal
       title={RECORD_PAYMENT_MODAL_TITLE}
-      onClose={onClose}
+      /* ✕ asks before it discards; so does Escape, through the guard's own
+         capture-phase listener, which stops this shell's from also firing. */
+      onClose={guard.requestClose}
       width="700px"
       /* Holds unsaved input, so a backdrop click must never discard it —
-         the project's Form Modal Dismissal Rule. Escape and ✕ still close. */
+         the project's Form Modal Dismissal Rule. */
       closeOnBackdropClick={false}
     >
       <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
-        One payment, divided across every Order and PI Draft it actually paid for.
+        One payment, divided across every record it actually paid for.
         Anything not allocated stays as an available balance on the payment.
         Finance still verifies it before it counts as received.
       </div>
 
-      {/* ── The payment itself ── */}
+      {/* ── 1. Where the money is for ── */}
+      <DestinationCards value={destination} onChange={changeDestination} disabled={saving} />
+
+      {destination === 'suspense' && (
+        <p style={{
+          margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.5,
+          padding: '10px 12px', borderRadius: '8px', background: colors.hover,
+        }}>
+          {SUSPENSE_NOTICE}
+        </p>
+      )}
+
+      {/* ── 2. The payment itself ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
-        <Field label="Client" htmlFor="rsp-client">
-          <input
-            id="rsp-client" className="boe-input" value={clientName} autoFocus
-            onChange={e => { setClientName(e.target.value); setError(null) }}
-            placeholder="Who the money came from"
-            style={{ width: '100%' }}
-          />
-        </Field>
         <Field label="Amount received" htmlFor="rsp-amount">
           <input
-            id="rsp-amount" className="boe-input" inputMode="decimal" value={amount}
+            id="rsp-amount" className="boe-input" inputMode="decimal" value={amount} autoFocus
             onChange={e => { setAmount(sanitizeAmountInput(e.target.value)); setError(null) }}
             placeholder="0.00"
             style={{ width: '100%' }}
@@ -204,42 +342,97 @@ export function RecordSplitPaymentModal({
             style={{ width: '100%' }}
           />
         </Field>
+        {/* THE FOUR ACCOUNTS, from the one shared list — the same four the
+            Payment Request form offers. What each means internally is not
+            printed here or anywhere. */}
         <Field label="Payment mode" htmlFor="rsp-mode">
           <select
             id="rsp-mode" className="boe-input" value={paymentMode}
             onChange={e => { setPaymentMode(e.target.value); setError(null) }}
             style={{ width: '100%' }}
           >
-            {PAYMENT_MODES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            {paymentModeOptionsFor(null).map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
           </select>
-        </Field>
-        <Field label="Received in" htmlFor="rsp-received-in">
-          <select
-            id="rsp-received-in" className="boe-input" value={receivedIn}
-            onChange={e => { setReceivedIn(e.target.value); setError(null) }}
-            style={{ width: '100%' }}
-          >
-            {RECEIVED_IN.map(([value, label]) => <option key={value || 'none'} value={value}>{label}</option>)}
-          </select>
-        </Field>
-        <Field label="Reference" htmlFor="rsp-reference">
-          <input
-            id="rsp-reference" className="boe-input" value={reference}
-            onChange={e => { setReference(e.target.value); setError(null) }}
-            placeholder="UTR, cheque number…"
-            style={{ width: '100%' }}
-          />
         </Field>
       </div>
 
-      <Field label="Remark" htmlFor="rsp-remarks">
-        <textarea
-          id="rsp-remarks" className="boe-input" value={remarks} rows={2}
-          onChange={e => { setRemarks(e.target.value); setError(null) }}
-          placeholder="Anything Finance should know when verifying this"
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
+      {/* WHO CARRIED IT — for PNB and Paytm only. */}
+      <CustodyTrailFields
+        supabase={supabase}
+        paymentMode={paymentMode}
+        drafts={custody}
+        onDraftsChange={setCustody}
+        defaultActorId={userId ?? undefined}
+        disabled={saving}
+      />
+
+      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the
+          remark under ONE heading, exactly as the two Payment Request forms ask
+          them. Three parts of one question; three columns in the database,
+          because they mean three things. */}
+      <ProofReferenceSection>
+        <ProofReferenceField
+          label="Payment reference"
+          htmlFor="rsp-reference"
+          hint={attachError
+            ? <span style={{ fontSize: '11px', color: colors.red }}>{attachError}</span>
+            : attachFile
+              ? <span style={{ fontSize: '11px', color: colors.muted }}>
+                  Attached: {attachFile.name} — proof is optional and stored privately.
+                </span>
+              : undefined}
+        >
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              id="rsp-reference" className="boe-input" value={reference}
+              onChange={e => { setReference(e.target.value); setError(null) }}
+              placeholder="UTR, cheque number…"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0] ?? null
+                if (!f) { setAttachFile(null); setAttachError(null); return }
+                const vErr = validateProofFile(f)
+                if (vErr) {
+                  setAttachFile(null)
+                  setAttachError(vErr)
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                  return
+                }
+                setAttachError(null)
+                setAttachFile(f)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={saving}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              {attachFile
+                ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '')
+                : '📎 Attach'}
+            </button>
+          </div>
+        </ProofReferenceField>
+
+        <ProofReferenceField label="Notes / remarks (optional)" htmlFor="rsp-remarks">
+          <textarea
+            id="rsp-remarks" className="boe-input" value={remarks} rows={2}
+            onChange={e => { setRemarks(e.target.value); setError(null) }}
+            placeholder="Anything Finance should know when verifying this"
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </ProofReferenceField>
+      </ProofReferenceSection>
 
       {/* ── The three figures, always on screen ──
           Total received, total allocated, and what is left. Shown continuously
@@ -263,35 +456,42 @@ export function RecordSplitPaymentModal({
         />
       </div>
 
-      {/* ── The destinations ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
-        <span style={LABEL}>Allocations</span>
-        <button
-          type="button"
-          onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
-          className="boe-btn boe-btn-ghost"
-          style={{ padding: '4px 10px', fontSize: '12px' }}
-        >
-          + Add allocation
-        </button>
-      </div>
+      {/* ── 3. The targets, when the destination has any ── */}
+      {targetKind && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <span style={LABEL}>
+              {destination === 'pi_draft' ? 'PI Drafts' : 'Orders'}
+            </span>
+            <button
+              type="button"
+              onClick={() => setRows(prev => [...prev, EMPTY_ALLOCATION_ROW(nextRowKey())])}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '4px 10px', fontSize: '12px' }}
+            >
+              + Add allocation
+            </button>
+          </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        {rows.map((row, index) => (
-          <AllocationRow
-            key={row.key}
-            row={row}
-            index={index}
-            supabase={supabase}
-            duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
-            picking={pickerFor === row.key}
-            onPick={() => setPickerFor(row.key)}
-            onClosePicker={() => setPickerFor(null)}
-            onChange={patch => patchRow(row.key, patch)}
-            onRemove={() => removeRow(row.key)}
-          />
-        ))}
-      </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {rows.map((row, index) => (
+              <AllocationRow
+                key={row.key}
+                row={row}
+                index={index}
+                kind={targetKind}
+                supabase={supabase}
+                duplicate={Boolean(targetKey(row) && duplicates.has(targetKey(row) as string))}
+                picking={pickerFor === row.key}
+                onPick={() => setPickerFor(row.key)}
+                onClosePicker={() => setPickerFor(null)}
+                onChange={patch => patchRow(row.key, patch)}
+                onRemove={() => removeRow(row.key)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
       {/* The reason the control is disabled, always stated. A greyed-out button
           with no explanation is what has somebody clicking it repeatedly. */}
@@ -308,8 +508,21 @@ export function RecordSplitPaymentModal({
         </div>
       )}
 
+      {/* THE PAYMENT LANDED AND THE FILE DID NOT. Said plainly, and NOT as a
+          failure of the entry: the money is recorded, and the proof can be
+          attached from the payment's own screen. */}
+      {proofNotice && (
+        <div style={{
+          fontSize: '12px', color: '#9A3412', background: '#FFF7ED',
+          border: '1px solid #FED7AA', borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
+        }}>
+          {proofNotice}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
-        <button onClick={onClose} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
+        <button onClick={guard.requestClose} disabled={saving}
+                className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
           Cancel
         </button>
         <button
@@ -325,6 +538,12 @@ export function RecordSplitPaymentModal({
           {saving ? 'Recording…' : RECORD_PAYMENT_ACTION_LABEL}
         </button>
       </div>
+
+      <DiscardConfirmation
+        open={guard.asking}
+        onKeepEditing={guard.keepEditing}
+        onDiscard={guard.discard}
+      />
     </FinanceModal>
   )
 }
@@ -332,15 +551,19 @@ export function RecordSplitPaymentModal({
 // ── One destination ───────────────────────────────────────────────────────────
 //
 // The target, the amount, and a way to remove it. The picker is the SAME search
-// the Allocate control uses — same two sources, same RLS scoping, same
-// eligibility filters — so "only within your permitted scope" is not a rule
-// written twice.
+// the Allocate control uses — same sources, same RLS scoping, same eligibility
+// filters — so "only within your permitted scope" is not a rule written twice.
+//
+// NARROWED TO ONE KIND, by the destination the form already asked about.
+// Offering Orders under "PI Draft" would offer a choice the entry then refuses,
+// and it would read the other table for rows every one of which is discarded.
 
 function AllocationRow({
-  row, index, supabase, duplicate, picking, onPick, onClosePicker, onChange, onRemove,
+  row, index, kind, supabase, duplicate, picking, onPick, onClosePicker, onChange, onRemove,
 }: {
   row: SplitAllocationRow
   index: number
+  kind: SplitTargetKind
   supabase: ReturnType<typeof createClient>
   duplicate: boolean
   picking: boolean
@@ -354,19 +577,26 @@ function AllocationRow({
   const [results, setResults] = useState<AllocationCandidate[]>([])
   const [position, setPosition] = useState<TargetPosition | null>(null)
   const searchToken = useRef(0)
+  const debounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const runSearch = async (raw: string) => {
+  const noun = kind === 'submission' ? 'PI Draft' : 'Order'
+
+  // DEBOUNCED, THEN GUARDED. The delay stops a query per keystroke; the token
+  // stops a slow earlier query from overwriting a later one with stale rows.
+  // Neither is a substitute for the other.
+  const runSearch = (raw: string) => {
     setQuery(raw)
+    if (debounce.current) clearTimeout(debounce.current)
     const term = raw.trim()
     if (!term) { setResults([]); return }
-    const token = ++searchToken.current
-    setSearching(true)
-    const found = await searchAllocationTargets(supabase, term)
-    // Only the newest search may write results: a slow earlier query must never
-    // overwrite a later one with stale rows.
-    if (token !== searchToken.current) return
-    setResults(found)
-    setSearching(false)
+    debounce.current = setTimeout(async () => {
+      const token = ++searchToken.current
+      setSearching(true)
+      const found = await searchAllocationTargets(supabase, term, kind)
+      if (token !== searchToken.current) return
+      setResults(found)
+      setSearching(false)
+    }, 250)
   }
 
   const choose = async (candidate: AllocationCandidate) => {
@@ -416,7 +646,7 @@ function AllocationRow({
             className="boe-btn boe-btn-ghost"
             style={{ padding: '4px 10px', fontSize: '12px' }}
           >
-            Choose an Order or PI Draft
+            {kind === 'submission' ? 'Choose a PI Draft' : 'Choose an Order'}
           </button>
         )}
 
@@ -481,7 +711,8 @@ function AllocationRow({
               autoFocus
               value={query}
               onChange={e => runSearch(e.target.value)}
-              placeholder="Order number, PI reference or client name…"
+              placeholder={kind === 'submission'
+                ? 'PI reference or customer name…' : 'Order number or customer name…'}
               style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '13px', color: colors.primary }}
             />
             {searching && <span style={{ fontSize: '11px', color: colors.muted }}>Searching…</span>}
@@ -531,8 +762,8 @@ function AllocationRow({
 
           {query.trim() !== '' && !searching && results.length === 0 && (
             <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
-              Nothing you can allocate to matches &ldquo;{query.trim()}&rdquo;. Only Orders and PI
-              Drafts you may open are offered.
+              No {noun} you can allocate to matches &ldquo;{query.trim()}&rdquo;. Only records you
+              may open are offered.
             </div>
           )}
         </div>

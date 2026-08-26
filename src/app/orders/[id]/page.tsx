@@ -71,6 +71,8 @@ import {
 import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
 import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
+// ONE payment-mode source for Order and Finance (20261013000000).
+import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
   OrderDocumentsCard,
   OrderPiNoSource,
@@ -238,13 +240,6 @@ const LEAD_SOURCE_LABEL: Record<string, string> = {
   website:         'Website',
 }
 
-const PAYMENT_MODE_LABEL: Record<string, string> = {
-  bank_transfer: 'Bank Transfer',
-  cash:          'Cash',
-  upi:           'UPI',
-  cheque:        'Cheque',
-  other:         'Other',
-}
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
   created:          'Order created',
@@ -1620,7 +1615,10 @@ export default function OrderDetailPage() {
                     return (
                       <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                         <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
-                          {p.client_name || '—'}
+                          {/* A payment with no customer says so, from the one
+                              shared formatter. An em dash would read as
+                              missing data rather than as a Suspense payment. */}
+                          {customerDisplayName(p.client_name)}
                         </td>
                         <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
                           <div style={{ fontWeight: 600, color: colors.primary }}>

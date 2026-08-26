@@ -11,6 +11,7 @@
 // only shapes what is rendered; every caller still holds the original string.
 
 import { formatCustomerName } from '@/lib/finance/paymentSurfaces'
+import { customerDisplayName } from '@/lib/finance/paymentEntry'
 
 export function CustomerName({
   name,
@@ -23,7 +24,9 @@ export function CustomerName({
   style?: React.CSSProperties
 }) {
   if (!truncate) {
-    return <span style={style}>{(name ?? '').trim() || '—'}</span>
+    // Never blank, never 'null', never 'undefined' — a payment with no customer
+    // says so in words, from the same formatter the truncating branch uses.
+    return <span style={style}>{customerDisplayName(name)}</span>
   }
   const { display, full, truncated } = formatCustomerName(name)
   return (
