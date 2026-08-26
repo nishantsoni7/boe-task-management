@@ -182,10 +182,18 @@ describe('tabs filter already-fetched data', () => {
 
 describe('the Awaiting Approval tab', () => {
   test('it is offered in the view-tab strip with a count badge', () => {
-    assert.ok(PAGE_CODE.includes("{ key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL"))
-    // The strip renders counts[tab.key] for every entry, so the badge is the
-    // same mechanism as every other tab's.
-    assert.ok(PAGE_CODE.includes('{counts[tab.key]}'))
+    // The strip is its own component now, so that what it RENDERS can be
+    // asserted rather than only what the page's source contains — see
+    // src/components/tasks/MyTaskViewTabs.test.tsx, which renders it.
+    const tabs = read('src/components/tasks/MyTaskViewTabs.tsx')
+    assert.ok(tabs.includes("{ key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL"))
+    // Every entry renders counts[tab.key], so the badge is the same mechanism
+    // as every other tab's.
+    assert.ok(tabs.includes('{counts[tab.key]}'))
+    // And the page passes the classifier's own counts straight in.
+    assert.ok(PAGE_CODE.includes('<MyTaskViewTabs'))
+    assert.ok(PAGE_CODE.includes('counts={counts}'))
+    assert.ok(PAGE_CODE.includes('onSelect={handleTabChange}'))
   })
 
   test('its label is the shared constant, so the tab and the row badge agree', () => {

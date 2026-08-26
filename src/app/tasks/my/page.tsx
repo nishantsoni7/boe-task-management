@@ -10,6 +10,7 @@ import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { MyTaskViewTabs } from '@/components/tasks/MyTaskViewTabs'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -1529,67 +1530,13 @@ function MyTasksContent() {
           {/* ── Right: task list area ── */}
           <div style={{ flex: 1, minWidth: 0, background: '#fff' }}>
 
-            {/* ── View tabs: Today Actionable / Overdue Actionable / Waiting Blocked ── */}
-            {(() => {
-              const VIEW_TABS: { key: TabKey; label: string; accent: string }[] = [
-                { key: 'today_actionable',   label: 'Today Actionable',   accent: '#2E9E6B' },
-                { key: 'overdue_actionable', label: 'Overdue Actionable', accent: '#C0551A' },
-                { key: 'future_actionable',  label: 'Future Actionable',  accent: '#7C5CBF' },
-                { key: 'waiting_blocked',    label: 'Waiting / Blocked',  accent: '#5B7FA6' },
-                // Work this user has finished and handed to its creator. It is
-                // NOT an actionable tab — nothing here is theirs to move — and
-                // it is the only tab these tasks appear in. The gold matches
-                // the pending_approval badge on the task detail page.
-                { key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL, accent: '#A57F14' },
-              ]
-              return (
-                <div style={{
-                  display: 'flex', gap: '0',
-                  borderBottom: `1px solid ${colors.border}`,
-                  padding: '0 24px',
-                  // Awaiting Approval makes five tabs, which no longer fit a
-                  // phone in one line. Scrolling the strip keeps every tab
-                  // reachable without wrapping it into a second row that pushes
-                  // the list down; the desktop layout is unchanged because the
-                  // row fits and never scrolls.
-                  overflowX: 'auto',
-                  scrollbarWidth: 'none',
-                }}>
-                  {VIEW_TABS.map(tab => {
-                    const isActive = activeTab === tab.key
-                    return (
-                      <button
-                        key={tab.key}
-                        onClick={() => handleTabChange(tab.key)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          padding: '12px 4px', marginRight: '20px',
-                          background: 'transparent', border: 'none',
-                          borderBottom: `2px solid ${isActive ? tab.accent : 'transparent'}`,
-                          cursor: 'pointer', outline: 'none',
-                          fontSize: '12.5px', fontWeight: isActive ? 700 : 500,
-                          color: isActive ? tab.accent : colors.secondary,
-                          transition: 'color 0.12s, border-color 0.12s',
-                          whiteSpace: 'nowrap',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {tab.label}
-                        <span style={{
-                          fontSize: '11px', fontWeight: 700,
-                          padding: '1px 7px', borderRadius: '10px',
-                          background: isActive ? `${tab.accent}18` : 'rgba(0,0,0,0.05)',
-                          color: isActive ? tab.accent : colors.muted,
-                          minWidth: '20px', textAlign: 'center',
-                        }}>
-                          {counts[tab.key]}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )
-            })()}
+            {/* ── Workflow tabs, including Awaiting Approval ── */}
+            <MyTaskViewTabs
+              activeTab={activeTab}
+              counts={counts}
+              onSelect={handleTabChange}
+              isMobile={isMobile}
+            />
 
             {/* Filter toolbar: Assignee, Priority, Search (right-aligned) */}
             <div style={{
@@ -1695,7 +1642,7 @@ function MyTasksContent() {
             ) : visibleTasks.length === 0 ? (
               <EmptyState label={activeTab ? TAB_LABELS[activeTab] : 'active'} />
             ) : (
-              <div style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div id="my-tasks-list" style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {visibleTasks.map(task => (
                   <TaskCard
                     key={task.id}

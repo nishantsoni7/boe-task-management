@@ -15,6 +15,7 @@ import {
   PERMISSION_STALE_MS,
   PERMISSION_GC_MS,
 } from '@/hooks/queries/usePermissionContext'
+import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -89,12 +90,14 @@ function canSeeModule(
   return resolveModuleAccess(key, modVis[key], effectiveProfile, fallback)
 }
 
-/** Unread counts for the four modules that publish one. */
+/**
+ * Sample Tracking's unread count, which lives in its own table behind its own
+ * endpoint (`/api/samples/notifications`) and is not part of the shared
+ * `notifications` feed. Task, Finance and Orders now come from the one canonical
+ * count query instead — see the hooks in the component below.
+ */
 type ModuleCounts = {
-  task?: number | null
   sample?: number | null
-  finance?: number | null
-  order?: number | null
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -233,6 +236,31 @@ export default function BoeOsHomePage() {
   // Neither branch is an authorisation: /my-attendance and /my-payroll are
   // served by APIs that derive the employee from the bearer token, and the
   // admin routes are behind AttendanceGuard / PayrollGuard.
+
+  // ONE QUERY KEY PER CATEGORY, shared with the desktop sidebar and the mobile
+  // bottom nav.
+  //
+  // This card used to run its own `fetch` into local state — a third copy of a
+  // number two other surfaces already had, with no cache behind it. So the
+  // launcher paid for a fresh round trip on every visit and a hard refresh had
+  // nothing to show at all. Reading the shared hook means the value is seeded
+  // from the persisted last-known count in the first render, revalidated in the
+  // background, and reused by whichever nav mounts next without a second
+  // request.
+  //
+  // The authorization gate is UNCHANGED and is declared here rather than below
+  // because a card needs the number: `enabled` is the same `mayOpen…` test the
+  // fetch was guarded by, so a module this employee cannot open still issues no
+  // request.
+  const mayOpenTask    = permsReady && canOpenModule('task_management')
+  const mayOpenSample  = permsReady && canOpenModule('sample_tracking')
+  const mayOpenFinance = permsReady && canOpenModule('finance')
+  const mayOpenOrders  = permsReady && canOpenModule('orders')
+
+  const taskCount    = useUnreadCountState('task',    mayOpenTask)
+  const financeCount = useUnreadCountState('finance', mayOpenFinance)
+  const orderCount   = useUnreadCountState('order',   mayOpenOrders)
+
   const attendancePayrollHref = isModuleAdmin
     ? '/payroll'
     : (canSeeAttendance ? '/my-attendance' : '/my-payroll')
@@ -260,7 +288,7 @@ export default function BoeOsHomePage() {
       href: '/dashboard',
       accent: '#1A2035',
       icon: <TaskIcon />,
-      notificationCount: counts.task,
+      notificationCount: taskCount.count,
     }] : []),
     ...(canOpenModule('sample_tracking') ? [{
       key: 'samples',
@@ -319,7 +347,7 @@ export default function BoeOsHomePage() {
       href: '/finance',
       accent: '#065F46',
       icon: <FinanceIcon />,
-      notificationCount: counts.finance,
+      notificationCount: financeCount.count,
     }] : []),
     ...(canOpenModule('meetings') ? [{
       key: 'meetings',
@@ -337,7 +365,7 @@ export default function BoeOsHomePage() {
       href: '/orders',
       accent: '#DC1F2E',
       icon: <OrdersIcon />,
-      notificationCount: counts.order,
+      notificationCount: orderCount.count,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
@@ -363,10 +391,6 @@ export default function BoeOsHomePage() {
   // still issues no request, so the deferral did not turn a skipped fetch into
   // a fetch whose answer is discarded. Each count is stored on arrival rather
   // than awaited together, so one slow endpoint no longer holds the other three.
-  const mayOpenTask    = permsReady && canOpenModule('task_management')
-  const mayOpenSample  = permsReady && canOpenModule('sample_tracking')
-  const mayOpenFinance = permsReady && canOpenModule('finance')
-  const mayOpenOrders  = permsReady && canOpenModule('orders')
 
   useEffect(() => {
     if (!permsReady || !userId) return
@@ -401,17 +425,13 @@ export default function BoeOsHomePage() {
         .catch(() => store(field, null))
     }
 
-    // Task Management: same unread count the /notifications page shows
-    load(mayOpenTask,    '/api/notifications?count=1&category=task',    'task')
-    // Sample Tracking: unread sample notification count
-    load(mayOpenSample,  '/api/samples/notifications?count=1',          'sample')
-    // Finance: unread count scoped to Finance events (type finance_%)
-    load(mayOpenFinance, '/api/notifications?count=1&category=finance', 'finance')
-    // Orders: unread count scoped to Order Management events (type order_%)
-    load(mayOpenOrders,  '/api/notifications?count=1&category=order',   'order')
+    // Sample Tracking only. Its unread count lives in `sample_notifications`
+    // behind its own endpoint, so it has no shared query key to read; Task,
+    // Finance and Orders are served by useUnreadCountState above.
+    load(mayOpenSample, '/api/samples/notifications?count=1', 'sample')
 
     return () => { active = false }
-  }, [permsReady, userId, mayOpenTask, mayOpenSample, mayOpenFinance, mayOpenOrders])
+  }, [permsReady, userId, mayOpenSample])
 
   // Warm the routes behind the cards that are actually on screen, so the click
   // does not begin with a chunk download. `modules` contains ONLY authorized
@@ -558,29 +578,48 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
         {/* Left: notification signal. The status pill that used to sit here is
             gone — see the note on ModuleDef. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-          {/* An unresolved count (undefined) renders a non-breaking space, not
+          {/* An unresolved count (undefined) renders a compact placeholder, not
               "No notifications": the card is on screen before its badge is
               known, and printing a zero-state we have not confirmed would be
               stating something false for as long as the request is in flight.
-              The nbsp keeps the line box — and so the card — exactly the height
-              it will be once the number lands, so nothing moves. A resolved
-              null still reads "No notifications", as it always did: that is a
-              module with no count API rather than one still being counted. */}
-          <span style={{
-            fontSize: '11px',
-            color: hasNotif ? '#D94F4F' : '#B0B8C8',
-            fontWeight: hasNotif ? 600 : 400,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>
-            {count === undefined
-              ? ' '
-              : count == null
+              With the persisted last-known count seeding the query, this state
+              is now reached only on a first-ever visit or after a sign-out. A
+              resolved null still reads "No notifications", as it always did:
+              that is a module with no count API rather than one still being
+              counted, and a resolved ZERO reads the same way. */}
+          {count === undefined ? (
+            /* Nothing known yet: no persisted count and no response. A tinted
+               bar on a box of exactly the text's height, so the footer — and
+               therefore the card — is the height it will be once the number
+               lands and nothing moves under the cursor. Announced as busy
+               rather than read out as an empty region. */
+            <span
+              role="status"
+              aria-busy="true"
+              aria-label="Loading notification count"
+              style={{
+                display: 'inline-block',
+                width: '84px', height: '11px',
+                borderRadius: '4px',
+                background: 'rgba(0,0,0,0.06)',
+                verticalAlign: 'middle',
+              }}
+            />
+          ) : (
+            <span style={{
+              fontSize: '11px',
+              color: hasNotif ? '#D94F4F' : '#B0B8C8',
+              fontWeight: hasNotif ? 600 : 400,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {count == null
                 ? 'No notifications'
                 : hasNotif
                   ? `${count} ${count === 1 ? 'notification' : 'notifications'}`
                   : 'No notifications'}
-          </span>
+            </span>
+          )}
         </div>
 
         {/* Right: Open */}
