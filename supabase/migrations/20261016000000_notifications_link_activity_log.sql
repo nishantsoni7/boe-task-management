@@ -77,6 +77,36 @@
 --   * NO CHANGE TO THE FUNCTION'S SIGNATURE, VOLATILITY, SECURITY MODE,
 --     search_path, GRANTS or BEHAVIOUR. See step 3.
 --
+-- ── TRANSACTION SAFETY: ALL OF IT, OR NONE OF IT ────────────────────────────
+--
+-- Supabase applies each migration file inside one transaction, and 207 of this
+-- repository's 209 migrations rely on exactly that — including every one that
+-- creates or replaces a function. 20260678 states the underlying fact: DDL is
+-- transactional in PostgreSQL.
+--
+-- The two exceptions (20260666, 20260667 — the team-column conversions) wrap
+-- themselves in an explicit BEGIN/COMMIT. This file deliberately does NOT copy
+-- them. An explicit BEGIN inside a wrapper that has already opened a
+-- transaction draws "there is already a transaction in progress" and the
+-- matching COMMIT then ends the OUTER transaction early — which would commit
+-- steps 1 and 2 before the guard in step 3 has run, and is the precise failure
+-- this section exists to prevent.
+--
+-- That matters here because step 3's guard runs AFTER steps 1 and 2. If the
+-- live function has drifted, the guard raises with the column, the constraint
+-- and the index already created in this transaction — and they are rolled back
+-- with it. The database is left exactly as it was, and the migration is NOT
+-- recorded as applied, so re-running after the drift is resolved is a clean
+-- first run rather than a repair.
+--
+-- Every statement in this file is transaction-compatible: ALTER TABLE ADD
+-- COLUMN, ADD CONSTRAINT, CREATE INDEX (deliberately NOT CONCURRENTLY, which
+-- cannot run in a transaction block), COMMENT, DO, CREATE OR REPLACE FUNCTION,
+-- REVOKE and GRANT. No VACUUM, no ALTER SYSTEM, no enum ADD VALUE, and no
+-- explicit BEGIN/COMMIT that would break out of the wrapper. A test asserts
+-- this, so a future edit cannot quietly introduce a statement that forces
+-- autocommit and with it a half-applied migration.
+--
 -- Additive and idempotent. Reversible by dropping the column and re-running
 -- 20260833000000's function body.
 
@@ -220,7 +250,12 @@ CREATE INDEX IF NOT EXISTS notifications_activity_log_id_idx
 
 DO $do$
 DECLARE
+  v_oid      oid;
   v_current  text;
+  v_secdef   boolean;
+  v_config   text[];
+  v_search   text;
+  v_schemas  text[];
   v_missing  text;
   v_fragment text;
   -- Each entry MUST still be present in the live definition. Body fragments,
@@ -261,12 +296,22 @@ DECLARE
     'insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)'
   ];
 BEGIN
-  SELECT pg_get_functiondef('public.transition_task_review(uuid, text, text)'::regprocedure)
-    INTO v_current;
+  -- Resolved with to_regprocedure, NOT a ::regprocedure cast. The cast throws
+  -- its own 42883 "function does not exist" before this block can say anything,
+  -- so the operator would see PostgreSQL's resolution error instead of a message
+  -- naming the migration that should have run first. to_regprocedure returns
+  -- NULL and lets the failure be reported in this project's terms.
+  v_oid := to_regprocedure('public.transition_task_review(uuid,text,text)');
 
-  IF v_current IS NULL THEN
-    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_MISSING: the function does not exist; 20260833000000 has not been applied';
+  IF v_oid IS NULL THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_MISSING: public.transition_task_review(uuid,text,text) does not exist. 20260833000000_task_creator_approval.sql has not been applied to this database; apply it before 20261016000000.';
   END IF;
+
+  -- One catalogue read for all three facts.
+  SELECT pg_get_functiondef(p.oid), p.prosecdef, p.proconfig
+    INTO v_current, v_secdef, v_config
+    FROM pg_proc p
+   WHERE p.oid = v_oid;
 
   IF position('activity_log_id' in v_current) > 0 THEN
     RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_ALREADY_LINKED: the live function already references activity_log_id; inspect it before replacing it';
@@ -282,11 +327,55 @@ BEGIN
     RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is missing rules this replacement preserves: %. It is not the definition 20261016000000 was written against. Capture it with pg_get_functiondef, save it to docs/proposals/transition_task_review.production.sql, and rebase step 3 before applying.', v_missing;
   END IF;
 
-  -- Shape sanity, so a truncated or unexpected catalog answer cannot pass by
-  -- containing every fragment coincidentally.
-  IF position('SECURITY DEFINER' in upper(v_current)) = 0
-     OR position('public, pg_temp' in v_current) = 0 THEN
-    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is no longer SECURITY DEFINER with search_path = public, pg_temp';
+  -- ── The two properties the live capture corroborated, read from the CATALOGUE
+  --
+  -- NOT from the formatted text. `pg_get_functiondef` renders the configuration
+  -- as
+  --
+  --     SET search_path TO 'public', 'pg_temp'
+  --
+  -- with `TO` rather than `=` and each schema single-quoted, so searching that
+  -- text for `public, pg_temp` fails against the CORRECT function. A guard that
+  -- rejects the very definition it was written from is worse than no guard, and
+  -- that is exactly what the previous version of this check did.
+  --
+  -- `pg_proc` holds both properties canonically and without formatting:
+  --   prosecdef  boolean  — true for SECURITY DEFINER
+  --   proconfig  text[]   — one 'name=value' entry per SET, e.g.
+  --                         {"search_path=public, pg_temp"}
+  --
+  -- The value half is stored as written, so it may or may not carry quoting
+  -- depending on how the function was declared. It is therefore split on commas
+  -- and stripped of both quote characters before comparison, rather than matched
+  -- as a string.
+
+  IF v_secdef IS NOT TRUE THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is not SECURITY DEFINER (pg_proc.prosecdef is false). It runs as the caller, so replacing it would change who its writes are performed as.';
+  END IF;
+
+  IF v_config IS NULL THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function pins no configuration at all (pg_proc.proconfig is null), so its search_path is inherited. A SECURITY DEFINER function without a pinned search_path is the classic privilege-escalation shape and this migration will not replace one.';
+  END IF;
+
+  SELECT c INTO v_search
+    FROM unnest(v_config) AS c
+   WHERE c LIKE 'search_path=%'
+   LIMIT 1;
+
+  IF v_search IS NULL THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function pins configuration (%) but not search_path.', array_to_string(v_config, ', ');
+  END IF;
+
+  -- Split on commas, drop surrounding whitespace and either quote character,
+  -- and compare as an ORDERED list: a schema inserted before `public` changes
+  -- which objects the body resolves to, so order is part of the property.
+  SELECT array_agg(btrim(translate(e, '"''', '')) ORDER BY ord)
+    INTO v_schemas
+    FROM unnest(string_to_array(substr(v_search, length('search_path=') + 1), ','))
+         WITH ORDINALITY AS t(e, ord);
+
+  IF v_schemas IS DISTINCT FROM ARRAY['public', 'pg_temp'] THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function''s search_path is "%", expected exactly public, pg_temp.', v_search;
   END IF;
 END
 $do$;

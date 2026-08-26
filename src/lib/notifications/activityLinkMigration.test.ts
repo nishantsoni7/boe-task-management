@@ -212,8 +212,11 @@ describe('7-12. every future notification records the id it already holds', () =
       MIGRATION,
     ]) {
       const src = read(path)
+      // The notification TYPE, not the English word: the migration's commentary
+      // legitimately says "privilege-escalation" about search_path.
+      const code = src.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
       for (const t of ['escalation', 'overdue', 'stale_flag', 'morning_digest', 'evening_digest']) {
-        assert.equal(src.includes(t), false, `${path} must not mention ${t}`)
+        assert.equal(code.includes(`'${t}'`), false, `${path} must not write the ${t} type`)
       }
     }
   })
@@ -233,7 +236,8 @@ describe('7-12. every future notification records the id it already holds', () =
   })
 
   test('10b. the replacement REFUSES to run against a definition it did not expect', () => {
-    assert.match(statements, /pg_get_functiondef\('public\.transition_task_review\(uuid, text, text\)'::regprocedure\)/)
+    assert.match(statements, /to_regprocedure\('public\.transition_task_review\(uuid,text,text\)'\)/)
+    assert.match(statements, /pg_get_functiondef\(p\.oid\), p\.prosecdef, p\.proconfig/)
     assert.match(statements, /TRANSITION_TASK_REVIEW_DRIFTED/)
     assert.match(statements, /TRANSITION_TASK_REVIEW_ALREADY_LINKED/)
     assert.match(statements, /TRANSITION_TASK_REVIEW_MISSING/)
@@ -242,8 +246,11 @@ describe('7-12. every future notification records the id it already holds', () =
       < statements.indexOf('create or replace function public.transition_task_review'))
     // The four properties a live catalog query DID corroborate are re-checked
     // at apply time, so a function that has since lost them stops the run.
-    assert.match(statements, /SECURITY DEFINER' in upper\(v_current\)/)
-    assert.match(statements, /'public, pg_temp' in v_current/)
+    // Read from the CATALOGUE, not from formatted text: pg_get_functiondef
+    // renders the configuration as SET search_path TO 'public', 'pg_temp', so a
+    // substring check for "public, pg_temp" rejects the correct function.
+    assert.match(statements, /IF v_secdef IS NOT TRUE THEN/)
+    assert.match(statements, /v_schemas IS DISTINCT FROM ARRAY\['public', 'pg_temp'\]/)
   })
 
   test('10b-i. the guard covers EVERY protected business rule, not one substring', () => {
