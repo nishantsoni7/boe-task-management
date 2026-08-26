@@ -104,7 +104,11 @@ export function NotificationTaskGroup({
           style={{
             flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined,
             display: 'flex', alignItems: 'flex-start', gap: '9px',
-            background: 'transparent', border: 'none', padding: 0,
+            background: 'transparent', border: 'none',
+            // The trigger is the primary control on the card, so it gets the
+            // same 44px floor as the buttons beside it.
+            padding: isMobile ? '6px 0' : 0,
+            minHeight: isMobile ? '44px' : undefined,
             cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
           }}
         >
@@ -166,9 +170,9 @@ export function NotificationTaskGroup({
             <GroupAction
               onClick={() => onMarkGroupRead(group)}
               disabled={busy}
-              label={`Mark ${group.unreadCount} update${group.unreadCount === 1 ? '' : 's'} for ${group.title} as read`}
+              label={`Mark all updates for this task as read: ${group.title}`}
               icon={<CheckCheck size={12} strokeWidth={2.2} />}
-              text="Mark read"
+              text="Mark all read"
               isMobile={isMobile}
             />
           )}
@@ -185,9 +189,9 @@ export function NotificationTaskGroup({
           <GroupAction
             onClick={() => onDeleteGroup(group)}
             disabled={busy}
-            label={`Delete all ${group.loadedCount} notifications for ${group.title}`}
+            label={`Delete all notifications for this task: ${group.title}`}
             icon={<Trash2 size={12} strokeWidth={2} />}
-            text={isMobile ? 'Delete' : ''}
+            text={isMobile ? 'Delete all' : ''}
             danger
             isMobile={isMobile}
           />
@@ -230,7 +234,12 @@ export function NotificationTaskGroup({
                 aria-label={`${isSelected ? 'Deselect' : 'Select'} ${meta.badge.label} update`}
                 aria-pressed={isSelected}
                 style={{
-                  flexShrink: 0, width: '18px', height: '18px', marginTop: '2px',
+                  flexShrink: 0,
+                  // 44px hit area on a phone around an 18px box: the padding is
+                  // the target, the border is the mark.
+                  width: isMobile ? '44px' : '18px',
+                  height: isMobile ? '44px' : '18px',
+                  marginTop: isMobile ? '0' : '2px',
                   borderRadius: '4px', padding: 0,
                   border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft ?? colors.border}`,
                   background: isSelected ? colors.blue : 'transparent',
@@ -279,7 +288,9 @@ export function NotificationTaskGroup({
                 style={{
                   flexShrink: 0,
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: '30px', height: '30px', borderRadius: '6px',
+                  width: isMobile ? '44px' : '30px',
+                  height: isMobile ? '44px' : '30px',
+                  borderRadius: '6px',
                   background: 'transparent', color: colors.muted,
                   border: `1.5px solid ${colors.border}`,
                   cursor: isPending ? 'not-allowed' : 'pointer',
@@ -317,9 +328,12 @@ function GroupAction({
       title={label}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '5px',
-        // At least 30px tall so a thumb can hit it, and taller on a phone.
-        minHeight: isMobile ? '34px' : '30px',
-        padding: text ? '6px 11px' : '6px 8px',
+        // 44px on a phone. The project already uses 44 and 48 as its mobile
+        // minimums elsewhere; 34 was below anything established here and below
+        // what a thumb reliably hits.
+        minHeight: isMobile ? '44px' : '32px',
+        minWidth: isMobile ? '44px' : undefined,
+        padding: text ? (isMobile ? '10px 13px' : '6px 11px') : (isMobile ? '10px' : '6px 8px'),
         borderRadius: '6px',
         fontSize: '11.5px', fontWeight: 600, fontFamily: font.body,
         whiteSpace: 'nowrap',

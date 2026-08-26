@@ -46,11 +46,19 @@ export type NotificationMutationDeps = {
 }
 
 export type OptimisticContext = { snapshot: NotificationCacheSnapshot }
+/** A group action also carries what it optimistically subtracted, to correct it. */
+export type TaskGroupContext = OptimisticContext & { optimisticUnread: number }
 
 export type DeleteSingleResult = { success: boolean; deleted: boolean; id?: string }
 export type DeleteSelectedResult = { success: boolean; deletedIds?: string[]; deletedCount?: number }
 export type DeleteAllResult = { success: boolean; deletedCount?: number }
-export type MarkReadResult = { success: boolean; updatedCount?: number }
+export type MarkReadResult = { success: boolean; updatedCount?: number; unreadAffected?: number }
+export type TaskGroupResult = {
+  success: boolean
+  deletedCount?: number
+  /** Exact unread rows the server touched — including ones never loaded here. */
+  unreadAffected?: number
+}
 
 const doFetch = (deps: NotificationMutationDeps): FetchLike =>
   deps.fetchFn ?? ((input, init) => fetch(input, init))
@@ -95,6 +103,40 @@ async function beginOptimistic(deps: NotificationMutationDeps): Promise<Notifica
  *   screen. Marking the queries stale instead gets convergence with the server
  *   at the next mount or manual refresh, at zero requests now.
  */
+/**
+ * Settle a COMPLETE-GROUP action, whose scope the browser did not know.
+ *
+ * Two differences from `reconcile`, both forced by the same fact: the server
+ * acted on rows this page never loaded.
+ *
+ * · THE COUNT IS CORRECTED, NOT GUESSED. `onMutate` already subtracted the
+ *   unread rows it could see, which for a bounded page is a lower bound. The
+ *   server returns the exact number; the difference is applied here. The value
+ *   is never cleared first — it is adjusted — so nothing blanks and the
+ *   persisted copy follows the same corrected number.
+ *
+ * · THE LIST IS ACTUALLY REFETCHED. `refetchType: 'none'` is right when the
+ *   cache is provably correct, and after a group action it is not: older events
+ *   for that task have gone from the server and are still absent from the
+ *   client's knowledge either way, so the list must be re-read or a later "Load
+ *   older" would present a stale picture.
+ */
+function reconcileGroup(
+  deps: NotificationMutationDeps,
+  optimisticUnread: number,
+  serverUnread: number | undefined,
+): void {
+  if (typeof serverUnread === 'number' && Number.isFinite(serverUnread)) {
+    const correction = serverUnread - optimisticUnread
+    if (correction !== 0) patchUnreadCount(deps.qc, deps.category, -correction)
+  } else {
+    // The server did not tell us. Rather than subtract a knowingly incomplete
+    // number, leave the visible count alone and let the badge query re-read it.
+    deps.qc.invalidateQueries({ queryKey: notificationKeys.count(deps.category), exact: true })
+  }
+  deps.qc.invalidateQueries({ queryKey: notificationKeys.list(deps.category), exact: true })
+}
+
 function reconcile(deps: NotificationMutationDeps): void {
   const mark = { refetchType: 'none' as const, exact: true }
   deps.qc.invalidateQueries({ queryKey: notificationKeys.list(deps.category),  ...mark })
@@ -279,6 +321,77 @@ export function markManyReadOptions(deps: NotificationMutationDeps) {
     onError: (err: unknown, _ids: string[], ctx: OptimisticContext | undefined) =>
       rollback(deps, ctx, err, 'Could not mark these notifications as read.'),
     onSuccess: () => reconcile(deps),
+  }
+}
+
+// ── A COMPLETE task group ──────────────────────────────────────────────────
+//
+// Both of the following name a TASK, not a list of ids. The page is bounded to
+// the newest N events, so a group action built from loaded ids would silently
+// skip whatever sits outside that window: "mark all updates for this task as
+// read" would leave older unread rows behind, and "delete all notifications for
+// this task" would appear to work until the next "Load older" brought the group
+// back. The database decides the set; the client only says which task.
+
+/** Mark EVERY notification for one task read — loaded or not. */
+export function markTaskGroupReadOptions(deps: NotificationMutationDeps) {
+  return {
+    mutationKey: ['notifications', 'mark-task-group-read'] as const,
+    mutationFn: (taskId: string): Promise<MarkReadResult> =>
+      timed('notification.mark.read', async () => {
+        const res = await doFetch(deps)('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId, category: deps.category }),
+        })
+        if (!res.ok) throw new Error(await readApiError(res, 'Could not mark this task’s updates as read'))
+        return (await res.json().catch(() => ({ success: true }))) as MarkReadResult
+      }),
+    onMutate: async (taskId: string): Promise<TaskGroupContext> => {
+      const snapshot = await beginOptimistic(deps)
+      const now = new Date().toISOString()
+      // Only the loaded rows can be updated optimistically — that is the whole
+      // limitation this mutation exists to work around, and the correction
+      // lands in onSuccess.
+      const loadedUnread = (cachedList(deps, snapshot) ?? [])
+        .filter(n => n.task_id === taskId && !n.is_read).length
+      deps.qc.setQueryData<Notification[]>(notificationKeys.list(deps.category), old =>
+        (old ?? []).map(n =>
+          (n.task_id === taskId && !n.is_read ? { ...n, is_read: true, read_at: now } : n)))
+      if (loadedUnread > 0) patchUnreadCount(deps.qc, deps.category, -loadedUnread)
+      return { snapshot, optimisticUnread: loadedUnread }
+    },
+    onError: (err: unknown, _taskId: string, ctx: TaskGroupContext | undefined) =>
+      rollback(deps, ctx, err, 'Could not mark this task’s updates as read.'),
+    onSuccess: (data: MarkReadResult, _taskId: string, ctx: TaskGroupContext | undefined) =>
+      reconcileGroup(deps, ctx?.optimisticUnread ?? 0, data?.unreadAffected),
+  }
+}
+
+/** Delete EVERY notification for one task — loaded or not. Rows only. */
+export function deleteTaskGroupOptions(deps: NotificationMutationDeps) {
+  return {
+    mutationKey: ['notifications', 'delete-task-group'] as const,
+    mutationFn: (taskId: string): Promise<TaskGroupResult> =>
+      timed('notification.delete.selected', async () => {
+        const res = await doFetch(deps)(
+          `/api/notifications?category=${deps.category}&taskId=${encodeURIComponent(taskId)}`,
+          { method: 'DELETE' })
+        if (!res.ok) throw new Error(await readApiError(res, 'Could not delete this task’s notifications'))
+        return (await res.json().catch(() => ({ success: true }))) as TaskGroupResult
+      }),
+    onMutate: async (taskId: string): Promise<TaskGroupContext> => {
+      const snapshot = await beginOptimistic(deps)
+      const doomed = (cachedList(deps, snapshot) ?? []).filter(n => n.task_id === taskId)
+      const loadedUnread = doomed.filter(n => !n.is_read).length
+      removeNotificationsFromLists(deps.qc, new Set(doomed.map(n => n.id)))
+      if (loadedUnread > 0) patchUnreadCount(deps.qc, deps.category, -loadedUnread)
+      return { snapshot, optimisticUnread: loadedUnread }
+    },
+    onError: (err: unknown, _taskId: string, ctx: TaskGroupContext | undefined) =>
+      rollback(deps, ctx, err, 'Could not delete this task’s notifications.'),
+    onSuccess: (data: TaskGroupResult, _taskId: string, ctx: TaskGroupContext | undefined) =>
+      reconcileGroup(deps, ctx?.optimisticUnread ?? 0, data?.unreadAffected),
   }
 }
 

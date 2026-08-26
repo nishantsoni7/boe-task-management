@@ -22,7 +22,6 @@ import {
   groupNotificationsByTask,
   filterDisplayItems,
   summarizeDisplayItems,
-  unreadIdsOf,
   allIdsOf,
   type NotificationTaskGroup as TaskGroup,
 } from '@/lib/notifications/grouping'
@@ -117,7 +116,8 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // Declared BEFORE the list query because the list query needs to know whether
   // any of it is in flight — see `mutationInFlight`.
   const {
-    markRead, markManyRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
+    markRead, markTaskGroupRead, deleteTaskGroup, groupBusy,
+    markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
     pendingDeletes, markingAll, deletingBulk, deletingAll,
     error: mutationError, clearError,
   } = useNotificationMutations(category)
@@ -130,7 +130,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // (which also hides those rows at render time); the three bulk operations
   // have no per-id set, which is why they are listed individually.
   const mutationInFlight =
-    pendingDeletes.size > 0 || markingAll || deletingBulk || deletingAll
+    pendingDeletes.size > 0 || markingAll || deletingBulk || deletingAll || groupBusy
 
   const {
     data: notifications = [],
@@ -259,34 +259,36 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     if (href) router.push(href)
   }
 
-  // Expanding is a disclosure; THIS is the deliberate act. One request for the
-  // whole group — see markManyReadOptions — so the unread count moves by the
-  // number that were actually unread, once.
+  // Expanding is a disclosure; THIS is the deliberate act.
+  //
+  // It names the TASK, not the loaded ids. The page is bounded to the newest N
+  // events, so an ids-based version would silently skip anything older and
+  // leave unread rows behind with the badge still wrong.
   const handleMarkGroupRead = (group: TaskGroup) => {
-    markManyRead(unreadIdsOf(group))
+    markTaskGroupRead(group.taskId)
   }
 
-  // Deletes NOTIFICATION ROWS for this reader and this task, through the same
-  // /delete-selected endpoint the toolbar uses — which is scoped to
-  // `user_id = caller`, so it cannot reach anybody else's rows, and touches no
-  // task, activity record, comment or attachment. Confirmed because several
-  // records go at once.
+  // Deletes NOTIFICATION ROWS for this reader and this task — ALL of them, not
+  // only the loaded ones. The server resolves the set from the task id under
+  // the same category filter and system-type exclusion the list uses, so it
+  // cannot reach another user's rows, another task's, or a category this page
+  // does not show. It names one table: no task, activity record, comment or
+  // attachment is touched.
+  //
+  // Confirmed because the scope is larger than what is on screen.
   const handleDeleteGroup = (group: TaskGroup) => {
-    if (deletingBulk) return
-    const ids = allIdsOf(group)
-    if (ids.length === 0) return
+    if (groupBusy) return
     const ok = window.confirm(
-      `Delete ${ids.length} notification${ids.length === 1 ? '' : 's'} for "${group.title}"?\n\n` +
-      'This removes only your notifications for this task. The task, its activity history, ' +
-      'its comments and its attachments are not affected.',
+      'Delete all notifications for this task?\n\n' +
+      'This removes the notification entries only. The task and its activity history will remain.',
     )
     if (!ok) return
     setSelected(prev => {
       const s = new Set(prev)
-      for (const id of ids) s.delete(id)
+      for (const id of allIdsOf(group)) s.delete(id)
       return s
     })
-    runDeleteSelected(ids)
+    deleteTaskGroup(group.taskId)
   }
 
   const handleMarkAllRead = () => {
@@ -465,7 +467,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                 filter={filter}
                 selected={selected}
                 pendingDeletes={pendingDeletes}
-                busy={markingAll || deletingBulk || deletingAll}
+                busy={groupBusy || markingAll || deletingBulk || deletingAll}
                 isMobile={isMobile}
                 onToggleSelect={toggleSelect}
                 onOpenTask={openTaskGroup}

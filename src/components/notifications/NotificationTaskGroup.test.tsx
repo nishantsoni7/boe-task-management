@@ -102,8 +102,8 @@ describe('25-26. expanded, and one View Task', () => {
   })
 
   test('the group owns mark-read and delete, each a real button', () => {
-    assert.ok(html.includes('aria-label="Mark 3 updates for Design Clarifications to be cleared as read"'))
-    assert.ok(html.includes('aria-label="Delete all 4 notifications for Design Clarifications to be cleared"'))
+    assert.ok(html.includes('aria-label="Mark all updates for this task as read: Design Clarifications to be cleared"'))
+    assert.ok(html.includes('aria-label="Delete all notifications for this task: Design Clarifications to be cleared"'))
     assert.equal((html.match(/<button/g) ?? []).length >= 4, true)
     assert.equal((html.match(/type="button"/g) ?? []).length >= 4, true, 'every control is a real button')
   })
@@ -111,7 +111,7 @@ describe('25-26. expanded, and one View Task', () => {
   test('a fully read group offers no mark-read and shows no unread badge', () => {
     const read = render(groupOf([n({ is_read: true }), n({ is_read: true })]))
     assert.equal(read.includes('unread'), false)
-    assert.equal(read.includes('Mark read'), false)
+    assert.equal(read.includes('Mark all read'), false)
     assert.ok(read.includes('View Task'), 'but is still openable')
   })
 })
@@ -153,8 +153,8 @@ describe('28. mobile hides no required action', () => {
 
   test('every group action is still present', () => {
     assert.ok(html.includes('View Task'))
-    assert.ok(html.includes('Mark read'))
-    assert.ok(html.includes('Delete all 4 notifications'))
+    assert.ok(html.includes('Mark all read'))
+    assert.ok(html.includes('Delete all notifications for this task'))
     assert.ok(html.includes('3 unread'), 'the unread count stays visible')
   })
 
@@ -163,8 +163,9 @@ describe('28. mobile hides no required action', () => {
     assert.equal(/white-space:nowrap[^"]*"[^>]*>Design Clarifications/.test(html), false)
   })
 
-  test('touch targets are at least 34px tall', () => {
-    assert.ok(html.includes('min-height:34px'))
+  test('touch targets meet the project’s 44px mobile minimum', () => {
+    assert.ok(html.includes('min-height:44px'), 'the project already uses 44/48 elsewhere')
+    assert.equal(html.includes('min-height:34px'), false, '34 was below anything established here')
   })
 
   test('nothing scrolls horizontally', () => {

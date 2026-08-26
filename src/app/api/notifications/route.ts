@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
+import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
 
 /**
@@ -110,12 +111,28 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ notifications, unreadCount, hasMore, limit })
 }
 
-// Deletes all of ONE module's notifications for the authenticated user —
+// Deletes ONE module's notifications for the authenticated user —
 // `?category=task|finance|order`, defaulting to `task` when absent (same rule
 // as GET; a present-but-unrecognized value is rejected with 400). Always
 // scoped to a single module's filter so "Delete all" on one module's page can
 // never remove another module's rows.
 // Also scoped strictly to user_id = caller — no other user's rows are touched.
+//
+// `?taskId=<uuid>` narrows the same operation to ONE task: "Delete all
+// notifications for this task". It belongs here rather than on
+// /delete-selected because this route ALREADY carries the category filter and
+// the system-type exclusion that a group action needs, and /delete-selected is
+// deliberately id-only (it takes ids the caller already holds, so it needs no
+// category — see attendancePayrollNotifications.test.ts).
+//
+// WHY NOT DRIVE IT FROM LOADED IDS. The page is bounded to the newest N. A
+// group delete built from loaded ids leaves older rows for that task on the
+// server, so the group reappears the moment somebody presses "Load older" and
+// the unread badge stays wrong in the meantime. The task id lets the DATABASE
+// decide the set.
+//
+// IT DELETES NOTIFICATION ROWS AND NOTHING ELSE. No task, no activity record,
+// no comment, no attachment: this statement names one table.
 export async function DELETE(req: NextRequest) {
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
@@ -138,18 +155,33 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
   }
 
+  // Optional narrowing to one task. Validated before Postgres sees it: a
+  // malformed value would otherwise surface as a 22P02 cast error dressed up as
+  // a 500 rather than the 400 it is.
+  const taskId = req.nextUrl.searchParams.get('taskId')
+  if (taskId !== null && !isValidUUID(taskId)) {
+    return NextResponse.json({ error: 'Invalid task id' }, { status: 400 })
+  }
+
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
-  // `.select('id')` so the response can report how many of the caller's rows
-  // were actually removed, matching the contract of /api/notifications/[id]
-  // and /delete-selected. A category with nothing in it deletes 0 rows and is
-  // still a success — that is an accurate idempotent result, not a failure.
-  const { data, error } = await supabase
+  // `.select('id, is_read')` so the response reports BOTH how many of the
+  // caller's rows were removed and how many of those were unread — the exact
+  // number the badge must drop by. Both come from the DELETE itself, so there
+  // is no count-then-delete window in which the two could disagree.
+  //
+  // A category (or task) with nothing in it deletes 0 rows and is still a
+  // success — an accurate idempotent result, not a failure.
+  let deleteQuery = supabase
     .from('notifications')
     .delete()
     .eq('user_id', user.id)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
-    .select('id')
+  // An EXTRA condition on top of the caller, category and system filters —
+  // never a replacement for any of them.
+  if (taskId !== null) deleteQuery = deleteQuery.eq('task_id', taskId)
+
+  const { data, error } = await deleteQuery.select('id, is_read')
 
   if (error) {
     // Message only — never the deleted rows, whose titles/bodies carry task
@@ -158,9 +190,15 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Could not delete notifications' }, { status: 500 })
   }
 
+  const deleted = data ?? []
   return NextResponse.json({
     success: true,
     category: categoryResult.category,
-    deletedCount: data?.length ?? 0,
+    taskId: taskId ?? undefined,
+    deletedCount: deleted.length,
+    // Exact, from the same statement. The client subtracts this rather than
+    // counting the unread rows it happened to have loaded, which for a bounded
+    // page is only ever a lower bound.
+    unreadAffected: deleted.reduce((acc, r) => (r.is_read ? acc : acc + 1), 0),
   })
 }

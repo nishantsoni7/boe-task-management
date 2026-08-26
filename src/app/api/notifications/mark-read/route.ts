@@ -8,10 +8,20 @@ import { isValidUUID } from '@/lib/ui'
 /** Ceiling on an explicit id list, matching /api/notifications/delete-selected. */
 const MAX_IDS = 200
 
-// Marks notifications as read. Body: { id } for a single notification,
-// { ids: [...] } for an explicit set — used by "mark this task's updates read",
-// where the ids are the loaded events of one task group — or
-// { all: true } to clear every unread one for the caller — narrowed to one
+// Marks notifications as read. Exactly ONE of:
+//   { id }            one notification, by id
+//   { ids: [...] }    an explicit set the caller already holds
+//   { taskId }        EVERY notification for that task in this category —
+//                     including ones the browser has never loaded
+//   { all: true }     every unread one for the caller in this category
+//
+// `taskId` exists because the page is bounded. "Mark all updates for this task
+// as read" driven by loaded ids would silently skip whatever sits outside the
+// newest-N window, leaving older unread rows behind and the badge wrong. The
+// task id is resolved against the SAME category filter and system-type
+// exclusion the list route uses, so it can only reach rows the reader can
+// actually see, and the affected rows are returned BY the update itself — one
+// statement, so there is no count-then-mutate race — narrowed to one
 // module via { all: true, category: 'task'|'finance'|'order' }, so "Mark all
 // read" on one module's page only touches that module's rows. An absent
 // category defaults to `task` for backward compatibility; a present-but-
@@ -28,8 +38,8 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null)
-  const { id, ids, all, category } =
-    (body ?? {}) as { id?: unknown; ids?: unknown; all?: unknown; category?: unknown }
+  const { id, ids, taskId, all, category } =
+    (body ?? {}) as { id?: unknown; ids?: unknown; taskId?: unknown; all?: unknown; category?: unknown }
 
   // `ids` is the same operation as `id`, for a known set. It exists so that
   // marking one task's group read is ONE request rather than one per event —
@@ -38,12 +48,22 @@ export async function POST(req: NextRequest) {
   // `user_id = caller` below, exactly as the single-id path is.
   const idList: string[] | null = Array.isArray(ids) ? (ids as unknown[]).map(String) : null
 
-  if (!all && !id && !idList) {
-    return NextResponse.json({ error: 'id, ids or all is required' }, { status: 400 })
+  // Exactly one selector. Two would be ambiguous about which wins, and an
+  // ambiguous destructive-ish request is one nobody can reason about later.
+  const selectors = [id != null, idList != null, taskId != null, all === true].filter(Boolean).length
+  if (selectors === 0) {
+    return NextResponse.json({ error: 'id, ids, taskId or all is required' }, { status: 400 })
+  }
+  if (selectors > 1) {
+    return NextResponse.json(
+      { error: 'Provide exactly one of id, ids, taskId or all' }, { status: 400 })
+  }
+  if (taskId != null && !isValidUUID(taskId as string)) {
+    return NextResponse.json({ error: 'Invalid task id' }, { status: 400 })
   }
   // Validated before Postgres sees it — a malformed id would otherwise return a
   // 22P02 cast error as a 500 rather than the 400 it is.
-  if (!all && !idList && !isValidUUID(id as string)) {
+  if (id != null && !isValidUUID(id as string)) {
     return NextResponse.json({ error: 'Invalid notification id' }, { status: 400 })
   }
   if (idList) {
@@ -67,7 +87,7 @@ export async function POST(req: NextRequest) {
 
   const update = { is_read: true, read_at: new Date().toISOString() }
   let query = supabase.from('notifications').update(update).eq('user_id', user.id)
-  if (all) {
+  if (all || taskId != null) {
     const categoryResult = resolveNotificationCategory(category)
     if (!categoryResult.ok) {
       return NextResponse.json({ error: categoryResult.error }, { status: 400 })
@@ -80,6 +100,11 @@ export async function POST(req: NextRequest) {
     }
     // "Mark all" only affects visible task-activity rows, never hidden summary/digest ones.
     query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category)).not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+    // …and a task-group mark-read is that same set, narrowed to one task. The
+    // narrowing is an EXTRA condition on top of the category and system
+    // filters, never a replacement for them, so it cannot reach a row the feed
+    // does not show.
+    if (taskId != null) query = query.eq('task_id', taskId as string)
   } else if (idList) {
     // Scoped to the caller by the `.eq('user_id', …)` above, so an id belonging
     // to somebody else simply matches nothing.
@@ -99,5 +124,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, updatedCount: data?.length ?? 0 })
+  // `data` is the rows the UPDATE actually changed. Because the query filtered
+  // on `is_read = false`, every returned row was unread a moment ago — so this
+  // count IS the exact number the unread badge must drop by, and it comes from
+  // the mutation rather than from a separate count that could race it.
+  const updatedCount = data?.length ?? 0
+  return NextResponse.json({
+    success: true,
+    updatedCount,
+    // Named separately from updatedCount so a future change to the filter
+    // cannot silently redefine what the client subtracts.
+    unreadAffected: (all || taskId != null) ? updatedCount : undefined,
+  })
 }
