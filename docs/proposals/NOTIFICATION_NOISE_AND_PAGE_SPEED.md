@@ -45,60 +45,87 @@ needs A1's body to do correctly.
 
 ---
 
-## Part B — the migration, once A1 and A7 are answered
+## Part B — the migration: still blocked, and on exactly one input
 
-**Not written yet, deliberately.** `create or replace function` replaces the
-whole body, so it cannot be written without A1's exact text, and A7 decides
-whether the escalation record has anywhere else to live. What it will do:
+**A1 has been run and reported. The function BODY has not been supplied.**
 
-- keep the detection/escalation calculation byte-for-byte as A1 returns it;
-- keep — or, if A7 shows there is none, **add** — the `task_activity_log` write,
-  preserving timestamps and from/to status;
-- delete only the `insert into public.notifications` for the non-actionable
-  types;
-- touch no human-triggered notification and nothing addressed to a named user
-  who must act;
-- change no `cron.job` row, so timing is untouched;
-- delete no historical row;
-- restate the signature, `security definer`/`invoker` mode, `search_path`,
-  owner and grants exactly as A1 and A3 report them.
+What is known (from the reported A1/A7 findings):
 
-Skeleton, with the parts that come from the inspection marked:
+| | |
+|---|---|
+| signature | `public.run_task_health_check()` |
+| owner | `postgres` |
+| language | `plpgsql` |
+| security | `SECURITY INVOKER` |
+| returns | `void` |
+| proconfig | none — no `search_path` override |
 
-```sql
--- supabase/migrations/<ts>_task_health_check_stops_notifying.sql
-begin;
+And the behaviour it already has:
 
-create or replace function public.run_task_health_check()   -- ← A1 signature
-returns void                                                -- ← A1 return type
-language plpgsql
-security definer                                            -- ← A1 prosecdef
-set search_path = public, pg_temp                           -- ← A1 proconfig
-as $$
-begin
-  -- ↓ A1 body, unchanged, EXCEPT:
-  --   · the `insert into public.notifications (...)` block is removed;
-  --   · if A7 showed no activity-log write, one is added here, recording the
-  --     same task, the same escalation level and the same timestamps.
-end;
-$$;
+- overdue escalation writes `action = 'escalated'`, note `Auto-escalated: overdue with no action for 24 hours`
+- 72-hour escalation writes `action = 'escalated'`, note `Auto-escalated: no update for 72 hours`
+- stale detection writes `action = 'stale_flagged'`, note `Auto-flagged: same status for 5+ days with no progress`
+- separately, it inserts `overdue` and `escalation` notification rows at 24h, 48h and 72h, with **no deduplication**, so a task collects repeats every run
+- the 24h and 48h branches do nothing except create those notifications
 
-alter function public.run_task_health_check() owner to <A3 owner>;
--- Restate A3's grants verbatim; do not widen them.
+**That is enough to specify the change. It is not enough to write it.**
+`create or replace function` replaces the ENTIRE body. Every line not supplied
+would have to be invented: the task-selection query and its `where`, the loop
+structure, the variable declarations, the exact interval arithmetic, the columns
+the stale `update` sets, the ordering of the `continue` statements, and the
+precise `task_activity_log` column list. Inventing any of them and shipping it
+under `create or replace` would not be a refactor — it would be a rewrite of an
+hourly production job, silently discarding whatever was actually there.
 
-commit;
+So the migration is not written. What is needed is the single field A1 already
+returned:
+
+> `function_definition` — complete and verbatim, from the A1 grid.
+
+### What will change, once it arrives
+
+Only this, and nothing else:
+
+1. remove every `insert into … notifications` statement;
+2. remove the 24-hour and 48-hour escalation branches, which have no other
+   effect — deleted rather than left as empty conditionals;
+3. keep the 72-hour branch, minus its notification insert, with its
+   activity-log write byte-for-byte;
+4. keep the overdue branch's activity-log write and its `continue`;
+5. keep the stale calculation, the `tasks` update and its activity-log write;
+6. keep task selection, the waiting skip, the blocked/completed exclusion and
+   every timing threshold;
+7. keep `language plpgsql`, `returns void`, `security invoker`, no `proconfig`,
+   and the exact signature.
+
+No `alter … owner`, no `grant`, no `revoke`: `create or replace` preserves both
+for an existing signature, so restating them can only differ from production,
+never match it more closely. No cron change. No historical row deleted.
+
+### The rules are already written and already tested
+
+`src/lib/tasks/healthCheckMigrationAudit.ts` states all twelve required
+properties as data, and `healthCheckMigrationAudit.test.ts` proves each one
+fires on SQL crafted to break it — including that a header comment explaining
+what was removed cannot satisfy or violate a rule. Pointing them at the real
+file is one line:
+
+```ts
+auditHealthCheckMigration(readFileSync(join(ROOT, 'supabase/migrations/<file>.sql'), 'utf8'))
 ```
 
-**Rollback:** capture A1's `function_definition` before applying and keep it
-verbatim. Rolling back is re-running that exact text as a
-`create or replace function`. Nothing else changes — no table, no row, no cron
-entry, no grant — so there is nothing else to undo. Re-running the original
-resumes the notification inserts from the next scheduled fire.
+### Rollback
 
-**Application-side safety net:** none of this can regress the UI. The feed, the
-badge count, mark-all-read and delete-all already exclude these types by name
-(`SYSTEM_TYPE_EXCLUSION`), so whether the job writes them or not, no user sees
-them. The migration removes the writes; it does not change what is displayed.
+Keep A1's `function_definition` verbatim before applying. Rolling back is
+re-running that exact text as a `create or replace function`. Nothing else
+changes — no table, no row, no cron entry, no grant — so there is nothing else
+to undo. The next scheduled fire resumes the old behaviour.
+
+### The UI is already safe either way
+
+The feed, the badge count, mark-all-read and delete-all exclude these types by
+name (`SYSTEM_TYPE_EXCLUSION`), so whether the job writes them or not, no user
+sees one. The migration stops the writes; it does not change what is displayed.
 
 ---
 
