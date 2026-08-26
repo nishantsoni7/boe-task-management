@@ -246,6 +246,16 @@ begin
   return new;
 end $$;
 
+-- REVOKED, like every trigger function 20260918000000 created. PostgreSQL
+-- refuses to call a trigger function outside a trigger anyway ("trigger
+-- functions can only be called as triggers"), so this closes no hole — but a
+-- Supabase project's `grant all on functions` default leaves a SECURITY DEFINER
+-- function reachable by anon on paper, and a privilege with no purpose is one
+-- fewer thing to reason about. The trigger itself is unaffected: the executor
+-- invokes it, not a role holding EXECUTE.
+revoke execute on function public.finance_payment_allocation_intents_enforce_capacity()
+  from public, anon, authenticated;
+
 comment on function public.finance_payment_allocation_intents_enforce_capacity() is
   'Refuses an intent that would take a payment''s pending-intent plus active-allocation total above its amount. Locks the parent payment FOR UPDATE first, so concurrent intents against one payment serialize.';
 
@@ -297,7 +307,56 @@ create policy finance_payment_allocation_intents_select
     )
   );
 
-revoke all on public.finance_payment_allocation_intents from public, anon;
+-- ── Table privileges: REVOKED BY NAME, not by omission ──────────────────────
+--
+-- A SUPABASE PROJECT GRANTS ALL ON EVERY NEW TABLE. The project bootstrap runs
+--
+--   alter default privileges in schema public
+--     grant all on tables to anon, authenticated, service_role;
+--
+-- for the role the migration runner connects as, so `create table` above did
+-- not produce an empty ACL: it produced
+--
+--   authenticated=arwdDxt/postgres
+--
+-- — INSERT, SELECT, UPDATE, DELETE, TRUNCATE, REFERENCES and TRIGGER, already
+-- granted, before this file says anything about privileges.
+--
+-- THE FIRST VERSION OF THIS BLOCK GOT IT WRONG, and §9f caught it in production:
+--
+--   revoke all ... from public, anon;          -- never names `authenticated`
+--   grant select ... to authenticated;         -- an ADDITION on top of ALL
+--
+-- Revoking from PUBLIC and anon leaves the authenticated grant untouched, and
+-- granting SELECT to a role that already holds everything narrows nothing. A
+-- local database has no such default privileges, so the mistake was invisible
+-- until it met a real project.
+--
+-- SO EVERY WRITE IS REVOKED BY NAME. This is the stance 20260918000000 §13 took
+-- for finance_payment_allocations, and it is restated here rather than reasoned
+-- about again: the privilege check refuses a client write BEFORE any policy is
+-- consulted, and the SECURITY DEFINER doors in §3, §4 and §8 are the only way
+-- in. Two independent refusals of every direct INSERT, UPDATE and DELETE.
+--
+-- IT READS THE SAME IN BOTH WORLDS. On a project the revokes narrow; on a bare
+-- database they are no-ops and the grant is what gives authenticated its SELECT.
+-- One statement set, one outcome, whatever the table inherited.
+--
+-- service_role KEEPS ITS DEFAULT ALL, exactly as it does on every other Finance
+-- table. It is the server-side key that bypasses RLS by design; singling this
+-- table out would break the tooling that reaches every other one.
+
+revoke all on public.finance_payment_allocation_intents from public;
+
+revoke insert, update, delete, truncate, references, trigger
+  on public.finance_payment_allocation_intents from anon, authenticated;
+
+-- ANON IS CLOSED OUTRIGHT, SELECT included. Nothing reads an intent
+-- unauthenticated: the policy above is anchored to a payment row anon cannot
+-- see, so the privilege has no purpose — and a privilege with no purpose is one
+-- fewer thing a future policy edit can accidentally open.
+revoke select on public.finance_payment_allocation_intents from anon;
+
 grant select on public.finance_payment_allocation_intents to authenticated;
 
 
@@ -871,6 +930,9 @@ begin
   end if;
   return new;
 end $$;
+
+revoke execute on function public.finance_payment_requests_cancel_intents_on_reject()
+  from public, anon, authenticated;
 
 comment on function public.finance_payment_requests_cancel_intents_on_reject() is
   'Cancels a rejected payment request''s pending allocation intents. Cancelled, not deleted: what the money claimed to be for stays auditable. Never creates an allocation.';
@@ -1809,15 +1871,45 @@ begin
     raise exception 'apply_payment_allocation_intents must be callable by no client role — approval calls it';
   end if;
 
-  if has_table_privilege('authenticated', 'public.finance_payment_allocation_intents', 'insert')
-     or has_table_privilege('authenticated', 'public.finance_payment_allocation_intents', 'update')
-     or has_table_privilege('authenticated', 'public.finance_payment_allocation_intents', 'delete')
-  then
-    raise exception 'the intent table must be read-only for authenticated — writes go through definer functions';
+  -- The two trigger functions, for the same reason 20260918000000 gave: a
+  -- project's `grant all on functions` default would otherwise leave a
+  -- SECURITY DEFINER function reachable by anon on paper.
+  foreach v_name in array array[
+    'public.finance_payment_allocation_intents_enforce_capacity()',
+    'public.finance_payment_requests_cancel_intents_on_reject()'
+  ] loop
+    if has_function_privilege('authenticated', v_name, 'execute')
+       or has_function_privilege('anon', v_name, 'execute') then
+      raise exception 'the trigger function % must not be executable by a client role', v_name;
+    end if;
+  end loop;
+
+  -- THE CHECK THAT CAUGHT THE REAL BUG. It is widened here, not softened: the
+  -- first version of §2 revoked from PUBLIC and anon and never named
+  -- `authenticated`, so a Supabase project's default `grant all on tables`
+  -- survived and this refused the migration. That was correct. Every write
+  -- privilege is now named, so the next omission cannot slip through a gap
+  -- between the three that used to be listed.
+  foreach v_name in array array['insert', 'update', 'delete', 'truncate', 'references', 'trigger'] loop
+    if has_table_privilege('authenticated', 'public.finance_payment_allocation_intents', v_name) then
+      raise exception
+        'the intent table must be read-only for authenticated (holds %) — revoke it BY NAME: a Supabase project grants ALL on every new table, so revoking from PUBLIC and anon alone leaves this behind. Writes go through the SECURITY DEFINER doors.',
+        v_name;
+    end if;
+  end loop;
+
+  -- …and the read it IS supposed to have must still be there, or the detail and
+  -- review modals silently stop being able to say what a payment is for.
+  if not has_table_privilege('authenticated', 'public.finance_payment_allocation_intents', 'select') then
+    raise exception 'authenticated must keep SELECT on the intent table — the RLS policy is what narrows it, not the absence of the privilege';
   end if;
-  if has_table_privilege('anon', 'public.finance_payment_allocation_intents', 'select') then
-    raise exception 'anon must not read the intent table';
-  end if;
+
+  -- ANON HOLDS NOTHING AT ALL, read included.
+  foreach v_name in array array['select', 'insert', 'update', 'delete', 'truncate', 'references', 'trigger'] loop
+    if has_table_privilege('anon', 'public.finance_payment_allocation_intents', v_name) then
+      raise exception 'anon must hold no privilege on the intent table (holds %)', v_name;
+    end if;
+  end loop;
   if not (select relrowsecurity from pg_class
            where oid = 'public.finance_payment_allocation_intents'::regclass) then
     raise exception 'RLS must be enabled on finance_payment_allocation_intents';

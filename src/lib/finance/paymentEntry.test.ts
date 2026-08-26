@@ -818,3 +818,116 @@ describe('the migration keeps intents and allocations apart', () => {
     }
   })
 })
+
+// ── The privileges the local fixtures could not see ───────────────────────────
+//
+// 20261013000000 failed its production push in §9f: the intent table's writes
+// were revoked from PUBLIC and anon but never from `authenticated`, and a
+// Supabase project grants ALL on every table a migration creates. Every local
+// SQL suite passed because a bare PostgreSQL grants nothing.
+//
+// The behavioural proof lives in run_payment_entry_privileges_suite.sh, which
+// models the project's default privileges and refuses to run without them.
+// These are the cheap source-shape guards that sit in front of it.
+
+describe('the intent table is closed by name, not by omission', () => {
+  const grantBlock = () => {
+    const sql = read(MIGRATION)
+    const from = sql.indexOf('alter table public.finance_payment_allocation_intents enable row level security')
+    const to   = sql.indexOf('§3. submit_payment_request')
+    assert.ok(from > -1 && to > from, "§2's privilege block could not be located")
+    return sql.slice(from, to)
+  }
+
+  test('every write privilege is revoked from authenticated BY NAME', () => {
+    const block = grantBlock()
+    assert.match(block,
+      /revoke insert, update, delete, truncate, references, trigger\s*\n\s*on public\.finance_payment_allocation_intents from anon, authenticated;/,
+      'revoking from PUBLIC and anon leaves a project default grant untouched')
+  })
+
+  test('the form that failed in production is gone', () => {
+    const block = grantBlock()
+    // `revoke all ... from public, anon` narrows nothing on a Supabase project:
+    // it never names the role that actually holds the privileges.
+    assert.equal(/revoke all on public\.finance_payment_allocation_intents from public, anon;/.test(block), false,
+      'this exact statement is what the production push rejected')
+  })
+
+  test('anon is closed outright, SELECT included', () => {
+    assert.match(grantBlock(),
+      /revoke select on public\.finance_payment_allocation_intents from anon;/)
+  })
+
+  test('authenticated keeps the SELECT the RLS policy narrows', () => {
+    assert.match(grantBlock(),
+      /grant select on public\.finance_payment_allocation_intents to authenticated;/)
+  })
+
+  test('the trigger functions are closed too, like every one 20260918000000 created', () => {
+    const sql = read(MIGRATION)
+    for (const fn of [
+      'finance_payment_allocation_intents_enforce_capacity',
+      'finance_payment_requests_cancel_intents_on_reject',
+    ]) {
+      assert.match(sql,
+        new RegExp(`revoke execute on function public\\.${fn}\\(\\)\\s*\n\\s*from public, anon, authenticated;`),
+        `${fn} must not be executable by a client role`)
+    }
+  })
+
+  test('the apply-time assertion was widened, not weakened', () => {
+    const sql = read(MIGRATION)
+    // It used to test three privileges; it now tests all six, and it also
+    // requires the SELECT to still be there.
+    assert.match(sql, /array\['insert', 'update', 'delete', 'truncate', 'references', 'trigger'\]/,
+      'every write privilege must be named in the assertion')
+    assert.ok(sql.includes('authenticated must keep SELECT on the intent table'),
+      'the read the modals depend on must be asserted too')
+    assert.ok(sql.includes('anon must hold no privilege on the intent table'),
+      'anon must be checked for every privilege, not only SELECT')
+  })
+
+  test('a permanent suite models the project default privileges, and proves it does', () => {
+    const runner = read('supabase/tests/run_payment_entry_privileges_suite.sh')
+    assert.ok(runner.includes('alter default privileges in schema public'),
+      'the suite must model what a Supabase project does before a migration runs')
+    assert.ok(runner.includes('grant all on tables    to anon, authenticated, service_role'))
+    // The before-probe: the pre-fix grants must still be REFUSED.
+    assert.ok(runner.includes('before-probe'),
+      'a suite that only proves the fix works cannot say whether it is still needed')
+    assert.ok(runner.includes('must be read-only for authenticated'),
+      'and the probe must require the refusal to come from the privilege assertion')
+
+    const assertions = read('supabase/tests/payment_entry_privileges_assertions.sql')
+    assert.ok(assertions.includes('privilege_model_control'),
+      'the fixture must prove ITSELF production-shaped before asserting anything')
+    for (const claim of [
+      'set local role authenticated',
+      'set local role anon',
+      "insufficient_privilege",
+    ]) {
+      assert.ok(assertions.includes(claim),
+        `the suite must try the write as the role, not merely read has_table_privilege (${claim})`)
+    }
+  })
+
+  test('a read-only residue check exists and writes nothing', () => {
+    const check = read('supabase/tests/check_113_residue.sql')
+    // SQL comments and \echo prose, stripped: the file EXPLAINS what a create
+    // or a delete would mean, and explaining is not doing.
+    const statements = check
+      .split('\n')
+      .filter(line => !/^\s*--/.test(line) && !/^\s*\\/.test(line))
+      .join('\n')
+      .toLowerCase()
+    for (const write of ['insert into', 'update ', 'delete from', 'drop ', 'create ', 'alter ', 'truncate']) {
+      assert.equal(statements.includes(write), false,
+        `the residue check must be read-only — found "${write.trim()}"`)
+    }
+    assert.ok(check.includes('supabase_migrations.schema_migrations'),
+      'it must look at what was actually recorded')
+    assert.ok(check.includes('role_table_grants'),
+      'and at the privileges, which is where the push failed')
+  })
+})
