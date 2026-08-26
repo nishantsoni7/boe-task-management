@@ -78,6 +78,71 @@ export function isAwaitingApproval(task: Pick<Task, 'status'>): boolean {
   return task.status === AWAITING_APPROVAL_STATUS
 }
 
+/** Finished or abandoned — off everybody's plate. */
+export function isClosed(task: Pick<Task, 'status'>): boolean {
+  return task.status === 'completed' || task.status === 'cancelled'
+}
+
+/**
+ * THE WORKLOAD RULE: open work that still needs THIS user.
+ *
+ * Exactly the membership test for the `all` tab, and exactly what the Task Type
+ * sidebar counts. Both read it from here rather than restating the statuses,
+ * so a count and the list it summarises cannot disagree.
+ *
+ * Together with isAwaitingApproval and isClosed this PARTITIONS a user's tasks:
+ * every task is in exactly one of the three, so nothing can be counted twice
+ * between the actionable workload and the Awaiting Approval badge, and nothing
+ * can fall through the gap. myTaskTabs.test.ts asserts that directly.
+ */
+export function isActionableWorkload(task: Pick<Task, 'status'>): boolean {
+  return !isClosed(task) && !isAwaitingApproval(task)
+}
+
+// ── Task Type (the left sidebar): whose task is it ───────────────────────────
+
+/** Who created it, relative to the viewer. Orthogonal to status. */
+export type MyTaskType = 'all' | 'self' | 'delegated'
+
+export function matchesTaskType(
+  task: Pick<Task, 'created_by'>,
+  type: MyTaskType,
+  userId: string,
+): boolean {
+  if (type === 'self')      return task.created_by === userId
+  if (type === 'delegated') return task.created_by !== userId
+  return true
+}
+
+/** The collection a chosen Task Type narrows to. Status is not considered here. */
+export function filterByTaskType(tasks: Task[], type: MyTaskType, userId: string): Task[] {
+  return type === 'all' ? tasks : tasks.filter(t => matchesTaskType(t, type, userId))
+}
+
+/**
+ * The three Task Type sidebar counts.
+ *
+ * These count WORK REQUIRING THIS USER, so a task submitted for approval is not
+ * in any of them — it is waiting on its creator, and the only badge that counts
+ * it is the Awaiting Approval tab's. Before this, the sidebar counted every
+ * non-closed task, so a submitted task was counted here AND in Awaiting
+ * Approval while appearing in no working tab: a number nothing on screen added
+ * up to.
+ */
+export function countTaskTypeWorkload(
+  tasks: Task[],
+  userId: string,
+): Record<MyTaskType, number> {
+  const counts: Record<MyTaskType, number> = { all: 0, self: 0, delegated: 0 }
+  for (const task of tasks) {
+    if (!isActionableWorkload(task)) continue
+    counts.all += 1
+    if (matchesTaskType(task, 'self', userId)) counts.self += 1
+    else counts.delegated += 1
+  }
+  return counts
+}
+
 // ── Date helpers ─────────────────────────────────────────────────────────────
 
 /** Local calendar date, `offsetDays` from today, as YYYY-MM-DD. */
@@ -163,10 +228,6 @@ export function buildMyTaskBuckets(tasks: Task[], clock: MyTaskClock): MyTaskBuc
   const isActiveActionable = (t: Task) =>
     accruesAssigneeOverdue(t.status) && t.status !== 'waiting' && t.status !== 'blocked'
 
-  // The single exclusion every active working tab applies.
-  const isOpenForMe = (t: Task) =>
-    t.status !== 'completed' && t.status !== 'cancelled' && !isAwaitingApproval(t)
-
   const dueOn = (t: Task) => normalizeDueDate(t.due_date)
 
   return {
@@ -192,8 +253,8 @@ export function buildMyTaskBuckets(tasks: Task[], clock: MyTaskClock): MyTaskBuc
 
     // `all` is what the sidebar's "In Progress" entry opens, so this is the
     // exclusion that actually removes a submitted task from the working view.
-    all:       sortImportantFirst(tasks.filter(isOpenForMe)),
-    important: sortImportantFirst(tasks.filter(t => t.is_urgent && isOpenForMe(t))),
+    all:       sortImportantFirst(tasks.filter(isActionableWorkload)),
+    important: sortImportantFirst(tasks.filter(t => t.is_urgent && isActionableWorkload(t))),
 
     unacknowledged: sortImportantFirst(tasks.filter(t => isUnacknowledged(t) && !isAwaitingApproval(t))),
 

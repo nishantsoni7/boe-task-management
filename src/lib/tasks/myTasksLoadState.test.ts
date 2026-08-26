@@ -149,6 +149,16 @@ describe('tabs filter already-fetched data', () => {
       'a tab change must not trigger a fetch')
   })
 
+  test('the sidebar counts come from the shared classifier, not inline statuses', () => {
+    assert.ok(PAGE_CODE.includes('const typeCounts = countTaskTypeWorkload(allTasks, userId)'))
+    assert.ok(PAGE_CODE.includes('filterByTaskType(allTasks, taskType, userId)'))
+    // No status condition may be restated in the page: that is how the sidebar
+    // and the tab it summarises drifted apart in the first place.
+    const sidebar = PAGE_CODE.slice(PAGE_CODE.indexOf('const typeCounts ='))
+      .slice(0, 400)
+    assert.equal(/status !== 'completed'|status !== 'cancelled'|pending_approval/.test(sidebar), false)
+  })
+
   test('the visible list is derived from the buckets, not re-queried', () => {
     assert.ok(PAGE_CODE.includes('let tasks = activeTab === null ? buckets.all : buckets[activeTab]'))
   })

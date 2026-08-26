@@ -21,10 +21,13 @@ import {
   MY_TASK_TAB_KEYS,
   buildMyTaskBuckets,
   countMyTaskBuckets,
+  countTaskTypeWorkload,
+  filterByTaskType,
   isAwaitingApproval,
   isOverdue as taskIsOverdue,
   localDateStr,
   type MyTaskTabKey,
+  type MyTaskType,
 } from '@/lib/tasks/myTaskTabs'
 import {
   CheckCircle2, Star, AlertCircle,
@@ -59,7 +62,9 @@ function formatDate(d: string | null): string | null {
 // ─── Tab config ───────────────────────────────────────────────────────────────
 type TabKey = MyTaskTabKey
 const TAB_LABELS = MY_TASK_TAB_LABELS
-type TaskType = 'all' | 'self' | 'delegated'
+// Whose task it is, from the shared classifier — the sidebar's own axis, and
+// orthogonal to the status axis the view tabs use.
+type TaskType = MyTaskType
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
@@ -1311,11 +1316,10 @@ function MyTasksContent() {
     showToast('Removed from Today\'s Focus')
   }
 
-  const baseTasks = useMemo(() => {
-    if (taskType === 'self')      return allTasks.filter(t => t.created_by === userId)
-    if (taskType === 'delegated') return allTasks.filter(t => t.created_by !== userId)
-    return allTasks
-  }, [allTasks, taskType, userId])
+  const baseTasks = useMemo(
+    () => filterByTaskType(allTasks, taskType, userId),
+    [allTasks, taskType, userId],
+  )
 
   const assignerOptions = useMemo(() => {
     const ids = [...new Set(baseTasks.map(t => t.created_by))]
@@ -1413,11 +1417,15 @@ function MyTasksContent() {
 
           {/* ── Sidebar / pill tabs ── */}
           {(() => {
-            const typeCounts: Record<TaskType, number> = {
-              all:       allTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled').length,
-              self:      allTasks.filter(t => t.created_by === userId && t.status !== 'completed' && t.status !== 'cancelled').length,
-              delegated: allTasks.filter(t => t.created_by !== userId && t.status !== 'completed' && t.status !== 'cancelled').length,
-            }
+            // WORK REQUIRING THIS USER — not "everything not closed".
+            //
+            // A task submitted for approval is waiting on its creator, so it is
+            // in none of these; the Awaiting Approval tab badge is the only
+            // number that counts it. The rule itself lives in the shared
+            // classifier (isActionableWorkload), which is the same rule the
+            // `all` tab uses, so a sidebar count and the list it summarises
+            // cannot drift apart.
+            const typeCounts = countTaskTypeWorkload(allTasks, userId)
             const handleTypeChange = (key: TaskType) => {
               setSelectedTask(null)
               setSearchInput('')

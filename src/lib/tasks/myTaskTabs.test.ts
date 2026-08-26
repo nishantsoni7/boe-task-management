@@ -16,6 +16,10 @@ import assert from 'node:assert/strict'
 import type { Task } from '@/lib/types'
 import {
   ACTIVE_WORKING_TABS,
+  countTaskTypeWorkload,
+  filterByTaskType,
+  isActionableWorkload,
+  isClosed,
   AWAITING_APPROVAL_LABEL,
   AWAITING_APPROVAL_STATUS,
   MY_TASK_TAB_KEYS,
@@ -274,7 +278,133 @@ describe('tab switching reads already-loaded data', () => {
   })
 })
 
-// ── 5. Helpers ───────────────────────────────────────────────────────────────
+// ── 5. Task Type sidebar counts ──────────────────────────────────────────────
+
+describe('the Task Type sidebar counts work requiring this user', () => {
+  // One of each shape, so every count below is checkable by hand.
+  const workload = () => [
+    task({ id: 'own-working',   status: 'working',  created_by: ME   }),
+    task({ id: 'own-waiting',   status: 'waiting',  created_by: ME   }),
+    task({ id: 'deleg-working', status: 'working',  created_by: BOSS }),
+    task({ id: 'deleg-blocked', status: 'blocked',  created_by: BOSS }),
+  ]
+  const submitted = () => [
+    task({ id: 'own-submitted',   status: AWAITING_APPROVAL_STATUS, created_by: ME   }),
+    task({ id: 'deleg-submitted', status: AWAITING_APPROVAL_STATUS, created_by: BOSS }),
+  ]
+  const closed = () => [
+    task({ id: 'done',      status: 'completed', created_by: BOSS }),
+    task({ id: 'abandoned', status: 'cancelled', created_by: BOSS }),
+  ]
+
+  test('pending_approval is excluded from EVERY Task Type count', () => {
+    const withOut = countTaskTypeWorkload(workload(), ME)
+    const withIn  = countTaskTypeWorkload([...workload(), ...submitted()], ME)
+    assert.deepEqual(withIn, withOut, 'adding submitted tasks must not move any count')
+    assert.deepEqual(withIn, { all: 4, self: 2, delegated: 2 })
+  })
+
+  test('a sidebar made only of submitted tasks counts zero, not two', () => {
+    assert.deepEqual(countTaskTypeWorkload(submitted(), ME), { all: 0, self: 0, delegated: 0 })
+  })
+
+  test('pending_approval is still counted in Awaiting Approval', () => {
+    const all = [...workload(), ...submitted(), ...closed()]
+    const counts = countMyTaskBuckets(buildMyTaskBuckets(all, CLOCK))
+    assert.equal(counts.awaiting_approval, 2)
+    assert.deepEqual(ids(buildMyTaskBuckets(all, CLOCK).awaiting_approval),
+      ['deleg-submitted', 'own-submitted'])
+  })
+
+  test('active task counts remain correct — closed tasks are still excluded', () => {
+    const counts = countTaskTypeWorkload([...workload(), ...closed()], ME)
+    assert.deepEqual(counts, { all: 4, self: 2, delegated: 2 })
+  })
+
+  test('self + delegated always sum to all', () => {
+    for (const rows of [workload(), [...workload(), ...submitted(), ...closed()], submitted(), []]) {
+      const c = countTaskTypeWorkload(rows, ME)
+      assert.equal(c.self + c.delegated, c.all)
+    }
+  })
+
+  test('a self-assigned task counts as self, not delegated', () => {
+    const c = countTaskTypeWorkload(
+      [task({ status: 'working', created_by: ME, assigned_to: ME })], ME)
+    assert.deepEqual(c, { all: 1, self: 1, delegated: 0 })
+  })
+
+  test('the sidebar count equals the tab it summarises', () => {
+    // The sidebar's `all` and the `all` tab must be the same set, or the badge
+    // is describing a list nobody can open.
+    const rows = [...workload(), ...submitted(), ...closed()]
+    const sidebar = countTaskTypeWorkload(rows, ME)
+    const tabAll  = buildMyTaskBuckets(rows, CLOCK).all
+    assert.equal(sidebar.all, tabAll.length)
+    assert.deepEqual(ids(tabAll), ids(rows.filter(isActionableWorkload)))
+  })
+
+  test('each Task Type count equals its own filtered `all` tab', () => {
+    const rows = [...workload(), ...submitted(), ...closed()]
+    const counts = countTaskTypeWorkload(rows, ME)
+    for (const type of ['all', 'self', 'delegated'] as const) {
+      const scoped = buildMyTaskBuckets(filterByTaskType(rows, type, ME), CLOCK).all
+      assert.equal(counts[type], scoped.length, type)
+    }
+  })
+})
+
+describe('nothing is counted twice, and nothing falls through', () => {
+  const everything = () => [
+    task({ id: 'a', status: 'pending'  }), task({ id: 'b', status: 'started' }),
+    task({ id: 'c', status: 'working'  }), task({ id: 'd', status: 'waiting' }),
+    task({ id: 'e', status: 'blocked'  }),
+    task({ id: 'f', status: AWAITING_APPROVAL_STATUS }),
+    task({ id: 'g', status: 'completed' }), task({ id: 'h', status: 'cancelled' }),
+  ]
+
+  test('workload / awaiting approval / closed are mutually exclusive', () => {
+    for (const t of everything()) {
+      const memberships = [isActionableWorkload(t), isAwaitingApproval(t), isClosed(t)]
+        .filter(Boolean).length
+      assert.equal(memberships, 1, `${t.status} is in ${memberships} of the three`)
+    }
+  })
+
+  test('and exhaustive — every task lands in exactly one', () => {
+    const rows = everything()
+    const workload = rows.filter(isActionableWorkload)
+    const awaiting = rows.filter(isAwaitingApproval)
+    const done     = rows.filter(isClosed)
+    assert.equal(workload.length + awaiting.length + done.length, rows.length)
+    assert.deepEqual(
+      [...workload, ...awaiting, ...done].map(t => t.id).sort(),
+      rows.map(t => t.id).sort(),
+    )
+  })
+
+  test('the sidebar total and the Awaiting Approval badge never overlap', () => {
+    const rows = everything()
+    const sidebar = countTaskTypeWorkload(rows, ME)
+    const buckets = buildMyTaskBuckets(rows, CLOCK)
+    const awaitingIds = new Set(buckets.awaiting_approval.map(t => t.id))
+    // No id counted by the sidebar is also in Awaiting Approval…
+    for (const t of rows.filter(isActionableWorkload)) {
+      assert.equal(awaitingIds.has(t.id), false, `${t.id} counted twice`)
+    }
+    // …and the two together never exceed the open tasks.
+    assert.equal(sidebar.all + buckets.awaiting_approval.length,
+      rows.filter(t => !isClosed(t)).length)
+  })
+
+  test('the `all` tab and Awaiting Approval share no row', () => {
+    const buckets = buildMyTaskBuckets(everything(), CLOCK)
+    const inAll = new Set(buckets.all.map(t => t.id))
+    for (const t of buckets.awaiting_approval) assert.equal(inAll.has(t.id), false, t.id)
+  })
+})
+
+// ── 6. Helpers ───────────────────────────────────────────────────────────────
 
 describe('helpers', () => {
   test('isAwaitingApproval is the single predicate', () => {
