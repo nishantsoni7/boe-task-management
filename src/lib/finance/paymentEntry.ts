@@ -81,19 +81,57 @@ export const SUSPENSE_NOTICE =
 
 // ── Payment Mode ─────────────────────────────────────────────────────────────
 //
-// FIVE VALUES, AND THE DATABASE DECIDES WHICH FIVE. This is exactly the domain
-// finance_payment_requests.payment_mode has carried since 20260628000200:
+// FOUR VALUES FOR A NEW ENTRY, AND THE DATABASE DECIDES THE SAME FOUR. Since
+// 20261014000000 §1 the domain a new payment may use is:
 //
-//   check (payment_mode in ('bank_transfer','cash','upi','cheque','other'))
+//   hdfc | pnb | paytm | canara
 //
-// THERE IS NO 'card'. It was proposed and is not in the constraint, so adding it
-// here would produce a form that offers a value every write refuses. Adding it
-// properly is a migration, and a deliberate one.
+// These are the four BOE accounts money actually arrives into. What each one
+// MEANS internally is recorded in the database's own column comment
+// (finance_payment_requests.payment_mode, 20261014000000 §1) and is deliberately
+// absent from this file, because it is absent from the product: a screen shows
+// the account name and never a gloss on it.
 //
-// This replaces five separate arrays that had drifted into five files while
-// happening to agree. They agreed; nothing made them.
+// THE FIVE LEGACY VALUES ARE STILL READABLE. bank_transfer, cash, upi, cheque
+// and other are what every payment recorded before the change carries. They stay
+// storable (the CHECK keeps them) so no history is rewritten, and they are
+// refused for a NEW entry by the four entry RPCs AND by
+// finance_payment_requests_enforce_current_payment_mode — so a browser that
+// offered one would produce a form every write refuses.
+//
+// WHY THEY WERE NOT CONVERTED. The stored (payment_mode, received_in) PAIR is
+// what named an account, never the mode alone; received_in has been nullable
+// since 20260919000000 and unwritten since 20261013000000, so a bare
+// 'bank_transfer' is HDFC or Canara and nothing on the row says which.
+// Converting would have invented a fact. See 20261014000000 §1 for the decision
+// in full.
+//
+// ONE LIST, EVERY SURFACE. Payment Request, Edit Payment Request, Record
+// Payment, the PI payment card, the filters, the tables and the detail views all
+// read from here. They agreed by accident once; this is what makes them agree.
 
 export const PAYMENT_MODES = [
+  { value: 'hdfc',   label: 'HDFC' },
+  { value: 'pnb',    label: 'PNB' },
+  { value: 'paytm',  label: 'Paytm' },
+  { value: 'canara', label: 'Canara' },
+] as const
+
+export type PaymentMode = typeof PAYMENT_MODES[number]['value']
+
+export const PAYMENT_MODE_VALUES: readonly PaymentMode[] = PAYMENT_MODES.map(m => m.value)
+
+/** The mode a form starts on before anybody has chosen. */
+export const DEFAULT_PAYMENT_MODE: PaymentMode = 'hdfc'
+
+/**
+ * The five retired values, and how a historical row carrying one is written down.
+ *
+ * READ ONLY. Nothing offers these; they exist so a 2026 row prints "Bank
+ * Transfer" rather than a raw column value, and so a test can name the set that
+ * must never appear in a picker.
+ */
+export const LEGACY_PAYMENT_MODES = [
   { value: 'bank_transfer', label: 'Bank Transfer' },
   { value: 'cash',          label: 'Cash' },
   { value: 'upi',           label: 'UPI' },
@@ -101,28 +139,70 @@ export const PAYMENT_MODES = [
   { value: 'other',         label: 'Other' },
 ] as const
 
-export type PaymentMode = typeof PAYMENT_MODES[number]['value']
-
-export const PAYMENT_MODE_VALUES: readonly PaymentMode[] = PAYMENT_MODES.map(m => m.value)
+export const LEGACY_PAYMENT_MODE_VALUES: readonly string[] =
+  LEGACY_PAYMENT_MODES.map(m => m.value)
 
 export const PAYMENT_MODE_LABEL: Record<string, string> =
-  Object.fromEntries(PAYMENT_MODES.map(m => [m.value, m.label]))
+  Object.fromEntries([...PAYMENT_MODES, ...LEGACY_PAYMENT_MODES].map(m => [m.value, m.label]))
 
+/** Is this one of the four a NEW entry may use? */
 export function isPaymentMode(value: string | null | undefined): value is PaymentMode {
   return (PAYMENT_MODE_VALUES as readonly string[]).includes(value ?? '')
+}
+
+/** Is this a retired value, kept readable for history and refused for new entries? */
+export function isLegacyPaymentMode(value: string | null | undefined): boolean {
+  return LEGACY_PAYMENT_MODE_VALUES.includes(value ?? '')
 }
 
 /**
  * How a stored payment mode is written down.
  *
- * An unrecognised value is returned AS IT IS STORED rather than as 'Other': a
- * row carrying something this list does not know is a fact worth seeing, and
- * relabelling it would hide the only evidence.
+ * A retired value reads as the words it always read as. An unrecognised value is
+ * returned AS IT IS STORED rather than as 'Other': a row carrying something
+ * neither list knows is a fact worth seeing, and relabelling it would hide the
+ * only evidence.
  */
 export function paymentModeLabel(value: string | null | undefined): string {
   const key = (value ?? '').trim()
   if (!key) return '—'
   return PAYMENT_MODE_LABEL[key] ?? key
+}
+
+/**
+ * The options a picker should draw for a row that already carries `current`.
+ *
+ * The four, plus — only when the row holds a value outside them — the stored one
+ * as an option of its own. Without that, opening an edit form on a historical
+ * payment would silently move it onto HDFC the moment anything else was saved.
+ * The extra option is never one of the four and is never offered to a new entry.
+ */
+export function paymentModeOptionsFor(
+  current: string | null | undefined,
+): { value: string; label: string; retired?: boolean }[] {
+  const options: { value: string; label: string; retired?: boolean }[] =
+    PAYMENT_MODES.map(m => ({ value: m.value, label: m.label }))
+  const key = (current ?? '').trim()
+  if (key && !isPaymentMode(key)) {
+    options.unshift({ value: key, label: paymentModeLabel(key), retired: true })
+  }
+  return options
+}
+
+// ── Which modes are physically carried by a person ──────────────────────────
+//
+// PNB and Paytm. The money passes through somebody's hands between the customer
+// and the company, so who held it and when is a real accountability record —
+// which is what the custody trail (20261014000000 §2, and
+// src/lib/finance/custodyTrail.ts) exists to hold.
+//
+// THE SERVER DECIDES THIS AGAIN, in payment_mode_requires_custody(), so a form
+// that drew the section for a bank account has its events refused rather than
+// stored. This function is why the section is drawn, never why it is allowed.
+
+export function modeRequiresCustodyTrail(value: string | null | undefined): boolean {
+  const key = (value ?? '').trim()
+  return key === 'pnb' || key === 'paytm'
 }
 
 // ── The customer, which is never typed ───────────────────────────────────────
@@ -198,8 +278,34 @@ export function paymentEntryErrorMessage(message: string | null | undefined): st
   if (m.includes('PAYMENT_DATE_REQUIRED')) {
     return 'Enter the date the payment was received.'
   }
-  if (m.includes('PAYMENT_MODE_INVALID')) {
-    return 'Choose Bank Transfer, Cash, UPI, Cheque or Other.'
+  if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {
+    return 'Choose HDFC, PNB, Paytm or Canara.'
+  }
+  // The custody trail's own refusals, each naming the rule that refused rather
+  // than collapsing into one "please check the form".
+  if (m.includes('CUSTODY_MODE_NOT_APPLICABLE')) {
+    return 'A collection and handover trail is recorded only for PNB and Paytm payments. Change the mode, or remove the activities.'
+  }
+  if (m.includes('CUSTODY_EVENT_HANDOVER_INCOMPLETE')) {
+    return 'A handover needs both the person who handed the money over and the person who received it.'
+  }
+  if (m.includes('CUSTODY_EVENT_COLLECTOR_REQUIRED')) {
+    return 'Say who collected the money.'
+  }
+  if (m.includes('CUSTODY_EVENT_TIME_FUTURE')) {
+    return 'A collection or handover cannot have happened in the future.'
+  }
+  if (m.includes('CUSTODY_EVENT_TIME_REQUIRED')) {
+    return 'Enter the date and time each collection or handover happened.'
+  }
+  if (m.includes('CUSTODY_EVENT_PERSON_UNKNOWN') || m.includes('CUSTODY_EVENT_PERSON_INVALID')) {
+    return 'One of the people named on the custody trail is not a BOE user. Choose again.'
+  }
+  if (m.includes('CUSTODY_APPEND_NOT_PERMITTED')) {
+    return 'You do not have permission to add a collection or handover to this payment.'
+  }
+  if (m.includes('CUSTODY_EVENT_IMMUTABLE')) {
+    return 'A saved custody activity cannot be edited. Add the activity that actually happened instead.'
   }
   if (m.includes('PAYMENT_INTENT_EXCEEDS_AMOUNT')) {
     return 'This payment is already promised to another record for its full value. Refresh and check the figures.'

@@ -21,7 +21,18 @@ import { isValidAmount } from '@/lib/currency'
 // ONE payment-mode source for Order and Finance (20261013000000). This file
 // used to keep its own label map AND its own options array; both are gone.
 import {
-  PAYMENT_MODES as PAYMENT_MODE_OPTIONS,
+  PAYMENT_DISPLAY_STATE_META,
+  orderNumberDisplay,
+  paymentAgainstDisplay,
+  paymentDisplayStateMeta,
+  type PaymentDestination,
+} from '@/lib/finance/paymentDestination'
+import {
+  PaymentCustodyTrail,
+  usePaymentDestination,
+} from '@/app/finance/components/PaymentDestinationBlock'
+import {
+  paymentModeOptionsFor,
   PAYMENT_MODE_LABEL,
   customerDisplayName,
 } from '@/lib/finance/paymentEntry'
@@ -123,6 +134,18 @@ type PaymentRequest = {
   payment_date: string
   payment_mode: string
   received_in: string | null
+  /**
+   * THE FIVE LEGACY CUSTODY COLUMNS (20260716000000), frozen as history since
+   * 20261014000000 §2. Nothing writes them any more; they are read so that a
+   * payment recorded before the activity trail existed still shows who was
+   * carrying its money, projected into the same event shape by
+   * legacyCustodyEvents.
+   */
+  collected_by_user_id: string | null
+  collected_from_text: string | null
+  handed_over_to_user_id: string | null
+  handed_over_at: string | null
+  collection_handover_note: string | null
   proof_note: string | null
   order_number: string | null
   order_id: string | null
@@ -198,12 +221,18 @@ function receivedInLabel(value: string | null | undefined): string {
   return RECEIVED_IN_LABEL[value] ?? value
 }
 
+// THE SHARED DISPLAY PALETTE, not a second copy of it. approved_unlinked used
+// to read "Order No. Pending", which a Confirmed-Order payment wore even after
+// Finance had approved it and the Order had received its allocation in full —
+// because that status is derived from order_id, which the payment-entry doors
+// deliberately leave NULL. The two verified labels are decided live from the
+// ALLOCATION LEDGER now, through finance_payment_destinations.
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  pending_approval:    { label: 'Pending',             bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  approved_unlinked:   { label: 'Order No. Pending',   bg: '#FFF7ED', color: '#92400E', border: '#FED7AA' },
-  approved_linked:     { label: 'Received Payment',    bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
-  rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
+  pending_approval:    PAYMENT_DISPLAY_STATE_META.pending,
+  approved_unlinked:   PAYMENT_DISPLAY_STATE_META.received_unallocated,
+  approved_linked:     PAYMENT_DISPLAY_STATE_META.received,
+  needs_clarification: PAYMENT_DISPLAY_STATE_META.needs_clarification,
+  rejected:            PAYMENT_DISPLAY_STATE_META.rejected,
 }
 
 // ── The four views ────────────────────────────────────────────────────────────
@@ -305,6 +334,17 @@ const STATUS_CORRECTION_OPTIONS = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// A custody activity happens at a TIME, not on a day. Read in the reader's own
+// zone, which is where the person entering it was standing.
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  })
+}
+
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
@@ -387,12 +427,21 @@ function MetaItem({ label, value, muted }: { label: string; value: string; muted
   )
 }
 
-function StatusBadge({ status, requestLinked }: { status: string; requestLinked?: boolean }) {
-  // A payment parked on an Order Request stays approved_unlinked in the
-  // database (it is not an order advance yet) but must read as its own state,
-  // not as plain "Order No. Pending".
-  const meta = (requestLinked && status === 'approved_unlinked')
-    ? { label: 'Awaiting Order Confirmation', bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' }
+// THE BADGE IS NOT THE STATUS COLUMN. For the three request-stage statuses it is
+// the same thing; for the two verified ones the label is decided by whether the
+// ALLOCATION LEDGER actually attaches this payment to anything — so a fully
+// allocated payment reads "Received Payment", and reversing that allocation
+// takes the label with it rather than leaving a stale claim behind.
+//
+// THE ORDER-REQUEST BRANCH IS GONE with the workflow it described
+// (20261007000000): a payment parked on a retired request has no active
+// allocation, so it is Received — Unallocated, which is exactly what it is.
+function StatusBadge({ status, destination }: {
+  status: string
+  destination?: PaymentDestination | null
+}) {
+  const meta = destination !== undefined
+    ? paymentDisplayStateMeta(status, destination)
     : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
   return (
     <span style={{
@@ -406,8 +455,13 @@ function StatusBadge({ status, requestLinked }: { status: string; requestLinked?
 }
 
 /** The verification state, as a badge. The OTHER axis, never folded into money. */
-function VerificationBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+function VerificationBadge({ status, destination }: {
+  status: string
+  destination?: PaymentDestination | null
+}) {
+  const meta = destination !== undefined
+    ? paymentDisplayStateMeta(status, destination)
+    : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
   return (
     <span
       title={PAYMENT_VERIFICATION_LABEL[paymentRowFigures({
@@ -665,6 +719,12 @@ function DetailsModal({
   // make for the expandable strip that no longer exists.
   const modalFigures = confirmedFigures(r)
 
+  // WHICH RECORD THIS MONEY IS FOR, from the allocation ledger. This modal used
+  // to print order_number, and a blank whenever it was null — which is every
+  // payment written since 20261012000000 made that column provenance.
+  const destination = usePaymentDestination(supabase, r.id)
+  const orderNoLine = orderNumberDisplay(destination)
+
   const left = (
     <>
       {/* Primary summary card — amount + client lead, payment details below.
@@ -698,16 +758,22 @@ function DetailsModal({
           <MetaItem label="Received Date" value={fmtDate(r.payment_date)} />
           <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
           <MetaItem label="Received In"  value={receivedInLabel(r.received_in)} />
+          {/* WHAT THIS PAYMENT IS FOR, from the ledger — never from the payment
+              row's provenance columns. */}
+          <MetaItem label="Payment Against" value={paymentAgainstDisplay(destination)}
+                    muted={!destination || destination.kind === 'suspense'} />
           {/* THE TWO PEOPLE. The table abbreviates both to fit a column; here
               they are whole, which is half the reason the columns may abbreviate
               at all. */}
           <MetaItem label="Initiated By" value={r.submitted_by_name ?? '—'} muted={!r.submitted_by_name} />
           <MetaItem label="Approved By"  value={r.approved_by_name ?? '—'} muted={!r.approved_by_name} />
-          {r.order_request_number && !r.order_number ? (
-            <MetaItem label="Linked Order Request" value={r.order_request_number} />
-          ) : (
-            <MetaItem label="Order Number" value={r.order_number ?? '—'} muted={!r.order_number} />
-          )}
+          {/* THE ORDER NUMBER, derived. A number appears only when exactly one
+              Confirmed Order is the whole destination; a split payment says how
+              many rather than naming whichever one sorted first. The old
+              "Linked Order Request" branch is gone with the retired workflow —
+              such a payment holds no active allocation and reads as
+              unallocated, which is what it is. */}
+          <MetaItem label="Order Number" value={orderNoLine.value} muted={orderNoLine.muted} />
           {/* The status the badge in the row shows, restated inside the record
               it opens — the same component, inert here because this IS the
               destination. */}
@@ -722,34 +788,52 @@ function DetailsModal({
         </div>
       </div>
 
-      {/* Proof and reference — same compact bordered block as the Payment
-          Requests page's detail modal. */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            {supabase
-              ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
-              : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
+      {/* WHO PHYSICALLY CARRIED IT. Shown for PNB and Paytm, and for any payment
+          that already has a trail — including one recorded before the trail
+          existed, whose five legacy columns are projected into the same shape.
+
+          FINANCE MAY STILL ADD TO IT, verified or not: a custody event is a
+          statement about who carried cash, not about how much money arrived, so
+          the post-approval freeze that protects the FIGURES has nothing to say
+          about it. append_payment_custody_events decides that server-side. */}
+      {supabase && (
+        <PaymentCustodyTrail
+          supabase={supabase}
+          payment={r}
+          canAppend={mayCorrectPayments}
+          formatDateTime={fmtDateTime}
+        />
+      )}
+
+      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the notes
+          under ONE heading, the same three the entry forms ask together. The
+          database keeps three columns because they mean three things; this is a
+          grouping, not a merge. */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+        <SectionHeader>Payment Proof / Reference</SectionHeader>
+        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {supabase
+                ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
+                : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
+            </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-          <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-          <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-            {r.proof_note || 'Not provided'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
+            <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
+              {r.proof_note || 'Not provided'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
+            <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              {r.sales_note || 'No notes provided'}
+            </span>
+          </div>
         </div>
       </div>
-
-      {/* Notes — only when a sales note exists */}
-      {r.sales_note && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <SectionHeader>Notes</SectionHeader>
-          <div style={{ fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-            {r.sales_note}
-          </div>
-        </div>
-      )}
     </>
   )
 
@@ -882,7 +966,7 @@ function DetailsModal({
     <RequestModalShell
       requestNumber={r.human_payment_id}
       submittedLine={submittedLine}
-      statusBadge={<StatusBadge status={r.status} requestLinked={!!r.order_request_id} />}
+      statusBadge={<StatusBadge status={r.status} destination={destination} />}
       onClose={onClose}
       left={left}
       right={right}
@@ -984,7 +1068,13 @@ function EditPaymentModal({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Payment Mode" required>
           <select className="boe-input" value={form.paymentMode} onChange={set('paymentMode')} style={{ width: '100%' }}>
-            {PAYMENT_MODE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION, so correcting
+                some other field on a 2026 payment does not silently move it onto
+                one of the four. finance_payment_requests_enforce_current_payment_mode
+                allows exactly that: an UPDATE that leaves the mode alone. */}
+            {paymentModeOptionsFor(form.paymentMode).map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
           </select>
         </Field>
         <Field label="Received In" required>
@@ -2096,7 +2186,9 @@ function ReceivedPaymentsViewInner(
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
         id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id,
+        received_in, collected_by_user_id, collected_from_text,
+        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
@@ -2339,7 +2431,9 @@ function ReceivedPaymentsViewInner(
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
         id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-        received_in, proof_note, order_number, order_id,
+        received_in, collected_by_user_id, collected_from_text,
+        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
@@ -2582,7 +2676,9 @@ function ReceivedPaymentsViewInner(
           .from(RECEIVED_PAYMENTS_SOURCE)
           .select(`
             id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-            received_in, proof_note, order_number, order_id,
+            received_in, collected_by_user_id, collected_from_text,
+        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        proof_note, order_number, order_id,
             order_request_id, order_request_number, sales_note,
             status, payment_against, submitted_by, admin_note, created_at,
             submitted_by_name, approved_by_name,
@@ -2988,6 +3084,7 @@ function ReceivedPaymentsViewInner(
       {recording && (
         <RecordSplitPaymentModal
           supabase={supabase}
+          userId={profile?.id ?? null}
           onClose={() => setRecording(false)}
           onRecorded={summary => {
             setRecording(false)

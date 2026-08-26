@@ -1,7 +1,13 @@
 #!/usr/bin/env bash
 # The edit-versus-approval race, with TWO REAL SESSIONS.
 #
-#   supabase/tests/run_payment_entry_edit_race.sh <psql-host-or-socket-dir>
+#   supabase/tests/run_payment_entry_edit_race.sh <psql-host-or-socket-dir> [--with-114]
+#
+# TWO SCHEMAS, ONE RACE. Without an argument it builds through 20261013000000 and
+# proves the race against the functions THAT migration installed. With --with-114
+# it applies 20261014000000 as well and proves the SAME race against the
+# functions that actually ship — 114 restates edit_payment_request, and a lock
+# ordering that was only ever proved on a superseded body is not proved at all.
 #
 # WHY THIS IS NOT IN THE ASSERTION FILE. That file runs in one transaction and
 # rolls back, which is exactly what a lock-contention test cannot do: a race
@@ -16,16 +22,33 @@
 #
 # Creates and drops a database called `boe_payment_edit_race`.
 set -euo pipefail
-HOST="${1:?usage: run_payment_entry_edit_race.sh <psql host or socket dir>}"
+HOST="${1:?usage: run_payment_entry_edit_race.sh <psql host or socket dir> [--with-114]}"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DB=boe_payment_edit_race
+
+# ── Which schema, and therefore which payment mode ───────────────────────────
+# 20261014000000 retires the five legacy modes for NEW entries, so the fixture
+# has to speak the vocabulary of the schema it is running against or every
+# submission is refused before the race begins.
+EXTRA=()
+MODE=upi
+if [ "${2:-}" = "--with-114" ]; then
+  EXTRA=(
+    "$REPO/supabase/tests/_payment_custody_and_modes_extra_schema.sql"
+    "$REPO/supabase/migrations/20261014000000_payment_destination_display_modes_and_custody.sql"
+  )
+  MODE=hdfc
+  DB=boe_payment_edit_race_114
+fi
 Q=(psql -h "$HOST" -U postgres -v ON_ERROR_STOP=1 -q)
 
 "${Q[@]}" -d postgres -c "drop database if exists $DB" >/dev/null 2>&1
 "${Q[@]}" -d postgres -c "create database $DB" >/dev/null
 trap '"${Q[@]}" -d postgres -c "drop database if exists '"$DB"'" >/dev/null 2>&1 || true' EXIT
 
-echo "== building the schema through 20261013000000"
+SCHEMA_LABEL=20261013000000
+[ ${#EXTRA[@]} -gt 0 ] && SCHEMA_LABEL=20261014000000
+echo "== building the schema through $SCHEMA_LABEL"
 for f in \
   "$REPO/supabase/tests/_order_finance_reset_shaped_schema.sql" \
   "$REPO/supabase/migrations/20261010000000_order_submission_and_finance_test_data_reset.sql" \
@@ -34,7 +57,8 @@ for f in \
   "$REPO/supabase/tests/_allocation_ledger_single_source_extra_schema.sql" \
   "$REPO/supabase/migrations/20261012000000_allocation_ledger_as_single_source.sql" \
   "$REPO/supabase/tests/_payment_entry_destination_model_extra_schema.sql" \
-  "$REPO/supabase/migrations/20261013000000_payment_entry_destination_model.sql"
+  "$REPO/supabase/migrations/20261013000000_payment_entry_destination_model.sql" \
+  "${EXTRA[@]+"${EXTRA[@]}"}"
 do
   "${Q[@]}" -d "$DB" -f "$f" >/dev/null 2>&1
 done
@@ -53,13 +77,13 @@ SEED
 
 # One helper per direction, so the two runs cannot share state.
 new_request() {
-  "${Q[@]}" -d "$DB" -t -A <<'MK'
+  "${Q[@]}" -d "$DB" -t -A <<MK
 select set_config('request.jwt.claims',
   json_build_object('sub', '22222222-2222-4222-8222-222222222222', 'role', 'authenticated')::text, false);
 select (public.submit_payment_request(
   p_destination => 'confirmed_order',
   p_target_id   => 'a0000000-0000-4000-8000-00000000000a',
-  p_amount      => 40000, p_payment_date => current_date, p_payment_mode => 'upi'
+  p_amount      => 40000, p_payment_date => current_date, p_payment_mode => '$MODE'
 )->>'payment_request_id');
 MK
 }
@@ -91,7 +115,7 @@ select public.edit_payment_request(
   p_payment_request_id => '$PAY',
   p_destination        => 'confirmed_order',
   p_target_id          => 'b0000000-0000-4000-8000-00000000000b',
-  p_amount             => 40000, p_payment_date => current_date, p_payment_mode => 'upi');
+  p_amount             => 40000, p_payment_date => current_date, p_payment_mode => '$MODE');
 EDIT
 )"
 EDIT_STATUS=$?
@@ -133,7 +157,7 @@ select public.edit_payment_request(
   p_payment_request_id => '$PAY2',
   p_destination        => 'confirmed_order',
   p_target_id          => 'b0000000-0000-4000-8000-00000000000b',
-  p_amount             => 40000, p_payment_date => current_date, p_payment_mode => 'upi');
+  p_amount             => 40000, p_payment_date => current_date, p_payment_mode => '$MODE');
 commit;
 EDITWIN
 EDIT_PID=$!

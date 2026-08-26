@@ -35,8 +35,12 @@ function actorName(actor: ActivityRow['actor']): string {
 const STATUS_LABEL: Record<string, string> = {
   pending_approval:    'Pending Review',
   needs_clarification: 'Needs Clarification',
-  approved_unlinked:   'Received — Order No. Pending',
-  approved_linked:     'Received — Order No. Added',
+  // THE SAME WORDS THE BADGES USE (src/lib/finance/paymentDestination.ts).
+  // "Order No. Pending" said a Confirmed-Order payment was still waiting for a
+  // number it was never going to be given — the destination lives in the
+  // allocation ledger, and "unallocated" is what the state actually is.
+  approved_unlinked:   'Received — Unallocated',
+  approved_linked:     'Received Payment',
   rejected:            'Rejected',
 }
 
@@ -47,8 +51,18 @@ function statusLabel(status: unknown): string {
 // Which of the three submission targets the payment was raised against, read
 // from the request_submitted payload (20260715). Absent on rows written before
 // that migration, in which case the event reads as it always did.
+// 'unallocated' IS DELIBERATELY BLANK, and the suffix is then omitted entirely.
+//
+// It used to read "New Order", which was already a guess and became a false one:
+// submit_payment_request leaves order_id NULL for EVERY destination
+// (20261013000000 §3), so payment_target_type reads 'unallocated' on a request
+// that names a Confirmed Order just as it does on a Suspense entry. The event
+// payload cannot tell them apart — what the request was for lives in its
+// allocation intent, which this trail does not read — so the honest thing is to
+// say nothing rather than to name the wrong one. The detail modal answers the
+// question properly, from finance_payment_destinations.
 const TARGET_LABEL: Record<string, string> = {
-  unallocated:     'New Order',
+  unallocated:     '',
   order_request:   'Order Request',
   confirmed_order: 'Confirmed Order',
 }
@@ -57,6 +71,7 @@ function submittedTargetSuffix(p: Record<string, unknown>): string {
   const target = typeof p.payment_target_type === 'string' ? p.payment_target_type : null
   if (!target) return ''
   const label = TARGET_LABEL[target] ?? target
+  if (!label) return ''
   // Name the record, not just the kind — "against Order Request ORD-REQ-…" is
   // what makes the trail answer which one was chosen.
   const named = p.order_request_number ?? p.order_number ?? null

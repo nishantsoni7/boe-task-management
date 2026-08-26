@@ -281,7 +281,35 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
   if (m.includes('PAYMENT_AMOUNT_INVALID'))  return 'Enter a positive amount in rupees and paise.'
   if (m.includes('PAYMENT_DATE_FUTURE'))     return 'A payment date cannot be in the future.'
   if (m.includes('PAYMENT_DATE_REQUIRED'))   return 'A payment date is required.'
-  if (m.includes('PAYMENT_MODE_INVALID'))    return 'Choose how the payment was made.'
+  if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {
+    return 'Choose HDFC, PNB, Paytm or Canara.'
+  }
+
+  // ── The custody trail's own refusals ──
+  // Each names the rule that refused, so somebody knows whether to fix an
+  // activity, change the mode, or ask for access — never a single "try again"
+  // that hides which of them it was.
+  if (m.includes('CUSTODY_MODE_NOT_APPLICABLE')) {
+    return 'A collection and handover trail is recorded only for PNB and Paytm payments. Change the mode, or remove the activities.'
+  }
+  if (m.includes('CUSTODY_EVENT_HANDOVER_INCOMPLETE')) {
+    return 'A handover needs both the person who handed the money over and the person who received it.'
+  }
+  if (m.includes('CUSTODY_EVENT_COLLECTOR_REQUIRED')) {
+    return 'Say who collected the money.'
+  }
+  if (m.includes('CUSTODY_EVENT_TIME_FUTURE')) {
+    return 'A collection or handover cannot have happened in the future.'
+  }
+  if (m.includes('CUSTODY_EVENT_TIME_REQUIRED')) {
+    return 'Enter the date and time each collection or handover happened.'
+  }
+  if (m.includes('CUSTODY_EVENT_PERSON_UNKNOWN') || m.includes('CUSTODY_EVENT_PERSON_INVALID')) {
+    return 'One of the people named on the custody trail is not a BOE user. Choose again.'
+  }
+  if (m.includes('CUSTODY_APPEND_NOT_PERMITTED')) {
+    return 'You do not have permission to add a collection or handover to this payment.'
+  }
   if (m.includes('PAYMENT_DESTINATION_INVALID')) return 'Choose which account the money landed in, or leave it unstated.'
 
   // The allocator's own refusals, reached through this door. Worded for somebody

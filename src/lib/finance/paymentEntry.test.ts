@@ -36,7 +36,10 @@ import {
   PAYMENT_DESTINATION_LABEL,
   PAYMENT_DESTINATION_OPTIONS,
   PAYMENT_MODES,
+  LEGACY_PAYMENT_MODE_VALUES,
   PAYMENT_MODE_VALUES,
+  modeRequiresCustodyTrail,
+  paymentModeOptionsFor,
   SUSPENSE_NOTICE,
   customerDisplayName,
   destinationNeedsTarget,
@@ -58,8 +61,11 @@ const REQUEST_FORM   = 'src/app/finance/page.tsx'
 const RECORD_FORM    = 'src/app/finance/received/RecordSplitPaymentModal.tsx'
 const SHARED_FIELDS  = 'src/app/finance/components/PaymentEntryFields.tsx'
 const DISCARD_GUARD  = 'src/app/finance/components/DiscardGuard.tsx'
-const CASH_TRAIL     = 'src/app/finance/components/CashTrailFields.tsx'
+// The single-event cash panel is gone: the custody trail is an append-only
+// event log now (20261014000000 §2) and this is the control that edits it.
+const CUSTODY_TRAIL  = 'src/app/finance/components/CustodyTrailFields.tsx'
 const MIGRATION      = 'supabase/migrations/20261013000000_payment_entry_destination_model.sql'
+const MIGRATION_114  = 'supabase/migrations/20261014000000_payment_destination_display_modes_and_custody.sql'
 
 const BOTH_FORMS = [REQUEST_FORM, RECORD_FORM]
 
@@ -75,7 +81,7 @@ function modalSource(file: string): string {
   const src = code(read(file))
   if (file !== REQUEST_FORM) return src
   const from = src.indexOf('function NewPaymentConfirmationModal(')
-  const to   = src.indexOf('function PaymentIntentSummary(')
+  const to   = src.indexOf('function EditPaymentModal(')
   if (from < 0 || to < 0 || to < from) {
     throw new Error('the Payment Request modal could not be located — has it been renamed?')
   }
@@ -151,33 +157,92 @@ describe('the destination vocabulary', () => {
 // ── 2. One payment-mode source ────────────────────────────────────────────────
 
 describe('the payment-mode vocabulary', () => {
-  test('exactly the five the database CHECK allows, and no Card', () => {
-    assert.deepEqual([...PAYMENT_MODE_VALUES],
-      ['bank_transfer', 'cash', 'upi', 'cheque', 'other'])
-    assert.deepEqual(PAYMENT_MODES.map(m => m.label),
-      ['Bank Transfer', 'Cash', 'UPI', 'Cheque', 'Other'])
-    assert.equal(isPaymentMode('card'), false, 'card is not in the constraint and must not be offered')
+  test('exactly the four a new entry may use, and none of the five retired', () => {
+    assert.deepEqual([...PAYMENT_MODE_VALUES], ['hdfc', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(PAYMENT_MODES.map(m => m.label), ['HDFC', 'PNB', 'Paytm', 'Canara'])
+    for (const retired of LEGACY_PAYMENT_MODE_VALUES) {
+      assert.equal(isPaymentMode(retired), false,
+        `${retired} is a historical value and must never be offered for a new entry`)
+    }
+    assert.equal(isPaymentMode('card'), false, 'card is in no domain and must not be offered')
   })
 
-  test('the migration refuses the same five, by name', () => {
-    const sql = read(MIGRATION)
-    assert.ok(sql.includes("v_mode not in ('bank_transfer', 'cash', 'upi', 'cheque', 'other')"),
-      'submit_payment_request must restate the canonical five')
-    // The migration NAMES 'card' once, in the apply-time assertion that refuses
-    // it — proving its absence is the point, so the check is that the domain
-    // never gains it, not that the word is unsaid.
-    assert.ok(sql.includes("raise exception 'payment_mode must NOT accept ''card'"),
-      'the migration must assert, at apply time, that the domain still refuses card')
-    assert.equal(/in \('bank_transfer'[^)]*'card'/.test(sql), false,
-      'no list in this migration may admit card')
+  test('the internal meaning of an account is never rendered', () => {
+    // HDFC is the current account, PNB is hawala, Paytm is cash and Canara is
+    // the savings account. That is recorded in the database's own column
+    // comment and appears NOWHERE a person can read it: the product shows the
+    // account name and stops.
+    const forbidden = /hawala/i
+    for (const file of [
+      REQUEST_FORM, RECORD_FORM, CUSTODY_TRAIL, SHARED_FIELDS,
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/finance/custodyTrail.ts',
+      'src/lib/finance/paymentDestination.ts',
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/app/finance/paymentDestinations.ts',
+    ]) {
+      assert.equal(forbidden.test(read(file)), false,
+        `${file} must not name what an account MEANS — only what it is called`)
+    }
+    // And no label carries a bracketed gloss.
+    for (const m of PAYMENT_MODES) {
+      assert.equal(/[()]/.test(m.label), false, `${m.value}'s label must be the bare account name`)
+    }
+  })
+
+  test('the migration offers the same four, and keeps the five storable', () => {
+    const sql = read(MIGRATION_114)
+    assert.ok(sql.includes("select btrim(lower(coalesce(p_mode, ''))) in ('hdfc', 'pnb', 'paytm', 'canara');"),
+      'payment_mode_is_current must name exactly the four')
+    // HISTORY IS NOT REWRITTEN: the CHECK still admits every legacy value, so a
+    // 2026 row stays storable, readable and correctable.
+    for (const legacy of LEGACY_PAYMENT_MODE_VALUES) {
+      assert.ok(sql.includes(`'${legacy}'`),
+        `the versioned CHECK must keep ${legacy} storable for historical rows`)
+    }
+    assert.ok(sql.includes('PAYMENT_MODE_RETIRED'),
+      'a new entry on a retired mode must be refused by the DATABASE, not only by a dropdown')
+    // The migration NAMES 'card' once, in the apply-time assertion that proves
+    // payment_mode_is_current refuses it — its absence from the DOMAIN is the
+    // point, so that is what is checked.
+    assert.equal(/check \(payment_mode in \([^)]*'card'/.test(sql), false,
+      'the payment_mode CHECK may never admit card')
   })
 
   test('an unrecognised stored mode is shown AS STORED, never relabelled', () => {
-    // A row carrying something this list does not know is a fact worth seeing.
+    // A row carrying something neither list knows is a fact worth seeing.
     assert.equal(paymentModeLabel('crypto'), 'crypto')
+    // A RETIRED value still reads as the words it always read as — that is what
+    // "historical rows remain readable" means at the point of display.
     assert.equal(paymentModeLabel('bank_transfer'), 'Bank Transfer')
+    assert.equal(paymentModeLabel('cheque'), 'Cheque')
+    assert.equal(paymentModeLabel('hdfc'), 'HDFC')
     assert.equal(paymentModeLabel(''), '—')
     assert.equal(paymentModeLabel(null), '—')
+  })
+
+  test('a picker offers the four, plus the row\'s own retired value and nothing else', () => {
+    assert.deepEqual(paymentModeOptionsFor(null).map(o => o.value), ['hdfc', 'pnb', 'paytm', 'canara'])
+    assert.deepEqual(paymentModeOptionsFor('hdfc').map(o => o.value), ['hdfc', 'pnb', 'paytm', 'canara'])
+    // A historical row keeps its own value as an option, marked retired, so
+    // correcting some other field cannot silently move it onto HDFC.
+    const legacy = paymentModeOptionsFor('bank_transfer')
+    assert.deepEqual(legacy.map(o => o.value), ['bank_transfer', 'hdfc', 'pnb', 'paytm', 'canara'])
+    assert.equal(legacy[0].label, 'Bank Transfer')
+    assert.equal(legacy[0].retired, true)
+  })
+
+  test('only PNB and Paytm carry a custody trail', () => {
+    assert.equal(modeRequiresCustodyTrail('pnb'), true)
+    assert.equal(modeRequiresCustodyTrail('paytm'), true)
+    assert.equal(modeRequiresCustodyTrail('hdfc'), false)
+    assert.equal(modeRequiresCustodyTrail('canara'), false)
+    assert.equal(modeRequiresCustodyTrail('cash'), false)
+    assert.equal(modeRequiresCustodyTrail(null), false)
+    // And the database decides the same two, in its own function.
+    assert.ok(read(MIGRATION_114).includes(
+      "select btrim(lower(coalesce(p_mode, ''))) in ('pnb', 'paytm');"),
+      'payment_mode_requires_custody must name the same two')
   })
 
   test('no surface keeps its own mode list any more', () => {
@@ -194,6 +259,13 @@ describe('the payment-mode vocabulary', () => {
       const src = code(read(file))
       assert.equal(/'bank_transfer'[\s\S]{0,200}'cheque'/.test(src), false,
         `${file} must not restate the payment-mode list — import it`)
+      // …and not the CURRENT list either. paymentDestinations.ts is the one
+      // exception: the four account names are its own vocabulary, resolved from
+      // the legacy (payment_mode, received_in) pairs.
+      if (file !== 'src/app/finance/paymentDestinations.ts') {
+        assert.equal(/'hdfc'[\s\S]{0,200}'canara'/.test(src), false,
+          `${file} must not restate the payment-mode list — import it`)
+      }
     }
   })
 })
@@ -439,7 +511,7 @@ describe('a form modal never throws away what somebody typed', () => {
   })
 
   test('nothing about a payment form reaches browser storage', () => {
-    for (const file of [...BOTH_FORMS, DISCARD_GUARD, SHARED_FIELDS, CASH_TRAIL]) {
+    for (const file of [...BOTH_FORMS, DISCARD_GUARD, SHARED_FIELDS, CUSTODY_TRAIL]) {
       const src = code(read(file))
       for (const api of ['localStorage', 'sessionStorage', 'indexedDB']) {
         assert.equal(src.includes(api), false,
@@ -533,16 +605,16 @@ describe('what the forms cost to open and to submit', () => {
     assert.ok(writes.length <= 1, 'at most the compensation delete touches the table directly')
   })
 
-  test('the cash trail asks the users table only when Cash is actually chosen', () => {
-    const src = code(read(CASH_TRAIL))
-    assert.ok(src.includes('if (!capturing || loaded.current) return'),
-      'a bank transfer must not read the users table at all')
+  test('the custody trail asks the users table only when PNB or Paytm is chosen', () => {
+    const src = code(read(CUSTODY_TRAIL))
+    assert.ok(src.includes('if (!applies || loaded.current) return'),
+      'a mode nobody carries must not read the users table at all')
     assert.ok(src.includes('loaded.current = true'), 'and it must not re-read on every render')
   })
 
   test('no form re-reads the signed-in user or their profile', () => {
-    for (const file of [...BOTH_FORMS, SHARED_FIELDS, CASH_TRAIL]) {
-      const src = file === SHARED_FIELDS || file === CASH_TRAIL ? code(read(file)) : modalSource(file)
+    for (const file of [...BOTH_FORMS, SHARED_FIELDS, CUSTODY_TRAIL]) {
+      const src = file === SHARED_FIELDS || file === CUSTODY_TRAIL ? code(read(file)) : modalSource(file)
       assert.equal(/auth\.getUser\(|auth\.getSession\(/.test(src), false,
         `${file} must take the actor from its props, not re-fetch it`)
       assert.equal(/from\('users'\)[\s\S]{0,120}\.eq\('id'/.test(src), false,
@@ -622,7 +694,13 @@ describe('what a refused submission tells the person', () => {
     ['PAYMENT_TARGET_NO_CLIENT: …',    /no customer on file/],
     ['PAYMENT_AMOUNT_INVALID: …',      /positive amount/],
     ['PAYMENT_DATE_REQUIRED: …',       /date the payment was received/],
-    ['PAYMENT_MODE_INVALID: …',        /Bank Transfer, Cash, UPI, Cheque or Other/],
+    ['PAYMENT_MODE_INVALID: …',        /HDFC, PNB, Paytm or Canara/],
+    ['PAYMENT_MODE_RETIRED: …',        /HDFC, PNB, Paytm or Canara/],
+    ['CUSTODY_MODE_NOT_APPLICABLE: …', /only for PNB and Paytm/],
+    ['CUSTODY_EVENT_HANDOVER_INCOMPLETE: …', /handed the money over/],
+    ['CUSTODY_EVENT_COLLECTOR_REQUIRED: …',  /who collected the money/],
+    ['CUSTODY_EVENT_TIME_REQUIRED: …',       /date and time/],
+    ['CUSTODY_APPEND_NOT_PERMITTED: …',      /do not have permission/],
   ]
 
   for (const [raw, expected] of CASES) {

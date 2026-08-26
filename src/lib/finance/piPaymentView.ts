@@ -23,7 +23,11 @@
 // them is whether the money is attached to a Confirmed Order, which is a Finance
 // concern and says nothing to somebody looking at their own PI.
 
-import { PAYMENT_MODES, type PaymentMode } from './paymentEntry'
+import {
+  PAYMENT_MODES,
+  paymentModeLabel as sharedPaymentModeLabel,
+  type PaymentMode,
+} from './paymentEntry'
 
 export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending_approval:    'Awaiting Verification',
@@ -274,18 +278,25 @@ export function canAddPiPayment(actor: PiPaymentActor, pi: PiPaymentTarget): boo
 // and the RPC still re-derives every rule, because a browser check is a
 // convenience and never a boundary.
 
-// ONE SOURCE, RE-EXPORTED UNDER ITS OLD NAME. These five used to be declared
-// here as well as in four other files. The list is now lib/finance/paymentEntry
-// (20261013000000); this alias stays so PI callers need no edit, and so there is
-// exactly one place a sixth mode could ever be added.
+// ONE SOURCE, RE-EXPORTED UNDER ITS OLD NAME. These used to be declared here as
+// well as in four other files. The list is now lib/finance/paymentEntry
+// (20261013000000, four values since 20261014000000); this alias stays so PI
+// callers need no edit, and so there is exactly one place a fifth mode could
+// ever be added.
 export const PI_PAYMENT_MODES = PAYMENT_MODES
 
 export type PiPaymentMode = PaymentMode
 
-export function paymentModeLabel(mode: string | null | undefined): string {
-  if (!mode) return '—'
-  return PI_PAYMENT_MODES.find(m => m.value === mode)?.label ?? mode
-}
+/**
+ * How a stored mode is written down — the SHARED formatter, not a second one.
+ *
+ * It used to look the value up in the OFFERED list alone, so the moment that
+ * list stopped being every storable value (20261014000000 keeps the five legacy
+ * ones readable but refuses them for new entries) a historical row would have
+ * printed its raw column value on a PI's payment card while every Finance screen
+ * printed "Bank Transfer". Two formatters, one fact, two answers.
+ */
+export const paymentModeLabel = sharedPaymentModeLabel
 
 export type PiPaymentFormState = {
   amount: string

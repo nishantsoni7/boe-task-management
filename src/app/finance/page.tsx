@@ -52,20 +52,10 @@ import {
   tabMatches,
   type FilterTab,
 } from './paymentRequestsQuery'
+import { paymentTargetErrorMessage } from './paymentTargets'
 import {
-  PAYMENT_TARGET_LABEL,
-  paymentTargetErrorMessage,
-  readTargetType,
-} from './paymentTargets'
-import {
-  buildCollectionPayloadForMode,
-  collectionDisplayFor,
-  collectionErrorForMode,
   destinationFromDb,
-  EMPTY_COLLECTION_STATE,
   paymentDestinationLabel,
-  readCollectionState,
-  type CollectionState,
 } from './paymentDestinations'
 import { DESTINATION_ICON } from './components/AccountIcons'
 import {
@@ -75,24 +65,38 @@ import {
   type PaymentEntryState,
   type PaymentEntryTarget,
 } from './components/PaymentEntryFields'
-import { CashTrailFields } from './components/CashTrailFields'
-import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
+import { CustodyTrailFields } from './components/CustodyTrailFields'
 import {
-  PAYMENT_MODES,
+  PaymentCustodyTrail,
+  PaymentDestinationSummary,
+  usePaymentDestination,
+} from './components/PaymentDestinationBlock'
+import { DiscardConfirmation, useDiscardGuard } from './components/DiscardGuard'
+import { ProofReferenceField, ProofReferenceSection } from './components/ProofReferenceSection'
+import {
+  DEFAULT_PAYMENT_MODE,
   customerDisplayName,
   isPaymentMode,
   paymentEntryErrorMessage,
-  paymentModeLabel,
-  type PaymentDestination,
+  paymentModeOptionsFor,
+  type PaymentDestination as PaymentEntryDestination,
 } from '@/lib/finance/paymentEntry'
-import { searchAllocationTargets } from './received/AllocatePaymentModal'
 import {
-  INTENT_STATUS_LABEL,
-  intentDestinationLabel,
-  intentReferenceLabel,
-  loadPaymentIntent,
-  type StoredIntent,
-} from './paymentIntents'
+  custodyDraftsError,
+  modeRequiresCustodyTrail,
+  toRpcCustodyEvents,
+  type CustodyDraft,
+} from '@/lib/finance/custodyTrail'
+import {
+  PAYMENT_DISPLAY_STATE_META,
+  loadPaymentDestinations,
+  orderNumberDisplay,
+  paymentAgainstDisplay,
+  paymentDisplayStateMeta,
+  type PaymentDestination,
+} from '@/lib/finance/paymentDestination'
+import { searchAllocationTargets } from './received/AllocatePaymentModal'
+import { loadPaymentIntent } from './paymentIntents'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
@@ -176,20 +180,23 @@ type AdminAction = 'approve' | 'needs_clarification' | 'reject'
 // account once, with what it means — and with it the last reason for a second
 // copy of the mapping here.
 
+// THE BADGE PALETTE IS THE SHARED ONE, and the mapping below exists only for the
+// tab accents — a tab is named after a DATABASE status, and every row and modal
+// badge is resolved live through paymentDisplayStateMeta(status, destination).
+//
+// WHAT CHANGED, AND WHY. approved_unlinked used to read "Order No. Pending",
+// which a Confirmed-Order payment wore even after Finance had approved it and
+// the Order had received its allocation in full — because the status column is
+// derived from order_id, which submit_payment_request deliberately leaves NULL.
+// The two verified states are now decided by the ALLOCATION LEDGER through
+// finance_payment_destinations, so a reversal takes the badge with it and no
+// stale linked state can survive.
 const STATUS_META: Record<string, { label: string; bg: string; color: string; border: string }> = {
-  pending_approval:    { label: 'Pending',             bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
-  approved_unlinked:   { label: 'Order No. Pending',   bg: '#FFF7ED', color: '#92400E', border: '#FED7AA' },
-  approved_linked:     { label: 'Received Payment',    bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' },
-  needs_clarification: { label: 'Needs Clarification', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },
-  rejected:            { label: 'Rejected',            bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
-}
-
-// "Payment Against" now names one of THREE submission targets (20260715). The
-// label comes from paymentTargets.ts so this page, the Order Request panel and
-// the tests all read one definition; readTargetType falls back to deriving the
-// value for a row loaded before the column existed.
-function targetLabelFor(r: PaymentRequest): string {
-  return PAYMENT_TARGET_LABEL[readTargetType(r)]
+  pending_approval:    PAYMENT_DISPLAY_STATE_META.pending,
+  approved_unlinked:   PAYMENT_DISPLAY_STATE_META.received_unallocated,
+  approved_linked:     PAYMENT_DISPLAY_STATE_META.received,
+  needs_clarification: PAYMENT_DISPLAY_STATE_META.needs_clarification,
+  rejected:            PAYMENT_DISPLAY_STATE_META.rejected,
 }
 
 // Tab accents come from the STATUS_META row badges above, so a status wears one
@@ -226,6 +233,19 @@ function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// A custody activity happens at a TIME, not on a day: "collected at 9pm, handed
+// over at 10pm" is an ordinary trail, and a date-only formatter would print the
+// two as the same moment. Read in the reader's own zone, which is where the
+// person entering it was standing.
+function fmtDateTime(iso: string) {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('en-IN', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  })
+}
+
 // ONE MONEY FORMATTER for Order Management and Finance — formatMoney, the same
 // one the PI payment card and the Order's payment summary read.
 //
@@ -249,23 +269,19 @@ function fmtDate(iso: string) {
 // formatter that only takes a number forces a lossy conversion at the boundary.
 const fmtAmount = formatMoney
 
-// Order No. display for both employee and admin views: shows the real number
-// once one exists, otherwise a concise state describing why not. A new_order
-// request never allocates a number through approval (20260690000000) — it only
-// reaches one when it is later attached to a real Order (Order Request
-// conversion, or the Finance linking RPC).
+// ── The Order Number cell, from the ALLOCATION LEDGER ────────────────────────
 //
-// The former approved_unlinked branch ("Received — awaiting order creation") is
-// gone with the rows it described: this page no longer loads a confirmed
-// payment, so every record reaching here is still at the request stage.
-function orderNoDisplay(r: PaymentRequest): string {
-  if (r.order_number) return r.order_number
-  // A request-targeted payment names the Order Request it belongs to rather
-  // than reporting "no order created yet", which would hide the thing it IS
-  // attached to.
-  if (r.order_request_number) return `Order Request ${r.order_request_number}`
-  if (r.payment_against === 'new_order') return 'New Order — no order created yet'
-  return '—'
+// THE DEFECT THIS REPLACES. The old helper read order_number, then
+// order_request_number, then payment_against — and printed "New Order — no order
+// created yet" whenever all three were empty, which is EVERY request the current
+// form writes, including one naming a Confirmed Order that Finance has already
+// approved and allocated in full. All three columns became provenance at
+// 20261012000000; the answer lives in finance_payment_destinations now.
+//
+// A number appears only when exactly one Confirmed Order is the whole
+// destination. A split payment says how many rather than naming one.
+function orderNoCell(destination: PaymentDestination | null | undefined) {
+  return orderNumberDisplay(destination)
 }
 
 // Maps the approved_linked-requires-order_id CHECK constraint violation to a
@@ -435,24 +451,30 @@ function MetaItem({ label, value, muted }: { label: string; value: string; muted
 // A legacy pair no account matches has no icon and no helper; it still prints
 // the honest legacy label rather than being forced into an account it was never
 // recorded against.
+// ── The account, and NOTHING ABOUT WHAT IT MEANS ─────────────────────────────
+//
+// The four accounts a payment may name are HDFC, PNB, Paytm and Canara. What
+// each MEANS internally is recorded in the database's own column comment and
+// appears on no screen — so this prints the account name and stops.
+//
+// THE HELPER LINE IS GONE, deliberately. It described the four legacy account
+// PAIRS ("cash collected through an external source" and so on), which is
+// exactly the kind of sentence this product no longer puts beside a mode name.
+// paymentDestinationLabel still resolves a historical pair to its account, so a
+// 2026 row keeps reading as the account it was recorded against.
 function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: string; received_in: string | null }) {
   const d    = destinationFromDb(payment_mode, received_in)
   const Icon = d ? DESTINATION_ICON[d.iconKey] : null
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
       <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-        Payment Destination
+        Payment Mode
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
         {Icon && <Icon size={15} aria-hidden="true" color={colors.muted} style={{ flexShrink: 0 }} />}
         <span style={{ fontSize: '14px', color: colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>
           {paymentDestinationLabel(payment_mode, received_in)}
         </span>
-        {d && (
-          <span style={{ fontSize: '12px', color: colors.muted, wordBreak: 'break-word', lineHeight: 1.4 }}>
-            {d.helper}
-          </span>
-        )}
       </span>
     </div>
   )
@@ -460,8 +482,17 @@ function PaymentDestinationLine({ payment_mode, received_in }: { payment_mode: s
 
 // ── Status badge ──────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
+// THE BADGE IS NOT THE STATUS COLUMN. For the three request-stage statuses it is
+// the same thing; for the two verified ones the label is decided by whether the
+// ALLOCATION LEDGER actually attaches this payment to anything, which is what
+// stops a fully allocated Confirmed-Order payment reading "Order No. Pending".
+function StatusBadge({ status, destination }: {
+  status: string
+  destination?: PaymentDestination | null
+}) {
+  const meta = destination !== undefined
+    ? paymentDisplayStateMeta(status, destination)
+    : STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
   return (
     <span style={{
       display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
@@ -672,28 +703,17 @@ function DetailsModal({
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
-  // Single "Payment Against" value for this modal only — deliberately not the
-  // shared orderNoDisplay (that helper is also used by the Payments table and
-  // the review modal). Collapses the old Payment Against + Order pair into one:
-  // an existing/linked order shows its real number; a new-order request with
-  // nothing created/linked yet shows a plain "New Order"; anything else falls
-  // back to the existing safe helper for legacy/anomalous data.
-  const paymentAgainstDisplay = r.order_number
-    ? r.order_number
-    : r.order_request_number
-      ? `Order Request ${r.order_request_number}`
-      : readTargetType(r) === 'unallocated'
-        ? 'New Order'
-        : orderNoDisplay(r)
-
-  // The cash trail, resolved once through the shared helper so this popup and
-  // the admin review popup describe a collection identically. Null for money
-  // that arrived in an account and carries no trail — no empty panel.
-  const collectionSection = collectionDisplayFor(
-    r,
-    { collectedBy: r.collected_by_name, handedOverTo: r.handed_over_to_name },
-    fmtDate,
-  )
+  // ── WHAT THIS PAYMENT IS FOR, from the ledger and the intent ──
+  //
+  // This popup used to read order_number, then order_request_number, then
+  // payment_target_type — and printed a plain "New Order" whenever all three
+  // were empty, which is every request the current form writes. Every one of
+  // those columns became provenance at 20261012000000. It reads
+  // finance_payment_destinations now: the pending INTENT before Finance
+  // approves, the ACTIVE ALLOCATIONS afterwards.
+  const destination  = usePaymentDestination(supabase, r.id)
+  const againstLine  = paymentAgainstDisplay(destination)
+  const orderNoLine  = orderNoCell(destination)
 
   const left = (
     <>
@@ -721,7 +741,8 @@ function DetailsModal({
           borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
         }}>
           <MetaItem label="Payment Date"    value={fmtDate(r.payment_date)} />
-          <MetaItem label="Payment Against" value={paymentAgainstDisplay} muted={!r.order_number} />
+          <MetaItem label="Payment Against" value={againstLine} muted={!destination || destination.kind === 'suspense'} />
+          <MetaItem label="Order Number"    value={orderNoLine.value} muted={orderNoLine.muted} />
           {/* ONE destination row, spanning both columns, in place of the
               Payment Mode + Received In pair that was printing the same
               account name twice ("Paytm" over "Paytm"). Spanning is what keeps
@@ -744,46 +765,39 @@ function DetailsModal({
         </div>
       )}
 
-      {/* B2. WHAT THIS PAYMENT IS FOR. Its destination lives in the allocation
-          intent, so "Payment Against" above reads 'New Order' for every request
-          written through the new form — true of the row, and useless to a person
-          looking at it. This is the answer they actually want. */}
-      <PaymentIntentSummary supabase={supabase} request={r} />
+      {/* B2. WHAT THIS PAYMENT IS FOR, in full: the kind, the record, and which
+          of the two sources answered — a promise (the pending intent) reads
+          differently from a fact (the allocations), and a person deciding
+          anything about this payment needs to know which they are looking at. */}
+      <PaymentDestinationSummary destination={destination} clientName={r.client_name} />
 
-      {/* C. Cash collection — only for money somebody physically carried, and
-          the reason this popup exists for a PNB payment at all: the requester
-          has to be able to SEE that a handover is still outstanding, and to see
-          it recorded once they add it. One pending state, never a pair of
-          empty rows for a recipient and a date that are absent together. */}
-      {collectionSection && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <SectionHeader>{collectionSection.title}</SectionHeader>
-          <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-            {collectionSection.rows.map((row, i) => (
-              <div
-                key={row.label}
-                style={{
-                  display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px',
-                  borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-                }}
-              >
-                <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0, paddingTop: '1px' }}>
-                  {row.label}
-                </span>
-                <span style={{ fontSize: '13.5px', color: row.muted ? colors.muted : colors.primary, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-                  {row.value}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* C. WHO PHYSICALLY CARRIED IT. Shown for PNB and Paytm, and for any
+          payment that already has a trail — a request corrected onto a bank
+          account keeps its history visible, because the money really did pass
+          through somebody's hands.
+
+          THE SUBMITTER MAY STILL ADD TO IT while the request is unapproved,
+          which is what makes "collect today, hand over tomorrow" work. That is a
+          DRAWING rule: append_payment_custody_events re-derives the authority
+          itself and refuses anyone else. */}
+      {supabase && (
+        <PaymentCustodyTrail
+          supabase={supabase}
+          payment={r}
+          canAppend={mayApprovePayments || mayCorrectPayments || r.submitted_by === userId}
+          formatDateTime={fmtDateTime}
+          onAppended={onCorrected}
+        />
       )}
 
-      {/* D. Supporting information — proof, reference and notes as aligned rows
-          in one frame. Each empty state names the thing that is missing rather
-          than repeating a bare "Not provided" three times. */}
+      {/* D. PAYMENT PROOF / REFERENCE — the attachment, the reference and the
+          notes, under ONE heading and in one frame. They are three parts of the
+          same question ("what backs this payment up?") and they are asked
+          together on all three entry forms, so they are answered together here.
+          The database keeps them in separate columns because they mean separate
+          things; this is a grouping, not a merge. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <SectionHeader>Supporting information</SectionHeader>
+        <SectionHeader>Payment Proof / Reference</SectionHeader>
         <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
             <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '104px', flexShrink: 0 }}>Payment proof</span>
@@ -1057,7 +1071,7 @@ const EMPTY_FORM = {
   paymentDate:     '',
   proofNote:       '',
   salesNote:       '',
-  paymentMode:     'bank_transfer' as string,
+  paymentMode:     DEFAULT_PAYMENT_MODE as string,
 }
 
 type NewPaymentModalProps = {
@@ -1084,7 +1098,10 @@ function NewPaymentConfirmationModal({
 
   const [form, setForm] = useState(() => ({ ...EMPTY_FORM, salesNote: initialSalesNote ?? '' }))
   const [entry, setEntry] = useState<PaymentEntryState>(EMPTY_PAYMENT_ENTRY)
-  const [collection, setCollection] = useState<CollectionState>({ ...EMPTY_COLLECTION_STATE })
+  // THE CUSTODY TRAIL, as many activities as the money actually went through.
+  // Empty until somebody adds one: a PNB payment that was collected and handed
+  // over in one motion is one activity, and one that has not moved yet is none.
+  const [custody, setCustody] = useState<CustodyDraft[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
 
@@ -1103,17 +1120,18 @@ function NewPaymentConfirmationModal({
       setForm(prev => ({ ...prev, [key]: e.target.value }))
   )
 
-  // The cash trail is optional in almost every respect, so this is the ONE
-  // thing it can block on: a section that is internally inconsistent (a
-  // handover recipient with no date, or the reverse). See collectionErrorFor.
-  const collectionError = collectionErrorForMode(form.paymentMode, collection, form.paymentDate)
+  // ADDING AN ACTIVITY IS OPTIONAL; FINISHING ONE IS NOT. A half-entered
+  // activity — a handover with nobody named, a collection with no time — blocks
+  // the save, because the server would refuse it and take the whole request with
+  // it. append_payment_custody_events_internal applies exactly these rules.
+  const custodyError = custodyDraftsError(custody)
 
   const canSubmit = !!(
     isPaymentEntryComplete(entry) &&
     isValidAmount(form.amount) &&
     form.paymentDate &&
     isPaymentMode(form.paymentMode) &&
-    !collectionError &&
+    !custodyError &&
     !attachError
   )
 
@@ -1130,6 +1148,7 @@ function NewPaymentConfirmationModal({
     form.paymentMode !== EMPTY_FORM.paymentMode ||
     entry.destination !== EMPTY_PAYMENT_ENTRY.destination ||
     entry.target !== null ||
+    custody.length > 0 ||
     attachFile !== null
 
   const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
@@ -1195,13 +1214,17 @@ function NewPaymentConfirmationModal({
     setSaving(true)
     setError(null)
 
-    // THE CASH TRAIL IS SENT ONLY FOR CASH — and the RPC decides that again for
-    // itself, so this agreement is a convenience and not the rule.
-    const cash = buildCollectionPayloadForMode(form.paymentMode, collection)
+    // THE CUSTODY TRAIL IS SENT ONLY WHEN THE MODE CARRIES ONE — and the RPC
+    // decides that again for itself, so this agreement is a convenience and not
+    // the rule. A stale activity left over from a mode the person changed away
+    // from is refused server-side rather than stored.
+    const custodyEvents = modeRequiresCustodyTrail(form.paymentMode)
+      ? toRpcCustodyEvents(custody)
+      : []
 
-    // ONE CALL, ONE TRANSACTION. The payment and its allocation intent are
-    // written together or not at all. No client name is sent: there is no
-    // parameter for one, deliberately.
+    // ONE CALL, ONE TRANSACTION. The payment, its allocation intent and its
+    // custody activities are written together or not at all. No client name is
+    // sent: there is no parameter for one, deliberately.
     const { data, error: rpcError } = await supabase.rpc('submit_payment_request', {
       p_destination:     entry.destination,
       p_target_id:       entry.target?.id ?? null,
@@ -1210,11 +1233,7 @@ function NewPaymentConfirmationModal({
       p_payment_mode:    form.paymentMode,
       p_proof_note:      form.proofNote.trim() || null,
       p_sales_note:      form.salesNote.trim() || null,
-      p_collected_by:    cash.collected_by_user_id,
-      p_collected_from:  cash.collected_from_text,
-      p_handed_over_to:  cash.handed_over_to_user_id,
-      p_handed_over_at:  cash.handed_over_at,
-      p_collection_note: cash.collection_handover_note,
+      p_custody_events:  custodyEvents,
     })
 
     if (rpcError || !data) {
@@ -1345,84 +1364,92 @@ function NewPaymentConfirmationModal({
               </Field>
             </div>
 
-            {/* The canonical five, from the one shared list. There is no
-                receiving-account question any more: the four-account picker
-                answered payment_mode and received_in at once, and its second
-                half is no longer asked for or invented. */}
+            {/* THE FOUR ACCOUNTS, from the one shared list. There is no
+                receiving-account question: the account picker answered
+                payment_mode and received_in at once, and the mode IS the account
+                now. What each account means internally is not printed. */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <Field label="Payment Mode" required>
                 <select className="boe-input" value={form.paymentMode}
                   onChange={set('paymentMode')} disabled={saving} style={{ width: '100%' }}>
-                  {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+                  {paymentModeOptionsFor(null).map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
                 </select>
               </Field>
             </div>
 
-            {/* Who carried it, for Cash only. */}
-            <CashTrailFields
+            {/* WHO CARRIED IT — for PNB and Paytm only, decided by the mode and
+                decided again server-side. */}
+            <CustodyTrailFields
               supabase={supabase}
               paymentMode={form.paymentMode}
-              collection={collection}
-              onCollectionChange={setCollection}
-              defaultCollectorId={userId}
-              paymentDate={form.paymentDate}
+              drafts={custody}
+              onDraftsChange={setCustody}
+              defaultActorId={userId}
               disabled={saving}
             />
 
-            {/* 4. Proof row: reference input + attachment (optional) */}
-            <Field label="Payment Proof / Reference">
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  className="boe-input"
-                  value={form.proofNote}
-                  onChange={set('proofNote')}
-                  placeholder="UTR, cheque no., or short proof note (optional)"
-                  style={{ flex: 1, minWidth: 0 }}
-                />
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,.pdf"
-                  style={{ display: 'none' }}
-                  onChange={e => {
-                    const f = e.target.files?.[0] ?? null
-                    if (!f) { setAttachFile(null); setAttachError(null); return }
-                    const vErr = validateProofFile(f)
-                    if (vErr) {
-                      setAttachFile(null)
-                      setAttachError(vErr)
-                      if (fileInputRef.current) fileInputRef.current.value = ''
-                      return
-                    }
-                    setAttachError(null)
-                    setAttachFile(f)
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
-                >
-                  {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
-                </button>
-              </div>
-              {attachError && (
-                <span style={{ fontSize: '11px', color: colors.red, marginTop: '2px' }}>{attachError}</span>
-              )}
-              {attachFile && !attachError && (
-                <span style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                  Attached: {attachFile.name} — proof is optional and stored privately.
-                </span>
-              )}
-            </Field>
+            {/* 4. PAYMENT PROOF / REFERENCE — the attachment, the reference and
+                the note to Finance, under ONE heading. Three parts of the same
+                question, asked together; the database keeps three columns
+                because they mean three things. */}
+            <ProofReferenceSection>
+              <ProofReferenceField
+                label="Payment reference"
+                hint={attachError
+                  ? <span style={{ fontSize: '11px', color: colors.red }}>{attachError}</span>
+                  : attachFile
+                    ? <span style={{ fontSize: '11px', color: colors.muted }}>
+                        Attached: {attachFile.name} — proof is optional and stored privately.
+                      </span>
+                    : undefined}
+              >
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <input
+                    className="boe-input"
+                    value={form.proofNote}
+                    onChange={set('proofNote')}
+                    placeholder="UTR, cheque no., or short proof note (optional)"
+                    style={{ flex: 1, minWidth: 0 }}
+                  />
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    style={{ display: 'none' }}
+                    onChange={e => {
+                      const f = e.target.files?.[0] ?? null
+                      if (!f) { setAttachFile(null); setAttachError(null); return }
+                      const vErr = validateProofFile(f)
+                      if (vErr) {
+                        setAttachFile(null)
+                        setAttachError(vErr)
+                        if (fileInputRef.current) fileInputRef.current.value = ''
+                        return
+                      }
+                      setAttachError(null)
+                      setAttachFile(f)
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="boe-btn boe-btn-ghost"
+                    style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+                  >
+                    {attachFile ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '') : '📎 Attach'}
+                  </button>
+                </div>
+              </ProofReferenceField>
 
-            {/* Notes to the admin, and the field an Order Request prefill lands in. */}
-            <Field label="Notes (optional)">
-              <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-                placeholder="Any additional context for admin"
-                rows={2} style={{ width: '100%', resize: 'vertical' }} />
-            </Field>
+              <ProofReferenceField label="Notes / remarks (optional)">
+                <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+                  placeholder="Any additional context for admin"
+                  rows={2} style={{ width: '100%', resize: 'vertical' }} />
+              </ProofReferenceField>
+            </ProofReferenceSection>
+
 
           </div>
 
@@ -1453,75 +1480,6 @@ function NewPaymentConfirmationModal({
         onDiscard={guard.discard}
       />
     </>
-  )
-}
-
-// ── What a payment is for, read-only ──────────────────────────────────────────
-//
-// One block, shown wherever a person needs to know where a payment is headed
-// without being offered a control to change it: the creator's edit form, and
-// (through the same helpers) the detail and review modals.
-//
-// UNDEFINED IS NOT NULL HERE. `undefined` means the intent has not been read
-// back yet and the block says so; `null` means the payment carries none, which
-// is exactly what a Suspense Entry is. Collapsing the two would show "Suspense
-// Entry" for a moment on every targeted payment.
-function PaymentIntentSummary({ supabase, request }: {
-  supabase: ReturnType<typeof createClient>
-  request: PaymentRequest
-}) {
-  const [intent, setIntent] = useState<StoredIntent | null | undefined>(undefined)
-
-  useEffect(() => {
-    let active = true
-    ;(async () => {
-      const found = await loadPaymentIntent(supabase, request.id)
-      if (active) setIntent(found)
-    })()
-    return () => { active = false }
-  }, [supabase, request.id])
-
-  const reference = intent === undefined ? null : intentReferenceLabel(intent)
-  return (
-    <div style={{
-      padding: '11px 12px', borderRadius: '8px',
-      border: `1px solid ${colors.border}`, background: colors.raised,
-      display: 'flex', flexDirection: 'column', gap: '6px',
-    }}>
-      <div style={{
-        fontSize: '10px', fontWeight: 700, color: colors.muted,
-        textTransform: 'uppercase', letterSpacing: '0.07em',
-      }}>
-        What this payment is for
-      </div>
-
-      {intent === undefined ? (
-        <div style={{ fontSize: '13px', color: colors.muted }}>Reading…</div>
-      ) : (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', alignItems: 'baseline' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-            {intentDestinationLabel(intent)}
-          </span>
-          {reference && (
-            <span style={{ fontSize: '12.5px', color: colors.secondary }}>{reference}</span>
-          )}
-          {intent && (
-            <span style={{ fontSize: '11px', color: colors.muted }}>
-              {INTENT_STATUS_LABEL[intent.status]}
-            </span>
-          )}
-        </div>
-      )}
-
-      <div style={{ fontSize: '12.5px', color: colors.secondary }}>
-        {customerDisplayName(request.client_name)}
-      </div>
-
-      <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-        Read from the record itself, never typed. Nothing is attached to it
-        until Finance verifies this payment.
-      </span>
-    </div>
   )
 }
 
@@ -1563,7 +1521,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
 
   // What the form OPENED with, so "has the destination changed?" compares
   // against the request rather than against a default.
-  const loadedDestination = useRef<PaymentDestination | null>(null)
+  const loadedDestination = useRef<PaymentEntryDestination | null>(null)
   const loadedTargetId    = useRef<string | undefined>(undefined)
 
   useEffect(() => {
@@ -1597,7 +1555,11 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   // makes "collect today, hand over tomorrow, record it then" work — the
   // handover is filled in on a later visit to this same form.
   const [paymentMode, setPaymentMode] = useState<string>(r.payment_mode)
-  const [collection,  setCollection]  = useState<CollectionState>(() => readCollectionState(r))
+
+  // THE CUSTODY ACTIVITIES THIS CORRECTION ADDS — never the ones it already has.
+  // A saved activity cannot be edited or removed by anybody, so this list starts
+  // empty on every visit and holds only what has not been sent yet.
+  const [custody, setCustody] = useState<CustodyDraft[]>([])
 
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
@@ -1615,15 +1577,17 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
   // second click inside the same tick finds the window already shut.
   const submitting = useRef(false)
 
-  // Same single blocking rule as the submission form, and for the same reason.
-  const collectionError = collectionErrorForMode(paymentMode, collection, form.paymentDate)
+  // Same single blocking rule as the submission form, and for the same reason:
+  // a half-entered activity would be refused server-side and take the whole
+  // correction with it.
+  const custodyError = custodyDraftsError(custody)
 
   // Nothing may be saved before the destination has been read back: a Save that
   // landed while `entry` was still null would write Suspense over a targeted
   // request that had simply not loaded yet.
   const canSubmit = entry !== null && isPaymentEntryComplete(entry)
     && isValidAmount(form.amount) && !!form.paymentDate
-    && isPaymentMode(paymentMode) && !collectionError
+    && isPaymentMode(paymentMode) && !custodyError
 
   // ── Not losing what was typed ──
   const isDirty = () =>
@@ -1632,7 +1596,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     form.proofNote.trim() !== (r.proof_note ?? '').trim() ||
     form.salesNote.trim() !== (r.sales_note ?? '').trim() ||
     paymentMode !== r.payment_mode ||
-    JSON.stringify(collection) !== JSON.stringify(readCollectionState(r)) ||
+    custody.length > 0 ||
     (entry !== null && (entry.destination !== loadedDestination.current
       || entry.target?.id !== loadedTargetId.current))
 
@@ -1666,7 +1630,12 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
     // NO CUSTOMER IS SENT. There is no parameter for one: edit_payment_request
     // re-derives it from whichever record the destination now names, and sets
     // it NULL for Suspense.
-    const cash = buildCollectionPayloadForMode(paymentMode, collection)
+    // THE ACTIVITIES BEING ADDED, and only those. Correcting a request away from
+    // PNB or Paytm sends none and DELETES none: what was already recorded stays,
+    // because the money really did pass through those hands.
+    const custodyEvents = modeRequiresCustodyTrail(paymentMode)
+      ? toRpcCustodyEvents(custody)
+      : []
 
     const { data, error: rpcError } = await supabase.rpc('edit_payment_request', {
       p_payment_request_id: r.id,
@@ -1677,11 +1646,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
       p_payment_mode:    paymentMode,
       p_proof_note:      form.proofNote.trim() || null,
       p_sales_note:      form.salesNote.trim() || null,
-      p_collected_by:    cash.collected_by_user_id,
-      p_collected_from:  cash.collected_from_text,
-      p_handed_over_to:  cash.handed_over_to_user_id,
-      p_handed_over_at:  cash.handed_over_at,
-      p_collection_note: cash.collection_handover_note,
+      p_custody_events:  custodyEvents,
     })
 
     setSaving(false)
@@ -1793,38 +1758,48 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
         <Field label="Payment Mode" required>
           <select className="boe-input" value={paymentMode} disabled={saving}
             onChange={e => setPaymentMode(e.target.value)} style={{ width: '100%' }}>
-            {/* A legacy row carrying a value outside the canonical five keeps it
-                as an option of its own rather than being silently re-labelled —
-                otherwise opening this form would change what the row says. */}
-            {!isPaymentMode(paymentMode) && (
-              <option value={paymentMode}>{paymentModeLabel(paymentMode)}</option>
-            )}
-            {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            {/* A HISTORICAL ROW KEEPS ITS OWN VALUE AS AN OPTION. Without it,
+                opening this form on a 2026 payment would silently move it onto
+                HDFC the moment anything else was saved. paymentModeOptionsFor
+                adds it, marked retired, and only ever for a row that already
+                carries one — a new entry never sees it. */}
+            {paymentModeOptionsFor(paymentMode).map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
           </select>
         </Field>
       </div>
-      <CashTrailFields
+
+      {/* WHO CARRIED IT. Adding an activity is possible for as long as the
+          request is editable — which is what makes "collect today, hand over
+          tomorrow, record it then" work. What is ALREADY saved is shown by the
+          details popup and cannot be changed here or anywhere. */}
+      <CustodyTrailFields
         supabase={supabase}
         paymentMode={paymentMode}
-        collection={collection}
-        onCollectionChange={setCollection}
-        // The submitter is who collected the cash, not whoever is editing —
-        // an admin correcting someone else's request must not become the
-        // collector by opening the form.
-        defaultCollectorId={r.submitted_by}
-        paymentDate={form.paymentDate}
+        drafts={custody}
+        onDraftsChange={setCustody}
+        // The submitter is who collected the cash, not whoever is editing — an
+        // admin correcting someone else's request must not become the collector
+        // by opening the form.
+        defaultActorId={r.submitted_by}
         disabled={saving}
       />
-      <Field label="Payment Proof / Reference Note">
-        <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
-          placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
-      <Field label="Sales Note (optional)">
-        <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
-          placeholder="Any additional context for admin"
-          rows={2} style={{ width: '100%', resize: 'vertical' }} />
-      </Field>
+
+      {/* PAYMENT PROOF / REFERENCE — one heading over the reference and the
+          notes, exactly as the submission form and Record Payment ask them. */}
+      <ProofReferenceSection>
+        <ProofReferenceField label="Payment reference">
+          <textarea className="boe-input" value={form.proofNote} onChange={set('proofNote')}
+            placeholder="e.g. UTR 123456789, cheque no. 001234, or cash received at office (optional)"
+            rows={2} style={{ width: '100%', resize: 'vertical' }} />
+        </ProofReferenceField>
+        <ProofReferenceField label="Notes / remarks (optional)">
+          <textarea className="boe-input" value={form.salesNote} onChange={set('salesNote')}
+            placeholder="Any additional context for admin"
+            rows={2} style={{ width: '100%', resize: 'vertical' }} />
+        </ProofReferenceField>
+      </ProofReferenceSection>
       {error && <ErrorBanner message={error} />}
       {/* Once an approval has been detected there is nothing left to save here,
           so the form's actions collapse to a single dismissal that also
@@ -2085,14 +2060,12 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
     : `Submitted ${fmtDate(r.created_at)}`
 
-  // The cash trail, resolved once through the shared helper — the same call the
-  // requester's details popup makes. Null for money that arrived in an account
-  // and carries no trail, so an approval workspace never grows an empty panel.
-  const collectionSection = collectionDisplayFor(
-    r,
-    { collectedBy: r.collected_by_name, handedOverTo: r.handed_over_to_name },
-    fmtDate,
-  )
+  // WHAT APPROVING THIS WILL ATTACH THE MONEY TO, read from the same projection
+  // the requester's popup and the table read. Before this approval it is the
+  // pending intent; the moment Approve is clicked it becomes an allocation, and
+  // this block is then reading that instead.
+  const destination = usePaymentDestination(supabase, r.id)
+  const orderNoLine = orderNoCell(destination)
 
   // ── Figure band — the three facts an approval actually turns on ────────────
   // How much, from whom, and when the money arrived. Lifted out of the old
@@ -2116,7 +2089,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           facts, because it is the one thing an approver is deciding about: the
           allocation intent becomes a real allocation the moment they click
           Approve, and until then the row's own linkage columns say nothing. */}
-      <PaymentIntentSummary supabase={supabase} request={r} />
+      <PaymentDestinationSummary destination={destination} clientName={r.client_name} />
 
       {/* Routing — where this payment is aimed and how it came in. Quiet,
           dense, and deliberately lighter than the band above it: these are
@@ -2132,8 +2105,9 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           columnGap: '18px', rowGap: '11px',
         }}>
-          <MetaItem label="Payment Against" value={targetLabelFor(r)} />
-          <MetaItem label="Order Number"    value={orderNoDisplay(r)} muted={!r.order_number} />
+          <MetaItem label="Payment Against" value={paymentAgainstDisplay(destination)}
+                    muted={!destination || destination.kind === 'suspense'} />
+          <MetaItem label="Order Number"    value={orderNoLine.value} muted={orderNoLine.muted} />
           {/* ONE destination row in place of the Payment Mode + Received In
               pair, which was printing the same account name twice ("Paytm"
               over "Paytm") — the second only because a raw received_in was
@@ -2148,64 +2122,35 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
         </div>
       </div>
 
-      {/* Cash collection — only for money somebody physically carried, and the
-          reason this popup needs it: the destination row above says PNB, and an
-          admin about to confirm receipt has to be able to see who actually
-          holds that cash right now. Resolved through the same helper as the
-          requester's details popup, so the two surfaces can never describe one
-          collection differently. */}
-      {collectionSection && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <SectionHeader>{collectionSection.title}</SectionHeader>
-          <div style={{
-            border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.raised,
-            padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-            columnGap: '18px', rowGap: '11px',
-          }}>
-            {collectionSection.rows.map(row => (
-              <div
-                key={row.label}
-                // Free text — a note, or an outside party's name — takes the
-                // full width instead of being squeezed into a half cell and
-                // wrapping to four lines. Decided on the VALUE's length rather
-                // than by matching the label, so a re-worded row keeps
-                // behaving sensibly.
-                style={row.value.length > 38 ? { gridColumn: '1 / -1' } : undefined}
-              >
-                <MetaItem label={row.label} value={row.value} muted={row.muted} />
-              </div>
-            ))}
+      {/* WHO IS HOLDING THIS MONEY RIGHT NOW. For PNB and Paytm the mode says
+          somebody physically carried it, and an admin about to confirm receipt
+          has to be able to see the whole chain — not one collection and one
+          handover, but every hand it passed through.
 
-            {/* The one fact in the trail that changes what an admin should do.
-                The rows above state that the handover is pending; this states
-                the consequence of approving anyway — the post-approval freeze
-                (20260716 §3) puts all five collection columns out of the
-                requester's reach, so "record it later" stops being true the
-                moment this request is approved. Informational, never a
-                blocker: collecting today and handing over tomorrow is the
-                normal case this workflow was built for. */}
-            {collectionSection.handoverPending && (
-              <div style={{
-                gridColumn: '1 / -1',
-                padding: '9px 11px', borderRadius: '8px',
-                background: '#FFF7ED', border: '1px solid #FED7AA',
-                fontSize: '11.5px', color: '#9A3412', lineHeight: 1.5,
-              }}>
-                The cash has not been handed over yet. Approving freezes this
-                record — the requester can no longer add the handover
-                afterwards, and only an admin can correct it.
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          THE ADMIN MAY ADD TO IT HERE, including after approval: a custody event
+          is a statement about who carried cash, not about how much money
+          arrived, so the post-approval freeze that protects the FIGURES has
+          nothing to say about it. append_payment_custody_events decides that
+          again server-side. */}
+      <PaymentCustodyTrail
+        supabase={supabase}
+        payment={r}
+        canAppend
+        formatDateTime={fmtDateTime}
+      />
 
-      {/* Supporting information — proof and reference as two aligned rows in
-          one frame. Named the same as the requester's popup: an admin and the
-          salesperson who submitted the request should not have to learn two
-          words for the same block. */}
+      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the note
+          from sales, in ONE frame under ONE heading. They are three parts of the
+          same question and they are asked together on all three entry forms, so
+          an approver reads them together too. The note used to sit in a section
+          of its own below this one, which made a review dialog with something to
+          say wear two headings where one belongs.
+
+          THE THREE COLUMNS ARE STILL THREE COLUMNS. This is a grouping, not a
+          merge: proof_note is the reference, sales_note is the note, and the
+          attachment is a row in payment_proof_attachments. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <SectionHeader>Supporting information</SectionHeader>
+        <SectionHeader>Payment Proof / Reference</SectionHeader>
         <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px' }}>
             <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0 }}>Proof</span>
@@ -2219,24 +2164,14 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
               {r.proof_note || 'Not provided'}
             </span>
           </div>
-        </div>
-      </div>
-
-      {/* Note from the salesperson — only when one exists. Quoted on a rail
-          rather than boxed, so it reads as someone's words and never competes
-          with the decision control for weight. */}
-      {r.sales_note && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <SectionHeader>Note from sales</SectionHeader>
-          <div style={{
-            borderLeft: `2px solid ${colors.borderSoft}`, paddingLeft: '11px',
-            fontSize: '13px', color: colors.secondary, lineHeight: 1.55,
-            whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-          }}>
-            {r.sales_note}
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '9px 12px', borderTop: `1px solid ${colors.border}` }}>
+            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0, paddingTop: '2px' }}>Notes</span>
+            <span style={{ fontSize: '13px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
+              {r.sales_note || 'No notes provided'}
+            </span>
           </div>
         </div>
-      )}
+      </div>
     </>
   )
 
@@ -2276,24 +2211,27 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
             display: 'flex', flexDirection: 'column', gap: '10px',
           }}>
             {action === 'approve' && (() => {
-              // What approval actually does depends on which of the three targets
-              // the payment was raised against — and for an Order Request that is
-              // NOT "moved to Suspense", it keeps the request linkage.
-              const approvalTarget = readTargetType(r)
-              const linksToOrder = approvalTarget === 'confirmed_order'
+              // WHAT APPROVAL WILL ACTUALLY DO, read from the pending intent
+              // rather than from payment_target_type — which reads 'unallocated'
+              // for every request the current form writes, and would have told an
+              // admin that a Confirmed-Order payment was going to Suspense.
+              const linksToOrder = destination?.kind === 'confirmed_order'
+              const goesSomewhere = !!destination && destination.kind !== 'suspense'
               return (
                 <div style={{
                   padding: '9px 11px', borderRadius: '8px',
-                  background: linksToOrder ? '#F0FDF4' : '#FFF7ED',
-                  border: `1px solid ${linksToOrder ? '#BBF7D0' : '#FED7AA'}`,
-                  fontSize: '11.5px', color: linksToOrder ? '#166534' : '#9A3412',
+                  background: goesSomewhere ? '#F0FDF4' : '#FFF7ED',
+                  border: `1px solid ${goesSomewhere ? '#BBF7D0' : '#FED7AA'}`,
+                  fontSize: '11.5px', color: goesSomewhere ? '#166534' : '#9A3412',
                   lineHeight: 1.5,
                 }}>
-                  {approvalTarget === 'confirmed_order'
-                    ? `This payment will be verified and linked directly to order ${r.order_number ?? orderNoDisplay(r)}.`
-                    : approvalTarget === 'order_request'
-                      ? `This payment will be verified and stay attached to Order Request ${r.order_request_number ?? ''}, where it counts as confirmed advance. It moves onto the Confirmed Order automatically when that request is converted.`
-                      : 'This payment will be verified and moved to Suspense. No order or order number is created here — attach it to an order later from Order Requests or the Suspense list.'}
+                  {linksToOrder
+                    ? `This payment will be verified and allocated to Order ${destination?.orderNumber ?? orderNoLine.value}.`
+                    : destination?.kind === 'pi_draft'
+                      ? `This payment will be verified and allocated to PI Draft ${destination.reference ?? ''}.`.trim()
+                      : destination?.kind === 'mixed'
+                        ? 'This payment will be verified and allocated across every record it names.'
+                        : 'This payment will be verified and left unallocated. Attach it to an Order or a PI Draft afterwards through Allocate Funds.'}
                 </div>
               )
             })()}
@@ -2423,6 +2361,7 @@ const TH_STYLE: React.CSSProperties = {
 
 function PaymentsTable({
   rows,
+  destinations,
   isAdmin,
   canApprove,
   userId,
@@ -2434,6 +2373,15 @@ function PaymentsTable({
   onDelete,
 }: {
   rows: PaymentRequest[]
+  /**
+   * What each payment is FOR, by payment id — read for the whole page in ONE
+   * request (loadPaymentDestinations) rather than per row.
+   *
+   * A MISSING ENTRY IS NOT A SUSPENSE ENTRY. It means the destinations have not
+   * arrived yet, and the cells say "Reading…" rather than claiming the payment
+   * is attached to nothing.
+   */
+  destinations: Map<string, PaymentDestination> | null
   /** Ownership rules and creator-facing copy only — not approval authority. */
   isAdmin: boolean
   /** May decide a pending request — the finance.approve authority. */
@@ -2487,6 +2435,12 @@ function PaymentsTable({
             const showDelete  = canDeletePayment(r, { isAdmin })
             const isHighlighted = r.id === highlightId
 
+            // `undefined` while the page's destinations are still in flight;
+            // `null` once they have arrived and this payment has none.
+            const destination = destinations ? destinations.get(r.id) ?? null : undefined
+            const against = paymentAgainstDisplay(destination)
+            const hasDestination = !!destination && destination.kind !== 'suspense'
+
             return (
               <tr
                 key={r.id}
@@ -2533,17 +2487,20 @@ function PaymentsTable({
                   {fmtDate(r.payment_date)}
                 </td>
                 <td style={TD}>
-                  {/* Order number when present, else the existing new-order/suspense
-                      wording (orderNoDisplay) — truncated with full text via title. */}
+                  {/* WHAT THIS PAYMENT IS FOR — the destination, from the
+                      allocation ledger and the pending intent. This column used
+                      to read order_number / order_request_number /
+                      payment_against and printed "New Order — no order created
+                      yet" for every request the current form writes. */}
                   <div
-                    title={orderNoDisplay(r)}
-                    style={{ maxWidth: '160px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: r.order_number ? colors.secondary : colors.muted, fontStyle: r.order_number ? 'normal' : 'italic' }}
+                    title={against}
+                    style={{ maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
                   >
-                    {orderNoDisplay(r)}
+                    {against}
                   </div>
                 </td>
                 <td style={TD}>
-                  <StatusBadge status={r.status} />
+                  <StatusBadge status={r.status} destination={destination} />
                   {isStaleClarification(r, cutoff) && <StaleBadge />}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
@@ -2626,6 +2583,9 @@ function FinancePageInner() {
   const [caps, setCaps]                 = useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)
   const [profile, setProfile]           = useState<UserProfile | null>(null)
   const [requests, setRequests]         = useState<PaymentRequest[]>([])
+  // WHAT EACH ROW IS FOR, by payment id. `null` means "not read back yet", which
+  // the table shows as such rather than as "attached to nothing".
+  const [destinations, setDestinations]  = useState<Map<string, PaymentDestination> | null>(null)
   const [listLoading, setListLoading]   = useState(false)
   const [showForm, setShowForm]           = useState(false)
   // Prefill carried in from another module's "Add Payment" action (currently
@@ -2814,6 +2774,20 @@ function FinancePageInner() {
     setRequests(mapped)
     setTotal(count ?? null)
     setListLoading(false)
+
+    // ── WHAT EACH OF THESE PAYMENTS IS FOR ──
+    //
+    // ONE request for the whole page, by id, after the rows are on screen. The
+    // list draws immediately and the Against column fills in — a per-row read
+    // would be fifty round trips for one table.
+    //
+    // The map is CLEARED FIRST so a stale page's destinations cannot be shown
+    // beside a new page's rows, and the same token guard that protects the rows
+    // protects this: a slow answer for page one never repaints page two.
+    setDestinations(null)
+    const found = await loadPaymentDestinations(supabase, mapped.map(m => m.id))
+    if (token !== loadToken.current) return
+    setDestinations(found)
 
     // A PAGE BEYOND THE END, corrected here rather than in an effect watching
     // the total. Switching to a tab with fewer records would otherwise leave the
@@ -3220,6 +3194,7 @@ function FinancePageInner() {
           </div>
         ) : (
           <PaymentsTable
+            destinations={destinations}
             rows={visible}
             isAdmin={isAdmin}
             canApprove={caps.canApprovePayment}

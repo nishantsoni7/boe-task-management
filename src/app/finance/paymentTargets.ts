@@ -58,6 +58,26 @@ export function isPaymentTargetType(value: string): value is PaymentTargetType {
   return (PAYMENT_TARGET_TYPES as readonly string[]).includes(value)
 }
 
+/**
+ * ── NOT A DESTINATION LABEL. Do not reach for this one. ──
+ *
+ * These name what payment_target_type says, and payment_target_type is derived
+ * from the payment row's own order_id (finance_payment_requests_derive_target,
+ * 20260715000000 §2). Since 20261013000000 the entry doors deliberately leave
+ * order_id NULL for EVERY destination, so this column reads 'unallocated' — and
+ * this map reads "New Order" — on a request that names a Confirmed Order just as
+ * it does on a Suspense entry. Printing it beside a payment is what produced
+ * "New Order — no order created yet" on a fully allocated Order.
+ *
+ * WHAT A SCREEN SHOULD READ INSTEAD: finance_payment_destinations, through
+ * src/lib/finance/paymentDestination.ts. It derives the destination from ACTIVE
+ * allocations first and PENDING intents second, which is where the answer
+ * actually lives.
+ *
+ * This map survives for the ACTIVITY TRAIL and for the tests that pin the
+ * historical vocabulary — a 2026 event payload still carries the column, and a
+ * history view has to be able to read what it said at the time.
+ */
 export const PAYMENT_TARGET_LABEL: Record<PaymentTargetType, string> = {
   unallocated:     'New Order',
   order_request:   'Order Request',

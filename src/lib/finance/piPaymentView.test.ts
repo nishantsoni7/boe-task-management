@@ -58,7 +58,7 @@ const form = (over: Partial<PiPaymentFormState> = {}): PiPaymentFormState => ({
   ...EMPTY_PI_PAYMENT_FORM,
   amount: '1000',
   paymentDate: TODAY,
-  paymentMode: 'upi',
+  paymentMode: 'hdfc',
   ...over,
 })
 
@@ -279,14 +279,24 @@ describe('only amount, date and mode are mandatory', () => {
     assert.ok(validatePiPaymentForm(form({ paymentDate: 'not-a-date' }), TODAY).paymentDate)
   })
 
-  test('the mode list is exactly the existing database domain', () => {
-    assert.deepEqual(PI_PAYMENT_MODES.map(m => m.value),
-      ['bank_transfer', 'cash', 'upi', 'cheque', 'other'])
+  test('the mode list is exactly the four a new entry may use', () => {
+    // ORDER MANAGEMENT AND FINANCE ASK THIS QUESTION ONCE. A PI payment
+    // recorded from the Orders module is the same kind of entry as one recorded
+    // in Finance, so it offers the same four accounts and refuses the same five
+    // retired values — which record_pi_submission_payment decides again
+    // server-side (20261014000000 §7).
+    assert.deepEqual(PI_PAYMENT_MODES.map(m => m.value), ['hdfc', 'pnb', 'paytm', 'canara'])
     for (const m of PI_PAYMENT_MODES) {
       assert.equal(isPiPaymentFormValid(form({ paymentMode: m.value }), TODAY), true, m.value)
     }
+    for (const retired of ['bank_transfer', 'cash', 'upi', 'cheque', 'other']) {
+      assert.equal(isPiPaymentFormValid(form({ paymentMode: retired }), TODAY), false,
+        `${retired} is a historical value and may not be submitted for a new payment`)
+    }
     assert.equal(isPiPaymentFormValid(form({ paymentMode: 'crypto' }), TODAY), false)
+    // A stored retired value still READS as the words it always read as.
     assert.equal(paymentModeLabel('bank_transfer'), 'Bank Transfer')
+    assert.equal(paymentModeLabel('hdfc'), 'HDFC')
     assert.equal(paymentModeLabel('unknown_mode'), 'unknown_mode')
   })
 })

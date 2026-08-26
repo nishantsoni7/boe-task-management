@@ -259,6 +259,13 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // touches neither the reset protocol nor the deletion claim, both of
       // which it re-asserts rather than changes.
       '20261013000000_payment_entry_destination_model.sql',
+      // 114. The destination a payment SHOWS, the four current payment modes,
+      // and the PNB/Paytm custody event log. It stacks after 113 for the
+      // ordinary reason — it restates the entry RPCs 113 leaves behind — and it
+      // touches neither the reset protocol nor the deletion claim: its new
+      // tables carry the project's is_test_data marker and cascade from the
+      // payment, so the reset and the tombstone reach them unchanged.
+      '20261014000000_payment_destination_display_modes_and_custody.sql',
     ])
   })
 

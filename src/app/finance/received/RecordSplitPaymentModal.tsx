@@ -78,11 +78,25 @@ import {
 } from '@/app/finance/components/PaymentEntryFields'
 import { DiscardConfirmation, useDiscardGuard } from '@/app/finance/components/DiscardGuard'
 import {
-  PAYMENT_MODES,
+  DEFAULT_PAYMENT_MODE,
   SUSPENSE_NOTICE,
   destinationTargetKind,
+  paymentModeOptionsFor,
   type PaymentDestination,
 } from '@/lib/finance/paymentEntry'
+import {
+  custodyDraftsError,
+  modeRequiresCustodyTrail,
+  toRpcCustodyEvents,
+  type CustodyDraft,
+} from '@/lib/finance/custodyTrail'
+import { attachPaymentProof } from '@/lib/finance/paymentProof'
+import { validateProofFile } from '@/lib/paymentProof'
+import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
+import {
+  ProofReferenceField,
+  ProofReferenceSection,
+} from '@/app/finance/components/ProofReferenceSection'
 import {
   KindBadge,
   loadTargetPosition,
@@ -103,10 +117,13 @@ const nextRowKey = () => `alloc-${++rowSeq}`
 
 export function RecordSplitPaymentModal({
   supabase,
+  userId,
   onClose,
   onRecorded,
 }: {
   supabase: ReturnType<typeof createClient>
+  /** Whoever is recording this. Seeds the first custody activity and the proof row. */
+  userId?: string | null
   onClose: () => void
   onRecorded: (summary: { requestNumber: string; allocationCount: number }) => void
 }) {
@@ -121,9 +138,18 @@ export function RecordSplitPaymentModal({
   // ── The payment, entered once ──
   const [amount,      setAmount]      = useState('')
   const [paymentDate, setPaymentDate] = useState('')
-  const [paymentMode, setPaymentMode] = useState('bank_transfer')
+  const [paymentMode, setPaymentMode] = useState<string>(DEFAULT_PAYMENT_MODE)
   const [reference,   setReference]   = useState('')
   const [remarks,     setRemarks]     = useState('')
+
+  // ── The custody trail, for the two modes a person carries ──
+  const [custody, setCustody] = useState<CustodyDraft[]>([])
+
+  // ── The optional proof, attached after the payment exists ──
+  const [attachFile,  setAttachFile]  = useState<File | null>(null)
+  const [attachError, setAttachError] = useState<string | null>(null)
+  const [proofNotice, setProofNotice] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
   const [rows, setRows] = useState<SplitAllocationRow[]>([EMPTY_ALLOCATION_ROW(nextRowKey())])
@@ -144,7 +170,12 @@ export function RecordSplitPaymentModal({
   // the same set of rows.
   const totals     = splitPaymentTotals({ amount, rows })
   const duplicates = duplicateTargetKeys(rows)
+  // A HALF-ENTERED CUSTODY ACTIVITY BLOCKS THE SAVE, for the same reason a
+  // half-entered allocation does: the server refuses it and takes the whole
+  // entry with it, so the person is told here instead of after a round trip.
+  const custodyError = custodyDraftsError(custody)
   const blocked    = splitPaymentBlockedReason({ destination, amount, paymentDate, paymentMode, rows })
+    ?? custodyError ?? attachError
 
   // ── Not losing what was typed ──
   //
@@ -153,10 +184,12 @@ export function RecordSplitPaymentModal({
   const isDirty = () =>
     amount.trim() !== '' ||
     paymentDate !== '' ||
-    paymentMode !== 'bank_transfer' ||
+    paymentMode !== DEFAULT_PAYMENT_MODE ||
     reference.trim() !== '' ||
     remarks.trim() !== '' ||
     destination !== EMPTY_PAYMENT_ENTRY.destination ||
+    custody.length > 0 ||
+    attachFile !== null ||
     rows.some(r => r.kind || r.targetId || r.amount.trim())
 
   const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
@@ -211,6 +244,11 @@ export function RecordSplitPaymentModal({
       // A SUSPENSE ENTRY IS AN EMPTY LIST, not a hidden one. There is no branch
       // here that could send a row the person cannot see.
       p_allocations:  targetKind ? toRpcAllocations(rows) : [],
+      // THE CUSTODY TRAIL, in the same transaction as the payment and its
+      // allocations. Sent only for a mode somebody carries — and the RPC decides
+      // that again for itself, so a section left on screen after the mode changed
+      // has its rows refused rather than stored.
+      p_custody_events: modeRequiresCustodyTrail(paymentMode) ? toRpcCustodyEvents(custody) : [],
     })
 
     setSaving(false)
@@ -225,7 +263,33 @@ export function RecordSplitPaymentModal({
       return
     }
 
-    const result = data as { request_number?: string; allocation_count?: number }
+    const result = data as {
+      request_number?: string
+      allocation_count?: number
+      payment_request_id?: string
+    }
+
+    // ── THE PROOF, AFTER THE PAYMENT EXISTS ──
+    //
+    // A storage object needs the payment's id in its path and the payment row
+    // for its policy, so it cannot be written first. attachPaymentProof NEVER
+    // removes the payment if it fails: the money is recorded, and discarding a
+    // recorded payment because a file did not upload would throw away the fact
+    // that matters. The person is told, and the proof can be attached from the
+    // payment's own screen.
+    if (attachFile && result.payment_request_id) {
+      const proofError = await attachPaymentProof(supabase, {
+        paymentRequestId: result.payment_request_id,
+        file: attachFile,
+        userId: userId ?? null,
+      })
+      if (proofError) {
+        submitting.current = false
+        setProofNotice(`${proofError} The payment itself was recorded.`)
+        return
+      }
+    }
+
     onRecorded({
       requestNumber:   result.request_number ?? '',
       allocationCount: result.allocation_count ?? 0,
@@ -278,33 +342,97 @@ export function RecordSplitPaymentModal({
             style={{ width: '100%' }}
           />
         </Field>
+        {/* THE FOUR ACCOUNTS, from the one shared list — the same four the
+            Payment Request form offers. What each means internally is not
+            printed here or anywhere. */}
         <Field label="Payment mode" htmlFor="rsp-mode">
           <select
             id="rsp-mode" className="boe-input" value={paymentMode}
             onChange={e => { setPaymentMode(e.target.value); setError(null) }}
             style={{ width: '100%' }}
           >
-            {PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
+            {paymentModeOptionsFor(null).map(m => (
+              <option key={m.value} value={m.value}>{m.label}</option>
+            ))}
           </select>
-        </Field>
-        <Field label="Reference" htmlFor="rsp-reference">
-          <input
-            id="rsp-reference" className="boe-input" value={reference}
-            onChange={e => { setReference(e.target.value); setError(null) }}
-            placeholder="UTR, cheque number…"
-            style={{ width: '100%' }}
-          />
         </Field>
       </div>
 
-      <Field label="Remark" htmlFor="rsp-remarks">
-        <textarea
-          id="rsp-remarks" className="boe-input" value={remarks} rows={2}
-          onChange={e => { setRemarks(e.target.value); setError(null) }}
-          placeholder="Anything Finance should know when verifying this"
-          style={{ width: '100%', resize: 'vertical' }}
-        />
-      </Field>
+      {/* WHO CARRIED IT — for PNB and Paytm only. */}
+      <CustodyTrailFields
+        supabase={supabase}
+        paymentMode={paymentMode}
+        drafts={custody}
+        onDraftsChange={setCustody}
+        defaultActorId={userId ?? undefined}
+        disabled={saving}
+      />
+
+      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the
+          remark under ONE heading, exactly as the two Payment Request forms ask
+          them. Three parts of one question; three columns in the database,
+          because they mean three things. */}
+      <ProofReferenceSection>
+        <ProofReferenceField
+          label="Payment reference"
+          htmlFor="rsp-reference"
+          hint={attachError
+            ? <span style={{ fontSize: '11px', color: colors.red }}>{attachError}</span>
+            : attachFile
+              ? <span style={{ fontSize: '11px', color: colors.muted }}>
+                  Attached: {attachFile.name} — proof is optional and stored privately.
+                </span>
+              : undefined}
+        >
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <input
+              id="rsp-reference" className="boe-input" value={reference}
+              onChange={e => { setReference(e.target.value); setError(null) }}
+              placeholder="UTR, cheque number…"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,.pdf"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files?.[0] ?? null
+                if (!f) { setAttachFile(null); setAttachError(null); return }
+                const vErr = validateProofFile(f)
+                if (vErr) {
+                  setAttachFile(null)
+                  setAttachError(vErr)
+                  if (fileInputRef.current) fileInputRef.current.value = ''
+                  return
+                }
+                setAttachError(null)
+                setAttachFile(f)
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={saving}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '6px 10px', fontSize: '11px', whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              {attachFile
+                ? '📎 ' + attachFile.name.slice(0, 14) + (attachFile.name.length > 14 ? '…' : '')
+                : '📎 Attach'}
+            </button>
+          </div>
+        </ProofReferenceField>
+
+        <ProofReferenceField label="Notes / remarks (optional)" htmlFor="rsp-remarks">
+          <textarea
+            id="rsp-remarks" className="boe-input" value={remarks} rows={2}
+            onChange={e => { setRemarks(e.target.value); setError(null) }}
+            placeholder="Anything Finance should know when verifying this"
+            style={{ width: '100%', resize: 'vertical' }}
+          />
+        </ProofReferenceField>
+      </ProofReferenceSection>
 
       {/* ── The three figures, always on screen ──
           Total received, total allocated, and what is left. Shown continuously
@@ -377,6 +505,18 @@ export function RecordSplitPaymentModal({
           border: `1px solid ${colors.border}`, borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
         }}>
           {error}
+        </div>
+      )}
+
+      {/* THE PAYMENT LANDED AND THE FILE DID NOT. Said plainly, and NOT as a
+          failure of the entry: the money is recorded, and the proof can be
+          attached from the payment's own screen. */}
+      {proofNotice && (
+        <div style={{
+          fontSize: '12px', color: '#9A3412', background: '#FFF7ED',
+          border: '1px solid #FED7AA', borderRadius: '6px', padding: '8px 12px', lineHeight: 1.5,
+        }}>
+          {proofNotice}
         </div>
       )}
 
