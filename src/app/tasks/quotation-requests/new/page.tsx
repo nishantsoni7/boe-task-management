@@ -1,6 +1,6 @@
 'use client'
 
-import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -163,11 +163,19 @@ export default function NewQuotationRequestPage() {
       task_id: task.id, actor_id: session.user.id,
       action: 'created', note: 'Quotation request submitted',
     })
-    const { error: notifErr } = await notifyTaskAssignment(supabase, {
-      assigneeId: quotationOwnerId, actorId: session.user.id,
-      taskId: task.id, taskTitle: autoTitle, title: 'New quotation request',
-    })
-    if (notifErr) console.error('[quotation request] notification insert failed:', notifErr.message)
+    // Server-side write: a browser may not address a notifications row to
+    // somebody else. The route derives the recipient from tasks.assigned_to,
+    // which this screen has just set to the quotation owner.
+    const notified = await requestAssignmentNotification(task.id)
+    // The request is KEPT — it was submitted successfully. What changes is that
+    // the screen no longer claims the owner was told when they were not.
+    if (!notified.ok) {
+      console.error('[quotation request] assignment notification failed:', notified.reason)
+      setSubmitError(
+        'Request submitted, but the quotation owner could not be notified. '
+        + 'Please tell them directly.',
+      )
+    }
 
     // Upload attachments
     const { ready } = await prepareFiles(attachFiles)

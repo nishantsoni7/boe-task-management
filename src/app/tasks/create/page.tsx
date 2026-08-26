@@ -1,6 +1,6 @@
 'use client'
 
-import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification, ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -180,22 +180,26 @@ export default function CreateTaskPage() {
     // together removes one full round-trip from every task creation. Both are
     // still awaited, so a failure in either is still observable here.
     //
-    // notifyTaskAssignment owns the recipient rule: it writes to the assignee,
-    // and to nobody at all when the assignee IS the person creating the task
-    // (a self-task starts in `working`, already acknowledged — there is nothing
-    // to tell yourself). See src/lib/tasks/assignmentNotification.ts.
-    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
+    // The notification is NOT written here. A browser may not insert a
+    // notifications row addressed to somebody else, so this used to fail
+    // silently and the assignee was never told. The server route owns the
+    // write, the recipient rule and the self-task skip; see
+    // src/lib/tasks/assignmentNotification.ts.
+    const [{ error: logErr }, notified] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
       }),
-      notifyTaskAssignment(supabase, {
-        assigneeId, actorId: session.user.id,
-        taskId: task.id, taskTitle: title.trim(),
-      }),
+      requestAssignmentNotification(task.id),
     ])
-    if (logErr)   console.error('[tasks create] activity log insert failed:', logErr.message)
-    if (notifErr) console.error('[tasks create] notification insert failed:', notifErr.message)
+    if (logErr) console.error('[tasks create] activity log insert failed:', logErr.message)
+    // The task is KEPT — it was created successfully and deleting it over a
+    // notification would lose real work. What must not happen is the screen
+    // reporting unqualified success while the assignee sits unaware.
+    if (!notified.ok) {
+      console.error('[tasks create] assignment notification failed:', notified.reason)
+      setSubmitError(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE)
+    }
 
     // Upload attachments and link to the new task. Files go up a few at a time
     // instead of strictly one after another; `ready` is the already-compressed

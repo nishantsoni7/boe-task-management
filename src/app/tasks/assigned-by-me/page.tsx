@@ -1,6 +1,6 @@
 'use client'
 
-import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification, ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE } from '@/lib/tasks/assignmentNotification'
 import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
@@ -521,20 +521,22 @@ function DelegateTaskModal({
       return
     }
 
-    // Both errors are read. A dropped notification is the exact failure this
-    // screen was reported for; it must never leave without a trace.
-    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
+    // Both outcomes are read. A dropped notification is the exact failure this
+    // screen was reported for; it must never leave without a trace, and the
+    // trace has to be one the person creating the task can see.
+    const [{ error: logErr }, notified] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
       }),
-      notifyTaskAssignment(supabase, {
-        assigneeId, actorId: session.user.id,
-        taskId: task.id, taskTitle: title.trim(),
-      }),
+      requestAssignmentNotification(task.id),
     ])
-    if (logErr)   console.error('[assigned-by-me] activity log insert failed:', logErr.message)
-    if (notifErr) console.error('[assigned-by-me] notification insert failed:', notifErr.message)
+    if (logErr) console.error('[assigned-by-me] activity log insert failed:', logErr.message)
+    // The task STAYS — it was created, and deleting it over a notification
+    // would lose real work. The failure is reported through onError below,
+    // which is the page-level channel that survives this modal closing; a
+    // setState here would be thrown away with the component.
+    if (!notified.ok) console.error('[assigned-by-me] assignment notification failed:', notified.reason)
 
     // Upload attachments and link to the new task
     let attachUploadFailed = false
@@ -568,7 +570,12 @@ function DelegateTaskModal({
     // onCreated closes the modal and adds the task to the list.
     // If uploads partially failed, surface the error at the page level after close.
     onCreated(task as unknown as Task)
-    if (attachUploadFailed) onError('Task created, but some attachments failed to upload.')
+    // One line, both warnings — two toasts for one action reads as two failures.
+    const warnings = [
+      notified.ok ? null : ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE,
+      attachUploadFailed ? 'Some attachments failed to upload.' : null,
+    ].filter(Boolean)
+    if (warnings.length) onError(warnings.join(' '))
   }
 
   const PRIORITY_CFG = {

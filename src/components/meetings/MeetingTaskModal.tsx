@@ -1,6 +1,6 @@
 'use client'
 
-import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification, ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
@@ -111,20 +111,17 @@ export function MeetingTaskModal({
     // id and not on each other — the same pair /tasks/create writes, in the same
     // shape, so a meeting-born task is indistinguishable from any other once it
     // reaches Task Management.
-    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
+    const [{ error: logErr }, notified] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id,
         actor_id: profile.id,
         action: 'created',
         note: `Task created from meeting: ${meeting.title}`,
       }),
-      notifyTaskAssignment(supabase, {
-        assigneeId, actorId: profile.id,
-        taskId: task.id, taskTitle: title.trim(),
-      }),
+      requestAssignmentNotification(task.id),
     ])
-    if (logErr)   console.error('[meetings:create-task] activity log insert failed:', logErr.message)
-    if (notifErr) console.error('[meetings:create-task] notification insert failed:', notifErr.message)
+    if (logErr) console.error('[meetings:create-task] activity log insert failed:', logErr.message)
+    if (!notified.ok) console.error('[meetings:create-task] assignment notification failed:', notified.reason)
 
     // Record the relationship last. If this fails the task still exists and is
     // reported — losing the task would be far worse than losing the link, and
@@ -140,6 +137,15 @@ export function MeetingTaskModal({
         'The task was created, but linking it back to this SKU failed. '
         + 'The task is in Task Management; try creating the link again from this row.',
       )
+      setSaving(false)
+      return
+    }
+
+    // Same treatment this modal already gives a failed link: the task exists
+    // and is kept, and the modal stays open saying exactly what did not happen.
+    // Closing on a silent failure is how the assignee ended up never told.
+    if (!notified.ok) {
+      setError(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE)
       setSaving(false)
       return
     }

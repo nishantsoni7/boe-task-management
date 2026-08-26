@@ -1,13 +1,27 @@
-// THE HOTFIX'S OWN TEST FILE.
+// THE CLASSIFICATION HALF OF THE HOTFIX.
 //
 // A person created a task and assigned it to somebody else. The task appeared
 // on the assignee's dashboard under "Needs Acknowledgement". No notification,
-// no badge, no amount of refreshing. The row had been written; the Task feed's
-// category filter — a whitelist of 16 leading-wildcard title fragments — simply
-// did not select it, because `New task assigned to you` contains none of them.
+// no badge, no amount of refreshing.
 //
-// Every test below is written against the REAL exported filter string and the
-// REAL builder, not a restatement of them, so a change to either fails here.
+// There were TWO faults, one behind the other, and this file covers the second.
+//
+//   1. THE ROW WAS NEVER WRITTEN. A browser may not insert a notifications row
+//      addressed to somebody else, so the four task-creation screens were
+//      issuing an insert the database refused. Proven in production: the task
+//      row exists, its notification is NULL. That half is fixed by moving the
+//      write behind a server boundary, and is tested in
+//      src/lib/tasks/assignmentWriteAuthority.test.ts.
+//
+//   2. AND IT WOULD HAVE BEEN HIDDEN ANYWAY. The Task feed's category filter
+//      was a whitelist of 16 leading-wildcard title fragments, and
+//      `New task assigned to you` contains none of them. So even a
+//      successfully written row would not have appeared. That is what this
+//      file covers.
+//
+// Fixing either alone leaves the defect standing. Every test below is written
+// against the REAL exported filter string, not a restatement of it, so a change
+// to either side fails here.
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
@@ -26,7 +40,8 @@ import {
 } from '@/lib/notifications'
 import {
   buildTaskAssignmentNotification,
-  notifyTaskAssignment,
+  createAssignmentNotification,
+  type AssignmentNotificationStore,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
 } from '@/lib/tasks/assignmentNotification'
 import { groupNotificationsByTask } from '@/lib/notifications/grouping'
@@ -68,6 +83,26 @@ function inFeed(row: Row, caller: string, category: 'task' | 'finance' | 'order'
   return getNotificationCategoryFilter(category).split(',').some(f => matchesOrFragment(row, f))
 }
 
+/**
+ * A stub of the operation's four database calls. Written here rather than
+ * imported from the write-authority tests so this file stays about the FEED:
+ * what reaches it, and what the query selects.
+ */
+function stubStore(over: Partial<AssignmentNotificationStore> & { written?: unknown[][] } = {}): AssignmentNotificationStore & { written: unknown[][] } {
+  const written: unknown[][] = (over.written as unknown[][]) ?? []
+  return {
+    written,
+    fetchTask: async () => ({
+      task: { id: TASK, title: 'test task', assigned_to: ASSIGNEE, created_by: CREATOR },
+      error: null,
+    }),
+    isAdmin: async () => false,
+    hasAssignmentNotification: async () => ({ exists: false, readable: true }),
+    insert: async (rows) => { written.push(rows); return { error: null } },
+    ...over,
+  } as AssignmentNotificationStore & { written: unknown[][] }
+}
+
 const assignmentRow = () =>
   buildTaskAssignmentNotification({
     assigneeId: ASSIGNEE, actorId: CREATOR, taskId: TASK, taskTitle: 'test task',
@@ -91,16 +126,12 @@ describe('1-3. assigning a task to another user produces exactly one deliverable
     assert.equal(deliverable.length, 1)
   })
 
-  test('1b. the insert is issued exactly once — a retry cannot double it', async () => {
-    const batches: unknown[][] = []
-    const client = { from: () => ({ insert: (rows: unknown[]) => { batches.push(rows); return Promise.resolve({ error: null }) } }) }
-    const res = await notifyTaskAssignment(client, {
-      assigneeId: ASSIGNEE, actorId: CREATOR, taskId: TASK, taskTitle: 'test task',
-    })
-    assert.equal(res.error, null)
-    assert.equal(res.skipped, false)
-    assert.equal(batches.length, 1, 'one round trip')
-    assert.equal(batches[0].length, 1, 'one row in it')
+  test('1b. the trusted operation writes exactly one row', async () => {
+    const store = stubStore()
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    assert.equal(outcome.status, 'created')
+    assert.equal(store.written.length, 1, 'one round trip')
+    assert.equal(store.written[0].length, 1, 'one row in it')
   })
 
   test('2. recipient is the assignee, and task_id is the new task', () => {
@@ -186,15 +217,16 @@ describe('8. a self-task notifies nobody', () => {
     }), null)
   })
 
-  test('and the helper reports it as a skip, not an error', async () => {
-    let called = false
-    const client = { from: () => ({ insert: () => { called = true; return Promise.resolve({ error: null }) } }) }
-    const res = await notifyTaskAssignment(client, {
-      assigneeId: CREATOR, actorId: CREATOR, taskId: TASK, taskTitle: 'my own task',
+  test('and the operation reports it as a skip, not an error', async () => {
+    const store = stubStore({
+      fetchTask: async () => ({
+        task: { id: TASK, title: 'my own task', assigned_to: CREATOR, created_by: CREATOR },
+        error: null,
+      }),
     })
-    assert.equal(res.skipped, true)
-    assert.equal(res.error, null)
-    assert.equal(called, false, 'no database call at all')
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    assert.equal(outcome.status, 'skipped_self')
+    assert.equal(store.written.length, 0, 'no database write at all')
   })
 
   test('this is the rule every other task path already applies', () => {
@@ -386,28 +418,34 @@ describe('17. no title wording can hide a task notification with a valid task_id
 // ── 18. A failed insert is never reported as a success ───────────────────────
 
 describe('18. insert failures are surfaced, not swallowed', () => {
-  test('the helper returns the error unchanged', async () => {
-    const client = { from: () => ({ insert: () => Promise.resolve({ error: { message: 'permission denied' } }) }) }
-    const res = await notifyTaskAssignment(client, {
-      assigneeId: ASSIGNEE, actorId: CREATOR, taskId: TASK, taskTitle: 'test task',
+  test('the operation returns the error, never a success', async () => {
+    const store = stubStore({
+      insert: async () => ({ error: { message: 'new row violates row-level security policy' } }),
     })
-    assert.equal(res.skipped, false)
-    assert.equal(res.error?.message, 'permission denied')
+    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
+    assert.equal(outcome.status, 'error')
+    assert.equal(outcome.status === 'error' && outcome.message,
+      'new row violates row-level security policy')
   })
 
-  test('every call site reads that error and logs it', () => {
-    const SITES: [path: string, marker: string][] = [
-      ['src/app/tasks/create/page.tsx',                  '[tasks create] notification insert failed'],
-      ['src/app/tasks/assigned-by-me/page.tsx',          'notification insert failed'],
-      ['src/app/tasks/quotation-requests/new/page.tsx',  'notification insert failed'],
-      ['src/components/meetings/MeetingTaskModal.tsx',   'notification insert failed'],
-      ['src/app/api/tasks/[id]/copy/route.ts',           'notification insert failed'],
+  test('every call site reads the outcome and reports it to a person', () => {
+    // A console line is not a report. Each screen surfaces the failure through
+    // whatever channel it already uses for "the task exists but something
+    // else did not happen".
+    const SITES: [path: string, surface: string][] = [
+      ['src/app/tasks/create/page.tsx',                 'setSubmitError'],
+      ['src/app/tasks/assigned-by-me/page.tsx',         'onError'],
+      ['src/app/tasks/quotation-requests/new/page.tsx', 'setSubmitError'],
+      ['src/components/meetings/MeetingTaskModal.tsx',  'setError'],
     ]
-    for (const [path, marker] of SITES) {
+    for (const [path, surface] of SITES) {
       const src = read(path)
-      assert.ok(src.includes('notifErr'), `${path} captures the error`)
-      assert.ok(src.includes(marker), `${path} logs it`)
+      assert.ok(src.includes('!notified.ok'), `${path} reads the outcome`)
+      assert.ok(src.includes(surface), `${path} surfaces it via ${surface}`)
     }
+    // The server route reports it in its response body, not only in a log.
+    const copy = read('src/app/api/tasks/[id]/copy/route.ts')
+    assert.ok(copy.includes('assignmentNotified'))
   })
 
   test('the server routes return a 500 rather than a silent success', () => {
