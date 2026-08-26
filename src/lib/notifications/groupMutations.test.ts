@@ -232,7 +232,9 @@ describe('20/21/23. individual and selected actions across groups', () => {
     assert.ok(view.includes('useNotifications(category, mutationInFlight)'))
     // The group card also refuses to draw a row whose delete is in flight.
     const card = read('src/components/notifications/NotificationTaskGroup.tsx')
-    assert.ok(card.includes('if (isPending) return null'))
+    // The guarantee, not one spelling of it: the event map returns nothing for
+    // a row whose delete is in flight, before any element is built.
+    assert.match(card, /pendingDeletes\.has\([^)]+\)\)\s*return null/)
   })
 
   test('13. expanding is a disclosure and marks nothing read', () => {

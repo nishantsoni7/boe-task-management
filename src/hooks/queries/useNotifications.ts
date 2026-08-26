@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { notificationKeys, fetchNotificationPage, readApiErrorMessage } from '@/lib/notificationCache'
+import type { TaskHeaderMap } from '@/lib/notifications/taskAssignees'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS, nextNotificationLimit } from '@/lib/notificationPaging'
 import { perfStart } from '@/lib/perf'
 
@@ -52,6 +53,15 @@ import { perfStart } from '@/lib/perf'
 
 export type NotificationsQuery = {
   data: Notification[] | undefined
+  /**
+   * Task title + assignee, keyed by task id, for the page currently held.
+   *
+   * Resolved server-side in two bounded queries per page — never one per card,
+   * and never inferred from the newest event's actor. Empty until the first
+   * page lands, and empty from a server that does not send it; both render as
+   * "Assignee unavailable" rather than as a wrong name.
+   */
+  taskHeaders: TaskHeaderMap
   /** No data yet — the first page has not resolved. Never means "the inbox is empty". */
   isPending: boolean
   isError: boolean
@@ -84,6 +94,7 @@ export function useNotifications(
   const limitRef = useRef(NOTIFICATION_PAGE_SIZE)
   const [limit, setLimit] = useState(NOTIFICATION_PAGE_SIZE)
   const [serverHasMore, setServerHasMore] = useState(false)
+  const [taskHeaders, setTaskHeaders] = useState<TaskHeaderMap>({})
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [olderError, setOlderError] = useState<string | null>(null)
 
@@ -96,6 +107,7 @@ export function useNotifications(
       try {
         const page = await fetchNotificationPage(category, limitRef.current)
         setServerHasMore(page.hasMore)
+        setTaskHeaders(page.taskHeaders)
         return page.notifications
       } finally {
         done()
@@ -122,6 +134,7 @@ export function useNotifications(
         // the narrower page must not land on top of the wider result.
         await qc.cancelQueries({ queryKey: notificationKeys.list(category), exact: true })
         limitRef.current = next
+        setTaskHeaders(page.taskHeaders)
         qc.setQueryData<Notification[]>(notificationKeys.list(category), page.notifications)
         setServerHasMore(page.hasMore)
         setLimit(next)
@@ -138,6 +151,9 @@ export function useNotifications(
 
   return {
     data: query.data,
+    // Title + assignee per task id. Never a per-card fetch: it arrives with the
+    // page it describes and is replaced wholesale when a wider page replaces it.
+    taskHeaders,
     isPending: query.isPending,
     isError: query.isError,
     error: query.error,

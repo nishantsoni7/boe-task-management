@@ -73,11 +73,17 @@ describe('24. collapsed, it is ONE compact card', () => {
     assert.ok(html.includes('Design Clarifications to be cleared'))
   })
 
-  test('the summary carries unread count, latest activity, time and loaded total', () => {
-    assert.ok(html.includes('3 unread'), 'unread EVENTS, not cards')
-    assert.ok(html.includes('Latest:'))
-    assert.ok(html.includes('Added comment'), 'the latest activity label')
-    assert.ok(html.includes('4 loaded updates'), 'honest about what is loaded')
+  test('the summary is the task, its owner and the update count', () => {
+    // REPLACES the old summary line ("3 unread · Latest: Added comment · 4
+    // loaded updates"). That line answered questions nobody had asked while
+    // omitting the one they had — whose task is this. The header now carries
+    // the task title, "Assigned to: <name>" and the count, and the events
+    // themselves carry the activity. Unread is a dot and a left accent, not a
+    // pill (see the layout tests).
+    assert.ok(html.includes('Assigned to:'))
+    assert.ok(html.includes('4 updates'), 'events loaded, always called updates')
+    assert.equal(html.includes('Latest:'), false, 'the summary line is gone')
+    assert.equal(html.includes('loaded updates'), false)
   })
 
   test('the four events are NOT rendered as four rows until expanded', () => {
@@ -133,7 +139,7 @@ describe('27. accordion semantics', () => {
   })
 
   test('the accessible label includes the task title', () => {
-    assert.ok(html.includes('aria-label="Expand updates for Design Clarifications to be cleared"'))
+    assert.ok(html.includes('aria-label="Expand 4 updates for Design Clarifications to be cleared"'))
   })
 
   test('the group actions are SIBLINGS of the trigger, not nested inside it', () => {
@@ -155,7 +161,10 @@ describe('28. mobile hides no required action', () => {
     assert.ok(html.includes('View Task'))
     assert.ok(html.includes('Mark all read'))
     assert.ok(html.includes('Delete all notifications for this task'))
-    assert.ok(html.includes('3 unread'), 'the unread count stays visible')
+    // The "3 unread" pill is deliberately gone — unread is now one small dot
+    // per event plus a subtle left accent. What must NOT be lost is the way to
+    // act on it, which is this button, shown only when something is unread.
+    assert.ok(html.includes('Mark all read'), 'the unread ACTION stays visible')
   })
 
   test('the title wraps rather than truncating', () => {
