@@ -321,11 +321,35 @@ describe('one rule, one place', () => {
   for (const path of TASK_ROUTES) {
     test(`${path} writes through the shared guard`, () => {
       const src = read(path)
-      assert.ok(src.includes("insertUserNotifications"), 'uses the guard')
+      // Either directly, or via notifyTaskAssignment — which is itself nothing
+      // but a builder plus insertUserNotifications (asserted below).
+      assert.ok(src.includes('insertUserNotifications') || src.includes('notifyTaskAssignment'),
+        'uses the guard')
       assert.equal(/\.from\('notifications'\)\s*\.insert/.test(src), false,
         'no direct notifications insert bypasses the guard')
     })
   }
+
+  test('the assignment helper is guard-backed, and the client task creators use it', () => {
+    const helper = read('src/lib/tasks/assignmentNotification.ts')
+    assert.ok(helper.includes('insertUserNotifications'), 'the helper inserts through the guard')
+    assert.equal(/\.from\('notifications'\)/.test(helper), false,
+      'the helper never touches the table itself')
+
+    // The four browser-side task creators. These are the paths the title
+    // whitelist silently dropped; they now build their row in one place.
+    for (const path of [
+      'src/app/tasks/create/page.tsx',
+      'src/app/tasks/assigned-by-me/page.tsx',
+      'src/app/tasks/quotation-requests/new/page.tsx',
+      'src/components/meetings/MeetingTaskModal.tsx',
+    ]) {
+      const src = read(path)
+      assert.ok(src.includes('notifyTaskAssignment'), `${path} uses the shared helper`)
+      assert.equal(/\.from\('notifications'\)\s*\.insert/.test(src), false,
+        `${path} must not insert notifications directly`)
+    }
+  })
 
   test('the guard names the rule once, by import', () => {
     const guard = read('src/lib/notificationWrites.ts')

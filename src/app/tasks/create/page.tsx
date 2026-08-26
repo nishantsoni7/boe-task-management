@@ -1,5 +1,6 @@
 'use client'
 
+import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -178,18 +179,19 @@ export default function CreateTaskPage() {
     // separate tables with no ordering requirement between them. Running them
     // together removes one full round-trip from every task creation. Both are
     // still awaited, so a failure in either is still observable here.
+    //
+    // notifyTaskAssignment owns the recipient rule: it writes to the assignee,
+    // and to nobody at all when the assignee IS the person creating the task
+    // (a self-task starts in `working`, already acknowledged — there is nothing
+    // to tell yourself). See src/lib/tasks/assignmentNotification.ts.
     const [{ error: logErr }, { error: notifErr }] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
       }),
-      supabase.from('notifications').insert({
-        user_id:      assigneeId,
-        task_id:      task.id,
-        type:         'task_assigned',
-        title:        'New task assigned to you',
-        body:         title.trim(),
-        is_push_sent: true,
+      notifyTaskAssignment(supabase, {
+        assigneeId, actorId: session.user.id,
+        taskId: task.id, taskTitle: title.trim(),
       }),
     ])
     if (logErr)   console.error('[tasks create] activity log insert failed:', logErr.message)

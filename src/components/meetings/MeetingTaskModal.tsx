@@ -1,5 +1,6 @@
 'use client'
 
+import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
@@ -117,13 +118,9 @@ export function MeetingTaskModal({
         action: 'created',
         note: `Task created from meeting: ${meeting.title}`,
       }),
-      supabase.from('notifications').insert({
-        user_id: assigneeId,
-        task_id: task.id,
-        type: 'task_assigned',
-        title: 'New task assigned to you',
-        body: title.trim(),
-        is_push_sent: true,
+      notifyTaskAssignment(supabase, {
+        assigneeId, actorId: profile.id,
+        taskId: task.id, taskTitle: title.trim(),
       }),
     ])
     if (logErr)   console.error('[meetings:create-task] activity log insert failed:', logErr.message)

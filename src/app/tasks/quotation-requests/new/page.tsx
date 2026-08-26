@@ -1,5 +1,6 @@
 'use client'
 
+import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -162,14 +163,11 @@ export default function NewQuotationRequestPage() {
       task_id: task.id, actor_id: session.user.id,
       action: 'created', note: 'Quotation request submitted',
     })
-    await supabase.from('notifications').insert({
-      user_id:      quotationOwnerId,
-      task_id:      task.id,
-      type:         'task_assigned',
-      title:        'New quotation request',
-      body:         autoTitle,
-      is_push_sent: true,
+    const { error: notifErr } = await notifyTaskAssignment(supabase, {
+      assigneeId: quotationOwnerId, actorId: session.user.id,
+      taskId: task.id, taskTitle: autoTitle, title: 'New quotation request',
     })
+    if (notifErr) console.error('[quotation request] notification insert failed:', notifErr.message)
 
     // Upload attachments
     const { ready } = await prepareFiles(attachFiles)

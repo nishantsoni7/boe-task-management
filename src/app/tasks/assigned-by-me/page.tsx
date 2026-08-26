@@ -1,5 +1,6 @@
 'use client'
 
+import { notifyTaskAssignment } from '@/lib/tasks/assignmentNotification'
 import React, { useEffect, useState, useMemo, useRef, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
@@ -520,20 +521,20 @@ function DelegateTaskModal({
       return
     }
 
-    await Promise.all([
+    // Both errors are read. A dropped notification is the exact failure this
+    // screen was reported for; it must never leave without a trace.
+    const [{ error: logErr }, { error: notifErr }] = await Promise.all([
       supabase.from('task_activity_log').insert({
         task_id: task.id, actor_id: session.user.id,
         action: 'created', note: isSelf ? 'Task created for self' : 'Task created and assigned',
       }),
-      supabase.from('notifications').insert({
-        user_id:      assigneeId,
-        task_id:      task.id,
-        type:         'task_assigned',
-        title:        'New task assigned to you',
-        body:         title.trim(),
-        is_push_sent: true,
+      notifyTaskAssignment(supabase, {
+        assigneeId, actorId: session.user.id,
+        taskId: task.id, taskTitle: title.trim(),
       }),
     ])
+    if (logErr)   console.error('[assigned-by-me] activity log insert failed:', logErr.message)
+    if (notifErr) console.error('[assigned-by-me] notification insert failed:', notifErr.message)
 
     // Upload attachments and link to the new task
     let attachUploadFailed = false

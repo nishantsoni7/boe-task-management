@@ -14,10 +14,11 @@
 //
 // Task Management notifications are all stored under generic enum types
 // (`task_acknowledged`, `task_assigned`, ...) with the event meaning living in
-// the title, so — unlike Finance/Orders — they can only be whitelisted by
-// title fragment (see TASK_TITLE_OR below). Finance & Order Management use
-// dedicated, stable enum types (`finance_*` / `order_*` — see 20260694000000
-// and /api/finance|orders/notify), matched by an explicit `type.in.(...)` list.
+// the title, so — unlike Finance/Orders — the TYPE cannot say which module a
+// row belongs to. The column that can is `task_id` (see TASK_STRUCTURAL_OR
+// below). Finance & Order Management use dedicated, stable enum types
+// (`finance_*` / `order_*` — see 20260694000000 and /api/finance|orders/notify),
+// matched by an explicit `type.in.(...)` list.
 //
 // IMPORTANT: `notifications.type` is a Postgres enum (`notification_type`), and
 // enum columns do NOT support the `LIKE` operator (`type.like.finance_%`
@@ -121,35 +122,58 @@ export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
 // of a `LIKE 'prefix_%'` prefix match, since enums only support equality/`IN`.
 const typeInList = (types: readonly string[]) => `type.in.(${types.join(',')})`
 
-// Task Management's title-based whitelist. Deliberately narrow and unchanged
-// from the original shared filter — do NOT widen this to `task_id IS NOT NULL`
-// (see the cron-job note above: that would resurface ~16k historical
-// overdue/escalation rows that have never been shown to users).
-const TASK_TITLE_OR = [
-  'title.ilike.%acknowledged task%',
-  'title.ilike.%task acknowledged%',
-  'title.ilike.%moved task to waiting%',
-  'title.ilike.%moved task to blocked%',
-  'title.ilike.%completed task%',
-  'title.ilike.%task completed%',
-  'title.ilike.%added a comment%',
-  'title.ilike.%new comment on task%',
-  'title.ilike.%cancelled task%',
-  'title.ilike.%task cancelled%',
-  'title.ilike.%cancelled a task%',
-  'title.ilike.%reversed cancellation%',
-  'title.ilike.%cancellation reversed%',
-  // Creator approval of delegated tasks (20260833000000). The titles are
-  // composed inside transition_task_review() as
-  // "<actor> submitted task for approval" / "… approved and completed task" /
-  // "… returned task to Working", and these three fragments are what put them
-  // in the feed. `approved and completed task` would already be caught by the
-  // `%completed task%` line above; it is listed explicitly anyway, so rewording
-  // either one cannot silently orphan the other.
-  'title.ilike.%submitted task for approval%',
-  'title.ilike.%approved and completed task%',
-  'title.ilike.%returned task to working%',
-].join(',')
+// ─── Task Management's category rule: STRUCTURAL, not wording ────────────────
+//
+// WHAT THIS REPLACED, AND WHY IT HAD TO GO. Until this change the Task feed was
+// a whitelist of 16 leading-wildcard title fragments — `title.ilike.%completed
+// task%` and friends. A row reached the feed only if a human-readable sentence
+// composed at the call site happened to contain one of them. That is a
+// classifier built on prose, and it silently dropped real notifications:
+//
+//   · `New task assigned to you`  — EVERY new-task assignment. Written by
+//     tasks/create, tasks/assigned-by-me, MeetingTaskModal and
+//     /api/tasks/[id]/copy, matched by none of the 16 fragments. A person was
+//     given a task and was never told.
+//   · `New quotation request`     — quotation-requests/new, same cause.
+//   · `Task reopened` / `X reopened a task` — /api/restore-task's non-cancel
+//     branch.
+//   · `Task moved to Waiting` / `Task moved to Blocked` — the ACTOR-LESS
+//     fallbacks in /api/notify-status-update. The fragments read `moved task
+//     to waiting`; the fallback sentence reads `moved to Waiting`. Only the
+//     named-actor form ever matched.
+//   · `Task status updated`       — that route's default branch.
+//
+// None of this was a suppression decision. It was wording drift, and no test
+// could catch it because the rule and the sentences lived in different files.
+//
+// THE RULE NOW. `task_id IS NOT NULL`. The column is the Task Management task
+// foreign key and nothing else uses it: /api/assets/notify,
+// /api/assets/warranty-sweep, /api/finance/notify and
+// /api/orders/submissions/notify all write `task_id: null` explicitly and carry
+// their subject in `entity_id`; /api/objections and /api/objections/review
+// never set it at all. So a non-null `task_id` means "this is about a task",
+// structurally, and no future rewording of any sentence can hide a row again.
+//
+// WHY THIS IS SAFE NOW AND WAS NOT BEFORE. The old comment here warned that
+// widening to `task_id IS NOT NULL` would resurface the ~16k historical
+// `overdue`/`escalation` rows the hourly `run_task_health_check` job wrote —
+// they are about tasks, so they carry a task_id. That was true when the title
+// whitelist was the ONLY thing keeping them out. It is no longer the only
+// thing: every endpoint that uses this filter also chains
+// `.not('type', 'in', SYSTEM_TYPE_EXCLUSION)`, which removes all five system
+// types by enum value on the list, the count, mark-all-read and delete-all
+// alike. The exclusion is now the rule that keeps cron noise out, deliberately
+// and by type, instead of a title whitelist keeping it out by accident.
+//
+// LEGACY ROWS WITH A NULL task_id. Every task write path in the repository sets
+// task_id — the four client inserts, /api/notify-status-update, /api/cancel-task,
+// /api/restore-task, /api/tasks/[id]/copy and transition_task_review(). If a
+// historical row exists that a removed path wrote without one, it leaves the
+// feed under this rule. That case is deliberately NOT handled by keeping the
+// title fragments as a second OR branch: two competing classifiers is the
+// condition that produced this defect. If such rows are found, the fallback is
+// one documented extra OR term added here, not a return to title matching.
+const TASK_STRUCTURAL_OR = 'task_id.not.is.null'
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll'
 
@@ -191,7 +215,7 @@ export function isAdminOnlyNotificationCategory(category: NotificationCategory):
 export function getNotificationCategoryFilter(category: NotificationCategory): string {
   switch (category) {
     case 'task':
-      return TASK_TITLE_OR
+      return TASK_STRUCTURAL_OR
     case 'finance':
       return typeInList(FINANCE_NOTIFICATION_TYPES)
     case 'order':
@@ -244,9 +268,13 @@ export function resolveNotificationCategory(v: unknown): CategoryResolution {
 // WHAT THIS RULE IS. One list, one predicate, one PostgREST fragment — used by
 // the write guard (src/lib/notificationWrites.ts) so no application path can
 // create such a row, and by every category read filter so none can surface one.
-// Before this, the task feed excluded them only as a side effect of
-// TASK_TITLE_OR being a title whitelist: correct, but by accident, and one
-// widened pattern away from dumping 16k rows into everyone's inbox.
+// Before this, the task feed excluded them only as a side effect of its title
+// whitelist: correct, but by accident, and one widened pattern away from
+// dumping 16k rows into everyone's inbox. That accident is now the rule: the
+// Task feed selects structurally on `task_id` (see TASK_STRUCTURAL_OR), so this
+// exclusion is the ONLY thing keeping cron rows out of it — which is why it is
+// chained on the list, the count, mark-all-read and delete-all without
+// exception.
 //
 // WHAT IT IS NOT. It is not a rule about *how* a row was produced. A scheduled
 // job that raises something a person must actually deal with is a real

@@ -144,22 +144,40 @@ describe('attendance_payroll is a real category with exactly four members', () =
 // ─── 3–6. The four existing feeds are untouched ──────────────────────────────
 
 describe('no existing feed was widened', () => {
-  test('3. Task stays a narrow title whitelist and gains nothing from THIS work', () => {
+  test('3. Task is a STRUCTURAL rule and gains nothing from THIS work', () => {
     const filter = getNotificationCategoryFilter('task')
-    // Still title-based, and still a whitelist — NOT `task_id IS NOT NULL`,
-    // which would resurface ~16k historical overdue/escalation cron rows.
-    //
-    // The fragment count was 13 when this was written and is 16 since the
-    // creator-approval workflow (20260833000000) added its three titles — a
-    // deliberate addition to the Task feed, asserted in
-    // src/lib/tasks/reviewTransitions.test.ts. The count is pinned rather than
-    // dropped so a fragment can never arrive here unnoticed; what this test
-    // guards is that no ATTENDANCE/PAYROLL row ever enters the Task feed.
-    assert.equal(filter.split(',').length, 16)
-    assert.ok(filter.startsWith('title.ilike.'))
+    // Was 16 leading-wildcard title fragments; is now one condition on the
+    // task foreign key. The rewrite is the notification hotfix — a title
+    // whitelist silently dropped every `New task assigned to you` row. What
+    // this test guards is unchanged: no ATTENDANCE/PAYROLL row may ever enter
+    // the Task feed, and it cannot, because those routes never set task_id.
+    assert.equal(filter, 'task_id.not.is.null')
+    assert.equal(filter.split(',').length, 1)
+    assert.equal(/title\.ilike/.test(filter), false, 'no title matching remains')
     assert.equal(/type\.in\./.test(filter), false)
-    assert.equal(/task_id/.test(filter), false)
     for (const t of ATTENDANCE_PAYROLL_NOTIFICATION_TYPES) assert.equal(filter.includes(t), false, t)
+  })
+
+  test('3a. every non-task feed writes task_id null, so the Task rule cannot claim its rows', () => {
+    // The structural rule is only safe because task_id is exclusively the Task
+    // Management foreign key. Pinned at the source: if a module ever starts
+    // writing task_id, this fails before its rows leak into the Task feed.
+    const NON_TASK_WRITERS = [
+      'src/app/api/finance/notify/route.ts',
+      'src/app/api/orders/submissions/notify/route.ts',
+      'src/app/api/assets/notify/route.ts',
+      'src/app/api/assets/warranty-sweep/route.ts',
+    ]
+    for (const path of NON_TASK_WRITERS) {
+      const src = read(path)
+      assert.ok(/task_id:\s*null/.test(src), `${path} must write task_id: null`)
+      assert.equal(/task_id:\s*(?!null)[A-Za-z_]/.test(src), false,
+        `${path} must never set a non-null task_id`)
+    }
+    // Objections never mention the column at all.
+    for (const path of ['src/app/api/objections/route.ts', 'src/app/api/objections/review/route.ts']) {
+      assert.equal(/task_id:/.test(read(path)), false, `${path} must not set task_id`)
+    }
   })
 
   test('3b. no legacy digest or escalation row is selected by any feed', () => {

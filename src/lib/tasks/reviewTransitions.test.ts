@@ -31,7 +31,7 @@ import {
   restoreTargetStatus, TASK_REVIEW_NOTIFICATION_SUFFIXES,
   accruesAssigneeOverdue, NON_ACCRUING_OVERDUE_STATUSES,
 } from './reviewTransitions'
-import { getNotificationCategoryFilter } from '@/lib/notifications'
+import { getNotificationCategoryFilter, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 
 const MIGRATION_STATUS      = 'supabase/migrations/20260832000000_task_pending_approval_status.sql'
@@ -52,46 +52,40 @@ const TITLES = {
   return:  `${ACTOR} ${TASK_REVIEW_NOTIFICATION_SUFFIXES.return}`,
 }
 
-/**
- * Does a PostgREST `.or()` filter of `title.ilike.%…%` fragments select a row
- * with this title? Mirrors ILIKE: case-insensitive, `%` is "anything".
- */
-function titleMatchesFilter(filter: string, title: string): boolean {
-  return filter.split(',').some(fragment => {
-    const m = /^title\.ilike\.(.*)$/.exec(fragment)
-    if (!m) return false
-    const pattern = m[1]
-      .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')  // escape regex metacharacters
-      .replace(/%/g, '.*')                      // ILIKE wildcard
-    return new RegExp(`^${pattern}$`, 'i').test(title)
-  })
-}
-
-describe('the task notification filter selects all three review titles', () => {
+describe('the three review notifications reach the Task feed structurally', () => {
   const filter = getNotificationCategoryFilter('task')
 
-  for (const [action, title] of Object.entries(TITLES)) {
-    test(`${action}: "${title}" is in the Task feed`, () => {
-      assert.equal(titleMatchesFilter(filter, title), true)
-    })
-  }
+  // The Task feed used to be a whitelist of title fragments, and these three
+  // titles were added to it by hand when the creator-approval workflow shipped.
+  // That coupling is gone: transition_task_review() inserts with the task's id
+  // in `task_id`, and that is now the whole rule. Rewording any of the three
+  // sentences can no longer drop it out of the feed — which is exactly the
+  // defect the hotfix fixes for `New task assigned to you`.
+  test('the filter is the structural task_id rule', () => {
+    assert.equal(filter, 'task_id.not.is.null')
+  })
 
-  test('every fragment in the filter is a title match, not a type or column match', () => {
-    // The Task category is title-based by necessity; a `type.in.(…)` fragment
-    // creeping in here would mean somebody started mixing the two schemes.
-    for (const fragment of filter.split(',')) {
-      assert.match(fragment, /^title\.ilike\./, `unexpected fragment: ${fragment}`)
+  test('no title fragment gates any of the three review titles', () => {
+    for (const title of Object.values(TITLES)) {
+      assert.equal(filter.includes(title), false,
+        `the filter must not name "${title}" — it selects on task_id`)
     }
+    assert.equal(/title\.ilike/.test(filter), false)
   })
 
-  test('the filter is not widened to every row carrying a task_id', () => {
-    assert.ok(!filter.includes('task_id'), 'task_id must never appear in the Task filter')
+  test('the migration writes the row with a task_id, which is what puts it in the feed', () => {
+    const sql = migrationSql
+    assert.match(sql, /insert into public\.notifications \(user_id, task_id, type, title, body, is_push_sent\)/i)
+    assert.match(sql, /values \(v_recipient, p_task_id,/i)
   })
 
-  test('an unrelated task notification title is still excluded', () => {
-    // The health-check cron's rows are the reason the filter is a whitelist.
-    assert.equal(titleMatchesFilter(filter, 'Task overdue'), false)
-    assert.equal(titleMatchesFilter(filter, 'Escalation: no update in 7 days'), false)
+  test('the cron rows are still excluded — by type, not by title', () => {
+    // `overdue` / `escalation` rows carry a task_id too, so the structural rule
+    // alone would select them. SYSTEM_TYPE_EXCLUSION is what removes them, and
+    // every endpoint chains it alongside this filter.
+    for (const t of ['overdue', 'escalation', 'stale_flag', 'morning_digest', 'evening_digest']) {
+      assert.ok(SYSTEM_TYPE_EXCLUSION.includes(t), `${t} must be excluded by type`)
+    }
   })
 })
 
