@@ -224,3 +224,98 @@ export function resolveNotificationCategory(v: unknown): CategoryResolution {
   }
   return { ok: false, error: `Invalid category '${String(v)}'. Must be one of: ${VALID_CATEGORIES.join(', ')}.` }
 }
+
+// ─── System-generated activity: the ONE exclusion rule ────────────────────────
+//
+// THE PROBLEM THIS NAMES. `public.notification_type` carries two populations
+// that have nothing to do with each other:
+//
+//   · events a PERSON caused, addressed to another person who may want to
+//     respond — `task_acknowledged`, `finance_*`, `asset_*`, `*_issue_*` …
+//   · records the SYSTEM produced on its own — the hourly database job
+//     `run_task_health_check` has been writing `overdue` and `escalation` rows
+//     since June (≈16k of them), plus the never-finished `stale_flag` and the
+//     two digest types.
+//
+// Nobody asked for the second kind and nobody can act on one: an escalation is
+// an observation about a task, not a request that somebody do something. They
+// are the notification noise.
+//
+// WHAT THIS RULE IS. One list, one predicate, one PostgREST fragment — used by
+// the write guard (src/lib/notificationWrites.ts) so no application path can
+// create such a row, and by every category read filter so none can surface one.
+// Before this, the task feed excluded them only as a side effect of
+// TASK_TITLE_OR being a title whitelist: correct, but by accident, and one
+// widened pattern away from dumping 16k rows into everyone's inbox.
+//
+// WHAT IT IS NOT. It is not a rule about *how* a row was produced. A scheduled
+// job that raises something a person must actually deal with is a real
+// notification and stays — see ACTIONABLE_SCHEDULED_NOTIFICATION_TYPES below.
+// The distinction is "can the recipient act on this", not "did a human click".
+export const SYSTEM_GENERATED_NOTIFICATION_TYPES = [
+  // Written by the hourly `run_task_health_check` database job.
+  'escalation',
+  'overdue',
+  'stale_flag',
+  // Digest rows. `is_digest` marks them too; the type is listed so the rule
+  // needs to read only one column.
+  'morning_digest',
+  'evening_digest',
+] as const
+
+export type SystemGeneratedNotificationType = typeof SYSTEM_GENERATED_NOTIFICATION_TYPES[number]
+
+/**
+ * Scheduled, NON-user-initiated, and deliberately kept.
+ *
+ * `asset_warranty_expiring` is raised by /api/assets/warranty-sweep — nobody
+ * clicks anything, a warranty simply crosses the 30-day line — and it asks an
+ * admin to make a renewal decision before a date passes. That is an actionable
+ * reminder, so the suppression rule must not touch it.
+ *
+ * Listed explicitly rather than left to fall through, so that "a sweep wrote
+ * it, therefore suppress it" can never be inferred from the code: the test
+ * suite asserts this list survives the guard.
+ */
+export const ACTIONABLE_SCHEDULED_NOTIFICATION_TYPES = [
+  'asset_warranty_expiring',
+] as const
+
+const SYSTEM_TYPE_SET: ReadonlySet<string> = new Set(SYSTEM_GENERATED_NOTIFICATION_TYPES)
+
+/**
+ * True for a row the system produced about itself, which no recipient can act
+ * on. The single predicate every write guard and read filter consults.
+ */
+export function isSystemGeneratedNotificationType(type: string | null | undefined): boolean {
+  return typeof type === 'string' && SYSTEM_TYPE_SET.has(type)
+}
+
+/**
+ * Split rows bound for `notifications` into the ones that may be written and
+ * the ones the rule suppresses. Never throws: a suppressed row is a no-op, not
+ * a failure, because the business action that produced it has already
+ * succeeded and must not be rolled back over a notification.
+ */
+export function partitionSystemNotifications<T extends { type?: string | null }>(
+  rows: readonly T[],
+): { deliverable: T[]; suppressed: T[] } {
+  const deliverable: T[] = []
+  const suppressed:  T[] = []
+  for (const row of rows) {
+    if (isSystemGeneratedNotificationType(row.type)) suppressed.push(row)
+    else deliverable.push(row)
+  }
+  return { deliverable, suppressed }
+}
+
+/**
+ * PostgREST filter excluding every system type, to be chained with `.not()`
+ * ALONGSIDE a category's `.or(...)` — the two combine with AND.
+ *
+ * Applied on the list, the count, mark-all-read and delete-all so all four
+ * agree. Chaining it can never hide a human-generated row: every application
+ * write path uses `task_acknowledged` / `task_assigned` / a module's own enum
+ * value, and none of those appears in the list above.
+ */
+export const SYSTEM_TYPE_EXCLUSION = `(${SYSTEM_GENERATED_NOTIFICATION_TYPES.join(',')})`

@@ -1,8 +1,21 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { getNotificationCategoryFilter, resolveNotificationCategory } from '@/lib/notifications'
+import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
+import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
+
+/**
+ * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
+ *
+ * Absent / non-numeric / out of range all resolve to a usable bound rather
+ * than an error: the worst a bad value can do is show the first page.
+ */
+function clampNotificationLimit(raw: string | null): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 1) return NOTIFICATION_PAGE_SIZE
+  return Math.min(Math.floor(n), NOTIFICATION_MAX_ROWS)
+}
 
 // Lists the authenticated user's notifications (newest first), or — with
 // `?count=1` — returns only the unread count for the sidebar badge.
@@ -47,6 +60,7 @@ export async function GET(req: NextRequest) {
       .eq('user_id', user.id)
       .eq('is_read', false)
       .or(activityFilter)
+      .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
     if (error) {
       console.error('[notifications] count failed:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -54,22 +68,38 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ unreadCount: count ?? 0 })
   }
 
+  // BOUNDED, ALWAYS. `?limit=` lets the page ask for a further block when the
+  // reader presses "Load older"; it is clamped to NOTIFICATION_MAX_ROWS, so no
+  // request — crafted or accidental — can ever pull the full history down. A
+  // missing or unparseable value falls back to the first page rather than 400ing:
+  // this is a display bound, not a business input.
+  const limit = clampNotificationLimit(req.nextUrl.searchParams.get('limit'))
+
+  // One extra row than asked for, purely to answer "is there anything older?".
+  // It is dropped before the response, so the client still receives exactly
+  // `limit` rows and `hasMore` costs no second query.
   const { data, error } = await supabase
     .from('notifications')
     .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at')
     .eq('user_id', user.id)
     .or(activityFilter)
+    .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
     .order('created_at', { ascending: false })
-    .limit(50)
+    .limit(limit + 1)
 
   if (error) {
     console.error('[notifications] list failed:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const notifications = data ?? []
+  const rows = data ?? []
+  const hasMore = rows.length > limit
+  const notifications = hasMore ? rows.slice(0, limit) : rows
+  // Unread among the rows returned. NOT the category's total unread — that is
+  // what `?count=1` is for, and the badge reads it from there. Kept in the
+  // response because callers have always had it.
   const unreadCount = notifications.filter(n => !n.is_read).length
-  return NextResponse.json({ notifications, unreadCount })
+  return NextResponse.json({ notifications, unreadCount, hasMore, limit })
 }
 
 // Deletes all of ONE module's notifications for the authenticated user —
@@ -110,6 +140,7 @@ export async function DELETE(req: NextRequest) {
     .delete()
     .eq('user_id', user.id)
     .or(activityFilter)
+    .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
     .select('id')
 
   if (error) {

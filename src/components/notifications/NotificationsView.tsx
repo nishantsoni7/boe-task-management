@@ -10,12 +10,12 @@ import type { NotificationCategory } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
-import { LoadingScreen } from '@/components/ui/atoms'
-import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle } from 'lucide-react'
-import { useProfile } from '@/hooks/queries/useProfile'
+import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle, ChevronDown } from 'lucide-react'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useNotifications } from '@/hooks/queries/useNotifications'
 import { useNotificationMutations } from '@/hooks/queries/useNotificationMutations'
 import { notificationKeys } from '@/lib/notificationCache'
+import { NotificationListSkeleton } from './NotificationListSkeleton'
 
 type FilterTab = 'all' | 'unread'
 
@@ -53,21 +53,35 @@ type NotificationsViewProps = {
 // delete all agree on exactly which rows belong to this view — see
 // getNotificationCategoryFilter in src/lib/notifications.ts.
 export function NotificationsView({ category, Layout, loginRedirectPath = '/login' }: NotificationsViewProps) {
-  const [loggedInId, setLoggedInId] = useState('')
-  const [filter,     setFilter]     = useState<FilterTab>('all')
-  const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [filter,   setFilter]   = useState<FilterTab>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { refreshKey } = useRefresh()
 
-  const { data: profile = null } = useProfile(loggedInId)
+  // ONE identity resolution, shared with the surrounding module shell.
+  //
+  // This replaces a per-mount `supabase.auth.getUser()` — a NETWORK call to the
+  // auth server — whose only job was to produce a user id, which then gated a
+  // second request for the profile row. Entering Notifications therefore cost
+  // an auth round trip and a users read that the layout rendering around this
+  // view had already made on the same navigation.
+  //
+  // usePermissionContext resolves the id from the STORED session (no request)
+  // and returns the profile from the same uid-keyed cache DashboardLayout /
+  // FinanceLayout / ModuleGuard read, so both requests disappear rather than
+  // moving. Identity freshness is held by the auth listener in Providers.tsx,
+  // which drops the cache when the signed-in user actually changes.
+  const { ready: authReady, userId, profile } = usePermissionContext()
+
   const {
     data: notifications = [],
-    isLoading: notifLoading,
+    isPending: notifPending,
     isError: notifError,
     error: notifErrorObj,
+    loadOlder, hasOlder, loadingOlder, olderError,
   } = useNotifications(category)
 
   // All list/count cache work lives in this hook: optimistic update, snapshot,
@@ -78,9 +92,16 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     error: mutationError, clearError,
   } = useNotificationMutations(category)
 
-  // If TQ has cached notifications, show them immediately without waiting for auth re-confirm.
-  // Auth redirect (if needed) will fire from the init useEffect shortly after.
-  const loading = notifLoading && notifications.length === 0
+  // TRUE ONLY BEFORE THE FIRST RESULT EXISTS.
+  //
+  // `isPending` is "this query has no data yet", which stays true across the
+  // whole first fetch and becomes false the moment a cached list is available —
+  // so a return visit inside the cache window renders instantly, and a cold
+  // load shows the skeleton rather than an empty inbox. It is deliberately NOT
+  // `isLoading`: TanStack reports `isLoading: false` for a query that has not
+  // started fetching, which is exactly the window in which "No notifications
+  // yet" used to flash.
+  const loadingFirstPage = notifPending
 
   // Refresh from the layout's Refresh button / tab-visibility. Two changes from
   // before, both about not fighting an in-flight mutation:
@@ -97,16 +118,13 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     queryClient.invalidateQueries({ queryKey: notificationKeys.count(category), exact: true })
   }, [refreshKey, category, queryClient])
 
-  // Auth check — once on mount
+  // Signed out — send them to the login page. Waits for `ready`, because an
+  // unresolved context reports `userId: null`, which is not the same answer as
+  // "there is no session".
   useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push(loginRedirectPath); return }
-      setLoggedInId(user.id)
-    }
-    init()
+    if (authReady && !userId) router.push(loginRedirectPath)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [authReady, userId])
 
   // Prefetch task detail pages for notifications in view
   useEffect(() => {
@@ -131,7 +149,14 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // Surfaced in the inline banner. A failed list fetch no longer renders as an
   // empty inbox — useNotifications throws, and TanStack keeps the last good
   // list on screen underneath this message.
+  // "You are all caught up" is the same false claim as the empty state, just in
+  // the header — so it waits for the first page too.
+  const subtitle = loadingFirstPage
+    ? 'Loading…'
+    : unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'
+
   const banner = mutationError
+    ?? olderError
     ?? (notifError
       ? (notifErrorObj instanceof Error ? notifErrorObj.message : 'Could not load notifications.')
       : null)
@@ -187,7 +212,12 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     if (!n.is_read) markRead(n.id)
   }
 
-  if (loading) return <LoadingScreen />
+  // NOTE: there is deliberately no early `return <LoadingScreen />` here.
+  // Returning one unmounted the entire module shell — sidebar, header, Refresh,
+  // every other nav entry — until the notification request came back, so
+  // arriving at Notifications froze navigation and LEAVING it had to wait for
+  // notification work to finish. The shell now always renders; only the list
+  // area swaps to a skeleton.
 
   // ── Toolbar button base style helpers ─────────────────────────────────────
   const toolBtn = (active: boolean, danger = false) => ({
@@ -207,7 +237,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     <Layout
       profile={profile}
       title="Notifications"
-      subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
+      subtitle={subtitle}
       onSignOut={handleLogout}
       actions={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -301,8 +331,11 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
         ))}
       </div>
 
-      {/* Empty state */}
-      {visible.length === 0 ? (
+      {/* The first page is still in flight and nothing has ever been loaded —
+          show the shape of the list, never a claim about its contents. */}
+      {loadingFirstPage ? (
+        <NotificationListSkeleton />
+      ) : visible.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', padding: '64px 24px', gap: '10px',
@@ -483,6 +516,32 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Bounded history. The page opens on the newest page and stops offering
+          this at NOTIFICATION_MAX_ROWS — there is no control anywhere that
+          downloads the whole notification history. "Mark all read" and
+          "Delete all" are server-side over the entire category, so neither
+          depends on how much of it is on screen. */}
+      {!loadingFirstPage && hasOlder && (
+        <div style={{ display: 'flex', justifyContent: 'center', maxWidth: '900px', marginTop: '12px' }}>
+          <button
+            onClick={loadOlder}
+            disabled={loadingOlder}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '7px',
+              fontSize: '12px', fontWeight: 600, fontFamily: font.body,
+              border: `1.5px solid ${colors.border}`,
+              background: 'transparent',
+              color: loadingOlder ? colors.muted : colors.secondary,
+              cursor: loadingOlder ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <ChevronDown size={13} strokeWidth={2.2} />
+            {loadingOlder ? 'Loading…' : 'Load older notifications'}
+          </button>
         </div>
       )}
     </Layout>

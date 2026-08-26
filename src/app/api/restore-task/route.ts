@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { insertUserNotifications } from '@/lib/notificationWrites'
 import { restoreTargetStatus } from '@/lib/tasks/reviewTransitions'
 
 export async function POST(req: NextRequest) {
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       : null
     const verb  = terminalStatus === 'cancelled' ? 'reversed cancellation of' : 'reopened'
     const title = actor ? `${actor} ${verb} a task` : terminalStatus === 'cancelled' ? 'Task cancellation reversed' : 'Task reopened'
-    await supabase.from('notifications').insert({
+    await insertUserNotifications(supabase, {
       user_id:      recipient,
       task_id:      taskId,
       type:         'task_acknowledged',

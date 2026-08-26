@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Bell } from 'lucide-react'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
@@ -27,6 +28,15 @@ export function NotificationsNavItem({
   const total    = useUnreadNotifications()
   const unread   = count ?? total
   const active   = pathname === href
+
+  // Warm the destination the way DashboardLayout already warms /modules.
+  //
+  // Notifications is a client route in its own bundle, so without this the
+  // click had to download that chunk before anything could render — the
+  // "entering Notifications is slow" complaint was largely this, not the
+  // notification query. Prefetching costs one idle request per shell mount and
+  // Next.js dedupes it; it does NOT fetch any notification data.
+  useEffect(() => { router.prefetch(href) }, [router, href])
 
   return (
     <button

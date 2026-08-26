@@ -15,6 +15,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { insertUserNotifications } from '@/lib/notificationWrites'
 import { resolveAttachmentPath, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 const VALID_PRIORITIES = ['high', 'medium', 'low'] as const
@@ -189,7 +190,7 @@ export async function POST(
   if (logErr) console.error('[copy] activity log insert failed (non-fatal):', logErr.message)
 
   // 10. Standard assignment notification for the new assignee (best-effort).
-  const { error: notifErr } = await supabase.from('notifications').insert({
+  const { error: notifErr } = await insertUserNotifications(supabase, {
     user_id:      assigneeId,
     task_id:      newTask.id,
     type:         'task_assigned',

@@ -7,14 +7,24 @@ import { createClient } from '@/lib/supabase/client'
 import type { Task, UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
-import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
-import { useProfile } from '@/hooks/queries/useProfile'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useMyTasks, useUserNames } from '@/hooks/queries/useMyTasks'
+import {
+  AWAITING_APPROVAL_LABEL,
+  MY_TASK_TAB_LABELS,
+  MY_TASK_TAB_KEYS,
+  buildMyTaskBuckets,
+  countMyTaskBuckets,
+  isAwaitingApproval,
+  isOverdue as taskIsOverdue,
+  localDateStr,
+  type MyTaskTabKey,
+} from '@/lib/tasks/myTaskTabs'
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
@@ -30,70 +40,24 @@ import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 
-function localDateStr(offsetDays = 0): string {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const yyyy = d.getFullYear()
-  const mm   = String(d.getMonth() + 1).padStart(2, '0')
-  const dd   = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-// Normalize any due_date format (plain YYYY-MM-DD or full ISO timestamp) to local YYYY-MM-DD
-function normalizeDueDate(raw: string | null | undefined): string | null {
-  if (!raw) return null
-  // Already a plain date — return as-is
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
-  // Full ISO timestamp — convert to local calendar date
-  const d = new Date(raw)
-  if (isNaN(d.getTime())) return null
-  const yyyy = d.getFullYear()
-  const mm   = String(d.getMonth() + 1).padStart(2, '0')
-  const dd   = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-const TODAY_STR    = localDateStr(0)
+// Tab membership, overdue-ness, staleness and date normalisation all live in
+// src/lib/tasks/myTaskTabs.ts now — one classification, directly testable, and
+// the only place that decides a `pending_approval` task is not the assignee's
+// to act on. This file keeps only the clock it captures at module load.
+const TODAY_STR = localDateStr(0)
 const NOW_MS    = Date.now()
-const H48       = 48 * 60 * 60 * 1000
+const MY_TASK_CLOCK = { todayStr: TODAY_STR, nowMs: NOW_MS }
 
-function isOverdue(task: Task) {
-  const d = normalizeDueDate(task.due_date)
-  // A task submitted for approval is no longer the assignee's overdue
-  // responsibility — the same rule Performance uses (see accruesAssigneeOverdue).
-  return !!d && d < TODAY_STR && accruesAssigneeOverdue(task.status)
-}
-function needsUpdate(task: Task) {
-  if (task.status === 'completed' || task.status === 'cancelled') return false
-  return NOW_MS - new Date(task.last_update_at ?? task.created_at).getTime() > H48
-}
-function isUnacknowledged(task: Task) {
-  return !task.acknowledged_at && task.status !== 'completed' && task.status !== 'cancelled' && task.created_by !== task.assigned_to
-}
-function isNonCompletion(task: Task) {
-  return isOverdue(task) && needsUpdate(task)
-}
+const isOverdue = (task: Task) => taskIsOverdue(task, TODAY_STR)
+
 function formatDate(d: string | null): string | null {
   if (!d) return null
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
 // ─── Tab config ───────────────────────────────────────────────────────────────
-type TabKey = 'today_actionable' | 'overdue_actionable' | 'future_actionable' | 'waiting_blocked' | 'action_required' | 'all' | 'important' | 'unacknowledged' | 'in_progress' | 'overdue' | 'needs_update' | 'non_completion' | 'completed'
-
-const TAB_LABELS: Record<TabKey, string> = {
-  today_actionable:   'Today Actionable',
-  overdue_actionable: 'Overdue Actionable',
-  future_actionable:  'Future Actionable',
-  waiting_blocked:    'Waiting / Blocked',
-  action_required:    'Action Required',
-  all:                'All Tasks',
-  important:          'Important',
-  unacknowledged:     'Unacknowledged',
-  in_progress:        'In Progress',
-  overdue:            'Overdue',
-  needs_update:       'Needs Update',
-  non_completion:     'Non-Completion',
-  completed:          'Completed',
-}
+type TabKey = MyTaskTabKey
+const TAB_LABELS = MY_TASK_TAB_LABELS
 type TaskType = 'all' | 'self' | 'delegated'
 
 // ─── Priority config ──────────────────────────────────────────────────────────
@@ -116,7 +80,7 @@ const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent
 // no view tab selected, showing every active task.
 const PRIORITY_KEYS = ['high', 'medium', 'low'] as const
 const TYPE_KEYS = TYPE_TABS.map(t => t.key)
-const TAB_KEYS  = Object.keys(TAB_LABELS) as TabKey[]
+const TAB_KEYS  = MY_TASK_TAB_KEYS
 
 const LIST_PARAMS = {
   type:       enumParam(TYPE_KEYS, 'all' as TaskType),
@@ -149,6 +113,7 @@ function TaskCard({
   const [hoveredPin,  setHoveredPin]  = useState(false)
   const overdue    = isOverdue(task)
   const completed  = task.status === 'completed'
+  const awaitingApproval = isAwaitingApproval(task)
   const priority   = PRIORITY_CONFIG[task.priority] ?? PRIORITY_CONFIG.low
   const dateStr    = formatDate(task.due_date)
   const isSelf     = task.created_by === userId
@@ -222,6 +187,13 @@ function TaskCard({
         </div>
         {/* Row 2: meta badges */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {/* The mobile card shows no status column, so this state — the one
+              that explains why the row carries no action — is called out. */}
+          {awaitingApproval && (
+            <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {AWAITING_APPROVAL_LABEL}
+            </span>
+          )}
           {!isSelf && assignerName && (
             <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
               {assignerName}
@@ -346,7 +318,10 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '3px 9px', textTransform: 'capitalize', fontWeight: 600 }}>
-          {taskStatusLabel(task.status, 'assignee')}
+          {/* Named exactly as the tab that holds it, so a row and the tab it
+              came from cannot say two different things. Every other status
+              keeps its usual assignee-side wording. */}
+          {isAwaitingApproval(task) ? AWAITING_APPROVAL_LABEL : taskStatusLabel(task.status, 'assignee')}
         </span>
       </div>
 
@@ -1016,6 +991,48 @@ function EditTaskModal({
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
+// Rows-shaped placeholder for the first load.
+//
+// Same height, same grid, same 6px gaps as the real cards, so nothing shifts
+// when the data lands. It exists because the only other honest option while the
+// first query is in flight would be a blank area, and the DISHONEST option —
+// the one this replaces — was "No active tasks".
+function TaskListSkeleton({ isMobile, rows = 6 }: { isMobile?: boolean; rows?: number }) {
+  return (
+    <div
+      style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}
+      role="status"
+      aria-busy="true"
+      aria-label="Loading tasks"
+    >
+      {Array.from({ length: rows }, (_, i) => (
+        <div
+          key={i}
+          aria-hidden="true"
+          style={{
+            border: `1.5px solid ${colors.border}`,
+            borderRadius: '8px',
+            background: colors.base,
+            minHeight: isMobile ? '62px' : '48px',
+            display: 'flex', alignItems: 'center', gap: '14px',
+            padding: isMobile ? '10px 12px' : '0 14px',
+          }}
+        >
+          <span style={{ display: 'block', width: '11px', height: '11px', borderRadius: '50%', background: 'rgba(0,0,0,0.06)', flexShrink: 0 }} />
+          <span style={{ display: 'block', flex: 1, maxWidth: '340px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.06)' }} />
+          {!isMobile && (
+            <>
+              <span style={{ display: 'block', width: '76px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '58px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+              <span style={{ display: 'block', width: '64px', height: '11px', borderRadius: '4px', background: 'rgba(0,0,0,0.05)' }} />
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function EmptyState({ label }: { label: string }) {
   return (
     <div style={{
@@ -1042,7 +1059,6 @@ function EmptyState({ label }: { label: string }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 function MyTasksContent() {
-  const [loggedInId,   setLoggedInId]   = useState<string>('')
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
   const [editingTask,      setEditingTask]      = useState<Task | null>(null)
   const [showCreateModal,  setShowCreateModal]  = useState(false)
@@ -1069,12 +1085,36 @@ function MyTasksContent() {
   const { viewAsUserId, exitViewMode } = useViewAs()
   const { refreshKey } = useRefresh()
 
+  // ── Identity ──────────────────────────────────────────────────────────────
+  //
+  // WHAT THIS REPLACES, AND WHY IT WAS THE THREE-SECOND EMPTY PAGE.
+  //
+  // This page used to resolve its own user: a mount-time effect awaited
+  // `supabase.auth.getSession()`, then `setLoggedInId`, and only the render
+  // AFTER that could enable the task query — which then had to enable
+  // `useProfile` behind it. Three strictly sequential steps before the first
+  // task byte was requested, repeated on every single visit even though the
+  // module shell around this page had already resolved the very same identity
+  // and the very same profile row on the same navigation.
+  //
+  // usePermissionContext is that shared resolution: the id comes from the
+  // stored session, and on any navigation within the app it is already in the
+  // query cache, so `userId` is known on the FIRST render and the task query
+  // starts immediately. The profile comes from the same cached entry (identical
+  // column list), so the separate `useProfile` request is gone rather than
+  // moved.
+  const { ready: authReady, userId: loggedInId, profile } = usePermissionContext()
+
   // Resolve the effective user ID — view-as overrides the logged-in user
-  const userId = viewAsUserId ?? loggedInId
+  const userId = viewAsUserId ?? loggedInId ?? ''
 
   // ── Query-backed data ─────────────────────────────────────────────────────
-  const { data: profile = null }  = useProfile(loggedInId)
-  const { data: allTasksRaw = [], isLoading: tasksLoading } = useMyTasks(userId || null)
+  // `isPending` — not `isLoading`. For a query still waiting on its `enabled`
+  // gate TanStack reports `isLoading: false` (nothing is fetching yet) while
+  // `isPending` stays true (there is no data yet). Reading `isLoading` is
+  // exactly how this page came to render its empty state before it had asked
+  // the server anything.
+  const { data: allTasksRaw = [], isPending: tasksPending, isLoading: tasksLoading } = useMyTasks(userId || null)
   const { data: top3Data } = useTopTasks(userId || null)
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
@@ -1107,8 +1147,25 @@ function MyTasksContent() {
     allTasksRaw.slice(0, 15).forEach(t => router.prefetch(`/tasks/${t.id}`))
   }, [allTasksRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Show cached tasks immediately; only block on first load when no cache exists
-  const loading = !loggedInId && tasksLoading && allTasksRaw.length === 0
+  // ── THE FIX FOR THE FALSE EMPTY STATE ────────────────────────────────────
+  //
+  // The old expression was
+  //     !loggedInId && tasksLoading && allTasksRaw.length === 0
+  // and it could never be true after mount. On the first render `loggedInId`
+  // was '' so the task query was DISABLED, and a disabled query reports
+  // `isLoading: false` — so the second term killed it. One render later
+  // `loggedInId` was set, so the first term killed it. The page therefore went
+  // straight to rendering with `allTasks = []`, every bucket empty, and drew
+  // "No active tasks" for the whole three seconds the auth hop and the task
+  // fetch took. It was not a slow loading state; there was no loading state.
+  //
+  // What is true instead: the list has resolved once `tasksPending` is false,
+  // which happens immediately when a cached list exists (return visits render
+  // with no flash at all) and otherwise when the first response lands. Until
+  // then the page renders its full chrome with a skeleton where the rows go —
+  // never a claim that there is nothing to do.
+  const tasksResolved = !tasksPending
+  const showListSkeleton = !tasksResolved
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1117,15 +1174,11 @@ function MyTasksContent() {
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  // Auth check — runs once on mount
+  // Signed out — to /login. Waits for `ready`: an unresolved context reports a
+  // null user, which is not the same answer as "there is no session".
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-      setLoggedInId(session.user.id)
-    }
-    init()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (authReady && !loggedInId) router.push('/login')
+  }, [authReady, loggedInId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Guard view-as against non-admins
   useEffect(() => {
@@ -1276,68 +1329,13 @@ function MyTasksContent() {
     () => setState({ assignedBy: '' }),
   )
 
-  const buckets = useMemo(() => {
-    const sortImportantFirst = (arr: Task[]) =>
-      [...arr].sort((a, b) => (b.is_urgent ? 1 : 0) - (a.is_urgent ? 1 : 0))
-
-    // Actionable = still the assignee's move. A submitted-for-approval task
-    // is waiting on the reviewer, same as it stops being overdue for scoring.
-    const isActiveActionable = (t: Task) =>
-      accruesAssigneeOverdue(t.status) &&
-      t.status !== 'waiting'   && t.status !== 'blocked'
-
-    // Today Actionable: due today, active (not waiting/blocked/completed/cancelled)
-    const today_actionable   = sortImportantFirst(baseTasks.filter(t =>
-      isActiveActionable(t) && normalizeDueDate(t.due_date) === TODAY_STR
-    ))
-    // Overdue Actionable: past due, active
-    const overdue_actionable = sortImportantFirst(baseTasks.filter(t => {
-      const d = normalizeDueDate(t.due_date)
-      return isActiveActionable(t) && !!d && d < TODAY_STR
-    }))
-    // Future Actionable: due after today, active (not waiting/blocked/completed/cancelled)
-    const future_actionable  = sortImportantFirst(baseTasks.filter(t => {
-      const d = normalizeDueDate(t.due_date)
-      return isActiveActionable(t) && !!d && d > TODAY_STR
-    }))
-    // Waiting / Blocked
-    const waiting_blocked    = sortImportantFirst(baseTasks.filter(t =>
-      t.status === 'waiting' || t.status === 'blocked'
-    ))
-
-    // Legacy buckets (kept for internal use)
-    const action_required = sortImportantFirst(baseTasks.filter(t =>
-      t.status === 'pending' || t.status === 'started' || t.status === 'working'
-    ))
-    const all            = sortImportantFirst(baseTasks.filter(t => t.status !== 'completed' && t.status !== 'cancelled'))
-    const important      = sortImportantFirst(baseTasks.filter(t => t.is_urgent && t.status !== 'completed' && t.status !== 'cancelled'))
-    const unacknowledged = sortImportantFirst(baseTasks.filter(isUnacknowledged))
-    const in_progress    = sortImportantFirst(baseTasks.filter(t =>
-      !isOverdue(t) && t.status !== 'completed' && ['started', 'working', 'pending'].includes(t.status)
-    ))
-    const overdue        = sortImportantFirst(baseTasks.filter(isOverdue))
-    const needs_update   = sortImportantFirst(baseTasks.filter(needsUpdate))
-    const non_completion = sortImportantFirst(baseTasks.filter(isNonCompletion))
-    const completed      = baseTasks.filter(t => t.status === 'completed')
-
-    return { today_actionable, overdue_actionable, future_actionable, waiting_blocked, action_required, all, important, unacknowledged, in_progress, overdue, needs_update, non_completion, completed }
-  }, [baseTasks])
-
-  const counts: Record<TabKey, number> = {
-    today_actionable:   buckets.today_actionable.length,
-    overdue_actionable: buckets.overdue_actionable.length,
-    future_actionable:  buckets.future_actionable.length,
-    waiting_blocked:    buckets.waiting_blocked.length,
-    action_required:    buckets.action_required.length,
-    all:                buckets.all.length,
-    important:          buckets.important.length,
-    unacknowledged:     buckets.unacknowledged.length,
-    in_progress:        buckets.in_progress.length,
-    overdue:            buckets.overdue.length,
-    needs_update:       buckets.needs_update.length,
-    non_completion:     buckets.non_completion.length,
-    completed:          buckets.completed.length,
-  }
+  // ONE pass over the ONE fetched collection, in the shared classifier. Every
+  // tab is a key of this object, so switching tabs is a lookup rather than a
+  // request — which is why an already-loaded tab switch is instant and why a
+  // `pending_approval` task cannot appear in a working tab and in Awaiting
+  // Approval at the same time.
+  const buckets = useMemo(() => buildMyTaskBuckets(baseTasks, MY_TASK_CLOCK), [baseTasks])
+  const counts  = useMemo(() => countMyTaskBuckets(buckets), [buckets])
 
 
   const visibleTasks = useMemo(() => {
@@ -1363,7 +1361,9 @@ function MyTasksContent() {
 
   const activeTabColor = colors.secondary
 
-  if (loading) return <LoadingScreen />
+  // NOTE: no early `return <LoadingScreen />`. Blanking the page hid the tabs,
+  // the search box and the sidebar behind a spinner; the shell now renders
+  // immediately and only the rows area waits. See `showListSkeleton`.
 
   return (
     <>
@@ -1518,12 +1518,24 @@ function MyTasksContent() {
                 { key: 'overdue_actionable', label: 'Overdue Actionable', accent: '#C0551A' },
                 { key: 'future_actionable',  label: 'Future Actionable',  accent: '#7C5CBF' },
                 { key: 'waiting_blocked',    label: 'Waiting / Blocked',  accent: '#5B7FA6' },
+                // Work this user has finished and handed to its creator. It is
+                // NOT an actionable tab — nothing here is theirs to move — and
+                // it is the only tab these tasks appear in. The gold matches
+                // the pending_approval badge on the task detail page.
+                { key: 'awaiting_approval',  label: AWAITING_APPROVAL_LABEL, accent: '#A57F14' },
               ]
               return (
                 <div style={{
                   display: 'flex', gap: '0',
                   borderBottom: `1px solid ${colors.border}`,
                   padding: '0 24px',
+                  // Awaiting Approval makes five tabs, which no longer fit a
+                  // phone in one line. Scrolling the strip keeps every tab
+                  // reachable without wrapping it into a second row that pushes
+                  // the list down; the desktop layout is unchanged because the
+                  // row fits and never scrolls.
+                  overflowX: 'auto',
+                  scrollbarWidth: 'none',
                 }}>
                   {VIEW_TABS.map(tab => {
                     const isActive = activeTab === tab.key
@@ -1541,6 +1553,7 @@ function MyTasksContent() {
                           color: isActive ? tab.accent : colors.secondary,
                           transition: 'color 0.12s, border-color 0.12s',
                           whiteSpace: 'nowrap',
+                          flexShrink: 0,
                         }}
                       >
                         {tab.label}
@@ -1655,8 +1668,13 @@ function MyTasksContent() {
               </div>
             )}
 
-            {/* Task cards */}
-            {visibleTasks.length === 0 ? (
+            {/* Task cards.
+                The skeleton comes FIRST: an empty state is a statement about
+                this user's workload, and it may not be made until the query
+                that would contradict it has actually answered. */}
+            {showListSkeleton ? (
+              <TaskListSkeleton isMobile={isMobile} />
+            ) : visibleTasks.length === 0 ? (
               <EmptyState label={activeTab ? TAB_LABELS[activeTab] : 'active'} />
             ) : (
               <div style={{ padding: '10px 24px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -1673,8 +1691,13 @@ function MyTasksContent() {
                     isMobile={isMobile}
                     isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
                     onPin={
+                      // Read-only while it waits on someone else: pinning it to
+                      // Today's Focus would promise an action the assignee does
+                      // not have. Unpinning stays available so a task pinned
+                      // before submission can still be cleared.
                       !viewAsUserId && !top3Data?.pinnedIds?.has(task.id) &&
-                      task.status !== 'completed' && task.status !== 'cancelled'
+                      task.status !== 'completed' && task.status !== 'cancelled' &&
+                      !isAwaitingApproval(task)
                         ? () => handlePin(task) : undefined
                     }
                     onUnpin={

@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { insertUserNotifications } from '@/lib/notificationWrites'
 
 export async function POST(req: NextRequest) {
   const authClient = await createClient()
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
   if (task.assigned_to && task.assigned_to !== user.id) {
     const actor = typeof actorName === 'string' && actorName.trim() ? actorName.trim() : null
     const title = actor ? `${actor} cancelled a task` : 'Task cancelled'
-    await supabase.from('notifications').insert({
+    await insertUserNotifications(supabase, {
       user_id:      task.assigned_to,
       task_id:      taskId,
       type:         'task_acknowledged',

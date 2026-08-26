@@ -1,6 +1,7 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { insertUserNotifications } from '@/lib/notificationWrites'
 
 export async function POST(req: NextRequest) {
   // Verify caller is authenticated
@@ -33,7 +34,12 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
-  const { error } = await supabase.from('notifications').insert({
+  // Every event this route serves is a person acting on a task, so nothing it
+  // builds is ever suppressed. It goes through the shared guard anyway: this is
+  // the funnel EVERY task status notification passes through, which makes it
+  // the one place a system-generated type could ever reach `notifications`
+  // from application code. See src/lib/notificationWrites.ts.
+  const { suppressed, error } = await insertUserNotifications(supabase, {
     user_id:      notifyUserId,
     task_id:      taskId,
     type:         'task_acknowledged',
@@ -47,6 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  if (suppressed > 0) return NextResponse.json({ success: true, suppressed })
   return NextResponse.json({ success: true })
 }
 

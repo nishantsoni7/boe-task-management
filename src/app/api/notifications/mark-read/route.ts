@@ -1,7 +1,7 @@
 import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { getNotificationCategoryFilter, resolveNotificationCategory } from '@/lib/notifications'
+import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
     }
     // "Mark all" only affects visible task-activity rows, never hidden summary/digest ones.
-    query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category))
+    query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category)).not('type', 'in', SYSTEM_TYPE_EXCLUSION)
   } else {
     query = query.eq('id', id)
   }
