@@ -23,15 +23,15 @@
  * failure. The limit of that guarantee is documented on the operation.
  */
 
-import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
+import { adminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
 import { isValidUUID } from '@/lib/ui'
+import { ASSIGNMENT_OUTCOME_STATUS } from '@/lib/tasks/assignmentNotification'
 import {
   createAssignmentNotification,
   supabaseAssignmentStore,
-  ASSIGNMENT_OUTCOME_STATUS,
-} from '@/lib/tasks/assignmentNotification'
+} from '@/lib/tasks/assignmentNotificationWriter.server'
 
 export async function POST(
   _req: NextRequest,
@@ -49,13 +49,23 @@ export async function POST(
     return NextResponse.json({ error: 'Invalid task id' }, { status: 400 })
   }
 
-  const service = createServiceClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  )
+  // The canonical helper, not an inline `process.env.X!` pair. A missing
+  // credential is a RESULT here rather than a throw at construction, so a
+  // deployment gap is reported as a deployment gap instead of escaping as a
+  // bare 500 with no body — the failure mode src/lib/supabase/admin.ts exists
+  // to prevent. `missing` names the VARIABLES and never their values, and it
+  // goes in the server log, never in the response.
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[notify-assignment] not configured; missing:', admin.missing.join(', '))
+    return NextResponse.json(
+      { error: 'Could not create the assignment notification' },
+      { status: ASSIGNMENT_OUTCOME_STATUS.error },
+    )
+  }
 
   const outcome = await createAssignmentNotification(
-    supabaseAssignmentStore(service),
+    supabaseAssignmentStore(admin.client),
     { taskId, callerId: user.id },
   )
 

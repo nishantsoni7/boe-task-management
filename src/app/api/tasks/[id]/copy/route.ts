@@ -15,7 +15,7 @@
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { createAssignmentNotification, supabaseAssignmentStore } from '@/lib/tasks/assignmentNotification'
+import { createAssignmentNotification, supabaseAssignmentStore } from '@/lib/tasks/assignmentNotificationWriter.server'
 import { resolveAttachmentPath, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 
 const VALID_PRIORITIES = ['high', 'medium', 'low'] as const

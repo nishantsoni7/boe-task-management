@@ -40,10 +40,12 @@ import {
 } from '@/lib/notifications'
 import {
   buildTaskAssignmentNotification,
-  createAssignmentNotification,
-  type AssignmentNotificationStore,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
 } from '@/lib/tasks/assignmentNotification'
+import {
+  createAssignmentNotification,
+  type AssignmentNotificationStore,
+} from '@/lib/tasks/assignmentNotificationWriter.server'
 import { groupNotificationsByTask } from '@/lib/notifications/grouping'
 import type { Notification } from '@/lib/types'
 

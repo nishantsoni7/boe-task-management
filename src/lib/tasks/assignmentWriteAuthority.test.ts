@@ -23,13 +23,15 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  createAssignmentNotification,
   requestAssignmentNotification,
   ASSIGNMENT_OUTCOME_STATUS,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
+} from '@/lib/tasks/assignmentNotification'
+import {
+  createAssignmentNotification,
   type AssignmentNotificationStore,
   type AssignmentTaskRow,
-} from '@/lib/tasks/assignmentNotification'
+} from '@/lib/tasks/assignmentNotificationWriter.server'
 import type { NotificationInsert } from '@/lib/notificationWrites'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
@@ -123,7 +125,7 @@ describe('1-3. the server derives every field; the client supplies only a task i
 describe('4-5. who may cause a notification', () => {
   test('4. an unauthenticated call is refused before anything else happens', () => {
     const authIndex    = routeSrc.indexOf('if (!user) return NextResponse.json')
-    const serviceIndex = routeSrc.indexOf('createServiceClient(')
+    const serviceIndex = routeSrc.indexOf('adminClient()')
     assert.ok(authIndex > 0, 'the route rejects a missing user')
     assert.ok(routeSrc.includes("{ status: 401 }"))
     assert.ok(authIndex < serviceIndex,
@@ -154,6 +156,66 @@ describe('4-5. who may cause a notification', () => {
     assert.equal(outcome.status, 'not_found')
     assert.equal(store.written.length, 0)
     assert.equal(ASSIGNMENT_OUTCOME_STATUS.not_found, 404)
+  })
+
+  test('5e. the ASSIGNEE cannot invoke it merely by being the recipient', () => {
+    // The recipient of a notification is not thereby entitled to cause it.
+    // Nothing in the operation consults assigned_to for authorization — only
+    // created_by and the admin check — and this proves it from the outside.
+    return (async () => {
+      const store = stubStore({ admins: [ADMIN] })
+      const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: ASSIGNEE })
+      assert.equal(outcome.status, 'forbidden')
+      assert.equal(store.written.length, 0)
+    })()
+  })
+
+  test('5f. the admin check is the repository\'s existing one, not a second interpretation', () => {
+    // `users.role === 'admin'`, read server-side — identical to /api/cancel-task
+    // and /api/restore-task. No new role, no new permission vocabulary, and in
+    // particular no reading of a role the caller supplied.
+    const writer = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
+    assert.ok(writer.includes(".from('users')"))
+    assert.ok(writer.includes(".select('role')"))
+    assert.ok(writer.includes(".eq('id', userId)"))
+    assert.ok(writer.includes("=== 'admin'"))
+
+    for (const peer of ['src/app/api/cancel-task/route.ts', 'src/app/api/restore-task/route.ts']) {
+      assert.ok(read(peer).includes("role === 'admin'"),
+        `${peer} uses the same check, so this route introduces no second rule`)
+    }
+    // And nothing resembling a permission-string interpretation was invented.
+    assert.equal(/getEffectivePermissions|hasPermission|can[A-Z]/.test(writer), false)
+  })
+
+  test('5g. authentication completes BEFORE the privileged client is built', () => {
+    const authAt    = routeSrc.indexOf('auth.getUser()')
+    const rejectAt  = routeSrc.indexOf('{ status: 401 }')
+    const adminAt   = routeSrc.indexOf('adminClient()')
+    const operateAt = routeSrc.indexOf('createAssignmentNotification(')
+    assert.ok(authAt > 0 && rejectAt > authAt, 'a missing session is rejected right after the read')
+    assert.ok(adminAt > rejectAt, 'the service-role client is built only after that')
+    assert.ok(operateAt > adminAt, 'and the write happens after both')
+    // Authorization itself lives in the operation, downstream of all three.
+    assert.equal(/created_by|assigned_to/.test(routeSrc), false,
+      'the route delegates authorization rather than duplicating it')
+  })
+
+  test('5h. it uses the canonical admin helper, not an inline process.env pair', () => {
+    // src/lib/supabase/admin.ts exists because inline `process.env.X!` throws at
+    // construction when the value is absent, escaping as a bare 500 with no
+    // readable body — which was once reported as a permission refusal.
+    assert.ok(routeSrc.includes("from '@/lib/supabase/admin'"))
+    // The phrase appears in the comment explaining why it is NOT used, so the
+    // pattern requires a plausible variable name rather than the `X` of prose.
+    assert.equal(/process\.env\.[A-Z][A-Z0-9_]{2,}/.test(routeSrc), false, 'no raw credential access')
+    assert.ok(routeSrc.includes('if (!admin.ok)'), 'the missing case is handled, not asserted away')
+    // The variable NAMES go to the server log; nothing about them reaches the
+    // response, whose body is a fixed sentence.
+    assert.ok(routeSrc.includes("console.error('[notify-assignment] not configured; missing:'"))
+    const branch = routeSrc.slice(routeSrc.indexOf('if (!admin.ok)'))
+    const response = branch.slice(branch.indexOf('return NextResponse.json'), branch.indexOf('}\n\n'))
+    assert.equal(/missing/.test(response), false, 'the missing names are not returned to the caller')
   })
 
   test('5d. a malformed task id is rejected before Postgres sees it', () => {
@@ -195,7 +257,7 @@ describe('6-8. exactly one notification, and only when there is somebody to tell
     // (user_id, task_id, type) is the whole identity: a task is assigned once,
     // so an existing row is a repeat however old it is. Strictly stronger than
     // the two-minute window Finance uses.
-    const src = read('src/lib/tasks/assignmentNotification.ts')
+    const src = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
     assert.ok(src.includes(".eq('task_id', taskId)"))
     assert.ok(src.includes(".eq('user_id', recipientId)"))
     assert.ok(src.includes(".eq('type', TASK_ASSIGNMENT_NOTIFICATION_TYPE)"))
@@ -279,7 +341,13 @@ describe('9-10. every creation path goes through the trusted operation', () => {
       'src/app/api/tasks/[id]/copy/route.ts',
       ROUTE,
     ]) {
-      assert.ok(read(path).includes('SUPABASE_SERVICE_ROLE_KEY'), `${path} uses a trusted client`)
+      const src = read(path)
+      // Either the canonical helper or the older inline pair — both are the
+      // service-role credential; what matters is that none of them is a
+      // session client. (The helper is the preferred form; the four older
+      // routes predate it and are left alone by this hotfix.)
+      assert.ok(src.includes('SUPABASE_SERVICE_ROLE_KEY') || src.includes("from '@/lib/supabase/admin'"),
+        `${path} uses a trusted client`)
     }
     // Submit / approve / return.
     const rpc = read('supabase/migrations/20260833000000_task_creator_approval.sql')

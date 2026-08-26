@@ -331,9 +331,14 @@ describe('one rule, one place', () => {
   }
 
   test('the assignment operation is guard-backed, and no browser writes the table', () => {
-    const helper = read('src/lib/tasks/assignmentNotification.ts')
-    assert.ok(helper.includes('insertUserNotifications'),
+    // The privileged half. Split out of the browser-safe module so the writer
+    // cannot ride into a client bundle — see assignmentServerBoundary.test.ts.
+    const writer = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
+    assert.ok(writer.includes('insertUserNotifications'),
       'the trusted operation inserts through the guard')
+    const browser = read('src/lib/tasks/assignmentNotification.ts')
+    assert.equal(/\.from\(['"]notifications['"]\)/.test(browser), false,
+      'the browser half writes nothing')
 
     // The four browser task creators. These are the paths whose direct insert
     // the database refused — a notifications row addressed to somebody else.
