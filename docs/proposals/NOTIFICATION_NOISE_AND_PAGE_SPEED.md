@@ -11,180 +11,37 @@ it can be written honestly until someone runs the queries in Part A.
 
 ---
 
-## Part A — the exact read-only SQL to run in the Supabase SQL Editor
+## Part A — read-only inspection
 
-All read-only. Run all eight; paste back the fields named under each.
+The queries live in one copyable file next to this one:
 
-### A1. The function definition — the blocker
+**[`run_task_health_check_inspection.sql`](./run_task_health_check_inspection.sql)**
 
-```sql
-select
-  p.oid::regprocedure                as function_signature,
-  n.nspname                          as schema_name,
-  p.prosecdef                        as is_security_definer,
-  pg_get_userbyid(p.proowner)        as owner,
-  p.proconfig                        as config_settings,   -- search_path etc.
-  l.lanname                          as language,
-  pg_get_function_identity_arguments(p.oid) as identity_args,
-  pg_get_functiondef(p.oid)          as function_definition
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-join pg_language  l on l.oid = p.prolang
-where p.proname = 'run_task_health_check';
-```
+Strictly read-only: no CREATE/ALTER/DROP/INSERT/UPDATE/DELETE/GRANT/REVOKE, no
+cron changes, and the function under inspection is never called — it is only
+named in a WHERE clause. Safe to run against production.
 
-**Paste back: every column, and `function_definition` in full and verbatim.**
-Do not trim it — the whole point is that the insert cannot be removed safely
-without seeing what surrounds it. If this returns zero rows, say so: the job may
-live under a different name or a different schema, and A2 will find it.
+| § | Answers |
+|---|---|
+| A1 | the complete function definition, signature, security mode, owner, `search_path`, volatility (+ A1b, a name fallback if A1 is empty) |
+| A2 | pg_cron presence, every scheduled job, and recent run history |
+| A3 | owner and grants, which the migration must restate exactly |
+| A4 | every trigger touching or mentioning `notifications` |
+| A5 | outbound HTTP extensions, Supabase webhook entry points, and any function body combining notifications with an HTTP call |
+| A6 | every function that inserts into `notifications` |
+| A7 | **whether escalation history exists outside `notifications`** — the answer that decides the migration |
+| A8 | columns, `notification_type` enum labels, indexes and table size |
 
-### A2. Its schedule
+Run it top to bottom and copy back what each section's `COPY BACK` line asks
+for. **An empty result grid is an answer** — report it as `0 rows` rather than
+omitting it, because "empty" and "not run" are indistinguishable otherwise.
 
-```sql
-select jobid, schedule, command, nodename, database, username, active
-from cron.job
-order by jobid;
-```
-
-**Paste back: every row.** (Not just the matching one — a second job may write
-notifications under another name.) If this errors with `relation "cron.job"
-does not exist`, pg_cron is not installed in this database; say so and also run:
-
-```sql
-select extname, extversion from pg_extension order by extname;
-```
-
-### A3. Grants and privileges on the function
-
-```sql
-select
-  p.oid::regprocedure as function_signature,
-  coalesce(array_to_string(p.proacl, E'\n'), '(default: PUBLIC EXECUTE)') as grants
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname = 'public' and p.proname = 'run_task_health_check';
-```
-
-**Paste back: `grants`.** The migration must restate exactly these.
-
-### A4. Every trigger that can reach `notifications`
-
-```sql
-select
-  c.relname            as table_name,
-  t.tgname             as trigger_name,
-  t.tgenabled          as enabled,
-  pg_get_triggerdef(t.oid) as definition
-from pg_trigger t
-join pg_class c on c.oid = t.tgrelid
-join pg_namespace n on n.oid = c.relnamespace
-where not t.tgisinternal
-  and (c.relname = 'notifications' or pg_get_triggerdef(t.oid) ilike '%notification%')
-order by c.relname, t.tgname;
-```
-
-**Paste back: every row.** A trigger on `notifications` that fans out to a
-webhook would be a delivery path the application layer cannot see.
-
-### A5. Outbound delivery attached to notification inserts
-
-```sql
--- Does the database make outbound HTTP at all?
-select extname, extversion from pg_extension
- where extname in ('pg_net', 'http', 'pg_cron', 'supabase_vault');
-
--- Supabase Database Webhooks are implemented as triggers calling this schema.
-select n.nspname, p.proname
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname in ('supabase_functions', 'net')
- order by 1, 2;
-
--- Any function body anywhere that mentions both notifications and an HTTP call.
-select n.nspname, p.proname
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname not in ('pg_catalog', 'information_schema')
-   and p.prosrc ilike '%notifications%'
-   and (p.prosrc ilike '%net.http%' or p.prosrc ilike '%supabase_functions%'
-        or p.prosrc ilike '%http_post%' or p.prosrc ilike '%webhook%')
- order by 1, 2;
-```
-
-**Paste back: all three result sets, including empty ones** (an empty result is
-the answer I need, and I cannot distinguish "empty" from "not run").
-
-### A6. Everything else that writes to `notifications`
-
-```sql
-select n.nspname as schema, p.proname as function_name, p.prosecdef as security_definer
-from pg_proc p
-join pg_namespace n on n.oid = p.pronamespace
-where n.nspname not in ('pg_catalog', 'information_schema')
-  and p.prosrc ~* 'insert\s+into\s+(public\.)?notifications'
-order by 1, 2;
-```
-
-**Paste back: every row.** Expected: `transition_task_review` (human-invoked,
-must keep notifying) and `run_task_health_check`. Anything else is a writer
-nobody has accounted for.
-
-### A7. Is escalation history stored anywhere but `notifications`?
-
-This decides whether the migration may simply delete the insert or must add a
-`task_activity_log` write in its place.
-
-```sql
--- What actions the activity log already records.
-select action, count(*) as rows,
-       min(created_at) as first_seen, max(created_at) as last_seen
-  from public.task_activity_log
- group by action
- order by rows desc;
-
--- Rows the log holds with no human actor — i.e. written by the system.
-select action, count(*) as rows, max(created_at) as last_seen
-  from public.task_activity_log
- where actor_id is null
- group by action
- order by rows desc;
-
--- The shape and volume of what the job has been writing.
-select type, count(*) as rows,
-       min(created_at) as first_seen, max(created_at) as last_seen,
-       count(*) filter (where is_read) as read_rows
-  from public.notifications
- where type in ('escalation','overdue','stale_flag','morning_digest','evening_digest')
- group by type
- order by rows desc;
-```
-
-**Paste back: all three result sets.**
-If the second returns rows whose `action` looks like an escalation, the job
-already records history and the migration only deletes the notification insert.
-**If it returns nothing, the notification row IS the only record** and deleting
-the insert would destroy history rather than relocate it — the migration must
-then add the log write in the same statement, and I need A1's body to do it.
-
-### A8. Column and type definitions the filter depends on
-
-```sql
-select column_name, data_type, udt_name, is_nullable, column_default
-  from information_schema.columns
- where table_schema = 'public' and table_name = 'notifications'
- order by ordinal_position;
-
-select t.typname, e.enumlabel, e.enumsortorder
-  from pg_type t join pg_enum e on e.enumtypid = t.oid
- where t.typname = 'notification_type'
- order by e.enumsortorder;
-
-select indexname, indexdef
-  from pg_indexes
- where schemaname = 'public' and tablename = 'notifications';
-```
-
-**Paste back: all three.** The enum labels confirm the five suppressed values
-still exist and that no sixth system type has been added since; the index list
-decides whether Part C is needed at all.
+**A7c is the one that matters most.** If the activity log holds system-written
+(actor-less) escalation rows, the migration only deletes the notification
+insert. If it holds none, the notification row IS the only record of an
+escalation, and deleting the insert would destroy history rather than relocate
+it — the migration must then add the log write in the same statement, which
+needs A1's body to do correctly.
 
 ---
 
