@@ -36,7 +36,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
   })
 
   test('2. the FK matches task_activity_log\'s uuid primary key', () => {
-    assert.match(sql, /REFERENCES task_activity_log\(id\)/i)
+    assert.match(statements, /REFERENCES public\.task_activity_log\(id\)/i)
     assert.match(sql, /activity_log_id uuid/i)
     // The type is not a guess: task_attachments already declares the same FK.
     const precedent = read('supabase/migrations/20260619_create_task_attachments.sql')
@@ -44,27 +44,49 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
   })
 
   test('2b. ON DELETE SET NULL, so a deleted activity row cannot delete a notification', () => {
-    assert.match(alterStatement, /ON DELETE SET NULL/i)
+    assert.match(statements, /ON DELETE SET NULL/i)
     assert.equal(/ON DELETE CASCADE/i.test(statements), false,
       'CASCADE would let a user deletion remove other people\'s notifications')
   })
 
   test('3. no backfill of any kind', () => {
-    assert.equal(/\bUPDATE\s+notifications/i.test(sql), false)
-    assert.equal(/\bINSERT\s+INTO/i.test(sql), false)
-    assert.equal(/\bDELETE\s+FROM/i.test(sql), false)
+    // The function body legitimately inserts and updates as part of the
+    // workflow it has always performed. What must not exist is a statement that
+    // writes historical notifications — an UPDATE of the new column, or an
+    // INSERT/DELETE against `notifications` outside the function.
+    // String literals stripped first: the drift guard SEARCHES the live
+    // definition for the text "insert into public.notifications ...", and that
+    // search string is data, not a statement.
+    const outsideFn = statements
+      .slice(0, statements.indexOf('create or replace function'))
+      .replace(/'(?:[^']|'')*'/g, "''")
+    assert.equal(/\bUPDATE\b/i.test(outsideFn), false, 'no backfill')
+    assert.equal(/\bINSERT\s+INTO\b/i.test(outsideFn), false)
+    assert.equal(/\bDELETE\s+FROM\b/i.test(outsideFn), false)
+    assert.equal(/update\s+public\.notifications|update\s+notifications\s+set/i.test(statements), false,
+      'nothing sets activity_log_id on an existing row')
   })
 
   test('4. no trigger, and nothing that links by timestamp', () => {
-    assert.equal(/CREATE\s+(OR REPLACE\s+)?TRIGGER/i.test(sql), false)
-    assert.equal(/CREATE\s+(OR REPLACE\s+)?FUNCTION/i.test(sql), false)
-    // The only mentions of created_at are prose explaining why it is NOT used.
-    assert.equal(/created_at/i.test(statements), false)
+    assert.equal(/CREATE\s+(OR REPLACE\s+)?TRIGGER/i.test(statements), false)
+    // It DOES replace one function — transition_task_review, step 3 — and only
+    // that one. The point was never "no functions"; it is that nothing INFERS a
+    // link, which the next two assertions are about.
+    const created = [...statements.matchAll(/create or replace function\s+([\w.]+)/gi)].map(m => m[1])
+    assert.deepEqual(created, ['public.transition_task_review'])
+    // The link is v_log_id — the id the same transaction just wrote.
+    assert.match(statements, /activity_log_id\)\s*\n\s*values \([^)]*v_log_id\)/)
+    assert.equal(/created_at/i.test(statements), false, 'no timestamp is consulted anywhere')
   })
 
   test('4b. it touches neither task_activity_log nor RLS', () => {
     assert.equal(/ALTER TABLE\s+task_activity_log/i.test(statements), false)
-    assert.equal(/POLICY|ROW LEVEL SECURITY|GRANT|REVOKE/i.test(statements), false)
+    // GRANT/REVOKE appear only as the function's OWN pre-existing grants,
+    // restated unchanged because CREATE OR REPLACE does not alter them.
+    assert.equal(/POLICY|ROW LEVEL SECURITY/i.test(statements), false)
+    const grantLines = statements.split('\n').filter(l => /^\s*(grant|revoke)\b/i.test(l))
+    assert.equal(grantLines.length, 2)
+    for (const l of grantLines) assert.match(l, /transition_task_review\(uuid, text, text\)/)
   })
 
   test('4c. the one index is partial, and named by the repository convention', () => {
@@ -178,12 +200,89 @@ describe('7-12. every future notification records the id it already holds', () =
     }
   })
 
-  test('the approval RPC is deliberately NOT replaced here', () => {
-    // transition_task_review() writes both rows in one transaction and already
-    // holds v_log_id, so linking it is one line — but replacing a live function
-    // from the repository's copy rather than its verified production definition
-    // is the mistake this project has already paid for once.
-    assert.equal(/transition_task_review/i.test(statements), false)
-    assert.match(sql, /NO CHANGE TO `transition_task_review\(\)`/)
+  test('10. the approval RPC records the id it already holds, atomically', () => {
+    // It writes the activity row and the notification in ONE transaction and
+    // captures the id in v_log_id, so there is no window in which the
+    // notification exists unlinked.
+    assert.match(statements, /returning id into v_log_id/)
+    assert.match(statements, /values \(v_recipient, p_task_id, 'task_acknowledged', v_title, v_task\.title, true, v_log_id\)/)
+    // All three of its events go through that one insert.
+    for (const suffix of [
+      ' submitted task for approval', ' approved and completed task', ' returned task to Working',
+    ]) {
+      assert.ok(statements.includes(suffix), `${suffix} is still composed by this function`)
+    }
+  })
+
+  test('10b. the replacement REFUSES to run against a definition it did not expect', () => {
+    // No pg_get_functiondef capture of this function exists in the repository,
+    // so the body came from 20260833000000 — the migration that created it and
+    // the last one to define it. That is a defensible source and an unverified
+    // one, so the migration checks the live definition before overwriting it
+    // rather than trusting the assumption.
+    assert.match(statements, /pg_get_functiondef\('public\.transition_task_review\(uuid, text, text\)'::regprocedure\)/)
+    assert.match(statements, /TRANSITION_TASK_REVIEW_DRIFTED/)
+    assert.match(statements, /TRANSITION_TASK_REVIEW_ALREADY_LINKED/)
+    assert.match(statements, /TRANSITION_TASK_REVIEW_MISSING/)
+    // And the guard runs BEFORE the replacement.
+    assert.ok(statements.indexOf('TRANSITION_TASK_REVIEW_DRIFTED')
+      < statements.indexOf('create or replace function public.transition_task_review'))
+  })
+
+  test('10c. THE MECHANICAL COMPARISON: the body differs by exactly two lines', () => {
+    // Re-derived here from the two files rather than asserted from memory. If a
+    // future edit changes anything else in that function, this fails and names
+    // the extra lines.
+    const source = read('supabase/migrations/20260833000000_task_creator_approval.sql')
+    const fnOf = (text: string) => {
+      const start = text.indexOf('create or replace function public.transition_task_review(')
+      assert.ok(start >= 0, 'function not found')
+      const end = text.indexOf('\n$$;', start)
+      assert.ok(end > start, 'function end not found')
+      return text.slice(start, end + 4).split('\n')
+    }
+    const before = fnOf(source)
+    const after = fnOf(sql)
+    assert.equal(before.length, after.length, 'no line was added or removed')
+
+    const changed: number[] = []
+    for (let i = 0; i < before.length; i++) if (before[i] !== after[i]) changed.push(i)
+    assert.equal(changed.length, 2,
+      `expected exactly 2 changed lines, got ${changed.length}: ` +
+      changed.map(i => `\n  - ${before[i]}\n  + ${after[i]}`).join(''))
+
+    assert.equal(before[changed[0]].trim(),
+      "insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)")
+    assert.equal(after[changed[0]].trim(),
+      "insert into public.notifications (user_id, task_id, type, title, body, is_push_sent, activity_log_id)")
+    assert.equal(before[changed[1]].trim(),
+      "values (v_recipient, p_task_id, 'task_acknowledged', v_title, v_task.title, true);")
+    assert.equal(after[changed[1]].trim(),
+      "values (v_recipient, p_task_id, 'task_acknowledged', v_title, v_task.title, true, v_log_id);")
+  })
+
+  test('10d. signature, security mode, search_path and grants are unchanged', () => {
+    const source = read('supabase/migrations/20260833000000_task_creator_approval.sql')
+    for (const line of [
+      'p_task_id uuid,', 'p_action  text,', 'p_note    text default null',
+      'returns jsonb', 'language plpgsql', 'security definer',
+      'set search_path = public, pg_temp',
+    ]) {
+      assert.ok(statements.includes(line), `${line} must be preserved`)
+      assert.ok(source.includes(line))
+    }
+    assert.match(statements, /revoke all\s+on function public\.transition_task_review\(uuid, text, text\) from public, anon;/)
+    assert.match(statements, /grant execute on function public\.transition_task_review\(uuid, text, text\) to authenticated;/)
+  })
+
+  test('10e. the steps run in the order the column requires', () => {
+    // Replacing the function first fails with 42703: its body references a
+    // column that does not exist yet. Column, then FK and index, then function.
+    const col = statements.indexOf('ADD COLUMN IF NOT EXISTS activity_log_id')
+    const fk = statements.indexOf('ADD CONSTRAINT notifications_activity_log_id_fkey')
+    const idx = statements.indexOf('CREATE INDEX IF NOT EXISTS notifications_activity_log_id_idx')
+    const fn = statements.indexOf('create or replace function public.transition_task_review')
+    assert.ok(col >= 0 && fk > col && idx > fk && fn > idx,
+      `order is wrong: column=${col} fk=${fk} index=${idx} function=${fn}`)
   })
 })

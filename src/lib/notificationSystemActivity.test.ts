@@ -287,13 +287,21 @@ describe('the read side excludes system types too', () => {
       }
       if (/insert\s+into\s+(public\.)?notifications/i.test(sql)) inserters.push(f)
     }
-    // Exactly one, and it is the human-invoked creator-approval RPC.
-    assert.deepEqual(inserters, ['20260833000000_task_creator_approval.sql'])
-    const rpc = read(join(dir, inserters[0]))
-    assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), 'it acts as a signed-in person')
-    assert.ok(rpc.includes("type"), 'and writes a task type, never a system one')
-    for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
-      assert.equal(rpc.includes(`'${t}'`), false, `the RPC must not write ${t}`)
+    // TWO files, and they are the SAME function: 20260833000000 created the
+    // human-invoked creator-approval RPC, and 20261016000000 replaces it to add
+    // activity_log_id to that one insert. Nothing else in the repository writes
+    // a notification from SQL.
+    assert.deepEqual(inserters, [
+      '20260833000000_task_creator_approval.sql',
+      '20261016000000_notifications_link_activity_log.sql',
+    ])
+    for (const f of inserters) {
+      const rpc = read(join(dir, f))
+      assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
+      assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
+        assert.equal(rpc.includes(`'${t}'`), false, `${f} must not write ${t}`)
+      }
     }
   })
 
