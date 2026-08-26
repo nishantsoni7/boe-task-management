@@ -1,6 +1,7 @@
 'use client'
 
-import { requestAssignmentNotification, ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
+import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
@@ -57,6 +58,10 @@ export function MeetingTaskModal({
   const [members, setMembers]     = useState<MemberOption[]>([])
   const [saving, setSaving]       = useState(false)
   const [error, setError]         = useState<string | null>(null)
+  // Outcome B: the created task's id, held only while the notice is on screen.
+  // Its presence also disables Create, so the still-filled form cannot be
+  // submitted a second time and produce a duplicate task.
+  const [createdTaskId, setCreatedTaskId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -69,7 +74,11 @@ export function MeetingTaskModal({
     return () => { active = false }
   }, [supabase])
 
-  const canSubmit = title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
+  // `createdTaskId` disables Create too: at that point the task already exists
+  // and the form still holds its values, so a second press would make a second
+  // task. Retry lives in the notice and touches only the notification.
+  const canSubmit = createdTaskId === null
+    && title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   const handleCreate = async () => {
     if (!canSubmit || saving) return
@@ -141,11 +150,12 @@ export function MeetingTaskModal({
       return
     }
 
-    // Same treatment this modal already gives a failed link: the task exists
-    // and is kept, and the modal stays open saying exactly what did not happen.
-    // Closing on a silent failure is how the assignee ended up never told.
+    // Outcome B. Same treatment this modal already gives a failed link: the
+    // task exists and is kept, and the modal stays open saying exactly what did
+    // not happen — with a Retry that touches only the notification. Closing on
+    // a silent failure is how the assignee ended up never told.
     if (!notified.ok) {
-      setError(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE)
+      setCreatedTaskId(task.id)
       setSaving(false)
       return
     }
@@ -161,6 +171,14 @@ export function MeetingTaskModal({
       onClose={onClose}
       width={540}
     >
+      {createdTaskId && (
+        <AssignmentNotificationNotice
+          variant="inline"
+          taskId={createdTaskId}
+          onResolved={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
+          onDismiss={() => { const id = createdTaskId; setCreatedTaskId(null); onCreated(id) }}
+        />
+      )}
       {error && <MeetingModalError message={error} />}
 
       <MeetingField label="Task Title">

@@ -103,8 +103,20 @@ export const ASSIGNMENT_OUTCOME_STATUS: Record<AssignmentNotificationOutcome['st
 
 // ─── The browser's side of the boundary ──────────────────────────────────────
 
+/**
+ * The one sentence every creation screen shows for outcome B.
+ *
+ * IT SAYS THE TASK EXISTS, FIRST. A generic "Task creation failed" here would
+ * be worse than saying nothing: the task IS created, so a user who believes
+ * otherwise submits the form again and now there are two. The wording is fixed
+ * and shared so no screen can drift into the dangerous phrasing.
+ */
 export const ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE =
-  'Task created, but the assignee could not be notified. Please tell them directly.'
+  'Task created, but the assignee notification could not be sent.'
+
+/** Shown in place of the warning once a retry succeeds. */
+export const ASSIGNMENT_NOTIFICATION_RECOVERED_MESSAGE =
+  'Assignee notified.'
 
 export type AssignmentNotificationRequest =
   | { ok: true; status: 'created' | 'skipped_self' | 'skipped_duplicate' }

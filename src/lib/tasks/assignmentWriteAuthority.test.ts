@@ -20,7 +20,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   requestAssignmentNotification,
@@ -263,7 +263,7 @@ describe('6-8. exactly one notification, and only when there is somebody to tell
     assert.ok(src.includes(".eq('type', TASK_ASSIGNMENT_NOTIFICATION_TYPE)"))
     assert.equal(/created_at/.test(src), false, 'no time window is involved')
     // And the limit of the guarantee is stated where somebody will read it.
-    assert.ok(src.includes('NOT concurrency-safe'))
+    assert.ok(src.includes('THIS IS NOT FULLY IDEMPOTENT'))
   })
 
   test('8. a self-task notifies nobody', async () => {
@@ -438,6 +438,130 @@ describe('11-12. a failed notification is reported, and costs nobody their task'
       assert.equal(/\.delete\(\)/.test(after), false, `${path} must not delete the task`)
       assert.equal(/rollback/i.test(after), false, `${path} must not roll the task back`)
     }
+  })
+})
+
+// ── Gates 5 & 6: the recorded limitation, and the documented retry ───────────
+
+describe('the idempotency limitation is recorded accurately, not overstated', () => {
+  const writerRaw = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
+  // The note is a wrapped comment block, so phrases straddle line breaks and a
+  // naive regex misses them. Strip comment leaders and collapse whitespace.
+  const writer = writerRaw.replace(/^\s*\*ical?/gm, '').replace(/^\s*[*/]+/gm, ' ').replace(/\s+/g, ' ')
+
+  test('it says plainly that it is NOT fully idempotent', () => {
+    assert.ok(writer.includes('THIS IS NOT FULLY IDEMPOTENT'))
+    assert.ok(writer.includes('WHAT IT DOES NOT PREVENT'))
+  })
+
+  test('it names both what it prevents and what it does not', () => {
+    assert.ok(/sequential duplicates/i.test(writer), 'names what it prevents')
+    assert.ok(/concurrent duplicates/i.test(writer), 'names what it does not')
+    assert.ok(/no lock, no upsert and no constraint/i.test(writer))
+  })
+
+  test('it states why the trade is accepted rather than leaving it implied', () => {
+    assert.ok(/duplicate notification is a visible, harmless annoyance/i.test(writer))
+    assert.ok(/missing one is the defect/i.test(writer))
+  })
+
+  test('it names the migration that would close it, and that it is not here', () => {
+    assert.ok(writer.includes('create unique index'))
+    assert.ok(writer.includes("where type = 'task_assigned'"))
+    assert.ok(/on conflict do nothing/i.test(writer))
+    assert.ok(/deliberately NOT part of this hotfix/i.test(writer))
+  })
+
+  test('no claim of full idempotency appears anywhere in the change', () => {
+    for (const path of [
+      'src/lib/tasks/assignmentNotificationWriter.server.ts',
+      'src/lib/tasks/assignmentNotification.ts',
+      'src/app/api/tasks/[id]/notify-assignment/route.ts',
+      'src/components/tasks/AssignmentNotificationNotice.tsx',
+    ]) {
+      const text = read(path)
+      assert.equal(/fully idempotent(?! )/i.test(text.replace(/NOT FULLY IDEMPOTENT/g, '')), false,
+        `${path} must not claim full idempotency`)
+      assert.equal(/concurrency[- ]safe/i.test(text.replace(/NOT concurrency-safe/gi, '')), false,
+        `${path} must not claim concurrency safety`)
+    }
+  })
+
+  test('an existing notification is success everywhere it is reported', () => {
+    // The operation, the route's status map, the browser helper and the copy
+    // route must all agree that a row already present is a good outcome.
+    assert.ok(writerRaw.includes("return { status: 'skipped_duplicate' }"))
+    assert.ok(read('src/lib/tasks/assignmentNotification.ts')
+      .includes("status === 'skipped_duplicate'"))
+    assert.ok(read('src/app/api/tasks/[id]/copy/route.ts')
+      .includes("notified.status === 'skipped_duplicate'"))
+  })
+})
+
+describe('the one-time retry for the existing task is documented, not coded', () => {
+  const RUNBOOK = 'docs/runbooks/retry-one-assignment-notification.md'
+  const doc = read(RUNBOOK)
+
+  test('the production task id appears in the runbook', () => {
+    assert.ok(doc.includes('87d87668-b434-43b8-a2d6-e94afc4bb855'))
+  })
+
+  test('and NOWHERE in application code', () => {
+    // A production identifier compiled into the application is a fact that goes
+    // stale and needs a deploy to correct. Tests are exempt — THIS file names it
+    // in the assertion below, and a test is not shipped, executed against
+    // production, or able to act on it.
+    const isShipped = (f: string) => !/\.test\.tsx?$/.test(f)
+    const offenders: string[] = []
+    for (const dir of ['src']) {
+      const stack = [join(process.cwd(), dir)]
+      while (stack.length) {
+        const d = stack.pop()!
+        for (const entry of readdirSync(d)) {
+          const full = join(d, entry)
+          if (statSync(full).isDirectory()) { stack.push(full); continue }
+          if (!/\.(ts|tsx)$/.test(full) || !isShipped(full)) continue
+          if (readFileSync(full, 'utf8').includes('87d87668-b434-43b8-a2d6-e94afc4bb855')) {
+            offenders.push(full)
+          }
+        }
+      }
+    }
+    assert.deepEqual(offenders, [])
+  })
+
+  test('it uses the authenticated route, not a direct SQL insert', () => {
+    assert.ok(doc.includes('/notify-assignment'))
+    assert.equal(/insert into[\s\S]*notifications/i.test(doc), false,
+      'the runbook must not hand anybody a raw INSERT')
+  })
+
+  test('it lists the five checks the route makes before writing', () => {
+    for (const phrase of [
+      'caller is authenticated',
+      'task still exists',
+      'caller is authorized',
+      'recipient is derived from the task',
+      'already exists',
+    ]) {
+      assert.ok(doc.toLowerCase().includes(phrase.toLowerCase()), `missing: ${phrase}`)
+    }
+  })
+
+  test('it refuses a bulk backfill and says why', () => {
+    assert.ok(/No backfill/i.test(doc))
+    assert.ok(/unread/i.test(doc), 'names the consequence of one')
+  })
+
+  test('nothing in this repository executes it', () => {
+    const offenders: string[] = []
+    for (const entry of readdirSync(join(process.cwd(), 'scripts'))) {
+      const full = join(process.cwd(), 'scripts', entry)
+      if (!statSync(full).isFile()) continue
+      const text = readFileSync(full, 'utf8')
+      if (/notify-assignment|task_assigned/.test(text)) offenders.push(entry)
+    }
+    assert.deepEqual(offenders, [], 'no script performs the retry or writes assignment rows')
   })
 })
 

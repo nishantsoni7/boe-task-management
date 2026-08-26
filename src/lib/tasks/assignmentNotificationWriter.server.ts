@@ -72,16 +72,44 @@ export type AssignmentNotificationStore = {
  * somebody else assigned to you is still a notification you should get, even if
  * an admin is the one triggering this call.
  *
- * IDEMPOTENCY, AND ITS LIMIT. A task is assigned once, so ANY existing
- * `task_assigned` row for (task, recipient) makes this a repeat — no time
- * window is needed, which makes this strictly stronger than the two-minute
- * window /api/finance/notify uses. It is a read followed by a write, so it is
- * NOT concurrency-safe: two simultaneous calls can both read "none" and both
- * insert. Closing that needs a unique index on
- * (user_id, task_id) where type = 'task_assigned' — a migration, deliberately
- * not added here. In practice the calls are sequential (one per task creation,
- * plus at most one retry from the same browser), and a duplicate row is a
- * cosmetic fault while a missing one is the bug being fixed.
+ * IDEMPOTENCY — WHAT IS AND IS NOT GUARANTEED.
+ *
+ * THIS IS NOT FULLY IDEMPOTENT. It is a SELECT followed by an INSERT with
+ * nothing between them, so the guarantee has a precise shape and it is smaller
+ * than the word "idempotent" implies. Stated plainly so nobody has to infer it:
+ *
+ *   WHAT IT PREVENTS. Sequential duplicates — the ordinary case, and every case
+ *   this feature actually produces. A retry after a lost response, a second
+ *   press of the Retry button, the copy route notifying in-process followed by
+ *   a browser retry: each of those reads the row the previous one wrote and
+ *   returns `skipped_duplicate` without writing.
+ *
+ *   WHAT IT DOES NOT PREVENT. Concurrent duplicates. Two requests that overlap
+ *   can both read "none" and both insert, and the result is two identical
+ *   notifications for one assignment. Nothing here serialises them: there is no
+ *   lock, no upsert and no constraint.
+ *
+ *   WHY THAT IS ACCEPTED, FOR NOW. A duplicate notification is a visible,
+ *   harmless annoyance. A missing one is the defect this whole change exists to
+ *   fix — an assignee given work and never told. Given a choice between the two
+ *   failure modes under concurrency, this takes the duplicate.
+ *
+ *   WHAT WOULD CLOSE IT. A partial unique index —
+ *     create unique index ... on notifications (user_id, task_id)
+ *       where type = 'task_assigned';
+ *   plus an `on conflict do nothing` insert. That is a MIGRATION and is
+ *   deliberately NOT part of this hotfix; it is recorded for a separate
+ *   decision, because it also has to answer what to do about any duplicate rows
+ *   already in production, which the index would refuse to be created over.
+ *
+ * The identity itself is stronger than the repository's other dedup: a task is
+ * assigned once, so ANY existing `task_assigned` row for (task, recipient) is a
+ * repeat however old — no time window, where /api/finance/notify uses two
+ * minutes.
+ *
+ * AN EXISTING ROW IS SUCCESS. `skipped_duplicate` carries HTTP 200 and every
+ * caller treats it as notified. It is never reported as an error, because
+ * nothing is wrong: the assignee has their notification.
  *
  * A FAILED DUPLICATE CHECK DOES NOT BLOCK THE WRITE. Same direction
  * /api/finance/notify takes: a read that errored tells us nothing about what

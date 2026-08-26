@@ -209,7 +209,15 @@ export async function POST(
     assigneeName: assignee.full_name,
     // Reported, not swallowed. The caller can say "copied, but not notified"
     // instead of presenting the whole operation as clean.
+    //
+    // `assignmentNotified` means strictly "a notification row exists for the
+    // assignee" — true for a fresh insert and equally for one that was already
+    // there. It is FALSE for `skipped_self`, and that is accurate: a task whose
+    // assignee is its own creator notifies nobody, by rule.
     assignmentNotified: notified.status === 'created' || notified.status === 'skipped_duplicate',
+    // …which is why a caller deciding whether to WARN should read this instead.
+    // Only `error` leaves something outstanding to retry.
+    assignmentNotificationPending: notified.status === 'error',
     assignmentNotification: notified.status,
   })
 }

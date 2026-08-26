@@ -1,6 +1,7 @@
 'use client'
 
-import { requestAssignmentNotification, ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE } from '@/lib/tasks/assignmentNotification'
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
+import { AssignmentNotificationNotice, AssignmentNotificationRecovered } from '@/components/tasks/AssignmentNotificationNotice'
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
@@ -37,6 +38,10 @@ export default function CreateTaskPage() {
   const [success,        setSuccess]        = useState(false)
   const [createdId,      setCreatedId]      = useState<string | null>(null)
   const [submitError,    setSubmitError]    = useState<string | null>(null)
+  // OUTCOME B. The task id is all this holds — no recipient, no title, no
+  // notification content — and it is what the Retry action sends back.
+  const [notifyFailedFor, setNotifyFailedFor] = useState<string | null>(null)
+  const [notifyRecovered, setNotifyRecovered] = useState(false)
   const [isMobile,       setIsMobile]       = useState(false)
   const [attachFiles,    setAttachFiles]    = useState<File[]>([])
   const [attachError,    setAttachError]    = useState<string | null>(null)
@@ -110,6 +115,8 @@ export default function CreateTaskPage() {
     if (!title.trim() || !assigneeId || !priority) return
     setLoading(true)
     setSubmitError(null)
+    setNotifyFailedFor(null)
+    setNotifyRecovered(false)
 
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return
@@ -196,9 +203,12 @@ export default function CreateTaskPage() {
     // The task is KEPT — it was created successfully and deleting it over a
     // notification would lose real work. What must not happen is the screen
     // reporting unqualified success while the assignee sits unaware.
+    // Outcome B, NOT outcome A: the success banner still shows, and the warning
+    // sits beside it saying exactly what did not happen. Putting this in
+    // `submitError` would read as "task creation failed" and invite a duplicate.
     if (!notified.ok) {
       console.error('[tasks create] assignment notification failed:', notified.reason)
-      setSubmitError(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE)
+      setNotifyFailedFor(task.id)
     }
 
     // Upload attachments and link to the new task. Files go up a few at a time
@@ -298,6 +308,23 @@ export default function CreateTaskPage() {
           >
             ×
           </button>
+        </div>
+      )}
+
+      {/* Outcome B — created, not notified. Sits BELOW the success banner so
+          both facts are on screen at once. */}
+      {notifyFailedFor && (
+        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
+          <AssignmentNotificationNotice
+            taskId={notifyFailedFor}
+            onResolved={() => { setNotifyFailedFor(null); setNotifyRecovered(true) }}
+            onDismiss={() => setNotifyFailedFor(null)}
+          />
+        </div>
+      )}
+      {notifyRecovered && (
+        <div style={{ maxWidth: isMobile ? '100%' : '90%' }}>
+          <AssignmentNotificationRecovered onDismiss={() => setNotifyRecovered(false)} />
         </div>
       )}
 

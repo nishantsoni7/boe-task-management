@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
+import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import { createClient } from '@/lib/supabase/client'
 import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
 import {
@@ -162,6 +163,10 @@ export default function TaskDetailPage() {
   const [copySubmitting, setCopySubmitting] = useState(false)
   const [copyError,      setCopyError]      = useState<string | null>(null)
   const [lastCopied,     setLastCopied]     = useState<{ id: string; name: string } | null>(null)
+  // Copy outcome B: the copied task exists, its assignee was not notified. Held
+  // separately from `lastCopied` because that chip auto-clears after ten
+  // seconds and a partial failure must not disappear on a timer.
+  const [copyNotifyFailedFor, setCopyNotifyFailedFor] = useState<string | null>(null)
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
   // The "View new task" chip is a convenience, not a banner — auto-clear it after a short while.
@@ -1047,12 +1052,22 @@ export default function TaskDetailPage() {
       return
     }
 
-    const { taskId, assigneeName } = await res.json()
+    const { taskId, assigneeName, assignmentNotification } = await res.json()
     const name = assigneeName ?? teamMembers.find(m => m.id === args.assigneeId)?.full_name ?? 'the assignee'
     setCopyModalOpen(false)
     setCopySubmitting(false)
     setLastCopied({ id: taskId, name })
-    showToast(`Task assigned to ${name}`, 'success')
+
+    // Outcome B on the copy path. `error` is the only status with anything to
+    // retry: `created` and `skipped_duplicate` mean a notification exists, and
+    // `skipped_self` means the copy was assigned to its own creator, where not
+    // notifying is the rule rather than a fault.
+    if (assignmentNotification === 'error') {
+      setCopyNotifyFailedFor(taskId)
+      showToast(`Task assigned to ${name}, but they were not notified`, 'error')
+    } else {
+      showToast(`Task assigned to ${name}`, 'success')
+    }
     await loadLog(task.id)   // show the new cross-reference entry on the source task
   }
 
@@ -3021,6 +3036,19 @@ export default function TaskDetailPage() {
       )}
 
       {/* Success action chip — persists after the toast fades so the new task stays reachable */}
+      {copyNotifyFailedFor && (
+        <div style={{
+          position: 'fixed', bottom: '120px', left: '50%', transform: 'translateX(-50%)',
+          zIndex: 9998, maxWidth: '520px', width: 'calc(100% - 32px)',
+        }}>
+          <AssignmentNotificationNotice
+            taskId={copyNotifyFailedFor}
+            onResolved={() => { setCopyNotifyFailedFor(null); showToast('Assignee notified.', 'success') }}
+            onDismiss={() => setCopyNotifyFailedFor(null)}
+          />
+        </div>
+      )}
+
       {lastCopied && (
         <div style={{
           position: 'fixed', bottom: '70px', left: '50%', transform: 'translateX(-50%)',
