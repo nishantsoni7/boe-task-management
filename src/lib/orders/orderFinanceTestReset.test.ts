@@ -242,6 +242,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.equal(files.filter(f => f.startsWith('20261011')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261012')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261013')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261015')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .sort()
@@ -266,6 +267,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // tables carry the project's is_test_data marker and cascade from the
       // payment, so the reset and the tombstone reach them unchanged.
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 115. run_task_health_check() stops inserting notifications. It stacks
+      // after 114 for the ordinary reason and touches neither the reset
+      // protocol nor the deletion claim: it replaces one function body and
+      // reads or writes no table either of them cares about.
+      '20261015000000_task_health_check_stops_notifying.sql',
     ])
   })
 

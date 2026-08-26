@@ -638,10 +638,21 @@ describe('the applied migrations are frozen', () => {
       // kept storable for history, and the PNB/Paytm custody event log.
       // Recorded here for the same reason as the five above: this list is exact.
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 115. NOT APPLIED. run_task_health_check() stops writing notifications
+      // nobody can act on: four `overdue`/`escalation` inserts go, the 24h and
+      // 48h branches go with them (they had no other effect), and the three
+      // activity-log writes, both CONTINUEs, the stale calculation and every
+      // threshold are preserved byte for byte. It stacks after 114 for the
+      // ordinary reason — the lower-numbered files must not be left behind the
+      // remote's last applied migration — and it depends on nothing in them:
+      // it replaces one function body and touches no table, row, cron entry,
+      // grant or ownership. Recorded here for the same reason as 109-114: this
+      // list is exact, so a new migration cannot appear unnoticed.
+      '20261015000000_task_health_check_stops_notifying.sql',
     ])
   })
 
-  test('109 to 114 are in ascending order, and none is pinned as applied', () => {
+  test('109 to 115 are in ascending order, and none is pinned as applied', () => {
     // The whole reason the module reset lives on this branch rather than on
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
@@ -656,10 +667,11 @@ describe('the applied migrations are frozen', () => {
       '20261012000000_allocation_ledger_as_single_source.sql',
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      '20261015000000_task_health_check_stops_notifying.sql',
     ])
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
-        || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400/.test(file),
+        || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400|2026101500/.test(file),
         `${file} is unapplied and must not be pinned as frozen`)
     }
   })

@@ -15,6 +15,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import {
   HEALTH_CHECK_SIGNATURE,
   PRESERVED_ACTIVITY_NOTES,
@@ -236,5 +238,247 @@ describe('an empty or unrelated file fails loudly rather than silently passing',
       assert.equal(typeof f.rule, 'string')
       assert.ok(f.message.length > 0, 'every finding explains itself')
     }
+  })
+})
+
+
+// ─── The real migration ──────────────────────────────────────────────────────
+//
+// Everything above proves the RULES work. This proves the MIGRATION does.
+
+const ROOT = process.cwd()
+const MIGRATION_FILE = '20261015000000_task_health_check_stops_notifying.sql'
+const MIGRATION_PATH = join(ROOT, 'supabase/migrations', MIGRATION_FILE)
+const BASELINE_PATH  = join(ROOT, 'docs/proposals/run_task_health_check.production.sql')
+
+const MIGRATION = readFileSync(MIGRATION_PATH, 'utf8')
+const BASELINE  = readFileSync(BASELINE_PATH, 'utf8')
+
+/** Code lines only: comments stripped, trimmed, blanks dropped. */
+const codeLines = (sql: string): string[] =>
+  stripSqlComments(sql).split('\n').map(l => l.trim()).filter(l => l.length > 0)
+
+/** Multiset difference: what is in `a` that `b` does not also have, counting duplicates. */
+function missingFrom(a: string[], b: string[]): string[] {
+  const pool = new Map<string, number>()
+  for (const line of b) pool.set(line, (pool.get(line) ?? 0) + 1)
+  const out: string[] = []
+  for (const line of a) {
+    const left = pool.get(line) ?? 0
+    if (left > 0) pool.set(line, left - 1)
+    else out.push(line)
+  }
+  return out
+}
+
+describe('the migration satisfies every rule', () => {
+  test('zero audit findings', () => {
+    const findings = auditHealthCheckMigration(MIGRATION)
+    assert.deepEqual(findings, [],
+      findings.map(f => `${f.rule}: ${f.message}`).join('\n'))
+  })
+
+  // The twelve numbered requirements, asserted individually so a failure names
+  // the requirement rather than "the audit failed".
+  const code = codeLines(MIGRATION).join('\n')
+
+  test('1. replaces public.run_task_health_check()', () => {
+    assert.ok(code.includes('CREATE OR REPLACE FUNCTION public.run_task_health_check()'))
+    assert.equal(/run_task_health_check\s*\(\s*\w/.test(code), false, 'no arguments')
+  })
+
+  test('2. contains no INSERT INTO notifications', () => {
+    assert.equal(/insert\s+into\s+notifications/i.test(code), false)
+  })
+
+  test('3. creates no overdue or escalation notification rows', () => {
+    assert.equal(/\bnotifications\b/i.test(code), false, 'the table is not referenced at all')
+    for (const t of ['Task overdue - no action taken', 'Task escalated to senior',
+                     'Danger zone - task needs update', 'Caution - task update overdue']) {
+      assert.equal(code.includes(t), false, `notification title still present: ${t}`)
+    }
+  })
+
+  test('4. the overdue activity-log entry remains, guard and actor included', () => {
+    assert.ok(code.includes("'Auto-escalated: overdue with no action for 24 hours'"))
+    assert.ok(code.includes('INSERT INTO task_activity_log (task_id, actor_id, action, note)'))
+    // Both the dedup guard and the write survive: the note appears twice, once
+    // in the IF NOT EXISTS and once in the VALUES.
+    assert.equal(
+      (code.match(/Auto-escalated: overdue with no action for 24 hours/g) ?? []).length, 2)
+  })
+
+  test('5. the 72-hour activity-log entry remains, guard and actor included', () => {
+    assert.equal((code.match(/Auto-escalated: no update for 72 hours/g) ?? []).length, 2)
+    assert.ok(code.includes('IF hours_since_update >= 72 THEN'))
+  })
+
+  test('6. the stale_flagged activity-log entry remains', () => {
+    assert.equal(
+      (code.match(/Auto-flagged: same status for 5\+ days with no progress/g) ?? []).length, 2)
+    assert.ok(code.includes("'stale_flagged'"))
+  })
+
+  test('7. the tasks stale UPDATE remains, unchanged', () => {
+    assert.ok(code.includes('UPDATE tasks'))
+    assert.ok(code.includes('SET is_stale = true,'))
+    assert.ok(code.includes('stale_day_count ='))
+    assert.ok(code.includes('FLOOR(EXTRACT(EPOCH FROM (now() - t.last_update_at)) / 86400)'))
+  })
+
+  test('8. waiting tasks still CONTINUE without escalation', () => {
+    assert.ok(code.includes("IF t.status = 'waiting' THEN\nCONTINUE;\nEND IF;"))
+  })
+
+  test('9. the overdue CONTINUE remains', () => {
+    // Immediately after the overdue branch's guarded log write, as in production.
+    assert.ok(code.includes('END IF;\nCONTINUE;\nEND IF;'))
+    assert.equal((code.match(/^CONTINUE;$/gm) ?? []).length, 2, 'exactly the two originals')
+  })
+
+  test('10. no historical notification deletion', () => {
+    assert.equal(/delete\s+from/i.test(code), false)
+    assert.equal(/truncate/i.test(code), false)
+  })
+
+  test('11. no cron modification', () => {
+    assert.equal(/\bcron\b/i.test(code), false)
+  })
+
+  test('12. no SECURITY DEFINER', () => {
+    assert.equal(/security\s+definer/i.test(code), false)
+    // And INVOKER is not restated: pg_get_functiondef omits the clause for an
+    // invoker function, so the faithful copy has neither word.
+    assert.equal(/security\s+invoker/i.test(code), false)
+  })
+
+  test('identity: plpgsql, void, and no proconfig', () => {
+    assert.ok(code.includes('LANGUAGE plpgsql'))
+    assert.ok(code.includes('RETURNS void'))
+    assert.equal(/set\s+search_path/i.test(code), false)
+  })
+
+  test('no ownership, grant or revoke statement', () => {
+    assert.equal(/\bowner\s+to\b|\bgrant\b|\brevoke\b/i.test(code), false)
+  })
+})
+
+describe('line-by-line against the production baseline', () => {
+  // The permitted removals, exactly: four notification inserts (9 lines each)
+  // and the two now-empty ELSIF branch headers.
+  const REMOVED_INSERT_BLOCK_LINES = 9
+  const EXPECTED_REMOVED = 4 * REMOVED_INSERT_BLOCK_LINES + 2
+
+  const base = codeLines(BASELINE)
+  const mig  = codeLines(MIGRATION)
+  const removed = missingFrom(base, mig)
+  const added   = missingFrom(mig, base)
+
+  test('NOTHING was added or altered', () => {
+    assert.deepEqual(added, [],
+      `these lines exist in the migration but not in production:\n${added.join('\n')}`)
+  })
+
+  test('exactly 38 lines were removed', () => {
+    assert.equal(removed.length, EXPECTED_REMOVED,
+      `removed:\n${removed.join('\n')}`)
+  })
+
+  test('every removed line belongs to a notification insert or an empty ELSIF', () => {
+    const permitted = new Set([
+      'INSERT INTO notifications (user_id, task_id, type, title, body, is_push_sent)',
+      'VALUES (', ');', 'true', 't.id,', 't.created_by,', 't.assigned_to,',
+      "'overdue',", "'escalation',",
+      "'Task overdue - no action taken',",
+      "'This task passed its deadline 24 hours ago with no update.',",
+      "'Task escalated to senior',", "'No update recorded for 72 hours.',",
+      "'Danger zone - task needs update',", "'No update recorded for 48 hours.',",
+      "'Caution - task update overdue',", "'No update recorded for 24 hours.',",
+      'ELSIF hours_since_update >= 48 THEN',
+      'ELSIF hours_since_update >= 24 THEN',
+    ])
+    for (const line of removed) {
+      assert.ok(permitted.has(line), `unexpected removal: ${line}`)
+    }
+  })
+
+  test('the four notification inserts are all gone, and only they', () => {
+    assert.equal(removed.filter(l => l.startsWith('INSERT INTO notifications')).length, 4)
+    assert.equal(base.filter(l => l.startsWith('INSERT INTO notifications')).length, 4)
+    assert.equal(mig.filter(l => l.startsWith('INSERT INTO notifications')).length, 0)
+  })
+
+  test('the three activity-log writes survive in both files, unchanged in count', () => {
+    const logWrites = (ls: string[]) =>
+      ls.filter(l => l === 'INSERT INTO task_activity_log (task_id, actor_id, action, note)').length
+    assert.equal(logWrites(base), 3)
+    assert.equal(logWrites(mig), 3)
+  })
+
+  test('the 24h/48h ELSIF branches are gone entirely, not left empty', () => {
+    assert.equal(mig.includes('ELSIF hours_since_update >= 48 THEN'), false)
+    assert.equal(mig.includes('ELSIF hours_since_update >= 24 THEN'), false)
+    assert.equal(mig.some(l => l.startsWith('ELSIF')), false, 'no ELSIF remains at all')
+    // The 72h test is now a plain IF, and the >= 24 threshold survives only in
+    // the overdue condition, where it always belonged.
+    assert.ok(mig.includes('IF hours_since_update >= 72 THEN'))
+    assert.ok(mig.includes('AND hours_since_update >= 24 THEN'))
+  })
+
+  test('control flow still balances', () => {
+    const count = (ls: string[], re: RegExp) => ls.filter(l => re.test(l)).length
+    // Every THEN-opening IF is closed. `ELSIF` would open none, and there are none.
+    const opens  = count(mig, /\bTHEN$/)
+    const closes = count(mig, /^END IF;$/)
+    assert.equal(opens, closes, 'IF/END IF do not balance')
+    assert.equal(count(mig, /^LOOP$/), count(mig, /^END LOOP;$/))
+    // Removals cannot have changed the nesting relative to production.
+    assert.equal(opens, count(base, /\bTHEN$/) - 2, 'exactly the two ELSIF branch heads went')
+  })
+
+  test('every threshold and filter survives verbatim', () => {
+    for (const invariant of [
+      "SELECT * FROM tasks",
+      "WHERE status NOT IN ('completed', 'blocked')",
+      "hours_since_update := EXTRACT(EPOCH FROM (now() - t.last_update_at)) / 3600;",
+      "AND hours_since_update >= 24 THEN",
+      "IF hours_since_update >= 72 THEN",
+      "AND created_at > now() - INTERVAL '6 days';",
+      "AND EXTRACT(EPOCH FROM (now() - t.created_at)) / 86400 >= 5 THEN",
+      "IF t.type = 'completion'",
+      "AND t.status IN ('started', 'working') THEN",
+      "IF days_same_status = 0",
+    ]) {
+      assert.ok(base.includes(invariant), `fixture guard: baseline lacks "${invariant}"`)
+      assert.ok(mig.includes(invariant), `migration lost: "${invariant}"`)
+    }
+  })
+
+  test('the baseline is a complete, runnable rollback', () => {
+    assert.ok(BASELINE.includes('CREATE OR REPLACE FUNCTION public.run_task_health_check()'))
+    assert.ok(BASELINE.trimEnd().endsWith('$function$;'))
+    assert.equal(base.filter(l => l.startsWith('INSERT INTO notifications')).length, 4,
+      'rollback must restore the original behaviour, inserts included')
+  })
+})
+
+describe('the migration is placed correctly', () => {
+  const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
+
+  test('it is the newest migration in the branch', () => {
+    assert.equal(files.at(-1), MIGRATION_FILE)
+  })
+
+  test('its timestamp is unique and later than every other', () => {
+    const stamps = files.map(f => f.slice(0, 14))
+    assert.equal(new Set(stamps).size, stamps.length, 'duplicate migration timestamp')
+    const mine = MIGRATION_FILE.slice(0, 14)
+    for (const other of stamps.filter(s => s !== mine)) {
+      assert.ok(other < mine, `${other} is not earlier than ${mine}`)
+    }
+  })
+
+  test('it ends cleanly', () => {
+    assert.ok(MIGRATION.trimEnd().endsWith('$function$;'))
   })
 })
