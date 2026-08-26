@@ -19,7 +19,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { Notification } from '@/lib/types'
 import { NotificationTaskGroup } from './NotificationTaskGroup'
 import { groupNotificationsByTask, type NotificationTaskGroup as TaskGroup } from '@/lib/notifications/grouping'
-import { ASSIGNEE_UNAVAILABLE, type TaskHeaderInfo } from '@/lib/notifications/taskAssignees'
+import { ASSIGNEE_UNAVAILABLE, type TaskHeaderInfo, type ActivityDetailMap } from '@/lib/notifications/pageEnrichment'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const TASK = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'
@@ -257,5 +257,120 @@ describe('the card is white with a light border, not a blue block', () => {
     assert.ok(html.includes('View Task'))
     // The old View Task was a filled blue button.
     assert.equal(/background:#5585E8|background:rgb\(85,133,232\)/.test(html), false)
+  })
+})
+
+// ── 19-25. The linked detail, rendered ───────────────────────────────────────
+
+const ACT = 'dddddddd-4444-4444-8444-dddddddddddd'
+const linked = (over: Partial<Notification>, details: ActivityDetailMap) =>
+  renderToStaticMarkup(
+    <NotificationTaskGroup
+      group={groupOf([n({ id: 'L1', activity_log_id: ACT, ...over } as Partial<Notification>)])}
+      headerInfo={HEADER}
+      activityDetails={details}
+      filter="all"
+      selected={new Set()} pendingDeletes={new Set()}
+      onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+      onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
+    />,
+  )
+
+describe('19-25. a linked notification shows the real detail', () => {
+  test('19. a linked comment renders one quoted line', () => {
+    const html = linked({ title: 'Dhruv added a comment' }, {
+      [ACT]: { action: 'note_added', note: 'Please confirm the final dimensions before proceeding.', fromStatus: null, toStatus: null, actorName: 'Dhruv' },
+    })
+    assert.ok(html.includes('Added a comment'))
+    assert.ok(html.includes('Please confirm the final dimensions before proceeding.'))
+    assert.equal(html.includes('Comment added'), false, 'the fallback is not used when text exists')
+  })
+
+  test('19b. a long comment is truncated with an ellipsis, on one line', () => {
+    const html = linked({ title: 'Dhruv added a comment' }, {
+      [ACT]: { action: 'note_added', note: 'word '.repeat(80), fromStatus: null, toStatus: null, actorName: 'Dhruv' },
+    })
+    assert.ok(html.includes('…'))
+    assert.ok(html.includes('white-space:nowrap'), 'the preview line does not wrap')
+  })
+
+  test('20. markup, JSON and URLs from a comment are never displayed', () => {
+    const html = linked({ title: 'Dhruv added a comment' }, {
+      [ACT]: { action: 'note_added', note: 'See <b>this</b> at https://xyz.supabase.co/storage/v1/object/sign/a.pdf', fromStatus: null, toStatus: null, actorName: 'Dhruv' },
+    })
+    assert.equal(html.includes('supabase.co'), false, 'no attachment URL')
+    assert.equal(html.includes('&lt;b&gt;'), false, 'no markup')
+    assert.ok(html.includes('See this at'))
+
+    const jsonHtml = linked({ title: 'Dhruv added a comment' }, {
+      [ACT]: { action: 'note_added', note: '{"note":"secret"}', fromStatus: null, toStatus: null, actorName: 'Dhruv' },
+    })
+    assert.equal(jsonHtml.includes('secret'), false, 'raw JSON is not a comment')
+    assert.ok(jsonHtml.includes('Comment added'), 'and falls back honestly')
+  })
+
+  test('21. a linked status change renders previous → new', () => {
+    const html = linked({ title: 'Dhruv moved task to Waiting' }, {
+      [ACT]: { action: 'status_changed', note: null, fromStatus: 'working', toStatus: 'waiting', actorName: 'Dhruv' },
+    })
+    assert.ok(html.includes('Status changed'))
+    assert.ok(html.includes('Working'))
+    assert.ok(html.includes('Waiting'))
+    assert.ok(html.includes('→'))
+  })
+
+  test('22. a linked row with only a to_status still invents no previous value', () => {
+    const html = linked({ title: 'Dhruv moved task to Waiting' }, {
+      [ACT]: { action: 'status_changed', note: null, fromStatus: null, toStatus: 'waiting', actorName: 'Dhruv' },
+    })
+    assert.ok(html.includes('Status changed to Waiting'))
+    assert.equal(html.includes('→'), false)
+  })
+
+  test('23. a HISTORICAL row with no link uses the fallbacks', () => {
+    const html = renderToStaticMarkup(
+      <NotificationTaskGroup
+        group={groupOf([n({ id: 'H1', title: 'Dhruv added a comment', activity_log_id: null } as Partial<Notification>)])}
+        headerInfo={HEADER} activityDetails={{}} filter="all"
+        selected={new Set()} pendingDeletes={new Set()}
+        onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+        onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
+      />,
+    )
+    assert.ok(html.includes('Comment added'))
+    assert.ok(html.includes('test task'), 'title and assignee still come from the task lookup')
+    assert.ok(html.includes('Assigned to: Nishant'))
+  })
+
+  test('23b. a link whose detail did not resolve also falls back', () => {
+    // The enrichment failed, or the activity row was deleted (SET NULL races).
+    const html = linked({ title: 'Dhruv moved task to Waiting' }, {})
+    assert.ok(html.includes('Status changed to Waiting'), 'parsed from the title, as before')
+    assert.equal(html.includes('→'), false)
+  })
+
+  test('24. the linked actor appears once, as muted metadata', () => {
+    const html = linked({ title: 'Dhruv added a comment' }, {
+      [ACT]: { action: 'note_added', note: 'ok', fromStatus: null, toStatus: null, actorName: 'Dhruv' },
+    })
+    assert.ok(html.includes('By Dhruv'))
+    assert.equal((html.match(/Dhruv/g) ?? []).length, 1)
+  })
+
+  test('25. an actor who IS the assignee is not repeated', () => {
+    const html = linked({ title: 'Nishant moved task to Waiting' }, {
+      [ACT]: { action: 'status_changed', note: null, fromStatus: 'working', toStatus: 'waiting', actorName: 'Nishant' },
+    })
+    assert.equal(html.includes('By Nishant'), false)
+    // The header still names them once.
+    assert.equal((html.match(/Nishant/g) ?? []).length, 1)
+  })
+
+  test('a linked row never labels a human action "System"', () => {
+    const html = linked({ title: 'Dhruv returned task to Working' }, {
+      [ACT]: { action: 'status_changed', note: null, fromStatus: 'pending_approval', toStatus: 'working', actorName: null },
+    })
+    assert.equal(/System/i.test(html), false)
+    assert.ok(html.includes('Returned for changes'))
   })
 })

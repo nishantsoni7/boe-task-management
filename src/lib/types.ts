@@ -403,6 +403,14 @@ export type Notification = {
   is_read: boolean
   is_push_sent: boolean
   is_digest: boolean
+  /**
+   * The exact `task_activity_log` row this announces (20261016000000).
+   *
+   * Null for every notification written before that migration, and null again
+   * if the activity row is later deleted. Both render the historical fallbacks.
+   * NEVER inferred from a timestamp.
+   */
+  activity_log_id: string | null
   created_at: string
   read_at: string | null
 }

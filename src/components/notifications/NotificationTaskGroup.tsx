@@ -20,7 +20,9 @@ import {
   assigneeLabel,
   taskTitleFor,
   type TaskHeaderInfo,
-} from '@/lib/notifications/taskAssignees'
+  type ActivityDetailMap,
+  type ActivityDetail,
+} from '@/lib/notifications/pageEnrichment'
 
 // One task, one card.
 //
@@ -66,6 +68,7 @@ import {
 export function NotificationTaskGroup({
   group,
   headerInfo,
+  activityDetails,
   filter,
   selected,
   pendingDeletes,
@@ -81,6 +84,13 @@ export function NotificationTaskGroup({
   group: TaskGroup
   /** Title + assignee from the page-level batch lookup. Absent is survivable. */
   headerInfo?: TaskHeaderInfo
+  /**
+   * Linked activity detail, keyed by activity id, for the whole page.
+   *
+   * A historical notification has no link and finds nothing here, which is the
+   * normal case and renders the same fallbacks it always has.
+   */
+  activityDetails?: ActivityDetailMap
   filter: NotificationFilter
   selected: ReadonlySet<string>
   pendingDeletes: ReadonlySet<string>
@@ -252,6 +262,7 @@ export function NotificationTaskGroup({
             <EventRow
               key={n.id}
               notification={n}
+              detail={n.activity_log_id ? activityDetails?.[n.activity_log_id] : undefined}
               assigneeName={headerInfo?.assigneeName ?? null}
               selected={selected.has(n.id)}
               isLast={i === events.length - 1}
@@ -277,10 +288,12 @@ export function NotificationTaskGroup({
  * name on their own card implies they performed an action they may not have.
  */
 function EventRow({
-  notification: n, assigneeName, selected, isLast, indented, isMobile,
+  notification: n, detail, assigneeName, selected, isLast, indented, isMobile,
   onToggleSelect, onDeleteOne, onRowClick,
 }: {
   notification: Notification
+  /** The linked activity row's detail, when this notification has a link. */
+  detail?: ActivityDetail
   assigneeName: string | null
   selected: boolean
   isLast: boolean
@@ -290,10 +303,16 @@ function EventRow({
   onDeleteOne: (id: string) => void
   onRowClick: (n: Notification) => void
 }) {
-  // Extras are not passed: a `notifications` row carries no comment text and no
-  // previous status, so every line here is what the stored row honestly
-  // supports. The seam is in describeNotificationEvent for the day one does.
-  const event = describeNotificationEvent(n)
+  // The linked activity row supplies what the notification cannot: the comment
+  // text, both status values, and the actor as a resolved name rather than a
+  // name parsed out of a sentence. A row with no link passes nothing and gets
+  // exactly the fallbacks it got before 20261016000000.
+  const event = describeNotificationEvent(n, {
+    commentPreview: detail?.note ?? null,
+    fromStatus:     detail?.fromStatus ?? null,
+    toStatus:       detail?.toStatus ?? null,
+    actorName:      detail?.actorName ?? null,
+  })
   const meta = actorMetaFor(event.actorName, assigneeName, timeAgo(n.created_at))
 
   return (

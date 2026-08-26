@@ -88,6 +88,10 @@ export type NotificationEventExtras = {
   commentPreview?: string | null
   fromStatus?: string | null
   toStatus?: string | null
+  /** The actor's real name from the linked activity row, when there is one. */
+  actorName?: string | null
+  /** True when a linked activity row was found — see `actorNameFor`. */
+  linked?: boolean
 }
 
 /** Collapse whitespace and cut on a word boundary, with a real ellipsis. */
@@ -201,7 +205,12 @@ export function describeNotificationEvent(
 
   const hit = ACTION_PATTERNS.find(p => p.re.test(title))
   const action = hit?.action ?? FALLBACK_ACTION
-  const actorName = hit ? parseActor(title, hit.re) : null
+  // The linked activity row's actor wins: it is an id resolved to a name, not a
+  // name recovered from a sentence. Parsing stays as the fallback for the
+  // historical rows that have no link.
+  const actorName = (typeof extras.actorName === 'string' && extras.actorName.trim())
+    ? extras.actorName.trim()
+    : (hit ? parseActor(title, hit.re) : null)
 
   // ── Comment ──
   if (action === 'Added a comment') {
@@ -247,6 +256,28 @@ export function actorMetaFor(
     return relativeTime
   }
   return `By ${actorName} · ${relativeTime}`
+}
+
+/**
+ * A human event whose actor could not be resolved.
+ *
+ * NOT "System". The five automatic types are suppressed before they are ever
+ * written, so anything reaching the feed was caused by a person — and labelling
+ * their action "System Activity" is how a returned-for-changes notification
+ * once read as an anonymous log line. A neutral word is honest; "System" is a
+ * claim about the cause, and a wrong one.
+ */
+export const UNKNOWN_ACTOR_META = 'Updated'
+
+/**
+ * The metadata line, when a genuinely automatic event has no actor.
+ *
+ * Reachable only if an automatic type is ever un-suppressed; kept named so the
+ * distinction between "we do not know who" and "nobody, it was the system" is
+ * explicit rather than accidental.
+ */
+export function systemMetaFor(relativeTime: string): string {
+  return `System · ${relativeTime}`
 }
 
 /** "3 updates" / "1 update" — events, never subtasks. Always the word "updates". */

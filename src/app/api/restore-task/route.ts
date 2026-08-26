@@ -87,14 +87,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  await supabase.from('task_activity_log').insert({
-    task_id:     taskId,
-    actor_id:    user.id,
-    action:      'status_changed',
-    from_status: terminalStatus,
-    to_status:   restoreStatus,
-    note:        terminalStatus === 'cancelled' ? 'Cancellation reversed' : 'Reopened task',
-  })
+  // Read the id back so the notification can point at THIS row. A failed read
+  // leaves the link null; the restore has already happened and is not undone.
+  const { data: restoreLog } = await supabase
+    .from('task_activity_log')
+    .insert({
+      task_id:     taskId,
+      actor_id:    user.id,
+      action:      'status_changed',
+      from_status: terminalStatus,
+      to_status:   restoreStatus,
+      note:        terminalStatus === 'cancelled' ? 'Cancellation reversed' : 'Reopened task',
+    })
+    .select('id')
+    .single()
 
   // Notify the other party
   const recipient = user.id === task.created_by ? task.assigned_to : task.created_by
@@ -111,6 +117,7 @@ export async function POST(req: NextRequest) {
       title,
       body:         task.title,
       is_push_sent: true,
+      activity_log_id: restoreLog?.id ?? null,
     })
   }
 

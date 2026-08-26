@@ -374,7 +374,10 @@ describe('one rule, one place', () => {
     // knows nothing about task_activity_log, and the two routes that write both
     // still write the log.
     const guard = read('src/lib/notificationWrites.ts')
-    assert.equal(guard.includes('task_activity_log'), false)
+    // The guard now NAMES the table in a doc comment — the row type carries an
+    // optional activity_log_id since 20261016000000. What it must never do is
+    // read or write that table.
+    assert.equal(/from\(['"]task_activity_log['"]\)/.test(guard), false)
     for (const path of ['src/app/api/cancel-task/route.ts', 'src/app/api/restore-task/route.ts']) {
       assert.ok(read(path).includes("task_activity_log"), `${path} still records the action`)
     }

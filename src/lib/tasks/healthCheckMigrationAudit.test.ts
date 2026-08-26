@@ -465,15 +465,25 @@ describe('line-by-line against the production baseline', () => {
 describe('the migration is placed correctly', () => {
   const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
 
-  test('it is the newest migration in the branch', () => {
-    assert.equal(files.at(-1), MIGRATION_FILE)
+  test('it is the newest APPLIED migration; only 116 sits after it', () => {
+    // 115 was the last file when this was written. 116 (the notifications
+    // activity-link column) was added later and is UNAPPLIED, so 115 remains
+    // the newest thing that has actually run against the database.
+    const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
+    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    assert.match(
+      readFileSync(join(ROOT, 'supabase/migrations', newer[0]), 'utf8'),
+      /^-- 116\. NOT APPLIED\./m)
   })
 
-  test('its timestamp is unique and later than every other', () => {
+  test('its timestamp is unique, and later than every migration it followed', () => {
     const stamps = files.map(f => f.slice(0, 14))
     assert.equal(new Set(stamps).size, stamps.length, 'duplicate migration timestamp')
     const mine = MIGRATION_FILE.slice(0, 14)
-    for (const other of stamps.filter(s => s !== mine)) {
+    // 116 was written after this and is correctly stamped after it. What this
+    // guards is that nothing PRECEDING 115 shares or exceeds its timestamp,
+    // which is what would change its apply order.
+    for (const other of stamps.filter(s => s !== mine && s < '20261016000000')) {
       assert.ok(other < mine, `${other} is not earlier than ${mine}`)
     }
   })

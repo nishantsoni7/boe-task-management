@@ -5,7 +5,7 @@ import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
-import { collectTaskIds, fetchTaskHeaderInfo } from '@/lib/notifications/taskAssignees'
+import { enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
 
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
@@ -82,7 +82,7 @@ export async function GET(req: NextRequest) {
   // `limit` rows and `hasMore` costs no second query.
   const { data, error } = await supabase
     .from('notifications')
-    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at')
+    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id')
     .eq('user_id', user.id)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
@@ -115,14 +115,14 @@ export async function GET(req: NextRequest) {
   // cards say "Assignee unavailable" — a notification list is more useful
   // without an assignee than absent. See src/lib/notifications/taskAssignees.ts
   // for why the newest event's ACTOR is not an acceptable substitute.
-  const taskHeaders = categoryResult.category === 'task'
-    ? await fetchTaskHeaderInfo(supabase, collectTaskIds(notifications))
-    : {}
+  const { taskHeaders, activityDetails } = categoryResult.category === 'task'
+    ? await enrichNotificationPage(supabase, notifications)
+    : { taskHeaders: {}, activityDetails: {} }
   // Unread among the rows returned. NOT the category's total unread — that is
   // what `?count=1` is for, and the badge reads it from there. Kept in the
   // response because callers have always had it.
   const unreadCount = notifications.filter(n => !n.is_read).length
-  return NextResponse.json({ notifications, unreadCount, hasMore, limit, taskHeaders })
+  return NextResponse.json({ notifications, unreadCount, hasMore, limit, taskHeaders, activityDetails })
 }
 
 // Deletes ONE module's notifications for the authenticated user —

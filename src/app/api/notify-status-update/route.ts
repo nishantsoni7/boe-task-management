@@ -2,6 +2,8 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
+import { verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { isValidUUID } from '@/lib/ui'
 
 export async function POST(req: NextRequest) {
   // Verify caller is authenticated
@@ -11,7 +13,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { taskId, taskTitle, createdBy, recipientId, title: notifTitle, action, actorName } = await req.json()
+  const {
+    taskId, taskTitle, createdBy, recipientId, title: notifTitle, action, actorName,
+    // The activity row the caller just created. VERIFIED below, never trusted:
+    // an unchecked id here would let a caller point a notification at any
+    // activity row in the database and have its note read back to the
+    // recipient. See src/lib/notifications/activityLink.ts.
+    activityLogId,
+  } = await req.json()
   if (!taskId || !taskTitle || !createdBy) {
     return NextResponse.json({ error: 'taskId, taskTitle, and createdBy are required' }, { status: 400 })
   }
@@ -34,6 +43,14 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // The link is optional at every step: an absent, malformed or unrelated id
+  // produces an UNLINKED notification, which renders exactly the fallbacks
+  // every historical row renders. A worse notification, never a failed one.
+  const linkedActivityId =
+    typeof activityLogId === 'string' && isValidUUID(activityLogId)
+      ? await verifyActivityBelongsToTask(supabase, activityLogId, taskId)
+      : null
+
   // Every event this route serves is a person acting on a task, so nothing it
   // builds is ever suppressed. It goes through the shared guard anyway: this is
   // the funnel EVERY task status notification passes through, which makes it
@@ -46,6 +63,7 @@ export async function POST(req: NextRequest) {
     title,
     body:         taskTitle,
     is_push_sent: true,
+    activity_log_id: linkedActivityId,
   })
 
   if (error) {

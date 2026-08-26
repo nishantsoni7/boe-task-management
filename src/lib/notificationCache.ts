@@ -27,7 +27,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { NOTIFICATION_PAGE_SIZE } from '@/lib/notificationPaging'
-import type { TaskHeaderMap } from '@/lib/notifications/taskAssignees'
+import type { TaskHeaderMap, ActivityDetailMap } from '@/lib/notifications/pageEnrichment'
 
 /** Every module whose notifications live in the shared `notifications` table. */
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] =
@@ -195,6 +195,8 @@ export type NotificationPage = {
   hasMore: boolean
   /** Task title + assignee, keyed by task id. Empty from an older server. */
   taskHeaders: TaskHeaderMap
+  /** Comment/status/actor detail, keyed by activity id. Empty for legacy rows. */
+  activityDetails: ActivityDetailMap
 }
 
 export async function fetchNotificationPage(
@@ -215,6 +217,9 @@ export async function fetchNotificationPage(
     // falls back to its notification-derived title and "Assignee unavailable" —
     // the behaviour before this existed.
     taskHeaders: (body?.taskHeaders ?? {}) as TaskHeaderMap,
+    // Keyed by activity id. A server without the link column sends nothing and
+    // every event renders the historical fallback.
+    activityDetails: (body?.activityDetails ?? {}) as ActivityDetailMap,
   }
 }
 

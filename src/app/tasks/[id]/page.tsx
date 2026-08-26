@@ -879,7 +879,10 @@ export default function TaskDetailPage() {
             const res = await fetch('/api/notify-status-update', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name }),
+              // The comment's OWN activity row, whose id this scope already holds from
+              // the insert above. The route verifies it belongs to this task before
+              // storing it, so nothing here is taken on trust.
+              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name, activityLogId: logRow.id }),
             })
             if (!res.ok) console.error('[saveComment] notification failed:', await res.text().catch(() => `status ${res.status}`))
           } catch (err) {

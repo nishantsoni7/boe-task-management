@@ -51,6 +51,7 @@ function stubStore(opts: {
   existing?: boolean
   dupReadable?: boolean
   insertError?: { message: string } | null
+  creationActivityId?: string | null
 } = {}): Stub {
   const written: NotificationInsert[][] = []
   const fetched: string[] = []
@@ -64,6 +65,7 @@ function stubStore(opts: {
       return { task: opts.fetchError ? null : task, error: opts.fetchError ?? null }
     },
     async isAdmin(userId) { return (opts.admins ?? []).includes(userId) },
+    async findCreationActivityId() { return opts.creationActivityId ?? null },
     async hasAssignmentNotification() {
       return { exists: opts.existing ?? false, readable: opts.dupReadable ?? true }
     },
@@ -577,10 +579,17 @@ describe('18. migration 115 is untouched by this hotfix', () => {
     )
   })
 
-  test('and this hotfix adds no migration of its own', () => {
-    const files = readdirSync(join(process.cwd(), 'supabase/migrations')).filter(f => f.endsWith('.sql'))
-    const newest = files.slice().sort().pop()
-    assert.equal(newest, '20261015000000_task_health_check_stops_notifying.sql',
-      'nothing newer than 115 was added')
+  test('the only migration newer than 115 is 116, which does not touch it', () => {
+    const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
+      .filter(f => f.endsWith('.sql')).sort()
+    const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
+    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    // And 116's STATEMENTS touch only `notifications`. Its commentary cites
+    // run_task_health_check as the precedent for not replacing a live function
+    // from the repository's copy — prose, not a statement.
+    const sql = read('supabase/migrations/20261016000000_notifications_link_activity_log.sql')
+    const statements = sql.split('\n').filter(l => !l.trim().startsWith('--')).join('\n')
+    assert.equal(/run_task_health_check|20261015000000/i.test(statements), false)
+    assert.match(statements, /ALTER TABLE\s+notifications/i)
   })
 })

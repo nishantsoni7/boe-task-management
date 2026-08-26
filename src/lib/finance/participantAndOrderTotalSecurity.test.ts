@@ -661,6 +661,15 @@ describe('the applied migrations are frozen', () => {
       // migration cannot appear unnoticed. Unlike them it IS pushed, which is
       // why it also appears in FROZEN and no longer in the pending list below.
       '20261015000000_task_health_check_stops_notifying.sql',
+      // 116. NOT APPLIED. notifications.activity_log_id — one nullable FK to
+      // task_activity_log(id) ON DELETE SET NULL, plus a partial index for the
+      // referential action. It lets a future notification carry the id of the
+      // activity row that caused it, so the feed can show a real comment
+      // preview and a real previous status instead of matching timestamps.
+      // Additive: no backfill, no trigger, no NOT NULL, no default, no change
+      // to task_activity_log, no RLS change. Recorded here for the same reason
+      // as 109-115: this list is exact.
+      '20261016000000_notifications_link_activity_log.sql',
     ])
   })
 
@@ -681,6 +690,7 @@ describe('the applied migrations are frozen', () => {
       '20261012000000_allocation_ledger_as_single_source.sql',
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      '20261016000000_notifications_link_activity_log.sql',
     ])
     // 115 is deliberately absent: it has been pushed, so it belongs in FROZEN
     // and not here. 2026101500 is therefore NOT in the guard below.
