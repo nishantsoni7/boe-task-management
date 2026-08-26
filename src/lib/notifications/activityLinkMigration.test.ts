@@ -24,6 +24,24 @@ const statements = sql.split('\n').filter(l => !l.trim().startsWith('--')).join(
 /** Just the ALTER TABLE, so the partial index's `IS NOT NULL` cannot be misread. */
 const alterStatement = /ALTER TABLE[\s\S]*?;/i.exec(statements)![0]
 
+/** The fragments the drift guard requires, parsed out of its array literal. */
+function guardFragments(): string[] {
+  const start = statements.indexOf('v_required text[] := array[')
+  const end = statements.indexOf('  ];', start)
+  assert.ok(start >= 0 && end > start, 'the guard array was not found')
+  return [...statements.slice(start, end).matchAll(/^\s*'((?:[^']|'')*)',?\s*$/gm)]
+    .map(m => m[1].replace(/''/g, "'"))
+}
+
+/** The function body, as lines, from either file. */
+function fnBodyOf(text: string): string[] {
+  const start = text.indexOf('create or replace function public.transition_task_review(')
+  assert.ok(start >= 0, 'function not found')
+  const end = text.indexOf('\n$$;', start)
+  assert.ok(end > start, 'function end not found')
+  return text.slice(start, end + 4).split('\n')
+}
+
 // ── 1–6. The migration ───────────────────────────────────────────────────────
 
 describe('1-6. the migration is additive and links nothing by guesswork', () => {
@@ -215,11 +233,6 @@ describe('7-12. every future notification records the id it already holds', () =
   })
 
   test('10b. the replacement REFUSES to run against a definition it did not expect', () => {
-    // No pg_get_functiondef capture of this function exists in the repository,
-    // so the body came from 20260833000000 — the migration that created it and
-    // the last one to define it. That is a defensible source and an unverified
-    // one, so the migration checks the live definition before overwriting it
-    // rather than trusting the assumption.
     assert.match(statements, /pg_get_functiondef\('public\.transition_task_review\(uuid, text, text\)'::regprocedure\)/)
     assert.match(statements, /TRANSITION_TASK_REVIEW_DRIFTED/)
     assert.match(statements, /TRANSITION_TASK_REVIEW_ALREADY_LINKED/)
@@ -227,6 +240,76 @@ describe('7-12. every future notification records the id it already holds', () =
     // And the guard runs BEFORE the replacement.
     assert.ok(statements.indexOf('TRANSITION_TASK_REVIEW_DRIFTED')
       < statements.indexOf('create or replace function public.transition_task_review'))
+    // The four properties a live catalog query DID corroborate are re-checked
+    // at apply time, so a function that has since lost them stops the run.
+    assert.match(statements, /SECURITY DEFINER' in upper\(v_current\)/)
+    assert.match(statements, /'public, pg_temp' in v_current/)
+  })
+
+  test('10b-i. the guard covers EVERY protected business rule, not one substring', () => {
+    // A single substring check would prove almost nothing about the rest of the
+    // function. Each of these sections must be asserted by name.
+    const arr = guardFragments()
+    const need: [section: string, fragment: string][] = [
+      ['actor identity',      'auth.uid()'],
+      ['row lock',            'for update'],
+      ['authorization: submit',  'Only the assignee can submit this task for approval'],
+      ['authorization: approve', 'Only the task creator can approve this task'],
+      ['authorization: return',  'Only the task creator can return this task'],
+      ['source status: submit',  'cannot be submitted for approval'],
+      ['source status: approve', 'Only a task awaiting approval can be approved'],
+      ['source status: return',  'Only a task awaiting approval can be returned'],
+      ['acknowledge gate',    'TASK_NOT_ACKNOWLEDGED'],
+      ['scope: quotation',    'TASK_REVIEW_NOT_APPLICABLE'],
+      ['scope: delegated',    'TASK_REVIEW_NOT_DELEGATED'],
+      ['recipient: creator',  'v_recipient := v_task.created_by'],
+      ['recipient: assignee', 'v_recipient := v_task.assigned_to'],
+      ['self-notify guard',   'v_recipient <> v_uid'],
+      ['return reason',       'TASK_RETURN_REASON_REQUIRED'],
+      ['reason ceiling',      'length(v_note) > 1000'],
+      ['the changed insert',  "insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)"],
+    ]
+    for (const [section, fragment] of need) {
+      assert.ok(arr.includes(fragment), `the guard does not cover ${section}`)
+    }
+    // Both context GUC writes that 20260834's enforcement trigger reads.
+    assert.equal(arr.filter(f => f.includes('boe.task_review_context')).length, 2)
+    // And every key of the returned jsonb.
+    for (const key of [
+      'id', 'status', 'completed_at', 'last_update_at', 'blocker_reason',
+      'waiting_on_type', 'waiting_on_user_id', 'waiting_on_text',
+      'from_status', 'activity_id', 'actor_name', 'note',
+    ]) {
+      assert.ok(arr.includes(`'${key}',`), `the returned shape's ${key} is unguarded`)
+    }
+  })
+
+  test('10b-ii. every guarded fragment really exists in the definition it guards', () => {
+    // A guard that asserts a fragment the function does not contain would fail
+    // against the correct function — a guard that always fails is worse than
+    // none. Checked mechanically against 20260833000000's body.
+    const source = read('supabase/migrations/20260833000000_task_creator_approval.sql')
+    const body = fnBodyOf(source).join('\n')
+    const missing = guardFragments().filter(f => !body.includes(f))
+    assert.deepEqual(missing, [], 'guard fragments absent from the source function')
+  })
+
+  test('10b-iii. the migration states what the guard CANNOT detect', () => {
+    // The limits are part of the deliverable: a substring guard must never be
+    // presented as a complete drift check.
+    assert.match(sql, /WHAT IT CANNOT DETECT/)
+    assert.match(sql, /a rule ADDED in production/)
+    assert.match(sql, /an inverted comparison/)
+    assert.match(sql, /ACLs/)
+    assert.match(sql, /WHAT IT IS NOT: a full-definition comparison/)
+    // And it points at the capture that would close them.
+    assert.match(sql, /docs\/proposals\/transition_task_review\.production\.sql/)
+  })
+
+  test('10b-iv. no cryptographic extension is required', () => {
+    // pgcrypto is not guaranteed in this project, so the guard uses position()
+    // and array membership rather than a digest of the definition.
+    assert.equal(/pgcrypto|digest\(|sha256|md5\(/i.test(statements), false)
   })
 
   test('10c. THE MECHANICAL COMPARISON: the body differs by exactly two lines', () => {
@@ -234,15 +317,8 @@ describe('7-12. every future notification records the id it already holds', () =
     // future edit changes anything else in that function, this fails and names
     // the extra lines.
     const source = read('supabase/migrations/20260833000000_task_creator_approval.sql')
-    const fnOf = (text: string) => {
-      const start = text.indexOf('create or replace function public.transition_task_review(')
-      assert.ok(start >= 0, 'function not found')
-      const end = text.indexOf('\n$$;', start)
-      assert.ok(end > start, 'function end not found')
-      return text.slice(start, end + 4).split('\n')
-    }
-    const before = fnOf(source)
-    const after = fnOf(sql)
+    const before = fnBodyOf(source)
+    const after = fnBodyOf(sql)
     assert.equal(before.length, after.length, 'no line was added or removed')
 
     const changed: number[] = []

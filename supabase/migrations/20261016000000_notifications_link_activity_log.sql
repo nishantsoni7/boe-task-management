@@ -155,36 +155,111 @@ CREATE INDEX IF NOT EXISTS notifications_activity_log_id_idx
 -- this function — verified to be the last migration that defines it (20260832
 -- and 20260834 reference it; neither replaces it).
 --
--- It is NOT from `pg_get_functiondef` against production. No such capture
--- exists in this repository for this function; the only production definition
--- ever captured here is docs/proposals/run_task_health_check.production.sql,
--- which is a different function. If production has been hot-patched since
--- 20260833000000, the repository would not know.
+-- It is NOT from `pg_get_functiondef` against production. The only production
+-- capture in this repository is
+-- docs/proposals/run_task_health_check.production.sql, a different function.
 --
--- SO THE REPLACEMENT REFUSES TO RUN BLIND. The guard below reads the CURRENT
--- definition out of the catalog and aborts unless it is the one this was based
--- on — specifically, unless it still contains the exact INSERT being changed
--- and does not already carry the new column. A drifted or already-patched
--- production function stops this migration with a message instead of being
--- silently overwritten.
+-- WHAT HAS BEEN CORROBORATED AGAINST PRODUCTION. Four properties, read from a
+-- live Supabase catalog query and matching this definition exactly:
 --
--- ── THE DIFF IS TWO LINES ───────────────────────────────────────────────────
+--   signature    transition_task_review(uuid, text, text)
+--   schema       public
+--   security     SECURITY DEFINER
+--   config       search_path = public, pg_temp
 --
---   -    insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)
---   -    values (v_recipient, p_task_id, 'task_acknowledged', v_title, v_task.title, true);
---   +    insert into public.notifications (user_id, task_id, type, title, body, is_push_sent, activity_log_id)
---   +    values (v_recipient, p_task_id, 'task_acknowledged', v_title, v_task.title, true, v_log_id);
+-- Those are four of the things this migration could otherwise silently change,
+-- and they agree. The BODY has not been compared, because no capture of it
+-- exists here.
 --
--- Nothing else. Every authorization check, every source-status check, the
--- `for update` lock, both set_config() calls, the stale-field clearing, the
--- returned jsonb and the grants are byte-for-byte what 20260833000000 wrote.
--- src/lib/notifications/activityLinkMigration.test.ts re-derives that diff
--- mechanically from the two files and fails if it is ever more than these
--- two lines.
+-- ── SO THE GUARD CHECKS THE BODY, SECTION BY SECTION ────────────────────────
+--
+-- WHAT IT IS NOT: a full-definition comparison. pg_get_functiondef reformats
+-- the header — whitespace, requoting, type spellings — so a hash or an equality
+-- check against this file would reject the very function it was written from.
+-- That is a guard that always fails, which is worse than none.
+--
+-- WHAT IT IS: an explicit assertion for every protected business rule, checked
+-- against the live definition before it is replaced. If any is missing, the
+-- live function is not the one this replacement was written against, and the
+-- migration STOPS and names the rule.
+--
+--   authorization   the three FORBIDDEN rules — assignee submits, creator
+--                   approves, creator returns
+--   actor           v_uid comes from auth.uid(), never from an argument
+--   locking         the task row is taken `for update`
+--   source status   all three INVALID_SOURCE checks, plus the acknowledge
+--                   precondition
+--   scope           the quotation and not-delegated refusals
+--   recipient       submit -> created_by, approve/return -> assigned_to
+--   self-notify     v_recipient <> v_uid
+--   return reason   required, and the 1000-character ceiling
+--   context GUC     both set_config calls that 20260834's trigger reads
+--   return shape    all twelve keys of the returned jsonb
+--   the target      the exact notification INSERT being changed, and the
+--                   absence of the new column
+--
+-- WHAT IT CANNOT DETECT. Stated plainly, because a guard is only as useful as
+-- its honest limits:
+--
+--   * a change in a part of the body no rule above names — a reordered
+--     statement, an altered comment, a changed variable default;
+--   * a rule ADDED in production. It proves the rules it knows are present; it
+--     cannot prove nothing else is;
+--   * an inverted comparison inside a check whose message it matches —
+--     `v_uid = v_task.created_by` where the original says `<>` still carries
+--     the same FORBIDDEN text;
+--   * ACLs. The live capture did not include them (see the grants note below).
+--
+-- Closing those needs the body itself. Capture it with
+--
+--   select pg_get_functiondef(
+--     'public.transition_task_review(uuid, text, text)'::regprocedure);
+--
+-- save it as docs/proposals/transition_task_review.production.sql, and this
+-- step can be rebased on a real textual comparison.
 
 DO $do$
 DECLARE
-  v_current text;
+  v_current  text;
+  v_missing  text;
+  v_fragment text;
+  -- Each entry MUST still be present in the live definition. Body fragments,
+  -- deliberately: pg_get_functiondef preserves the body verbatim while
+  -- reformatting the header, so these survive it and header spelling does not.
+  v_required text[] := array[
+    'auth.uid()',
+    'for update',
+    'TASK_REVIEW_NOT_APPLICABLE',
+    'TASK_REVIEW_NOT_DELEGATED',
+    'Only the assignee can submit this task for approval',
+    'Only the task creator can approve this task',
+    'Only the task creator can return this task',
+    'TASK_NOT_ACKNOWLEDGED',
+    'cannot be submitted for approval',
+    'Only a task awaiting approval can be approved',
+    'Only a task awaiting approval can be returned',
+    'TASK_RETURN_REASON_REQUIRED',
+    'TASK_RETURN_REASON_TOO_LONG',
+    'length(v_note) > 1000',
+    'v_recipient := v_task.created_by',
+    'v_recipient := v_task.assigned_to',
+    'v_recipient <> v_uid',
+    'set_config(''boe.task_review_context'', ''task_review'', true)',
+    'set_config(''boe.task_review_context'', '''', true)',
+    '''id'',',
+    '''status'',',
+    '''completed_at'',',
+    '''last_update_at'',',
+    '''blocker_reason'',',
+    '''waiting_on_type'',',
+    '''waiting_on_user_id'',',
+    '''waiting_on_text'',',
+    '''from_status'',',
+    '''activity_id'',',
+    '''actor_name'',',
+    '''note'',',
+    'insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)'
+  ];
 BEGIN
   SELECT pg_get_functiondef('public.transition_task_review(uuid, text, text)'::regprocedure)
     INTO v_current;
@@ -197,8 +272,21 @@ BEGIN
     RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_ALREADY_LINKED: the live function already references activity_log_id; inspect it before replacing it';
   END IF;
 
-  IF position('insert into public.notifications (user_id, task_id, type, title, body, is_push_sent)' in v_current) = 0 THEN
-    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is not the definition this migration was written against (20260833000000). Capture it with pg_get_functiondef and rebase this step before applying.';
+  FOREACH v_fragment IN ARRAY v_required LOOP
+    IF position(v_fragment in v_current) = 0 THEN
+      v_missing := coalesce(v_missing || ', ', '') || v_fragment;
+    END IF;
+  END LOOP;
+
+  IF v_missing IS NOT NULL THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is missing rules this replacement preserves: %. It is not the definition 20261016000000 was written against. Capture it with pg_get_functiondef, save it to docs/proposals/transition_task_review.production.sql, and rebase step 3 before applying.', v_missing;
+  END IF;
+
+  -- Shape sanity, so a truncated or unexpected catalog answer cannot pass by
+  -- containing every fragment coincidentally.
+  IF position('SECURITY DEFINER' in upper(v_current)) = 0
+     OR position('public, pg_temp' in v_current) = 0 THEN
+    RAISE EXCEPTION 'TRANSITION_TASK_REVIEW_DRIFTED: the live function is no longer SECURITY DEFINER with search_path = public, pg_temp';
   END IF;
 END
 $do$;
@@ -367,9 +455,27 @@ end;
 $$;
 
 
--- Unchanged from 20260833000000: same signature, so the existing grants and the
--- comment still apply. Restated here because CREATE OR REPLACE does not alter
--- them and a reader should not have to go looking to confirm that.
+-- ── GRANTS: RESTATED, NOT CHANGED ──────────────────────────────────────────
+--
+-- PROVENANCE. 20260833000000 is the ONLY migration in this repository that sets
+-- privileges on this function, and no later migration alters them. These two
+-- lines are byte-for-byte its lines 245-246, and they follow the convention the
+-- repository uses throughout for a SECURITY DEFINER RPC: revoke from
+-- public/anon, grant execute to authenticated.
+--
+-- WHY RESTATE THEM AT ALL. CREATE OR REPLACE does not alter privileges, so
+-- these are strictly redundant against a database that already ran
+-- 20260833000000 — and that redundancy is the point: a reader of THIS file can
+-- see what the function's ACL is without going to find another migration, and
+-- re-running them is a no-op.
+--
+-- NOT VERIFIED AGAINST PRODUCTION. The live capture supplied the owner,
+-- security mode and search_path but no ACL, so whether production's current
+-- grants match these is unknown here. Nothing speculative has been added: no
+-- new role, no widened privilege, no ownership change. If production's ACL has
+-- drifted, these two lines RESTORE the documented intent rather than preserve
+-- the drift — which is the safe direction for a privilege, but is a change, and
+-- is called out here so it is a decision rather than a surprise.
 revoke all    on function public.transition_task_review(uuid, text, text) from public, anon;
 grant execute on function public.transition_task_review(uuid, text, text) to authenticated;
 
