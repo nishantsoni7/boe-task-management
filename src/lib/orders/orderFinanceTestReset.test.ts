@@ -242,8 +242,10 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.equal(files.filter(f => f.startsWith('20261011')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261012')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261013')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261015')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
+      .filter(f => !f.startsWith('20261015'))   // applied — see FROZEN
       .sort()
     assert.deepEqual(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
@@ -266,6 +268,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // tables carry the project's is_test_data marker and cascade from the
       // payment, so the reset and the tombstone reach them unchanged.
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 115 (run_task_health_check stops inserting notifications) is NOT in
+      // this list: it has been applied, so it is pinned in FROZEN over in
+      // participantAndOrderTotalSecurity.test.ts instead. It touched neither
+      // the reset protocol nor the deletion claim — it replaced one function
+      // body and read or wrote no table either of them cares about.
     ])
   })
 

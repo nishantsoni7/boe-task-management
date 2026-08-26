@@ -8,14 +8,23 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
-import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
-import { LoadingScreen } from '@/components/ui/atoms'
-import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle } from 'lucide-react'
+import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown } from 'lucide-react'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useNotifications } from '@/hooks/queries/useNotifications'
 import { useNotificationMutations } from '@/hooks/queries/useNotificationMutations'
 import { notificationKeys } from '@/lib/notificationCache'
+import { NotificationListSkeleton } from './NotificationListSkeleton'
+import { NotificationTaskGroup } from './NotificationTaskGroup'
+import { NotificationRow } from './NotificationRow'
+import {
+  groupNotificationsByTask,
+  filterDisplayItems,
+  summarizeDisplayItems,
+  allIdsOf,
+  type NotificationTaskGroup as TaskGroup,
+} from '@/lib/notifications/grouping'
 
 type FilterTab = 'all' | 'unread'
 
@@ -53,34 +62,94 @@ type NotificationsViewProps = {
 // delete all agree on exactly which rows belong to this view — see
 // getNotificationCategoryFilter in src/lib/notifications.ts.
 export function NotificationsView({ category, Layout, loginRedirectPath = '/login' }: NotificationsViewProps) {
-  const [loggedInId, setLoggedInId] = useState('')
-  const [filter,     setFilter]     = useState<FilterTab>('all')
-  const [selected,   setSelected]   = useState<Set<string>>(new Set())
+  const [filter,   setFilter]   = useState<FilterTab>('all')
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Same breakpoint the rest of the app uses. Only affects layout: the group
+  // summary wraps and its actions get taller touch targets; nothing is hidden
+  // at either width.
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { refreshKey } = useRefresh()
 
-  const { data: profile = null } = useProfile(loggedInId)
-  const {
-    data: notifications = [],
-    isLoading: notifLoading,
-    isError: notifError,
-    error: notifErrorObj,
-  } = useNotifications(category)
+  // IDENTITY ONLY — deliberately not the permission context.
+  //
+  // What this replaces is a per-mount `supabase.auth.getUser()`: a NETWORK call
+  // to the auth server whose only output was a user id, which then gated a
+  // second request for the profile row. useSignedInUserId answers the same
+  // question from the STORED session with no request at all, and it is the same
+  // cached query every module shell already uses, so on any in-app navigation
+  // the id is known on the first render.
+  //
+  // It would have been tempting to take usePermissionContext instead and get
+  // the profile from it for free. That is free only where a shell already
+  // resolves permissions — under a ModuleGuard, or inside DashboardLayout. This
+  // component also renders inside OrdersLayout and AttendancePayrollLayout,
+  // which resolve neither, so it would have added a
+  // `resolve_effective_permissions_for_user` RPC to the cold load of four
+  // module notification pages that never made one. The profile is instead read
+  // through useProfile, whose cache entry usePermissionContext now publishes
+  // into — so where a shell HAS resolved it, this is a cache hit and costs
+  // nothing, and where none has, it is exactly the one request it always was.
+  //
+  // Identity freshness is held by the auth listener in Providers.tsx, which
+  // drops the cache when the signed-in user actually changes. Nothing here is
+  // an access decision: every /api/notifications* route independently verifies
+  // the caller with its own server-side auth.getUser() and scopes every query
+  // to `user_id = <that verified id>`. No user id is ever sent from here.
+  const { data: userId, isPending: idPending } = useSignedInUserId()
+  const authReady = !idPending
+  const { data: profile = null } = useProfile(userId)
 
   // All list/count cache work lives in this hook: optimistic update, snapshot,
   // rollback on any failure, per-id pending locks, and narrow reconciliation.
+  //
+  // Declared BEFORE the list query because the list query needs to know whether
+  // any of it is in flight — see `mutationInFlight`.
   const {
-    markRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
+    markRead, markTaskGroupRead, deleteTaskGroup, groupBusy,
+    markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
     pendingDeletes, markingAll, deletingBulk, deletingAll,
     error: mutationError, clearError,
   } = useNotificationMutations(category)
 
-  // If TQ has cached notifications, show them immediately without waiting for auth re-confirm.
-  // Auth redirect (if needed) will fire from the init useEffect shortly after.
-  const loading = notifLoading && notifications.length === 0
+  // A widening re-read while the server has not yet applied an optimistic
+  // delete or mark-read would return those rows in their old state and put them
+  // back on screen — the exact "deleted notifications come back" symptom the
+  // mutation machinery exists to prevent. So "Load older" stands down until
+  // every mutation has settled. Single deletes are covered by `pendingDeletes`
+  // (which also hides those rows at render time); the three bulk operations
+  // have no per-id set, which is why they are listed individually.
+  const mutationInFlight =
+    pendingDeletes.size > 0 || markingAll || deletingBulk || deletingAll || groupBusy
+
+  const {
+    data: notifications = [],
+    isPending: notifPending,
+    isError: notifError,
+    error: notifErrorObj,
+    loadOlder, hasOlder, loadingOlder, olderError,
+  } = useNotifications(category, mutationInFlight)
+
+  // TRUE ONLY BEFORE THE FIRST RESULT EXISTS.
+  //
+  // `isPending` is "this query has no data yet", which stays true across the
+  // whole first fetch and becomes false the moment a cached list is available —
+  // so a return visit inside the cache window renders instantly, and a cold
+  // load shows the skeleton rather than an empty inbox. It is deliberately NOT
+  // `isLoading`: TanStack reports `isLoading: false` for a query that has not
+  // started fetching, which is exactly the window in which "No notifications
+  // yet" used to flash.
+  const loadingFirstPage = notifPending
 
   // Refresh from the layout's Refresh button / tab-visibility. Two changes from
   // before, both about not fighting an in-flight mutation:
@@ -97,16 +166,13 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     queryClient.invalidateQueries({ queryKey: notificationKeys.count(category), exact: true })
   }, [refreshKey, category, queryClient])
 
-  // Auth check — once on mount
+  // Signed out — send them to the login page. Waits for `ready`, because an
+  // unresolved context reports `userId: null`, which is not the same answer as
+  // "there is no session".
   useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push(loginRedirectPath); return }
-      setLoggedInId(user.id)
-    }
-    init()
+    if (authReady && !userId) router.push(loginRedirectPath)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [authReady, userId])
 
   // Prefetch task detail pages for notifications in view
   useEffect(() => {
@@ -125,13 +191,38 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     [notifications, pendingDeletes],
   )
 
-  const unreadCount = rows.filter(n => !n.is_read).length
-  const visible = filter === 'unread' ? rows.filter(n => !n.is_read) : rows
+  // ── The one arrangement ───────────────────────────────────────────────────
+  //
+  // One card per task, standalone rows for anything with no task. Recomputed
+  // from the flat list on every change, which is what makes "Load older"
+  // incapable of producing a duplicate group: there is no merge step, only a
+  // fresh grouping of a wider newest-N array.
+  const items   = useMemo(() => groupNotificationsByTask(rows), [rows])
+  const visible = useMemo(() => filterDisplayItems(items, filter), [items, filter])
+
+  // Counted in EVENTS, not cards: "16 unread updates across 6 tasks" is two
+  // different quantities and the badge has always meant the first.
+  const summary     = useMemo(() => summarizeDisplayItems(items), [items])
+  const unreadCount = summary.unreadEvents
 
   // Surfaced in the inline banner. A failed list fetch no longer renders as an
   // empty inbox — useNotifications throws, and TanStack keeps the last good
   // list on screen underneath this message.
+  // "You are all caught up" is the same false claim as the empty state, just in
+  // the header — so it waits for the first page too.
+  const subtitle = loadingFirstPage
+    ? 'Loading…'
+    : unreadCount === 0
+      ? 'You are all caught up'
+      : `${unreadCount} unread update${unreadCount === 1 ? '' : 's'}` +
+        (summary.unreadContainers > 0
+          ? ` across ${summary.unreadContainers} ${summary.unreadTaskGroups === summary.unreadContainers
+              ? `task${summary.unreadContainers === 1 ? '' : 's'}`
+              : `item${summary.unreadContainers === 1 ? '' : 's'}`}`
+          : '')
+
   const banner = mutationError
+    ?? olderError
     ?? (notifError
       ? (notifErrorObj instanceof Error ? notifErrorObj.message : 'Could not load notifications.')
       : null)
@@ -163,6 +254,43 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     deleteAll()
   }
 
+  const openTaskGroup = (group: TaskGroup) => {
+    const href = getNotificationMeta(group.latest).href
+    if (href) router.push(href)
+  }
+
+  // Expanding is a disclosure; THIS is the deliberate act.
+  //
+  // It names the TASK, not the loaded ids. The page is bounded to the newest N
+  // events, so an ids-based version would silently skip anything older and
+  // leave unread rows behind with the badge still wrong.
+  const handleMarkGroupRead = (group: TaskGroup) => {
+    markTaskGroupRead(group.taskId)
+  }
+
+  // Deletes NOTIFICATION ROWS for this reader and this task — ALL of them, not
+  // only the loaded ones. The server resolves the set from the task id under
+  // the same category filter and system-type exclusion the list uses, so it
+  // cannot reach another user's rows, another task's, or a category this page
+  // does not show. It names one table: no task, activity record, comment or
+  // attachment is touched.
+  //
+  // Confirmed because the scope is larger than what is on screen.
+  const handleDeleteGroup = (group: TaskGroup) => {
+    if (groupBusy) return
+    const ok = window.confirm(
+      'Delete all notifications for this task?\n\n' +
+      'This removes the notification entries only. The task and its activity history will remain.',
+    )
+    if (!ok) return
+    setSelected(prev => {
+      const s = new Set(prev)
+      for (const id of allIdsOf(group)) s.delete(id)
+      return s
+    })
+    deleteTaskGroup(group.taskId)
+  }
+
   const handleMarkAllRead = () => {
     if (unreadCount === 0 || markingAll) return
     markAllRead()
@@ -187,7 +315,12 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     if (!n.is_read) markRead(n.id)
   }
 
-  if (loading) return <LoadingScreen />
+  // NOTE: there is deliberately no early `return <LoadingScreen />` here.
+  // Returning one unmounted the entire module shell — sidebar, header, Refresh,
+  // every other nav entry — until the notification request came back, so
+  // arriving at Notifications froze navigation and LEAVING it had to wait for
+  // notification work to finish. The shell now always renders; only the list
+  // area swaps to a skeleton.
 
   // ── Toolbar button base style helpers ─────────────────────────────────────
   const toolBtn = (active: boolean, danger = false) => ({
@@ -207,7 +340,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     <Layout
       profile={profile}
       title="Notifications"
-      subtitle={unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'}
+      subtitle={subtitle}
       onSignOut={handleLogout}
       actions={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -301,8 +434,11 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
         ))}
       </div>
 
-      {/* Empty state */}
-      {visible.length === 0 ? (
+      {/* The first page is still in flight and nothing has ever been loaded —
+          show the shape of the list, never a claim about its contents. */}
+      {loadingFirstPage ? (
+        <NotificationListSkeleton />
+      ) : visible.length === 0 ? (
         <div style={{
           display: 'flex', flexDirection: 'column', alignItems: 'center',
           justifyContent: 'center', padding: '64px 24px', gap: '10px',
@@ -322,167 +458,65 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           </span>
         </div>
       ) : (
-        <div className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px' }}>
-          {visible.map((n, i) => {
-            const meta = getNotificationMeta(n)
-            const isSelected = selected.has(n.id)
-            // Primary line is the task title (body) for person-driven task rows;
-            // for module rows and system rows it is the operational title so the
-            // request number / headline stays visible. Body then becomes the
-            // secondary context line (task title, or client name for modules).
-            const primaryText   = meta.headingIsActor && n.body ? n.body : n.title
-            const secondaryText = meta.headingIsActor && n.body ? null : n.body
-
-            return (
-              <div
-                key={n.id}
-                onClick={() => handleRowClick(n)}
-                style={{
-                  display: 'flex', alignItems: 'center',
-                  borderLeft: isSelected
-                    ? `3px solid ${colors.blue}`
-                    : n.is_read ? '3px solid transparent' : `3px solid ${colors.blue}`,
-                  background: isSelected
-                    ? 'rgba(85,133,232,0.10)'
-                    : n.is_read ? '#ffffff' : colors.blueTint,
-                  borderBottom: i < visible.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  transition: 'background 0.12s',
-                  cursor: n.is_read ? 'default' : 'pointer',
-                }}
-              >
-                {/* ── Checkbox ── */}
-                <div
-                  onClick={e => { e.stopPropagation(); toggleSelect(n.id) }}
-                  title={isSelected ? 'Deselect' : 'Select'}
-                  style={{
-                    flexShrink: 0,
-                    width: '40px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    alignSelf: 'stretch',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{
-                    width: '16px', height: '16px', borderRadius: '4px',
-                    border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
-                    background: isSelected ? colors.blue : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                    transition: 'all 0.12s',
-                  }}>
-                    {isSelected && <Check size={10} color="#fff" strokeWidth={3} />}
-                  </span>
-                </div>
-
-                {/* ── Content ── */}
-                <div style={{
-                  flex: 1, minWidth: 0,
-                  padding: '13px 8px 13px 0',
-                  display: 'flex', flexDirection: 'column', gap: '4px',
-                }}>
-                  {/* Heading (task actor or module label) + badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: '13px',
-                      fontWeight: meta.headingIsActor ? 700 : 600,
-                      color: meta.headingIsActor ? colors.primary : colors.secondary,
-                      lineHeight: 1,
-                    }}>
-                      {meta.heading}
-                    </span>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '2px 7px', borderRadius: '20px',
-                      fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
-                      color: meta.badge.color, background: meta.badge.bg,
-                      letterSpacing: '0.01em',
-                    }}>
-                      {meta.badge.label}
-                    </span>
-                  </div>
-
-                  {/* Primary line */}
-                  {primaryText && (
-                    <div style={{
-                      fontSize: '12px',
-                      color: n.is_read ? colors.tertiary : colors.secondary,
-                      fontWeight: 500, lineHeight: 1.35,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {primaryText}
-                    </div>
-                  )}
-                  {/* Secondary context (task title, or client name for modules) */}
-                  {secondaryText && (
-                    <div style={{
-                      fontSize: '12px', color: colors.tertiary, lineHeight: 1.35,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {secondaryText}
-                    </div>
-                  )}
-
-                  {/* Time */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', color: colors.muted, marginTop: '1px',
-                  }}>
-                    <Clock size={10} strokeWidth={1.8} />
-                    {timeAgo(n.created_at)}
-                  </div>
-                </div>
-
-                {/* ── Right: View action + trash — fixed width so all rows align ── */}
-                <div style={{
-                  width: '148px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                  gap: '6px',
-                  padding: '0 16px 0 8px', flexShrink: 0,
-                }}>
-                  {meta.href ? (
-                    <button
-                      onClick={e => { e.stopPropagation(); openNotif(n) }}
-                      title={meta.actionLabel}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 12px', borderRadius: '6px',
-                        fontSize: '11.5px', fontWeight: 600,
-                        background: colors.blue,
-                        color: '#fff',
-                        border: 'none', cursor: 'pointer',
-                        fontFamily: font.body, whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <ExternalLink size={11} strokeWidth={2.2} />
-                      {meta.actionLabel}
-                    </button>
-                  ) : (
-                    <span style={{ display: 'inline-block', width: '82px' }} />
-                  )}
-
-                  {/* Per-row trash — disabled while THIS row's DELETE is in
-                      flight, so a second click cannot fire a duplicate request. */}
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDeleteSingle(n.id) }}
-                    disabled={pendingDeletes.has(n.id)}
-                    title="Delete notification"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: '28px', height: '28px', borderRadius: '6px',
-                      background: 'transparent',
-                      color: colors.muted,
-                      border: `1.5px solid ${colors.border}`,
-                      cursor: pendingDeletes.has(n.id) ? 'not-allowed' : 'pointer',
-                      opacity: pendingDeletes.has(n.id) ? 0.5 : 1,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Trash2 size={12} strokeWidth={2} />
-                  </button>
-                </div>
+        <div>
+          {visible.map(item =>
+            item.kind === 'task' ? (
+              <NotificationTaskGroup
+                key={item.key}
+                group={item}
+                filter={filter}
+                selected={selected}
+                pendingDeletes={pendingDeletes}
+                busy={groupBusy || markingAll || deletingBulk || deletingAll}
+                isMobile={isMobile}
+                onToggleSelect={toggleSelect}
+                onOpenTask={openTaskGroup}
+                onMarkGroupRead={handleMarkGroupRead}
+                onDeleteGroup={handleDeleteGroup}
+                onDeleteOne={handleDeleteSingle}
+                onRowClick={handleRowClick}
+              />
+            ) : (
+              <div key={item.key} className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px', marginBottom: '8px' }}>
+                <NotificationRow
+                  n={item.notification}
+                  isLast
+                  selected={selected.has(item.notification.id)}
+                  pending={pendingDeletes.has(item.notification.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={openNotif}
+                  onDelete={handleDeleteSingle}
+                  onRowClick={handleRowClick}
+                />
               </div>
-            )
-          })}
+            ),
+          )}
+        </div>
+      )}
+
+      {/* Bounded history. The page opens on the newest page and stops offering
+          this at NOTIFICATION_MAX_ROWS — there is no control anywhere that
+          downloads the whole notification history. "Mark all read" and
+          "Delete all" are server-side over the entire category, so neither
+          depends on how much of it is on screen. */}
+      {!loadingFirstPage && hasOlder && (
+        <div style={{ display: 'flex', justifyContent: 'center', maxWidth: '900px', marginTop: '12px' }}>
+          <button
+            onClick={loadOlder}
+            disabled={loadingOlder}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              padding: '7px 14px', borderRadius: '7px',
+              fontSize: '12px', fontWeight: 600, fontFamily: font.body,
+              border: `1.5px solid ${colors.border}`,
+              background: 'transparent',
+              color: loadingOlder ? colors.muted : colors.secondary,
+              cursor: loadingOlder ? 'not-allowed' : 'pointer',
+            }}
+          >
+            <ChevronDown size={13} strokeWidth={2.2} />
+            {loadingOlder ? 'Loading…' : 'Load older notifications'}
+          </button>
         </div>
       )}
     </Layout>

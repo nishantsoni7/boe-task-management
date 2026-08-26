@@ -26,6 +26,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
+import { NOTIFICATION_PAGE_SIZE } from '@/lib/notificationPaging'
 
 /** Every module whose notifications live in the shared `notifications` table. */
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] =
@@ -187,14 +188,34 @@ export function countUnreadAmong(
  *
  * `fetchFn` is injectable for tests; production passes nothing.
  */
+export type NotificationPage = {
+  notifications: Notification[]
+  /** True when the server holds rows older than the ones returned. */
+  hasMore: boolean
+}
+
+export async function fetchNotificationPage(
+  category: NotificationCategory,
+  limit: number = NOTIFICATION_PAGE_SIZE,
+  fetchFn: (input: string, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<NotificationPage> {
+  const res = await fetchFn(`/api/notifications?category=${category}&limit=${limit}`)
+  if (!res.ok) throw new Error(await readApiError(res, 'Could not load notifications'))
+  const body = await res.json()
+  return {
+    notifications: body?.notifications ?? [],
+    // An older server that does not send the flag simply never offers "Load
+    // older", which is the safe reading of "we do not know".
+    hasMore: body?.hasMore === true,
+  }
+}
+
+/** The rows alone — the shape every cache helper and mutation in this file works with. */
 export async function fetchNotificationList(
   category: NotificationCategory,
   fetchFn: (input: string, init?: RequestInit) => Promise<Response> = fetch,
 ): Promise<Notification[]> {
-  const res = await fetchFn(`/api/notifications?category=${category}`)
-  if (!res.ok) throw new Error(await readApiError(res, 'Could not load notifications'))
-  const body = await res.json()
-  return body?.notifications ?? []
+  return (await fetchNotificationPage(category, NOTIFICATION_PAGE_SIZE, fetchFn)).notifications
 }
 
 export async function readApiError(res: Response, fallback: string): Promise<string> {
@@ -205,4 +226,9 @@ export async function readApiError(res: Response, fallback: string): Promise<str
     // Non-JSON body (proxy error page, empty 502, …) — fall through.
   }
   return `${fallback} (HTTP ${res.status})`
+}
+
+/** A thrown value rendered as user-safe text. Never returns an empty string. */
+export function readApiErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof Error && err.message ? err.message : fallback
 }

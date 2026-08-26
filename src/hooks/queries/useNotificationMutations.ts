@@ -8,6 +8,9 @@ import {
   deleteSelectedOptions,
   deleteAllOptions,
   markReadOptions,
+  markManyReadOptions,
+  markTaskGroupReadOptions,
+  deleteTaskGroupOptions,
   markAllReadOptions,
   createPendingGuard,
   type NotificationMutationDeps,
@@ -26,6 +29,14 @@ import {
 
 export type NotificationMutations = {
   markRead: (id: string) => void
+  /** Mark a known set read in ONE request — ids the caller already holds. */
+  markManyRead: (ids: string[]) => void
+  /** Mark EVERY notification for one task read, loaded or not. */
+  markTaskGroupRead: (taskId: string) => void
+  /** Delete EVERY notification for one task, loaded or not. Rows only. */
+  deleteTaskGroup: (taskId: string) => void
+  /** True while a complete-group action is in flight. */
+  groupBusy: boolean
   markAllRead: () => void
   deleteSingle: (id: string) => void
   deleteSelected: (ids: string[]) => void
@@ -73,6 +84,9 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
   const deleteSelectedMutation = useMutation(deleteSelectedOptions(deps))
   const deleteAllMutation      = useMutation(deleteAllOptions(deps))
   const markReadMutation       = useMutation(markReadOptions(deps))
+  const markManyReadMutation   = useMutation(markManyReadOptions(deps))
+  const markTaskGroupMutation  = useMutation(markTaskGroupReadOptions(deps))
+  const deleteTaskGroupMutation = useMutation(deleteTaskGroupOptions(deps))
   const markAllReadMutation    = useMutation(markAllReadOptions(deps))
 
   const deleteSingle = useCallback((id: string) => {
@@ -100,6 +114,26 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
     markReadMutation.mutate(id)
   }, [markReadMutation])
 
+  const markTaskGroupRead = useCallback((taskId: string) => {
+    if (!taskId || markTaskGroupMutation.isPending) return
+    setError(null)
+    markTaskGroupMutation.mutate(taskId)
+  }, [markTaskGroupMutation])
+
+  const deleteTaskGroup = useCallback((taskId: string) => {
+    if (!taskId || deleteTaskGroupMutation.isPending) return
+    setError(null)
+    deleteTaskGroupMutation.mutate(taskId)
+  }, [deleteTaskGroupMutation])
+
+  const markManyRead = useCallback((ids: string[]) => {
+    // Nothing unread in the group, or one already in flight: the click is a
+    // no-op rather than a redundant request that could double-patch the badge.
+    if (ids.length === 0 || markManyReadMutation.isPending) return
+    setError(null)
+    markManyReadMutation.mutate(ids)
+  }, [markManyReadMutation])
+
   const markAllRead = useCallback(() => {
     if (markAllReadMutation.isPending) return
     setError(null)
@@ -108,6 +142,10 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
 
   return {
     markRead,
+    markManyRead,
+    markTaskGroupRead,
+    deleteTaskGroup,
+    groupBusy: markTaskGroupMutation.isPending || deleteTaskGroupMutation.isPending,
     markAllRead,
     deleteSingle,
     deleteSelected,

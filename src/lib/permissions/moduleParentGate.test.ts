@@ -432,29 +432,74 @@ describe('a disabled module never starts its count request', () => {
   // paired with the module whose gate must decide them and with the flag that
   // gate is stored in. The helper is now `load(<flag>, <url>, <field>)`; what
   // must hold is unchanged — no request for a module this person cannot open.
-  const COUNT_ENDPOINTS: [string, string, string][] = [
-    ['task_management', '/api/notifications?count=1&category=task',    'mayOpenTask'],
-    ['sample_tracking', '/api/samples/notifications?count=1',          'mayOpenSample'],
-    ['finance',         '/api/notifications?count=1&category=finance', 'mayOpenFinance'],
-    ['orders',          '/api/notifications?count=1&category=order',   'mayOpenOrders'],
+  // THE GUARANTEE IS UNCHANGED: no request for a module this person cannot
+  // open. The MECHANISM now differs by module.
+  //
+  // Task, Finance and Orders read the one shared unread-count query
+  // (useUnreadCountState), whose `enabled` is the very same `mayOpen…` flag the
+  // launcher's own fetch used to be guarded by — so the gate moved into the
+  // hook's argument rather than being weakened. Sample Tracking keeps the local
+  // `load(...)` helper, because its count lives in its own table behind its own
+  // endpoint and has no shared key to read.
+  const SHARED_COUNTS: [moduleKey: string, category: string, flag: string][] = [
+    ['task_management', 'task',    'mayOpenTask'],
+    ['finance',         'finance', 'mayOpenFinance'],
+    ['orders',          'order',   'mayOpenOrders'],
+  ]
+  const LOCAL_COUNTS: [moduleKey: string, url: string, flag: string][] = [
+    ['sample_tracking', '/api/samples/notifications?count=1', 'mayOpenSample'],
   ]
 
-  test('every module endpoint is requested only through its own module gate', () => {
-    for (const [moduleKey, url, flag] of COUNT_ENDPOINTS) {
-      // The flag IS the gate: permissions resolved AND this module openable.
+  /** Every module that publishes a count, however it is fetched. */
+  const COUNT_ENDPOINTS: [moduleKey: string, ...rest: string[]][] =
+    [...SHARED_COUNTS, ...LOCAL_COUNTS]
+
+  const hook = read('src/hooks/queries/useUnreadNotifications.ts')
+
+  test('every gate flag is still the module gate itself', () => {
+    for (const [moduleKey, , flag] of [...SHARED_COUNTS, ...LOCAL_COUNTS]) {
       assert.ok(
         new RegExp(`const ${flag}\\s*=\\s*permsReady && canOpenModule\\('${moduleKey}'\\)`).test(launcher),
         `${flag} must be defined as permsReady && canOpenModule('${moduleKey}')`,
       )
-      // The endpoint exists in exactly one place…
+    }
+  })
+
+  test('a shared count is requested only through its own module gate', () => {
+    for (const [, category, flag] of SHARED_COUNTS) {
+      assert.ok(
+        new RegExp(`useUnreadCountState\\('${category}',\\s*${flag}\\)`).test(launcher),
+        `the ${category} count must be enabled by ${flag}`,
+      )
+    }
+    // …and the hook honours `enabled` before issuing anything.
+    assert.ok(hook.includes('enabled: enabled && !!userId'),
+      'the shared count must not fetch for a module the caller may not open')
+    assert.ok(hook.includes('`/api/notifications?count=1&category=${category}`'),
+      'one endpoint, built from the category')
+  })
+
+  test('a local count keeps its own gate', () => {
+    for (const [, url, flag] of LOCAL_COUNTS) {
       assert.equal(
         (launcher.match(new RegExp(esc(url), 'g')) ?? []).length, 1,
         `${url} must appear exactly once — a second call site would be ungated`,
       )
-      // …and that place is behind this module's flag.
       assert.ok(
         new RegExp(`load\\(${flag},\\s*'${esc(url)}'`).test(launcher),
         `${url} must be requested through ${flag}`,
+      )
+    }
+  })
+
+  test('the launcher no longer names the shared endpoints at all', () => {
+    // Stronger than "gated": there is no call site in this file to gate. A
+    // duplicate fetch of a count two other surfaces already hold is exactly
+    // what moving these onto the shared query removed.
+    for (const [, category] of SHARED_COUNTS) {
+      assert.equal(
+        launcher.includes(`/api/notifications?count=1&category=${category}`), false,
+        `the launcher must not fetch the ${category} count itself`,
       )
     }
   })
@@ -471,7 +516,7 @@ describe('a disabled module never starts its count request', () => {
 
     const gate = launcher.slice(
       launcher.indexOf('const load ='),
-      launcher.indexOf('load(mayOpenTask'),
+      launcher.indexOf('load(mayOpenSample'),
     )
     assert.ok(gate.includes('fetch(url)'), 'the one fetch must live inside the load gate')
     assert.ok(

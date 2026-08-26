@@ -10,6 +10,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
+import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 
 export function Providers({ children }: { children: ReactNode }) {
   // One QueryClient per browser session — created once, never recreated on re-render
@@ -107,6 +108,11 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       if (event === 'SIGNED_OUT') {
         lastUserId.current = null
         queryClient.clear()
+        // The persisted badge counts outlive the tab, so clearing the in-memory
+        // cache alone would leave the last person's numbers on disk. Their keys
+        // carry a user id and so could never be READ for somebody else, but on
+        // a shared device there is no reason to keep them at all.
+        clearPersistedUnreadCounts()
         return
       }
 
@@ -156,6 +162,7 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       // ModuleGuard shows its loading screen rather than the old user's module.
       lastUserId.current = nextUserId
       queryClient.clear()
+      clearPersistedUnreadCounts()
     })
 
     return () => {
