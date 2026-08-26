@@ -5,7 +5,12 @@ import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 
-// Marks notifications as read. Body: { id } for a single notification, or
+/** Ceiling on an explicit id list, matching /api/notifications/delete-selected. */
+const MAX_IDS = 200
+
+// Marks notifications as read. Body: { id } for a single notification,
+// { ids: [...] } for an explicit set — used by "mark this task's updates read",
+// where the ids are the loaded events of one task group — or
 // { all: true } to clear every unread one for the caller — narrowed to one
 // module via { all: true, category: 'task'|'finance'|'order' }, so "Mark all
 // read" on one module's page only touches that module's rows. An absent
@@ -23,14 +28,36 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null)
-  const { id, all, category } = (body ?? {}) as { id?: unknown; all?: unknown; category?: unknown }
-  if (!all && !id) {
-    return NextResponse.json({ error: 'id or all is required' }, { status: 400 })
+  const { id, ids, all, category } =
+    (body ?? {}) as { id?: unknown; ids?: unknown; all?: unknown; category?: unknown }
+
+  // `ids` is the same operation as `id`, for a known set. It exists so that
+  // marking one task's group read is ONE request rather than one per event —
+  // which would be N optimistic updates, N failure modes and N chances for the
+  // unread count to end up wrong. Every row is still scoped to
+  // `user_id = caller` below, exactly as the single-id path is.
+  const idList: string[] | null = Array.isArray(ids) ? (ids as unknown[]).map(String) : null
+
+  if (!all && !id && !idList) {
+    return NextResponse.json({ error: 'id, ids or all is required' }, { status: 400 })
   }
   // Validated before Postgres sees it — a malformed id would otherwise return a
   // 22P02 cast error as a 500 rather than the 400 it is.
-  if (!all && !isValidUUID(id as string)) {
+  if (!all && !idList && !isValidUUID(id as string)) {
     return NextResponse.json({ error: 'Invalid notification id' }, { status: 400 })
+  }
+  if (idList) {
+    if (idList.length === 0) {
+      return NextResponse.json({ error: 'ids must not be empty' }, { status: 400 })
+    }
+    // Same ceiling as /delete-selected: a bounded page holds far fewer than
+    // this, and an unbounded IN list is a query nobody sized.
+    if (idList.length > MAX_IDS) {
+      return NextResponse.json({ error: `Cannot mark more than ${MAX_IDS} notifications at once` }, { status: 400 })
+    }
+    if (!idList.every(isValidUUID)) {
+      return NextResponse.json({ error: 'ids must all be valid notification ids' }, { status: 400 })
+    }
   }
 
   const supabase = createServerClient(
@@ -53,6 +80,10 @@ export async function POST(req: NextRequest) {
     }
     // "Mark all" only affects visible task-activity rows, never hidden summary/digest ones.
     query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category)).not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+  } else if (idList) {
+    // Scoped to the caller by the `.eq('user_id', …)` above, so an id belonging
+    // to somebody else simply matches nothing.
+    query = query.in('id', idList)
   } else {
     query = query.eq('id', id)
   }

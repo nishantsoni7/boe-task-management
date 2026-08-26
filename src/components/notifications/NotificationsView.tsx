@@ -8,15 +8,24 @@ import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
-import { timeAgo } from '@/lib/ui'
 import { colors, font } from '@/lib/tokens'
-import { Bell, CheckCheck, ExternalLink, Clock, Trash2, Check, AlertTriangle, ChevronDown } from 'lucide-react'
+import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useNotifications } from '@/hooks/queries/useNotifications'
 import { useNotificationMutations } from '@/hooks/queries/useNotificationMutations'
 import { notificationKeys } from '@/lib/notificationCache'
 import { NotificationListSkeleton } from './NotificationListSkeleton'
+import { NotificationTaskGroup } from './NotificationTaskGroup'
+import { NotificationRow } from './NotificationRow'
+import {
+  groupNotificationsByTask,
+  filterDisplayItems,
+  summarizeDisplayItems,
+  unreadIdsOf,
+  allIdsOf,
+  type NotificationTaskGroup as TaskGroup,
+} from '@/lib/notifications/grouping'
 
 type FilterTab = 'all' | 'unread'
 
@@ -56,6 +65,17 @@ type NotificationsViewProps = {
 export function NotificationsView({ category, Layout, loginRedirectPath = '/login' }: NotificationsViewProps) {
   const [filter,   setFilter]   = useState<FilterTab>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [isMobile, setIsMobile] = useState(false)
+
+  // Same breakpoint the rest of the app uses. Only affects layout: the group
+  // summary wraps and its actions get taller touch targets; nothing is hidden
+  // at either width.
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -97,7 +117,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // Declared BEFORE the list query because the list query needs to know whether
   // any of it is in flight — see `mutationInFlight`.
   const {
-    markRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
+    markRead, markManyRead, markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
     pendingDeletes, markingAll, deletingBulk, deletingAll,
     error: mutationError, clearError,
   } = useNotificationMutations(category)
@@ -171,8 +191,19 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     [notifications, pendingDeletes],
   )
 
-  const unreadCount = rows.filter(n => !n.is_read).length
-  const visible = filter === 'unread' ? rows.filter(n => !n.is_read) : rows
+  // ── The one arrangement ───────────────────────────────────────────────────
+  //
+  // One card per task, standalone rows for anything with no task. Recomputed
+  // from the flat list on every change, which is what makes "Load older"
+  // incapable of producing a duplicate group: there is no merge step, only a
+  // fresh grouping of a wider newest-N array.
+  const items   = useMemo(() => groupNotificationsByTask(rows), [rows])
+  const visible = useMemo(() => filterDisplayItems(items, filter), [items, filter])
+
+  // Counted in EVENTS, not cards: "16 unread updates across 6 tasks" is two
+  // different quantities and the badge has always meant the first.
+  const summary     = useMemo(() => summarizeDisplayItems(items), [items])
+  const unreadCount = summary.unreadEvents
 
   // Surfaced in the inline banner. A failed list fetch no longer renders as an
   // empty inbox — useNotifications throws, and TanStack keeps the last good
@@ -181,7 +212,14 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // the header — so it waits for the first page too.
   const subtitle = loadingFirstPage
     ? 'Loading…'
-    : unreadCount > 0 ? `${unreadCount} unread` : 'You are all caught up'
+    : unreadCount === 0
+      ? 'You are all caught up'
+      : `${unreadCount} unread update${unreadCount === 1 ? '' : 's'}` +
+        (summary.unreadContainers > 0
+          ? ` across ${summary.unreadContainers} ${summary.unreadTaskGroups === summary.unreadContainers
+              ? `task${summary.unreadContainers === 1 ? '' : 's'}`
+              : `item${summary.unreadContainers === 1 ? '' : 's'}`}`
+          : '')
 
   const banner = mutationError
     ?? olderError
@@ -214,6 +252,41 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     if (deletingAll || rows.length === 0) return
     setSelected(new Set())
     deleteAll()
+  }
+
+  const openTaskGroup = (group: TaskGroup) => {
+    const href = getNotificationMeta(group.latest).href
+    if (href) router.push(href)
+  }
+
+  // Expanding is a disclosure; THIS is the deliberate act. One request for the
+  // whole group — see markManyReadOptions — so the unread count moves by the
+  // number that were actually unread, once.
+  const handleMarkGroupRead = (group: TaskGroup) => {
+    markManyRead(unreadIdsOf(group))
+  }
+
+  // Deletes NOTIFICATION ROWS for this reader and this task, through the same
+  // /delete-selected endpoint the toolbar uses — which is scoped to
+  // `user_id = caller`, so it cannot reach anybody else's rows, and touches no
+  // task, activity record, comment or attachment. Confirmed because several
+  // records go at once.
+  const handleDeleteGroup = (group: TaskGroup) => {
+    if (deletingBulk) return
+    const ids = allIdsOf(group)
+    if (ids.length === 0) return
+    const ok = window.confirm(
+      `Delete ${ids.length} notification${ids.length === 1 ? '' : 's'} for "${group.title}"?\n\n` +
+      'This removes only your notifications for this task. The task, its activity history, ' +
+      'its comments and its attachments are not affected.',
+    )
+    if (!ok) return
+    setSelected(prev => {
+      const s = new Set(prev)
+      for (const id of ids) s.delete(id)
+      return s
+    })
+    runDeleteSelected(ids)
   }
 
   const handleMarkAllRead = () => {
@@ -383,167 +456,39 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           </span>
         </div>
       ) : (
-        <div className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px' }}>
-          {visible.map((n, i) => {
-            const meta = getNotificationMeta(n)
-            const isSelected = selected.has(n.id)
-            // Primary line is the task title (body) for person-driven task rows;
-            // for module rows and system rows it is the operational title so the
-            // request number / headline stays visible. Body then becomes the
-            // secondary context line (task title, or client name for modules).
-            const primaryText   = meta.headingIsActor && n.body ? n.body : n.title
-            const secondaryText = meta.headingIsActor && n.body ? null : n.body
-
-            return (
-              <div
-                key={n.id}
-                onClick={() => handleRowClick(n)}
-                style={{
-                  display: 'flex', alignItems: 'center',
-                  borderLeft: isSelected
-                    ? `3px solid ${colors.blue}`
-                    : n.is_read ? '3px solid transparent' : `3px solid ${colors.blue}`,
-                  background: isSelected
-                    ? 'rgba(85,133,232,0.10)'
-                    : n.is_read ? '#ffffff' : colors.blueTint,
-                  borderBottom: i < visible.length - 1 ? `1px solid ${colors.border}` : 'none',
-                  transition: 'background 0.12s',
-                  cursor: n.is_read ? 'default' : 'pointer',
-                }}
-              >
-                {/* ── Checkbox ── */}
-                <div
-                  onClick={e => { e.stopPropagation(); toggleSelect(n.id) }}
-                  title={isSelected ? 'Deselect' : 'Select'}
-                  style={{
-                    flexShrink: 0,
-                    width: '40px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    alignSelf: 'stretch',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <span style={{
-                    width: '16px', height: '16px', borderRadius: '4px',
-                    border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft}`,
-                    background: isSelected ? colors.blue : 'transparent',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
-                    transition: 'all 0.12s',
-                  }}>
-                    {isSelected && <Check size={10} color="#fff" strokeWidth={3} />}
-                  </span>
-                </div>
-
-                {/* ── Content ── */}
-                <div style={{
-                  flex: 1, minWidth: 0,
-                  padding: '13px 8px 13px 0',
-                  display: 'flex', flexDirection: 'column', gap: '4px',
-                }}>
-                  {/* Heading (task actor or module label) + badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
-                    <span style={{
-                      fontSize: '13px',
-                      fontWeight: meta.headingIsActor ? 700 : 600,
-                      color: meta.headingIsActor ? colors.primary : colors.secondary,
-                      lineHeight: 1,
-                    }}>
-                      {meta.heading}
-                    </span>
-                    <span style={{
-                      display: 'inline-flex', alignItems: 'center',
-                      padding: '2px 7px', borderRadius: '20px',
-                      fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
-                      color: meta.badge.color, background: meta.badge.bg,
-                      letterSpacing: '0.01em',
-                    }}>
-                      {meta.badge.label}
-                    </span>
-                  </div>
-
-                  {/* Primary line */}
-                  {primaryText && (
-                    <div style={{
-                      fontSize: '12px',
-                      color: n.is_read ? colors.tertiary : colors.secondary,
-                      fontWeight: 500, lineHeight: 1.35,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {primaryText}
-                    </div>
-                  )}
-                  {/* Secondary context (task title, or client name for modules) */}
-                  {secondaryText && (
-                    <div style={{
-                      fontSize: '12px', color: colors.tertiary, lineHeight: 1.35,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      {secondaryText}
-                    </div>
-                  )}
-
-                  {/* Time */}
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '4px',
-                    fontSize: '11px', color: colors.muted, marginTop: '1px',
-                  }}>
-                    <Clock size={10} strokeWidth={1.8} />
-                    {timeAgo(n.created_at)}
-                  </div>
-                </div>
-
-                {/* ── Right: View action + trash — fixed width so all rows align ── */}
-                <div style={{
-                  width: '148px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
-                  gap: '6px',
-                  padding: '0 16px 0 8px', flexShrink: 0,
-                }}>
-                  {meta.href ? (
-                    <button
-                      onClick={e => { e.stopPropagation(); openNotif(n) }}
-                      title={meta.actionLabel}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '5px',
-                        padding: '5px 12px', borderRadius: '6px',
-                        fontSize: '11.5px', fontWeight: 600,
-                        background: colors.blue,
-                        color: '#fff',
-                        border: 'none', cursor: 'pointer',
-                        fontFamily: font.body, whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <ExternalLink size={11} strokeWidth={2.2} />
-                      {meta.actionLabel}
-                    </button>
-                  ) : (
-                    <span style={{ display: 'inline-block', width: '82px' }} />
-                  )}
-
-                  {/* Per-row trash — disabled while THIS row's DELETE is in
-                      flight, so a second click cannot fire a duplicate request. */}
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDeleteSingle(n.id) }}
-                    disabled={pendingDeletes.has(n.id)}
-                    title="Delete notification"
-                    style={{
-                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                      width: '28px', height: '28px', borderRadius: '6px',
-                      background: 'transparent',
-                      color: colors.muted,
-                      border: `1.5px solid ${colors.border}`,
-                      cursor: pendingDeletes.has(n.id) ? 'not-allowed' : 'pointer',
-                      opacity: pendingDeletes.has(n.id) ? 0.5 : 1,
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Trash2 size={12} strokeWidth={2} />
-                  </button>
-                </div>
+        <div>
+          {visible.map(item =>
+            item.kind === 'task' ? (
+              <NotificationTaskGroup
+                key={item.key}
+                group={item}
+                filter={filter}
+                selected={selected}
+                pendingDeletes={pendingDeletes}
+                busy={markingAll || deletingBulk || deletingAll}
+                isMobile={isMobile}
+                onToggleSelect={toggleSelect}
+                onOpenTask={openTaskGroup}
+                onMarkGroupRead={handleMarkGroupRead}
+                onDeleteGroup={handleDeleteGroup}
+                onDeleteOne={handleDeleteSingle}
+                onRowClick={handleRowClick}
+              />
+            ) : (
+              <div key={item.key} className="boe-card" style={{ overflow: 'hidden', padding: 0, maxWidth: '900px', marginBottom: '8px' }}>
+                <NotificationRow
+                  n={item.notification}
+                  isLast
+                  selected={selected.has(item.notification.id)}
+                  pending={pendingDeletes.has(item.notification.id)}
+                  onToggleSelect={toggleSelect}
+                  onOpen={openNotif}
+                  onDelete={handleDeleteSingle}
+                  onRowClick={handleRowClick}
+                />
               </div>
-            )
-          })}
+            ),
+          )}
         </div>
       )}
 

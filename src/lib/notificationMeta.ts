@@ -40,6 +40,27 @@ export type NotificationMeta = {
 
 // ── Task Management: parse actor + badge from the title ──────────────────────
 const TASK_PATTERNS: Array<{ re: RegExp; label: string; color: string; bg: string }> = [
+  // ── Creator approval (20260833000000) — FIRST, and first for two reasons ──
+  //
+  // ORDER. This list is scanned in order and the first match wins, so
+  // `approved and completed task` has to be tested before the generic
+  // `completed task` below. It was not, so that row matched mid-sentence and
+  // `parseTaskActor` handed back everything in front of the match — the actor
+  // came out as "Dhruv approved and" rather than "Dhruv".
+  //
+  // PRESENCE. `submitted task for approval` and `returned task to Working`
+  // matched NOTHING here at all, so both fell through to the System/Activity
+  // fallback at the bottom of getNotificationMeta: an anonymous log line with
+  // the actor's name discarded. Both are events somebody must act on — the
+  // creator has a task to approve, the assignee has work returned to them —
+  // and they were the two least system-like rows in the feed, labelled
+  // "System".
+  //
+  // This changes what the row SAYS, not who receives it or whether it exists.
+  { re: /submitted task for approval/i,  label: 'Awaiting your approval', color: colors.amber, bg: colors.amberTint },
+  { re: /approved and completed task/i,  label: 'Approved & completed',   color: colors.green, bg: colors.greenTint },
+  { re: /returned task to working/i,     label: 'Returned for changes',   color: colors.amber, bg: colors.amberTint },
+
   { re: /added a comment/i,       label: 'Added comment',    color: colors.blue,  bg: colors.blueTint  },
   { re: /new comment on task/i,   label: 'New comment',      color: colors.blue,  bg: colors.blueTint  },
   { re: /acknowledged task/i,     label: 'Acknowledged',     color: colors.green, bg: colors.greenTint },

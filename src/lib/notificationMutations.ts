@@ -238,6 +238,50 @@ export function markReadOptions(deps: NotificationMutationDeps) {
   }
 }
 
+// ── Mark a known set read (one task group) ─────────────────────────────────
+
+/**
+ * The same operation as `markReadOptions`, for a SET of ids.
+ *
+ * One request rather than one per event. Marking a four-event task group read
+ * through the single-id path would be four optimistic updates, four failure
+ * modes and four chances for the unread count to drift; here the delta is
+ * computed once, from the events that were actually unread, and one rollback
+ * restores everything if the request fails.
+ *
+ * The unread count is patched by the number of ids that were unread IN THE
+ * CACHE — not by `ids.length` — so pressing it twice, or pressing it on a group
+ * where some events are already read, cannot take the badge below the truth.
+ */
+export function markManyReadOptions(deps: NotificationMutationDeps) {
+  return {
+    mutationKey: ['notifications', 'mark-many-read'] as const,
+    mutationFn: (ids: string[]): Promise<MarkReadResult> =>
+      timed('notification.mark.read', async () => {
+        const res = await doFetch(deps)('/api/notifications/mark-read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        })
+        if (!res.ok) throw new Error(await readApiError(res, 'Could not mark these notifications as read'))
+        return (await res.json().catch(() => ({ success: true }))) as MarkReadResult
+      }),
+    onMutate: async (ids: string[]): Promise<OptimisticContext> => {
+      const snapshot = await beginOptimistic(deps)
+      const target = new Set(ids)
+      const unreadAmong = countUnreadAmong(cachedList(deps, snapshot), target)
+      const now = new Date().toISOString()
+      deps.qc.setQueryData<Notification[]>(notificationKeys.list(deps.category), old =>
+        (old ?? []).map(n => (target.has(n.id) && !n.is_read ? { ...n, is_read: true, read_at: now } : n)))
+      if (unreadAmong > 0) patchUnreadCount(deps.qc, deps.category, -unreadAmong)
+      return { snapshot }
+    },
+    onError: (err: unknown, _ids: string[], ctx: OptimisticContext | undefined) =>
+      rollback(deps, ctx, err, 'Could not mark these notifications as read.'),
+    onSuccess: () => reconcile(deps),
+  }
+}
+
 // ── Mark all read (this module only) ───────────────────────────────────────
 
 export function markAllReadOptions(deps: NotificationMutationDeps) {

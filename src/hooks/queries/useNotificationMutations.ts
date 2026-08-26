@@ -8,6 +8,7 @@ import {
   deleteSelectedOptions,
   deleteAllOptions,
   markReadOptions,
+  markManyReadOptions,
   markAllReadOptions,
   createPendingGuard,
   type NotificationMutationDeps,
@@ -26,6 +27,8 @@ import {
 
 export type NotificationMutations = {
   markRead: (id: string) => void
+  /** Mark a known set read in ONE request — a task group's loaded events. */
+  markManyRead: (ids: string[]) => void
   markAllRead: () => void
   deleteSingle: (id: string) => void
   deleteSelected: (ids: string[]) => void
@@ -73,6 +76,7 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
   const deleteSelectedMutation = useMutation(deleteSelectedOptions(deps))
   const deleteAllMutation      = useMutation(deleteAllOptions(deps))
   const markReadMutation       = useMutation(markReadOptions(deps))
+  const markManyReadMutation   = useMutation(markManyReadOptions(deps))
   const markAllReadMutation    = useMutation(markAllReadOptions(deps))
 
   const deleteSingle = useCallback((id: string) => {
@@ -100,6 +104,14 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
     markReadMutation.mutate(id)
   }, [markReadMutation])
 
+  const markManyRead = useCallback((ids: string[]) => {
+    // Nothing unread in the group, or one already in flight: the click is a
+    // no-op rather than a redundant request that could double-patch the badge.
+    if (ids.length === 0 || markManyReadMutation.isPending) return
+    setError(null)
+    markManyReadMutation.mutate(ids)
+  }, [markManyReadMutation])
+
   const markAllRead = useCallback(() => {
     if (markAllReadMutation.isPending) return
     setError(null)
@@ -108,6 +120,7 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
 
   return {
     markRead,
+    markManyRead,
     markAllRead,
     deleteSingle,
     deleteSelected,
