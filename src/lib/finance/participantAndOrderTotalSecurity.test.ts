@@ -546,6 +546,20 @@ describe('the applied migrations are frozen', () => {
     // projection. Creates no table and stores nothing.
     ['supabase/migrations/20261008000000_finance_payment_classification.sql',
      'e2494ca54ae65fa4d155b3b9ff7e9eae27663fd455757c882a6d10d8c9aa2fbb'],
+    // 115. APPLIED. `supabase db push` ran it and `supabase migration list
+    // --linked` reports Local and Remote both at 20261015000000. It stops
+    // run_task_health_check() from inserting notifications; the activity-log
+    // writes it leaves behind are the whole point of the change.
+    //
+    // ITS HEADER STILL SAYS "NOT APPLIED". That line is stale and is left
+    // alone on purpose — 20261007000000 and 20261008000000 carry the same
+    // stale line for the same reason. Editing an applied migration is what
+    // this list exists to prevent, and a comment-only edit is not exempt: the
+    // hash below is a claim about the exact bytes the database ran, and it
+    // stops being true the moment the file is touched for any reason. THIS
+    // LIST, not the file header, is where applied status is recorded.
+    ['supabase/migrations/20261015000000_task_health_check_stops_notifying.sql',
+     'f05f7ffffb964ea2a6e0a70a214ca6001b6321a9767fc315c3001fbf22736349'],
   ]
 
   test('each applied migration still hashes to the bytes that were applied', () => {
@@ -638,27 +652,27 @@ describe('the applied migrations are frozen', () => {
       // kept storable for history, and the PNB/Paytm custody event log.
       // Recorded here for the same reason as the five above: this list is exact.
       '20261014000000_payment_destination_display_modes_and_custody.sql',
-      // 115. NOT APPLIED. run_task_health_check() stops writing notifications
-      // nobody can act on: four `overdue`/`escalation` inserts go, the 24h and
-      // 48h branches go with them (they had no other effect), and the three
-      // activity-log writes, both CONTINUEs, the stale calculation and every
-      // threshold are preserved byte for byte. It stacks after 114 for the
-      // ordinary reason — the lower-numbered files must not be left behind the
-      // remote's last applied migration — and it depends on nothing in them:
-      // it replaces one function body and touches no table, row, cron entry,
-      // grant or ownership. Recorded here for the same reason as 109-114: this
-      // list is exact, so a new migration cannot appear unnoticed.
+      // 115. APPLIED (see FROZEN above). run_task_health_check() stops writing
+      // notifications nobody can act on: four `overdue`/`escalation` inserts
+      // go, the 24h and 48h branches go with them (they had no other effect),
+      // and the three activity-log writes, both CONTINUEs, the stale
+      // calculation and every threshold are preserved byte for byte. Recorded
+      // here for the same reason as 109-114: this list is exact, so a new
+      // migration cannot appear unnoticed. Unlike them it IS pushed, which is
+      // why it also appears in FROZEN and no longer in the pending list below.
       '20261015000000_task_health_check_stops_notifying.sql',
     ])
   })
 
-  test('109 to 115 are in ascending order, and none is pinned as applied', () => {
+  test('109 to 114 are in ascending order, and none is pinned as applied', () => {
     // The whole reason the module reset lives on this branch rather than on
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
+    const frozenFiles = new Set(FROZEN.map(([file]) => file.split('/').pop()))
     const pending = execSync('ls supabase/migrations', { encoding: 'utf8' })
       .split('\n').filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
+      .filter(f => !frozenFiles.has(f))
       .sort()
     assert.deepEqual(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',
@@ -667,11 +681,12 @@ describe('the applied migrations are frozen', () => {
       '20261012000000_allocation_ledger_as_single_source.sql',
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
-      '20261015000000_task_health_check_stops_notifying.sql',
     ])
+    // 115 is deliberately absent: it has been pushed, so it belongs in FROZEN
+    // and not here. 2026101500 is therefore NOT in the guard below.
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
-        || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400|2026101500/.test(file),
+        || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400/.test(file),
         `${file} is unapplied and must not be pinned as frozen`)
     }
   })

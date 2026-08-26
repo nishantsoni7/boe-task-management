@@ -45,87 +45,55 @@ needs A1's body to do correctly.
 
 ---
 
-## Part B — the migration: still blocked, and on exactly one input
+## Part B — the migration: WRITTEN AND APPLIED
 
-**A1 has been run and reported. The function BODY has not been supplied.**
+`supabase/migrations/20261015000000_task_health_check_stops_notifying.sql`.
+Pushed; `supabase migration list --linked` reports Local and Remote both at
+`20261015000000`.
 
-What is known (from the reported A1/A7 findings):
+**It must not be edited or renumbered.** Its bytes are pinned by SHA-256 in the
+`FROZEN` list in `src/lib/finance/participantAndOrderTotalSecurity.test.ts`, and
+that hash is a claim about the exact bytes the database ran. A correction after
+this point is a new migration, 116 or later.
+
+Its header still reads `NOT APPLIED`. That line is stale and is left alone on
+purpose: `20261007000000` and `20261008000000` carry the same stale line for the
+same reason. `FROZEN` — not a file header — is where applied status is recorded.
+
+### What it changed
+
+Removed, and nothing else:
 
 | | |
 |---|---|
-| signature | `public.run_task_health_check()` |
-| owner | `postgres` |
-| language | `plpgsql` |
-| security | `SECURITY INVOKER` |
-| returns | `void` |
-| proconfig | none — no `search_path` override |
+| 4 × `INSERT INTO notifications` | one `overdue`, three `escalation` (24h, 48h, 72h) |
+| 2 × `ELSIF` branch heads | 24h and 48h, whose only effect was those inserts |
 
-And the behaviour it already has:
+38 lines removed, 0 added, proven by a multiset diff in
+`healthCheckMigrationAudit.test.ts` against the captured baseline.
 
-- overdue escalation writes `action = 'escalated'`, note `Auto-escalated: overdue with no action for 24 hours`
-- 72-hour escalation writes `action = 'escalated'`, note `Auto-escalated: no update for 72 hours`
-- stale detection writes `action = 'stale_flagged'`, note `Auto-flagged: same status for 5+ days with no progress`
-- separately, it inserts `overdue` and `escalation` notification rows at 24h, 48h and 72h, with **no deduplication**, so a task collects repeats every run
-- the 24h and 48h branches do nothing except create those notifications
-
-**That is enough to specify the change. It is not enough to write it.**
-`create or replace function` replaces the ENTIRE body. Every line not supplied
-would have to be invented: the task-selection query and its `where`, the loop
-structure, the variable declarations, the exact interval arithmetic, the columns
-the stale `update` sets, the ordering of the `continue` statements, and the
-precise `task_activity_log` column list. Inventing any of them and shipping it
-under `create or replace` would not be a refactor — it would be a rewrite of an
-hourly production job, silently discarding whatever was actually there.
-
-So the migration is not written. What is needed is the single field A1 already
-returned:
-
-> `function_definition` — complete and verbatim, from the A1 grid.
-
-### What will change, once it arrives
-
-Only this, and nothing else:
-
-1. remove every `insert into … notifications` statement;
-2. remove the 24-hour and 48-hour escalation branches, which have no other
-   effect — deleted rather than left as empty conditionals;
-3. keep the 72-hour branch, minus its notification insert, with its
-   activity-log write byte-for-byte;
-4. keep the overdue branch's activity-log write and its `continue`;
-5. keep the stale calculation, the `tasks` update and its activity-log write;
-6. keep task selection, the waiting skip, the blocked/completed exclusion and
-   every timing threshold;
-7. keep `language plpgsql`, `returns void`, `security invoker`, no `proconfig`,
-   and the exact signature.
-
-No `alter … owner`, no `grant`, no `revoke`: `create or replace` preserves both
-for an existing signature, so restating them can only differ from production,
-never match it more closely. No cron change. No historical row deleted.
-
-### The rules are already written and already tested
-
-`src/lib/tasks/healthCheckMigrationAudit.ts` states all twelve required
-properties as data, and `healthCheckMigrationAudit.test.ts` proves each one
-fires on SQL crafted to break it — including that a header comment explaining
-what was removed cannot satisfy or violate a rule. Pointing them at the real
-file is one line:
-
-```ts
-auditHealthCheckMigration(readFileSync(join(ROOT, 'supabase/migrations/<file>.sql'), 'utf8'))
-```
+Preserved byte for byte: the task selection and its
+`status NOT IN ('completed', 'blocked')` filter; the overdue activity-log write
+with its `IF NOT EXISTS` guard and its `CONTINUE`; the waiting `CONTINUE`; the
+72h activity-log write with its guard; the whole stale block (6-day probe, 5-day
+age test, the `tasks` UPDATE, the `stale_flagged` write); every threshold;
+`LANGUAGE plpgsql`; `RETURNS void`; the signature; `SECURITY INVOKER` (preserved
+by saying nothing — it is the default and `pg_get_functiondef` omits the clause).
+No `SET search_path`, no owner/`GRANT`/`REVOKE`, no cron change, no historical
+row deleted.
 
 ### Rollback
 
-Keep A1's `function_definition` verbatim before applying. Rolling back is
-re-running that exact text as a `create or replace function`. Nothing else
-changes — no table, no row, no cron entry, no grant — so there is nothing else
-to undo. The next scheduled fire resumes the old behaviour.
+`docs/proposals/run_task_health_check.production.sql` holds the pre-change
+definition verbatim. Running it restores the old behaviour; nothing else needs
+undoing, because the migration touched no table, row, cron entry, grant or
+ownership.
 
-### The UI is already safe either way
+### The UI was already safe either way
 
 The feed, the badge count, mark-all-read and delete-all exclude these types by
 name (`SYSTEM_TYPE_EXCLUSION`), so whether the job writes them or not, no user
-sees one. The migration stops the writes; it does not change what is displayed.
+sees one. The migration stopped the writes; it did not change what is displayed.
 
 ---
 

@@ -4,6 +4,10 @@
 --  Captured from A1 (pg_get_functiondef) before the replacement migration
 --  supabase/migrations/20261015000000_task_health_check_stops_notifying.sql.
 --
+--  MIGRATION 115 IS NOW APPLIED (pushed; `supabase migration list --linked`
+--  reports Local and Remote both at 20261015000000), so this is no longer a
+--  theoretical rollback — it is the live one.
+--
 --  THIS FILE IS THE ROLLBACK SCRIPT. Running it as-is restores the function
 --  exactly as it was, notification inserts included. Nothing else needs undoing:
 --  the migration touches no table, no row, no cron entry, no grant and no
