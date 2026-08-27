@@ -51,14 +51,26 @@ describe('Finance controls ask the capability helper', () => {
 
   test('approval is gated on canApprovePayment, not the role', () => {
     const source = read(FINANCE_PAGE)
-    assert.ok(source.includes('canApprove={caps.canApprovePayment}'))
-    assert.ok(source.includes('{canApprove && isPending && ('))
+    // THE TABLE NO LONGER TAKES THE CAPABILITY. It used to, for one thing: an
+    // approver-only "Review" chip beside the client name, which repeated what
+    // the Status column already said on the same row and made the same record
+    // look different to different viewers. The chip is gone and the prop with
+    // it, so the two assertions that pinned it are gone too.
+    //
+    // What this test is FOR is unchanged and still pinned below: the review
+    // router is gated on the capability and never on the role. That is where
+    // approval is actually exercised — the row click that opens the review
+    // modal — and it is the gate that matters.
+    assert.equal(source.includes('canApprove={caps.canApprovePayment}'), false,
+      'the table draws nothing approver-only; passing the capability invites a second, weaker gate')
     assert.equal(
       source.includes("if (isAdmin && r.status === 'pending_approval')"),
       false,
       'the review router must not be role-gated',
     )
     assert.ok(source.includes("if (caps.canApprovePayment && r.status === 'pending_approval')"))
+    // And the modal the router opens is still gated on the same capability.
+    assert.ok(source.includes('mayApprovePayments={caps.canApprovePayment}'))
   })
 
   test('correction is gated on canCorrectOrReversePayment', () => {
