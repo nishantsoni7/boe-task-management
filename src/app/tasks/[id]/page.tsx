@@ -1691,24 +1691,36 @@ export default function TaskDetailPage() {
                       to the person who asked for it rather than closed here. */}
                   {maySubmit && (
                     <button
-                      className="boe-task-action-primary boe-task-action-blue"
+                      // THE COLOUR AND THE WIDTH LIVE IN .boe-task-action-submit.
+                      //
+                      // It used to be a saturated solid-blue block with a blue
+                      // shadow, stretched across the row by the shared
+                      // `flex: 1 1 auto` on .boe-task-action-primary. Between
+                      // the fill, the shadow and the width it pulled the eye off
+                      // the task title, the status and the activity beneath it —
+                      // it read as the subject of the page rather than as the
+                      // next thing to do on it.
+                      //
+                      // It is still the lead action in this row, and still the
+                      // only one with a fill; it simply stopped shouting. The
+                      // class is used by this button and nothing else, so the
+                      // shared primary style — which Mark Complete and
+                      // Approve & Complete also wear — is untouched.
+                      className="boe-task-action-primary boe-task-action-submit"
                       onClick={submitForApproval}
                       disabled={saving || reviewBusyAny || statusUpdating}
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                        padding: '9px 14px', borderRadius: '8px',
-                        // Blue, like Send Update and the page's other primary actions:
-                        // asking for approval is a submission, not a completion (green)
-                        // and not the pending state itself (the gold is reserved for
-                        // the status card and badge the submission produces).
-                        border: `1.5px solid ${colors.blue}`,
-                        background: colors.blue, color: '#ffffff',
+                        // Same 9px vertical padding, so the height is unchanged;
+                        // 18px horizontal, because a content-width button needs
+                        // more breathing room around the label than a stretched
+                        // one did. Comfortably wider than the text, never tight.
+                        padding: '9px 18px', borderRadius: '8px',
                         fontSize: '13px', fontWeight: 700,
                         cursor: saving || reviewBusyAny || statusUpdating ? 'not-allowed' : 'pointer',
                         fontFamily: font.body,
                         opacity: saving || reviewBusyAny || statusUpdating ? 0.6 : 1,
                         transition: 'all 0.15s',
-                        boxShadow: '0 2px 6px rgba(85,133,232,0.25)',
                       }}
                     >
                       <SendHorizontal size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
