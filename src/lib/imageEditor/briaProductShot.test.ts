@@ -114,11 +114,23 @@ describe('the request', () => {
     const sent = body(calls)
 
     assert.equal(sent.scene_description, STUDIO_SCENE_DESCRIPTION)
-    assert.match(STUDIO_SCENE_DESCRIPTION, /Preserve the uploaded furniture product exactly/)
-    assert.match(STUDIO_SCENE_DESCRIPTION, /soft warm white studio background/)
     // Either a reference image or a description, never both — and BOE sends the
     // description.
     assert.equal('ref_image_url' in sent, false)
+  })
+
+  test('no placement field from another placement mode is sent', async () => {
+    // Bria's placement fields belong to one placement_type each. With
+    // manual_placement the compatible set is manual_placement_selection and
+    // shot_size; padding_values belongs to manual_padding and original_quality
+    // to original, and sending either is at best ignored, at worst rejected.
+    const { calls } = stubFetch(() => okResponse())
+    await generateProductShot({ ...PHOTO, apiKey: KEY })
+    const sent = body(calls)
+
+    for (const field of ['padding_values', 'original_quality', 'ref_image_url', 'ref_image_file', 'image_file']) {
+      assert.equal(field in sent, false, `${field} does not belong with manual_placement`)
+    }
   })
 
   test('the browser cannot reach any of it: the adapter takes an image and a key', async () => {
@@ -165,6 +177,92 @@ describe('the request', () => {
     assert.equal(result.ok, false)
     assert.equal(!result.ok && result.reason, 'unsupported_image')
     assert.equal(calls.length, 0, 'nothing may be sent')
+  })
+})
+
+describe('the scene description holds the reference standard', () => {
+  // Each of these is a line of the reference BOE approved. They are asserted
+  // one at a time so that a rewrite which quietly drops the margins, or the
+  // cyclorama, or the preservation clause, fails on the clause it dropped
+  // rather than on one unreadable string comparison.
+
+  const scene = STUDIO_SCENE_DESCRIPTION
+
+  test('framing: one product, centred, filling sixty to sixty five percent of the height', () => {
+    assert.match(scene, /packshot of one product/)
+    assert.match(scene, /horizontally centred/)
+    assert.match(scene, /sixty to sixty five percent of the image height/)
+  })
+
+  test('framing: the margins above and below the product are stated', () => {
+    assert.match(scene, /twenty percent clear space above/)
+    assert.match(scene, /sixteen percent clear space below the feet/)
+    assert.match(scene, /balanced side margins/)
+    assert.match(scene, /do not crop any part of the product/)
+  })
+
+  test('view: front three quarter, with the source angle taking priority', () => {
+    assert.match(scene, /front three quarter furniture view/)
+    assert.match(scene, /twenty five to thirty five degrees from the front/)
+    assert.match(scene, /front dominant, one side visible/)
+    assert.match(scene, /seat or top surface/)
+    // The angle is a preference, not an instruction to rebuild the furniture.
+    assert.match(scene, /Preserve the uploaded viewing angle whenever changing it would require reconstructing or inventing product details/)
+  })
+
+  test('background: a seamless warm light grey cyclorama with no wall or floor division', () => {
+    assert.match(scene, /seamless warm light grey cyclorama studio/)
+    assert.match(scene, /one continuous warm light grey studio background and floor transition/)
+    assert.match(scene, /no visible horizon, wall and floor division/)
+  })
+
+  test('background: nothing may be added to the scene', () => {
+    for (const forbidden of ['skirting', 'corner', 'room', 'architecture', 'props', 'texture', 'decoration', 'text', 'added logo']) {
+      assert.ok(scene.includes(forbidden), `the scene must forbid ${forbidden}`)
+    }
+  })
+
+  test('light: large, soft, upper left front, with opposite fill', () => {
+    assert.match(scene, /large soft directional studio light from the upper left front/)
+    assert.match(scene, /gentle opposite fill light/)
+    assert.match(scene, /controlled highlights/)
+    assert.match(scene, /natural contrast/)
+    assert.match(scene, /sharp readable material texture/)
+  })
+
+  test('shadow: compact contact shadows under every foot, and one soft cast shadow', () => {
+    assert.match(scene, /compact contact shadows directly beneath every product foot/)
+    assert.match(scene, /one subtle soft cast shadow extending away from the main light/)
+  })
+
+  test('preservation: the product is named part by part, and nothing may change it', () => {
+    assert.match(scene, /Preserve the uploaded furniture product exactly/)
+    for (const part of ['construction', 'geometry', 'proportions', 'viewing direction', 'legs', 'arms',
+      'joints', 'cane pattern', 'rope pattern', 'upholstery', 'stitching', 'wood grain', 'metal details',
+      'finish', 'colours', 'materials', 'existing product marking']) {
+      assert.ok(scene.includes(part), `the scene must preserve ${part}`)
+    }
+    // Checked inside the prohibition itself, not anywhere in the text: "add"
+    // also appears in "added logo", and a loose search would pass even if the
+    // verb had been dropped from the sentence that forbids it.
+    const prohibition = scene.slice(scene.indexOf('Do not add'))
+    for (const verb of ['add', 'remove', 'redesign', 'reshape', 'rotate', 'recolour', 'smooth', 'replace', 'regenerate']) {
+      assert.ok(prohibition.includes(verb), `the prohibition must name ${verb}`)
+    }
+  })
+
+  test('preservation is the last word, after the framing and the light', () => {
+    // Ordering matters: a model asked to make furniture look good will redesign
+    // it, and the preservation clause has to read as the final constraint
+    // rather than as something the framing above may trade away.
+    assert.ok(scene.indexOf('Preserve the uploaded furniture product exactly') >
+      scene.indexOf('studio light from the upper left front'))
+    assert.ok(scene.trimEnd().endsWith('regenerate any product component.'))
+  })
+
+  test('it is plain English with no special characters, as Bria requires', () => {
+    const unusual = [...scene].filter(c => c.charCodeAt(0) > 126)
+    assert.deepEqual(unusual, [], `Bria takes no special characters: ${unusual.join('')}`)
   })
 })
 

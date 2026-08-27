@@ -44,26 +44,33 @@ const REQUEST_ID_HEADER = 'x-fal-request-id'
  * the upload is interpolated into it, so an uploaded file has no text channel
  * through which to change what the model is asked for.
  *
- * Bria accepts English only and no special characters, so this is plain ASCII.
+ * It is the reference standard written out in full — framing, view, light,
+ * shadow, background, and what must not change about the product — in the order
+ * a photographer would set a shot up. The numbers are spelled as words because
+ * Bria takes English prompts without special characters.
+ *
+ * The last paragraph is last on purpose. A model asked to make furniture look
+ * good will happily redesign it, and the preservation clauses read as the final
+ * word rather than as something the framing instructions above may trade away.
  */
 export const STUDIO_SCENE_DESCRIPTION =
-  'Premium furniture catalogue photograph on a seamless soft warm white studio background with a subtle light grey floor transition. ' +
-  'Soft directional studio lighting from the upper left with gentle fill light, controlled highlights, natural material texture, ' +
-  'and a realistic soft contact and cast shadow beneath the product. ' +
-  'Preserve the uploaded furniture product exactly. Keep its original construction, proportions, viewing angle, legs, arms, joints, ' +
-  'cane weave, upholstery, stitching, wood grain, metal tips, materials, colours, and finish unchanged. ' +
-  'Do not add, remove, redesign, reshape, recolour, or replace any product component. ' +
-  'Show the complete product sharply, naturally grounded, with balanced margins. ' +
-  'No logo, text, props, room, decorative objects, visible wall line, or dramatic background.'
+  'Close premium furniture catalogue packshot of one product, horizontally centred in a seamless warm light grey cyclorama studio. ' +
+  'Present the complete product prominently so it occupies approximately sixty to sixty five percent of the image height, ' +
+  'with around twenty percent clear space above and sixteen percent clear space below the feet. ' +
+  'Keep balanced side margins and do not crop any part of the product. ' +
+  'Use a natural front three quarter furniture view, approximately twenty five to thirty five degrees from the front, ' +
+  'with the front dominant, one side visible, and a slight natural view of the seat or top surface. ' +
+  'Preserve the uploaded viewing angle whenever changing it would require reconstructing or inventing product details. ' +
+  'Use a large soft directional studio light from the upper left front, gentle opposite fill light, controlled highlights, ' +
+  'natural contrast, and sharp readable material texture. ' +
+  'Create compact contact shadows directly beneath every product foot and one subtle soft cast shadow extending away from the main light. ' +
+  'Use one continuous warm light grey studio background and floor transition with no visible horizon, wall and floor division, ' +
+  'skirting, corner, room, architecture, props, texture, decoration, text, or added logo. ' +
+  'Preserve the uploaded furniture product exactly. Keep its construction, geometry, proportions, viewing direction, legs, arms, ' +
+  'joints, cane pattern, rope pattern, upholstery, stitching, wood grain, metal details, finish, colours, materials, ' +
+  'and any existing product marking unchanged. ' +
+  'Do not add, remove, redesign, reshape, rotate, recolour, smooth, replace, or regenerate any product component.'
 
-/**
- * Everything about the request that costs money or decides the output.
- *
- * `num_results: 1` and `placement_type: 'manual_placement'` are the two that
- * matter financially: Bria bills per result, and `placement_type: 'automatic'`
- * returns TEN placements per request. Neither is a default being relied upon —
- * both are stated, and asserted by the tests.
- */
 export const FIXED_SETTINGS = {
   num_results: 1,
   fast: true,

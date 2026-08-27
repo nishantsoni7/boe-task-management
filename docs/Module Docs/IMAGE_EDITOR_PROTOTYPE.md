@@ -44,14 +44,37 @@ in `src/lib/imageEditor/briaProductShot.ts`, unreachable from the browser:
 | `placement_type` | `manual_placement` | `automatic` returns **ten** placements and bills for them. |
 | `manual_placement_selection` | `bottom_center` | Product stands on the lower centre of the frame. |
 | `shot_size` | `[1000, 1000]` | Square, ~1 MP, which is what Bria is tuned for. |
+| `padding_values`, `original_quality`, `ref_image_url` | not sent | Each belongs to a different placement mode. |
 | `fast` | `true` | |
 | `optimize_description` | `false` | The scene description is used as written, not rewritten. |
 | `sync_mode` | `true` | Result inline as a data URI; nothing left in fal's history. |
 
+`padding_values`, `original_quality` and `ref_image_url` are never sent: each
+belongs to a different `placement_type`, and mixing them is at best ignored and
+at worst a rejected request.
+
+### The scene
+
 The **scene description** is a server-side constant
 (`STUDIO_SCENE_DESCRIPTION`). No employee writes or edits it, and nothing from
 the upload is interpolated into it, so an uploaded file has no text channel
-through which to change what the model is asked for.
+through which to change what the model is asked for. It is BOE's approved
+reference standard written out in full:
+
+| | |
+| --- | --- |
+| Framing | One product, horizontally centred, filling ~60–65% of the image height, ~20% clear above, ~16% below the feet, balanced side margins, nothing cropped. |
+| View | Front three-quarter, ~25–35° from the front, front dominant, one side visible, a slight view of the seat or top surface — **but** the uploaded angle is preserved whenever changing it would mean reconstructing or inventing detail. |
+| Light | Large soft directional light from the upper-left front, gentle opposite fill, controlled highlights, natural contrast, sharp readable material texture. |
+| Shadow | Compact contact shadows beneath every foot, plus one subtle soft cast shadow away from the main light. |
+| Background | One continuous warm light-grey cyclorama, background and floor transitioning with no visible horizon or wall/floor division; no skirting, corner, room, architecture, props, texture, decoration, text or logo. |
+| Preservation | Construction, geometry, proportions, viewing direction, legs, arms, joints, cane and rope pattern, upholstery, stitching, wood grain, metal details, finish, colours, materials and any existing product marking, all unchanged. Nothing added, removed, redesigned, reshaped, rotated, recoloured, smoothed, replaced or regenerated. |
+
+The framing is carried by the description rather than by a padding calculation,
+because `manual_placement` leaves the product's scale to the model. The
+preservation clause is deliberately last: a model asked to make furniture look
+good will redesign it, and that clause has to read as the final constraint
+rather than as something the framing above may trade away.
 
 ### Why plain `fetch` and not `@fal-ai/client`
 
