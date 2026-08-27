@@ -10,12 +10,36 @@ and no row anybody would later have to unpick.
 
 ## What it does
 
-Upload (JPG / PNG / WebP, up to 10 MB) → **Generate Studio Image** → original and
-result side by side → **Download Image** → **Edit Another Image**.
+Choose **one to five** photographs (JPG / PNG / WebP, up to 10 MB each) → pick an
+output shape → **Generate**, which states the cost and waits for a second
+deliberate press → images are processed **one at a time**, each appearing as it
+finishes → compare, download in PNG / JPG / WebP, or **Edit another set**.
 
-Nothing is stored. The upload is read into memory, sent to the provider, and the
-result comes back in the response body as a data URI. No bucket, no table, no
-file on disk, no history.
+Nothing is stored. Uploads are read into memory, sent to the provider, and the
+results come back in the response body as data URIs. No bucket, no table, no
+file on disk, no history — closing the tab loses everything.
+
+### The queue
+
+| Rule | Why |
+| --- | --- |
+| Five images maximum | Each is a separate paid generation. |
+| Nothing is sent when an image is chosen | Selection costs nothing, and the row says "Waiting" until somebody confirms. |
+| One bad file never costs a good one | A rejected file is named and dropped; the rest stay queued. |
+| One request at a time, in order | Five at once is five charges racing each other and a failure that is hard to report honestly. |
+| A failure never costs a success | Results are kept per item, so an image that fails fourth leaves the first three downloadable. |
+| Retry is manual, and says what it costs | The warning sits beside the button, before the press. |
+
+### Cost confirmation
+
+Generate does not generate. It states, with the number in it:
+
+> This will generate 3 studio images using 3 fal.ai requests.
+
+and waits for **Confirm and generate 3**. The guard against a second run is a
+ref rather than state, because state updates on the next render and two presses
+in one frame would otherwise both start a run. Verified in Chromium: six rapid
+presses on a two-image queue produce exactly two requests.
 
 ## How the image is made
 
@@ -43,8 +67,29 @@ in `src/lib/imageEditor/briaProductShot.ts`, unreachable from the browser:
 | `num_results` | `1` | Bria bills per result. |
 | `placement_type` | `manual_placement` | `automatic` returns **ten** placements and bills for them. |
 | `manual_placement_selection` | `bottom_center` | Product stands on the lower centre of the frame. |
-| `shot_size` | `[1000, 1000]` | Square, ~1 MP, which is what Bria is tuned for. |
+| `shot_size` | from the chosen preset | Square `[1000,1000]`, Portrait `[900,1125]`, Landscape `[1200,800]` — see below. |
 | `padding_values`, `original_quality`, `ref_image_url` | not sent | Each belongs to a different placement mode. |
+
+### Output shapes
+
+Three, and the browser chooses between them by NAME. `shot_size` decides what
+Bria renders, so a route that accepted dimensions from a form would let a caller
+ask for a very large canvas on BOE's account; `outputPresets.ts` is the only
+place a name becomes pixels, and an unrecognised name resolves to Square.
+
+| Preset | `shot_size` | Pixels |
+| --- | --- | --- |
+| Square 1:1 (default) | `[1000, 1000]` | 1.00 MP |
+| Portrait 4:5 | `[900, 1125]` | 1.01 MP |
+| Landscape 3:2 | `[1200, 800]` | 0.96 MP |
+
+All three are exact ratios in round numbers near the ~1 MP Bria's own schema
+asks for. Occupancy does not change with the shape: the scene description states
+the product's height as a fraction of the IMAGE height, so a taller canvas gives
+a taller product rather than a smaller one.
+
+**Unverified:** no shape has been rendered by the real API — see the blockers at
+the end.
 | `fast` | `true` | |
 | `optimize_description` | `false` | The scene description is used as written, not rewritten. |
 | `sync_mode` | `true` | Result inline as a data URI; nothing left in fal's history. |
@@ -116,6 +161,12 @@ deployment's environment) — never in a `NEXT_PUBLIC_` variable.
 | `src/lib/imageEditor/validation.ts` | What counts as an uploadable photograph. Used by the browser AND the route, so the two cannot disagree. |
 | `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in when required. Otherwise the original bytes, untouched, up to 8192px. Server-only (sharp). |
 | `src/lib/imageEditor/briaProductShot.ts` | The only code that talks to a provider: the model, the scene description, the fixed settings, and the failure mapping. |
+| `src/lib/imageEditor/outputPresets.ts` | The three output shapes. The only place a preset name becomes pixels. |
+| `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
+| `src/lib/imageEditor/downloadFormats.ts` | Which download formats exist, and the guard. Client-safe. |
+| `src/lib/imageEditor/imageFormats.ts` | The sharp re-encoder behind the download menu. Server-only. |
+| `src/app/api/image-editor/convert/route.ts` | Re-encodes a finished image for download. Never calls fal, holds no provider key. |
+| `src/app/image-editor/QueueList.tsx`, `ResultCard.tsx` | The queue rows and the per-result actions. |
 | `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, then the one provider call. Holds the API key; returns the image. |
 | `src/app/image-editor/page.tsx` | The screen. |
 | `src/components/layout/ImageEditorLayout.tsx` | The module shell, per the BOE Module Layout Standard. |
@@ -141,6 +192,14 @@ a status code and the request id.
 The five failures a retry cannot fix are marked `noRetry` in the response; the
 page shows those in amber with **Choose a different photo** instead of **Try
 Again**.
+
+## Download formats
+
+The provider's image is the master. PNG downloads hand back exactly those bytes;
+JPG and WebP are re-encoded server-side by sharp at quality 95 with no chroma
+subsampling. A conversion is a format change and nothing else — same pixels,
+same dimensions, asserted by tests — and it **never calls fal**, so downloading
+one image in three formats costs one generation, not three.
 
 ## Verifying against the real API
 

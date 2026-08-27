@@ -47,3 +47,6 @@ screenshots/
 scripts/.demo-task-ids.json
 supabase/.temp
 supabase/.temp/**
+
+# Image Editor local test output (source, provider result, measurements)
+test-results/

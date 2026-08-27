@@ -28,12 +28,14 @@
 //
 // COST
 // ----
-// One press of Generate is one billable request for exactly one result. Every
-// setting that decides that — the model id, num_results, the placement type —
-// is fixed in the adapter and unreachable from the browser, which sends nothing
-// but the photograph. The adapter never retries, including after a timeout: a
-// request that may already have been billed is not quietly billed again. The
-// per-user rate limiter below is unchanged.
+// One call of this route is one billable request for exactly one result. A queue
+// of five images is five separate calls, made one after another by the browser —
+// nothing here batches, and nothing here loops. Every setting that decides what
+// a request costs — the model id, num_results, the placement type — is fixed in
+// the adapter and unreachable from the browser, which sends the photograph and
+// at most the NAME of one of three output shapes. The adapter never retries,
+// including after a timeout: a request that may already have been billed is not
+// quietly billed again. The per-user rate limiter below is unchanged.
 //
 // THE API KEY
 // -----------
@@ -57,6 +59,7 @@ import {
   NO_RETRY_FAILURES,
   type ProductShotFailure,
 } from '@/lib/imageEditor/briaProductShot'
+import { resolveOutputPreset } from '@/lib/imageEditor/outputPresets'
 
 // sharp is a native module and the whole image is held in memory. Neither works
 // on the edge runtime.
@@ -148,8 +151,9 @@ export async function POST(req: NextRequest) {
   }
 
   let file: File
+  let form: FormData
   try {
-    const form = await req.formData()
+    form = await req.formData()
     const uploaded = form.get('image')
     if (!uploaded || typeof uploaded === 'string') {
       return NextResponse.json({ error: 'Choose a photograph to upload.' }, { status: 400 })
@@ -177,9 +181,15 @@ export async function POST(req: NextRequest) {
   const prepared = await prepareSourceImage(bytes, validation.mimeType)
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
+  // The one thing a person chooses about the request, and it arrives as a name.
+  // An unrecognised value becomes Square rather than an error or, worse, a
+  // canvas of the caller's choosing — the pixels live in outputPresets.ts.
+  const preset = resolveOutputPreset(form.get('preset'))
+
   const result = await generateProductShot({
     bytes: prepared.bytes,
     mimeType: prepared.mimeType,
+    preset: preset.key,
     apiKey,
   })
 
@@ -213,6 +223,7 @@ export async function POST(req: NextRequest) {
     `${result.durationMs} ms`,
     `${result.image.width ?? '?'}x${result.image.height ?? '?'}`,
     result.image.contentType,
+    `preset ${preset.key}`,
   )
 
   return NextResponse.json({

@@ -29,10 +29,19 @@
 // (src/response.js). The input and output shapes are ProductShotInput and
 // BlurOutput from its endpoint types.
 
+import {
+  resolveOutputPreset,
+  DEFAULT_OUTPUT_PRESET,
+  type OutputPresetKey,
+} from './outputPresets'
+
 /** The model. Never overridable from anywhere. */
 export const MODEL_ID = 'fal-ai/bria/product-shot'
 
 const ENDPOINT = `https://fal.run/${MODEL_ID}`
+
+// The output shape is the one thing about the request an employee chooses, and
+// even that arrives as a key rather than as pixels — see outputPresets.ts.
 
 /** fal returns the request id here; it is the only provider detail worth logging. */
 const REQUEST_ID_HEADER = 'x-fal-request-id'
@@ -77,7 +86,6 @@ export const FIXED_SETTINGS = {
   optimize_description: false,
   placement_type: 'manual_placement',
   manual_placement_selection: 'bottom_center',
-  shot_size: [1000, 1000],
   sync_mode: true,
 } as const
 
@@ -141,6 +149,9 @@ export type ProductShotInput = {
   /** Its MIME type, as decided by validateSourceImage. */
   mimeType: string
   apiKey: string
+  /** Which of the three output shapes. A KEY, never dimensions: the pixels come
+   *  from outputPresets.ts, so no caller can ask for an arbitrary canvas. */
+  preset?: OutputPresetKey
   timeoutMs?: number
 }
 
@@ -187,11 +198,14 @@ export function classifyFailure(status: number, body: string): ProductShotFailur
 }
 
 /** The request body. Exported so a test can read it without a network call. */
-export function buildRequestBody(dataUrl: string) {
+export function buildRequestBody(dataUrl: string, preset: OutputPresetKey = DEFAULT_OUTPUT_PRESET) {
   return {
     image_url: dataUrl,
     scene_description: STUDIO_SCENE_DESCRIPTION,
     ...FIXED_SETTINGS,
+    // Resolved through the table rather than passed through: an unrecognised
+    // value becomes Square, never dimensions of somebody else's choosing.
+    shot_size: [...resolveOutputPreset(preset).shotSize],
   }
 }
 
@@ -254,7 +268,7 @@ export async function generateProductShot(input: ProductShotInput): Promise<Prod
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify(buildRequestBody(dataUrl)),
+      body: JSON.stringify(buildRequestBody(dataUrl, input.preset)),
       signal: AbortSignal.timeout(input.timeoutMs ?? PROVIDER_TIMEOUT_MS),
     })
   } catch (e) {

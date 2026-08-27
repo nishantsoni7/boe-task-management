@@ -93,8 +93,10 @@ describe('the request', () => {
 
     assert.equal(sent.fast, true)
     assert.equal(sent.optimize_description, false)
-    assert.deepEqual(sent.shot_size, [1000, 1000])
     assert.equal(sent.sync_mode, true)
+    // Square unless a preset is chosen — the shape the integration has always
+    // sent.
+    assert.deepEqual(sent.shot_size, [1000, 1000])
 
     // And the constants themselves, so a change to them is a deliberate one.
     assert.deepEqual({ ...FIXED_SETTINGS }, {
@@ -103,7 +105,6 @@ describe('the request', () => {
       optimize_description: false,
       placement_type: 'manual_placement',
       manual_placement_selection: 'bottom_center',
-      shot_size: [1000, 1000],
       sync_mode: true,
     })
   })
@@ -142,12 +143,14 @@ describe('the request', () => {
 
     const sent = body(calls)
     const fixed = ['num_results', 'fast', 'optimize_description', 'placement_type',
-      'manual_placement_selection', 'shot_size', 'sync_mode']
+      'manual_placement_selection', 'sync_mode']
     for (const field of fixed) {
       assert.deepEqual(sent[field], (FIXED_SETTINGS as Record<string, unknown>)[field])
     }
-    // The image is the only thing that varies between requests.
-    assert.deepEqual(Object.keys(sent).sort(), ['image_url', 'scene_description', ...fixed].sort())
+    // The image and the output shape are the only things that vary between
+    // requests, and the shape only ever takes one of three table values.
+    assert.deepEqual(Object.keys(sent).sort(),
+      ['image_url', 'scene_description', 'shot_size', ...fixed].sort())
   })
 
   test('the photograph travels as a data URI, never as a public URL', async () => {
@@ -263,6 +266,45 @@ describe('the scene description holds the reference standard', () => {
   test('it is plain English with no special characters, as Bria requires', () => {
     const unusual = [...scene].filter(c => c.charCodeAt(0) > 126)
     assert.deepEqual(unusual, [], `Bria takes no special characters: ${unusual.join('')}`)
+  })
+})
+
+describe('the output shape', () => {
+  test('each preset sends its own dimensions', async () => {
+    for (const [preset, expected] of [
+      ['square', [1000, 1000]], ['portrait', [900, 1125]], ['landscape', [1200, 800]],
+    ] as const) {
+      const { calls } = stubFetch(() => okResponse())
+      await generateProductShot({ ...PHOTO, apiKey: KEY, preset })
+      assert.deepEqual(body(calls).shot_size, [...expected], `${preset} shot_size`)
+    }
+  })
+
+  test('no preset means Square', async () => {
+    const { calls } = stubFetch(() => okResponse())
+    await generateProductShot({ ...PHOTO, apiKey: KEY })
+    assert.deepEqual(body(calls).shot_size, [1000, 1000])
+  })
+
+  test('dimensions can never be supplied directly, only chosen from the table', () => {
+    // buildRequestBody takes a KEY. Anything unrecognised resolves to Square
+    // rather than reaching Bria, so no caller can ask for a 40 megapixel canvas
+    // on BOE's account.
+    for (const bad of ['huge', '', undefined, '[4000,4000]']) {
+      const built = buildRequestBody('data:image/png;base64,AAA', bad as never)
+      assert.deepEqual(built.shot_size, [1000, 1000], `${JSON.stringify(bad)} must not be honoured`)
+    }
+  })
+
+  test('the shape is the only thing about the request a person chooses', async () => {
+    const { calls } = stubFetch(() => okResponse())
+    await generateProductShot({ ...PHOTO, apiKey: KEY, preset: 'landscape' })
+    const sent = body(calls)
+
+    // Everything that costs money is still fixed.
+    assert.equal(sent.num_results, 1)
+    assert.equal(sent.placement_type, 'manual_placement')
+    assert.equal(sent.scene_description, STUDIO_SCENE_DESCRIPTION)
   })
 })
 

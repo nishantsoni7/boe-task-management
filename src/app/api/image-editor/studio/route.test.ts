@@ -120,14 +120,24 @@ describe('the pipeline', () => {
 
   test('the browser cannot influence what the request costs', () => {
     const body = postCode()
-    // The only thing read out of the request is the image itself. No model id,
-    // count, placement or size is taken from the form.
+    // Two things are read out of the request: the image, and the NAME of an
+    // output shape. No model id, result count, placement or dimension is taken
+    // from the form.
     const reads = body.match(/form\.get\(([^)]*)\)/g) ?? []
-    assert.deepEqual(reads, ["form.get('image')"])
+    assert.deepEqual(reads.sort(), ["form.get('image')", "form.get('preset')"].sort())
 
     for (const field of ['num_results', 'placement_type', 'shot_size', 'model']) {
       assert.ok(!body.includes(field), `${field} must not be settable here`)
     }
+  })
+
+  test('the output shape is resolved through the table, never passed through', () => {
+    const body = postCode()
+    // The value from the form goes straight into resolveOutputPreset, which
+    // answers with one of three table entries or with Square. Nothing the
+    // browser sends can become dimensions.
+    assert.match(body, /resolveOutputPreset\(form\.get\('preset'\)\)/)
+    assert.ok(body.includes('preset: preset.key'), 'the adapter receives the resolved key')
   })
 
   test('the finished image is returned at the provider’s own type', () => {

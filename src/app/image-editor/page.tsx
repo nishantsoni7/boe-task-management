@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, ImageIcon, RotateCcw, Upload, Wand2 } from 'lucide-react'
+import { ImageIcon, Upload, Wand2, Download, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
@@ -10,29 +10,44 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { ImageEditorLayout } from '@/components/layout/ImageEditorLayout'
 import { colors } from '@/lib/tokens'
 import {
-  validateSourceImage,
   STUDIO_IMAGE_ACCEPT,
   MAX_SOURCE_IMAGE_LABEL,
 } from '@/lib/imageEditor/validation'
+import {
+  addFilesToQueue, pendingGenerationCount, nextWaiting, queueCounts,
+  updateItem, removeItem, completedItems, canStartRun, resultFileName,
+  MAX_QUEUE_SIZE, type QueueItem, type RejectedFile,
+} from '@/lib/imageEditor/queue'
+import {
+  OUTPUT_PRESETS, OUTPUT_PRESET_KEYS, DEFAULT_OUTPUT_PRESET, type OutputPresetKey,
+} from '@/lib/imageEditor/outputPresets'
+import { DOWNLOAD_FORMATS, type DownloadFormat } from '@/lib/imageEditor/downloadFormats'
+import { QueueList } from './QueueList'
+import { ResultCard } from './ResultCard'
 
-// One photograph in, one catalogue image out.
+// Up to five photographs in, up to five catalogue images out.
 //
-// The screen is a four-state machine and nothing else — choose, generate, wait,
-// compare — because every control that is not one of those four is a control an
-// employee has to read before they can do the one thing this page is for.
+// THE ONE THING THIS SCREEN IS CAREFUL ABOUT
+// ------------------------------------------
+// Every generated image is a paid request, so the screen never starts one by
+// accident. Choosing images costs nothing and says so. Generate does not
+// generate: it asks, in a sentence with the number in it, and waits for a
+// second deliberate press. The run itself is sequential — one request at a
+// time, one request per image — and a ref, not state, guards the entry so two
+// clicks in one frame cannot both start it.
 //
-//   choose      empty upload area
-//   ready       the photograph they picked, and the one button
-//   working     the same photograph, greyed, with a progress line
-//   done        original beside result, download, start again
-//
-// An error does not become a fifth state: it sits above whichever state the
-// employee was in, so their photograph is still selected and Try Again is one
-// tap. Nothing is uploaded until they press Generate, and nothing is kept
-// afterwards — the result lives in this component's state as a data URL and is
-// gone when the page is closed.
+// A failure never costs a success: results are kept on their own items as they
+// arrive, so an image that fails fourth leaves the first three downloadable.
+// Nothing is retried automatically, ever; a retry is a person pressing a button
+// that says what it will cost.
 
-type Phase = 'choose' | 'ready' | 'working' | 'done'
+type Phase =
+  /** Choosing images. Nothing has been sent. */
+  | 'choosing'
+  /** The cost has been stated and is waiting for a deliberate confirmation. */
+  | 'confirming'
+  /** A run is in flight. */
+  | 'running'
 
 export default function ImageEditorPage() {
   const router = useRouter()
@@ -41,24 +56,30 @@ export default function ImageEditorPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
 
-  const [file, setFile]             = useState<File | null>(null)
-  const [originalUrl, setOriginalUrl] = useState<string | null>(null)
-  const [resultUrl, setResultUrl]   = useState<string | null>(null)
-  const [phase, setPhase]           = useState<Phase>('choose')
-  const [error, setError]           = useState<string | null>(null)
-  // Some failures cannot be helped by pressing the button again — a refused
-  // key, an empty account, a photograph the model will not take. The screen
-  // offers a different photograph instead of a retry.
-  const [noRetry, setNoRetry] = useState(false)
-  const [dragging, setDragging]     = useState(false)
+  const [items, setItems] = useState<QueueItem[]>([])
+  const [rejected, setRejected] = useState<RejectedFile[]>([])
+  const [preset, setPreset] = useState<OutputPresetKey>(DEFAULT_OUTPUT_PRESET)
+  const [format, setFormat] = useState<DownloadFormat>('png')
+  const [phase, setPhase] = useState<Phase>('choosing')
+  const [error, setError] = useState<string | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
-  // Every generation costs money, so the guard against a double click is a ref
-  // rather than state: state updates on the next render, and two clicks in the
-  // same frame would both see `phase === 'ready'` and both send a request.
-  const inFlightRef = useRef(false)
-  // Object URLs are revoked by hand; the browser holds the blob alive until then.
-  const objectUrlRef = useRef<string | null>(null)
+  // The runner reads the queue through a ref: it updates state as it goes, and
+  // state read inside the loop would be a render behind.
+  const itemsRef = useRef<QueueItem[]>([])
+  // The guard against a second run. A ref because state updates on the next
+  // render, and two presses in the same frame would both see phase 'choosing'.
+  const runningRef = useRef(false)
+  const objectUrlsRef = useRef<string[]>([])
+
+  const counts = queueCounts(items)
+  const pending = pendingGenerationCount(items)
+  const done = completedItems(items)
+  const running = phase === 'running'
+
+  useEffect(() => { itemsRef.current = items }, [items])
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -84,7 +105,7 @@ export default function ImageEditorPage() {
   }, [])
 
   useEffect(() => () => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+    for (const url of objectUrlsRef.current) URL.revokeObjectURL(url)
   }, [])
 
   const signOut = useCallback(async () => {
@@ -92,266 +113,405 @@ export default function ImageEditorPage() {
     router.push('/login')
   }, [supabase, router])
 
-  // ── Choosing a photograph ───────────────────────────────────────────────────
+  // ── Choosing ────────────────────────────────────────────────────────────────
 
-  const selectFile = useCallback((chosen: File | null | undefined) => {
-    // The same validator the route runs. Catching it here saves an upload; the
-    // decision that counts is still made server-side.
-    const validation = validateSourceImage(chosen ?? null)
-    if (!validation.ok) {
-      setError(validation.error)
-      setNoRetry(false)
-      return
-    }
+  const addFiles = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return
+    if (runningRef.current) return
 
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-    const url = URL.createObjectURL(chosen as File)
-    objectUrlRef.current = url
+    const result = addFilesToQueue(
+      itemsRef.current,
+      Array.from(files),
+      file => {
+        const url = URL.createObjectURL(file)
+        objectUrlsRef.current.push(url)
+        return url
+      },
+      (file, index) => `${file.name}-${file.size}-${Date.now()}-${index}`,
+    )
 
-    setFile(chosen as File)
-    setOriginalUrl(url)
-    setResultUrl(null)
+    setItems(result.items)
+    setRejected(result.rejected)
     setError(null)
-    setNoRetry(false)
-    setPhase('ready')
-  }, [])
-
-  const reset = useCallback(() => {
-    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
-    objectUrlRef.current = null
-    setFile(null)
-    setOriginalUrl(null)
-    setResultUrl(null)
-    setError(null)
-    setNoRetry(false)
-    setPhase('choose')
+    setPhase('choosing')
     if (inputRef.current) inputRef.current.value = ''
   }, [])
 
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    selectFile(e.dataTransfer.files?.[0])
-  }, [selectFile])
+  const remove = useCallback((id: string) => {
+    if (runningRef.current) return
+    setItems(current => removeItem(current, id))
+    setPhase('choosing')
+  }, [])
+
+  const startOver = useCallback(() => {
+    if (runningRef.current) return
+    for (const url of objectUrlsRef.current) URL.revokeObjectURL(url)
+    objectUrlsRef.current = []
+    setItems([])
+    setRejected([])
+    setError(null)
+    setPhase('choosing')
+    if (inputRef.current) inputRef.current.value = ''
+  }, [])
 
   // ── Generating ──────────────────────────────────────────────────────────────
 
-  const generate = useCallback(async () => {
-    if (!file || inFlightRef.current) return
-    inFlightRef.current = true
-    setPhase('working')
-    setError(null)
-    setNoRetry(false)
-    setResultUrl(null)
+  /** One image, one request. Returns the change to record on that item. */
+  const generateOne = useCallback(async (item: QueueItem): Promise<Partial<QueueItem>> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return { status: 'failed', error: 'Your session ended. Sign in again.' } }
 
+    const form = new FormData()
+    form.append('image', item.file)
+    // A name, never dimensions: the server decides what that name means.
+    form.append('preset', preset)
+
+    let res: Response
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
-      const form = new FormData()
-      form.append('image', file)
-
-      const res = await fetch('/api/image-editor/studio', {
+      res = await fetch('/api/image-editor/studio', {
         method: 'POST',
         headers: { Authorization: `Bearer ${session.access_token}` },
         body: form,
       })
-
-      const payload = await res.json().catch(() => null)
-
-      if (!res.ok) {
-        setError(payload?.error ?? 'The studio image could not be generated. Please try again.')
-        // The server has said this one is not worth retrying.
-        setNoRetry(payload?.noRetry === true)
-        setPhase('ready')
-        return
-      }
-
-      // No key configured. Said plainly rather than dressed up as a failure the
-      // employee could fix by retrying.
-      if (payload?.configured === false) {
-        setError('The image service is not set up yet. Ask your administrator to configure it.')
-        // Nothing the employee can do about this one either.
-        setNoRetry(true)
-        setPhase('ready')
-        return
-      }
-
-      const dataUrl: string | undefined = payload?.image?.dataUrl
-      if (!dataUrl) {
-        setError('The studio image could not be generated. Please try again.')
-        setPhase('ready')
-        return
-      }
-
-      setResultUrl(dataUrl)
-      setPhase('done')
     } catch {
-      setError('Could not reach the server. Check your connection and try again.')
-      setPhase('ready')
-    } finally {
-      inFlightRef.current = false
+      return { status: 'failed', error: 'Could not reach the server. Check your connection.' }
     }
-  }, [file, supabase, router])
 
-  const download = useCallback(() => {
-    if (!resultUrl) return
-    const base = (file?.name ?? 'product').replace(/\.[^.]+$/, '')
-    const ext = resultUrl.startsWith('data:image/jpeg') ? 'jpg' : 'png'
+    const payload = await res.json().catch(() => null)
+
+    if (!res.ok) {
+      return {
+        status: 'failed',
+        error: payload?.error ?? 'The studio image could not be generated.',
+      }
+    }
+    if (payload?.configured === false) {
+      return {
+        status: 'failed',
+        error: 'The image service is not set up yet. Ask your administrator to configure it.',
+      }
+    }
+    const dataUrl: string | undefined = payload?.image?.dataUrl
+    if (!dataUrl) {
+      return { status: 'failed', error: 'The image service did not return an image.' }
+    }
+
+    return {
+      status: 'done',
+      error: undefined,
+      result: { dataUrl, mimeType: payload?.image?.mimeType ?? 'image/png' },
+    }
+  }, [supabase, router, preset])
+
+  /**
+   * Work the queue, one image at a time.
+   *
+   * Sequential on purpose: five requests at once is five times the load on the
+   * provider and five charges racing each other, and a failure in the middle of
+   * that is far harder to report honestly than a failure in a line.
+   */
+  const run = useCallback(async () => {
+    if (runningRef.current) return
+    if (!canStartRun(itemsRef.current)) return
+
+    runningRef.current = true
+    setPhase('running')
+    setError(null)
+
+    try {
+      for (;;) {
+        const next = nextWaiting(itemsRef.current)
+        if (!next) break
+
+        const startState = updateItem(itemsRef.current, next.id, { status: 'processing' })
+        itemsRef.current = startState
+        setItems(startState)
+
+        const outcome = await generateOne(next)
+
+        // Recorded against the item by id, so a result cannot land on the wrong
+        // row and an earlier success cannot be overwritten.
+        const endState = updateItem(itemsRef.current, next.id, outcome)
+        itemsRef.current = endState
+        setItems(endState)
+      }
+    } finally {
+      runningRef.current = false
+      setPhase('choosing')
+    }
+  }, [generateOne])
+
+  const retry = useCallback((id: string) => {
+    if (runningRef.current) return
+    const back = updateItem(itemsRef.current, id, { status: 'waiting', error: undefined })
+    itemsRef.current = back
+    setItems(back)
+    void run()
+  }, [run])
+
+  // ── Downloading ─────────────────────────────────────────────────────────────
+
+  const saveFile = useCallback((dataUrl: string, fileName: string) => {
     const a = document.createElement('a')
-    a.href = resultUrl
-    a.download = `${base}-studio.${ext}`
+    a.href = dataUrl
+    a.download = fileName
     document.body.appendChild(a)
     a.click()
     a.remove()
-  }, [resultUrl, file])
+  }, [])
+
+  /** The master is what the provider returned; anything else is a re-encode on
+   *  the server, which costs nothing with the provider. */
+  const download = useCallback(async (item: QueueItem) => {
+    if (!item.result) return
+
+    const masterIsPng = item.result.mimeType === 'image/png'
+    if (format === 'png' && masterIsPng) {
+      saveFile(item.result.dataUrl, resultFileName(item.name, 'png'))
+      return
+    }
+
+    setDownloading(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+
+      const blob = await (await fetch(item.result.dataUrl)).blob()
+      const form = new FormData()
+      form.append('image', blob, 'studio.png')
+      form.append('format', format)
+
+      const res = await fetch('/api/image-editor/convert', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      })
+      const payload = await res.json().catch(() => null)
+
+      if (!res.ok || !payload?.image?.dataUrl) {
+        setError(payload?.error ?? 'That image could not be converted for download.')
+        return
+      }
+      saveFile(payload.image.dataUrl, resultFileName(item.name, payload.image.extension))
+    } catch {
+      setError('That image could not be converted for download.')
+    } finally {
+      setDownloading(false)
+    }
+  }, [format, saveFile, supabase, router])
+
+  const downloadAll = useCallback(async () => {
+    // One at a time, with a breath between: browsers refuse a burst of
+    // simultaneous downloads, and a conversion is a server round trip each.
+    for (const item of completedItems(itemsRef.current)) {
+      await download(item)
+      await new Promise(resolve => setTimeout(resolve, 350))
+    }
+  }, [download])
 
   if (authLoading) return <LoadingScreen message="Loading Image Editor..." />
 
-  const working = phase === 'working'
+  const canChoose = !running && items.length < MAX_QUEUE_SIZE
 
   return (
     <ImageEditorLayout
       profile={profile}
       title="Studio Image"
-      subtitle="Turn one factory photograph into one catalogue-ready product image"
+      subtitle="Turn factory photographs into catalogue-ready product images"
       onSignOut={signOut}
     >
-      <div style={{ maxWidth: '980px' }}>
+      <div style={{ maxWidth: '1040px' }}>
 
         {error && (
-          <div
-            className={noRetry ? 'boe-alert-amber' : 'boe-alert-red'}
-            style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
-          >
-            <span style={{
-              fontSize: '13px', flex: 1, minWidth: '200px',
-              color: noRetry ? '#8A5A12' : '#C13030',
-            }}>
-              {error}
-            </span>
-            {noRetry ? (
-              <button className="boe-btn boe-btn-ghost" onClick={() => inputRef.current?.click()}>
-                <ImageIcon size={13} strokeWidth={2} />
-                Choose a different photo
-              </button>
-            ) : file && phase !== 'working' && (
-              <button className="boe-btn boe-btn-danger" onClick={generate} disabled={working}>
-                <RotateCcw size={13} strokeWidth={2} />
-                Try Again
-              </button>
-            )}
+          <div className="boe-alert-red" style={{ marginBottom: '14px' }}>
+            <span style={{ fontSize: '13px', color: '#C13030' }}>{error}</span>
+          </div>
+        )}
+
+        {rejected.length > 0 && (
+          <div className="boe-alert-amber" style={{ marginBottom: '14px' }}>
+            <div style={{ fontSize: '12px', color: '#8A5A12' }}>
+              {rejected.map(r => (
+                <div key={r.name}>
+                  <strong>{r.name}</strong> was not added — {r.reason}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
         {/* ── Choose ──────────────────────────────────────────────────────── */}
-        {phase === 'choose' && (
+        {canChoose && (
           <div
             onClick={() => inputRef.current?.click()}
             onDragOver={e => { e.preventDefault(); setDragging(true) }}
             onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
+            onDrop={e => { e.preventDefault(); setDragging(false); addFiles(e.dataTransfer.files) }}
             role="button"
             tabIndex={0}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') inputRef.current?.click() }}
             style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              gap: '10px',
-              padding: '48px 20px',
+              gap: '8px', padding: items.length > 0 ? '20px' : '44px 20px', marginBottom: '14px',
               background: dragging ? colors.hover : colors.raised,
               border: `1.5px dashed ${dragging ? colors.borderMed : colors.borderSoft}`,
-              borderRadius: '10px',
-              cursor: 'pointer',
-              textAlign: 'center',
+              borderRadius: '10px', cursor: 'pointer', textAlign: 'center',
             }}
           >
             <div style={{
-              width: 46, height: 46, borderRadius: '12px',
+              width: 40, height: 40, borderRadius: '11px',
               background: 'rgba(232,160,48,0.12)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              <Upload size={20} color={colors.amber} strokeWidth={1.8} />
+              <Upload size={18} color={colors.amber} strokeWidth={1.8} />
             </div>
             <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary }}>
-              Upload a product photograph
+              {items.length === 0 ? 'Choose up to five product photographs' : 'Add another photograph'}
             </div>
-            <div style={{ fontSize: '12px', color: colors.tertiary, maxWidth: '340px' }}>
-              Tap to choose a photo, or drag one here. JPG, PNG or WebP, up to {MAX_SOURCE_IMAGE_LABEL}.
+            <div style={{ fontSize: '12px', color: colors.tertiary, maxWidth: '360px' }}>
+              Tap to choose, or drag them here. JPG, PNG or WebP, up to {MAX_SOURCE_IMAGE_LABEL} each.
+              Nothing is generated until you confirm.
             </div>
           </div>
         )}
 
-        {/* ── Ready / working ─────────────────────────────────────────────── */}
-        {(phase === 'ready' || working) && originalUrl && (
-          <div className="boe-card" style={{ padding: '14px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '10px' }}>
-              Your photograph
+        <QueueList items={items} locked={running} onRemove={remove} />
+
+        {/* ── Output shape ────────────────────────────────────────────────── */}
+        {items.length > 0 && (
+          <div className="boe-card" style={{ padding: '12px', marginBottom: '14px' }}>
+            <div style={{
+              fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px',
+            }}>
+              Output shape
             </div>
-
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={originalUrl}
-              alt="Uploaded product photograph"
-              style={{
-                width: '100%', maxHeight: '46vh', objectFit: 'contain',
-                borderRadius: '8px', background: colors.float,
-                opacity: working ? 0.55 : 1,
-                transition: 'opacity 0.2s ease',
-              }}
-            />
-
-            {working ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '14px' }}>
-                <div className="boe-loading-spinner" style={{ width: 16, height: 16, margin: 0 }} />
-                <div>
-                  <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
-                    Generating the studio image…
-                  </div>
-                  <div style={{ fontSize: '12px', color: colors.tertiary }}>
-                    This usually takes under a minute. Keep this page open.
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {OUTPUT_PRESET_KEYS.map(key => (
                 <button
-                  className="boe-btn boe-btn-primary"
-                  onClick={generate}
-                  disabled={working}
+                  key={key}
+                  onClick={() => setPreset(key)}
+                  disabled={running}
+                  className={`boe-chip${preset === key ? ' boe-chip-selected' : ''}`}
+                  style={{ cursor: running ? 'not-allowed' : 'pointer' }}
                 >
-                  <Wand2 size={13} strokeWidth={2} />
-                  Generate Studio Image
+                  {OUTPUT_PRESETS[key].label} · {OUTPUT_PRESETS[key].ratio}
                 </button>
-                <button className="boe-btn boe-btn-ghost" onClick={() => inputRef.current?.click()}>
-                  Choose a different photo
-                </button>
-              </div>
-            )}
+              ))}
+            </div>
           </div>
         )}
 
-        {/* ── Done: original vs result ────────────────────────────────────── */}
-        {phase === 'done' && originalUrl && resultUrl && (
+        {/* ── Cost confirmation ───────────────────────────────────────────── */}
+        {pending > 0 && !running && (
+          phase === 'confirming' ? (
+            <div className="boe-card" style={{ padding: '14px', marginBottom: '14px' }}>
+              <div style={{ fontSize: '13px', color: colors.primary, fontWeight: 600, marginBottom: '4px' }}>
+                This will generate {pending} studio {pending === 1 ? 'image' : 'images'} using {pending} fal.ai {pending === 1 ? 'request' : 'requests'}.
+              </div>
+              <div style={{ fontSize: '12px', color: colors.tertiary, marginBottom: '12px' }}>
+                Each request is charged separately. Images are processed one at a time.
+              </div>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button className="boe-btn boe-btn-primary" onClick={() => { void run() }}>
+                  <Wand2 size={13} strokeWidth={2} />
+                  Confirm and generate {pending}
+                </button>
+                <button className="boe-btn boe-btn-ghost" onClick={() => setPhase('choosing')}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+              <button className="boe-btn boe-btn-primary" onClick={() => setPhase('confirming')}>
+                <Wand2 size={13} strokeWidth={2} />
+                Generate Studio {pending === 1 ? 'Image' : 'Images'}
+              </button>
+            </div>
+          )
+        )}
+
+        {/* ── Progress ────────────────────────────────────────────────────── */}
+        {running && (
+          <div className="boe-card" style={{ padding: '14px', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Loader2 size={16} strokeWidth={2} color={colors.blue} />
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>
+                Processing {counts.position} of {counts.total}
+              </div>
+              <div style={{ fontSize: '12px', color: colors.tertiary }}>
+                One image at a time. Keep this page open — finished images appear below as they arrive.
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Results ─────────────────────────────────────────────────────── */}
+        {(counts.done > 0 || counts.failed > 0) && (
           <>
             <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+              marginBottom: '10px',
+            }}>
+              <div style={{
+                fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}>
+                {counts.done} completed{counts.failed > 0 ? `, ${counts.failed} failed` : ''}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginLeft: 'auto' }}>
+                <label htmlFor="download-format" style={{ fontSize: '12px', color: colors.tertiary }}>
+                  Download as
+                </label>
+                <select
+                  id="download-format"
+                  className="boe-input"
+                  value={format}
+                  onChange={e => setFormat(e.target.value as DownloadFormat)}
+                  style={{ width: 'auto', padding: '5px 8px', fontSize: '12px', cursor: 'pointer' }}
+                >
+                  {DOWNLOAD_FORMATS.map(f => (
+                    <option key={f} value={f}>{f.toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div style={{
               display: 'grid',
-              // Two panels side by side on a desktop, stacked on a phone, with no
-              // media query to keep in step with the sidebar breakpoint.
-              gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
               gap: '12px',
             }}>
-              <ComparePanel label="Original" src={originalUrl} alt="Uploaded product photograph" />
-              <ComparePanel label="Studio image" src={resultUrl} alt="Generated studio product image" accent />
+              {items
+                .filter(item => item.status === 'done' || item.status === 'failed')
+                .map(item => (
+                  <ResultCard
+                    key={item.id}
+                    item={item}
+                    busy={running || downloading}
+                    onDownload={download}
+                    onRemove={remove}
+                    onRetry={retry}
+                  />
+                ))}
             </div>
 
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
-              <button className="boe-btn boe-btn-primary" onClick={download}>
-                <Download size={13} strokeWidth={2} />
-                Download Image
-              </button>
-              <button className="boe-btn boe-btn-ghost" onClick={reset}>
+              {done.length > 1 && (
+                <button
+                  className="boe-btn boe-btn-primary"
+                  onClick={() => { void downloadAll() }}
+                  disabled={running || downloading}
+                >
+                  <Download size={13} strokeWidth={2} />
+                  Download all {done.length}
+                </button>
+              )}
+              <button className="boe-btn boe-btn-ghost" onClick={startOver} disabled={running}>
                 <ImageIcon size={13} strokeWidth={2} />
-                Edit Another Image
+                Edit another set
               </button>
             </div>
           </>
@@ -360,43 +520,12 @@ export default function ImageEditorPage() {
         <input
           ref={inputRef}
           type="file"
+          multiple
           accept={STUDIO_IMAGE_ACCEPT}
           style={{ display: 'none' }}
-          onChange={e => selectFile(e.target.files?.[0])}
+          onChange={e => addFiles(e.target.files)}
         />
       </div>
     </ImageEditorLayout>
-  )
-}
-
-// ─── Comparison panel ────────────────────────────────────────────────────────
-// Both sides render the same way and at the same height, because a comparison
-// where one picture is bigger is not a comparison.
-
-function ComparePanel({ label, src, alt, accent }: {
-  label: string
-  src: string
-  alt: string
-  accent?: boolean
-}) {
-  return (
-    <div className="boe-card" style={{ padding: '12px' }}>
-      <div style={{
-        fontSize: '11px', fontWeight: 600, letterSpacing: '0.05em',
-        textTransform: 'uppercase', marginBottom: '8px',
-        color: accent ? colors.amber : colors.tertiary,
-      }}>
-        {label}
-      </div>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        style={{
-          width: '100%', aspectRatio: '1 / 1', objectFit: 'contain',
-          borderRadius: '8px', background: colors.float,
-        }}
-      />
-    </div>
   )
 }
