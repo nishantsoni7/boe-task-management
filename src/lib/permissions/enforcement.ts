@@ -59,6 +59,27 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'Every action is enforced — in the database and in the screen.',
   },
 
+  // Both actions this module registers are enforced in the database before they
+  // are enforced anywhere else (20261017000000):
+  //   use    → can_use_customer_review_outreach(), the INSERT/UPDATE/DELETE
+  //            policies on customer_review_requests, the photo policies, the
+  //            storage policies, and the ownership branch of
+  //            transition_customer_review_request().
+  //   verify → the verified/closed branch of that same transition function,
+  //            and can_view_customer_review_request(), which is what lets a
+  //            verifier read outreach they did not raise.
+  // In the screen: src/app/customer-reviews/layout.tsx (entry), the launcher
+  // card, and src/lib/permissions/customerReviewOutreach.ts.
+  //
+  // PREREQUISITE: this claim holds once 20261017000000 is APPLIED. The module
+  // is unreachable until then — the resolver returns no rows for an
+  // unregistered module, so the guard denies everyone but an admin, and the
+  // admin lands on a screen whose tables do not exist.
+  customer_review_requests: {
+    state: 'enforced',
+    detail: 'Every action is enforced — in the database and in the screen.',
+  },
+
   // sample_dispatches RLS resolves the four lifecycle actions
   // (20260665_cutover_sample_tracking_rls_to_resolver.sql).
   //

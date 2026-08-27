@@ -115,11 +115,17 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
   test('5. no existing migration file is edited by this change', () => {
     // Every other migration is untouched — asserted for the applied one that
     // matters most below, and structurally here: this file is the only one the
-    // branch adds, and it is the newest.
+    // branch adds, and it was the newest when the branch landed.
+    //
+    // 117 (Customer Review Outreach) has since been added by a LATER, unrelated
+    // change. It is named rather than allowed by a loosened rule, so a third
+    // file appearing after it still fails here and still has to be accounted
+    // for on purpose.
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20261016000000_notifications_link_activity_log.sql')
-    assert.equal(files[files.length - 2], '20261015000000_task_health_check_stops_notifying.sql')
+    assert.equal(files[files.length - 1], '20261017000000_customer_review_outreach.sql')
+    assert.equal(files[files.length - 2], '20261016000000_notifications_link_activity_log.sql')
+    assert.equal(files[files.length - 3], '20261015000000_task_health_check_stops_notifying.sql')
   })
 
   test('6. migration 115 still hashes to its pinned value', () => {

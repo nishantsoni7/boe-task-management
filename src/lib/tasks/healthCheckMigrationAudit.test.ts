@@ -471,7 +471,13 @@ describe('the migration is placed correctly', () => {
     // — not 115 — is now the newest thing that has run against the database.
     // What this still guards is that 115 is the only migration 116 follows.
     const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
-    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    // 117 (Customer Review Outreach) came later still and is NOT applied — it
+    // appears in the pending list in participantAndOrderTotalSecurity.test.ts
+    // and deliberately not in FROZEN.
+    assert.deepEqual(newer, [
+      '20261016000000_notifications_link_activity_log.sql',
+      '20261017000000_customer_review_outreach.sql',
+    ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
     // purpose, because the ledger pins a hash of the exact bytes the database

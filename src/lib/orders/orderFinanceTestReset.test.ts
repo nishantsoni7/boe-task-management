@@ -276,6 +276,13 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // tables carry the project's is_test_data marker and cascade from the
       // payment, so the reset and the tombstone reach them unchanged.
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 117. Customer Review Outreach — also pending, and last in filename
+      // order, so it applies after every migration above it whatever sequence
+      // the branches merge in. It touches neither the reset protocol nor the
+      // deletion claim: it creates three tables of its own and alters nothing
+      // that exists. Its tables carry no is_test_data marker because they hold
+      // no order or payment data for a reset to reach.
+      '20261017000000_customer_review_outreach.sql',
       // 115 (run_task_health_check stops inserting notifications) is NOT in
       // this list: it has been applied, so it is pinned in FROZEN over in
       // participantAndOrderTotalSecurity.test.ts instead. It touched neither

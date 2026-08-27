@@ -583,7 +583,13 @@ describe('18. migration 115 is untouched by this hotfix', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
     const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
-    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    // 117 (Customer Review Outreach) came later and likewise does not touch
+    // task assignment: it creates three tables of its own and alters nothing
+    // that exists. Named rather than allowed by a loosened rule.
+    assert.deepEqual(newer, [
+      '20261016000000_notifications_link_activity_log.sql',
+      '20261017000000_customer_review_outreach.sql',
+    ])
     // And 116's STATEMENTS touch only `notifications`. Its commentary cites
     // run_task_health_check as the precedent for not replacing a live function
     // from the repository's copy — prose, not a statement.

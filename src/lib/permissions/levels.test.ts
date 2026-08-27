@@ -207,11 +207,20 @@ describe('Manager never receives a protected action', () => {
     // `finance.approve` — which remains payment VERIFICATION — in every
     // direction, so that verifying money, deciding whose it is, and undoing
     // that decision can be held by three different people.
+    //
+    // And by one more in 20261017000000: `verify`, registered by Customer
+    // Review Outreach. It is the authority to say that a customer really did
+    // publish a review and to close the request on that basis — the module's
+    // only claim about the outside world that anybody else relies on. Its
+    // separation from `use` IS the safeguard: the employee who ran the outreach
+    // must not be able to sign off their own outreach, so this must never
+    // arrive with a preset. `use` is that module's ENTRY action and is
+    // deliberately not protected, exactly as `view` is not.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
-      'view_all', 'view_quotations',
+      'verify', 'view_all', 'view_quotations',
     ])
   })
 

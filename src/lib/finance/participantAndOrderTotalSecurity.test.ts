@@ -688,6 +688,16 @@ describe('the applied migrations are frozen', () => {
       // is exact. Like 115 it IS pushed, which is why it also appears in
       // FROZEN and no longer in the pending list below.
       '20261016000000_notifications_link_activity_log.sql',
+      // 117. NOT APPLIED. Customer Review Outreach: three new tables, a private
+      // photo bucket, five SECURITY DEFINER functions and two permission-engine
+      // actions (`use`, `verify`). It touches NOTHING that exists — no ALTER on
+      // another module's table, no policy dropped, no function replaced outside
+      // its own namespace — which is why it can sit at the end of this list
+      // without disturbing the pending order above it. Recorded here for the
+      // same reason as 109-116: this list is exact, so a new migration cannot
+      // appear unnoticed beside the frozen ones, and its absence from FROZEN is
+      // the statement that it has not been pushed.
+      '20261017000000_customer_review_outreach.sql',
     ])
   })
 
@@ -708,6 +718,11 @@ describe('the applied migrations are frozen', () => {
       '20261012000000_allocation_ledger_as_single_source.sql',
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 117 is pending like the six above it, and like them it is not pinned as
+      // frozen. It is last in filename order, so whatever sequence these
+      // branches merge in it still applies after every one of them — which is
+      // what this assertion exists to protect.
+      '20261017000000_customer_review_outreach.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

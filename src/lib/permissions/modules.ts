@@ -197,6 +197,29 @@ registerModule({
   ],
 })
 
+// Customer Review Outreach owns its own capability file
+// (src/lib/permissions/customerReviewOutreach.ts), but the registration stays
+// here with the rest of the catalog so `npm run permissions:check` still sees
+// one complete list. Mirrors the seed in
+// supabase/migrations/20261017000000_customer_review_outreach.sql.
+//
+// TWO ACTIONS, AND NO `view`. Unlike every other module here, entry is `use`:
+// there is no read-only audience for one employee's own outreach, so a third
+// "can open it and do nothing" grant would name an empty screen. `verify` is
+// the separate authority to say a review has actually been checked and to close
+// the request — protected (see levels.ts), because nobody should acquire it by
+// picking a level from a dropdown, and dependent on `use`, because a verifier
+// who cannot open the module cannot verify anything.
+registerModule({
+  moduleKey: 'customer_review_requests',
+  displayName: 'Customer Review Outreach',
+  description: 'Invite genuine customers to leave an honest review, and track the outreach.',
+  actions: [
+    { actionKey: 'use',    displayName: 'Use Customer Review Outreach' },
+    { actionKey: 'verify', displayName: 'Verify & Close Review Requests' },
+  ],
+})
+
 // PI Drafts (/orders/drafts) is not a separate module — it lives under the same
 // /orders route tree and inherits this module's 'view' permission via the shared
 // src/app/orders/layout.tsx guard.
