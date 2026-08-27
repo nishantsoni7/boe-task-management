@@ -1,38 +1,53 @@
-// Getting the uploaded photograph into the shape the provider is happy with.
+// Getting the uploaded photograph to the provider with as many of its original
+// pixels intact as possible.
 //
-// SERVER ONLY (sharp is a native module). Three things happen here, and nothing
-// else — in particular nothing that changes what the product looks like:
+// SERVER ONLY (sharp is a native module).
 //
-//   1. EXIF orientation is baked in. A phone photograph carries "rotate me 90°"
-//      as metadata; a provider reading raw pixels does not honour it, and BOE's
-//      rule is that the uploaded viewing direction is kept. Without this step a
-//      portrait photograph is edited sideways.
-//   2. Very large photographs are scaled down to a 4096px longest edge. The
-//      finished image is 2048x2048 with the product filling most of it, so
-//      detail beyond this buys nothing and costs upload time.
-//   3. Anything re-encoded comes back as high-quality JPEG, so the request body
-//      stays small.
+// WHAT CHANGED, AND WHY IT MATTERED
+// ---------------------------------
+// This used to downscale every photograph to a 4096px longest edge and
+// re-encode anything over 4 MB. Measured on a 48 MP phone photograph, that
+// handed PhotoRoom 12.6 MP instead of 48.8 MP — and since the product is only a
+// part of the frame, those are exactly the pixels the composition later needed
+// and had to invent by enlargement. Both rules are gone. The photograph now
+// reaches the provider untouched unless something forces a change:
 //
-// A photograph that needs none of the three is passed through byte-for-byte.
+//   1. EXIF orientation. A phone stores "rotate me 90°" as metadata; a provider
+//      reading raw pixels does not honour it, and BOE's rule is that the
+//      uploaded viewing direction is kept. This one is worth a re-encode.
+//   2. A photograph beyond MAX_SOURCE_EDGE_PX, which exists as a memory and
+//      request-size guard, not as a quality decision.
+//
+// When neither applies — the common case — the original bytes are forwarded
+// byte for byte, with no recompression at all.
 
 import sharp from 'sharp'
 import type { Metadata, Sharp } from 'sharp'
 
-/** Longest edge sent to the provider. Twice the finished canvas, so the product
- *  still has pixels to spare after it is cropped to its bounding box and scaled
- *  back up to fill the 2048px frame. */
-export const MAX_SOURCE_EDGE_PX = 4096
+/**
+ * The largest photograph forwarded as-is.
+ *
+ * A safety ceiling on memory and request size, NOT a claim about PhotoRoom's
+ * documented limits — those could not be read from this environment. 8192px
+ * comfortably exceeds any current phone or DSLR frame, so in practice nothing
+ * is resized; lower it if the provider starts refusing large uploads.
+ */
+export const MAX_SOURCE_EDGE_PX = 8192
 
-/** Above this, re-encode even if the dimensions are fine — a 9 MB JPEG is
- *  usually a low-compression export, not extra detail. */
-export const REENCODE_ABOVE_BYTES = 4 * 1024 * 1024
-
-/** High enough that re-encoding does not visibly touch upholstery texture or
- *  wood grain, which is exactly what must survive this step. */
-const JPEG_QUALITY = 92
+/** Quality used when a re-encode is unavoidable. High enough, with no chroma
+ *  subsampling, that the loss is invisible against the detail at stake. */
+const JPEG_QUALITY = 97
 
 export type PreparedSource =
-  | { ok: true; bytes: Buffer; mimeType: string; width: number; height: number }
+  | {
+      ok: true
+      bytes: Buffer
+      mimeType: string
+      width: number
+      height: number
+      /** False when the original bytes are being forwarded untouched. */
+      reencoded: boolean
+    }
   | { ok: false; error: string }
 
 export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promise<PreparedSource> {
@@ -45,7 +60,7 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
     return { ok: false, error: 'That image could not be read. Upload a different photograph.' }
   }
 
-  const width  = meta.width  ?? 0
+  const width = meta.width ?? 0
   const height = meta.height ?? 0
   if (!width || !height) {
     return { ok: false, error: 'That image could not be read. Upload a different photograph.' }
@@ -53,10 +68,9 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
 
   const needsRotate = (meta.orientation ?? 1) > 1
   const needsResize = Math.max(width, height) > MAX_SOURCE_EDGE_PX
-  const needsShrink = bytes.byteLength > REENCODE_ABOVE_BYTES
 
-  if (!needsRotate && !needsResize && !needsShrink) {
-    return { ok: true, bytes, mimeType, width, height }
+  if (!needsRotate && !needsResize) {
+    return { ok: true, bytes, mimeType, width, height, reencoded: false }
   }
 
   try {
@@ -68,6 +82,7 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
         width:  MAX_SOURCE_EDGE_PX,
         height: MAX_SOURCE_EDGE_PX,
         fit: 'inside',
+        kernel: 'lanczos3',
         withoutEnlargement: true,
       })
     }
@@ -81,6 +96,7 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
       mimeType: 'image/jpeg',
       width:  info.width,
       height: info.height,
+      reencoded: true,
     }
   } catch {
     return { ok: false, error: 'That image could not be read. Upload a different photograph.' }

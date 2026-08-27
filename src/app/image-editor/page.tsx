@@ -46,6 +46,9 @@ export default function ImageEditorPage() {
   const [resultUrl, setResultUrl]   = useState<string | null>(null)
   const [phase, setPhase]           = useState<Phase>('choose')
   const [error, setError]           = useState<string | null>(null)
+  // A quality refusal is not a failure to retry — the same photograph will be
+  // refused again. It offers a different photograph instead.
+  const [qualityIssue, setQualityIssue] = useState(false)
   const [dragging, setDragging]     = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
@@ -92,6 +95,7 @@ export default function ImageEditorPage() {
     const validation = validateSourceImage(chosen ?? null)
     if (!validation.ok) {
       setError(validation.error)
+      setQualityIssue(false)
       return
     }
 
@@ -103,6 +107,7 @@ export default function ImageEditorPage() {
     setOriginalUrl(url)
     setResultUrl(null)
     setError(null)
+    setQualityIssue(false)
     setPhase('ready')
   }, [])
 
@@ -113,6 +118,7 @@ export default function ImageEditorPage() {
     setOriginalUrl(null)
     setResultUrl(null)
     setError(null)
+    setQualityIssue(false)
     setPhase('choose')
     if (inputRef.current) inputRef.current.value = ''
   }, [])
@@ -129,6 +135,7 @@ export default function ImageEditorPage() {
     if (!file) return
     setPhase('working')
     setError(null)
+    setQualityIssue(false)
     setResultUrl(null)
 
     try {
@@ -148,6 +155,10 @@ export default function ImageEditorPage() {
 
       if (!res.ok) {
         setError(payload?.error ?? 'The studio image could not be generated. Please try again.')
+        // The server measured the product as too small or too soft for a sharp
+        // catalogue image. Retrying cannot change that; a different photograph
+        // can.
+        setQualityIssue(payload?.quality === true)
         setPhase('ready')
         return
       }
@@ -201,9 +212,22 @@ export default function ImageEditorPage() {
       <div style={{ maxWidth: '980px' }}>
 
         {error && (
-          <div className="boe-alert-red" style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '13px', color: '#C13030', flex: 1, minWidth: '200px' }}>{error}</span>
-            {file && phase !== 'working' && (
+          <div
+            className={qualityIssue ? 'boe-alert-amber' : 'boe-alert-red'}
+            style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
+          >
+            <span style={{
+              fontSize: '13px', flex: 1, minWidth: '200px',
+              color: qualityIssue ? '#8A5A12' : '#C13030',
+            }}>
+              {error}
+            </span>
+            {qualityIssue ? (
+              <button className="boe-btn boe-btn-ghost" onClick={() => inputRef.current?.click()}>
+                <ImageIcon size={13} strokeWidth={2} />
+                Choose a different photo
+              </button>
+            ) : file && phase !== 'working' && (
               <button className="boe-btn boe-btn-danger" onClick={generate}>
                 <RotateCcw size={13} strokeWidth={2} />
                 Try Again

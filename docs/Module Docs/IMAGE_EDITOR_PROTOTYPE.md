@@ -29,21 +29,79 @@ Two steps, and only the first one leaves the server.
    PhotoRoom products (`/v2/edit`, instant backgrounds) and they would return a
    product PhotoRoom drew rather than the one BOE photographed.
 
-2. **Local composition with `sharp`** — `composeStudioImage.ts`. Deterministic:
-   the same cut-out composes to the same bytes every time.
-   - 2048 × 2048 canvas, soft warm white `rgb(250, 247, 242)`
-   - the product cropped to its alpha bounding box, scaled with the aspect ratio
-     locked, centred, 8% margin on all four sides — so the whole product,
-     including every floor-contact point, is inside the frame
-   - a contact shadow whose **shape is the bottom band of the product's own
-     alpha mask**, squashed flat, blurred and set to 32% opacity. That is why a
-     chair casts four soft pools with floor visible between the legs rather than
-     one drawn ellipse.
-   - **no colour correction at all** — no brightness, white balance, saturation
-     or curve. Every product pixel is the photograph's pixel, resampled once by
-     the resize. A finish that looks slightly dark in the photograph looks
-     slightly dark in the result, which is the correct behaviour for a catalogue
-     image of a real object BOE will ship.
+   The photograph reaches it **untouched** unless EXIF orientation has to be
+   baked in or it exceeds 8192px. No downscale, no recompression: those pixels
+   are what the composition later needs.
+
+2. **Local composition with `sharp`** — deterministic; the same cut-out composes
+   to the same bytes every time.
+
+   | Step | What happens |
+   | --- | --- |
+   | Crop | To the alpha bounding box. |
+   | Quality gate | If the product would need more than **1.25×** enlargement to fill the frame, or is measurably out of focus, the request is **refused** — see below. |
+   | Defringe | Edge pixels take the colour of the product just inside them. **Alpha is never modified**, so no cane hole, spindle or metal tip is thinned. |
+   | Lighting | Exposure, midtone contrast, saturation and white balance, each measured from this product's own pixels and bounded. |
+   | Scale | One Lanczos-3 resize, aspect ratio locked. |
+   | Sharpen | Restrained, and confined to an eroded interior mask so the cut-out edge gains no halo. |
+   | Place | Centred on the product's **mass**, lifted slightly, 8% margins. |
+   | Shadow | Two alpha-derived layers at the real floor-contact points. |
+   | Background | 2048 × 2048, warm white with a gentle vertical gradient. |
+
+### The quality gate
+
+The first version enlarged whatever it was given until it filled the frame.
+Measured on a 4032 × 3024 photograph, a product occupying 30% of the frame was
+enlarged 2.11× and lost 71% of its fine-detail energy. That was the blur, and no
+sharpening puts back detail the sensor never recorded.
+
+Detail retained through the whole pipeline, against the same product at 1.00×:
+
+| 0.80× | 1.00× | 1.16× | 1.24× | 1.40× | 1.60× | 2.00× |
+| --- | --- | --- | --- | --- | --- | --- |
+| 102% | 100% | 75% | 67% | 61% | 50% | 28% |
+
+`MAX_ENLARGEMENT = 1.25` in `composeStudioImage.ts` is the line drawn through
+that table: it keeps two thirds of the finest texture and asks for a product
+about 45% of the frame. Lowering it to 1.15 keeps three quarters and asks for
+about half the frame. Past the cap the request is refused with a message asking
+for a closer photograph or a tighter crop, and the measurements go to the server
+log.
+
+### Lighting and colour
+
+Every adjustment is measured, bounded, and self-limiting. A well-exposed
+photograph receives almost nothing.
+
+- **Exposure** — from the median luminance of solid product pixels, toward a
+  target of 124, capped at 1.45×.
+- **Highlight veto** — the gain is reduced so the 98th percentile stays under
+  246, which is what keeps texture in white upholstery. The 98th, not the 99th:
+  a few specular pixels on a varnished arm must not cancel the correction for
+  the whole product.
+- **Midtone contrast** — a fixed, gentle S-curve that is zero at both endpoints,
+  so it cannot clip anything at either end.
+- **Saturation** — ×1.05, fixed and restrained.
+- **White balance** — estimated only from surfaces that ought to be neutral,
+  damped to 60%, capped at ±6% per channel, and **disabled entirely** when the
+  product has no neutral surface. A solid teak stool is never dragged toward
+  grey. A severe cast is only partly corrected, by design.
+
+### The shadow
+
+Two layers, both derived from the product's own alpha: a tight contact shadow
+and a wide, very soft grounding pool. Each column that reaches the floor casts
+at **its own lowest pixel**, not on a shared baseline — in a three-quarter view
+the back feet sit higher in the frame than the front ones while standing on the
+same floor. Geometry more than 12% of the product's height above the lowest
+point casts nothing, which is what keeps this a contact shadow rather than a
+silhouette printed on the floor.
+
+### Angle
+
+No rotation, no perspective correction, no straightening. Any automatic estimate
+from a single photograph would resample the product and risk its geometry for a
+benefit nothing here can measure, so the uploaded angle is preserved exactly.
 
 ## Configuration
 
@@ -59,7 +117,9 @@ Get a key at <https://app.photoroom.com/api-dashboard>. Put it in `.env.local`
 | File | What it holds |
 | --- | --- |
 | `src/lib/imageEditor/validation.ts` | What counts as an uploadable photograph. Used by the browser AND the route, so the two cannot disagree. |
-| `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in, oversized photographs scaled to a 4096px longest edge. Server-only (sharp). |
+| `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in. Otherwise the original bytes, untouched, up to 8192px. Server-only (sharp). |
+| `src/lib/imageEditor/productMetrics.ts` | Every measurement the composition decides from: bounds, mass centre, floor contact, luminance, neutral surfaces, sharpness. Pure functions. |
+| `src/lib/imageEditor/enhanceProduct.ts` | What lighting and colour correction this photograph gets, and the bounds it may not exceed. |
 | `src/lib/imageEditor/photoroomCutout.ts` | The only code that talks to a provider. Swapping providers means rewriting this one function. |
 | `src/lib/imageEditor/composeStudioImage.ts` | The canvas, the placement and the shadow. No network. |
 | `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, then the two steps above. Holds the API key; returns the image. |
@@ -72,10 +132,16 @@ The provider step cannot be checked from tests — they stub `fetch`. To see wha
 PhotoRoom actually returns for a given photograph, run one round trip directly:
 
 ```bash
-PHOTOROOM_API_KEY=… npx tsx scripts/image-editor-smoke.mjs chair.jpg studio.png
+# One credit: calls PhotoRoom, saves the cut-out, reports, composes.
+PHOTOROOM_API_KEY=… npx tsx scripts/image-editor-smoke.mjs chair.jpg out/
+
+# Free: re-compose from the saved cut-out, as often as you like.
+npx tsx scripts/image-editor-smoke.mjs --from-cutout out/chair-cutout.png out/
+
+# Free: the measurements behind a result.
+npx tsx scripts/image-editor-smoke.mjs --measure chair.jpg out/chair-cutout.png
 ```
 
-It costs one Remove Background credit, writes one PNG, and stores nothing else.
 Then look at the hard parts: the gaps between legs and spindles, the seat edge,
 and any upholstery fringe.
 
@@ -100,6 +166,7 @@ it goes to the server log only.
 | Timed out | 504 | taking longer than expected — try again |
 | Anything else | 502 | could not process — try again |
 | Cut-out has no product in it, or a shape the composition refuses | 422 | try a photograph with the product clearly visible |
+| **Product too small or too soft for a sharp result** | 422 + `quality: true` | too small / too soft — take it closer, or steady the camera. The page shows this in amber with **Choose a different photo** rather than a retry, because retrying the same photograph cannot help. |
 
 ## Size of the finished image
 

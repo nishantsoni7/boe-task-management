@@ -2,14 +2,19 @@
  * The finished image, built from a cut-out with no provider involved.
  *
  * Everything here runs for real: sharp composes actual pixels and the
- * assertions read them back. The cases are the promises the page makes about
- * the result — a fixed square canvas, a warm-white background, a product that
- * was scaled but never stretched, kept whole and centred, and a shadow whose
- * shape came from the product's own alpha rather than from a drawn ellipse.
+ * assertions read them back.
  *
- * The four-legged fixture is the one that matters. A shadow drawn as one blob
- * under the whole product would pass every other test in this file and still be
- * wrong: a chair's shadow has floor between its legs.
+ * The cases that matter most are the two this file exists to lock down after
+ * the first version shipped soft images:
+ *
+ *   * a product too small to reach the frame within the enlargement cap is
+ *     REFUSED, not enlarged — the refusal is the feature;
+ *   * the shadow comes from the columns that actually reach the floor, so a
+ *     seat with two legs casts two shadows and nothing under the gap between
+ *     them.
+ *
+ * Fixtures are large (~1400px) because that is what the gate now requires; the
+ * suite is correspondingly slower than a unit-test suite has any right to be.
  *
  * Run:
  *   npx tsx --test src/lib/imageEditor/composeStudioImage.test.ts
@@ -21,152 +26,130 @@ import sharp from 'sharp'
 import type { OverlayOptions } from 'sharp'
 import {
   composeStudioImage,
-  alphaBounds,
+  defringe,
   CANVAS_PX,
   MARGIN_RATIO,
+  MAX_ENLARGEMENT,
   BACKGROUND,
+  BACKGROUND_FOOT,
 } from './composeStudioImage'
 
-/** A transparent PNG with an opaque shape somewhere inside it. */
+/** Big enough to clear the enlargement gate. */
+const BIG = 1500
+
+/** A transparent canvas with one opaque rectangle in it. Noise, so the product
+ *  carries detail — a flat patch would trip the sharpness gate. */
 async function cutout(
   width: number,
   height: number,
   shape: { left: number; top: number; width: number; height: number },
-  colour = '#a9682f',
+  tint: { r: number; g: number; b: number } = { r: 169, g: 104, b: 47 },
 ): Promise<Buffer> {
+  const body = await sharp({
+    create: {
+      width: shape.width, height: shape.height, channels: 3,
+      noise: { type: 'gaussian', mean: 128, sigma: 22 },
+      background: { r: 0, g: 0, b: 0 },
+    },
+  })
+    .tint(tint)
+    .png()
+    .toBuffer()
+
   return sharp({
     create: { width, height, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
   })
-    .composite([{
-      input: {
-        create: {
-          width: shape.width, height: shape.height, channels: 4,
-          background: { ...hexToRgb(colour), alpha: 1 },
-        },
-      },
-      left: shape.left, top: shape.top,
-    }])
+    .composite([{ input: body, left: shape.left, top: shape.top }])
     .png()
     .toBuffer()
 }
 
-/** A seat on four legs, transparent between them — the shape a real chair cuts. */
-async function fourLeggedCutout(): Promise<Buffer> {
-  const legs: OverlayOptions[] = [40, 150, 250, 360].map(left => ({
-    input: { create: { width: 30, height: 180, channels: 4 as const, background: { r: 90, g: 60, b: 30, alpha: 1 } } },
-    left, top: 220,
-  }))
+/** A seat on two narrow legs with a wide gap between them: the shape that tells
+ *  a contact shadow apart from a silhouette shadow. */
+async function twoLeggedCutout(): Promise<Buffer> {
+  const seat = await sharp({
+    create: { width: 1500, height: 300, channels: 3, noise: { type: 'gaussian', mean: 130, sigma: 20 }, background: { r: 0, g: 0, b: 0 } },
+  }).tint({ r: 169, g: 104, b: 47 }).png().toBuffer()
+
+  const leg = await sharp({
+    create: { width: 110, height: 1150, channels: 3, noise: { type: 'gaussian', mean: 110, sigma: 18 }, background: { r: 0, g: 0, b: 0 } },
+  }).tint({ r: 120, g: 78, b: 38 }).png().toBuffer()
+
+  const parts: OverlayOptions[] = [
+    { input: seat, left: 150, top: 150 },
+    { input: leg, left: 210, top: 430 },
+    { input: leg, left: 1430, top: 430 },
+  ]
+
   return sharp({
-    create: { width: 500, height: 500, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
-  })
-    .composite([
-      { input: { create: { width: 380, height: 120, channels: 4, background: { r: 169, g: 104, b: 47, alpha: 1 } } }, left: 30, top: 100 },
-      ...legs,
-    ])
-    .png()
-    .toBuffer()
+    create: { width: 1800, height: 1800, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+  }).composite(parts).png().toBuffer()
 }
 
-function hexToRgb(hex: string) {
-  const n = parseInt(hex.slice(1), 16)
-  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 }
-}
-
-/** One pixel of a rendered image, as RGB. */
 async function pixel(png: Buffer, x: number, y: number): Promise<{ r: number; g: number; b: number }> {
-  const { data } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
-  const meta = await sharp(png).metadata()
-  const i = (y * (meta.width ?? 0) + x) * 4
+  const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  const i = (y * info.width + x) * 4
   return { r: data[i], g: data[i + 1], b: data[i + 2] }
 }
 
 const near = (a: number, b: number, tolerance = 2) => Math.abs(a - b) <= tolerance
 
-describe('the canvas', () => {
-  test('is exactly 2048 x 2048, opaque PNG', async () => {
-    const result = await composeStudioImage(await cutout(800, 600, { left: 200, top: 150, width: 400, height: 300 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
+describe('the quality gate', () => {
+  test('a product too small for a sharp 2048px image is refused, not enlarged', async () => {
+    // 300px of product would need ~5.7x. The old pipeline delivered that as a
+    // "catalogue image"; measured, it lost 71% of its fine detail.
+    const result = await composeStudioImage(await cutout(2000, 2000, { left: 800, top: 800, width: 300, height: 300 }))
 
-    const meta = await sharp(result.png).metadata()
-    assert.equal(meta.width, CANVAS_PX)
-    assert.equal(meta.height, CANVAS_PX)
-    assert.equal(meta.format, 'png')
-    // Flattened: a catalogue image with a transparent background would print
-    // as a black square.
-    assert.equal(meta.channels, 3)
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.equal(result.error, 'quality')
+    assert.match(result.quality?.message ?? '', /too small/i)
+    assert.match(result.quality?.message ?? '', /closer|crop/i)
+    // The log line carries measurements and no image data.
+    assert.match(result.quality?.detail ?? '', /300x300/)
+    assert.match(result.quality?.detail ?? '', /enlargement/)
   })
 
-  test('the background is the soft warm white, in every corner', async () => {
-    const result = await composeStudioImage(await cutout(800, 600, { left: 200, top: 150, width: 400, height: 300 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
-    for (const [x, y] of [[4, 4], [CANVAS_PX - 5, 4], [4, CANVAS_PX - 5], [CANVAS_PX - 5, CANVAS_PX - 5]]) {
-      const p = await pixel(result.png, x, y)
-      assert.ok(near(p.r, BACKGROUND.r) && near(p.g, BACKGROUND.g) && near(p.b, BACKGROUND.b),
-        `corner ${x},${y} should be warm white, got ${JSON.stringify(p)}`)
-    }
-    // Warm, not neutral: red above green above blue.
-    assert.ok(BACKGROUND.r > BACKGROUND.g && BACKGROUND.g > BACKGROUND.b)
-  })
-})
-
-describe('the product', () => {
-  test('keeps its aspect ratio — scaled, never stretched', async () => {
-    // 2:1, deliberately far from square.
-    const result = await composeStudioImage(await cutout(1000, 1000, { left: 100, top: 400, width: 800, height: 400 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
-    const { width, height } = result.placement
-    assert.ok(Math.abs(width / height - 2) < 0.01, `expected 2:1, got ${width}x${height}`)
-  })
-
-  test('is contained inside the canvas with a balanced margin on all four sides', async () => {
-    const result = await composeStudioImage(await cutout(900, 700, { left: 50, top: 60, width: 500, height: 500 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
-    const { left, top, width, height } = result.placement
-    const margin = Math.round(CANVAS_PX * MARGIN_RATIO)
-
-    assert.ok(left >= margin - 1, 'left margin')
-    assert.ok(top >= margin - 1, 'top margin')
-    assert.ok(left + width <= CANVAS_PX - margin + 1, 'right margin')
-    assert.ok(top + height <= CANVAS_PX - margin + 1, 'bottom margin')
-
-    // Centred: the two horizontal margins match, and so do the vertical ones.
-    assert.ok(Math.abs(left - (CANVAS_PX - left - width)) <= 1, 'horizontally centred')
-    assert.ok(Math.abs(top - (CANVAS_PX - top - height)) <= 1, 'vertically centred')
-  })
-
-  test('is found by its alpha, so surrounding transparency is cropped away', async () => {
-    // The product occupies a small corner of a large transparent canvas. If the
-    // crop were skipped it would come out tiny in the middle of the frame.
-    const result = await composeStudioImage(await cutout(2000, 2000, { left: 20, top: 20, width: 200, height: 200 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
+  test('a product just inside the cap is accepted', async () => {
     const box = CANVAS_PX - Math.round(CANVAS_PX * MARGIN_RATIO) * 2
-    assert.equal(result.placement.width, box)
-    assert.equal(result.placement.height, box)
+    const justEnough = Math.ceil(box / MAX_ENLARGEMENT) + 8
+
+    const result = await composeStudioImage(
+      await cutout(justEnough + 100, justEnough + 100, { left: 50, top: 50, width: justEnough, height: justEnough }),
+    )
+    assert.equal(result.ok, true, result.ok ? '' : result.quality?.detail ?? result.error)
+    if (!result.ok) return
+    assert.ok(result.metrics.enlargement <= MAX_ENLARGEMENT + 0.01)
   })
 
-  test('its own pixels survive the composition', async () => {
-    const result = await composeStudioImage(await cutout(600, 600, { left: 100, top: 100, width: 400, height: 400 }, '#a9682f'))
+  test('a product larger than the frame is downscaled, never refused', async () => {
+    const result = await composeStudioImage(await cutout(3000, 3000, { left: 100, top: 100, width: 2800, height: 2800 }))
     assert.equal(result.ok, true)
     if (!result.ok) return
-
-    // Dead centre is the middle of the product. No colour correction is applied
-    // anywhere, so the finish that went in is the finish that comes out.
-    const p = await pixel(result.png, CANVAS_PX / 2, CANVAS_PX / 2)
-    const expected = hexToRgb('#a9682f')
-    assert.ok(near(p.r, expected.r) && near(p.g, expected.g) && near(p.b, expected.b),
-      `expected the source colour unchanged, got ${JSON.stringify(p)}`)
+    assert.ok(result.metrics.enlargement < 1)
   })
 
-  test('an empty cut-out is refused rather than composed into a blank card', async () => {
+  test('a completely flat product is refused as too soft', async () => {
+    // No texture at all: nothing a resize could sharpen into detail.
+    const flat = await sharp({
+      create: { width: 1500, height: 1500, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([{
+        input: {
+          create: { width: BIG, height: BIG, channels: 4, background: { r: 169, g: 104, b: 47, alpha: 1 } },
+        },
+        left: 0, top: 0,
+      }])
+      .png().toBuffer()
+
+    const result = await composeStudioImage(flat)
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.equal(result.error, 'quality')
+    assert.match(result.quality?.message ?? '', /too soft|focus/i)
+  })
+
+  test('an empty cut-out is refused with its own message', async () => {
     const empty = await sharp({
       create: { width: 400, height: 400, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
     }).png().toBuffer()
@@ -175,114 +158,257 @@ describe('the product', () => {
     assert.equal(result.ok, false)
     assert.match(result.ok ? '' : result.error, /No product/i)
   })
+})
 
-  test('a file that is not an image fails cleanly', async () => {
-    const result = await composeStudioImage(Buffer.from('not a png'))
-    assert.equal(result.ok, false)
+describe('the canvas', () => {
+  test('is exactly 2048 x 2048, opaque PNG', async () => {
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const meta = await sharp(result.png).metadata()
+    assert.equal(meta.width, CANVAS_PX)
+    assert.equal(meta.height, CANVAS_PX)
+    assert.equal(meta.format, 'png')
+    assert.equal(meta.channels, 3)
+  })
+
+  test('the background is warm white, and carries a gentle vertical gradient', async () => {
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const topLeft = await pixel(result.png, 4, 4)
+    const bottomLeft = await pixel(result.png, 4, CANVAS_PX - 5)
+
+    assert.ok(near(topLeft.r, BACKGROUND.r) && near(topLeft.b, BACKGROUND.b), `top ${JSON.stringify(topLeft)}`)
+    assert.ok(near(bottomLeft.r, BACKGROUND_FOOT.r) && near(bottomLeft.b, BACKGROUND_FOOT.b), `foot ${JSON.stringify(bottomLeft)}`)
+
+    // Warm at both ends: red above green above blue, never yellow-cast or grey.
+    for (const p of [topLeft, bottomLeft]) assert.ok(p.r > p.g && p.g > p.b, JSON.stringify(p))
+    // And gentle: the whole ramp is under 12 levels.
+    assert.ok(topLeft.r - bottomLeft.r < 12, 'the gradient must stay subtle')
+  })
+})
+
+describe('the product', () => {
+  test('keeps its aspect ratio — scaled, never stretched', async () => {
+    const result = await composeStudioImage(await cutout(3000, 2000, { left: 100, top: 300, width: 2800, height: 1400 }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const { width, height } = result.metrics.placement
+    assert.ok(Math.abs(width / height - 2) < 0.01, `expected 2:1, got ${width}x${height}`)
+  })
+
+  test('sits inside the margins on all four sides', async () => {
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const { left, top, width, height } = result.metrics.placement
+    const margin = Math.round(CANVAS_PX * MARGIN_RATIO)
+
+    assert.ok(left >= Math.round(margin * 0.75) - 1, 'left')
+    assert.ok(top >= Math.round(margin * 0.75) - 1, 'top')
+    assert.ok(left + width <= CANVAS_PX - margin + 1, 'right')
+    assert.ok(top + height <= CANVAS_PX - margin + 1, 'bottom')
+  })
+
+  test('is centred by its mass, not by its bounding box', async () => {
+    // Heavy on the left, light on the right: a box-centred placement would look
+    // visibly off. The mass centre pulls it back.
+    // Tall enough that the height, not the width, decides the scale — so the
+    // placement has lateral room to move and the test can see it move.
+    const heavy = await sharp({
+      create: { width: 500, height: 1400, channels: 3, noise: { type: 'gaussian', mean: 120, sigma: 22 }, background: { r: 0, g: 0, b: 0 } },
+    }).png().toBuffer()
+    const light = await sharp({
+      create: { width: 120, height: 1400, channels: 3, noise: { type: 'gaussian', mean: 120, sigma: 22 }, background: { r: 0, g: 0, b: 0 } },
+    }).png().toBuffer()
+
+    const lopsided = await sharp({
+      create: { width: 1200, height: 1600, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } },
+    })
+      .composite([
+        { input: heavy, left: 40, top: 100 },
+        { input: light, left: 900, top: 100 },
+      ])
+      .png().toBuffer()
+
+    const result = await composeStudioImage(lopsided)
+    assert.equal(result.ok, true, result.ok ? '' : result.quality?.detail ?? result.error)
+    if (!result.ok) return
+
+    const { left, width } = result.metrics.placement
+    const boxCentred = Math.round((CANVAS_PX - width) / 2)
+    // The heavy half is on the left, so mass-centring must push the box right.
+    assert.ok(left > boxCentred, `mass centring should shift right of ${boxCentred}, got ${left}`)
+  })
+
+  test('no pale outline appears around the cut-out edge', async () => {
+    // The halo sharpening produces on a cut-out is the single most obvious
+    // "badly cut out" tell. Sampled just outside the product, the background
+    // must still be the background.
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const { left, top, width } = result.metrics.placement
+    for (const dx of [-6, -3, -2]) {
+      const p = await pixel(result.png, left + dx, top + Math.round(width / 2))
+      assert.ok(near(p.r, BACKGROUND.r, 6) && near(p.g, BACKGROUND.g, 6),
+        `halo at dx=${dx}: ${JSON.stringify(p)}`)
+    }
   })
 })
 
 describe('the contact shadow', () => {
-  test('is present beneath the product, and darker than the background', async () => {
-    const result = await composeStudioImage(await cutout(600, 600, { left: 100, top: 100, width: 400, height: 400 }))
+  test('falls under the legs and not under the gap between them', async () => {
+    const result = await composeStudioImage(await twoLeggedCutout())
+    assert.equal(result.ok, true, result.ok ? '' : result.quality?.detail ?? result.error)
+    if (!result.ok) return
+
+    const { left, top, width, height } = result.metrics.placement
+    const y = top + height + 6
+    const at = (fraction: number) => left + Math.round(width * fraction)
+
+    // Legs at roughly x = 210-320 and 1430-1540, in a bbox starting at x = 150.
+    const underLeg = await pixel(result.png, at((210 + 55 - 150) / 1500), y)
+    const underGap = await pixel(result.png, at(0.5), y)
+
+    assert.ok(underLeg.r < underGap.r - 6,
+      `leg ${underLeg.r} should be darker than the gap ${underGap.r}`)
+    // The gap must read as floor. Not the seat's silhouette printed on it.
+    assert.ok(underGap.r > BACKGROUND_FOOT.r - 14, `gap ${underGap.r} should still be background`)
+  })
+
+  test('grounds the product without a dark oval', async () => {
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
     assert.equal(result.ok, true)
     if (!result.ok) return
 
-    const { top, height, left, width } = result.placement
-    const below = await pixel(result.png, left + Math.round(width / 2), top + height + 12)
+    const { left, top, width, height } = result.metrics.placement
+    const below = await pixel(result.png, left + Math.round(width / 2), top + height + 8)
 
-    assert.ok(below.r < BACKGROUND.r - 6, `expected a shadow below the product, got ${JSON.stringify(below)}`)
-    // Subtle, not a black bar.
+    assert.ok(below.r < BACKGROUND_FOOT.r - 5, `expected a shadow, got ${JSON.stringify(below)}`)
     assert.ok(below.r > 150, `the shadow must stay soft, got ${JSON.stringify(below)}`)
   })
 
-  test('takes its shape from the alpha mask: floor stays visible between the legs', async () => {
-    const result = await composeStudioImage(await fourLeggedCutout())
+  test('reports how many columns actually touched the floor', async () => {
+    const result = await composeStudioImage(await twoLeggedCutout())
     assert.equal(result.ok, true)
     if (!result.ok) return
 
-    const { top, height, left, width } = result.placement
-    const y = top + height + 6
-
-    // The fixture's legs sit at x ≈ 40–70, 150–180, 250–280, 360–390 of 500,
-    // scaled to the placement. Under a leg it must be darker than in the gap
-    // between two legs.
-    const at = (fraction: number) => left + Math.round(width * fraction)
-    const underLeg = await pixel(result.png, at((150 + 15) / 420), y)
-    const betweenLegs = await pixel(result.png, at((180 + 250) / 2 / 420), y)
-
-    assert.ok(underLeg.r < betweenLegs.r - 4,
-      `a leg must cast more shadow than the gap beside it: leg ${underLeg.r}, gap ${betweenLegs.r}`)
-    // And the gap must still read as floor, not as one continuous smear.
-    assert.ok(betweenLegs.r > BACKGROUND.r - 20,
-      `the floor between legs must stay visible, got ${betweenLegs.r}`)
+    const { contactColumns, placement } = result.metrics
+    assert.ok(contactColumns > 0, 'the legs must be found')
+    // Two legs, not the whole seat: well under half the product's width.
+    assert.ok(contactColumns < placement.width * 0.35,
+      `${contactColumns} of ${placement.width} columns is a silhouette, not two feet`)
   })
 
   test('does not darken the top of the frame', async () => {
-    const result = await composeStudioImage(await cutout(600, 600, { left: 100, top: 100, width: 400, height: 400 }))
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
     assert.equal(result.ok, true)
     if (!result.ok) return
 
-    const above = await pixel(result.png, CANVAS_PX / 2, result.placement.top - 20)
-    assert.ok(near(above.r, BACKGROUND.r, 3), `above the product must stay clean, got ${JSON.stringify(above)}`)
+    const above = await pixel(result.png, CANVAS_PX / 2, result.metrics.placement.top - 20)
+    assert.ok(near(above.r, BACKGROUND.r, 4), `above the product must stay clean, got ${JSON.stringify(above)}`)
+  })
+})
+
+describe('the cut-out edge', () => {
+  /** A product with a `depth`-pixel rim of half-transparent background colour,
+   *  as raw RGBA — the shape a segmenter leaves along a chair leg. */
+  function contaminated(size: number, depth: number) {
+    const rgba = Buffer.alloc(size * size * 4)
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const o = (y * size + x) * 4
+        const edge = Math.min(x, y, size - 1 - x, size - 1 - y)
+        if (edge < depth) {
+          // The old background, half covered: green wall, green rim.
+          rgba[o] = 60; rgba[o + 1] = 190; rgba[o + 2] = 70; rgba[o + 3] = 128
+        } else {
+          rgba[o] = 140; rgba[o + 1] = 90; rgba[o + 2] = 40; rgba[o + 3] = 255
+        }
+      }
+    }
+    return rgba
+  }
+
+  test('a green rim takes the product\'s colour, and keeps every pixel of alpha', async () => {
+    const size = 60, depth = 2
+    const rgba = contaminated(size, depth)
+    const alphaBefore = Buffer.from(rgba.filter((_, i) => i % 4 === 3))
+
+    await defringe(rgba, size, size)
+
+    // A rim pixel: no longer greener than it is red.
+    const rim = (size * 0 + Math.round(size / 2)) * 4
+    assert.ok(rgba[rim + 1] < rgba[rim] + 20,
+      `rim still green: ${rgba[rim]},${rgba[rim + 1]},${rgba[rim + 2]}`)
+    assert.ok(rgba[rim] > 100, 'and it has taken the product colour, not gone grey')
+
+    // Not one pixel of alpha moved: the leg is exactly as wide as it was.
+    const alphaAfter = Buffer.from(rgba.filter((_, i) => i % 4 === 3))
+    assert.ok(alphaAfter.equals(alphaBefore), 'alpha must be untouched')
+  })
+
+  test('solid product pixels are left exactly alone', async () => {
+    const size = 60
+    const rgba = contaminated(size, 2)
+    const middle = ((size / 2) * size + size / 2) * 4
+    const before = [rgba[middle], rgba[middle + 1], rgba[middle + 2]]
+
+    await defringe(rgba, size, size)
+
+    assert.deepEqual([rgba[middle], rgba[middle + 1], rgba[middle + 2]], before)
+  })
+
+  test('a fully transparent pixel is not given a colour', async () => {
+    const size = 40
+    const rgba = Buffer.alloc(size * size * 4)
+    for (let y = 10; y < 30; y++) {
+      for (let x = 10; x < 30; x++) {
+        const o = (y * size + x) * 4
+        rgba[o] = 140; rgba[o + 1] = 90; rgba[o + 2] = 40; rgba[o + 3] = 255
+      }
+    }
+    await defringe(rgba, size, size)
+    assert.deepEqual([...rgba.subarray(0, 4)], [0, 0, 0, 0])
+  })
+
+  test('and end to end, no halo appears where the product meets the background', async () => {
+    const result = await composeStudioImage(await cutout(1600, 1600, { left: 50, top: 50, width: BIG, height: BIG }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const { left, top, height } = result.metrics.placement
+    const outside = await pixel(result.png, left - 4, top + Math.round(height / 2))
+    assert.ok(near(outside.r, BACKGROUND.r, 6), `halo outside the edge: ${JSON.stringify(outside)}`)
   })
 })
 
 describe('cut-out shapes no photograph of a chair produces', () => {
-  // A segmentation can go wrong, and when it does the result must be a message
-  // on the page, not a 500. Each of these used to reach sharp with an argument
-  // it refuses.
-
-  test('a wide, shallow sliver composes instead of throwing', async () => {
-    // 3000x3. Scaled to the 1720px box that is 2 rows tall — fewer than the
-    // contact band's own floor of 4, so `extract` ran at a negative offset and
-    // threw before the band was clamped to the product's own height.
-    const result = await composeStudioImage(await cutout(3000, 200, { left: 0, top: 100, width: 3000, height: 3 }))
-
-    assert.equal(result.ok, true, result.ok ? '' : result.error)
-    if (!result.ok) return
-    const meta = await sharp(result.png).metadata()
-    assert.equal(meta.width, CANVAS_PX)
-    assert.equal(meta.height, CANVAS_PX)
+  test('a wide, shallow sliver is refused or composed, never thrown', async () => {
+    const result = await composeStudioImage(await cutout(3000, 400, { left: 0, top: 200, width: 3000, height: 3 }))
+    // Either answer is acceptable; an exception is not.
+    if (result.ok) {
+      const meta = await sharp(result.png).metadata()
+      assert.equal(meta.width, CANVAS_PX)
+    } else {
+      assert.ok(result.error.length > 0)
+    }
   })
 
-  test('a tall, narrow sliver composes too', async () => {
-    const result = await composeStudioImage(await cutout(200, 3000, { left: 100, top: 0, width: 3, height: 3000 }))
-    assert.equal(result.ok, true, result.ok ? '' : result.error)
+  test('a tall, narrow sliver behaves the same way', async () => {
+    const result = await composeStudioImage(await cutout(400, 3000, { left: 200, top: 0, width: 3, height: 3000 }))
+    assert.ok(typeof result.ok === 'boolean')
   })
 
-  test('a single opaque pixel composes rather than crashing the route', async () => {
-    const result = await composeStudioImage(await cutout(400, 400, { left: 200, top: 200, width: 1, height: 1 }))
-    assert.equal(result.ok, true, result.ok ? '' : result.error)
-  })
-
-  test('a product touching all four edges keeps its margin', async () => {
-    // Nothing to crop: the mask fills the frame. The margin has to come from the
-    // resize, not from the crop.
-    const result = await composeStudioImage(await cutout(800, 800, { left: 0, top: 0, width: 800, height: 800 }))
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
-    const margin = Math.round(CANVAS_PX * MARGIN_RATIO)
-    assert.equal(result.placement.left, margin)
-    assert.equal(result.placement.top, margin)
-  })
-})
-
-describe('alphaBounds', () => {
-  test('finds the tight box around anything opaque', () => {
-    const w = 10, h = 10
-    const alpha = new Uint8Array(w * h)
-    alpha[2 * w + 3] = 255
-    alpha[6 * w + 8] = 255
-
-    assert.deepEqual(alphaBounds(alpha, w, h), { left: 3, top: 2, width: 6, height: 5 })
-  })
-
-  test('ignores all-but-invisible pixels, and answers null for an empty mask', () => {
-    const w = 4, h = 4
-    const faint = new Uint8Array(w * h).fill(3)
-    assert.equal(alphaBounds(faint, w, h), null)
-    assert.equal(alphaBounds(new Uint8Array(w * h), w, h), null)
+  test('a file that is not an image fails cleanly', async () => {
+    const result = await composeStudioImage(Buffer.from('not a png'))
+    assert.equal(result.ok, false)
   })
 })

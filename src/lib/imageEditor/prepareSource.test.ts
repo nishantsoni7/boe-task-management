@@ -47,7 +47,9 @@ describe('preparing an upload', () => {
   })
 
   test('an oversized photograph is scaled to the longest-edge limit, keeping its shape', async () => {
-    const bytes = await makeImage(6000, 4000)
+    const srcW = MAX_SOURCE_EDGE_PX + 2000
+    const srcH = Math.round(srcW * 2 / 3)
+    const bytes = await makeImage(srcW, srcH)
     const prepared = await prepareSourceImage(bytes, 'image/jpeg')
 
     assert.equal(prepared.ok, true)
@@ -55,8 +57,21 @@ describe('preparing an upload', () => {
 
     assert.equal(prepared.width, MAX_SOURCE_EDGE_PX)
     // 3:2 in, 3:2 out. A stretched source would be a changed product.
-    assert.equal(prepared.height, Math.round(MAX_SOURCE_EDGE_PX * 2 / 3))
+    assert.ok(Math.abs(prepared.height - MAX_SOURCE_EDGE_PX * srcH / srcW) <= 1)
     assert.equal(prepared.mimeType, 'image/jpeg')
+  })
+
+  test('a large photograph is forwarded untouched — no downscale, no recompression', async () => {
+    // The pixels the composition needs later are in here. Handing the provider
+    // a downscaled copy is what forced the enlargement that blurred the result.
+    const bytes = await makeImage(6000, 4000)
+    const prepared = await prepareSourceImage(bytes, 'image/jpeg')
+
+    assert.equal(prepared.ok, true)
+    if (!prepared.ok) return
+    assert.equal(prepared.reencoded, false)
+    assert.ok(prepared.bytes.equals(bytes))
+    assert.equal(prepared.width, 6000)
   })
 
   test('a photograph that needs nothing is passed through byte for byte', async () => {

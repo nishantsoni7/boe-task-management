@@ -106,6 +106,27 @@ describe('the pipeline', () => {
     }
   })
 
+  test('a quality refusal is passed through as its own answer, not a generic failure', () => {
+    const body = postHandler()
+    // The page needs to tell "come back with a closer photograph" apart from
+    // "the service broke": the first is not worth a retry.
+    assert.ok(body.includes('composed.quality'), 'the refusal must be recognised')
+    assert.match(body, /quality: true/)
+    assert.match(body, /status: 422/)
+    // Its measurements are logged, and the browser gets only the sentence.
+    assert.ok(body.includes('composed.quality.detail'), 'the measurements go to the log')
+    assert.ok(body.includes('composed.quality.message'), 'the employee gets the message')
+  })
+
+  test('what the pipeline measured is logged for every successful image', () => {
+    const body = postHandler()
+    for (const field of ['enlargement', 'detail', 'tone', 'contact columns']) {
+      assert.ok(body.includes(field), `the log line should carry ${field}`)
+    }
+    // Sizes and ratios only — never image data.
+    assert.ok(!/console\.(info|warn|error)\([^)]*base64/.test(body))
+  })
+
   test('the finished image is returned as a PNG data URL', () => {
     const body = postHandler()
     assert.match(body, /data:image\/png;base64/)

@@ -24,9 +24,15 @@
 //   1. PhotoRoom's Remove Background API returns the photograph with its
 //      background made transparent. It is not asked to generate, restage or
 //      edit anything — every product pixel is still BOE's own.
-//   2. sharp composes that cut-out onto a warm-white 2048x2048 canvas with a
-//      contact shadow derived from the cut-out's alpha. Deterministic, local,
-//      and with no colour correction at all.
+//   2. sharp composes that cut-out onto a warm-white 2048x2048 canvas: exposure
+//      and contrast measured from the product itself, restrained sharpening
+//      kept off the alpha edge, and a shadow under the points that actually
+//      reach the floor. Deterministic and local.
+//
+// A product too small or too soft in the photograph to make a sharp 2048px
+// image is REFUSED here rather than enlarged into a blurred one. That refusal
+// is a feature: it comes back as a 422 with a sentence asking for a closer
+// photograph, and the measurements behind it go to the server log.
 //
 // THE API KEY
 // -----------
@@ -184,10 +190,33 @@ export async function POST(req: NextRequest) {
 
   // Local from here on: no second provider, no network.
   const composed = await composeStudioImage(cutout.png)
+
   if (!composed.ok) {
+    if (composed.quality) {
+      // Measurements only — sizes and ratios, never image data.
+      console.warn('[image-editor/studio] rejected on quality:', composed.quality.detail)
+      return NextResponse.json(
+        { error: composed.quality.message, quality: true },
+        { status: 422 },
+      )
+    }
     console.error('[image-editor/studio] compose failed')
     return NextResponse.json({ error: composed.error }, { status: 422 })
   }
+
+  // One line per successful image, so a complaint about a result can be read
+  // back against what the pipeline actually measured and did.
+  const m = composed.metrics
+  console.info(
+    '[image-editor/studio] ok:',
+    `source ${prepared.width}x${prepared.height}${prepared.reencoded ? ' (re-encoded)' : ''}`,
+    `cut-out ${m.cutout.width}x${m.cutout.height}`,
+    `product ${m.bounds.width}x${m.bounds.height}`,
+    `enlargement ${m.enlargement.toFixed(2)}x`,
+    `detail ${m.detail.toFixed(1)}`,
+    `tone ${m.tone.reason} gain ${m.tone.gain.toFixed(2)} median ${m.tone.stats.median}`,
+    `contact columns ${m.contactColumns}`,
+  )
 
   return NextResponse.json({
     configured: true,
