@@ -3444,3 +3444,41 @@ body {
   background: transparent;
   cursor: not-allowed;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   NOTIFICATIONS — the task-group header
+   ══════════════════════════════════════════════════════════════════════════════
+
+   The header's task title IS the link to the task; the "View Task" button that
+   used to sit in the action row is gone. A real anchor gets Enter, cmd-click
+   and a focus ring for free — these two rules only make the affordance and the
+   ring explicit rather than relying on the global default. */
+
+.boe-notif-task-title:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Blue, matching the card's unread accent, and stronger than the global amber
+   default so a keyboard user can see exactly which title they are on. */
+.boe-notif-task-title:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* The words "Assigned to" are no longer drawn — the person icon carries them on
+   screen. They are still READ, so the icon is never the only thing carrying the
+   meaning. Scoped here rather than added as a global utility, for the same
+   reason .payroll-guide-sr-only is. */
+.boe-notif-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

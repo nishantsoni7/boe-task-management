@@ -126,7 +126,7 @@ function renderCard(rows: Notification[], over: Record<string, unknown> = {}): s
       filter="all"
       selected={new Set()}
       pendingDeletes={new Set()}
-      onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+      onToggleSelect={noop} onMarkGroupRead={noop}
       onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
       {...over}
     />,
@@ -291,7 +291,7 @@ describe('9-10. the actor, once and honestly', () => {
     // claim the owner performed something somebody else may have.
     const html = renderCard(await serverPage([n()], client({ actorId: ASSIGNEE })))
     assert.equal(html.includes('By Nishant'), false)
-    assert.ok(html.includes('Assigned to:'))
+    assert.ok(html.includes('title="Assigned to '))
   })
 
   test('10. an unresolvable actor is never labelled "System"', async () => {
@@ -333,9 +333,9 @@ describe('11-13. an unlinked or empty row falls back, never lies', () => {
   test('13b. the card still opens its task when the link is null', async () => {
     const html = renderCard(await serverPage([n({ activity_log_id: null })]))
     // The control is a button that routes, not an anchor — assert what it is.
-    assert.ok(html.includes('View Task'), 'View Task survives an unlinked row')
-    assert.ok(html.includes('aria-label="View task Balcony railing"'),
-      'and it names the task it opens')
+    // The task title is the link now; there is no separate View Task button.
+    assert.ok(html.includes(`href="/tasks/${TASK}"`), 'the title still opens the task')
+    assert.ok(html.includes('Balcony railing'))
   })
 })
 
@@ -476,7 +476,7 @@ describe('16. it survives the cache, and the rest of the card still works', () =
     assert.ok(html.includes('3 updates'))
     assert.ok(html.includes('aria-expanded="false"'), 'collapsed by default')
     assert.ok(html.includes('aria-label="Expand 3 updates for Balcony railing"'))
-    assert.ok(html.includes('aria-label="View task Balcony railing"'), 'navigation')
+    assert.ok(html.includes(`href="/tasks/${TASK}"`), 'navigation, via the title link')
     assert.ok(html.includes('Mark all read'), 'mark-read control')
     assert.ok(html.includes('Delete all notifications for this task'), 'delete control')
     // And the events still carry their context while collapsed, so opening the
