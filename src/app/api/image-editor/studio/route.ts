@@ -19,29 +19,30 @@
 //
 // HOW THE IMAGE IS MADE
 // ---------------------
-// Two steps, and only the first one leaves this server:
+// One provider call and nothing else. `fal-ai/bria/product-shot` re-photographs
+// the uploaded product into the studio scene held server-side in
+// src/lib/imageEditor/briaProductShot.ts, and what it returns IS the finished
+// image. There is no local composition, no cut-out, no drawn shadow and no
+// resizing of the result: the 1000x1000 the model returns is what the employee
+// downloads.
 //
-//   1. PhotoRoom's Remove Background API returns the photograph with its
-//      background made transparent. It is not asked to generate, restage or
-//      edit anything — every product pixel is still BOE's own.
-//   2. sharp composes that cut-out onto a warm-white 2048x2048 canvas: exposure
-//      and contrast measured from the product itself, restrained sharpening
-//      kept off the alpha edge, and a shadow under the points that actually
-//      reach the floor. Deterministic and local.
-//
-// A product too small or too soft in the photograph to make a sharp 2048px
-// image is REFUSED here rather than enlarged into a blurred one. That refusal
-// is a feature: it comes back as a 422 with a sentence asking for a closer
-// photograph, and the measurements behind it go to the server log.
+// COST
+// ----
+// One press of Generate is one billable request for exactly one result. Every
+// setting that decides that — the model id, num_results, the placement type —
+// is fixed in the adapter and unreachable from the browser, which sends nothing
+// but the photograph. The adapter never retries, including after a timeout: a
+// request that may already have been billed is not quietly billed again. The
+// per-user rate limiter below is unchanged.
 //
 // THE API KEY
 // -----------
-// PHOTOROOM_API_KEY, read here and passed to the adapter. It is never in a
-// response body, never in a client bundle, and never in the URL of the provider
-// call. With no key configured the route answers `configured: false` and the
-// page says the service is not set up — it does not return a placeholder or a
-// stock picture, because an image BOE cannot tell apart from a real edit is
-// worse than no image.
+// FAL_KEY, read here and passed to the adapter. It is never in a response body,
+// never in a client bundle, and never in the URL of the provider call. With no
+// key configured the route answers `configured: false` and the page says the
+// service is not set up — it does not return a placeholder or a stock picture,
+// because an image BOE cannot tell apart from a real one is worse than no
+// image.
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -51,16 +52,19 @@ import {
   MAX_SOURCE_IMAGE_LABEL,
 } from '@/lib/imageEditor/validation'
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
-import { removeBackground, type CutoutFailure } from '@/lib/imageEditor/photoroomCutout'
-import { composeStudioImage } from '@/lib/imageEditor/composeStudioImage'
+import {
+  generateProductShot,
+  NO_RETRY_FAILURES,
+  type ProductShotFailure,
+} from '@/lib/imageEditor/briaProductShot'
 
-// sharp is a native module, and both the provider call and the composition need
-// the whole image in memory. Neither works on the edge runtime.
+// sharp is a native module and the whole image is held in memory. Neither works
+// on the edge runtime.
 export const runtime = 'nodejs'
 
-// Image editing is tens of seconds, not hundreds of milliseconds. The adapter's
-// own timeout sits just under this so a slow provider produces a clean "please
-// try again" rather than a platform-level 504.
+// Generation is tens of seconds, not hundreds of milliseconds. The adapter's own
+// timeout sits just under this so a slow provider produces a clean "please try
+// again" rather than a platform-level 504.
 export const maxDuration = 60
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
@@ -101,14 +105,16 @@ function rateLimited(userId: string): boolean {
 // other needs an administrator, and the status code is how that reaches any
 // future caller as well as the browser.
 
-function statusFor(reason: CutoutFailure): number {
+function statusFor(reason: ProductShotFailure): number {
   switch (reason) {
-    case 'timeout':              return 504
-    case 'rate_limited':         return 429
-    case 'unsupported_image':    return 422
+    case 'timeout':             return 504
+    case 'rate_limited':        return 429
+    case 'unsupported_image':
+    case 'moderation':
+    case 'empty_result':        return 422
     case 'invalid_key':
-    case 'insufficient_credits': return 503
-    default:                     return 502
+    case 'insufficient_credit': return 503
+    default:                    return 502
   }
 }
 
@@ -129,7 +135,7 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await svc.from('users').select('id').eq('id', user.id).single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const apiKey = process.env.PHOTOROOM_API_KEY
+  const apiKey = process.env.FAL_KEY
   // Answered before the upload is read: with no key there is nothing this route
   // can do with the bytes, and the page needs to say so honestly.
   if (!apiKey) return NextResponse.json({ configured: false }, { status: 200 })
@@ -171,60 +177,51 @@ export async function POST(req: NextRequest) {
   const prepared = await prepareSourceImage(bytes, validation.mimeType)
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  const cutout = await removeBackground({
+  const result = await generateProductShot({
     bytes: prepared.bytes,
     mimeType: prepared.mimeType,
-    fileName: file.name,
     apiKey,
   })
 
-  if (!cutout.ok) {
-    // PhotoRoom's own text can echo request content and carries no meaning for
-    // an employee. It goes to the server log; the browser gets the sentence the
-    // adapter chose for that failure.
-    if (cutout.detail) console.error('[image-editor/studio]', cutout.reason, cutout.detail)
-    else console.error('[image-editor/studio]', cutout.reason)
+  if (!result.ok) {
+    // The provider's own response text never reaches the log or the browser:
+    // a category, a status code and fal's request id are enough to chase a
+    // failure, and none of them can carry image data or a credential.
+    console.error(
+      '[image-editor/studio] failed:',
+      `category ${result.reason}`,
+      `status ${result.status ?? '-'}`,
+      `request ${result.requestId || '-'}`,
+      `${result.durationMs} ms`,
+    )
 
-    return NextResponse.json({ error: cutout.message }, { status: statusFor(cutout.reason) })
+    return NextResponse.json(
+      {
+        error: result.message,
+        // Some failures cannot be helped by pressing the button again — a
+        // refused key, an empty account, a photograph the model will not take.
+        // The page offers a different photograph instead of a retry.
+        ...(NO_RETRY_FAILURES.has(result.reason) ? { noRetry: true } : {}),
+      },
+      { status: statusFor(result.reason) },
+    )
   }
 
-  // Local from here on: no second provider, no network.
-  const composed = await composeStudioImage(cutout.png)
-
-  if (!composed.ok) {
-    if (composed.quality) {
-      // Measurements only — sizes and ratios, never image data.
-      console.warn('[image-editor/studio] rejected on quality:', composed.quality.detail)
-      return NextResponse.json(
-        { error: composed.quality.message, quality: true },
-        { status: 422 },
-      )
-    }
-    console.error('[image-editor/studio] compose failed')
-    return NextResponse.json({ error: composed.error }, { status: 422 })
-  }
-
-  // One line per successful image, so a complaint about a result can be read
-  // back against what the pipeline actually measured and did.
-  const m = composed.metrics
   console.info(
     '[image-editor/studio] ok:',
-    `source ${prepared.width}x${prepared.height}${prepared.reencoded ? ' (re-encoded)' : ''}`,
-    `cut-out ${m.cutout.width}x${m.cutout.height}`,
-    `product ${m.bounds.width}x${m.bounds.height}`,
-    `enlargement ${m.enlargement.toFixed(2)}x`,
-    `detail ${m.detail.toFixed(1)}`,
-    `tone ${m.tone.reason} gain ${m.tone.gain.toFixed(2)} median ${m.tone.stats.median}`,
-    `contact columns ${m.contactColumns}`,
+    `request ${result.requestId || '-'}`,
+    `${result.durationMs} ms`,
+    `${result.image.width ?? '?'}x${result.image.height ?? '?'}`,
+    result.image.contentType,
   )
 
   return NextResponse.json({
     configured: true,
     image: {
-      // A data URL, so the page can render it, compare it and download it with
-      // no storage bucket behind any of those three.
-      dataUrl: `data:image/png;base64,${composed.png.toString('base64')}`,
-      mimeType: 'image/png',
+      // Straight from the provider, at its native size and format. Nothing is
+      // upscaled, recompressed or recomposed.
+      dataUrl: result.image.dataUrl,
+      mimeType: result.image.contentType,
     },
   })
 }

@@ -46,12 +46,17 @@ export default function ImageEditorPage() {
   const [resultUrl, setResultUrl]   = useState<string | null>(null)
   const [phase, setPhase]           = useState<Phase>('choose')
   const [error, setError]           = useState<string | null>(null)
-  // A quality refusal is not a failure to retry — the same photograph will be
-  // refused again. It offers a different photograph instead.
-  const [qualityIssue, setQualityIssue] = useState(false)
+  // Some failures cannot be helped by pressing the button again — a refused
+  // key, an empty account, a photograph the model will not take. The screen
+  // offers a different photograph instead of a retry.
+  const [noRetry, setNoRetry] = useState(false)
   const [dragging, setDragging]     = useState(false)
 
   const inputRef = useRef<HTMLInputElement>(null)
+  // Every generation costs money, so the guard against a double click is a ref
+  // rather than state: state updates on the next render, and two clicks in the
+  // same frame would both see `phase === 'ready'` and both send a request.
+  const inFlightRef = useRef(false)
   // Object URLs are revoked by hand; the browser holds the blob alive until then.
   const objectUrlRef = useRef<string | null>(null)
 
@@ -95,7 +100,7 @@ export default function ImageEditorPage() {
     const validation = validateSourceImage(chosen ?? null)
     if (!validation.ok) {
       setError(validation.error)
-      setQualityIssue(false)
+      setNoRetry(false)
       return
     }
 
@@ -107,7 +112,7 @@ export default function ImageEditorPage() {
     setOriginalUrl(url)
     setResultUrl(null)
     setError(null)
-    setQualityIssue(false)
+    setNoRetry(false)
     setPhase('ready')
   }, [])
 
@@ -118,7 +123,7 @@ export default function ImageEditorPage() {
     setOriginalUrl(null)
     setResultUrl(null)
     setError(null)
-    setQualityIssue(false)
+    setNoRetry(false)
     setPhase('choose')
     if (inputRef.current) inputRef.current.value = ''
   }, [])
@@ -132,10 +137,11 @@ export default function ImageEditorPage() {
   // ── Generating ──────────────────────────────────────────────────────────────
 
   const generate = useCallback(async () => {
-    if (!file) return
+    if (!file || inFlightRef.current) return
+    inFlightRef.current = true
     setPhase('working')
     setError(null)
-    setQualityIssue(false)
+    setNoRetry(false)
     setResultUrl(null)
 
     try {
@@ -155,10 +161,8 @@ export default function ImageEditorPage() {
 
       if (!res.ok) {
         setError(payload?.error ?? 'The studio image could not be generated. Please try again.')
-        // The server measured the product as too small or too soft for a sharp
-        // catalogue image. Retrying cannot change that; a different photograph
-        // can.
-        setQualityIssue(payload?.quality === true)
+        // The server has said this one is not worth retrying.
+        setNoRetry(payload?.noRetry === true)
         setPhase('ready')
         return
       }
@@ -167,6 +171,8 @@ export default function ImageEditorPage() {
       // employee could fix by retrying.
       if (payload?.configured === false) {
         setError('The image service is not set up yet. Ask your administrator to configure it.')
+        // Nothing the employee can do about this one either.
+        setNoRetry(true)
         setPhase('ready')
         return
       }
@@ -183,6 +189,8 @@ export default function ImageEditorPage() {
     } catch {
       setError('Could not reach the server. Check your connection and try again.')
       setPhase('ready')
+    } finally {
+      inFlightRef.current = false
     }
   }, [file, supabase, router])
 
@@ -213,22 +221,22 @@ export default function ImageEditorPage() {
 
         {error && (
           <div
-            className={qualityIssue ? 'boe-alert-amber' : 'boe-alert-red'}
+            className={noRetry ? 'boe-alert-amber' : 'boe-alert-red'}
             style={{ marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}
           >
             <span style={{
               fontSize: '13px', flex: 1, minWidth: '200px',
-              color: qualityIssue ? '#8A5A12' : '#C13030',
+              color: noRetry ? '#8A5A12' : '#C13030',
             }}>
               {error}
             </span>
-            {qualityIssue ? (
+            {noRetry ? (
               <button className="boe-btn boe-btn-ghost" onClick={() => inputRef.current?.click()}>
                 <ImageIcon size={13} strokeWidth={2} />
                 Choose a different photo
               </button>
             ) : file && phase !== 'working' && (
-              <button className="boe-btn boe-btn-danger" onClick={generate}>
+              <button className="boe-btn boe-btn-danger" onClick={generate} disabled={working}>
                 <RotateCcw size={13} strokeWidth={2} />
                 Try Again
               </button>
@@ -306,7 +314,11 @@ export default function ImageEditorPage() {
               </div>
             ) : (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '14px' }}>
-                <button className="boe-btn boe-btn-primary" onClick={generate}>
+                <button
+                  className="boe-btn boe-btn-primary"
+                  onClick={generate}
+                  disabled={working}
+                >
                   <Wand2 size={13} strokeWidth={2} />
                   Generate Studio Image
                 </button>

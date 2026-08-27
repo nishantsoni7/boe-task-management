@@ -31,6 +31,12 @@ import { join } from 'node:path'
 
 const SOURCE = readFileSync(join(process.cwd(), 'src/app/api/image-editor/studio/route.ts'), 'utf8')
 
+/** The handler's CODE, with comments stripped — so an assertion about what the
+ *  route does cannot be tripped by a sentence explaining what it does not. */
+function postCode(): string {
+  return postHandler().replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+}
+
 /** The body of `export async function POST`. */
 function postHandler(): string {
   const start = SOURCE.indexOf('export async function POST')
@@ -71,7 +77,7 @@ describe('authorization', () => {
     const body = postHandler()
     const authResolved = body.indexOf('svc.auth.getUser(token)')
     const formRead     = body.indexOf('req.formData()')
-    const providerCall = body.indexOf('removeBackground(')
+    const providerCall = body.indexOf('generateProductShot(')
 
     assert.ok(authResolved > -1 && formRead > -1 && providerCall > -1)
     assert.ok(authResolved < formRead, 'the upload must not be read before the caller is authenticated')
@@ -80,63 +86,62 @@ describe('authorization', () => {
 
   test('the rate limit is applied before the provider is called', () => {
     const body = postHandler()
-    assert.ok(body.indexOf('rateLimited(user.id)') < body.indexOf('removeBackground('))
+    assert.ok(body.indexOf('rateLimited(user.id)') < body.indexOf('generateProductShot('))
     assert.ok(body.includes('status: 429'))
   })
 })
 
 describe('the pipeline', () => {
-  test('the provider only cuts out; the studio image is composed locally', () => {
+  test('one provider call, and nothing after it', () => {
     const body = postHandler()
-    const cutout  = body.indexOf('removeBackground(')
-    const compose = body.indexOf('composeStudioImage(')
+    const call = body.indexOf('generateProductShot(')
+    assert.ok(call > -1, 'the provider is called')
 
-    assert.ok(cutout > -1 && compose > -1, 'both steps must be present')
-    assert.ok(cutout < compose, 'the cut-out comes first, the composition second')
+    // Exactly one call site, so one request per press cannot become two.
+    assert.equal(body.split('generateProductShot(').length - 1, 1)
 
-    // The composition must not go back out to a provider for the background.
-    const after = body.slice(compose)
-    assert.ok(!after.includes('fetch('), 'nothing leaves this server after the cut-out')
+    // Nothing composes, resizes or re-encodes the result afterwards: what the
+    // model returned is what the employee downloads.
+    const after = body.slice(call)
+    assert.ok(!after.includes('sharp('), 'the result is not re-processed')
+    assert.ok(!/resize|composite|extend\(/.test(after), 'the result is not resized or recomposed')
   })
 
-  test('no generative image provider is referenced anywhere in the route', () => {
-    for (const banned of ['gemini', 'openai', 'generateStudioImage', 'instant-background', '/v2/edit']) {
+  test('no PhotoRoom call, and none of its composition, remains anywhere', () => {
+    for (const banned of [
+      'photoroom', 'PHOTOROOM_API_KEY', 'removeBackground', 'sdk.photoroom.com',
+      'composeStudioImage', 'productMetrics', 'enhanceProduct', 'defringe',
+      'gemini', 'openai',
+    ]) {
       assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
         `the route must not reference ${banned}`)
     }
   })
 
-  test('a quality refusal is passed through as its own answer, not a generic failure', () => {
-    const body = postHandler()
-    // The page needs to tell "come back with a closer photograph" apart from
-    // "the service broke": the first is not worth a retry.
-    assert.ok(body.includes('composed.quality'), 'the refusal must be recognised')
-    assert.match(body, /quality: true/)
-    assert.match(body, /status: 422/)
-    // Its measurements are logged, and the browser gets only the sentence.
-    assert.ok(body.includes('composed.quality.detail'), 'the measurements go to the log')
-    assert.ok(body.includes('composed.quality.message'), 'the employee gets the message')
-  })
+  test('the browser cannot influence what the request costs', () => {
+    const body = postCode()
+    // The only thing read out of the request is the image itself. No model id,
+    // count, placement or size is taken from the form.
+    const reads = body.match(/form\.get\(([^)]*)\)/g) ?? []
+    assert.deepEqual(reads, ["form.get('image')"])
 
-  test('what the pipeline measured is logged for every successful image', () => {
-    const body = postHandler()
-    for (const field of ['enlargement', 'detail', 'tone', 'contact columns']) {
-      assert.ok(body.includes(field), `the log line should carry ${field}`)
+    for (const field of ['num_results', 'placement_type', 'shot_size', 'model']) {
+      assert.ok(!body.includes(field), `${field} must not be settable here`)
     }
-    // Sizes and ratios only — never image data.
-    assert.ok(!/console\.(info|warn|error)\([^)]*base64/.test(body))
   })
 
-  test('the finished image is returned as a PNG data URL', () => {
+  test('the finished image is returned at the provider’s own type', () => {
     const body = postHandler()
-    assert.match(body, /data:image\/png;base64/)
-    assert.ok(body.includes("mimeType: 'image/png'"))
+    assert.ok(body.includes('result.image.dataUrl'))
+    assert.ok(body.includes('result.image.contentType'))
+    // Not hard-coded to PNG, and not converted: whatever came back is passed on.
+    assert.ok(!body.includes("mimeType: 'image/png'"))
   })
 })
 
 describe('the API key', () => {
   test('is read from the environment and never returned to the browser', () => {
-    assert.ok(SOURCE.includes('process.env.PHOTOROOM_API_KEY'), 'the key comes from the environment')
+    assert.ok(SOURCE.includes('process.env.FAL_KEY'), 'the key comes from the environment')
 
     // Every response body in the file, checked for the variable holding the key.
     const responses = jsonResponses()
@@ -144,7 +149,7 @@ describe('the API key', () => {
     for (const body of responses) {
       assert.ok(!body.includes('apiKey'), `no response may carry the API key: ${body}`)
     }
-    assert.ok(!SOURCE.includes('NEXT_PUBLIC_PHOTOROOM'), 'the key must never be a public env var')
+    assert.ok(!SOURCE.includes('NEXT_PUBLIC_FAL'), 'the key must never be a public env var')
   })
 
   test('a missing key is reported honestly rather than faked', () => {
@@ -194,7 +199,6 @@ describe('runtime', () => {
     const body = postHandler()
     assert.ok(body.includes('console.error'), 'provider detail goes to the server log')
     // The employee-facing body carries the adapter's own message only.
-    assert.match(body, /NextResponse\.json\(\{ error: cutout\.message \}/)
-    assert.ok(!/NextResponse\.json\(\{[^}]*cutout\.detail/.test(body), 'detail must not reach the browser')
+    assert.ok(body.includes('error: result.message'), 'the browser gets the adapter’s own sentence')
   })
 })

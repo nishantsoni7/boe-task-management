@@ -3,14 +3,12 @@
 //
 // SERVER ONLY (sharp is a native module).
 //
-// WHAT CHANGED, AND WHY IT MATTERED
-// ---------------------------------
-// This used to downscale every photograph to a 4096px longest edge and
-// re-encode anything over 4 MB. Measured on a 48 MP phone photograph, that
-// handed PhotoRoom 12.6 MP instead of 48.8 MP — and since the product is only a
-// part of the frame, those are exactly the pixels the composition later needed
-// and had to invent by enlargement. Both rules are gone. The photograph now
-// reaches the provider untouched unless something forces a change:
+// WHY SO LITTLE HAPPENS HERE
+// --------------------------
+// Every resize and every re-encode costs detail the provider will never see
+// again, and none of them buys anything: the model reads the photograph as
+// uploaded. So the photograph reaches the provider untouched unless something
+// forces a change:
 //
 //   1. EXIF orientation. A phone stores "rotate me 90°" as metadata; a provider
 //      reading raw pixels does not honour it, and BOE's rule is that the
@@ -27,10 +25,10 @@ import type { Metadata, Sharp } from 'sharp'
 /**
  * The largest photograph forwarded as-is.
  *
- * A safety ceiling on memory and request size, NOT a claim about PhotoRoom's
- * documented limits — those could not be read from this environment. 8192px
- * comfortably exceeds any current phone or DSLR frame, so in practice nothing
- * is resized; lower it if the provider starts refusing large uploads.
+ * A safety ceiling on memory and request size. 8192px comfortably exceeds any
+ * current phone or DSLR frame, so in practice nothing is resized — the file
+ * size limits bite first: 10 MB on the upload, and fal's own 12 MB on the image
+ * it accepts.
  */
 export const MAX_SOURCE_EDGE_PX = 8192
 
