@@ -16,6 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { Notification } from '@/lib/types'
 import { NotificationTaskGroup } from './NotificationTaskGroup'
 import { NotificationRow } from './NotificationRow'
+import { ASSIGNEE_UNAVAILABLE } from '@/lib/notifications/pageEnrichment'
 import { groupNotificationsByTask, type NotificationTaskGroup as TaskGroup } from '@/lib/notifications/grouping'
 
 const TASK = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'
@@ -48,7 +49,6 @@ const render = (group: TaskGroup, over: Record<string, unknown> = {}) =>
       selected={new Set()}
       pendingDeletes={new Set()}
       onToggleSelect={noop}
-      onOpenTask={noop}
       onMarkGroupRead={noop}
       onDeleteGroup={noop}
       onDeleteOne={noop}
@@ -77,10 +77,13 @@ describe('24. collapsed, it is ONE compact card', () => {
     // REPLACES the old summary line ("3 unread · Latest: Added comment · 4
     // loaded updates"). That line answered questions nobody had asked while
     // omitting the one they had — whose task is this. The header now carries
-    // the task title, "Assigned to: <name>" and the count, and the events
+    // the task title, the assignee and the count, and the events
     // themselves carry the activity. Unread is a dot and a left accent, not a
     // pill (see the layout tests).
-    assert.ok(html.includes('Assigned to:'))
+    // This render passes no headerInfo and the rows carry no context, so the
+    // assignee is genuinely unresolved — the honest phrase, and no person chip.
+    assert.ok(html.includes(ASSIGNEE_UNAVAILABLE))
+    assert.equal(html.includes('title="Assigned to '), false, 'no empty person treatment')
     assert.ok(html.includes('4 updates'), 'events loaded, always called updates')
     assert.equal(html.includes('Latest:'), false, 'the summary line is gone')
     assert.equal(html.includes('loaded updates'), false)
@@ -96,29 +99,32 @@ describe('24. collapsed, it is ONE compact card', () => {
 
 // ── 25-26. Expanded ─────────────────────────────────────────────────────────
 
-describe('25-26. expanded, and one View Task', () => {
+describe('25-26. expanded, and one link to the task', () => {
   // renderToStaticMarkup cannot click, so the panel's contents are asserted
   // through the collapsed/expanded contract instead: hidden when closed, and
-  // the group owns exactly one View Task either way.
+  // the group owns exactly one link to the task either way.
   const html = render(FOUR())
 
-  test('26. exactly ONE View Task action, at group level', () => {
-    assert.equal((html.match(/View Task/g) ?? []).length, 1)
-    assert.ok(html.includes('aria-label="View task Design Clarifications to be cleared"'))
+  test('26. exactly ONE link to the task, and it is the title', () => {
+    assert.equal(html.includes('View Task'), false, 'the button is gone')
+    assert.equal((html.match(/href="\/tasks\//g) ?? []).length, 1)
+    assert.ok(html.includes('Design Clarifications to be cleared'), 'and it is the title')
   })
 
   test('the group owns mark-read and delete, each a real button', () => {
     assert.ok(html.includes('aria-label="Mark all updates for this task as read: Design Clarifications to be cleared"'))
     assert.ok(html.includes('aria-label="Delete all notifications for this task: Design Clarifications to be cleared"'))
-    assert.equal((html.match(/<button/g) ?? []).length >= 4, true)
-    assert.equal((html.match(/type="button"/g) ?? []).length >= 4, true, 'every control is a real button')
+    // Three now, not four: the disclosure, Mark all read and Delete. View Task
+    // is gone and the title is an anchor rather than a button.
+    assert.equal((html.match(/<button/g) ?? []).length >= 3, true)
+    assert.equal((html.match(/type="button"/g) ?? []).length >= 3, true, 'every control is a real button')
   })
 
   test('a fully read group offers no mark-read and shows no unread badge', () => {
     const read = render(groupOf([n({ is_read: true }), n({ is_read: true })]))
     assert.equal(read.includes('unread'), false)
     assert.equal(read.includes('Mark all read'), false)
-    assert.ok(read.includes('View Task'), 'but is still openable')
+    assert.ok(read.includes('href="/tasks/'), 'but is still openable, via the title')
   })
 })
 
@@ -147,8 +153,14 @@ describe('27. accordion semantics', () => {
     // accordion by accident.
     const trigger = html.indexOf('aria-expanded=')
     const triggerClose = html.indexOf('</button>', trigger)
-    const viewTask = html.indexOf('View Task')
-    assert.ok(triggerClose < viewTask, 'View Task must sit outside the accordion trigger')
+    assert.ok(trigger > 0 && triggerClose > trigger)
+    // Both actions open AFTER the disclosure button has closed.
+    assert.ok(triggerClose < html.indexOf('Mark all updates for this task as read'))
+    assert.ok(triggerClose < html.indexOf('Delete all notifications for this task'))
+    // The title LINK must sit outside it too — an anchor inside a button is
+    // invalid, and one control cannot both disclose and navigate.
+    assert.ok(html.indexOf('href="/tasks/') < trigger,
+      'the task title link must not be nested in the accordion trigger')
   })
 })
 
@@ -158,7 +170,7 @@ describe('28. mobile hides no required action', () => {
   const html = render(FOUR(), { isMobile: true })
 
   test('every group action is still present', () => {
-    assert.ok(html.includes('View Task'))
+    assert.ok(html.includes('href="/tasks/'), 'the title link')
     assert.ok(html.includes('Mark all read'))
     assert.ok(html.includes('Delete all notifications for this task'))
     // The "3 unread" pill is deliberately gone — unread is now one small dot

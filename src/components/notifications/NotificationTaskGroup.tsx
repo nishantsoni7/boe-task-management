@@ -1,7 +1,8 @@
 'use client'
 
 import { useId, useState } from 'react'
-import { ChevronRight, Check, CheckCheck, ExternalLink, Trash2 } from 'lucide-react'
+import Link from 'next/link'
+import { ChevronRight, Check, CheckCheck, Trash2, User } from 'lucide-react'
 import type { Notification } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { timeAgo } from '@/lib/ui'
@@ -106,7 +107,6 @@ export function NotificationTaskGroup({
   pendingDeletes,
   busy,
   onToggleSelect,
-  onOpenTask,
   onMarkGroupRead,
   onDeleteGroup,
   onDeleteOne,
@@ -139,7 +139,6 @@ export function NotificationTaskGroup({
   /** True while a group-level mutation is in flight — disables its own actions. */
   busy?: boolean
   onToggleSelect: (id: string) => void
-  onOpenTask: (group: TaskGroup) => void
   onMarkGroupRead: (group: TaskGroup) => void
   onDeleteGroup: (group: TaskGroup) => void
   onDeleteOne: (id: string) => void
@@ -162,37 +161,74 @@ export function NotificationTaskGroup({
   // card that claims to be one.
   const isSingle = group.loadedCount === 1
 
-  const header = (
+  // The assignee's REAL name, or null. `assigneeLabel` folds "unknown" into a
+  // sentence; the icon treatment must only be drawn for a person who exists, so
+  // the two are kept apart here.
+  const assigneeName = rowHeader?.assigneeName?.trim() ? rowHeader.assigneeName.trim() : null
+
+  // ── THE TITLE IS THE LINK ────────────────────────────────────────────────
+  //
+  // It replaces the "View Task" button, which sat in the action row saying what
+  // the title already implied. Same destination, arrived at from
+  // getNotificationMeta(group.latest).href — exactly what the removed button's
+  // handler pushed — but as a REAL anchor, so Enter works without a key
+  // handler, the browser paints its own focus ring, and cmd/middle-click opens
+  // a tab the way people expect a title to.
+  //
+  // A notification with no resolvable href (no task id) renders the same text
+  // unlinked rather than a control that goes nowhere.
+  const titleStyle: React.CSSProperties = {
+    fontSize: '13.5px', fontWeight: 700, color: colors.primary, lineHeight: 1.35,
+    minWidth: 0, textDecoration: 'none',
+    ...(isMobile
+      ? { overflowWrap: 'anywhere' }
+      : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+  }
+  const titleNode = href ? (
+    <Link href={href} className="boe-notif-task-title" style={titleStyle}>
+      {taskTitle}
+    </Link>
+  ) : (
+    <span style={titleStyle}>{taskTitle}</span>
+  )
+
+  // ── WHO IS HANDLING THIS TASK, BESIDE ITS NAME ───────────────────────────
+  //
+  // The words "Assigned to:" are gone from the screen: at this size they cost
+  // more room than the fact is worth, and the person icon carries the meaning.
+  // They are NOT gone from the accessibility tree — the tooltip and the
+  // screen-reader text both still say "Assigned to <name>", so an icon on its
+  // own is never the only thing carrying it.
+  //
+  // Blue, and deliberately the same blue as the unread accent, because this is
+  // the card's one piece of secondary identity. Smaller and lighter than the
+  // title: it must never compete with the task's own name.
+  //
+  // THIS IS THE TASK'S ASSIGNEE, NOT THE ACTOR OF ANY EVENT. The person who
+  // did each thing is named under that thing, as "By <name> · <time>". Two
+  // different facts; conflating them is how a card claims its owner performed
+  // an action somebody else did.
+  const assigneeNode = assigneeName ? (
+    <span
+      title={`Assigned to ${assigneeName}`}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0,
+        fontSize: '11.5px', fontWeight: 500, color: colors.blue,
+        whiteSpace: 'nowrap', minWidth: 0,
+      }}
+    >
+      <User size={11} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0 }} />
+      <span className="boe-notif-sr-only">Assigned to </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{assigneeName}</span>
+    </span>
+  ) : (
+    // No icon and no blue for a person who could not be resolved: an empty
+    // person chip would read as somebody whose name failed to load.
     <span style={{
-      flex: 1, minWidth: 0,
-      display: 'flex',
-      flexDirection: isMobile ? 'column' : 'row',
-      alignItems: isMobile ? 'flex-start' : 'baseline',
-      justifyContent: 'space-between',
-      gap: isMobile ? '3px' : '16px',
+      flexShrink: 0, fontSize: '11.5px', fontWeight: 500,
+      color: colors.muted, whiteSpace: 'nowrap',
     }}>
-      {/* Strongest thing on the card. */}
-      <span style={{
-        fontSize: '13.5px', fontWeight: 700, color: colors.primary, lineHeight: 1.35,
-        minWidth: 0, overflowWrap: 'anywhere',
-        ...(isMobile ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
-      }}>
-        {taskTitle}
-      </span>
-      {/* Muted, and on its own line on a phone rather than crushed beside the
-          title. Desktop: right-aligned with real space between. */}
-      <span style={{
-        display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0,
-        fontSize: '11.5px', color: colors.tertiary, fontWeight: 500,
-        flexWrap: 'wrap',
-      }}>
-        <span style={{ whiteSpace: 'nowrap' }}>Assigned to: {assignee}</span>
-        {!isSingle && (
-          <span style={{ whiteSpace: 'nowrap', color: colors.muted }}>
-            {updateCountLabel(group.loadedCount)}
-          </span>
-        )}
-      </span>
+      {assignee}
     </span>
   )
 
@@ -216,39 +252,58 @@ export function NotificationTaskGroup({
         gap: isMobile ? '8px' : '10px',
         padding: isMobile ? '12px 14px' : '12px 16px',
       }}>
-        {isSingle ? (
-          // No trigger, no chevron, no panel: the event is right below.
-          <div style={{ flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined }}>
-            {header}
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setOpen(o => !o)}
-            aria-expanded={open}
-            aria-controls={panelId}
-            aria-label={`${open ? 'Collapse' : 'Expand'} ${updateCountLabel(group.loadedCount)} for ${taskTitle}`}
-            style={{
-              flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined,
-              display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: '9px',
-              background: 'transparent', border: 'none',
-              padding: isMobile ? '6px 0' : 0,
-              minHeight: isMobile ? '44px' : undefined,
-              cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
-            }}
-          >
-            <ChevronRight
-              size={15}
-              aria-hidden="true"
+        {/* ── ONE LEFT-SIDE IDENTITY BLOCK ──────────────────────────────
+            Title, then who is handling it, then the disclosure. It used to be
+            `justify-content: space-between`, which pushed the assignee to the
+            far right of a 900px card and left a wide empty band across the
+            middle of every row. `flex: 1` on this block and `flex-shrink: 0`
+            on the actions puts the space where it belongs — after the identity,
+            before the actions — instead of inside it.
+
+            THE TITLE LINK IS NOT NESTED IN THE DISCLOSURE. It used to be: the
+            whole header was the accordion's <button>, which cannot legally
+            contain an anchor and would have made one control do two jobs.
+            They are siblings now, so Tab reaches each in turn and neither
+            fires the other. */}
+        <div style={{
+          flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined,
+          display: 'flex',
+          alignItems: isMobile ? 'flex-start' : 'center',
+          gap: isMobile ? '6px' : '10px',
+          flexWrap: 'wrap',
+        }}>
+          {titleNode}
+          {assigneeNode}
+          {!isSingle && (
+            <button
+              type="button"
+              onClick={() => setOpen(o => !o)}
+              aria-expanded={open}
+              aria-controls={panelId}
+              aria-label={`${open ? 'Collapse' : 'Expand'} ${updateCountLabel(group.loadedCount)} for ${taskTitle}`}
               style={{
-                flexShrink: 0, marginTop: isMobile ? '2px' : 0, color: colors.muted,
-                transform: open ? 'rotate(90deg)' : 'none',
-                transition: 'transform 0.12s',
+                display: 'inline-flex', alignItems: 'center', gap: '3px', flexShrink: 0,
+                background: 'transparent', border: 'none', padding: 0,
+                // The card's other controls hit 44px on a phone; so does this.
+                minHeight: isMobile ? '44px' : undefined,
+                minWidth: isMobile ? '44px' : undefined,
+                cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
+                fontSize: '11.5px', fontWeight: 500, color: colors.muted,
               }}
-            />
-            {header}
-          </button>
-        )}
+            >
+              <ChevronRight
+                size={13}
+                aria-hidden="true"
+                style={{
+                  flexShrink: 0,
+                  transform: open ? 'rotate(90deg)' : 'none',
+                  transition: 'transform 0.12s',
+                }}
+              />
+              {updateCountLabel(group.loadedCount)}
+            </button>
+          )}
+        </div>
 
         {/* Secondary by treatment: outlined, muted, never competing with the
             title. Siblings of the trigger, never nested inside it. */}
@@ -268,15 +323,9 @@ export function NotificationTaskGroup({
               isMobile={isMobile}
             />
           )}
-          {href && (
-            <GroupAction
-              onClick={() => onOpenTask(group)}
-              label={`View task ${taskTitle}`}
-              icon={<ExternalLink size={11} strokeWidth={2.2} />}
-              text="View Task"
-              isMobile={isMobile}
-            />
-          )}
+          {/* NO "View Task" HERE ANY MORE. The task title above IS the link,
+              to the same route this button pushed. Two controls for one
+              destination is what made this row feel crowded. */}
           {/* Destructive: quiet icon treatment, not a red block. */}
           <GroupAction
             onClick={() => onDeleteGroup(group)}
