@@ -17,9 +17,20 @@
 // the result is returned in the response body. No Supabase Storage object, no
 // table, no temporary file on disk. When the request ends, both images are gone.
 //
+// HOW THE IMAGE IS MADE
+// ---------------------
+// Two steps, and only the first one leaves this server:
+//
+//   1. PhotoRoom's Remove Background API returns the photograph with its
+//      background made transparent. It is not asked to generate, restage or
+//      edit anything — every product pixel is still BOE's own.
+//   2. sharp composes that cut-out onto a warm-white 2048x2048 canvas with a
+//      contact shadow derived from the cut-out's alpha. Deterministic, local,
+//      and with no colour correction at all.
+//
 // THE API KEY
 // -----------
-// GEMINI_API_KEY, read here and passed to the adapter. It is never in a
+// PHOTOROOM_API_KEY, read here and passed to the adapter. It is never in a
 // response body, never in a client bundle, and never in the URL of the provider
 // call. With no key configured the route answers `configured: false` and the
 // page says the service is not set up — it does not return a placeholder or a
@@ -34,10 +45,11 @@ import {
   MAX_SOURCE_IMAGE_LABEL,
 } from '@/lib/imageEditor/validation'
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
-import { generateStudioImage } from '@/lib/imageEditor/geminiStudioImage'
+import { removeBackground, type CutoutFailure } from '@/lib/imageEditor/photoroomCutout'
+import { composeStudioImage } from '@/lib/imageEditor/composeStudioImage'
 
-// sharp is a native module, and the provider call needs the whole request body
-// in memory. Neither works on the edge runtime.
+// sharp is a native module, and both the provider call and the composition need
+// the whole image in memory. Neither works on the edge runtime.
 export const runtime = 'nodejs'
 
 // Image editing is tens of seconds, not hundreds of milliseconds. The adapter's
@@ -76,6 +88,24 @@ function rateLimited(userId: string): boolean {
   return false
 }
 
+// ─── Failure → status ─────────────────────────────────────────────────────────
+//
+// The distinctions the page cannot make for itself. A refused key and a busy
+// provider both mean "no image", but one of them is worth retrying and the
+// other needs an administrator, and the status code is how that reaches any
+// future caller as well as the browser.
+
+function statusFor(reason: CutoutFailure): number {
+  switch (reason) {
+    case 'timeout':              return 504
+    case 'rate_limited':         return 429
+    case 'unsupported_image':    return 422
+    case 'invalid_key':
+    case 'insufficient_credits': return 503
+    default:                     return 502
+  }
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -93,7 +123,7 @@ export async function POST(req: NextRequest) {
   const { data: profile } = await svc.from('users').select('id').eq('id', user.id).single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.PHOTOROOM_API_KEY
   // Answered before the upload is read: with no key there is nothing this route
   // can do with the bytes, and the page needs to say so honestly.
   if (!apiKey) return NextResponse.json({ configured: false }, { status: 200 })
@@ -135,21 +165,28 @@ export async function POST(req: NextRequest) {
   const prepared = await prepareSourceImage(bytes, validation.mimeType)
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  const result = await generateStudioImage({
-    base64: prepared.base64,
+  const cutout = await removeBackground({
+    bytes: prepared.bytes,
     mimeType: prepared.mimeType,
+    fileName: file.name,
     apiKey,
-    model: process.env.GEMINI_IMAGE_MODEL,
   })
 
-  if (!result.ok) {
-    // Provider text can echo request content and carries no meaning for an
-    // employee. It goes to the server log; the browser gets the sentence above.
-    if (result.detail) console.error('[image-editor/studio]', result.reason, result.detail)
-    else console.error('[image-editor/studio]', result.reason)
+  if (!cutout.ok) {
+    // PhotoRoom's own text can echo request content and carries no meaning for
+    // an employee. It goes to the server log; the browser gets the sentence the
+    // adapter chose for that failure.
+    if (cutout.detail) console.error('[image-editor/studio]', cutout.reason, cutout.detail)
+    else console.error('[image-editor/studio]', cutout.reason)
 
-    const status = result.reason === 'timeout' ? 504 : result.reason === 'no_image' ? 422 : 502
-    return NextResponse.json({ error: result.message }, { status })
+    return NextResponse.json({ error: cutout.message }, { status: statusFor(cutout.reason) })
+  }
+
+  // Local from here on: no second provider, no network.
+  const composed = await composeStudioImage(cutout.png)
+  if (!composed.ok) {
+    console.error('[image-editor/studio] compose failed')
+    return NextResponse.json({ error: composed.error }, { status: 422 })
   }
 
   return NextResponse.json({
@@ -157,8 +194,8 @@ export async function POST(req: NextRequest) {
     image: {
       // A data URL, so the page can render it, compare it and download it with
       // no storage bucket behind any of those three.
-      dataUrl: `data:${result.image.mimeType};base64,${result.image.base64}`,
-      mimeType: result.image.mimeType,
+      dataUrl: `data:image/png;base64,${composed.png.toString('base64')}`,
+      mimeType: 'image/png',
     },
   })
 }

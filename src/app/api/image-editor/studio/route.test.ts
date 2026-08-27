@@ -71,7 +71,7 @@ describe('authorization', () => {
     const body = postHandler()
     const authResolved = body.indexOf('svc.auth.getUser(token)')
     const formRead     = body.indexOf('req.formData()')
-    const providerCall = body.indexOf('generateStudioImage(')
+    const providerCall = body.indexOf('removeBackground(')
 
     assert.ok(authResolved > -1 && formRead > -1 && providerCall > -1)
     assert.ok(authResolved < formRead, 'the upload must not be read before the caller is authenticated')
@@ -80,14 +80,42 @@ describe('authorization', () => {
 
   test('the rate limit is applied before the provider is called', () => {
     const body = postHandler()
-    assert.ok(body.indexOf('rateLimited(user.id)') < body.indexOf('generateStudioImage('))
+    assert.ok(body.indexOf('rateLimited(user.id)') < body.indexOf('removeBackground('))
     assert.ok(body.includes('status: 429'))
+  })
+})
+
+describe('the pipeline', () => {
+  test('the provider only cuts out; the studio image is composed locally', () => {
+    const body = postHandler()
+    const cutout  = body.indexOf('removeBackground(')
+    const compose = body.indexOf('composeStudioImage(')
+
+    assert.ok(cutout > -1 && compose > -1, 'both steps must be present')
+    assert.ok(cutout < compose, 'the cut-out comes first, the composition second')
+
+    // The composition must not go back out to a provider for the background.
+    const after = body.slice(compose)
+    assert.ok(!after.includes('fetch('), 'nothing leaves this server after the cut-out')
+  })
+
+  test('no generative image provider is referenced anywhere in the route', () => {
+    for (const banned of ['gemini', 'openai', 'generateStudioImage', 'instant-background', '/v2/edit']) {
+      assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
+        `the route must not reference ${banned}`)
+    }
+  })
+
+  test('the finished image is returned as a PNG data URL', () => {
+    const body = postHandler()
+    assert.match(body, /data:image\/png;base64/)
+    assert.ok(body.includes("mimeType: 'image/png'"))
   })
 })
 
 describe('the API key', () => {
   test('is read from the environment and never returned to the browser', () => {
-    assert.ok(SOURCE.includes('process.env.GEMINI_API_KEY'), 'the key comes from the environment')
+    assert.ok(SOURCE.includes('process.env.PHOTOROOM_API_KEY'), 'the key comes from the environment')
 
     // Every response body in the file, checked for the variable holding the key.
     const responses = jsonResponses()
@@ -95,7 +123,7 @@ describe('the API key', () => {
     for (const body of responses) {
       assert.ok(!body.includes('apiKey'), `no response may carry the API key: ${body}`)
     }
-    assert.ok(!SOURCE.includes('NEXT_PUBLIC_GEMINI'), 'the key must never be a public env var')
+    assert.ok(!SOURCE.includes('NEXT_PUBLIC_PHOTOROOM'), 'the key must never be a public env var')
   })
 
   test('a missing key is reported honestly rather than faked', () => {
@@ -145,7 +173,7 @@ describe('runtime', () => {
     const body = postHandler()
     assert.ok(body.includes('console.error'), 'provider detail goes to the server log')
     // The employee-facing body carries the adapter's own message only.
-    assert.match(body, /NextResponse\.json\(\{ error: result\.message \}/)
-    assert.ok(!/NextResponse\.json\(\{[^}]*result\.detail/.test(body), 'detail must not reach the browser')
+    assert.match(body, /NextResponse\.json\(\{ error: cutout\.message \}/)
+    assert.ok(!/NextResponse\.json\(\{[^}]*cutout\.detail/.test(body), 'detail must not reach the browser')
   })
 })

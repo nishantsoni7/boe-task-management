@@ -7,9 +7,9 @@
 //      as metadata; a provider reading raw pixels does not honour it, and BOE's
 //      rule is that the uploaded viewing direction is kept. Without this step a
 //      portrait photograph is edited sideways.
-//   2. Very large photographs are scaled down to a 2048px longest edge. The
-//      model does not see more detail than that, and a 10 MB inline request is
-//      slow to upload and quick to time out.
+//   2. Very large photographs are scaled down to a 4096px longest edge. The
+//      finished image is 2048x2048 with the product filling most of it, so
+//      detail beyond this buys nothing and costs upload time.
 //   3. Anything re-encoded comes back as high-quality JPEG, so the request body
 //      stays small.
 //
@@ -18,8 +18,10 @@
 import sharp from 'sharp'
 import type { Metadata, Sharp } from 'sharp'
 
-/** Longest edge sent to the provider. */
-export const MAX_SOURCE_EDGE_PX = 2048
+/** Longest edge sent to the provider. Twice the finished canvas, so the product
+ *  still has pixels to spare after it is cropped to its bounding box and scaled
+ *  back up to fill the 2048px frame. */
+export const MAX_SOURCE_EDGE_PX = 4096
 
 /** Above this, re-encode even if the dimensions are fine — a 9 MB JPEG is
  *  usually a low-compression export, not extra detail. */
@@ -30,7 +32,7 @@ export const REENCODE_ABOVE_BYTES = 4 * 1024 * 1024
 const JPEG_QUALITY = 92
 
 export type PreparedSource =
-  | { ok: true; base64: string; mimeType: string; width: number; height: number }
+  | { ok: true; bytes: Buffer; mimeType: string; width: number; height: number }
   | { ok: false; error: string }
 
 export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promise<PreparedSource> {
@@ -54,7 +56,7 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
   const needsShrink = bytes.byteLength > REENCODE_ABOVE_BYTES
 
   if (!needsRotate && !needsResize && !needsShrink) {
-    return { ok: true, base64: bytes.toString('base64'), mimeType, width, height }
+    return { ok: true, bytes, mimeType, width, height }
   }
 
   try {
@@ -75,7 +77,7 @@ export async function prepareSourceImage(bytes: Buffer, mimeType: string): Promi
 
     return {
       ok: true,
-      base64: data.toString('base64'),
+      bytes: data,
       mimeType: 'image/jpeg',
       width:  info.width,
       height: info.height,

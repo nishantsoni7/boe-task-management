@@ -23,8 +23,8 @@ async function makeImage(width: number, height: number, format: 'jpeg' | 'png' =
   return format === 'png' ? base.png().toBuffer() : base.jpeg().toBuffer()
 }
 
-async function sizeOf(base64: string): Promise<{ width: number; height: number }> {
-  const meta = await sharp(Buffer.from(base64, 'base64')).metadata()
+async function sizeOf(bytes: Buffer): Promise<{ width: number; height: number }> {
+  const meta = await sharp(bytes).metadata()
   return { width: meta.width ?? 0, height: meta.height ?? 0 }
 }
 
@@ -41,13 +41,13 @@ describe('preparing an upload', () => {
     assert.equal(prepared.ok, true)
     if (!prepared.ok) return
 
-    assert.deepEqual(await sizeOf(prepared.base64), { width: 20, height: 40 })
+    assert.deepEqual(await sizeOf(prepared.bytes), { width: 20, height: 40 })
     assert.equal(prepared.width, 20)
     assert.equal(prepared.height, 40)
   })
 
   test('an oversized photograph is scaled to the longest-edge limit, keeping its shape', async () => {
-    const bytes = await makeImage(3000, 2000)
+    const bytes = await makeImage(6000, 4000)
     const prepared = await prepareSourceImage(bytes, 'image/jpeg')
 
     assert.equal(prepared.ok, true)
@@ -68,7 +68,7 @@ describe('preparing an upload', () => {
     assert.equal(prepared.ok, true)
     if (!prepared.ok) return
 
-    assert.equal(prepared.base64, bytes.toString('base64'))
+    assert.ok(prepared.bytes.equals(bytes))
     assert.equal(prepared.mimeType, 'image/png')
     assert.equal(prepared.width, 1200)
     assert.equal(prepared.height, 900)
@@ -79,7 +79,7 @@ describe('preparing an upload', () => {
     const prepared = await prepareSourceImage(bytes, 'image/jpeg')
 
     assert.equal(prepared.ok, true)
-    assert.equal(prepared.ok && prepared.base64, bytes.toString('base64'))
+    assert.ok(prepared.ok && prepared.bytes.equals(bytes))
   })
 
   test('a file that is not an image fails cleanly instead of throwing', async () => {
