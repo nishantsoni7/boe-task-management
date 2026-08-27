@@ -1,7 +1,7 @@
 'use client'
 
 import { useId, useState } from 'react'
-import { ChevronRight, Check, CheckCheck, ExternalLink, Clock, Trash2 } from 'lucide-react'
+import { ChevronRight, Check, CheckCheck, ExternalLink, Trash2 } from 'lucide-react'
 import type { Notification } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { timeAgo } from '@/lib/ui'
@@ -11,12 +11,47 @@ import {
   type NotificationFilter,
   type NotificationTaskGroup as TaskGroup,
 } from '@/lib/notifications/grouping'
+import {
+  describeNotificationEvent,
+  actorMetaFor,
+  updateCountLabel,
+} from '@/lib/notifications/eventPresentation'
+import {
+  assigneeLabel,
+  taskTitleFor,
+  type TaskHeaderInfo,
+  type ActivityDetailMap,
+  type ActivityDetail,
+} from '@/lib/notifications/pageEnrichment'
 
 // One task, one card.
 //
-// Collapsed it is a single line about the task; expanded it is the task's
-// events, indented under a rail so it reads as a sequence belonging to one
-// thing rather than four unrelated rows that happen to be adjacent.
+// ── THE HEADER SAYS WHAT THE CARD IS ────────────────────────────────────────
+//
+//   test task                          Assigned to: Nishant    3 updates  ˅
+//
+// Task title left and strongest; assignee and count right and muted. The count
+// is EVENTS — notification rows for this task — and is always called "updates"
+// so it can never be read as a number of subtasks.
+//
+// ASSIGNED TO IS THE TASK'S OWNER, not the actor of the newest event. Those are
+// different facts and conflating them produces "Assigned to: Dhruv" on a task
+// belonging to Nishant because Dhruv happened to comment last. The name comes
+// from a page-level batch lookup (src/lib/notifications/taskAssignees.ts), not
+// from the notification rows and not from one query per card.
+//
+// ── ONE EVENT IS NOT AN ACCORDION ───────────────────────────────────────────
+//
+// A single notification renders its event directly: no chevron, no panel, no
+// "1 update". A disclosure control that reveals one row it could have shown is
+// a click that buys nothing, and the label is noise.
+//
+// ── EVENTS DO NOT REPEAT THE HEADER ─────────────────────────────────────────
+//
+// Inside a group each event shows what happened, one short detail, and when.
+// Not the task title, not the assignee, not a large actor badge, not a second
+// View Task — all four are already above, and repeating them four times is how
+// one task filled a screen.
 //
 // ── WHAT THE CONTROLS DO, AND WHAT THEY DELIBERATELY DO NOT ─────────────────
 //
@@ -28,14 +63,44 @@ import {
 //
 // "Delete these updates" removes NOTIFICATION ROWS for this reader and this
 // task. It cannot reach the task, its activity history, its comments, its
-// attachments, or anybody else's notifications: it calls the existing
-// /api/notifications/delete-selected with this group's loaded ids, and that
-// endpoint is scoped to `user_id = caller`. It confirms first, because several
-// records go at once — expanding, collapsing and marking read do not, because
-// they are cheap and reversible.
+// attachments, or anybody else's notifications.
+
+/**
+ * The header facts carried ON the row, when it has them.
+ *
+ * Returns undefined — not an empty object — when the row has no context, so the
+ * caller falls through to the page-level map instead of overriding it with
+ * nothing.
+ */
+function headerInfoFromContext(n: Notification): TaskHeaderInfo | undefined {
+  const ctx = n.context
+  if (!ctx) return undefined
+  if (!ctx.taskTitle && !ctx.assigneeName) return undefined
+  return { title: ctx.taskTitle ?? '', assigneeName: ctx.assigneeName }
+}
+
+/**
+ * The linked activity detail for one event.
+ *
+ * ROW FIRST. `n.context.activity` came back attached to this exact row, so it
+ * cannot be stale relative to it. The page-level map is the fallback for a row
+ * from a payload written before `context` existed. A row with no link resolves
+ * to undefined in both, which is the historical case and renders "Comment
+ * added" / "Status updated".
+ */
+function activityDetailFor(
+  n: Notification,
+  activityDetails?: ActivityDetailMap,
+): ActivityDetail | undefined {
+  if (n.context?.activity) return n.context.activity
+  if (n.context) return undefined      // resolved, and there is genuinely none
+  return n.activity_log_id ? activityDetails?.[n.activity_log_id] : undefined
+}
 
 export function NotificationTaskGroup({
   group,
+  headerInfo,
+  activityDetails,
   filter,
   selected,
   pendingDeletes,
@@ -49,6 +114,25 @@ export function NotificationTaskGroup({
   isMobile = false,
 }: {
   group: TaskGroup
+  /**
+   * Title + assignee from the page-level batch lookup.
+   *
+   * A FALLBACK NOW, NOT THE SOURCE. Each row carries its own `context` (see
+   * NotificationRowContext), which is what this reads first — a map held
+   * beside the rows goes out of step with them the moment a cached page is
+   * served without its query function running. Still accepted so a caller that
+   * has the map, or a row from a payload written before `context` existed,
+   * renders exactly as it did.
+   */
+  headerInfo?: TaskHeaderInfo
+  /**
+   * Linked activity detail, keyed by activity id, for the whole page.
+   *
+   * Same story as `headerInfo`: consulted only when the row itself carries no
+   * context. A historical notification has no link and finds nothing in either,
+   * which is the normal case and renders the fallbacks it always has.
+   */
+  activityDetails?: ActivityDetailMap
   filter: NotificationFilter
   selected: ReadonlySet<string>
   pendingDeletes: ReadonlySet<string>
@@ -65,26 +149,66 @@ export function NotificationTaskGroup({
   const [open, setOpen] = useState(false)
   const panelId = `notif-group-${useId().replace(/:/g, '')}`
 
-  const latestMeta = getNotificationMeta(group.latest)
   const hasUnread = group.unreadCount > 0
   const events = orderGroupEvents(group, filter)
+  // The row's own context wins over the page-level map — see the prop docs.
+  const rowHeader = headerInfoFromContext(group.latest) ?? headerInfo
+  const taskTitle = taskTitleFor(rowHeader, group.title)
+  const assignee = assigneeLabel(rowHeader)
+  const href = getNotificationMeta(group.latest).href
 
-  // "Dhruv added a comment" — actor and event, from the newest row. Falls back
-  // to the badge alone when the title carries no parseable actor.
-  const latestLine = latestMeta.headingIsActor
-    ? `${latestMeta.heading} — ${latestMeta.badge.label}`
-    : latestMeta.badge.label
+  // One loaded event is not a group. The count is what decides, not the filter:
+  // hiding read events under "Unread" must not turn a three-event task into a
+  // card that claims to be one.
+  const isSingle = group.loadedCount === 1
+
+  const header = (
+    <span style={{
+      flex: 1, minWidth: 0,
+      display: 'flex',
+      flexDirection: isMobile ? 'column' : 'row',
+      alignItems: isMobile ? 'flex-start' : 'baseline',
+      justifyContent: 'space-between',
+      gap: isMobile ? '3px' : '16px',
+    }}>
+      {/* Strongest thing on the card. */}
+      <span style={{
+        fontSize: '13.5px', fontWeight: 700, color: colors.primary, lineHeight: 1.35,
+        minWidth: 0, overflowWrap: 'anywhere',
+        ...(isMobile ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
+      }}>
+        {taskTitle}
+      </span>
+      {/* Muted, and on its own line on a phone rather than crushed beside the
+          title. Desktop: right-aligned with real space between. */}
+      <span style={{
+        display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0,
+        fontSize: '11.5px', color: colors.tertiary, fontWeight: 500,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{ whiteSpace: 'nowrap' }}>Assigned to: {assignee}</span>
+        {!isSingle && (
+          <span style={{ whiteSpace: 'nowrap', color: colors.muted }}>
+            {updateCountLabel(group.loadedCount)}
+          </span>
+        )}
+      </span>
+    </span>
+  )
 
   return (
     <div
       className="boe-card"
       style={{
         overflow: 'hidden', padding: 0, maxWidth: '900px', marginBottom: '8px',
-        borderLeft: hasUnread ? `3px solid ${colors.blue}` : '3px solid transparent',
-        background: hasUnread ? colors.blueTint : '#ffffff',
+        // White card, light grey border, no full blue wash. Unread is one
+        // subtle left accent plus a dot beside the event — enough to find, not
+        // enough to shout.
+        background: '#ffffff',
+        border: `1px solid ${colors.border}`,
+        borderLeft: hasUnread ? `3px solid ${colors.blue}` : `3px solid ${colors.border}`,
       }}
     >
-      {/* ── Collapsed summary ── */}
       <div style={{
         display: 'flex',
         alignItems: isMobile ? 'flex-start' : 'center',
@@ -92,74 +216,42 @@ export function NotificationTaskGroup({
         gap: isMobile ? '8px' : '10px',
         padding: isMobile ? '12px 14px' : '12px 16px',
       }}>
-        {/* The accordion trigger. A real button wrapping only the summary text,
-            so the actions beside it are siblings and cannot toggle the panel by
-            being nested inside the trigger. */}
-        <button
-          type="button"
-          onClick={() => setOpen(o => !o)}
-          aria-expanded={open}
-          aria-controls={panelId}
-          aria-label={`${open ? 'Collapse' : 'Expand'} updates for ${group.title}`}
-          style={{
-            flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined,
-            display: 'flex', alignItems: 'flex-start', gap: '9px',
-            background: 'transparent', border: 'none',
-            // The trigger is the primary control on the card, so it gets the
-            // same 44px floor as the buttons beside it.
-            padding: isMobile ? '6px 0' : 0,
-            minHeight: isMobile ? '44px' : undefined,
-            cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
-          }}
-        >
-          <ChevronRight
-            size={15}
-            aria-hidden="true"
+        {isSingle ? (
+          // No trigger, no chevron, no panel: the event is right below.
+          <div style={{ flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined }}>
+            {header}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen(o => !o)}
+            aria-expanded={open}
+            aria-controls={panelId}
+            aria-label={`${open ? 'Collapse' : 'Expand'} ${updateCountLabel(group.loadedCount)} for ${taskTitle}`}
             style={{
-              flexShrink: 0, marginTop: '2px', color: colors.muted,
-              transform: open ? 'rotate(90deg)' : 'none',
-              transition: 'transform 0.12s',
+              flex: 1, minWidth: 0, width: isMobile ? '100%' : undefined,
+              display: 'flex', alignItems: isMobile ? 'flex-start' : 'center', gap: '9px',
+              background: 'transparent', border: 'none',
+              padding: isMobile ? '6px 0' : 0,
+              minHeight: isMobile ? '44px' : undefined,
+              cursor: 'pointer', textAlign: 'left', fontFamily: font.body,
             }}
-          />
-          <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-            <span style={{
-              fontSize: '13px', fontWeight: 700, color: colors.primary, lineHeight: 1.3,
-              // Wraps on mobile rather than truncating: the task title is the
-              // only thing identifying the card.
-              overflowWrap: 'anywhere',
-              ...(isMobile ? {} : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
-            }}>
-              {group.title}
-            </span>
-            <span style={{
-              fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.4,
-              display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px',
-            }}>
-              {hasUnread && (
-                <span style={{
-                  fontSize: '10.5px', fontWeight: 700, color: '#fff', background: colors.blue,
-                  borderRadius: '999px', padding: '1px 7px', whiteSpace: 'nowrap',
-                }}>
-                  {group.unreadCount} unread
-                </span>
-              )}
-              <span style={{ overflowWrap: 'anywhere' }}>Latest: {latestLine}</span>
-              <span aria-hidden="true">·</span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', whiteSpace: 'nowrap' }}>
-                <Clock size={10} strokeWidth={1.8} />{timeAgo(group.latest.created_at)}
-              </span>
-              <span aria-hidden="true">·</span>
-              {/* HONEST: what is loaded, not a claim about the server's total.
-                  The list is bounded, so a group may hold older events that
-                  have not been fetched. */}
-              <span style={{ whiteSpace: 'nowrap' }}>
-                {group.loadedCount} loaded update{group.loadedCount === 1 ? '' : 's'}
-              </span>
-            </span>
-          </span>
-        </button>
+          >
+            <ChevronRight
+              size={15}
+              aria-hidden="true"
+              style={{
+                flexShrink: 0, marginTop: isMobile ? '2px' : 0, color: colors.muted,
+                transform: open ? 'rotate(90deg)' : 'none',
+                transition: 'transform 0.12s',
+              }}
+            />
+            {header}
+          </button>
+        )}
 
-        {/* ── Group actions. Siblings of the trigger, never inside it. ── */}
+        {/* Secondary by treatment: outlined, muted, never competing with the
+            title. Siblings of the trigger, never nested inside it. */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0,
           width: isMobile ? '100%' : undefined,
@@ -170,26 +262,26 @@ export function NotificationTaskGroup({
             <GroupAction
               onClick={() => onMarkGroupRead(group)}
               disabled={busy}
-              label={`Mark all updates for this task as read: ${group.title}`}
+              label={`Mark all updates for this task as read: ${taskTitle}`}
               icon={<CheckCheck size={12} strokeWidth={2.2} />}
               text="Mark all read"
               isMobile={isMobile}
             />
           )}
-          {latestMeta.href && (
+          {href && (
             <GroupAction
               onClick={() => onOpenTask(group)}
-              label={`View task ${group.title}`}
+              label={`View task ${taskTitle}`}
               icon={<ExternalLink size={11} strokeWidth={2.2} />}
               text="View Task"
-              primary
               isMobile={isMobile}
             />
           )}
+          {/* Destructive: quiet icon treatment, not a red block. */}
           <GroupAction
             onClick={() => onDeleteGroup(group)}
             disabled={busy}
-            label={`Delete all notifications for this task: ${group.title}`}
+            label={`Delete all notifications for this task: ${taskTitle}`}
             icon={<Trash2 size={12} strokeWidth={2} />}
             text={isMobile ? 'Delete all' : ''}
             danger
@@ -198,107 +290,36 @@ export function NotificationTaskGroup({
         </div>
       </div>
 
-      {/* ── Expanded events ── */}
+      {/* ── Events ──
+          A single event renders unconditionally and unindented; a group's
+          events sit behind the disclosure with a rail. */}
       <div
         id={panelId}
-        role="region"
-        aria-label={`Updates for ${group.title}`}
-        hidden={!open}
-        style={{ borderTop: open ? `1px solid ${colors.border}` : 'none' }}
+        role={isSingle ? undefined : 'region'}
+        aria-label={isSingle ? undefined : `Updates for ${taskTitle}`}
+        hidden={!isSingle && !open}
+        style={{ borderTop: (isSingle || open) ? `1px solid ${colors.border}` : 'none' }}
       >
-        {open && events.map((n, i) => {
-          const meta = getNotificationMeta(n)
-          const isSelected = selected.has(n.id)
-          const isPending = pendingDeletes.has(n.id)
-          if (isPending) return null
+        {(isSingle || open) && events.map((n, i) => {
+          if (pendingDeletes.has(n.id)) return null
           return (
-            <div
+            <EventRow
               key={n.id}
-              onClick={() => onRowClick(n)}
-              style={{
-                display: 'flex', alignItems: 'flex-start',
-                gap: '8px',
-                // The timeline rail: one indent, one line, so the events read
-                // as belonging to the task above them.
-                padding: isMobile ? '10px 14px 10px 20px' : '10px 16px 10px 30px',
-                borderBottom: i < events.length - 1 ? `1px solid ${colors.borderSoft ?? colors.border}` : 'none',
-                background: n.is_read ? 'transparent' : 'rgba(85,133,232,0.06)',
-                borderLeft: `2px solid ${n.is_read ? colors.border : colors.blue}`,
-                marginLeft: isMobile ? '14px' : '26px',
-                cursor: n.is_read ? 'default' : 'pointer',
-              }}
-            >
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); onToggleSelect(n.id) }}
-                aria-label={`${isSelected ? 'Deselect' : 'Select'} ${meta.badge.label} update`}
-                aria-pressed={isSelected}
-                style={{
-                  flexShrink: 0,
-                  // 44px hit area on a phone around an 18px box: the padding is
-                  // the target, the border is the mark.
-                  width: isMobile ? '44px' : '18px',
-                  height: isMobile ? '44px' : '18px',
-                  marginTop: isMobile ? '0' : '2px',
-                  borderRadius: '4px', padding: 0,
-                  border: `1.5px solid ${isSelected ? colors.blue : colors.borderSoft ?? colors.border}`,
-                  background: isSelected ? colors.blue : 'transparent',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                {isSelected && <Check size={10} color="#fff" strokeWidth={3} />}
-              </button>
-
-              <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap' }}>
-                  <span style={{
-                    fontSize: '12.5px',
-                    fontWeight: n.is_read ? 500 : 700,
-                    color: meta.headingIsActor ? colors.primary : colors.secondary,
-                  }}>
-                    {meta.heading}
-                  </span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    padding: '2px 7px', borderRadius: '20px',
-                    fontSize: '10.5px', fontWeight: 600, lineHeight: 1,
-                    color: meta.badge.color, background: meta.badge.bg,
-                  }}>
-                    {meta.badge.label}
-                  </span>
-                  {!n.is_read && (
-                    <span style={{ fontSize: '10px', fontWeight: 700, color: colors.blue }}>UNREAD</span>
-                  )}
-                </div>
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: '4px',
-                  fontSize: '11px', color: colors.muted,
-                }}>
-                  <Clock size={10} strokeWidth={1.8} />{timeAgo(n.created_at)}
-                </div>
-              </div>
-
-              {/* No second View Task here: the group owns that action. */}
-              <button
-                type="button"
-                onClick={e => { e.stopPropagation(); onDeleteOne(n.id) }}
-                disabled={isPending}
-                aria-label={`Delete this ${meta.badge.label} update`}
-                style={{
-                  flexShrink: 0,
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  width: isMobile ? '44px' : '30px',
-                  height: isMobile ? '44px' : '30px',
-                  borderRadius: '6px',
-                  background: 'transparent', color: colors.muted,
-                  border: `1.5px solid ${colors.border}`,
-                  cursor: isPending ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <Trash2 size={12} strokeWidth={2} />
-              </button>
-            </div>
+              notification={n}
+              detail={activityDetailFor(n, activityDetails)}
+              // The SAME assignee the header drew — row context first, map
+              // second. Reading the prop directly here made the event line
+              // show "By Nishant" on Nishant's own card whenever the context
+              // came from the row and the map was absent.
+              assigneeName={rowHeader?.assigneeName ?? null}
+              selected={selected.has(n.id)}
+              isLast={i === events.length - 1}
+              indented={!isSingle}
+              isMobile={isMobile}
+              onToggleSelect={onToggleSelect}
+              onDeleteOne={onDeleteOne}
+              onRowClick={onRowClick}
+            />
           )
         })}
       </div>
@@ -306,15 +327,146 @@ export function NotificationTaskGroup({
   )
 }
 
+/**
+ * One event: what happened, a brief detail, when.
+ *
+ * NO TASK TITLE, NO ASSIGNEE, NO ACTOR BADGE, NO VIEW TASK — the header owns
+ * all four. The actor appears at most once, as muted metadata beside the time,
+ * and only when it is somebody other than the assignee: repeating the owner's
+ * name on their own card implies they performed an action they may not have.
+ */
+function EventRow({
+  notification: n, detail, assigneeName, selected, isLast, indented, isMobile,
+  onToggleSelect, onDeleteOne, onRowClick,
+}: {
+  notification: Notification
+  /** The linked activity row's detail, when this notification has a link. */
+  detail?: ActivityDetail
+  assigneeName: string | null
+  selected: boolean
+  isLast: boolean
+  indented: boolean
+  isMobile: boolean
+  onToggleSelect: (id: string) => void
+  onDeleteOne: (id: string) => void
+  onRowClick: (n: Notification) => void
+}) {
+  // The linked activity row supplies what the notification cannot: the comment
+  // text, both status values, and the actor as a resolved name rather than a
+  // name parsed out of a sentence. A row with no link passes nothing and gets
+  // exactly the fallbacks it got before 20261016000000.
+  const event = describeNotificationEvent(n, {
+    commentPreview: detail?.note ?? null,
+    fromStatus:     detail?.fromStatus ?? null,
+    toStatus:       detail?.toStatus ?? null,
+    actorName:      detail?.actorName ?? null,
+  })
+  const meta = actorMetaFor(event.actorName, assigneeName, timeAgo(n.created_at))
+
+  return (
+    <div
+      onClick={() => onRowClick(n)}
+      style={{
+        display: 'flex', alignItems: 'flex-start', gap: '8px',
+        padding: indented
+          ? (isMobile ? '10px 14px 10px 20px' : '10px 16px 10px 30px')
+          : (isMobile ? '10px 14px' : '10px 16px'),
+        borderBottom: isLast ? 'none' : `1px solid ${colors.borderSoft ?? colors.border}`,
+        background: 'transparent',
+        ...(indented ? {
+          borderLeft: `2px solid ${colors.border}`,
+          marginLeft: isMobile ? '14px' : '26px',
+        } : {}),
+        cursor: n.is_read ? 'default' : 'pointer',
+      }}
+    >
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onToggleSelect(n.id) }}
+        aria-label={`${selected ? 'Deselect' : 'Select'} update: ${event.action}`}
+        aria-pressed={selected}
+        style={{
+          flexShrink: 0,
+          width: isMobile ? '44px' : '18px',
+          height: isMobile ? '44px' : '18px',
+          marginTop: isMobile ? '0' : '2px',
+          borderRadius: '4px', padding: 0,
+          border: `1.5px solid ${selected ? colors.blue : colors.borderSoft ?? colors.border}`,
+          background: selected ? colors.blue : 'transparent',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}
+      >
+        {selected && <Check size={10} color="#fff" strokeWidth={3} />}
+      </button>
+
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        {/* 1. What happened. Medium weight — present, not shouting. */}
+        <span style={{
+          display: 'flex', alignItems: 'center', gap: '6px',
+          fontSize: '12.5px', fontWeight: 600, color: colors.primary, lineHeight: 1.35,
+        }}>
+          {!n.is_read && (
+            <span
+              aria-label="Unread"
+              style={{
+                flexShrink: 0, width: '6px', height: '6px', borderRadius: '50%',
+                background: colors.blue, display: 'inline-block',
+              }}
+            />
+          )}
+          {event.action}
+        </span>
+
+        {/* 2. The brief detail, when the row honestly has one. */}
+        {event.detail && (
+          <span style={{
+            fontSize: '12px', fontWeight: 400, color: colors.secondary, lineHeight: 1.4,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {event.detail.kind === 'comment' && <>“{event.detail.text}”</>}
+            {event.detail.kind === 'transition' && (
+              <>{event.detail.from} <span aria-hidden="true">→</span> {event.detail.to}</>
+            )}
+            {event.detail.kind === 'plain' && event.detail.text}
+          </span>
+        )}
+
+        {/* 3. When — and who, once, only if it is not the assignee. */}
+        <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+          {meta}
+        </span>
+      </div>
+
+      <button
+        type="button"
+        onClick={e => { e.stopPropagation(); onDeleteOne(n.id) }}
+        aria-label={`Delete this update: ${event.action}`}
+        style={{
+          flexShrink: 0,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: isMobile ? '44px' : '30px',
+          height: isMobile ? '44px' : '30px',
+          borderRadius: '6px',
+          background: 'transparent', color: colors.muted,
+          border: `1.5px solid ${colors.border}`,
+          cursor: 'pointer',
+        }}
+      >
+        <Trash2 size={12} strokeWidth={2} />
+      </button>
+    </div>
+  )
+}
+
 /** A group-level action. Always a real button, always labelled with the task. */
 function GroupAction({
-  onClick, label, icon, text, primary, danger, disabled, isMobile,
+  onClick, label, icon, text, danger, disabled, isMobile,
 }: {
   onClick: () => void
   label: string
   icon: React.ReactNode
   text: string
-  primary?: boolean
   danger?: boolean
   disabled?: boolean
   isMobile?: boolean
@@ -328,18 +480,18 @@ function GroupAction({
       title={label}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '5px',
-        // 44px on a phone. The project already uses 44 and 48 as its mobile
-        // minimums elsewhere; 34 was below anything established here and below
-        // what a thumb reliably hits.
+        // 44px on a phone, matching the project's established mobile minimum.
         minHeight: isMobile ? '44px' : '32px',
         minWidth: isMobile ? '44px' : undefined,
         padding: text ? (isMobile ? '10px 13px' : '6px 11px') : (isMobile ? '10px' : '6px 8px'),
         borderRadius: '6px',
         fontSize: '11.5px', fontWeight: 600, fontFamily: font.body,
         whiteSpace: 'nowrap',
-        border: `1.5px solid ${primary ? colors.blue : danger ? `${colors.red}55` : colors.border}`,
-        background: primary ? colors.blue : 'transparent',
-        color: primary ? '#fff' : danger ? colors.red : colors.secondary,
+        // Every action here is SECONDARY: outlined and muted, never a filled
+        // block competing with the task title for attention.
+        border: `1.5px solid ${danger ? `${colors.red}44` : colors.border}`,
+        background: 'transparent',
+        color: danger ? colors.red : colors.secondary,
         cursor: disabled ? 'not-allowed' : 'pointer',
         opacity: disabled ? 0.55 : 1,
       }}

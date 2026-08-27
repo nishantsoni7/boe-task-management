@@ -32,6 +32,15 @@ export type NotificationInsert = {
   title: string
   body?: string | null
   is_push_sent?: boolean
+  /**
+   * The exact `task_activity_log` row this announces (20261016000000).
+   *
+   * Omitted or null is normal and always will be: historical rows have none,
+   * and a writer that has no activity row to point at must not invent one. The
+   * feed renders its fallbacks for those. What must never happen is a value
+   * derived from a timestamp — see the migration.
+   */
+  activity_log_id?: string | null
 }
 
 /**
