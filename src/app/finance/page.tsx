@@ -78,6 +78,7 @@ import {
   customerDisplayName,
   isPaymentMode,
   paymentEntryErrorMessage,
+  paymentModeLabel,
   paymentModeOptionsFor,
   type PaymentDestination as PaymentEntryDestination,
 } from '@/lib/finance/paymentEntry'
@@ -103,7 +104,8 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-type PaymentRequest = {
+// Exported for the table's render test, which needs to build a row.
+export type PaymentRequest = {
   id: string
   request_number: string
   /** P-AA-0001 style, database-generated, immutable, unique — THE user-facing
@@ -2359,11 +2361,15 @@ const TH_STYLE: React.CSSProperties = {
   background: colors.raised,
 }
 
-function PaymentsTable({
+// Exported for src/app/finance/paymentRequestsTable.render.test.tsx, which
+// renders this table for real rather than pinning strings in this file: a
+// source guard cannot prove that a column landed in the markup in the right
+// place, that a removed badge is actually absent, or that a null payment mode
+// came out as an em dash instead of the word "null".
+export function PaymentsTable({
   rows,
   destinations,
   isAdmin,
-  canApprove,
   userId,
   cutoff,
   highlightId,
@@ -2384,8 +2390,13 @@ function PaymentsTable({
   destinations: Map<string, PaymentDestination> | null
   /** Ownership rules and creator-facing copy only — not approval authority. */
   isAdmin: boolean
-  /** May decide a pending request — the finance.approve authority. */
-  canApprove: boolean
+  // NO APPROVAL CAPABILITY IS PASSED HERE ANY MORE. This table drew one
+  // approver-only thing — a "Review" chip beside the client name — and that is
+  // gone. Approval authority still gates the two places it is actually
+  // exercised: the row-click review router (`caps.canApprovePayment && r.status
+  // === 'pending_approval'`) and the review modal it opens. A table that took
+  // the capability only to tint a cell was an invitation to grow a second,
+  // weaker gate beside the real one.
   userId: string
   cutoff: number
   highlightId?: string | null
@@ -2398,15 +2409,45 @@ function PaymentsTable({
 
   return (
     // overflowX:auto is retained only as a narrow-mobile fallback; at desktop
-    // width the compact 8-column set fits without scrolling (no forced minWidth).
+    // width the compact 9-column set fits without scrolling (no forced minWidth).
     <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        {/* ── WHY A COLGROUP, AND WHY PERCENTAGES ──────────────────────────
+            Every cell in this table is `whiteSpace: nowrap`, so with nothing
+            declared the browser gave each column its content width and then
+            handed ALL the leftover page width to the widest one — which is
+            Client. That is the large blank band between Client and Amount:
+            not padding anybody chose, just the residue landing in one place.
+
+            These are hints, not a fixed layout. `table-layout` stays `auto`,
+            so a column whose content genuinely needs more than its share
+            still takes it, and the three long-text cells keep their own
+            ellipsis + title fallback underneath. A fixed layout would have
+            clipped names on a 1280px laptop instead, which is the thing this
+            change is not allowed to do. They total 100. */}
+        <colgroup>
+          <col style={{ width: '8%'  }} />{/* Payment ID   — monospace, fixed shape */}
+          <col style={{ width: '15%' }} />{/* Client       — truncates past this */}
+          <col style={{ width: '9%'  }} />{/* Amount */}
+          <col style={{ width: '10%' }} />{/* Payment Date */}
+          <col style={{ width: '10%' }} />{/* Payment Mode */}
+          <col style={{ width: '16%' }} />{/* Against      — the longest prose */}
+          <col style={{ width: '11%' }} />{/* Status */}
+          <col style={{ width: '10%' }} />{/* Requested By */}
+          <col style={{ width: '11%' }} />{/* Action */}
+        </colgroup>
         <thead>
           <tr>
             <th style={TH_STYLE}>Payment ID</th>
             <th style={TH_STYLE}>Client</th>
-            <th style={{ ...TH_STYLE, textAlign: 'right' }}>Amount</th>
+            {/* Amount is LEFT-aligned, header and value together. Right
+                alignment is for a column that is summed down its length;
+                this one never is, and the ragged left edge it produced sat
+                directly against the blank band above. tabular-nums keeps the
+                digits in vertical register without it. */}
+            <th style={TH_STYLE}>Amount</th>
             <th style={TH_STYLE}>Payment Date</th>
+            <th style={TH_STYLE}>Payment Mode</th>
             <th style={TH_STYLE}>Against</th>
             <th style={TH_STYLE}>Status</th>
             <th style={TH_STYLE}>Requested By</th>
@@ -2454,37 +2495,58 @@ function PaymentsTable({
                   {r.human_payment_id}
                 </td>
                 <td style={TD}>
-                  {/* Client truncates instead of widening the table; full name via title. */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', maxWidth: '220px' }}>
-                    <span
-                      title={customerDisplayName(r.client_name)}
-                      style={{
-                        minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        fontSize: '13px', fontWeight: 600,
-                        // A payment with no customer is named in the muted tone
-                        // the rest of the page uses for "nothing recorded", so
-                        // it never reads as a customer actually called that.
-                        color: r.client_name ? colors.primary : colors.muted,
-                      }}
-                    >
-                      {customerDisplayName(r.client_name)}
-                    </span>
-                    {canApprove && isPending && (
-                      <span style={{
-                        flexShrink: 0, fontSize: '10px', fontWeight: 600,
-                        color: '#92400E', background: '#FEF3C7',
-                        padding: '1px 5px', borderRadius: '4px',
-                      }}>
-                        Review
-                      </span>
-                    )}
+                  {/* THE CLIENT CELL HOLDS THE CLIENT NAME, AND NOTHING ELSE.
+                      It used to carry a "Review" chip for approvers on a
+                      pending row. That said nothing the Status column two
+                      across did not already say — it reads "Pending Approval"
+                      on the same row — and it said it to only some viewers, so
+                      the same record looked like two different records
+                      depending on who opened it. Removed rather than restyled
+                      or replaced: a second status badge beside a name is the
+                      problem, not its colour.
+
+                      Truncates instead of widening the table; full name via title. */}
+                  <div
+                    title={customerDisplayName(r.client_name)}
+                    style={{
+                      // Just under the column's own share (15% — about 200px on
+                      // a 1366px laptop, 216px on a 1440px one), so the cap and
+                      // the column agree instead of the cap truncating early
+                      // and leaving the blank strip back where it started.
+                      maxWidth: '200px',
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontSize: '13px', fontWeight: 600,
+                      // A payment with no customer is named in the muted tone
+                      // the rest of the page uses for "nothing recorded", so
+                      // it never reads as a customer actually called that.
+                      color: r.client_name ? colors.primary : colors.muted,
+                    }}
+                  >
+                    {customerDisplayName(r.client_name)}
                   </div>
                 </td>
-                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+                <td style={{ ...TD, fontSize: '13px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
                   {fmtAmount(r.amount)}
                 </td>
                 <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
                   {fmtDate(r.payment_date)}
+                </td>
+                {/* PAYMENT MODE — the value the row already carries.
+                    `payment_mode` has been in this page's bounded list select
+                    since it was written, so this column adds no query, and no
+                    per-row request. It is NOT derived from the destination:
+                    that is the allocation ledger's answer to "what is this
+                    payment FOR", a different question, and the Against column
+                    two across is where it belongs.
+
+                    paymentModeLabel is the one formatter every payment surface
+                    already reads — it writes the four current modes as HDFC /
+                    PNB / Paytm / Canara, the five retired ones as Bank
+                    Transfer / Cash / UPI / Cheque / Other, an empty or null
+                    value as an em dash, and anything neither list knows AS IT
+                    IS STORED rather than inventing a label for it. */}
+                <td style={{ ...TD, fontSize: '12px', color: r.payment_mode ? colors.secondary : colors.muted }}>
+                  {paymentModeLabel(r.payment_mode)}
                 </td>
                 <td style={TD}>
                   {/* WHAT THIS PAYMENT IS FOR — the destination, from the
@@ -3197,7 +3259,6 @@ function FinancePageInner() {
             destinations={destinations}
             rows={visible}
             isAdmin={isAdmin}
-            canApprove={caps.canApprovePayment}
             userId={userId}
             cutoff={cutoffMs}
             highlightId={highlightId}
