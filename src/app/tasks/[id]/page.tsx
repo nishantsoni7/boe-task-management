@@ -468,7 +468,13 @@ export default function TaskDetailPage() {
         fetch('/api/notify-status-update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: newStatus, actorName: profile?.full_name }),
+          // The status row this call just wrote, whose id is already in hand
+          // from the insert above. Without it the notification links to
+          // nothing and the card can only say "Status changed to Waiting" —
+          // it can never show the previous status, because that value lives
+          // ONLY on the activity row. `logRow` is null when the insert failed;
+          // the notification is then written unlinked, exactly as before.
+          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: newStatus, actorName: profile?.full_name, activityLogId: logRow?.id ?? null }),
         }).then(res => {
           if (!res.ok) res.json().then(d => console.error('[applyStatusChange] notification failed:', d))
         }).catch(err => console.error('[applyStatusChange] notification fetch error:', err))
@@ -879,7 +885,10 @@ export default function TaskDetailPage() {
             const res = await fetch('/api/notify-status-update', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name }),
+              // The comment's OWN activity row, whose id this scope already holds from
+              // the insert above. The route verifies it belongs to this task before
+              // storing it, so nothing here is taken on trust.
+              body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'comment_added', actorName: profile?.full_name, activityLogId: logRow.id }),
             })
             if (!res.ok) console.error('[saveComment] notification failed:', await res.text().catch(() => `status ${res.status}`))
           } catch (err) {
@@ -2851,16 +2860,22 @@ export default function TaskDetailPage() {
                         setSaving(false)
                         return
                       }
-                      await supabase.from('task_activity_log').insert({
+                      // Read the id back, for the same reason the other two
+                      // status writers do: it is the ONLY way the notification
+                      // can carry the status the task moved FROM. One row, one
+                      // returning id — no second query, and nothing inferred.
+                      const { data: waitingLog } = await supabase.from('task_activity_log').insert({
                         task_id: task.id, actor_id: currentUserId,
                         action: 'status_changed', from_status: task.status, to_status: 'waiting', note: null,
                       })
+                        .select('id')
+                        .single()
                       const recipient = currentUserId === task.created_by ? task.assigned_to : task.created_by
                       if (recipient && recipient !== currentUserId) {
                         fetch('/api/notify-status-update', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name }),
+                          body: JSON.stringify({ taskId: task.id, taskTitle: task.title, createdBy: task.created_by, recipientId: recipient, action: 'waiting', actorName: profile?.full_name, activityLogId: waitingLog?.id ?? null }),
                         }).catch(err => console.error('[modal/waiting] notification fetch error:', err))
                       }
                       const localPatch: Partial<Task> = {

@@ -232,7 +232,9 @@ describe('20/21/23. individual and selected actions across groups', () => {
     assert.ok(view.includes('useNotifications(category, mutationInFlight)'))
     // The group card also refuses to draw a row whose delete is in flight.
     const card = read('src/components/notifications/NotificationTaskGroup.tsx')
-    assert.ok(card.includes('if (isPending) return null'))
+    // The guarantee, not one spelling of it: the event map returns nothing for
+    // a row whose delete is in flight, before any element is built.
+    assert.match(card, /pendingDeletes\.has\([^)]+\)\)\s*return null/)
   })
 
   test('13. expanding is a disclosure and marks nothing read', () => {
@@ -257,9 +259,15 @@ describe('34/35. no regression into suppressed territory', () => {
     }
   })
 
-  test('35. no migration was added by this work', () => {
+  test('35. GROUPING added no migration — the one newer file is not its doing', () => {
     const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files.at(-1), '20261015000000_task_health_check_stops_notifying.sql',
-      'grouping is a presentation change and needs no schema change')
+    const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
+    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'],
+      'only the activity-link column, added by later work')
+    // Grouping is a presentation change and its own files reach for no schema.
+    for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
+      const src = readFileSync(join(ROOT, f), 'utf8')
+      assert.equal(/alter table|create index|migration/i.test(src), false, f)
+    }
   })
 })

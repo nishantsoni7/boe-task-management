@@ -23,6 +23,7 @@
 
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import type { NotificationInsert } from '@/lib/notificationWrites'
+import { findTaskCreationActivityId } from '@/lib/notifications/activityLink'
 import {
   buildTaskAssignmentNotification,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
@@ -45,6 +46,17 @@ export type AssignmentTaskRow = {
  * `supabaseAssignmentStore` below is the only real implementation.
  */
 export type AssignmentNotificationStore = {
+  /**
+   * The task's `action = 'created'` activity row, or null when it has none.
+   *
+   * RE-DERIVED, NOT REMEMBERED. This is what makes assignment retry safe: the
+   * route looks the id up from the task each time rather than being handed one,
+   * so a retry after a partial failure links to the SAME activity row, creates
+   * no second one, and needs nothing carried across the failure. Null is a real
+   * answer — a copied task records `task_copied`, not `created` — and produces
+   * an unlinked notification with the historical fallbacks.
+   */
+  findCreationActivityId(taskId: string): Promise<string | null>
   fetchTask(taskId: string): Promise<{ task: AssignmentTaskRow | null; error: { message: string } | null }>
   isAdmin(userId: string): Promise<boolean>
   /**
@@ -135,6 +147,11 @@ export async function createAssignmentNotification(
   const dup = await store.hasAssignmentNotification(task.id, task.assigned_to)
   if (dup.readable && dup.exists) return { status: 'skipped_duplicate' }
 
+  // Looked up BEFORE the write and never after: an id resolved afterwards
+  // could only be found by matching a timestamp, which is exactly what
+  // 20261016000000 exists to avoid.
+  const activityLogId = await store.findCreationActivityId(task.id)
+
   const row = buildTaskAssignmentNotification({
     assigneeId: task.assigned_to,
     // The creator is who caused the assignment; the caller may be an admin
@@ -143,6 +160,7 @@ export async function createAssignmentNotification(
     actorId:    task.created_by,
     taskId:     task.id,
     taskTitle:  task.title ?? '',
+    activityLogId,
   })
   if (!row) return { status: 'skipped_self' }
 
@@ -201,6 +219,9 @@ export function supabaseAssignmentStore(client: ServiceClient): AssignmentNotifi
         .limit(1)
       if (error) return { exists: false, readable: false }
       return { exists: (data ?? []).length > 0, readable: true }
+    },
+    async findCreationActivityId(taskId) {
+      return findTaskCreationActivityId(client, taskId)
     },
     async insert(rows) {
       const { error } = await client.from('notifications').insert(rows)

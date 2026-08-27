@@ -243,9 +243,17 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     assert.equal(files.filter(f => f.startsWith('20261012')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261013')).length, 1)
     assert.equal(files.filter(f => f.startsWith('20261015')).length, 1)
+    assert.equal(files.filter(f => f.startsWith('20261016')).length, 1)
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .filter(f => !f.startsWith('20261015'))   // applied — see FROZEN
+      // 116 (notifications.activity_log_id) has since been APPLIED — see the
+      // FROZEN ledger in participantAndOrderTotalSecurity.test.ts — so it is
+      // excluded here for the same reason 115 is. It belongs to Task
+      // Management and touched neither the reset protocol, the deletion claim
+      // nor the allocation ledger, which is why applying it out ahead of
+      // 109-114 changed nothing for any of them.
+      .filter(f => !f.startsWith('20261016'))
       .sort()
     assert.deepEqual(pending, [
       '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql',

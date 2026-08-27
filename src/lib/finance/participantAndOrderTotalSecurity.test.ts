@@ -560,6 +560,21 @@ describe('the applied migrations are frozen', () => {
     // LIST, not the file header, is where applied status is recorded.
     ['supabase/migrations/20261015000000_task_health_check_stops_notifying.sql',
      'f05f7ffffb964ea2a6e0a70a214ca6001b6321a9767fc315c3001fbf22736349'],
+    // 116. APPLIED. `supabase db push` ran it against the linked database and
+    // the remote ledger reports it. Verified on the remote AFTER it ran, not
+    // assumed from the file: notifications.activity_log_id is a nullable uuid;
+    // its foreign key references task_activity_log(id) ON DELETE SET NULL; the
+    // partial index is present; and transition_task_review() is still SECURITY
+    // DEFINER, still pins search_path to public, pg_temp, is still owned by
+    // postgres, still grants EXECUTE to postgres, authenticated and
+    // service_role only, and now references activity_log_id and v_log_id.
+    //
+    // ITS HEADER STILL SAYS "NOT APPLIED", for exactly the reason spelled out
+    // for 115 above: the hash below is a claim about the bytes the database
+    // ran, and a comment-only edit would break it just as surely as a DDL one.
+    // The file is not touched. This list is where applied status lives.
+    ['supabase/migrations/20261016000000_notifications_link_activity_log.sql',
+     '9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8'],
   ]
 
   test('each applied migration still hashes to the bytes that were applied', () => {
@@ -661,6 +676,18 @@ describe('the applied migrations are frozen', () => {
       // migration cannot appear unnoticed. Unlike them it IS pushed, which is
       // why it also appears in FROZEN and no longer in the pending list below.
       '20261015000000_task_health_check_stops_notifying.sql',
+      // 116. APPLIED (see FROZEN above). notifications.activity_log_id — one
+      // nullable FK to task_activity_log(id) ON DELETE SET NULL, plus a partial
+      // index for the referential action, and transition_task_review() now
+      // records the id. A notification can carry the id of the activity row
+      // that caused it, so the feed can show a real comment preview and a real
+      // previous status instead of matching timestamps. Additive: no backfill,
+      // no trigger, no NOT NULL, no default, no change to task_activity_log,
+      // no RLS change — so every pre-existing row still reads null and renders
+      // its fallback. Recorded here for the same reason as 109-115: this list
+      // is exact. Like 115 it IS pushed, which is why it also appears in
+      // FROZEN and no longer in the pending list below.
+      '20261016000000_notifications_link_activity_log.sql',
     ])
   })
 
@@ -682,8 +709,9 @@ describe('the applied migrations are frozen', () => {
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
     ])
-    // 115 is deliberately absent: it has been pushed, so it belongs in FROZEN
-    // and not here. 2026101500 is therefore NOT in the guard below.
+    // 115 and 116 are deliberately absent: both have been pushed, so they
+    // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore
+    // NOT in the guard below.
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
         || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400/.test(file),

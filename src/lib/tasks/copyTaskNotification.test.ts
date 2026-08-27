@@ -28,7 +28,7 @@ const ASSIGNEE = '11111111-1111-4111-8111-111111111111'
 const NEW_TASK = '66666666-6666-4666-8666-666666666666'
 
 type Stub = AssignmentNotificationStore & { written: NotificationInsert[][] }
-function stubStore(opts: { task?: AssignmentTaskRow; existing?: boolean; insertError?: { message: string } } = {}): Stub {
+function stubStore(opts: { task?: AssignmentTaskRow; existing?: boolean; insertError?: { message: string }; creationActivityId?: string | null } = {}): Stub {
   const written: NotificationInsert[][] = []
   const task = opts.task ?? {
     id: NEW_TASK, title: 'copied task', assigned_to: ASSIGNEE, created_by: ADMIN,
@@ -37,6 +37,7 @@ function stubStore(opts: { task?: AssignmentTaskRow; existing?: boolean; insertE
     written,
     async fetchTask() { return { task, error: null } },
     async isAdmin(u) { return u === ADMIN },
+    findCreationActivityId: async () => null,
     async hasAssignmentNotification() { return { exists: opts.existing ?? false, readable: true } },
     async insert(rows) { written.push(rows); return { error: opts.insertError ?? null } },
   }

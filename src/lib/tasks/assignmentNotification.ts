@@ -57,6 +57,13 @@ export type TaskAssignmentInput = {
   taskTitle: string
   /** Overrides the headline (quotation requests say "New quotation request"). */
   title?: string
+  /**
+   * The task's creation activity row (20261016000000), when one exists.
+   *
+   * Supplied by the server-side writer, which re-derives it from the task on
+   * every call — including a retry. Absent is normal and renders the fallbacks.
+   */
+  activityLogId?: string | null
 }
 
 /**
@@ -67,7 +74,7 @@ export type TaskAssignmentInput = {
 export function buildTaskAssignmentNotification(
   input: TaskAssignmentInput,
 ): NotificationInsert | null {
-  const { assigneeId, actorId, taskId, taskTitle, title } = input
+  const { assigneeId, actorId, taskId, taskTitle, title, activityLogId } = input
   if (!assigneeId || !taskId) return null
   if (actorId && assigneeId === actorId) return null
   return {
@@ -78,6 +85,7 @@ export function buildTaskAssignmentNotification(
     body:         taskTitle,
     // See the header: no push transport exists, so nothing has been sent.
     is_push_sent: false,
+    activity_log_id: activityLogId ?? null,
   }
 }
 

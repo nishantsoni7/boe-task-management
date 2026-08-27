@@ -5,6 +5,7 @@ import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
+import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
 
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
@@ -81,7 +82,7 @@ export async function GET(req: NextRequest) {
   // `limit` rows and `hasMore` costs no second query.
   const { data, error } = await supabase
     .from('notifications')
-    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at')
+    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id')
     .eq('user_id', user.id)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
@@ -104,11 +105,41 @@ export async function GET(req: NextRequest) {
   const rows = data ?? []
   const hasMore = rows.length > limit
   const notifications = hasMore ? rows.slice(0, limit) : rows
+
+  // ── Task header facts: title and assignee, for the whole page at once ──
+  //
+  // TWO QUERIES, NOT ONE PER CARD. The ids come from `notifications`, which is
+  // already clamped to NOTIFICATION_MAX_ROWS and already scoped to this caller,
+  // so both lookups are bounded by the page and can only describe tasks this
+  // person is being notified about. A failure returns an empty map and the
+  // cards say "Assignee unavailable" — a notification list is more useful
+  // without an assignee than absent. See src/lib/notifications/taskAssignees.ts
+  // for why the newest event's ACTOR is not an acceptable substitute.
+  const enrichment = categoryResult.category === 'task'
+    ? await enrichNotificationPage(supabase, notifications)
+    : { taskHeaders: {}, activityDetails: {} }
+  const { taskHeaders, activityDetails } = enrichment
+
+  // ── THE DETAIL TRAVELS ON THE ROW, NOT BESIDE IT ──
+  //
+  // The maps are still returned — they are the enrichment's own contract and
+  // several callers read them — but the CARD reads the copy attached here.
+  //
+  // Returning the detail only as a sibling map is what made a correctly linked
+  // comment render as a bare "Comment added": the client kept the maps in
+  // component state and the rows in the React Query cache, and those two go out
+  // of step the moment a cached page is served without the query function
+  // running (30s staleTime), a mutation writes rows back directly, or a second
+  // observer shares the fetch. Attached to the row, the context is the same
+  // object the cache holds — there is no second store to fall behind.
+  //
+  // Composition over data already fetched: no extra query, per row or otherwise.
+  const enrichedRows = attachRowContext(notifications, enrichment)
   // Unread among the rows returned. NOT the category's total unread — that is
   // what `?count=1` is for, and the badge reads it from there. Kept in the
   // response because callers have always had it.
   const unreadCount = notifications.filter(n => !n.is_read).length
-  return NextResponse.json({ notifications, unreadCount, hasMore, limit })
+  return NextResponse.json({ notifications: enrichedRows, unreadCount, hasMore, limit, taskHeaders, activityDetails })
 }
 
 // Deletes ONE module's notifications for the authenticated user —

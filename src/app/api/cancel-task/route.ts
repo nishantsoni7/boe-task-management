@@ -65,14 +65,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  await supabase.from('task_activity_log').insert({
-    task_id:     taskId,
-    actor_id:    user.id,
-    action:      'status_changed',
-    from_status: previousStatus,
-    to_status:   'cancelled',
-    note:        reason.trim(),
-  })
+  // `.select('id').single()` so the notification below can point at THIS row
+  // rather than at whatever a timestamp lookup would have found. A failure to
+  // read it back leaves the link null and the notification unlinked — the
+  // cancellation itself has already happened and is not rolled back for it.
+  const { data: cancelLog } = await supabase
+    .from('task_activity_log')
+    .insert({
+      task_id:     taskId,
+      actor_id:    user.id,
+      action:      'status_changed',
+      from_status: previousStatus,
+      to_status:   'cancelled',
+      note:        reason.trim(),
+    })
+    .select('id')
+    .single()
 
   // Notify assignee (if different from the actor)
   if (task.assigned_to && task.assigned_to !== user.id) {
@@ -85,6 +93,7 @@ export async function POST(req: NextRequest) {
       title,
       body:         task.title,
       is_push_sent: true,
+      activity_log_id: cancelLog?.id ?? null,
     })
   }
 

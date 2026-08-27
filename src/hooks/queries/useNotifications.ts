@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { notificationKeys, fetchNotificationPage, readApiErrorMessage } from '@/lib/notificationCache'
+import type { TaskHeaderMap, ActivityDetailMap } from '@/lib/notifications/pageEnrichment'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS, nextNotificationLimit } from '@/lib/notificationPaging'
 import { perfStart } from '@/lib/perf'
 
@@ -52,6 +53,17 @@ import { perfStart } from '@/lib/perf'
 
 export type NotificationsQuery = {
   data: Notification[] | undefined
+  /**
+   * Task title + assignee, keyed by task id, for the page currently held.
+   *
+   * Resolved server-side in two bounded queries per page — never one per card,
+   * and never inferred from the newest event's actor. Empty until the first
+   * page lands, and empty from a server that does not send it; both render as
+   * "Assignee unavailable" rather than as a wrong name.
+   */
+  taskHeaders: TaskHeaderMap
+  /** Linked activity detail, keyed by activity id. Empty for historical rows. */
+  activityDetails: ActivityDetailMap
   /** No data yet — the first page has not resolved. Never means "the inbox is empty". */
   isPending: boolean
   isError: boolean
@@ -84,6 +96,21 @@ export function useNotifications(
   const limitRef = useRef(NOTIFICATION_PAGE_SIZE)
   const [limit, setLimit] = useState(NOTIFICATION_PAGE_SIZE)
   const [serverHasMore, setServerHasMore] = useState(false)
+  // ── THESE TWO ARE A FALLBACK NOW, NOT THE SOURCE OF TRUTH ──
+  //
+  // They are assigned inside `queryFn`, and `queryFn` does not always run: with
+  // `staleTime: 30s` a page served from cache skips it entirely, a mutation
+  // writes rows back with `setQueryData` without it, and two observers of one
+  // key share a single call so only one of them is ever assigned. In every one
+  // of those cases the ROWS render and these stay `{}` — which is exactly how a
+  // correctly linked comment came out as a bare "Comment added".
+  //
+  // So the detail now travels ON each row (`Notification.context`, attached by
+  // /api/notifications), where it shares the rows' lifetime and cannot fall
+  // behind them. These are kept because they cost nothing and still serve a
+  // payload written before `context` existed.
+  const [taskHeaders, setTaskHeaders] = useState<TaskHeaderMap>({})
+  const [activityDetails, setActivityDetails] = useState<ActivityDetailMap>({})
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [olderError, setOlderError] = useState<string | null>(null)
 
@@ -96,6 +123,8 @@ export function useNotifications(
       try {
         const page = await fetchNotificationPage(category, limitRef.current)
         setServerHasMore(page.hasMore)
+        setTaskHeaders(page.taskHeaders)
+        setActivityDetails(page.activityDetails)
         return page.notifications
       } finally {
         done()
@@ -122,6 +151,8 @@ export function useNotifications(
         // the narrower page must not land on top of the wider result.
         await qc.cancelQueries({ queryKey: notificationKeys.list(category), exact: true })
         limitRef.current = next
+        setTaskHeaders(page.taskHeaders)
+        setActivityDetails(page.activityDetails)
         qc.setQueryData<Notification[]>(notificationKeys.list(category), page.notifications)
         setServerHasMore(page.hasMore)
         setLimit(next)
@@ -138,6 +169,10 @@ export function useNotifications(
 
   return {
     data: query.data,
+    // Title + assignee per task id. Never a per-card fetch: it arrives with the
+    // page it describes and is replaced wholesale when a wider page replaces it.
+    taskHeaders,
+    activityDetails,
     isPending: query.isPending,
     isError: query.isError,
     error: query.error,

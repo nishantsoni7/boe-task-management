@@ -27,6 +27,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { NOTIFICATION_PAGE_SIZE } from '@/lib/notificationPaging'
+import type { TaskHeaderMap, ActivityDetailMap } from '@/lib/notifications/pageEnrichment'
 
 /** Every module whose notifications live in the shared `notifications` table. */
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] =
@@ -192,6 +193,10 @@ export type NotificationPage = {
   notifications: Notification[]
   /** True when the server holds rows older than the ones returned. */
   hasMore: boolean
+  /** Task title + assignee, keyed by task id. Empty from an older server. */
+  taskHeaders: TaskHeaderMap
+  /** Comment/status/actor detail, keyed by activity id. Empty for legacy rows. */
+  activityDetails: ActivityDetailMap
 }
 
 export async function fetchNotificationPage(
@@ -207,6 +212,14 @@ export async function fetchNotificationPage(
     // An older server that does not send the flag simply never offers "Load
     // older", which is the safe reading of "we do not know".
     hasMore: body?.hasMore === true,
+    // Task title + assignee for every task in this page, resolved server-side
+    // in two bounded queries. An older server sends nothing and every card
+    // falls back to its notification-derived title and "Assignee unavailable" —
+    // the behaviour before this existed.
+    taskHeaders: (body?.taskHeaders ?? {}) as TaskHeaderMap,
+    // Keyed by activity id. A server without the link column sends nothing and
+    // every event renders the historical fallback.
+    activityDetails: (body?.activityDetails ?? {}) as ActivityDetailMap,
   }
 }
 

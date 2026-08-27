@@ -465,15 +465,33 @@ describe('line-by-line against the production baseline', () => {
 describe('the migration is placed correctly', () => {
   const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
 
-  test('it is the newest migration in the branch', () => {
-    assert.equal(files.at(-1), MIGRATION_FILE)
+  test('only 116 sits after it, and 116 is now applied too', () => {
+    // 115 was the last file when this was written. 116 (the notifications
+    // activity-link column) was added later and has SINCE been pushed, so 116
+    // — not 115 — is now the newest thing that has run against the database.
+    // What this still guards is that 115 is the only migration 116 follows.
+    const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
+    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    // 116's applied status is recorded in the FROZEN ledger, never in its own
+    // header: that header still reads "NOT APPLIED" and is left stale on
+    // purpose, because the ledger pins a hash of the exact bytes the database
+    // ran and a comment-only edit would break it. Assert the ledger.
+    const ledger = readFileSync(
+      join(ROOT, 'src/lib/finance/participantAndOrderTotalSecurity.test.ts'), 'utf8')
+    const frozen = ledger.slice(ledger.indexOf('const FROZEN'), ledger.indexOf('const actual'))
+    assert.ok(frozen.includes(newer[0]), '116 must be pinned as applied in the FROZEN ledger')
+    assert.ok(frozen.includes('9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8'),
+      "and pinned to the bytes that ran")
   })
 
-  test('its timestamp is unique and later than every other', () => {
+  test('its timestamp is unique, and later than every migration it followed', () => {
     const stamps = files.map(f => f.slice(0, 14))
     assert.equal(new Set(stamps).size, stamps.length, 'duplicate migration timestamp')
     const mine = MIGRATION_FILE.slice(0, 14)
-    for (const other of stamps.filter(s => s !== mine)) {
+    // 116 was written after this and is correctly stamped after it. What this
+    // guards is that nothing PRECEDING 115 shares or exceeds its timestamp,
+    // which is what would change its apply order.
+    for (const other of stamps.filter(s => s !== mine && s < '20261016000000')) {
       assert.ok(other < mine, `${other} is not earlier than ${mine}`)
     }
   })

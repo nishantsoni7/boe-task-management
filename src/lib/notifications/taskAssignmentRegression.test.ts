@@ -99,6 +99,7 @@ function stubStore(over: Partial<AssignmentNotificationStore> & { written?: unkn
       error: null,
     }),
     isAdmin: async () => false,
+    findCreationActivityId: async () => null,
     hasAssignmentNotification: async () => ({ exists: false, readable: true }),
     insert: async (rows) => { written.push(rows); return { error: null } },
     ...over,

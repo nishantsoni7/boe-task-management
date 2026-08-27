@@ -137,7 +137,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     isPending: notifPending,
     isError: notifError,
     error: notifErrorObj,
-    loadOlder, hasOlder, loadingOlder, olderError,
+    loadOlder, hasOlder, loadingOlder, olderError, taskHeaders, activityDetails,
   } = useNotifications(category, mutationInFlight)
 
   // TRUE ONLY BEFORE THE FIRST RESULT EXISTS.
@@ -464,6 +464,8 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
               <NotificationTaskGroup
                 key={item.key}
                 group={item}
+                headerInfo={taskHeaders[item.taskId]}
+                activityDetails={activityDetails}
                 filter={filter}
                 selected={selected}
                 pendingDeletes={pendingDeletes}
