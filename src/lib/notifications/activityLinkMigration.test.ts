@@ -128,8 +128,23 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       'f05f7ffffb964ea2a6e0a70a214ca6001b6321a9767fc315c3001fbf22736349')
   })
 
-  test('6b. and it is registered as NOT APPLIED', () => {
-    assert.match(sql, /^-- 116\. NOT APPLIED\./m)
+  test('6b. and 116 is now registered as APPLIED in the ledger, not in its header', () => {
+    // It has been pushed: the linked database carries the column, the foreign
+    // key, the partial index and the replaced function. Applied status is
+    // recorded in the FROZEN list in participantAndOrderTotalSecurity.test.ts
+    // and nowhere else — that list pins a sha256 of the bytes the database
+    // ran, so this file must not be edited again for ANY reason, a comment
+    // included. Its own header still reads "NOT APPLIED" and stays stale on
+    // purpose, exactly as 107, 108 and 115 do.
+    assert.match(sql, /^-- 116\. NOT APPLIED\./m,
+      'the header is deliberately left stale — do not "fix" it')
+    assert.equal(createHash('sha256').update(sql).digest('hex'),
+      '9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8',
+      '116 is applied: its bytes are frozen')
+    const ledger = read('src/lib/finance/participantAndOrderTotalSecurity.test.ts')
+    const frozen = ledger.slice(ledger.indexOf('const FROZEN'), ledger.indexOf('const actual'))
+    assert.ok(frozen.includes('20261016000000_notifications_link_activity_log.sql'))
+    assert.ok(frozen.includes('9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8'))
   })
 })
 

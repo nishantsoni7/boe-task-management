@@ -465,15 +465,23 @@ describe('line-by-line against the production baseline', () => {
 describe('the migration is placed correctly', () => {
   const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
 
-  test('it is the newest APPLIED migration; only 116 sits after it', () => {
+  test('only 116 sits after it, and 116 is now applied too', () => {
     // 115 was the last file when this was written. 116 (the notifications
-    // activity-link column) was added later and is UNAPPLIED, so 115 remains
-    // the newest thing that has actually run against the database.
+    // activity-link column) was added later and has SINCE been pushed, so 116
+    // — not 115 — is now the newest thing that has run against the database.
+    // What this still guards is that 115 is the only migration 116 follows.
     const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
     assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
-    assert.match(
-      readFileSync(join(ROOT, 'supabase/migrations', newer[0]), 'utf8'),
-      /^-- 116\. NOT APPLIED\./m)
+    // 116's applied status is recorded in the FROZEN ledger, never in its own
+    // header: that header still reads "NOT APPLIED" and is left stale on
+    // purpose, because the ledger pins a hash of the exact bytes the database
+    // ran and a comment-only edit would break it. Assert the ledger.
+    const ledger = readFileSync(
+      join(ROOT, 'src/lib/finance/participantAndOrderTotalSecurity.test.ts'), 'utf8')
+    const frozen = ledger.slice(ledger.indexOf('const FROZEN'), ledger.indexOf('const actual'))
+    assert.ok(frozen.includes(newer[0]), '116 must be pinned as applied in the FROZEN ledger')
+    assert.ok(frozen.includes('9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8'),
+      "and pinned to the bytes that ran")
   })
 
   test('its timestamp is unique, and later than every migration it followed', () => {

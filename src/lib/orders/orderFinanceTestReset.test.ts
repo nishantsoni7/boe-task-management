@@ -247,10 +247,12 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
     const pending = files
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .filter(f => !f.startsWith('20261015'))   // applied — see FROZEN
-      // 116 (notifications.activity_log_id) is unapplied too, but it belongs to
-      // Task Management and stacks after everything here without touching the
-      // reset protocol, the deletion claim or the allocation ledger. Listed
-      // separately rather than inline so this list stays about Finance/Orders.
+      // 116 (notifications.activity_log_id) has since been APPLIED — see the
+      // FROZEN ledger in participantAndOrderTotalSecurity.test.ts — so it is
+      // excluded here for the same reason 115 is. It belongs to Task
+      // Management and touched neither the reset protocol, the deletion claim
+      // nor the allocation ledger, which is why applying it out ahead of
+      // 109-114 changed nothing for any of them.
       .filter(f => !f.startsWith('20261016'))
       .sort()
     assert.deepEqual(pending, [
