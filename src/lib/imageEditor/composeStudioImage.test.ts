@@ -228,6 +228,47 @@ describe('the contact shadow', () => {
   })
 })
 
+describe('cut-out shapes no photograph of a chair produces', () => {
+  // A segmentation can go wrong, and when it does the result must be a message
+  // on the page, not a 500. Each of these used to reach sharp with an argument
+  // it refuses.
+
+  test('a wide, shallow sliver composes instead of throwing', async () => {
+    // 3000x3. Scaled to the 1720px box that is 2 rows tall — fewer than the
+    // contact band's own floor of 4, so `extract` ran at a negative offset and
+    // threw before the band was clamped to the product's own height.
+    const result = await composeStudioImage(await cutout(3000, 200, { left: 0, top: 100, width: 3000, height: 3 }))
+
+    assert.equal(result.ok, true, result.ok ? '' : result.error)
+    if (!result.ok) return
+    const meta = await sharp(result.png).metadata()
+    assert.equal(meta.width, CANVAS_PX)
+    assert.equal(meta.height, CANVAS_PX)
+  })
+
+  test('a tall, narrow sliver composes too', async () => {
+    const result = await composeStudioImage(await cutout(200, 3000, { left: 100, top: 0, width: 3, height: 3000 }))
+    assert.equal(result.ok, true, result.ok ? '' : result.error)
+  })
+
+  test('a single opaque pixel composes rather than crashing the route', async () => {
+    const result = await composeStudioImage(await cutout(400, 400, { left: 200, top: 200, width: 1, height: 1 }))
+    assert.equal(result.ok, true, result.ok ? '' : result.error)
+  })
+
+  test('a product touching all four edges keeps its margin', async () => {
+    // Nothing to crop: the mask fills the frame. The margin has to come from the
+    // resize, not from the crop.
+    const result = await composeStudioImage(await cutout(800, 800, { left: 0, top: 0, width: 800, height: 800 }))
+    assert.equal(result.ok, true)
+    if (!result.ok) return
+
+    const margin = Math.round(CANVAS_PX * MARGIN_RATIO)
+    assert.equal(result.placement.left, margin)
+    assert.equal(result.placement.top, margin)
+  })
+})
+
 describe('alphaBounds', () => {
   test('finds the tight box around anything opaque', () => {
     const w = 10, h = 10

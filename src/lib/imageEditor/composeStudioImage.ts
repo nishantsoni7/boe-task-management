@@ -100,7 +100,10 @@ export function alphaBounds(
  * floor showing between them, and a plinth casts one continuous one.
  */
 async function buildShadow(productPng: Buffer, width: number, height: number) {
-  const bandHeight = Math.max(4, Math.round(height * CONTACT_BAND_RATIO))
+  // Clamped to the product itself. A wide, shallow cut-out — a table edge, or a
+  // mask that caught only a sliver — has fewer rows than the band's floor of 4,
+  // and `extract` at a negative offset throws rather than degrading.
+  const bandHeight = Math.min(height, Math.max(4, Math.round(height * CONTACT_BAND_RATIO)))
   const shadowHeight = Math.max(6, Math.round(height * SHADOW_HEIGHT_RATIO))
   const sigma = Math.max(2, Math.round(width * 0.012))
   const pad = Math.ceil(sigma * 3)
@@ -173,62 +176,69 @@ export async function composeStudioImage(cutoutPng: Buffer): Promise<ComposeResu
   const margin = Math.round(CANVAS_PX * MARGIN_RATIO)
   const box = CANVAS_PX - margin * 2
 
-  // Cropped to the product, then scaled to fit the box. `fit: 'inside'` is what
-  // locks the aspect ratio: the product is never stretched, only made smaller or
-  // larger as a whole.
-  const product = await sharp(cutoutPng)
-    .ensureAlpha()
-    .extract(bounds)
-    .resize(box, box, { fit: 'inside', withoutEnlargement: false })
-    .png()
-    .toBuffer()
+  try {
+    // Cropped to the product, then scaled to fit the box. `fit: 'inside'` is what
+    // locks the aspect ratio: the product is never stretched, only made smaller or
+    // larger as a whole.
+    const product = await sharp(cutoutPng)
+      .ensureAlpha()
+      .extract(bounds)
+      .resize(box, box, { fit: 'inside', withoutEnlargement: false })
+      .png()
+      .toBuffer()
 
-  const productMeta = await sharp(product).metadata()
-  const pw = productMeta.width ?? 0
-  const ph = productMeta.height ?? 0
+    const productMeta = await sharp(product).metadata()
+    const pw = productMeta.width ?? 0
+    const ph = productMeta.height ?? 0
 
-  // Centred, so the margins are balanced left/right and top/bottom.
-  const left = Math.round((CANVAS_PX - pw) / 2)
-  const top  = Math.round((CANVAS_PX - ph) / 2)
+    // Centred, so the margins are balanced left/right and top/bottom.
+    const left = Math.round((CANVAS_PX - pw) / 2)
+    const top  = Math.round((CANVAS_PX - ph) / 2)
 
-  const shadow = await buildShadow(product, pw, ph)
+    const shadow = await buildShadow(product, pw, ph)
 
-  // The shadow sits at the product's feet: mostly below the bottom edge, biting
-  // slightly into it so the product does not appear to float.
-  const shadowTop = top + ph - Math.round(shadow.shadowHeight * 0.55) - shadow.pad
-  const shadowLeft = left - shadow.pad
+    // The shadow sits at the product's feet: mostly below the bottom edge, biting
+    // slightly into it so the product does not appear to float.
+    const shadowTop = top + ph - Math.round(shadow.shadowHeight * 0.55) - shadow.pad
+    const shadowLeft = left - shadow.pad
 
-  const composites: OverlayOptions[] = []
-  // Clamped rather than assumed: an extreme aspect ratio must not push the
-  // shadow off the canvas and turn a finished image into an exception.
-  if (
-    shadowTop >= 0 && shadowLeft >= 0 &&
-    shadowTop + shadow.shadowHeight + shadow.pad * 2 <= CANVAS_PX &&
-    shadowLeft + pw + shadow.pad * 2 <= CANVAS_PX
-  ) {
-    composites.push({ input: shadow.png, top: shadowTop, left: shadowLeft })
+    const composites: OverlayOptions[] = []
+    // Clamped rather than assumed: an extreme aspect ratio must not push the
+    // shadow off the canvas and turn a finished image into an exception.
+    if (
+      shadowTop >= 0 && shadowLeft >= 0 &&
+      shadowTop + shadow.shadowHeight + shadow.pad * 2 <= CANVAS_PX &&
+      shadowLeft + pw + shadow.pad * 2 <= CANVAS_PX
+    ) {
+      composites.push({ input: shadow.png, top: shadowTop, left: shadowLeft })
+    }
+    composites.push({ input: product, top, left })
+
+    // Composited to raw pixels rather than straight to PNG: the flatten below has
+    // to happen in its own pipeline. sharp orders its operations internally, not
+    // by call order, and a `flatten` chained onto a `composite` is applied before
+    // the compositing it is meant to follow — leaving an alpha channel on a
+    // catalogue image, which prints as a black square. Raw in, raw out, one PNG
+    // encode at the end.
+    const composited = await sharp({
+      create: { width: CANVAS_PX, height: CANVAS_PX, channels: 3, background: BACKGROUND },
+    })
+      .composite(composites)
+      .raw()
+      .toBuffer()
+
+    const png = await sharp(composited, {
+      raw: { width: CANVAS_PX, height: CANVAS_PX, channels: 4 },
+    })
+      .flatten({ background: BACKGROUND })
+      .png({ compressionLevel: 9 })
+      .toBuffer()
+
+    return { ok: true, png, placement: { left, top, width: pw, height: ph } }
+  } catch (e) {
+    // A cut-out with a shape no fixture anticipated must produce a message, not
+    // a 500. The dimensions go to the log so the shape can be reproduced.
+    console.error('[composeStudioImage] failed on', `${width}x${height}`, e)
+    return { ok: false, error: 'That photograph could not be composed into a studio image. Please try again.' }
   }
-  composites.push({ input: product, top, left })
-
-  // Composited to raw pixels rather than straight to PNG: the flatten below has
-  // to happen in its own pipeline. sharp orders its operations internally, not
-  // by call order, and a `flatten` chained onto a `composite` is applied before
-  // the compositing it is meant to follow — leaving an alpha channel on a
-  // catalogue image, which prints as a black square. Raw in, raw out, one PNG
-  // encode at the end.
-  const composited = await sharp({
-    create: { width: CANVAS_PX, height: CANVAS_PX, channels: 3, background: BACKGROUND },
-  })
-    .composite(composites)
-    .raw()
-    .toBuffer()
-
-  const png = await sharp(composited, {
-    raw: { width: CANVAS_PX, height: CANVAS_PX, channels: 4 },
-  })
-    .flatten({ background: BACKGROUND })
-    .png({ compressionLevel: 9 })
-    .toBuffer()
-
-  return { ok: true, png, placement: { left, top, width: pw, height: ph } }
 }

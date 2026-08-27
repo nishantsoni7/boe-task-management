@@ -99,3 +99,12 @@ it goes to the server log only.
 | Rate limited (429) | 429 | busy — wait a moment and try again |
 | Timed out | 504 | taking longer than expected — try again |
 | Anything else | 502 | could not process — try again |
+| Cut-out has no product in it, or a shape the composition refuses | 422 | try a photograph with the product clearly visible |
+
+## Size of the finished image
+
+A 2048 × 2048 photographic PNG measures roughly 3–7 MB, and it reaches the
+browser base64-encoded inside JSON, which adds a third again. On a slow phone
+connection that is the slowest part of the whole flow — the provider call and
+the composition (~0.3–0.8 s) are not. Composition holds about 210 MB of RSS at
+the 4096px input ceiling.
