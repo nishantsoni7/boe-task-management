@@ -240,8 +240,48 @@ body {
    pressed feel of .boe-btn and the hover of the review grid's primary.
    Disabled is handled by the button's own opacity/cursor, so neither state
    fires once it is disabled. */
-.boe-task-action-blue:not(:disabled):hover  { filter: brightness(0.95); }
-.boe-task-action-blue:not(:disabled):active { transform: translateY(1px); }
+/* ── Submit for Approval ──
+   The one action in this row that carries a fill, and the only user of this
+   class — Mark Complete and Approve & Complete keep .boe-task-action-primary
+   alone and are not touched by anything here.
+
+   IT USED TO BE A SOLID BLUE BLOCK with a blue shadow, stretched the width of
+   the row by the shared `flex: 1 1 auto` above. Fill + shadow + width together
+   made it the loudest thing on Task Details, competing with the task title,
+   the status and the activity underneath. It is still the lead action; it is
+   no longer the subject of the page.
+
+   The palette is the one this project already uses for a pale-blue treatment —
+   #EFF6FF / #BFDBFE / #1E40AF, Tailwind blue-50/200/800, the same trio the
+   Orders status chips and the permissions role badges wear. Dark blue on pale
+   blue also clears AA comfortably (about 8:1), which the mid-blue on a tint
+   would not have. */
+.boe-task-action-submit {
+  background: #EFF6FF;
+  color: #1E40AF;
+  border: 1.5px solid #BFDBFE;
+  box-shadow: none;          /* the strong blue glow is gone, deliberately */
+}
+
+/* Content width, not row width. This overrides the `flex: 1 1 auto` the shared
+   primary class sets a few rules above — for THIS button only, by carrying both
+   class names. The mobile grid rule still gives it `grid-column: 1 / -1`, so a
+   phone is unchanged: full width, wrapping safely, nothing clipped. */
+.boe-task-actions .boe-task-action-primary.boe-task-action-submit { flex: 0 1 auto; }
+
+/* One step deeper on the same ramp (blue-100) — restrained, and a real change
+   rather than the `filter: brightness()` the solid fill used to need. It is a
+   background rather than a filter because the fill no longer lives inline,
+   which is what let a stylesheet rule win here at all. */
+.boe-task-action-submit:not(:disabled):hover  { background: #DBEAFE; }
+.boe-task-action-submit:not(:disabled):active { transform: translateY(1px); }
+
+/* A pale button needs its own ring: the global amber default is faint against
+   this fill, so the focus ring is the button's own dark blue. */
+.boe-task-action-submit:focus-visible {
+  outline: 2px solid #1E40AF;
+  outline-offset: 2px;
+}
 
 /* ── Activity feed — quiet scrollbar + text-action hovers ── */
 .boe-activity-scroll {
