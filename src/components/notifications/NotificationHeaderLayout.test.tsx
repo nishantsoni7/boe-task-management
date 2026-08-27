@@ -1,7 +1,7 @@
 /**
  * THE CARD HEADER, RENDERED.
  *
- *   test task                     Assigned to: Nishant    3 updates
+ *   test task  [person] Nishant  > 3 updates
  *
  * Source text cannot tell "the header exists" from "the header reaches the
  * DOM", so this renders the real component with react-dom/server — already a
@@ -52,7 +52,7 @@ const render = (group: TaskGroup, over: Record<string, unknown> = {}) =>
       filter="all"
       selected={new Set()}
       pendingDeletes={new Set()}
-      onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+      onToggleSelect={noop} onMarkGroupRead={noop}
       onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
       {...over}
     />,
@@ -78,32 +78,24 @@ describe('1-2. the header names the task and its owner', () => {
   test('1b. with no lookup result it falls back rather than rendering empty', () => {
     const html = render(THREE(), { headerInfo: undefined })
     assert.ok(html.includes('body-derived title'))
+    // The assignee has no fallback to derive, so it says so — and draws no
+    // person chip, which would read as a name that failed to load.
+    assert.ok(html.includes(ASSIGNEE_UNAVAILABLE))
+    assert.equal(html.includes('title="Assigned to '), false)
+    assert.equal(html.includes('lucide-user'), false)
   })
 
-  test('2. "Assigned to: <assignee>" — the task owner, not the latest actor', () => {
+  test('2. the assignee is the TASK OWNER, not the latest actor', () => {
+    // The visible words "Assigned to:" are gone — the person icon carries them
+    // on screen and the tooltip / screen-reader text carry them everywhere
+    // else. What this test is for is unchanged: the name shown is the task's
+    // owner, never the person who happened to act most recently.
     const html = render(THREE())
-    assert.ok(html.includes('Assigned to:'))
-    assert.ok(html.includes('Nishant'))
-    // The newest event is Dhruv's comment. He must never be the assignee.
-    assert.equal(/Assigned to:\s*<!-- -->\s*Dhruv/.test(html), false)
-    assert.equal(html.includes('Assigned to: Dhruv'), false)
-  })
-
-  test('12. a missing assignee renders the honest phrase, and the card survives', () => {
-    for (const info of [undefined, { title: 'test task', assigneeName: null }]) {
-      const html = render(THREE(), { headerInfo: info })
-      assert.ok(html.includes(ASSIGNEE_UNAVAILABLE), JSON.stringify(info))
-      assert.ok(html.includes('Assigned to:'))
-      assert.ok(html.includes('View Task'), 'the rest of the card still renders')
-    }
-  })
-})
-
-// ── 3–4. The update count ────────────────────────────────────────────────────
-
-describe('3-4. the count is right, and absent when it would be noise', () => {
-  test('4. three events → "3 updates"', () => {
-    assert.ok(render(THREE()).includes('3 updates'))
+    assert.ok(html.includes('Nishant'), 'the task owner')
+    assert.equal(html.includes('Assigned to: Nishant'), false, 'the label text is gone')
+    assert.ok(html.includes('title="Assigned to Nishant"'), 'but the meaning is not')
+    // Dhruv is the newest event's ACTOR. He must never be named as the owner.
+    assert.equal(html.includes('Assigned to Dhruv'), false)
   })
 
   test('3. ONE event → no "1 update" anywhere', () => {
@@ -149,7 +141,7 @@ describe('events do not repeat the header', () => {
     <NotificationTaskGroup
       group={THREE()} headerInfo={HEADER} filter="all"
       selected={new Set()} pendingDeletes={new Set()}
-      onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+      onToggleSelect={noop} onMarkGroupRead={noop}
       onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
     />,
   )
@@ -161,12 +153,16 @@ describe('events do not repeat the header', () => {
     assert.equal((visible.match(/test task/g) ?? []).length, 1)
   })
 
-  test('"Assigned to" appears once', () => {
-    assert.equal((expanded.match(/Assigned to:/g) ?? []).length, 1)
+  test('the assignee is named once, in the header', () => {
+    // Once as a tooltip and once as visible text, on ONE element — never
+    // repeated per event.
+    assert.equal((expanded.match(/title="Assigned to Nishant"/g) ?? []).length, 1)
   })
 
-  test('one View Task, owned by the header', () => {
-    assert.equal((html.match(/View Task/g) ?? []).length, 1)
+  test('no View Task button — the title is the link', () => {
+    assert.equal(html.includes('View Task'), false)
+    assert.equal((html.match(/href="\/tasks\//g) ?? []).length, 1,
+      'exactly one link to the task, and it is the title')
   })
 
   test('9. an actor who is the assignee is not repeated on their own events', () => {
@@ -210,7 +206,10 @@ describe('13. the header wraps on mobile instead of cramming one row', () => {
   test('desktop puts title and meta on one row', () => {
     const html = render(THREE(), { isMobile: false })
     assert.ok(html.includes('flex-direction:row'))
-    assert.ok(html.includes('justify-content:space-between'))
+    // NOT space-between any more: that pushed the assignee to the far right of
+    // a 900px card and left a wide empty band down the middle of every row.
+    // Title and assignee are one left-side block now; the gap sits after them.
+    assert.equal(html.includes('justify-content:space-between'), false)
   })
 
   test('mobile stacks them', () => {
@@ -254,7 +253,7 @@ describe('the card is white with a light border, not a blue block', () => {
 
   test('actions are secondary — outlined, never a filled primary block', () => {
     const html = render(THREE())
-    assert.ok(html.includes('View Task'))
+    assert.ok(html.includes('Mark all read'))
     // The old View Task was a filled blue button.
     assert.equal(/background:#5585E8|background:rgb\(85,133,232\)/.test(html), false)
   })
@@ -271,7 +270,7 @@ const linked = (over: Partial<Notification>, details: ActivityDetailMap) =>
       activityDetails={details}
       filter="all"
       selected={new Set()} pendingDeletes={new Set()}
-      onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+      onToggleSelect={noop} onMarkGroupRead={noop}
       onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
     />,
   )
@@ -333,13 +332,13 @@ describe('19-25. a linked notification shows the real detail', () => {
         group={groupOf([n({ id: 'H1', title: 'Dhruv added a comment', activity_log_id: null } as Partial<Notification>)])}
         headerInfo={HEADER} activityDetails={{}} filter="all"
         selected={new Set()} pendingDeletes={new Set()}
-        onToggleSelect={noop} onOpenTask={noop} onMarkGroupRead={noop}
+        onToggleSelect={noop} onMarkGroupRead={noop}
         onDeleteGroup={noop} onDeleteOne={noop} onRowClick={noop}
       />,
     )
     assert.ok(html.includes('Comment added'))
     assert.ok(html.includes('test task'), 'title and assignee still come from the task lookup')
-    assert.ok(html.includes('Assigned to: Nishant'))
+    assert.ok(html.includes('title="Assigned to Nishant"'))
   })
 
   test('23b. a link whose detail did not resolve also falls back', () => {
@@ -362,8 +361,11 @@ describe('19-25. a linked notification shows the real detail', () => {
       [ACT]: { action: 'status_changed', note: null, fromStatus: 'working', toStatus: 'waiting', actorName: 'Nishant' },
     })
     assert.equal(html.includes('By Nishant'), false)
-    // The header still names them once.
-    assert.equal((html.match(/Nishant/g) ?? []).length, 1)
+    // The header still names them once — as one element carrying both the
+    // tooltip and the visible name, which is two textual occurrences of the
+    // same single mention.
+    assert.equal((html.match(/title="Assigned to Nishant"/g) ?? []).length, 1)
+    assert.equal((html.match(/>Nishant</g) ?? []).length, 1, 'visible exactly once')
   })
 
   test('a linked row never labels a human action "System"', () => {

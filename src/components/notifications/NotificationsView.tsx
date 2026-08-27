@@ -254,10 +254,10 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     deleteAll()
   }
 
-  const openTaskGroup = (group: TaskGroup) => {
-    const href = getNotificationMeta(group.latest).href
-    if (href) router.push(href)
-  }
+  // NO openTaskGroup HANDLER ANY MORE. The group header's task title is a real
+  // <Link> to the same href this pushed, so the navigation is the browser's and
+  // needs no callback. `openNotif` below is a different thing and stays: it
+  // marks a row read BEFORE navigating, which a bare link cannot do.
 
   // Expanding is a disclosure; THIS is the deliberate act.
   //
@@ -472,7 +472,6 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                 busy={groupBusy || markingAll || deletingBulk || deletingAll}
                 isMobile={isMobile}
                 onToggleSelect={toggleSelect}
-                onOpenTask={openTaskGroup}
                 onMarkGroupRead={handleMarkGroupRead}
                 onDeleteGroup={handleDeleteGroup}
                 onDeleteOne={handleDeleteSingle}
