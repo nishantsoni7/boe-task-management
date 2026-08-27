@@ -96,6 +96,19 @@ export function useNotifications(
   const limitRef = useRef(NOTIFICATION_PAGE_SIZE)
   const [limit, setLimit] = useState(NOTIFICATION_PAGE_SIZE)
   const [serverHasMore, setServerHasMore] = useState(false)
+  // ── THESE TWO ARE A FALLBACK NOW, NOT THE SOURCE OF TRUTH ──
+  //
+  // They are assigned inside `queryFn`, and `queryFn` does not always run: with
+  // `staleTime: 30s` a page served from cache skips it entirely, a mutation
+  // writes rows back with `setQueryData` without it, and two observers of one
+  // key share a single call so only one of them is ever assigned. In every one
+  // of those cases the ROWS render and these stay `{}` — which is exactly how a
+  // correctly linked comment came out as a bare "Comment added".
+  //
+  // So the detail now travels ON each row (`Notification.context`, attached by
+  // /api/notifications), where it shares the rows' lifetime and cannot fall
+  // behind them. These are kept because they cost nothing and still serve a
+  // payload written before `context` existed.
   const [taskHeaders, setTaskHeaders] = useState<TaskHeaderMap>({})
   const [activityDetails, setActivityDetails] = useState<ActivityDetailMap>({})
   const [loadingOlder, setLoadingOlder] = useState(false)

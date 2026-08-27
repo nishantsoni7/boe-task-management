@@ -190,3 +190,80 @@ export async function enrichNotificationPage(
 
   return { taskHeaders, activityDetails }
 }
+
+// ── ATTACHING THE ENRICHMENT TO THE ROWS IT DESCRIBES ────────────────────────
+//
+// WHY THIS EXISTS, AND WHAT WENT WRONG WITHOUT IT.
+//
+// The maps above were returned to the client BESIDE the rows, and the client
+// held them in component state while the rows lived in the React Query cache.
+// Those two stores have different lifetimes, and that is not a theoretical
+// problem — it is the defect that made a correctly linked comment render as a
+// bare "Comment added":
+//
+//   * the list query has `staleTime: 30s`. Open Notifications, open the task,
+//     post a comment, come back inside the window — TanStack serves the CACHED
+//     rows and never runs the query function, so the state that would have
+//     carried the maps is never assigned and stays `{}`. Every card falls back.
+//   * every mutation (mark read, delete one, delete all) writes rows straight
+//     into the cache with `setQueryData`. The rows update; a separate map does
+//     not travel with them.
+//   * two observers of the same query key share ONE fetch, so only the
+//     component whose query function ran ever receives the maps.
+//
+// The fix is structural rather than defensive: the detail is attached to the
+// row itself, so it is the same object the cache holds. A row can no longer be
+// present without its context, because there is nowhere else for the context to
+// be. Nothing needs to stay in sync, so nothing can fall out of sync.
+//
+// STILL EXACTLY THE SAME QUERIES. This is composition over data already
+// fetched — no additional read, per row or otherwise.
+
+/**
+ * Everything one card needs about one notification, carried on the row.
+ *
+ * `activity` is null for every historical row and for any row whose activity
+ * has since been deleted (ON DELETE SET NULL clears the link, the notification
+ * survives) — both render the honest fallback.
+ */
+export type NotificationRowContext = {
+  taskTitle: string | null
+  assigneeName: string | null
+  activity: ActivityDetail | null
+}
+
+/** The enrichment for one row, or null when the page resolved nothing for it. */
+export function rowContext(
+  row: { task_id?: string | null; activity_log_id?: string | null },
+  { taskHeaders, activityDetails }: NotificationPageEnrichment,
+): NotificationRowContext | null {
+  const header = typeof row.task_id === 'string' && row.task_id
+    ? taskHeaders[row.task_id]
+    : undefined
+  const activity = typeof row.activity_log_id === 'string' && row.activity_log_id
+    ? activityDetails[row.activity_log_id] ?? null
+    : null
+  if (!header && !activity) return null
+  return {
+    taskTitle: header?.title?.trim() ? header.title.trim() : null,
+    assigneeName: header?.assigneeName ?? null,
+    activity,
+  }
+}
+
+/**
+ * Copy each row with its own context attached. Order and identity preserved.
+ *
+ * A row the page resolved nothing for is returned unchanged rather than given
+ * an empty context, so "no context" and "context that resolved to nothing" stay
+ * distinguishable at the point where that difference matters.
+ */
+export function attachRowContext<T extends { task_id?: string | null; activity_log_id?: string | null }>(
+  rows: readonly T[],
+  enrichment: NotificationPageEnrichment,
+): Array<T & { context?: NotificationRowContext }> {
+  return rows.map(row => {
+    const context = rowContext(row, enrichment)
+    return context ? { ...row, context } : row
+  })
+}

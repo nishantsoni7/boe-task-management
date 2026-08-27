@@ -65,6 +65,38 @@ import {
 // task. It cannot reach the task, its activity history, its comments, its
 // attachments, or anybody else's notifications.
 
+/**
+ * The header facts carried ON the row, when it has them.
+ *
+ * Returns undefined — not an empty object — when the row has no context, so the
+ * caller falls through to the page-level map instead of overriding it with
+ * nothing.
+ */
+function headerInfoFromContext(n: Notification): TaskHeaderInfo | undefined {
+  const ctx = n.context
+  if (!ctx) return undefined
+  if (!ctx.taskTitle && !ctx.assigneeName) return undefined
+  return { title: ctx.taskTitle ?? '', assigneeName: ctx.assigneeName }
+}
+
+/**
+ * The linked activity detail for one event.
+ *
+ * ROW FIRST. `n.context.activity` came back attached to this exact row, so it
+ * cannot be stale relative to it. The page-level map is the fallback for a row
+ * from a payload written before `context` existed. A row with no link resolves
+ * to undefined in both, which is the historical case and renders "Comment
+ * added" / "Status updated".
+ */
+function activityDetailFor(
+  n: Notification,
+  activityDetails?: ActivityDetailMap,
+): ActivityDetail | undefined {
+  if (n.context?.activity) return n.context.activity
+  if (n.context) return undefined      // resolved, and there is genuinely none
+  return n.activity_log_id ? activityDetails?.[n.activity_log_id] : undefined
+}
+
 export function NotificationTaskGroup({
   group,
   headerInfo,
@@ -82,13 +114,23 @@ export function NotificationTaskGroup({
   isMobile = false,
 }: {
   group: TaskGroup
-  /** Title + assignee from the page-level batch lookup. Absent is survivable. */
+  /**
+   * Title + assignee from the page-level batch lookup.
+   *
+   * A FALLBACK NOW, NOT THE SOURCE. Each row carries its own `context` (see
+   * NotificationRowContext), which is what this reads first — a map held
+   * beside the rows goes out of step with them the moment a cached page is
+   * served without its query function running. Still accepted so a caller that
+   * has the map, or a row from a payload written before `context` existed,
+   * renders exactly as it did.
+   */
   headerInfo?: TaskHeaderInfo
   /**
    * Linked activity detail, keyed by activity id, for the whole page.
    *
-   * A historical notification has no link and finds nothing here, which is the
-   * normal case and renders the same fallbacks it always has.
+   * Same story as `headerInfo`: consulted only when the row itself carries no
+   * context. A historical notification has no link and finds nothing in either,
+   * which is the normal case and renders the fallbacks it always has.
    */
   activityDetails?: ActivityDetailMap
   filter: NotificationFilter
@@ -109,8 +151,10 @@ export function NotificationTaskGroup({
 
   const hasUnread = group.unreadCount > 0
   const events = orderGroupEvents(group, filter)
-  const taskTitle = taskTitleFor(headerInfo, group.title)
-  const assignee = assigneeLabel(headerInfo)
+  // The row's own context wins over the page-level map — see the prop docs.
+  const rowHeader = headerInfoFromContext(group.latest) ?? headerInfo
+  const taskTitle = taskTitleFor(rowHeader, group.title)
+  const assignee = assigneeLabel(rowHeader)
   const href = getNotificationMeta(group.latest).href
 
   // One loaded event is not a group. The count is what decides, not the filter:
@@ -262,8 +306,12 @@ export function NotificationTaskGroup({
             <EventRow
               key={n.id}
               notification={n}
-              detail={n.activity_log_id ? activityDetails?.[n.activity_log_id] : undefined}
-              assigneeName={headerInfo?.assigneeName ?? null}
+              detail={activityDetailFor(n, activityDetails)}
+              // The SAME assignee the header drew — row context first, map
+              // second. Reading the prop directly here made the event line
+              // show "By Nishant" on Nishant's own card whenever the context
+              // came from the row and the map was absent.
+              assigneeName={rowHeader?.assigneeName ?? null}
               selected={selected.has(n.id)}
               isLast={i === events.length - 1}
               indented={!isSingle}

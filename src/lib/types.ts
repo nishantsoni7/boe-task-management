@@ -390,6 +390,11 @@ export type PayrollHoliday = {
 }
 
 // ─── Notifications ────────────────────────────────────────────────────────────
+// `NotificationRowContext` is imported for the presentation field below. A
+// TYPE-ONLY import: it is erased at compile time, so the fact that
+// pageEnrichment imports `Notification` back is not a runtime cycle.
+import type { NotificationRowContext } from '@/lib/notifications/pageEnrichment'
+
 export type Notification = {
   id: string
   user_id: string
@@ -413,6 +418,21 @@ export type Notification = {
   activity_log_id: string | null
   created_at: string
   read_at: string | null
+  /**
+   * PRESENTATION ONLY, AND NOT A COLUMN. Attached by /api/notifications from
+   * the same page-level batch lookup that produces `taskHeaders` and
+   * `activityDetails` — the task's title and assignee, and the linked activity
+   * row's note, statuses and resolved actor.
+   *
+   * It rides on the row on purpose. Held beside the rows instead, it went out
+   * of step with them every time the React Query cache served a page without
+   * re-running its query function, and a correctly linked comment rendered as a
+   * bare "Comment added". On the row it shares the rows' lifetime exactly.
+   *
+   * Absent on a row the page resolved nothing for, and on any payload written
+   * before this existed. Both render the honest fallbacks.
+   */
+  context?: NotificationRowContext | null
 }
 
 // ─── Task attachments (multi-file) ────────────────────────────────────────────
