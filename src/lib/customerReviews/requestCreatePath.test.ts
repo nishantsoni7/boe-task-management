@@ -141,11 +141,10 @@ describe('the policy that lets it work', () => {
     const fn = rowPredicate()
     assert.ok(fn.includes("u.role = 'admin'"), 'admin')
     assert.ok(
-      fn.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"),
+      fn.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"),
       'verifier',
     )
-    assert.ok(fn.includes('p_created_by = p_user_id'), 'owner')
-    // `use` opens the module; it does not disclose a colleague's customer.
+    assert.ok(fn.includes('p_created_by = auth.uid()'), 'owner')
     assert.equal(fn.includes("'customer_review_requests', 'use'"), false)
   })
 
@@ -181,12 +180,14 @@ describe('the child tables were left alone', () => {
   })
 
   test('the helper itself is unchanged and still requires an active user', () => {
-    const start = code.indexOf('create or replace function public.can_view_customer_review_request')
+    const start = code.indexOf('create or replace function public.can_view_customer_review_request(')
     assert.notEqual(start, -1)
     const body = code.slice(start, code.indexOf('$$;', start))
-    assert.ok(body.includes('join public.users u on u.id = p_user_id and u.is_active'))
-    assert.ok(body.includes('r.created_by = p_user_id'))
+    assert.ok(body.includes('join public.users u on u.id = auth.uid() and u.is_active'))
+    assert.ok(body.includes('r.created_by = auth.uid()'))
     assert.ok(body.includes("u.role = 'admin'"))
-    assert.ok(body.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"))
+    assert.ok(body.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
+    // It takes the request id and nothing else — no acting-user parameter.
+    assert.equal(/p_user_id/.test(body.slice(0, body.indexOf(')'))), false)
   })
 })

@@ -61,6 +61,7 @@ const byName = (name: string) => {
 const CLIENT_CALLABLE = [
   'can_view_customer_review_request',
   'can_view_customer_review_request_row',
+  'can_create_customer_review_request',
   'can_edit_customer_review_request',
   'customer_review_text_steers',
   'transition_customer_review_request',
@@ -190,13 +191,22 @@ describe('identity: who the function thinks it is acting for', () => {
   })
 
   test('the predicates DO take a user id, and every call site passes auth.uid()', () => {
-    // can_view / can_edit are shared with the policies, which must be able to
-    // name the row's viewer. What matters is that nothing hands them anything
-    // but the caller.
-    for (const match of code.matchAll(/public\.can_(?:view|edit)_customer_review_request\(([^;]*?)\)\s*[),]/g)) {
-      const args = match[1]
-      if (args.includes('p_request_id')) continue // the definitions themselves
-      assert.ok(args.includes('auth.uid('), `a call site passes something else: ${match[0]}`)
+    // REWRITTEN. This used to assert that the predicates take a user id and
+    // that every call site passes auth.uid() — the weaker half of the
+    // property. A call site is not the threat: these functions are granted to
+    // `authenticated`, so a browser can call them directly, and while the
+    // parameter existed it could name anybody. The parameter is gone.
+    for (const name of [
+      'can_view_customer_review_request',
+      'can_view_customer_review_request_row',
+      'can_edit_customer_review_request',
+      'can_create_customer_review_request',
+    ]) {
+      const fn = byName(name)
+      assert.equal(/p_user_id|p_actor_id|p_acting/.test(fn.args), false,
+        `${name} exposes an acting-user parameter to a browser`)
+      assert.equal(fn.args.split(',').length, 1, `${name} should take one argument`)
+      assert.ok(fn.body.includes('auth.uid()'), `${name} must derive the caller itself`)
     }
   })
 
@@ -410,14 +420,14 @@ describe('who can read a request', () => {
   const viewFn = byName('can_view_customer_review_request').body
 
   test('a `use` holder reads THEIR OWN and nothing else', () => {
-    assert.ok(viewFn.includes('r.created_by = p_user_id'))
+    assert.ok(viewFn.includes('r.created_by = auth.uid()'))
     // `use` is absent from the predicate on purpose: holding it opens the
     // module, it does not disclose every customer BOE has ever messaged.
     assert.equal(viewFn.includes("'customer_review_requests', 'use'"), false)
   })
 
   test('a verifier reads every request, because verification requires it', () => {
-    assert.ok(viewFn.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"))
+    assert.ok(viewFn.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
   })
 
   test('an unauthorized caller matches no branch, so the policy yields no row', () => {
@@ -439,12 +449,6 @@ describe('who can read a request', () => {
   })
 
   test('the request table asks the same question WITHOUT re-reading itself', () => {
-    // The request-id helper reaches back into public.customer_review_requests,
-    // which makes INSERT ... RETURNING impossible. Spelling the predicate out
-    // inline in the policy instead fixes that but reads public.users as the
-    // CALLER, binding this module to another table's grants. The policy
-    // therefore delegates to a definer-rights predicate that takes created_by
-    // as a value.
     const body = code.slice(code.indexOf('create policy "customer_review_requests_select"'))
     const policy = body.slice(0, body.indexOf(';'))
 
@@ -457,16 +461,14 @@ describe('who can read a request', () => {
       'the candidate column must be qualified')
     assert.equal(/\btrue\b/.test(policy), false)
 
-    // The predicate it delegates to carries the whole rule.
     const fn = byName('can_view_customer_review_request_row').body
     assert.ok(fn.includes('security definer'), 'must have definer rights')
     assert.ok(fn.includes('set search_path = public, pg_temp'), 'must pin search_path')
-    assert.ok(fn.includes('p_created_by = p_user_id'))
+    assert.ok(fn.includes('p_created_by = auth.uid()'))
     assert.ok(fn.includes("u.role = 'admin'"))
-    assert.ok(fn.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"))
+    assert.ok(fn.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
     assert.ok(fn.includes('u.is_active'), 'a deactivated employee keeps nothing')
     assert.equal(fn.includes("'customer_review_requests', 'use'"), false)
-    // Three branches: owner, admin, verifier.
     const branches = fn.slice(fn.indexOf('and ('))
     assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
   })

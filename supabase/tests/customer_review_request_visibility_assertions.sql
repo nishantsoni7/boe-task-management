@@ -241,11 +241,11 @@ begin
 
   -- Reachable by a signed-in employee, and by nobody else.
   if not has_function_privilege('authenticated',
-       'public.can_view_customer_review_request_row(uuid,uuid)', 'EXECUTE') then
+       'public.can_view_customer_review_request_row(uuid)', 'EXECUTE') then
     raise exception 'authenticated cannot execute the row predicate, so the policy cannot pass';
   end if;
   if has_function_privilege('anon',
-       'public.can_view_customer_review_request_row(uuid,uuid)', 'EXECUTE') then
+       'public.can_view_customer_review_request_row(uuid)', 'EXECUTE') then
     raise exception 'anon can execute the row predicate';
   end if;
 
@@ -588,47 +588,61 @@ end $$;
 -- tightening, not a contrived one.
 
 do $$
-declare v_req uuid := 'aaaaaaaa-0000-4000-8000-000000000001'; v_seen integer;
+declare v_req uuid := 'aaaaaaaa-0000-4000-8000-000000000001'; v_seen integer; v_err text;
 begin
-  drop policy "Users can read all active users" on public.users;
+  -- EVERYTHING BELOW IS UNDONE IN THE EXCEPTION HANDLER AS WELL AS ON SUCCESS.
+  -- This block deliberately breaks two policies to see what depends on them;
+  -- an assertion failing in the middle must not leave the database that way.
+  begin
+    drop policy "Users can read all active users" on public.users;
 
-  -- The shipped policy delegates to a SECURITY DEFINER predicate, so it reads
-  -- users with the definer's rights and is unaffected.
-  v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
-  if v_seen <> 1 then
-    raise exception 'with users locked down, the owner lost sight of their own request (saw %)', v_seen;
-  end if;
-  raise notice 'PASS  6b-i.  users fully locked down, and the owner still sees their request';
+    -- The shipped policy delegates to a SECURITY DEFINER predicate, so it reads
+    -- users with the definer's rights and is unaffected.
+    v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
+    if v_seen <> 1 then
+      raise exception 'with users locked down, the owner lost sight of their own request (saw %)', v_seen;
+    end if;
+    raise notice 'PASS  6b-i.  users fully locked down, and the owner still sees their request';
 
-  -- Now the same policy written the other way — reading users inline, as the
-  -- caller. This is the version an earlier round of this work shipped.
+    -- Now the same policy written the other way — reading users inline, as the
+    -- caller. This is the version an earlier round of this work shipped.
+    drop policy "customer_review_requests_select" on public.customer_review_requests;
+    create policy "customer_review_requests_select" on public.customer_review_requests
+      for select to authenticated
+      using (
+        exists (
+          select 1 from public.users u
+          where u.id = auth.uid() and u.is_active
+            and (customer_review_requests.created_by = auth.uid()
+                 or u.role = 'admin'
+                 or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify'))
+        )
+      );
+
+    v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
+    if v_seen <> 0 then
+      raise exception 'the inline-users policy was expected to go blind here, but saw % row(s) — this test no longer proves anything', v_seen;
+    end if;
+    raise notice 'PASS  6b-ii. the same policy reading users inline goes blind — which is what the definer predicate avoids';
+
+  exception when others then
+    v_err := sqlerrm;
+    -- Put both back before re-raising, whatever went wrong above.
+    execute $r$drop policy if exists "customer_review_requests_select" on public.customer_review_requests$r$;
+    execute $r$create policy "customer_review_requests_select" on public.customer_review_requests
+              for select to authenticated
+              using (public.can_view_customer_review_request_row(customer_review_requests.created_by))$r$;
+    execute $r$drop policy if exists "Users can read all active users" on public.users$r$;
+    execute $r$create policy "Users can read all active users" on public.users
+              for select to authenticated using (is_active = true)$r$;
+    raise exception 'while users/policies were broken for the test: %', v_err;
+  end;
+
+  -- Put both back on the success path.
   drop policy "customer_review_requests_select" on public.customer_review_requests;
   create policy "customer_review_requests_select" on public.customer_review_requests
     for select to authenticated
-    using (
-      exists (
-        select 1 from public.users u
-        where u.id = auth.uid() and u.is_active
-          and (customer_review_requests.created_by = auth.uid()
-               or u.role = 'admin'
-               or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify'))
-      )
-    );
-
-  v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
-  if v_seen <> 0 then
-    raise exception 'the inline-users policy was expected to go blind here, but saw % row(s) — this test no longer proves anything', v_seen;
-  end if;
-  raise notice 'PASS  6b-ii. the same policy reading users inline goes blind — which is what the definer predicate avoids';
-
-  -- Put both back.
-  drop policy "customer_review_requests_select" on public.customer_review_requests;
-  create policy "customer_review_requests_select" on public.customer_review_requests
-    for select to authenticated
-    using (
-      public.can_view_customer_review_request_row(
-        customer_review_requests.created_by, auth.uid())
-    );
+    using (public.can_view_customer_review_request_row(customer_review_requests.created_by));
   create policy "Users can read all active users" on public.users
     for select to authenticated using (is_active = true);
 
@@ -637,6 +651,153 @@ begin
     raise exception 'restoring the shipped policy did not restore visibility (saw %)', v_seen;
   end if;
   raise notice 'PASS  6b-iii. both restored, and visibility is back';
+end $$;
+
+-- ─── 6c. A browser cannot ask a permission question ON SOMEBODY ELSE ───────
+--
+-- Every predicate here is granted to authenticated, so its arguments are
+-- chosen by a browser. While they took an acting-user id, a signed-in
+-- employee could pass a colleague's uuid and read back who is active, who is
+-- an admin and who holds verify — one call at a time, from the browser
+-- console. The parameter is gone; these check that it stayed gone.
+
+do $$
+declare v_n integer;
+begin
+  select count(*) into v_n
+  from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public'
+    and f.proname like '%customer_review%'
+    and has_function_privilege('authenticated', f.oid, 'EXECUTE')
+    and pg_get_function_arguments(f.oid) ~* '(p_user_id|p_actor_id|p_acting)';
+  if v_n <> 0 then
+    raise exception '% browser-callable function(s) still accept an acting-user id', v_n;
+  end if;
+  raise notice 'PASS  6c-i.  no authenticated-callable function takes an acting-user id';
+
+  -- The two-argument forms must not merely be discouraged; they must not exist.
+  select count(*) into v_n
+  from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public'
+    and f.proname in ('can_view_customer_review_request',
+                      'can_view_customer_review_request_row',
+                      'can_edit_customer_review_request',
+                      'can_create_customer_review_request')
+    and f.pronargs <> 1;
+  if v_n <> 0 then
+    raise exception '% read/create predicate(s) do not take exactly one argument', v_n;
+  end if;
+  raise notice 'PASS  6c-ii. all four predicates take exactly one argument';
+end $$;
+
+-- ...and behaviourally: the colleague probe does not work.
+do $$
+declare v_owner_sees boolean; v_probe boolean;
+begin
+  execute format('set local request.jwt.claims = %L',
+                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000003', 'role', 'authenticated')::text);
+  set local role authenticated;
+
+  -- Fixture Colleague holds `use` and owns nothing. Asking about a request
+  -- raised by the owner must answer for the COLLEAGUE, not the owner.
+  v_probe := public.can_view_customer_review_request_row('ffffffff-0000-4000-8000-000000000002');
+  reset role;
+
+  if v_probe then
+    raise exception 'a colleague evaluated the owner''s visibility as true — the predicate answered for the wrong person';
+  end if;
+  raise notice 'PASS  6c-iii. passing another employee''s uuid answers for the CALLER, not for them';
+
+  -- And the same call, made by the owner, is true — so the false above is a
+  -- real refusal rather than the function being broken.
+  execute format('set local request.jwt.claims = %L',
+                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000002', 'role', 'authenticated')::text);
+  set local role authenticated;
+  v_owner_sees := public.can_view_customer_review_request_row('ffffffff-0000-4000-8000-000000000002');
+  reset role;
+  if not v_owner_sees then
+    raise exception 'the owner cannot see their own row through the predicate';
+  end if;
+  raise notice 'PASS  6c-iv. the owner still evaluates true for their own rows';
+end $$;
+
+-- ─── 6d. Creating survives public.users being taken away ───────────────────
+--
+-- The read policy was moved behind definer rights and the INSERT policy was
+-- left reading users inline — the same defect on the write side. This is the
+-- read-side test from 6b, aimed at creating.
+--
+-- Everything is restored in the EXCEPTION handler as well as on success, so a
+-- failure here cannot leave the stack with users unreadable.
+
+do $$
+declare v_new uuid; v_err text;
+begin
+  begin
+    drop policy "Users can read all active users" on public.users;
+    revoke select on public.users from authenticated;
+
+    execute format('set local request.jwt.claims = %L',
+                   json_build_object('sub', 'ffffffff-0000-4000-8000-000000000002', 'role', 'authenticated')::text);
+    set local role authenticated;
+
+    insert into public.customer_review_requests (id, customer_name, created_by, status)
+    values ('aaaaaaaa-0000-4000-8000-000000000003', 'Fixture Locked Down',
+            'ffffffff-0000-4000-8000-000000000002', 'draft')
+    returning id into v_new;
+
+    reset role;
+
+    if v_new is null then
+      raise exception 'INSERT ... RETURNING gave nothing back with users locked down';
+    end if;
+    raise notice 'PASS  6d-i.  authorized INSERT ... RETURNING id succeeds with users unreadable';
+
+    -- ...and the unauthorized cases are still refused, for the right reason,
+    -- under the same conditions.
+    perform pg_temp.refused('ffffffff-0000-4000-8000-000000000005',
+      $q$insert into public.customer_review_requests (customer_name, created_by, status)
+         values ('Fixture Locked Unauthorized', 'ffffffff-0000-4000-8000-000000000005', 'draft')$q$,
+      'no use permission, users unreadable');
+
+    perform pg_temp.refused('ffffffff-0000-4000-8000-000000000006',
+      $q$insert into public.customer_review_requests (customer_name, created_by, status)
+         values ('Fixture Locked Inactive', 'ffffffff-0000-4000-8000-000000000006', 'draft')$q$,
+      'deactivated admin, users unreadable');
+
+    perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+      $q$insert into public.customer_review_requests (customer_name, created_by, status)
+         values ('Fixture Locked Impersonation', 'ffffffff-0000-4000-8000-000000000003', 'draft')$q$,
+      'created_by is somebody else, users unreadable');
+
+  exception when others then
+    v_err := sqlerrm;
+    reset role;
+    grant select (id, full_name, email, phone, role, team, position, is_active,
+                  created_at, updated_at, employee_code, joining_date, office_timing,
+                  fingerprint_employee_code, payroll_active, employment_type,
+                  is_deleted, deleted_at, deleted_by, deletion_scheduled_at)
+      on public.users to authenticated;
+    create policy "Users can read all active users" on public.users
+      for select to authenticated using (is_active = true);
+    raise exception 'while users were locked down: %', v_err;
+  end;
+
+  -- Restore on the success path too.
+  grant select (id, full_name, email, phone, role, team, position, is_active,
+                created_at, updated_at, employee_code, joining_date, office_timing,
+                fingerprint_employee_code, payroll_active, employment_type,
+                is_deleted, deleted_at, deleted_by, deletion_scheduled_at)
+    on public.users to authenticated;
+  create policy "Users can read all active users" on public.users
+    for select to authenticated using (is_active = true);
+
+  delete from public.customer_review_request_events
+   where request_id = 'aaaaaaaa-0000-4000-8000-000000000003';
+  delete from public.customer_review_requests
+   where id = 'aaaaaaaa-0000-4000-8000-000000000003';
+
+  raise notice 'PASS  6d-ii. users restored, probe row removed';
 end $$;
 
 -- ─── 7. Clean up ───────────────────────────────────────────────────────────

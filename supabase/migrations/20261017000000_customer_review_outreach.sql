@@ -394,9 +394,19 @@ create index customer_review_events_request_idx
 -- A `use` holder sees THEIR OWN requests and nobody else's. That is deliberate:
 -- these rows carry a customer's phone number, and module entry must never
 -- become company-wide sight of every customer BOE has ever messaged.
+-- THE ACTING IDENTITY IS NOT A PARAMETER, and that is the whole point of the
+-- signature. This function is granted to `authenticated`, so anything it
+-- accepts is chosen by a browser. An earlier version took
+-- `p_user_id uuid default auth.uid()`; the default made every call site read
+-- correctly and the parameter made the function an oracle — a signed-in
+-- employee could pass a colleague's uuid and learn who is active, who is an
+-- admin and who holds `verify`, one call at a time. Those are precisely the
+-- facts this module withholds.
+--
+-- auth.uid() is read inside the body instead. A caller can ask "may I?" and
+-- nothing else.
 create or replace function public.can_view_customer_review_request(
-  p_request_id uuid,
-  p_user_id    uuid default auth.uid()
+  p_request_id uuid
 )
 returns boolean
 language sql
@@ -404,21 +414,21 @@ security definer
 set search_path = public, pg_temp
 stable
 as $$
-  select p_user_id is not null and exists (
+  select auth.uid() is not null and exists (
     select 1
     from public.customer_review_requests r
-    join public.users u on u.id = p_user_id and u.is_active
+    join public.users u on u.id = auth.uid() and u.is_active
     where r.id = p_request_id
       and (
-        r.created_by = p_user_id
+        r.created_by = auth.uid()
         or u.role = 'admin'
-        or public.resolve_permission(p_user_id, 'customer_review_requests', 'verify')
+        or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
       )
   );
 $$;
 
-revoke execute on function public.can_view_customer_review_request(uuid, uuid) from public, anon;
-grant  execute on function public.can_view_customer_review_request(uuid, uuid) to authenticated;
+revoke execute on function public.can_view_customer_review_request(uuid) from public, anon;
+grant  execute on function public.can_view_customer_review_request(uuid) to authenticated;
 
 -- The same question, asked about a row the caller already has in hand.
 --
@@ -453,9 +463,19 @@ grant  execute on function public.can_view_customer_review_request(uuid, uuid) t
 --
 -- IT TRUSTS NOTHING FROM THE CALLER BUT TWO IDENTIFIERS. Role, active state and
 -- effective permission are all derived here; none is a parameter.
+-- THE ACTING IDENTITY IS NOT A PARAMETER, and that is the whole point of the
+-- signature. This function is granted to `authenticated`, so anything it
+-- accepts is chosen by a browser. An earlier version took
+-- `p_user_id uuid default auth.uid()`; the default made every call site read
+-- correctly and the parameter made the function an oracle — a signed-in
+-- employee could pass a colleague's uuid and learn who is active, who is an
+-- admin and who holds `verify`, one call at a time. Those are precisely the
+-- facts this module withholds.
+--
+-- auth.uid() is read inside the body instead. A caller can ask "may I?" and
+-- nothing else.
 create or replace function public.can_view_customer_review_request_row(
-  p_created_by uuid,
-  p_user_id    uuid default auth.uid()
+  p_created_by uuid
 )
 returns boolean
 language sql
@@ -463,21 +483,21 @@ security definer
 set search_path = public, pg_temp
 stable
 as $$
-  select p_user_id is not null and exists (
+  select auth.uid() is not null and exists (
     select 1
     from public.users u
-    where u.id = p_user_id
+    where u.id = auth.uid()
       and u.is_active
       and (
-        p_created_by = p_user_id
+        p_created_by = auth.uid()
         or u.role = 'admin'
-        or public.resolve_permission(p_user_id, 'customer_review_requests', 'verify')
+        or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
       )
   );
 $$;
 
-revoke execute on function public.can_view_customer_review_request_row(uuid, uuid) from public, anon;
-grant  execute on function public.can_view_customer_review_request_row(uuid, uuid) to authenticated;
+revoke execute on function public.can_view_customer_review_request_row(uuid) from public, anon;
+grant  execute on function public.can_view_customer_review_request_row(uuid) to authenticated;
 
 -- May this user CHANGE this request's contents?
 --
@@ -489,9 +509,19 @@ grant  execute on function public.can_view_customer_review_request_row(uuid, uui
 --
 -- An admin is included because every module here admits one, and because a typo
 -- in a customer's name has to be fixable.
+-- THE ACTING IDENTITY IS NOT A PARAMETER, and that is the whole point of the
+-- signature. This function is granted to `authenticated`, so anything it
+-- accepts is chosen by a browser. An earlier version took
+-- `p_user_id uuid default auth.uid()`; the default made every call site read
+-- correctly and the parameter made the function an oracle — a signed-in
+-- employee could pass a colleague's uuid and learn who is active, who is an
+-- admin and who holds `verify`, one call at a time. Those are precisely the
+-- facts this module withholds.
+--
+-- auth.uid() is read inside the body instead. A caller can ask "may I?" and
+-- nothing else.
 create or replace function public.can_edit_customer_review_request(
-  p_request_id uuid,
-  p_user_id    uuid default auth.uid()
+  p_request_id uuid
 )
 returns boolean
 language sql
@@ -499,24 +529,65 @@ security definer
 set search_path = public, pg_temp
 stable
 as $$
-  select p_user_id is not null and exists (
+  select auth.uid() is not null and exists (
     select 1
     from public.customer_review_requests r
-    join public.users u on u.id = p_user_id and u.is_active
+    join public.users u on u.id = auth.uid() and u.is_active
     where r.id = p_request_id
       and r.status in ('draft', 'ready_to_send')
       and (
         u.role = 'admin'
         or (
-          r.created_by = p_user_id
-          and public.resolve_permission(p_user_id, 'customer_review_requests', 'use')
+          r.created_by = auth.uid()
+          and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
         )
       )
   );
 $$;
 
-revoke execute on function public.can_edit_customer_review_request(uuid, uuid) from public, anon;
-grant  execute on function public.can_edit_customer_review_request(uuid, uuid) to authenticated;
+revoke execute on function public.can_edit_customer_review_request(uuid) from public, anon;
+grant  execute on function public.can_edit_customer_review_request(uuid) to authenticated;
+
+-- May this person RAISE a request, and is the row they are raising their own?
+--
+-- The INSERT policy used to ask this inline: an EXISTS over public.users written
+-- straight into the WITH CHECK. It worked, and it made the module's primary
+-- action depend on a neighbouring table's grants and row security — the same
+-- objection that moved the read predicate behind definer rights, left standing
+-- on the write side because the read side was what had visibly broken.
+--
+-- The asymmetry was the bug. A tightening of public.users would have taken the
+-- create button with it, and the failure would have looked like a permissions
+-- problem in this module rather than a grant change in another.
+--
+-- Same shape as the read predicates, for the same reasons: definer rights, a
+-- pinned search_path, no acting-user parameter, and it never touches
+-- customer_review_requests — it is asked about a row that does not exist yet.
+create or replace function public.can_create_customer_review_request(
+  p_created_by uuid
+)
+returns boolean
+language sql
+security definer
+set search_path = public, pg_temp
+stable
+as $$
+  select auth.uid() is not null
+     and p_created_by = auth.uid()          -- a request is raised by its author
+     and exists (
+       select 1
+       from public.users u
+       where u.id = auth.uid()
+         and u.is_active
+         and (
+           u.role = 'admin'
+           or public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
+         )
+     );
+$$;
+
+revoke execute on function public.can_create_customer_review_request(uuid) from public, anon;
+grant  execute on function public.can_create_customer_review_request(uuid) to authenticated;
 
 -- THERE IS NO can_use_customer_review_outreach(). One was written and removed
 -- in the pre-review audit, and the reason is worth keeping: nothing called it.
@@ -570,10 +641,7 @@ alter table public.customer_review_request_events enable row level security;
 create policy "customer_review_requests_select" on public.customer_review_requests
   for select to authenticated
   using (
-    public.can_view_customer_review_request_row(
-      customer_review_requests.created_by,
-      auth.uid()
-    )
+    public.can_view_customer_review_request_row(customer_review_requests.created_by)
   );
 
 -- A request is born a draft, owned by its creator, claiming nothing.
@@ -604,14 +672,11 @@ create policy "customer_review_requests_insert" on public.customer_review_reques
     and closed_by is null
     and cancelled_by is null
     and cancel_reason is null
-    and exists (
-      select 1 from public.users u
-      where u.id = auth.uid() and u.is_active
-        and (
-          u.role = 'admin'
-          or public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
-        )
-    )
+    -- Authorship and authority are one question, asked with definer rights so
+    -- that this policy does not read public.users as the caller. Every pin
+    -- above stays where it is: the predicate answers who may create, not what
+    -- the created row is allowed to claim.
+    and public.can_create_customer_review_request(created_by)
   );
 
 -- The PREPARATION fields are editable in place while the request is still being
@@ -624,11 +689,11 @@ create policy "customer_review_requests_update" on public.customer_review_reques
   for update to authenticated
   using (
     status in ('draft', 'ready_to_send')
-    and public.can_edit_customer_review_request(id, auth.uid())
+    and public.can_edit_customer_review_request(id)
   )
   with check (
     status in ('draft', 'ready_to_send')
-    and public.can_edit_customer_review_request(id, auth.uid())
+    and public.can_edit_customer_review_request(id)
   );
 
 -- Discarding a request raised by mistake and never acted on. Anything past that
@@ -639,7 +704,7 @@ create policy "customer_review_requests_delete" on public.customer_review_reques
   using (
     status = 'draft'
     and whatsapp_opened_count = 0
-    and public.can_edit_customer_review_request(id, auth.uid())
+    and public.can_edit_customer_review_request(id)
   );
 
 -- A REQUEST THAT STILL HOLDS PHOTOGRAPHS CANNOT BE DELETED, and this trigger is
@@ -680,7 +745,7 @@ create trigger customer_review_requests_prevent_delete_trg
 
 create policy "customer_review_photos_select" on public.customer_review_request_photos
   for select to authenticated
-  using (public.can_view_customer_review_request(request_id, auth.uid()));
+  using (public.can_view_customer_review_request(request_id));
 
 -- THERE IS NO INSERT POLICY ON THIS TABLE, and its absence is the security
 -- boundary the module's upload path rests on.
@@ -907,7 +972,7 @@ grant  execute on function public.finish_customer_review_photo_removal(uuid) to 
 
 create policy "customer_review_events_select" on public.customer_review_request_events
   for select to authenticated
-  using (public.can_view_customer_review_request(request_id, auth.uid()));
+  using (public.can_view_customer_review_request(request_id));
 
 -- ═══ 7. Ready-to-send prerequisites ════════════════════════════════════════
 --
@@ -1482,7 +1547,7 @@ create policy "customer_review_photos_storage_select"
     and exists (
       select 1 from public.customer_review_requests r
       where r.id::text = split_part(storage.objects.name, '/', 1)
-        and public.can_view_customer_review_request(r.id, auth.uid())
+        and public.can_view_customer_review_request(r.id)
     )
   );
 
@@ -1555,6 +1620,7 @@ do $$
 declare
   v_n   integer;
   v_bad text;
+  v_col text;
 begin
   -- Every table carries RLS.
   select count(*) into v_n
@@ -1626,6 +1692,96 @@ begin
   -- 3. It must go through the row predicate.
   if v_bad not like '%can_view_customer_review_request_row%' then
     raise exception 'customer_review_requests_select does not use can_view_customer_review_request_row()';
+  end if;
+
+  -- ═══ NO BROWSER-CALLABLE FUNCTION MAY BE TOLD WHO TO ANSWER FOR ═══════════
+  --
+  -- Every predicate here is granted to `authenticated`, so its parameters are
+  -- chosen by a browser. A function that accepts an acting-user id and is
+  -- reachable from a session is an oracle: a signed-in employee can ask it about
+  -- a colleague and read back who is active, who is an admin and who holds
+  -- `verify` — the facts this module exists to withhold. The acting identity
+  -- must be taken from auth.uid() inside the body, never handed in.
+  --
+  -- Asserted structurally rather than by name, so a function added later is
+  -- caught by the same rule. Two uuid arguments is the shape that carries the
+  -- risk; the exception below names the offender.
+  select string_agg(f.proname || '(' || pg_get_function_arguments(f.oid) || ')', ', ')
+    into v_bad
+  from pg_proc f
+  join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public'
+    and f.proname like '%customer_review%'
+    and has_function_privilege('authenticated', f.oid, 'EXECUTE')
+    and pg_get_function_arguments(f.oid) ~* '(p_user_id|p_actor_id|p_acting)';
+
+  if v_bad is not null then
+    raise exception 'these functions are callable by authenticated AND accept an acting-user id: %', v_bad;
+  end if;
+
+  -- The removal halves DO take an actor, because the route establishes it from
+  -- the session and the trigger credits it in the audit trail. That is only safe
+  -- while no browser role can reach them.
+  if has_function_privilege('authenticated', 'public.begin_customer_review_photo_removal(uuid,uuid)', 'EXECUTE')
+     or has_function_privilege('anon', 'public.begin_customer_review_photo_removal(uuid,uuid)', 'EXECUTE') then
+    raise exception 'begin_customer_review_photo_removal takes an actor id and is reachable by a client role';
+  end if;
+
+  -- ═══ CREATING IS ASKED WITH DEFINER RIGHTS TOO ════════════════════════════
+  --
+  -- The read policy was moved behind a definer predicate and the write policy
+  -- was left reading public.users inline, which is the same defect on the other
+  -- side: a tightening of that table would have taken the create button with it.
+  select coalesce(with_check, '') into v_bad
+  from pg_policies
+  where schemaname = 'public'
+    and tablename  = 'customer_review_requests'
+    and cmd        = 'INSERT'
+    and policyname = 'customer_review_requests_insert';
+
+  if v_bad = '' then
+    raise exception 'customer_review_requests_insert is missing';
+  end if;
+  if v_bad ~* '\mfrom\M\s+(public\.)?users\M' then
+    raise exception 'customer_review_requests_insert reads public.users as the caller; use the creation predicate';
+  end if;
+  if v_bad not like '%can_create_customer_review_request%' then
+    raise exception 'customer_review_requests_insert does not use can_create_customer_review_request()';
+  end if;
+
+  -- ...and every field the create is not allowed to claim is still pinned.
+  foreach v_col in array array[
+    'sent_at', 'responded_at', 'verified_at', 'closed_at', 'cancelled_at',
+    'whatsapp_opened_at', 'review_public_url', 'sent_by', 'responded_by',
+    'verified_by', 'verification_note', 'closed_by', 'cancelled_by', 'cancel_reason'
+  ] loop
+    if v_bad not like '%' || v_col || '%' then
+      raise exception 'customer_review_requests_insert no longer pins %', v_col;
+    end if;
+  end loop;
+
+  if not exists (
+    select 1 from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+    where n.nspname = 'public'
+      and f.proname = 'can_create_customer_review_request'
+      and f.prosecdef
+      and array_to_string(coalesce(f.proconfig, '{}'), ',') like '%search_path=public, pg_temp%'
+  ) then
+    raise exception 'can_create_customer_review_request is missing, not SECURITY DEFINER, or does not pin search_path';
+  end if;
+
+  select coalesce(prosrc, '') into v_bad
+  from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public' and f.proname = 'can_create_customer_review_request';
+
+  if v_bad ~* '(from|join)\s+(public\.)?customer_review_requests\M' then
+    raise exception 'can_create_customer_review_request queries customer_review_requests';
+  end if;
+  if v_bad not like '%is_active%' then
+    raise exception 'can_create_customer_review_request no longer requires an active user';
+  end if;
+  if has_function_privilege('anon', 'public.can_create_customer_review_request(uuid)', 'EXECUTE') then
+    raise exception 'anon can execute the creation predicate';
   end if;
 
   -- 4. ...which must be SECURITY DEFINER with a pinned search_path, or it

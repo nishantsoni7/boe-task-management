@@ -138,22 +138,17 @@ describe('row-level security', () => {
   })
 
   test('the row predicate still admits exactly owner, admin and verifier', () => {
-    // The predicate moved out of the policy and into a function; it must not
-    // have changed on the way.
     const body = fnBody('can_view_customer_review_request_row')
-    assert.ok(body.includes('p_created_by = p_user_id'), 'owner branch')
+    assert.ok(body.includes('p_created_by = auth.uid()'), 'owner branch')
     assert.ok(body.includes("u.role = 'admin'"), 'admin branch')
     assert.ok(
-      body.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"),
+      body.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"),
       'verifier branch',
     )
-    // `use` opens the module; it does not disclose a colleague's customer.
     assert.equal(body.includes("'customer_review_requests', 'use'"), false)
-    // And the active-user requirement gates all three, not one of them.
     assert.ok(body.includes('u.is_active'), 'must require an active user')
     assert.ok(body.indexOf('u.is_active') < body.indexOf('and ('),
       'is_active must sit outside the three-way or')
-    // It decides from its arguments; it never reads the table it guards.
     assert.equal(
       /(from|join)\s+(public\.)?customer_review_requests\b/i.test(body), false,
       'the row predicate must not query customer_review_requests',
@@ -224,8 +219,8 @@ describe('row-level security', () => {
 describe('who can see what', () => {
   test('a `use` holder sees their OWN requests — module entry is not company-wide sight', () => {
     const body = fnBody('can_view_customer_review_request')
-    assert.ok(body.includes('r.created_by = p_user_id'))
-    assert.ok(body.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"))
+    assert.ok(body.includes('r.created_by = auth.uid()'))
+    assert.ok(body.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
     assert.ok(body.includes("u.role = 'admin'"))
     // `use` deliberately does NOT appear: holding it opens the module, not
     // everybody else's customer contacts.
@@ -243,31 +238,46 @@ describe('who can see what', () => {
 
   test('editing is narrower than reading, in both directions', () => {
     const body = fnBody('can_edit_customer_review_request')
-    // Only while it is still being prepared.
+    // A verifier reads every request and edits none of them.
+    assert.equal(body.includes("'customer_review_requests', 'verify'"), false)
+    // The owner edits their own, and only while it is still being prepared.
+    assert.ok(body.includes('r.created_by = auth.uid()'))
     assert.ok(body.includes("r.status in ('draft', 'ready_to_send')"))
-    // Owner + `use`, or an admin. A verifier is absent on purpose.
-    assert.ok(body.includes('r.created_by = p_user_id'))
-    assert.ok(body.includes("resolve_permission(p_user_id, 'customer_review_requests', 'use')"))
-    assert.equal(body.includes("'verify'"), false)
+    assert.ok(body.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'use')"))
+    assert.ok(body.includes("u.role = 'admin'"))
   })
 
   test('the predicates cannot be aimed at another user by a client', () => {
-    // They take a user id (policies pass auth.uid()), but they are never granted
-    // in a way that lets anon call them, and every policy passes auth.uid().
+    // THE STRONGER PROPERTY, and the one an earlier version of this test
+    // missed. It used to check only that every CALL SITE passed auth.uid(),
+    // which says nothing about what a browser can pass: these functions are
+    // granted to `authenticated`, so a signed-in employee could call one
+    // directly with a colleague's uuid and read back who is active, who is an
+    // admin and who holds `verify`. The acting identity is not a parameter
+    // any more; it is read from auth.uid() inside each body.
     for (const name of [
       'can_view_customer_review_request',
+      'can_view_customer_review_request_row',
       'can_edit_customer_review_request',
+      'can_create_customer_review_request',
     ]) {
-      assert.ok(code.includes(`revoke execute on function public.${name}(`), `${name} is not revoked from public/anon`)
+      const body = fnBody(name)
+      const signature = body.slice(0, body.indexOf(')'))
+      assert.equal(/p_user_id|p_actor_id|p_acting/.test(signature), false,
+        `${name} still takes an acting-user parameter`)
+      assert.ok(body.includes('auth.uid()'), `${name} must derive the caller itself`)
+      assert.ok(code.includes(`revoke execute on function public.${name}(`),
+        `${name} is not revoked from public/anon`)
     }
-    for (const match of code.matchAll(/can_(view|edit)_customer_review_request\(([^)]*)\)/g)) {
-      // Skip the definition and the REVOKE/GRANT statements, which name the
-      // function by its argument TYPES rather than calling it.
-      if (match[2].includes('p_request_id') || /uuid/.test(match[2])) continue
-      assert.ok(
-        match[2].includes('auth.uid('),
-        `a call site passes something other than auth.uid(): ${match[0]}`,
-      )
+
+    // The removal halves DO take an actor — the route establishes it from the
+    // session and the trigger credits it — which is only safe because no
+    // client role can execute them.
+    for (const name of ['begin_customer_review_photo_removal']) {
+      assert.ok(code.includes(`revoke execute on function public.${name}(uuid, uuid)\n  from public, anon, authenticated`)
+        || /revoke execute on function public\.begin_customer_review_photo_removal\(uuid, uuid\)[\s\S]{0,40}from public, anon, authenticated/.test(code),
+        `${name} must be revoked from authenticated`)
+      assert.ok(code.includes(`grant  execute on function public.${name}(uuid, uuid) to service_role`))
     }
   })
 })
@@ -474,10 +484,11 @@ describe('storage', () => {
   })
 
   test('reading an object asks the same question as reading the request', () => {
-    assert.ok(
-      statement('create policy "customer_review_photos_storage_select"')
-        .includes('public.can_view_customer_review_request(r.id, auth.uid())'),
-    )
+    const policy = statement('create policy "customer_review_photos_storage_select"')
+    assert.ok(policy.includes("bucket_id = 'customer-review-photos'"))
+    assert.ok(policy.includes('public.can_view_customer_review_request(r.id)'),
+      'the storage policy must reuse the request-id predicate')
+    assert.ok(policy.includes("split_part(storage.objects.name, '/', 1)"))
   })
 
   test('the select policy does not cast a path segment, so a stray object cannot error the query', () => {
