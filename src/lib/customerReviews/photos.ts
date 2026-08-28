@@ -76,10 +76,15 @@ export function reviewPhotoContentType(file: { name: string; type: string }): st
  * Validate a candidate image. Returns a sentence to show, or null when the file
  * is acceptable.
  *
- * The checks mirror the bucket's own limits exactly, so this is a courtesy to
- * the person choosing the file rather than the boundary. The boundary is the
- * bucket, which refuses regardless of what any client believes, plus the
- * mime_type and byte_size CHECK constraints on the metadata row.
+ * A COURTESY, EXPLICITLY NOT THE BOUNDARY. It saves a five-megabyte round trip
+ * to be told no, and it is the only thing in this module that ever looks at a
+ * filename or a browser-reported type — both of which are claims.
+ *
+ * The boundary is /api/customer-reviews/photos, which reads the bytes and parses
+ * the container (see ./imageBytes), and which is the only writer the database
+ * admits: the `authenticated` role holds neither a storage INSERT policy nor an
+ * INSERT privilege on the metadata table. A file that gets past this function is
+ * still refused there if it is not what it claims to be.
  */
 export function validateReviewPhoto(file: { name: string; type: string; size: number }): string | null {
   if (file.size === 0) return 'That file is empty.'
@@ -91,12 +96,16 @@ export function validateReviewPhoto(file: { name: string; type: string; size: nu
 /**
  * A safe, unique object key under the request's folder.
  *
+ * NOT USED TO UPLOAD ANY MORE. The trusted route generates its own key from the
+ * request id and a fresh uuid, because a path a client can choose is a path a
+ * client can aim at another request's folder — and the browser cannot write an
+ * object at all now. This is kept as the readable statement of the SHAPE both
+ * sides rely on, and its test is what pins that shape:
+ *
  * THE FIRST PATH SEGMENT IS ALWAYS THE REQUEST ID, because the storage policies
  * read ownership out of split_part(name, '/', 1) and the metadata row's
- * customer_review_photos_path_matches_request constraint checks it agrees. The
- * filename is fully generated: nothing a user typed reaches the path, only a
- * sanitised extension, so a crafted filename cannot escape the folder or
- * collide with another request's object.
+ * customer_review_photos_path_matches_request constraint checks the two agree.
+ * Nothing a user typed reaches the path, only a sanitised extension.
  */
 export function buildReviewPhotoPath(
   requestId: string,

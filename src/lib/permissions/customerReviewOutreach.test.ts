@@ -376,8 +376,17 @@ describe('the module never claims a message was sent, or a review posted', () =>
     const copy = launch.replace(/\s+/g, ' ')
     assert.ok(copy.includes('no photographs are attached'))
     const form = read('src/components/customerReviews/RequestForm.tsx').replace(/\s+/g, ' ')
-    assert.ok(form.includes('are <strong>not</strong> attached'))
-    assert.ok(form.includes('never sent automatically'))
+    assert.ok(form.includes('<strong> cannot</strong> attach photographs to it'))
+    assert.ok(form.includes('never sends them automatically'))
+    // And it says what the employee must do instead, which is the part that
+    // stops a photograph silently never reaching anybody.
+    assert.ok(form.includes('attach the files yourself in the chat before you send'))
+
+    const detail = read('src/app/customer-reviews/[id]/RequestDetailScreen.tsx').replace(/\s+/g, ' ')
+    assert.ok(detail.includes('<strong>BOE cannot attach them to WhatsApp</strong>'))
+    assert.ok(detail.includes('attach the files yourself in the chat'))
+    // A download control exists so they can actually do it.
+    assert.ok(detail.includes('downloadable'))
   })
 
   test('the detail screen keeps the six milestones separate', () => {

@@ -55,10 +55,30 @@ The module deliberately registers **no `view` action**.
   preset level ever grants it. It has to be ticked deliberately in Custom.
 * `verify` **depends on** `use` (`ACTION_DEPENDENCIES`), so ticking it brings
   module entry with it, and withdrawing `use` takes `verify` with it.
-* The migration grants role defaults to **`admin` only**. `manager` and `member`
-  get nothing: who runs outreach, and who signs it off, are per-person
-  decisions.
+* **Administrators hold both actions from the moment the migration applies** —
+  `role_permissions` gets an admin row for every action the module registers.
+  `manager` and `member` get nothing. Who else runs outreach, and who else is
+  trusted to verify it, are per-person decisions in Control Center.
+* The migration creates **no employee override**. That is a different level
+  from the role rows above, and the distinction is the whole reason those two
+  statements can both be true at once.
 * Admins bypass the engine, as in every other cut-over module.
+
+### Effective permissions after the migration
+
+| Who | `use` | `verify` | Decided at |
+| --- | --- | --- | --- |
+| Admin role | **allowed** | **allowed** | `role` |
+| Manager role | denied | denied | `system_default` |
+| Member role | denied | denied | `system_default` |
+| Explicitly assigned user | allowed | denied | `employee_override` |
+| Explicitly assigned verifier | allowed | **allowed** | `employee_override` |
+| Unauthorized employee | denied | denied | `system_default` |
+
+Precedence is `employee_override > department > role > system_default`
+(20260660 §7). Ticking **Verify** in Custom brings **Use** with it, because
+`verify` depends on `use`. Proved in
+`src/lib/permissions/customerReviewEffectiveAccess.test.ts`.
 
 ### Why `use` and not `view`
 
@@ -211,10 +231,27 @@ presence is never verification.
 
 * Bucket `customer-review-photos`: **private**, 5 MB per object,
   `allowed_mime_types` = `image/jpeg`, `image/png`, `image/webp`.
-* The bucket's own limits are the **server-side** validation.
-  `validateReviewPhoto()` mirrors them exactly so a file that passes in the
-  browser cannot then be refused by Storage; `mime_type` and `byte_size` CHECK
-  constraints on the metadata row are a third gate.
+* **Uploads go through one trusted server route**,
+  `POST /api/customer-reviews/photos`. The browser cannot write an object or
+  register one: `authenticated` holds no storage INSERT policy for this bucket,
+  no metadata INSERT policy, and no INSERT privilege on the metadata table.
+  The migration asserts all three at apply time.
+* The route **reads the bytes**. `inspectImageBytes()` parses the real
+  container — PNG signature + IHDR + IEND, JPEG SOI + SOF + EOI, WEBP RIFF —
+  and requires the container to account for the **whole file**, which is what
+  rejects a polyglot (a valid image with a ZIP, a script or a second image
+  appended). `mime_type` and `byte_size` are then written from that inspection,
+  so they are facts rather than claims.
+* `validateReviewPhoto()` still runs in the browser first. It is a **courtesy**
+  — it saves a five-megabyte round trip to be told no — and is explicitly not
+  the boundary.
+* The **object key is generated on the server** from the request id and a fresh
+  uuid. No path, bucket or key is accepted from the body; the only three fields
+  read are `requestId`, `kind` and `file`.
+* A repeated upload is refused by **content hash** (`content_sha256`), in the
+  route and again by a per-request unique constraint — so a double click is one
+  attachment whatever races with what, and a genuinely different photograph is
+  never blocked.
 * Object key: `<request_id>/<kind>/<timestamp>_<random>.<ext>`. **Nothing the
   user typed reaches the path** — only a sanitised extension. Collisions are
   impossible; a crafted filename cannot escape the folder.
@@ -296,9 +333,15 @@ is not a number, and an unsafe link.
 and a `wa.me` link was opened with the exact previewed message prefilled.
 
 **Does not:** that WhatsApp accepted it, that it was delivered, that it was
-read, or that anybody pressed send. **And it does not send the photographs** —
-a `wa.me` link cannot attach a file, so the project photographs stay in BOE's
-private bucket. Every label in the module says so.
+read, or that anybody pressed send.
+
+**And it does not send the photographs.** A `wa.me` link carries a phone number
+and a text parameter; there is no way to attach a file to one. The project
+photographs are stored privately with the request as BOE's own reference. If
+the employee wants the customer to see them, they open each one from the
+request screen to save it and **attach the files themselves in WhatsApp before
+sending**. The request screen carries a download control on every photograph
+for exactly that, using the same short-lived signed URL the preview uses.
 
 The button awaits `record_customer_review_whatsapp_opened()` **before** pointing
 the tab at `wa.me`; if the database refuses, the tab is closed and the message
@@ -317,7 +360,10 @@ clicks in one tick) and a 5-second cooldown.
 | `src/lib/customerReviews/contact.test.ts` | Normalisation, E.164 validation, masking, `waMePhone`, and a sweep asserting no module file logs the number |
 | `src/lib/customerReviews/destination.test.ts` | https-only, credentialled URLs, every unsafe protocol, no invented BOE review link |
 | `src/lib/customerReviews/status.test.ts` | The transition table, terminal states, verifier-only moves, owner-only moves, Ready-to-Send blockers |
-| `src/lib/customerReviews/photos.test.ts` | Type and size validation matching the bucket, extension laundering, path generation, collision resistance |
+| `src/lib/customerReviews/photos.test.ts` | The browser-side courtesy check, extension laundering, path shape, collision resistance |
+| `src/lib/customerReviews/imageBytes.test.ts` | The real validator, driven by byte fixtures built to spec: genuine PNG/JPEG/WEBP accepted; PDF, ZIP, ELF, EXE, SVG, HTML, GIF, TIFF refused; disguised, truncated, malformed and **polyglot** files refused; the size limit is the real length |
+| `src/lib/customerReviews/uploadRoute.test.ts` | The route: authentication before the body is read, `use` resolved, caller-scoped RLS read, kind/status rules, inspection before storage, server-generated path, no path field in the body, cleanup on metadata failure, closed-list errors, no service-role key on the client, and the database half of the boundary |
+| `src/lib/customerReviews/draftLeniency.test.ts` | Column nullability, what a bare draft may omit, that a supplied-but-invalid value is still refused, and that both gates re-check in the database |
 | `src/lib/customerReviews/migration.test.ts` | RLS on every table, no `USING (true)`, append-only trail, the column grant excludes `status`, storage policies, SQL transition table **identical** to the UI's, deny-by-default registration |
 | `src/lib/permissions/customerReviewOutreach.test.ts` | Registry, protected/dependency wiring, capability derivation, per-request edit rule, the route guard, the launcher card, Control Center, and the screens' RPC and double-click discipline |
 | `src/lib/permissions/customerReviewEffectiveAccess.test.ts` | The resolver's four levels modelled against the migration's own seed rows — what admin, manager, member, an assigned user and an unauthorized user each end up holding |
@@ -375,12 +421,14 @@ applies it deliberately.
    with an owner.
 3. **The `+91` default** applies only to a bare 10-digit number. It is a
    deliberate assumption and is documented in `contact.ts`.
-3b. **Photo metadata is client-reported.** `mime_type` and `byte_size` on
-   `customer_review_request_photos` are what the browser said, not what the
-   object is. The real limits are enforced by the bucket
-   (`allowed_mime_types`, `file_size_limit`), so a false value can make the
-   size caption wrong and nothing else. Verifying it would need a server route
-   holding the service-role key, which this module deliberately does not have.
+3b. **Image validation is structural, not a full decode.** The route parses
+   each container and requires it to account for the whole file, which is what
+   catches disguised, truncated and polyglot files. It does not decode pixel
+   data, so a file that is a structurally valid image but corrupt inside is
+   accepted and will simply render badly. A full decode would mean depending
+   on libvips, which is not reliably present in every environment here — and a
+   validator that fails open or hard depending on a native library is not a
+   validator.
 3c. **The steering check is a phrase list, not a sentiment model.** It catches
    the phrasings people actually use; a determined employee could still write a
    steered reference it does not match. It is one control among several, not a
@@ -425,8 +473,9 @@ tracking, a settings area, a reusable workflow engine, a general media library.
 
 1. **Apply the migration** to a disposable project and run the §12 procedure.
    Confirm the four prerequisites listed at the top of the migration file.
-2. **Who holds `verify`?** The migration grants it to nobody. Somebody has to
-   decide, per person.
+2. **Who beyond an administrator should hold `verify`?** Administrators hold it
+   from the moment the migration applies. Anyone else is a per-person decision
+   in Control Center → Access Control.
 3. **Should BOE have one standing review URL?** If yes, that is a small follow-up
    (a settings row plus a default in the form), and it is a decision, not an
    implementation detail.

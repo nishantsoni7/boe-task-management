@@ -292,8 +292,10 @@ describe('ready-to-send prerequisites', () => {
       greeting_name: null,
       project_reference: null,
     }, 0)
-    // Five fields, plus the photograph and its sharing confirmation.
-    assert.equal(blockers.length, 7)
+    // Five fields, plus the photograph. The sharing confirmation is not asked
+    // for while there is nothing to share — it appears once a photograph does.
+    assert.equal(blockers.length, 6)
+    assert.equal(blockers.some(b => b.includes('permission to share')), false)
   })
 
   test('AT LEAST ONE PROJECT PHOTOGRAPH IS REQUIRED', () => {

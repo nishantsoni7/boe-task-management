@@ -367,14 +367,22 @@ describe('the column grant is what makes the RPC unavoidable', () => {
 
   test('anon holds nothing anywhere in the module', () => {
     assert.ok(code.includes('revoke insert, update, delete, truncate on public.customer_review_requests from anon'))
-    assert.ok(code.includes('revoke insert, delete    on public.customer_review_request_photos from anon'))
+    assert.ok(code.includes('revoke delete                   on public.customer_review_request_photos from anon'))
+  })
+
+  test('AUTHENTICATED CANNOT REGISTER AN IMAGE — the privilege is gone, not just the policy', () => {
+    // The metadata INSERT policy was withdrawn so that only the trusted upload
+    // route can create a photo row. Revoking the privilege as well means a
+    // policy added back by mistake still could not write.
+    assert.ok(code.includes(
+      'revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon',
+    ))
   })
 })
 
 describe('storage', () => {
-  test('all three object policies are bucket-scoped', () => {
+  test('both remaining object policies are bucket-scoped', () => {
     for (const policy of [
-      'customer_review_photos_storage_insert',
       'customer_review_photos_storage_select',
       'customer_review_photos_storage_delete',
     ]) {
@@ -400,11 +408,14 @@ describe('storage', () => {
     )
   })
 
-  test('writing an object requires ownership of a live request', () => {
-    const insert = statement('create policy "customer_review_photos_storage_insert"')
-    assert.ok(insert.includes("r.created_by = auth.uid()"))
-    assert.ok(insert.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'use')"))
-    assert.ok(insert.includes("r.status in ('draft', 'ready_to_send', 'sent', 'customer_responded')"))
+  test('NO CLIENT MAY WRITE AN OBJECT — there is no storage INSERT policy at all', () => {
+    // The half that actually stops the bytes. Without it a caller could upload
+    // anything under a Content-Type of their choosing and simply never call the
+    // route, leaving an unvalidated object in the bucket.
+    assert.equal(code.includes('create policy "customer_review_photos_storage_insert"'), false)
+    for (const match of code.matchAll(/create policy "(customer_review[^"]*)" *\n? *on storage\.objects\s+for (\w+)/g)) {
+      assert.notEqual(match[2], 'insert', `${match[1]} writes objects`)
+    }
   })
 
   test('deleting is limited to the preparation stage', () => {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ImagePlus, Trash2 } from 'lucide-react'
+import { Download, ImagePlus, Trash2 } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
 import {
@@ -9,34 +9,33 @@ import {
   REVIEW_PHOTO_ACCEPT,
   REVIEW_PHOTO_BUCKET,
   REVIEW_PHOTO_TYPES_LABEL,
-  buildReviewPhotoPath,
   formatPhotoSize,
-  reviewPhotoContentType,
   validateReviewPhoto,
 } from '@/lib/customerReviews/photos'
 import type { CustomerReviewPhoto, PhotoKind } from '@/lib/customerReviews/types'
 
 // Project photographs and review proof, on a private bucket.
 //
-// Same shape as the Finance payment-proof upload: the object key is fully
-// generated (nothing a user typed reaches the path), the bucket is private, and
-// the images are shown through short-lived signed URLs whose issue is governed
+// UPLOADING GOES THROUGH THE SERVER. This component POSTs the file to
+// /api/customer-reviews/photos, which authenticates the caller, checks the
+// permission, reads the bytes, decides what the file really is, generates the
+// object key and writes both the object and its metadata row. The browser
+// cannot do any of that itself any more: the storage INSERT policy and the
+// metadata INSERT policy were both withdrawn from `authenticated`, so a direct
+// upload is refused by the database rather than merely discouraged here.
+//
+// validateReviewPhoto() still runs before the POST. It is a COURTESY — it saves
+// a five-megabyte round trip to be told no — and it is not the boundary. The
+// route re-checks everything and does not trust a single field this component
+// sends.
+//
+// READING is still direct: short-lived signed URLs, minted per render, governed
 // by the same SELECT policy that decides who may read the request. There is no
 // public URL anywhere in this file.
 //
-// THE COMPENSATION THAT MATTERS. An upload is two writes — the object, then the
-// metadata row — and the row is what makes the object discoverable and what the
-// path constraint checks. If the row fails, the object is removed again before
-// this function returns, so a failed attach cannot leave an orphan sitting in a
-// bucket nothing points at. The storage DELETE policy permits exactly that
-// cleanup for the owner while the request is still being prepared.
-//
-// NOT A MEDIA LIBRARY. Upload only, scoped to one request. Selecting an
-// existing project photograph from elsewhere in BOE is not implemented and is
-// recorded as a known limitation — the images that exist live inside Order
-// submissions and Showroom products, behind their own buckets and their own
-// authorization, and reaching across to them is a far larger piece of work than
-// this module.
+// NOT A MEDIA LIBRARY. Upload only, scoped to one request. Selecting an existing
+// project photograph from elsewhere in BOE is not implemented and is recorded as
+// a known limitation.
 
 const SIGNED_URL_TTL_SECONDS = 300
 
@@ -46,10 +45,12 @@ export function PhotoManager({
   kind,
   photos,
   onChanged,
-  /** False once the request is past preparation, or for a non-owner. */
+  /** False once the request is past the stage this kind may be attached in. */
   canAttach,
   canRemove,
   emptyHint,
+  /** Show a per-photo download control, for attaching by hand in WhatsApp. */
+  downloadable = false,
 }: {
   supabase: SupabaseClient
   requestId: string | null
@@ -59,6 +60,7 @@ export function PhotoManager({
   canAttach: boolean
   canRemove: boolean
   emptyHint: string
+  downloadable?: boolean
 }) {
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState(false)
@@ -72,10 +74,10 @@ export function PhotoManager({
   useEffect(() => {
     let active = true
     const paths = photos.map(p => p.storage_path)
-    // Nothing to sign. The previously signed URLs are left in state rather than
+    // Nothing to sign. Previously signed URLs are left in state rather than
     // cleared: they are keyed by object path, so a removed photo's entry is
-    // simply never looked up again, and clearing here would be a setState in an
-    // effect body for no visible change.
+    // never looked up again, and clearing here would be a setState in an effect
+    // body for no visible change.
     if (paths.length === 0) return
 
     supabase.storage
@@ -96,6 +98,9 @@ export function PhotoManager({
 
   const attach = useCallback(async (files: FileList | null) => {
     if (!files || files.length === 0 || !requestId) return
+    // State is too slow to stop a double click; the ref is what actually stops
+    // a second POST, and the server refuses a duplicate by content hash even if
+    // two tabs race past this.
     if (uploading.current) return
     uploading.current = true
     setBusy(true)
@@ -112,53 +117,36 @@ export function PhotoManager({
       }
 
       for (const file of Array.from(files).slice(0, room)) {
+        // A courtesy check, not the boundary. See the note at the top.
         const invalid = validateReviewPhoto(file)
         if (invalid) { setError(invalid); return }
 
-        const contentType = reviewPhotoContentType(file)
-        if (!contentType) { setError(`Only ${REVIEW_PHOTO_TYPES_LABEL} images can be attached.`); return }
+        const body = new FormData()
+        body.append('requestId', requestId)
+        body.append('kind', kind)
+        body.append('file', file)
 
-        const path = buildReviewPhotoPath(requestId, kind, file.name)
-
-        const { error: uploadError } = await supabase.storage
-          .from(REVIEW_PHOTO_BUCKET)
-          .upload(path, file, { contentType, upsert: false })
-        if (uploadError) {
-          setError('That photo could not be uploaded. Check the file and try again.')
-          return
-        }
-
-        const { error: rowError } = await supabase
-          .from('customer_review_request_photos')
-          .insert({
-            request_id: requestId,
-            kind,
-            storage_path: path,
-            // The stored name is for display only and is never used to build a
-            // path; it is trimmed so a pathological filename cannot exceed the
-            // column's own limit and fail the insert after the object landed.
-            file_name: file.name.slice(0, 200),
-            mime_type: contentType,
-            byte_size: file.size,
-          })
-
-        if (rowError) {
-          // COMPENSATION: the object exists and nothing points at it. Remove it
-          // before returning, so a failed attach leaves the request exactly as
-          // it was.
-          await supabase.storage.from(REVIEW_PHOTO_BUCKET).remove([path]).catch(() => {})
-          setError('That photo could not be attached to this request.')
+        const response = await fetch('/api/customer-reviews/photos', { method: 'POST', body })
+        if (!response.ok) {
+          // The route's own sentence, which is chosen from a closed list and
+          // never contains a filename, a path or a customer detail.
+          const payload = await response.json().catch(() => null)
+          setError(typeof payload?.error === 'string'
+            ? payload.error
+            : 'That photo could not be attached.')
           return
         }
       }
 
       await onChanged()
+    } catch {
+      setError('That photo could not be attached. Check your connection and try again.')
     } finally {
       uploading.current = false
       setBusy(false)
       if (inputRef.current) inputRef.current.value = ''
     }
-  }, [supabase, requestId, kind, photos.length, onChanged])
+  }, [requestId, kind, photos.length, onChanged])
 
   const remove = useCallback(async (photo: CustomerReviewPhoto) => {
     if (busy) return
@@ -167,7 +155,9 @@ export function PhotoManager({
     try {
       // The metadata row first: while it exists the object is still
       // discoverable, so a failure here is recoverable and a failure after it
-      // leaves nothing dangling that anybody can see.
+      // leaves nothing dangling that anybody can see. Deleting IS still a client
+      // operation — the DELETE policies are deliberately kept, because the
+      // compensation path must not need a server route.
       const { error: rowError } = await supabase
         .from('customer_review_request_photos')
         .delete()
@@ -216,24 +206,47 @@ export function PhotoManager({
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px' }}>
                   <span style={{ fontSize: '10px', color: colors.muted }}>{formatPhotoSize(photo.byte_size)}</span>
-                  {canRemove && (
-                    <button
-                      type="button"
-                      onClick={() => remove(photo)}
-                      disabled={busy}
-                      aria-label={`Remove ${photo.file_name}`}
-                      // 32px square. The icon is 13px; the padding is what makes
-                      // it hittable with a thumb rather than only with a mouse.
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: '32px', height: '32px', margin: '-6px -6px -6px 0',
-                        borderRadius: '6px', border: 'none', background: 'transparent',
-                        color: colors.red, cursor: busy ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      <Trash2 size={13} strokeWidth={2} />
-                    </button>
-                  )}
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    {/* Opening the signed URL is how an employee gets the file
+                        onto their device, so they can attach it by hand in
+                        WhatsApp — which is the only way it ever reaches a
+                        customer. */}
+                    {downloadable && urls[photo.storage_path] && (
+                      <a
+                        href={urls[photo.storage_path]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label={`Open ${photo.file_name} to save it`}
+                        title="Open to save, then attach it in WhatsApp"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: '32px', height: '32px', margin: '-6px 0 -6px -6px',
+                          borderRadius: '6px', color: colors.blue,
+                        }}
+                      >
+                        <Download size={13} strokeWidth={2} />
+                      </a>
+                    )}
+                    {canRemove && (
+                      <button
+                        type="button"
+                        onClick={() => remove(photo)}
+                        disabled={busy}
+                        aria-label={`Remove ${photo.file_name}`}
+                        // 32px square. The icon is 13px; the padding is what
+                        // makes it hittable with a thumb rather than only with a
+                        // mouse.
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                          width: '32px', height: '32px', margin: '-6px -6px -6px 0',
+                          borderRadius: '6px', border: 'none', background: 'transparent',
+                          color: colors.red, cursor: busy ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        <Trash2 size={13} strokeWidth={2} />
+                      </button>
+                    )}
+                  </span>
                 </div>
               </div>
             </div>
@@ -257,17 +270,18 @@ export function PhotoManager({
             className="boe-btn boe-btn-ghost"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', fontSize: '12px',
+              padding: '7px 14px', fontSize: '12px', minHeight: '36px',
               cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
             }}
           >
             <ImagePlus size={14} strokeWidth={2} />
-            {busy ? 'Attaching…' : kind === 'project_photo' ? 'Add project photos' : 'Attach proof image'}
+            {busy ? 'Checking and uploading…' : kind === 'project_photo' ? 'Add project photos' : 'Attach proof image'}
           </label>
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px' }}>
             {REVIEW_PHOTO_TYPES_LABEL}, up to 5 MB each
             {kind === 'project_photo' ? `, ${MAX_PROJECT_PHOTOS} maximum` : ''}.
             {kind === 'project_photo' ? ' Use real photographs of this customer’s own project.' : ''}
+            {' '}Each file is checked on the server before it is stored.
           </p>
         </>
       )}

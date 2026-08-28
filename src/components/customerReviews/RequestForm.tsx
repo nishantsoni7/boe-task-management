@@ -395,8 +395,9 @@ export function RequestForm({
         subtitle="Required. Real photographs of this customer’s own project, kept with the request as BOE’s own reference."
       >
         <p style={{ ...HINT, marginBottom: '10px' }}>
-          WhatsApp opens with the text invitation only — these photographs are <strong>not</strong> attached
-          to it and are never sent automatically. Share them yourself in the chat if you want to.
+          Stored privately with this request. WhatsApp opens with the text invitation only — BOE
+          <strong> cannot</strong> attach photographs to it and never sends them automatically. If you
+          want the customer to see them, attach the files yourself in the chat before you send.
         </p>
         <PhotoManager
           supabase={supabase}

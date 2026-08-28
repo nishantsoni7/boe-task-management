@@ -443,35 +443,47 @@ describe('storage: an object cannot be attached to somebody else’s request', (
 
   test('the object path is the authorization, and it is the request id', () => {
     for (const name of [
-      'customer_review_photos_storage_insert',
       'customer_review_photos_storage_select',
       'customer_review_photos_storage_delete',
     ]) {
       const body = policy(name)
       assert.ok(body.includes("bucket_id = 'customer-review-photos'"), name)
-      if (name.endsWith('delete')) continue // the admin branch is bucket-wide by design
-      assert.ok(body.includes("split_part(storage.objects.name, '/', 1)"), name)
     }
+    // Reading resolves the request out of the first path segment; the delete
+    // policy's admin branch is bucket-wide on purpose, so it can reach an object
+    // whose request row is already gone.
+    assert.ok(policy('customer_review_photos_storage_select')
+      .includes("split_part(storage.objects.name, '/', 1)"))
   })
 
-  test('uploading requires OWNING the request the path names', () => {
-    const body = policy('customer_review_photos_storage_insert')
-    assert.ok(body.includes('r.created_by = auth.uid()'))
-    assert.ok(body.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'use')"))
-    // And only while the request is still live.
-    assert.ok(body.includes("r.status in ('draft', 'ready_to_send', 'sent', 'customer_responded')"))
+  test('NO CLIENT CAN UPLOAD AN OBJECT OR REGISTER ONE', () => {
+    // The two absences that make /api/customer-reviews/photos the only writer,
+    // and therefore make its byte inspection a boundary rather than advice.
+    assert.equal(code.includes('create policy "customer_review_photos_storage_insert"'), false)
+    assert.equal(code.includes('create policy "customer_review_photos_insert"'), false)
+    // Belt to those braces: the privilege is revoked as well, so a policy added
+    // back by mistake still could not write.
+    assert.ok(code.includes(
+      'revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon',
+    ))
   })
 
   test('METADATA CANNOT POINT AT ANOTHER REQUEST’S OBJECT', () => {
-    // Three things together: the row must be for a request the caller may edit,
-    // the path's first segment must equal that request id, and the path is
-    // UNIQUE so an object already claimed cannot be claimed again.
+    // The route generates the key, and the schema refuses a row that disagrees
+    // with it: the first path segment must equal the request id, the path is
+    // UNIQUE so an object cannot be claimed twice, and the same bytes cannot be
+    // registered twice against one request.
     assert.ok(code.includes("constraint customer_review_photos_path_matches_request check ("))
     assert.ok(code.includes("split_part(storage_path, '/', 1) = request_id::text"))
     assert.ok(code.includes('storage_path text not null unique'))
-    assert.ok(policy('customer_review_photos_insert').includes('uploaded_by = auth.uid()'))
+    assert.ok(code.includes('constraint customer_review_photos_unique_content_per_request'))
   })
 
+  test('the stored type and size are FACTS the server established', () => {
+    // content_sha256 exists, is constrained to a hex digest, and — like
+    // mime_type and byte_size — can only be written by the trusted route.
+    assert.ok(code.includes("content_sha256 text not null check (content_sha256 ~ '^[0-9a-f]{64}$')"))
+  })
   test('a path with no separator is rejected outright', () => {
     // Otherwise split_part returns the whole string and the constraint could be
     // satisfied by a bare filename sitting at the bucket root.

@@ -272,8 +272,27 @@ create table public.customer_review_request_photos (
 
   -- Display only. Never used to build a path.
   file_name text not null check (btrim(file_name) <> '' and length(file_name) <= 200),
+
+  -- FACTS ABOUT THE BYTES, not claims about them.
+  --
+  -- These two used to be whatever the browser said — `file.type` (derived from
+  -- the extension) and `file.size`. Both are now written by
+  -- /api/customer-reviews/photos after it has read the file and parsed its
+  -- container, and no client role can insert a row at all, so a value here is
+  -- something a server established rather than something a caller asserted.
   mime_type text not null check (mime_type in ('image/jpeg', 'image/png', 'image/webp')),
   byte_size integer not null check (byte_size > 0 and byte_size <= 5242880),
+
+  -- sha256 of the accepted bytes, lower-case hex.
+  --
+  -- It is what makes a repeated upload answerable by CONTENT rather than by a
+  -- timer: the same photograph offered twice for one request is one attachment,
+  -- whatever raced with what, and a genuinely different photograph is never
+  -- blocked. The uniqueness is per request, not global — two customers may
+  -- legitimately have the same photograph of the same delivered chair.
+  content_sha256 text not null check (content_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint customer_review_photos_unique_content_per_request
+    unique (request_id, content_sha256),
 
   uploaded_by uuid not null default auth.uid() references public.users(id),
   uploaded_at timestamptz not null default now(),
@@ -535,36 +554,25 @@ create policy "customer_review_photos_select" on public.customer_review_request_
   for select to authenticated
   using (public.can_view_customer_review_request(request_id, auth.uid()));
 
--- Project photographs are attached while the request is being prepared, by
--- whoever may edit it. Review proof is different: it is attached AFTER the
--- outreach happened, so it is allowed on a sent or responded request too — by
--- the owner or an admin, never by a verifier, who checks evidence rather than
--- supplying it.
-create policy "customer_review_photos_insert" on public.customer_review_request_photos
-  for insert to authenticated
-  with check (
-    uploaded_by = auth.uid()
-    and (
-      (kind = 'project_photo' and public.can_edit_customer_review_request(request_id, auth.uid()))
-      or (
-        kind = 'review_proof'
-        and exists (
-          select 1
-          from public.customer_review_requests r
-          join public.users u on u.id = auth.uid() and u.is_active
-          where r.id = request_id
-            and r.status in ('sent', 'customer_responded')
-            and (
-              u.role = 'admin'
-              or (
-                r.created_by = auth.uid()
-                and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
-              )
-            )
-        )
-      )
-    )
-  );
+-- THERE IS NO INSERT POLICY ON THIS TABLE, and its absence is the security
+-- boundary the module's upload path rests on.
+--
+-- An earlier version had one: a client could insert its own row, supplying
+-- mime_type and byte_size from `file.type` and `file.size` — two values the
+-- browser derives from the filename. Nothing had read a byte, so "image/png,
+-- 100 bytes" could describe three megabytes of anything.
+--
+-- Registering an image is now something only /api/customer-reviews/photos can
+-- do. That route authenticates the caller, resolves
+-- customer_review_requests.use for them, reads the request through THEIR OWN
+-- RLS, applies the kind/status rule, parses the file's container to establish
+-- what it really is, generates the object key itself, and only then writes —
+-- with the service role, which no policy constrains and which never leaves the
+-- server.
+--
+-- The rule that follows: an image can only be registered by something that has
+-- read it. A client that tries goes through the route or does not go at all.
+-- The storage INSERT policy is absent for the same reason (see §10).
 
 -- Removing a photograph attached by mistake.
 --
@@ -1148,11 +1156,20 @@ grant update (
 
 revoke insert, update, delete, truncate on public.customer_review_requests from anon;
 
--- Photo metadata: inserted and deleted under the policies above, never edited.
--- A row that could be re-pointed at a different object would make
--- customer_review_photos_path_matches_request decorative.
-revoke update, truncate on public.customer_review_request_photos from authenticated, anon;
-revoke insert, delete    on public.customer_review_request_photos from anon;
+-- Photo metadata: DELETED under the policy above, never inserted and never
+-- edited by a client.
+--
+-- INSERT is revoked from `authenticated` as well as from `anon`, which is belt
+-- to the braces of the absent INSERT policy: a policy added by mistake later
+-- still could not write, because the privilege is gone. Registering an image is
+-- /api/customer-reviews/photos and nothing else.
+--
+-- UPDATE is revoked because a row that could be re-pointed at a different object
+-- would make customer_review_photos_path_matches_request decorative — and would
+-- let somebody rewrite mime_type or content_sha256 after the server established
+-- them.
+revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon;
+revoke delete                   on public.customer_review_request_photos from anon;
 
 -- The trail: readable, never writable. Neither policy nor grant admits a write,
 -- and TRUNCATE — which no policy governs and no row trigger fires on — cannot
@@ -1176,24 +1193,19 @@ comment on column public.customer_review_requests.review_public_url is
 -- customer_review_photos_path_matches_request constraint is what keeps the two
 -- in agreement.
 
-create policy "customer_review_photos_storage_insert"
-  on storage.objects
-  for insert to authenticated
-  with check (
-    bucket_id = 'customer-review-photos'
-    and exists (
-      select 1 from public.customer_review_requests r
-      where r.id::text = split_part(storage.objects.name, '/', 1)
-        and r.status in ('draft', 'ready_to_send', 'sent', 'customer_responded')
-        and (
-          exists (select 1 from public.users u where u.id = auth.uid() and u.is_active and u.role = 'admin')
-          or (
-            r.created_by = auth.uid()
-            and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
-          )
-        )
-    )
-  );
+-- THERE IS NO INSERT POLICY ON storage.objects FOR THIS BUCKET.
+--
+-- The pair to the missing metadata INSERT policy above, and the half that
+-- actually stops the bytes. `authenticated` cannot put an object in
+-- customer-review-photos by any route: not through supabase-js, not through the
+-- Storage REST API, not with a forged path. The service role is not governed by
+-- policies, so /api/customer-reviews/photos can — after it has read the file.
+--
+-- WHAT THIS CLOSES. With a client INSERT policy, a caller could upload
+-- arbitrary bytes under a Content-Type of their choosing and then simply not
+-- call the route; the object would sit in the bucket, unregistered and
+-- unvalidated, reachable by anyone who could read that request's folder. The
+-- validation would have been advisory. It is not.
 
 -- Reading — which is also what createSignedUrl is governed by — follows exactly
 -- who may read the request. A verifier sees the photographs because that is
@@ -1329,6 +1341,35 @@ begin
     raise exception 'the customer-review-photos bucket is missing or public';
   end if;
 
+  -- NO CLIENT MAY REGISTER AN IMAGE. The absence of these two policies is what
+  -- makes /api/customer-reviews/photos the only writer, and therefore what makes
+  -- the byte inspection a boundary rather than a courtesy. Asserted rather than
+  -- trusted, because a later migration adding one back would silently turn the
+  -- validation off.
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'customer_review_request_photos'
+    and cmd = 'INSERT';
+  if v_n <> 0 then
+    raise exception 'customer_review_request_photos has an INSERT policy; only the trusted upload route may register an image';
+  end if;
+
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and cmd = 'INSERT'
+    and policyname like 'customer_review_photos%';
+  if v_n <> 0 then
+    raise exception 'a client INSERT policy exists on the customer-review-photos bucket';
+  end if;
+
+  -- And the privilege is gone as well as the policy.
+  if has_table_privilege('authenticated', 'public.customer_review_request_photos', 'INSERT') then
+    raise exception 'authenticated still holds INSERT on customer_review_request_photos';
+  end if;
+
   -- Both actions are registered deny-by-default.
   select count(*) into v_n
   from public.module_permission_actions mpa
@@ -1341,7 +1382,15 @@ begin
     raise exception 'customer_review_requests must register use and verify as deny-by-default (got %)', v_n;
   end if;
 
-  -- This migration grants the module to nobody but the admin role.
+  -- WHO HOLDS WHAT, after this migration:
+  --   admin    use = allowed, verify = allowed, from the role rows above.
+  --   manager  neither, unless an administrator assigns it.
+  --   member   neither, unless an administrator assigns it.
+  -- What this assertion checks is narrower and is about PER-PERSON grants: the
+  -- migration must not hand either action to an individual employee. Control
+  -- Center writes those rows later, and they are the highest level in the
+  -- resolver, so a stray one here would be invisible and would outrank
+  -- everything.
   select count(*) into v_n
   from public.employee_permission_overrides epo
   join public.permission_modules pm on pm.id = epo.module_id

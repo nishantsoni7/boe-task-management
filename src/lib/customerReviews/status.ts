@@ -142,10 +142,15 @@ export function readyToSendBlockers(
   if (containsSteeringLanguage(request.project_reference)) {
     blockers.push('Remove the rating request from the project reference — the customer chooses the rating.')
   }
+  // The photograph first, then the permission to share it — and the second only
+  // once there is something to share. Both must clear before a request is
+  // ready, so the end state is the same either way; what the ordering avoids is
+  // asking somebody to confirm permission for photographs that do not exist
+  // yet. assert_customer_review_ready() raises in this same order for the same
+  // reason.
   if (projectPhotoCount === 0) {
     blockers.push('Attach at least one real photograph of this customer’s project.')
-  }
-  if (request.image_permission_confirmed !== true) {
+  } else if (request.image_permission_confirmed !== true) {
     blockers.push('Confirm BOE has permission to share these photographs.')
   }
 

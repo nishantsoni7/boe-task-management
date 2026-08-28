@@ -385,9 +385,11 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
 
         {/* ── Photographs ── */}
         <Card title="Project photographs">
-          <p style={{ fontSize: '11.5px', color: colors.muted, marginBottom: '10px', lineHeight: 1.5 }}>
-            BOE’s own record of this customer’s project. These were not attached to the WhatsApp
-            message — wa.me carries the text invitation only.
+          <p style={{ fontSize: '11.5px', color: colors.secondary, marginBottom: '10px', lineHeight: 1.55 }}>
+            Stored privately with this request. <strong>BOE cannot attach them to WhatsApp</strong> —
+            a wa.me link carries the text invitation and nothing else. If you want the customer to
+            see them, open each one to save it and attach the files yourself in the chat before you
+            send.
           </p>
           <PhotoManager
             supabase={supabase}
@@ -397,6 +399,7 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
             onChanged={load}
             canAttach={canEdit}
             canRemove={canEdit}
+            downloadable
             emptyHint="No photographs were attached to this request."
           />
           {projectPhotos.length > 0 && (
