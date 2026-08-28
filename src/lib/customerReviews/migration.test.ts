@@ -202,6 +202,25 @@ describe('row-level security', () => {
     assert.equal(/\btrue\b/.test(policy), false, 'no unconditional branch')
   })
 
+  test('the migration pins an exact allow-list of browser-callable functions', () => {
+    // The name heuristic over p_user_id/p_actor_id is a MESSAGE, not a control:
+    // it matches parameter names, so a future `p_who uuid` walks past it. The
+    // allow-list is the control — any function granted to authenticated whose
+    // exact signature is not on it fails the migration at apply time.
+    assert.ok(code.includes('these are executable by authenticated and are not on the approved list'),
+      'the migration must carry an exact allow-list, not only the name heuristic')
+    for (const sig of [
+      'can_view_customer_review_request(p_request_id uuid)',
+      'can_view_customer_review_request_row(p_created_by uuid)',
+      'can_edit_customer_review_request(p_request_id uuid)',
+      'can_create_customer_review_request(p_created_by uuid)',
+    ]) {
+      assert.ok(code.includes(sig), `${sig} is not on the allow-list`)
+    }
+    // ...and each must be shown to derive its own actor.
+    assert.ok(code.includes('does not derive its actor from auth.uid()'))
+  })
+
   test('the migration asserts that mistake cannot come back', () => {
     // Belt and braces: the file re-checks its own policy at apply time, so a
     // future edit that reinstates either mistake fails the migration rather

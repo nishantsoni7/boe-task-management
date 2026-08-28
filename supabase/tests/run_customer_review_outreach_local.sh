@@ -119,71 +119,51 @@ if [ -z "${BOE_DB_CONTAINER:-}" ]; then
   echo "       Name the container explicitly; this script will not choose one." >&2
   echo "       Running Supabase database containers:" >&2
   docker ps --format '{{.Names}}' | grep '^supabase_db_' | sed 's/^/         /' >&2 || true
+  echo "       Nothing was written." >&2
   exit 1
 fi
 DB_CONTAINER="$BOE_DB_CONTAINER"
 
 if ! docker ps --format '{{.Names}}' | grep -qx "$DB_CONTAINER"; then
   echo "FATAL: no running container named $DB_CONTAINER." >&2
-  exit 1
-fi
-
-psql_q() { docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -At -c "$1"; }
-psql_file() {
-  # ON_ERROR_STOP=1 makes the first error abort the file rather than leaving a
-  # half-applied migration behind.
-  docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -q < "$1"
-}
-
-# ── SAY WHAT IS ABOUT TO BE WRITTEN TO, BEFORE WRITING ──────────────────────
-echo "══ target"
-echo "──   container : $DB_CONTAINER"
-echo "──   database  : $(psql_q 'select current_database()')"
-echo "──   server    : $(psql_q 'select inet_server_addr()::text' 2>/dev/null || echo 'local socket')"
-echo "──   marker    : $(psql_q "select coalesce(shobj_description(oid, 'pg_database'), '(none)') from pg_database where datname = current_database()")"
-echo
-
-# ── Every guard runs before a single statement is applied ───────────────────
-fail() { echo "FATAL: $1" >&2; echo "       Nothing was written." >&2; exit 1; }
-
-FOUND_MARKER="$(psql_q "select coalesce(shobj_description(oid, 'pg_database'), '') from pg_database where datname = current_database()")"
-if [ -z "$FOUND_MARKER" ]; then
-  echo "FATAL: $DB_CONTAINER carries no disposable-stack marker." >&2
-  echo "       This script only builds on a database somebody has declared throwaway:" >&2
-  echo "         docker exec -i $DB_CONTAINER psql -U postgres -d postgres -c \\" >&2
-  echo "           \"comment on database postgres is '$MARKER'\"" >&2
   echo "       Nothing was written." >&2
   exit 1
 fi
-[ "$FOUND_MARKER" = "$MARKER" ] || \
-  fail "marker mismatch on $DB_CONTAINER: found '$FOUND_MARKER', expected '$MARKER'."
 
-# public — application tables
-PUBLIC_TABLES="$(psql_q "select count(*) from pg_tables where schemaname = 'public'")"
-[ "$PUBLIC_TABLES" = "0" ] || \
-  fail "the public schema of $DB_CONTAINER holds $PUBLIC_TABLES table(s)."
+# The gate lives in its own file so that the tests exercise the same code this
+# script trusts, rather than a second copy of it.
+DB_NAME="${BOE_DB_NAME:-postgres}"
 
-# auth — identities. An empty public schema says nothing about these.
-AUTH_USERS="$(psql_q "select count(*) from auth.users" 2>/dev/null || echo 0)"
-[ "$AUTH_USERS" = "0" ] || \
-  fail "auth.users in $DB_CONTAINER holds $AUTH_USERS identit(ies)."
+# shellcheck source=supabase/tests/lib/disposable_stack_guard.sh
+. "$REPO/supabase/tests/lib/disposable_stack_guard.sh"
 
-# storage — buckets and the objects in them
-STORAGE_OBJECTS="$(psql_q "select count(*) from storage.objects" 2>/dev/null || echo 0)"
-[ "$STORAGE_OBJECTS" = "0" ] || \
-  fail "storage.objects in $DB_CONTAINER holds $STORAGE_OBJECTS object(s)."
+psql_file() {
+  # ON_ERROR_STOP=1 makes the first error abort the file rather than leaving a
+  # half-applied migration behind.
+  docker exec -i "$DB_CONTAINER" psql -U postgres -d "$DB_NAME" -v ON_ERROR_STOP=1 -q < "$1"
+}
 
-STORAGE_BUCKETS="$(psql_q "select count(*) from storage.buckets" 2>/dev/null || echo 0)"
-[ "$STORAGE_BUCKETS" = "0" ] || \
-  fail "storage.buckets in $DB_CONTAINER holds $STORAGE_BUCKETS bucket(s)."
+# ── SAY WHAT IS ABOUT TO BE WRITTEN TO, BEFORE WRITING ──────────────────────
+# Printed with the same fail-closed helper: if the target cannot even be
+# described, it is certainly not going to be written to.
+if ! TARGET_DB="$(_psql_raw 'select current_database()')"; then
+  echo "FATAL: could not query $DB_CONTAINER at all." >&2
+  printf '%s\n' "$TARGET_DB" | sed 's/^/         /' >&2
+  echo "       Nothing was written." >&2
+  exit 1
+fi
+TARGET_MARKER="$(_psql_raw "select coalesce(shobj_description(oid, 'pg_database'), '(none)') from pg_database where datname = current_database()" || true)"
 
-# Any other schema carrying application data. supabase_migrations is the ledger
-# a real deployment keeps; its presence means this database has a history.
-MIGRATION_ROWS="$(psql_q "select count(*) from supabase_migrations.schema_migrations" 2>/dev/null || echo 0)"
-[ "$MIGRATION_ROWS" = "0" ] || \
-  fail "$DB_CONTAINER has $MIGRATION_ROWS applied migration(s) in its ledger; this is not a blank stack."
+echo "══ target"
+echo "──   container : $DB_CONTAINER"
+echo "──   database  : $TARGET_DB"
+echo "──   marker    : $TARGET_MARKER"
+echo
 
-echo "══ marker present, public/auth/storage all empty — safe to build"
+# ── Every guard runs before a single statement is applied ───────────────────
+require_disposable_stack || exit 1
+
+echo "══ marker present; public, auth, storage and the ledger are all empty — safe to build"
 echo
 
 echo "══ 1/8  baseline (TEST-ONLY, not a migration)"

@@ -1694,18 +1694,93 @@ begin
     raise exception 'customer_review_requests_select does not use can_view_customer_review_request_row()';
   end if;
 
-  -- ═══ NO BROWSER-CALLABLE FUNCTION MAY BE TOLD WHO TO ANSWER FOR ═══════════
+  -- ═══ WHAT A BROWSER MAY CALL, AND WITH WHAT ══════════════════════════════
   --
-  -- Every predicate here is granted to `authenticated`, so its parameters are
-  -- chosen by a browser. A function that accepts an acting-user id and is
-  -- reachable from a session is an oracle: a signed-in employee can ask it about
-  -- a colleague and read back who is active, who is an admin and who holds
-  -- `verify` — the facts this module exists to withhold. The acting identity
-  -- must be taken from auth.uid() inside the body, never handed in.
+  -- A function granted to `authenticated` has its arguments chosen by a browser.
+  -- One that accepts an acting-user id is an oracle: a signed-in employee can
+  -- ask it about a colleague and read back who is active, who is an admin and
+  -- who holds `verify` — the facts this module exists to withhold.
   --
-  -- Asserted structurally rather than by name, so a function added later is
-  -- caught by the same rule. Two uuid arguments is the shape that carries the
-  -- risk; the exception below names the offender.
+  -- TWO CHECKS, AND THEY ARE NOT THE SAME STRENGTH. Being honest about which is
+  -- which matters more than the checks themselves:
+  --
+  --   (1) AN EXACT ALLOW-LIST. Every function in this module executable by
+  --       `authenticated`, with its exact argument list. This is a real
+  --       structural guarantee: a function added later, or an argument added to
+  --       an existing one, fails here regardless of what anything is called.
+  --
+  --   (2) A NAME HEURISTIC over p_user_id / p_actor_id / p_acting. This is NOT
+  --       a guarantee and must not be described as one. It matches parameter
+  --       NAMES, so a future `p_who uuid` or `p_subject uuid` walks straight
+  --       past it. It is kept because it names the offending parameter when it
+  --       does fire, which (1) cannot do — (1) says only that the signature is
+  --       not the approved one. The allow-list is the control; this is the
+  --       error message.
+  --
+  -- Neither can see SEMANTICS. Nothing here proves a one-argument function
+  -- derives its actor from auth.uid() rather than, say, from a GUC a caller can
+  -- set. That is asserted separately below by reading each body for auth.uid(),
+  -- which is itself textual — and is checked behaviourally, which is the part
+  -- that actually knows, in
+  -- supabase/tests/customer_review_request_visibility_assertions.sql §6c, where
+  -- a colleague passes another employee's uuid and gets an answer about
+  -- themselves.
+
+  -- (1) the allow-list
+  select string_agg(sig, ', ' order by sig) into v_bad
+  from (
+    select f.proname || '(' || pg_get_function_arguments(f.oid) || ')' as sig
+    from pg_proc f
+    join pg_namespace n on n.oid = f.pronamespace
+    where n.nspname = 'public'
+      and f.proname like '%customer_review%'
+      and has_function_privilege('authenticated', f.oid, 'EXECUTE')
+  ) t
+  where sig not in (
+    'can_view_customer_review_request(p_request_id uuid)',
+    'can_view_customer_review_request_row(p_created_by uuid)',
+    'can_edit_customer_review_request(p_request_id uuid)',
+    'can_create_customer_review_request(p_created_by uuid)',
+    'customer_review_text_steers(p_text text)',
+    'record_customer_review_whatsapp_opened(p_request_id uuid)',
+    'record_customer_review_evidence(p_request_id uuid, p_review_url text)',
+    'transition_customer_review_request(p_request_id uuid, p_next_status text, p_detail text DEFAULT NULL::text, p_review_url text DEFAULT NULL::text)'
+  );
+
+  if v_bad is not null then
+    raise exception 'these are executable by authenticated and are not on the approved list: %', v_bad;
+  end if;
+
+  -- ...and every approved predicate must actually be present, so the list above
+  -- cannot pass by the functions simply not existing.
+  foreach v_col in array array[
+    'can_view_customer_review_request',
+    'can_view_customer_review_request_row',
+    'can_edit_customer_review_request',
+    'can_create_customer_review_request'
+  ] loop
+    select coalesce(prosrc, '') into v_bad
+    from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+    where n.nspname = 'public' and f.proname = v_col;
+
+    if v_bad is null or v_bad = '' then
+      raise exception '% is missing', v_col;
+    end if;
+    if v_bad not like '%auth.uid()%' then
+      raise exception '% does not derive its actor from auth.uid()', v_col;
+    end if;
+    if not exists (
+      select 1 from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+      where n.nspname = 'public' and f.proname = v_col
+        and f.prosecdef
+        and f.pronargs = 1
+        and array_to_string(coalesce(f.proconfig, '{}'), ',') like '%search_path=public, pg_temp%'
+    ) then
+      raise exception '% must be SECURITY DEFINER, take one argument, and pin search_path', v_col;
+    end if;
+  end loop;
+
+  -- (2) the heuristic, kept for the message it produces, not for coverage
   select string_agg(f.proname || '(' || pg_get_function_arguments(f.oid) || ')', ', ')
     into v_bad
   from pg_proc f
