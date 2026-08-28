@@ -251,9 +251,18 @@ Service-role only — each takes something the trusted route establishes:
 | `begin_customer_review_test_screenshot_removal(uuid, uuid)` | takes the actor |
 | `finish_customer_review_test_screenshot_removal(uuid)` | the second half of a removal |
 
-Reachable by nobody but this module's own functions:
+Internal helpers, explicitly revoked from `public`, `anon` and
+`authenticated`:
 `assert_customer_review_test_card_submittable(uuid)`,
 `customer_review_test_screenshots_log_removal()`.
+
+> **Stated precisely, because "reachable by nobody" would be false.** The
+> platform's default privileges leave every new function in `public` executable
+> by `service_role`, and this migration revokes only the client roles — so
+> `service_role` can in principle call those two. That adds nothing: it bypasses
+> RLS entirely and never leaves the server, so anything it could learn by
+> calling them it could read directly. What matters, and what the migration
+> asserts, is that **no browser role can reach them**.
 
 **No browser-callable function accepts an acting-user id.** One that did would
 be an oracle: a signed-in employee could pass a colleague's uuid and read back
