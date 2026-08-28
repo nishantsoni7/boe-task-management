@@ -1,0 +1,263 @@
+/**
+ * The whole local half, end to end: a cut-out in, the exact Bria request out.
+ *
+ * The unit tests either side of this one check the arithmetic without sharp and
+ * the request without a network. This one runs the real path the route runs —
+ * measure the cut-out, gate it, plan the padding, crop and resize, build the
+ * body — on cut-outs drawn here, so the parts are checked TOGETHER. Every defect
+ * in this feature so far has lived in the joins rather than in the pieces.
+ *
+ * `fetch` is stubbed. Nothing reaches fal and nothing is billed.
+ *
+ * Run:
+ *   npx tsx --test src/lib/imageEditor/studioPipeline.test.ts
+ */
+
+import { test, describe, afterEach, before } from 'node:test'
+import assert from 'node:assert/strict'
+import sharp from 'sharp'
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { measureCutout, prepareCutoutForShot } from './prepareCutout'
+import { planPadding, checkEnlargement, MASTER_WIDTH, MASTER_HEIGHT, PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX } from './studioMaster'
+import { generateStudioShot } from './briaProductShot'
+import { REFERENCE_PATH, resetReferenceCache } from './studioReference'
+
+const realFetch = globalThis.fetch
+afterEach(() => { globalThis.fetch = realFetch; resetReferenceCache() })
+
+let root: string
+before(() => {
+  root = mkdtempSync(join(tmpdir(), 'boe-pipeline-'))
+  mkdirSync(join(root, 'assets', 'image-editor'), { recursive: true })
+  writeFileSync(join(root, REFERENCE_PATH), Buffer.from('REFERENCE-PNG'))
+})
+
+/**
+ * A cut-out as background/remove returns one: the ORIGINAL frame, with
+ * everything but the product transparent. The product is deliberately off
+ * centre and nowhere near the frame edges, because that is what makes the crop
+ * step matter — pad this frame instead of the product and the padding is
+ * measured from the old photograph.
+ */
+async function cutout(opts: {
+  frame?: { width: number; height: number }
+  product: { left: number; top: number; width: number; height: number }
+  legs?: boolean
+}): Promise<Buffer> {
+  const { frame = { width: 2000, height: 2200 }, product, legs = true } = opts
+  const data = Buffer.alloc(frame.width * frame.height * 4)
+
+  const box = (l: number, t: number, w: number, h: number) => {
+    for (let y = t; y < t + h; y++) {
+      for (let x = l; x < l + w; x++) {
+        if (x < 0 || y < 0 || x >= frame.width || y >= frame.height) continue
+        const o = (y * frame.width + x) * 4
+        data[o] = 82; data[o + 1] = 74; data[o + 2] = 64; data[o + 3] = 255
+      }
+    }
+  }
+
+  if (legs) {
+    // A seat with four thin legs and floor visible between them, so the crop is
+    // proved against a shape with real transparency inside its own box.
+    const seat = Math.round(product.height * 0.62)
+    box(product.left, product.top, product.width, seat)
+    const legW = Math.max(2, Math.round(product.width * 0.05))
+    const legTop = product.top + seat
+    const legH = product.height - seat
+    for (const share of [0.02, 0.3, 0.62, 0.93]) {
+      box(product.left + Math.round(product.width * share), legTop, legW, legH)
+    }
+  } else {
+    box(product.left, product.top, product.width, product.height)
+  }
+
+  return sharp(data, { raw: { width: frame.width, height: frame.height, channels: 4 } }).png().toBuffer()
+}
+
+/** The route's local half, in the order the route runs it. */
+async function pipeline(png: Buffer) {
+  const measured = await measureCutout(png)
+  assert.equal(measured.ok, true, measured.ok ? '' : measured.error)
+  if (!measured.ok) throw new Error('unreachable')
+
+  const product = { width: measured.bounds.width, height: measured.bounds.height }
+  const verdict = checkEnlargement(product)
+  const plan = planPadding(product)
+  const shaped = await prepareCutoutForShot(png, measured.bounds, plan.product)
+  assert.equal(shaped.ok, true, shaped.ok ? '' : shaped.error)
+  if (!shaped.ok) throw new Error('unreachable')
+
+  return { measured, product, verdict, plan, shaped }
+}
+
+describe('finding the product inside the returned frame', () => {
+  test('the box is the product, not the photograph it came from', async () => {
+    // background/remove returns the original 2000x2200 frame. Padding computed
+    // from THAT would be padding around the old photograph's edges.
+    const png = await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 }, legs: false })
+    const { product } = await pipeline(png)
+
+    assert.equal(product.width, 900)
+    assert.equal(product.height, 1200)
+  })
+
+  test('thin legs and the floor between them are inside the box', async () => {
+    const png = await cutout({ product: { left: 400, top: 300, width: 1000, height: 1400 } })
+    const { product } = await pipeline(png)
+
+    // The legs reach the full height and the full width of the product.
+    assert.ok(Math.abs(product.height - 1400) <= 2, `height ${product.height}`)
+    assert.ok(Math.abs(product.width - 1000) <= 60, `width ${product.width}`)
+  })
+
+  test('an opaque image is refused — it is not a cut-out', async () => {
+    const opaque = await sharp({
+      create: { width: 800, height: 800, channels: 4, background: { r: 120, g: 110, b: 100, alpha: 1 } },
+    }).png().toBuffer()
+
+    const measured = await measureCutout(opaque)
+    assert.equal(measured.ok, false)
+    if (!measured.ok) assert.match(measured.error, /could not be separated/i)
+  })
+})
+
+describe('the prepared cut-out that is actually sent', () => {
+  test('it is exactly the size the padding plan assumed', async () => {
+    // If these disagree by even a pixel, the padding no longer closes on
+    // 1000 x 1000 and the master is the wrong size.
+    for (const product of [
+      { left: 300, top: 250, width: 900, height: 1200 },
+      { left: 100, top: 100, width: 1700, height: 700 },
+      { left: 500, top: 200, width: 400, height: 1800 },
+    ]) {
+      const { plan, shaped } = await pipeline(await cutout({ product, legs: false }))
+      const meta = await sharp(shaped.png).metadata()
+
+      assert.equal(meta.width, plan.product.width, `${product.width}x${product.height}`)
+      assert.equal(meta.height, plan.product.height, `${product.width}x${product.height}`)
+      assert.equal(plan.padding.left + meta.width! + plan.padding.right, MASTER_WIDTH)
+      assert.equal(plan.padding.top + meta.height! + plan.padding.bottom, MASTER_HEIGHT)
+    }
+  })
+
+  test('it still has an alpha channel — Bria needs to know where the product ends', async () => {
+    const { shaped } = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 } }))
+    const meta = await sharp(shaped.png).metadata()
+
+    assert.equal(meta.hasAlpha, true)
+    assert.equal(meta.format, 'png')
+  })
+
+  test('the product still touches all four edges of what is sent', async () => {
+    // The crop is tight, so after it the product must reach every edge. A gap
+    // means the padding is being measured from empty space.
+    const { shaped } = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 } }))
+    const { data, info } = await sharp(shaped.png).ensureAlpha().extractChannel(3).raw()
+      .toBuffer({ resolveWithObject: true })
+
+    const opaque = (x: number, y: number) => data[y * info.width + x] > 8
+    const anyInRow = (y: number) => { for (let x = 0; x < info.width; x++) if (opaque(x, y)) return true; return false }
+    const anyInCol = (x: number) => { for (let y = 0; y < info.height; y++) if (opaque(x, y)) return true; return false }
+
+    assert.ok(anyInRow(0), 'nothing on the top edge')
+    assert.ok(anyInRow(info.height - 1), 'nothing on the bottom edge')
+    assert.ok(anyInCol(0), 'nothing on the left edge')
+    assert.ok(anyInCol(info.width - 1), 'nothing on the right edge')
+  })
+
+  test('nothing is stretched: the aspect ratio survives the resize', async () => {
+    for (const product of [
+      { left: 300, top: 250, width: 900, height: 1200 },
+      { left: 100, top: 100, width: 1600, height: 800 },
+    ]) {
+      const { shaped } = await pipeline(await cutout({ product, legs: false }))
+      const meta = await sharp(shaped.png).metadata()
+
+      const before = product.width / product.height
+      const after = meta.width! / meta.height!
+      assert.ok(Math.abs(before - after) / before < 0.01, `${before.toFixed(3)} became ${after.toFixed(3)}`)
+    }
+  })
+})
+
+describe('the size the product owner asked for', () => {
+  test('an ordinary chair lands in the 52-55% band', async () => {
+    const { plan } = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 } }))
+
+    assert.ok(plan.heightShare >= PRODUCT_HEIGHT_MIN && plan.heightShare <= PRODUCT_HEIGHT_MAX,
+      `${(plan.heightShare * 100).toFixed(1)}%`)
+  })
+
+  test('the plan is the same whatever frame the cut-out arrived in', async () => {
+    // The same chair, returned in two different photograph sizes, must produce
+    // the same request — otherwise the framing depends on the camera.
+    const a = await pipeline(await cutout({
+      frame: { width: 2000, height: 2200 }, product: { left: 300, top: 250, width: 900, height: 1200 }, legs: false,
+    }))
+    const b = await pipeline(await cutout({
+      frame: { width: 3000, height: 3400 }, product: { left: 1100, top: 900, width: 900, height: 1200 }, legs: false,
+    }))
+
+    assert.deepEqual(a.plan.paddingValues, b.plan.paddingValues)
+  })
+
+  test('a long sideboard is contained, not cropped, and says so', async () => {
+    const { plan } = await pipeline(await cutout({
+      frame: { width: 3000, height: 1400 }, product: { left: 200, top: 300, width: 2400, height: 800 }, legs: false,
+    }))
+
+    assert.equal(plan.widthLimited, true)
+    assert.ok(plan.padding.left >= 0 && plan.padding.right >= 0)
+    assert.equal(plan.padding.left + plan.product.width + plan.padding.right, MASTER_WIDTH)
+  })
+
+  test('a product photographed too small is refused before the second request', async () => {
+    const png = await cutout({
+      frame: { width: 1200, height: 1200 }, product: { left: 500, top: 500, width: 150, height: 200 }, legs: false,
+    })
+    const { verdict } = await pipeline(png)
+
+    assert.equal(verdict.ok, false)
+    if (verdict.ok) return
+    assert.match(verdict.message, /too small/i)
+  })
+})
+
+describe('the request that would go to Bria', () => {
+  test('it carries the padding this cut-out produced, and one image', async () => {
+    const { plan, shaped } = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 } }))
+
+    const calls: string[] = []
+    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+      calls.push(String(init?.body))
+      return new Response(JSON.stringify({ images: [{ url: 'data:image/png;base64,TUFTVEVS', content_type: 'image/png' }] }), {
+        status: 200, headers: { 'Content-Type': 'application/json', 'x-fal-request-id': 'req-1' },
+      })
+    }) as typeof globalThis.fetch
+
+    const result = await generateStudioShot({ cutoutPng: shaped.png, plan, apiKey: 'k', referenceRoot: root })
+
+    assert.equal(result.ok, true)
+    assert.equal(calls.length, 1, 'one billable request')
+
+    const body = JSON.parse(calls[0])
+    assert.deepEqual(body.padding_values, plan.paddingValues)
+    assert.equal(body.placement_type, 'manual_padding')
+    assert.equal(body.num_results, 1)
+    // The image sent is the prepared cut-out, byte for byte.
+    assert.equal(body.image_url, `data:image/png;base64,${shaped.png.toString('base64')}`)
+  })
+
+  test('two different products produce two different padding arrays', async () => {
+    const chair = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 }, legs: false }))
+    const bench = await pipeline(await cutout({
+      frame: { width: 3000, height: 1400 }, product: { left: 200, top: 300, width: 2400, height: 800 }, legs: false,
+    }))
+
+    assert.notDeepEqual(chair.plan.paddingValues, bench.plan.paddingValues,
+      'the padding must be derived from the cut-out, not fixed')
+  })
+})

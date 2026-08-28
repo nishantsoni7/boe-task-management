@@ -20,7 +20,7 @@ import assert from 'node:assert/strict'
 import sharp from 'sharp'
 import type { OverlayOptions } from 'sharp'
 import { measureComposition, describeMeasurement } from './composition'
-import { OUTPUT_PRESETS } from './outputPresets'
+import { planPadding, MASTER_WIDTH, MASTER_HEIGHT } from './studioMaster'
 
 /** A studio-like canvas with a dark block standing on it. */
 async function scene(opts: {
@@ -64,16 +64,13 @@ async function scene(opts: {
 
 describe('measuring the reference composition', () => {
   test('a product drawn at the targets measures at the targets', async () => {
-    const preset = OUTPUT_PRESETS.landscape
-    const [width, height] = preset.shotSize
-    const t = preset.target
-    const productWidth = 420
+    const plan = planPadding({ width: 900, height: 1200 })
 
     const png = await scene({
-      width, height,
+      width: MASTER_WIDTH, height: MASTER_HEIGHT,
       product: {
-        left: Math.round(t.centreX - productWidth / 2),
-        top: t.productTop, width: productWidth, height: t.productHeight,
+        left: plan.padding.left, top: plan.padding.top,
+        width: plan.product.width, height: plan.product.height,
       },
     })
 
@@ -82,12 +79,11 @@ describe('measuring the reference composition', () => {
     if (!result.ok) return
     const m = result.measurement
 
-    assert.equal(m.canvas.width, 1200)
-    assert.equal(m.canvas.height, 800)
-    assert.ok(Math.abs(m.heightShare - 0.65) < 0.005, `height share ${m.heightShare}`)
-    assert.ok(Math.abs(m.aboveShare - 0.21) < 0.005, `above ${m.aboveShare}`)
-    assert.ok(Math.abs(m.belowShare - 0.14) < 0.006, `below ${m.belowShare}`)
-    assert.ok(Math.abs(m.feetBaselineShare - 0.86) < 0.006, `feet ${m.feetBaselineShare}`)
+    assert.equal(m.canvas.width, 1000)
+    assert.equal(m.canvas.height, 1000)
+    assert.ok(Math.abs(m.heightShare - 0.53) < 0.005, `height share ${m.heightShare}`)
+    assert.ok(Math.abs(m.aboveShare - plan.padding.top / MASTER_HEIGHT) < 0.005, `above ${m.aboveShare}`)
+    assert.ok(Math.abs(m.belowShare - plan.padding.bottom / MASTER_HEIGHT) < 0.006, `below ${m.belowShare}`)
     assert.ok(Math.abs(m.centreOffsetPx) <= 1, `centre offset ${m.centreOffsetPx}`)
     assert.ok(m.sideBalance > 0.98, `side balance ${m.sideBalance}`)
     assert.equal(m.touchesEdge, false)
@@ -97,9 +93,10 @@ describe('measuring the reference composition', () => {
     // Without this, the measured product runs down into its own shadow: the
     // height comes out too large and the feet baseline too low, and every
     // review of a real result would be wrong in the same direction.
-    const preset = OUTPUT_PRESETS.landscape
-    const [width, height] = preset.shotSize
-    const t = preset.target
+    const plan = planPadding({ width: 900, height: 1200 })
+    const width = MASTER_WIDTH
+    const height = MASTER_HEIGHT
+    const t = { centreX: MASTER_WIDTH / 2, productTop: plan.padding.top, productHeight: plan.product.height }
 
     const withShadow = await measureComposition(await scene({
       width, height, shadow: true,
@@ -108,7 +105,7 @@ describe('measuring the reference composition', () => {
 
     assert.equal(withShadow.ok, true)
     if (!withShadow.ok) return
-    assert.ok(Math.abs(withShadow.measurement.heightShare - 0.65) < 0.02,
+    assert.ok(Math.abs(withShadow.measurement.heightShare - plan.heightShare) < 0.02,
       `the shadow inflated the product to ${(withShadow.measurement.heightShare * 100).toFixed(1)}%`)
   })
 
@@ -152,25 +149,31 @@ describe('measuring the reference composition', () => {
     assert.equal(result.ok && result.measurement.touchesEdge, true)
   })
 
-  test('every preset measures its own targets', async () => {
-    for (const preset of Object.values(OUTPUT_PRESETS)) {
-      const [width, height] = preset.shotSize
-      const t = preset.target
-      const productWidth = Math.round(width * 0.35)
+  test('the square master measures the share the padding plan intended', async () => {
+    // The plan and the measurement are independent: one computes padding from
+    // a cut-out's size, the other reads a finished picture back. If they agree
+    // on a product drawn exactly where the plan puts it, the arithmetic and the
+    // check are not both wrong in the same direction.
+    for (const cutout of [
+      { width: 900, height: 1200 },   // a chair
+      { width: 1400, height: 900 },   // a low sideboard
+      { width: 700, height: 1900 },   // a tall cabinet
+    ]) {
+      const plan = planPadding(cutout)
 
       const png = await scene({
-        width, height,
+        width: MASTER_WIDTH, height: MASTER_HEIGHT,
         product: {
-          left: Math.round(t.centreX - productWidth / 2),
-          top: t.productTop, width: productWidth, height: t.productHeight,
+          left: plan.padding.left, top: plan.padding.top,
+          width: plan.product.width, height: plan.product.height,
         },
       })
 
       const result = await measureComposition(png)
       assert.equal(result.ok, true)
       if (!result.ok) continue
-      assert.ok(Math.abs(result.measurement.heightShare - 0.65) < 0.006,
-        `${preset.key}: ${result.measurement.heightShare}`)
+      assert.ok(Math.abs(result.measurement.heightShare - plan.heightShare) < 0.006,
+        `${cutout.width}x${cutout.height}: measured ${result.measurement.heightShare}, planned ${plan.heightShare}`)
     }
   })
 })
@@ -182,7 +185,8 @@ describe('what this cannot tell you', () => {
     // so the numbers describe the circle and look reassuringly large and
     // centred. Anyone reading a measurement has to have looked at the image
     // first — this checks framing, never cleanliness.
-    const [width, height] = OUTPUT_PRESETS.landscape.shotSize
+    const width = MASTER_WIDTH
+    const height = MASTER_HEIGHT
     const decorated = await sharp({
       create: { width, height, channels: 3, background: { r: 232, g: 228, b: 222 } },
     })

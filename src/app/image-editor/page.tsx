@@ -18,9 +18,6 @@ import {
   updateItem, removeItem, completedItems, canStartRun, resultFileName,
   MAX_QUEUE_SIZE, type QueueItem, type RejectedFile,
 } from '@/lib/imageEditor/queue'
-import {
-  OUTPUT_PRESETS, OUTPUT_PRESET_KEYS, DEFAULT_OUTPUT_PRESET, type OutputPresetKey,
-} from '@/lib/imageEditor/outputPresets'
 import { DOWNLOAD_FORMATS, type DownloadFormat } from '@/lib/imageEditor/downloadFormats'
 import { QueueList } from './QueueList'
 import { ResultCard } from './ResultCard'
@@ -58,7 +55,6 @@ export default function ImageEditorPage() {
 
   const [items, setItems] = useState<QueueItem[]>([])
   const [rejected, setRejected] = useState<RejectedFile[]>([])
-  const [preset, setPreset] = useState<OutputPresetKey>(DEFAULT_OUTPUT_PRESET)
   const [format, setFormat] = useState<DownloadFormat>('png')
   const [phase, setPhase] = useState<Phase>('choosing')
   const [error, setError] = useState<string | null>(null)
@@ -161,10 +157,11 @@ export default function ImageEditorPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { router.push('/login'); return { status: 'failed', error: 'Your session ended. Sign in again.' } }
 
+    // The photograph, and nothing else. There is no shape to choose: the
+    // master is square, and a landscape or portrait crop of it is made later by
+    // somebody who can see the picture.
     const form = new FormData()
     form.append('image', item.file)
-    // A name, never dimensions: the server decides what that name means.
-    form.append('preset', preset)
 
     let res: Response
     try {
@@ -206,7 +203,7 @@ export default function ImageEditorPage() {
       noRetry: undefined,
       result: { dataUrl, mimeType: payload?.image?.mimeType ?? 'image/png' },
     }
-  }, [supabase, router, preset])
+  }, [supabase, router])
 
   /**
    * Work the queue, one image at a time.
@@ -382,30 +379,6 @@ export default function ImageEditorPage() {
         <QueueList items={items} locked={running} onRemove={remove} />
 
         {/* ── Output shape ────────────────────────────────────────────────── */}
-        {items.length > 0 && (
-          <div className="boe-card" style={{ padding: '12px', marginBottom: '14px' }}>
-            <div style={{
-              fontSize: '11px', fontWeight: 600, color: colors.tertiary,
-              textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px',
-            }}>
-              Output shape
-            </div>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              {OUTPUT_PRESET_KEYS.map(key => (
-                <button
-                  key={key}
-                  onClick={() => setPreset(key)}
-                  disabled={running}
-                  className={`boe-chip${preset === key ? ' boe-chip-selected' : ''}`}
-                  style={{ cursor: running ? 'not-allowed' : 'pointer' }}
-                >
-                  {OUTPUT_PRESETS[key].label} · {OUTPUT_PRESETS[key].ratio}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* ── Generate ────────────────────────────────────────────────────── */}
         {pending > 0 && !running && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>

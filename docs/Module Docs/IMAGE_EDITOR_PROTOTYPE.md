@@ -3,7 +3,7 @@
 One page, one job: an employee uploads one factory-background furniture
 photograph and gets back one catalogue-style product image.
 
-The provider removes the background. **BOE builds the picture.**
+**Bria makes the studio scene. BOE decides how big the product is in it.**
 
 Not linked from the module launcher and not registered in `app_modules`. It is
 reached directly at **`/image-editor`** and is open to any signed-in BOE user —
@@ -13,9 +13,11 @@ and no row anybody would later have to unpick.
 ## What it does
 
 Choose **one to five** photographs (JPG / PNG / WebP, up to 10 MB each) → pick an
-output shape → **Generate** → images are processed **one at a time**, each
-appearing as it finishes → compare, download in PNG / JPG / WebP, or **Edit
-another set**.
+**Generate** → images are processed **one at a time**, each appearing as it
+finishes → compare, download in PNG / JPG / WebP, or **Edit another set**.
+
+There is no output shape to choose: the master is square, with enough
+surrounding background to crop a landscape or portrait from later.
 
 Nothing is stored. Uploads are read into memory, sent to the provider, and the
 results come back in the response body as data URIs. No bucket, no table, no
@@ -46,173 +48,186 @@ requests.
 
 ## How the image is made
 
-**One provider call per photograph, and it does one thing: it removes the
-background.** Everything else is arithmetic, done locally.
+**Two provider calls per photograph**, and the split between them is the whole
+design.
 
 ```
-upload ─▶ prepareSource ─▶ fal-ai/bria/background/remove ─▶ transparent PNG
-                                                                │
-                     ┌──────────────────────────────────────────┘
-                     ▼
-   crop to the product ─▶ quality gate ─▶ defringe ─▶ tone ─▶ scale ─▶ sharpen
-                     ─▶ shadows ─▶ composite on a locally drawn sweep ─▶ PNG
+upload ─▶ prepareSource ─▶ [1] fal-ai/bria/background/remove ─▶ transparent cut-out
+                                                                    │
+   ┌────────────────────────────────────────────────────────────────┘
+   ▼
+ measure the product ─▶ quality gate ─▶ plan the padding ─▶ crop and scale
+   ─▶ [2] fal-ai/bria/product-shot (manual_padding) ─▶ 1000 x 1000 master
 ```
 
-`POST https://fal.run/fal-ai/bria/background/remove`, synchronous. The
-photograph travels as a **data URI inside the request body**, so no publicly
-accessible URL for it is ever created; `sync_mode: true` asks for the cut-out
-the same way, which also keeps it out of fal's request history.
+The **scene** — background, lighting, contact and cast shadows — is the model's,
+and it is the one the product owner accepted. The **size** is arithmetic.
 
-The request body has exactly two fields:
+### Why it is split that way
 
-| Field | Value |
-| --- | --- |
-| `image_url` | the prepared photograph, as a data URI |
-| `sync_mode` | `true` |
-
-There is no prompt, no scene description, no placement, no `shot_size`, no
-result count. There is nothing for one to be — the endpoint segments an image.
-
-### Why the model no longer composes anything
-
-It was asked to, twice, and it would not.
+Three paid results drew the line:
 
 | Attempt | What came back |
 | --- | --- |
-| First paid Product Shot result | A small chair inside a **circular decorative backdrop** nobody asked for. |
-| Second, after the scene description was rewritten to BOE's approved reference | The circle was gone; the chair had shrunk to roughly **20% occupancy** against a required 65%. |
+| Product Shot, first scene description | A small chair inside a **circular decorative backdrop** nobody asked for. |
+| Product Shot, description rewritten to the approved reference | The circle was gone; the chair had shrunk to roughly **20% occupancy** against a required 65%. |
+| Product Shot with a **reference image** and a scene description | **Accepted.** Background, lighting, shadows and the square master all approved. One defect: the chair was still too small. |
 
-Neither followed the composition, and the composition is the specification. So
-the division of labour changed: **the model segments, which it does reliably;
-BOE places, which is arithmetic.** The framing is now a set of constants in
-`outputPresets.ts` applied by `composeStudioImage.ts` — the same photograph
-produces the same framing every time, because the framing is no longer a request
-somebody hopes will be honoured.
+So the model is good at the studio scene and unreliable at holding a size. It
+keeps the scene. It no longer decides the size — the prompt asks for no
+percentage at all, because asking twice with only one of them binding is how the
+second result happened.
 
-That also removed the whole `manual_placement` / `manual_padding` question. It
-had no good answer: `padding_values` is deterministic, but it is padding around
-the product **cutout**, and Bria's own note says to get the cutout first and
-size the padding from it — a second billable request per image. There is nothing
-left to decide, because nothing is asked for.
+### Why the cut-out call exists
 
-### Output shapes and the approved composition
+Not for the cut-out's own sake — Product Shot can take the original photograph
+directly. It exists because `padding_values` is measured **in pixels around the
+product**, so the product's real pixel size has to be known before the studio
+image is requested. Bria's own schema says exactly this:
 
-Three, and the browser chooses between them by NAME. `outputPresets.ts` is the
-only place a name becomes pixels, and an unrecognised name resolves to the
-default. The canvas is drawn locally, so the shape costs nothing either way.
+> It is recommended to first use the product cutout API, get the cutout and
+> understand the size of the result, and then define the required padding and
+> use the cutout as an input for this API.
 
-**Landscape 3:2 is the default** — it is the shape of the approved reference.
+That is the second billable request, and it is the price of a framing that is
+computed rather than requested.
 
-| Preset | Canvas | Product height | Top | Feet baseline | Centre |
-| --- | --- | --- | --- | --- | --- |
-| **Landscape 3:2** (default) | `1200 × 800` | 520 px (65%) | 168 px (21%) | 688 px (86%) | x 600 |
-| Square 1:1 | `1000 × 1000` | 650 px (65%) | 210 px (21%) | 860 px (86%) | x 500 |
-| Portrait 4:5 | `900 × 1125` | 731 px (65%) | 236 px (21%) | 968 px (86%) | x 450 |
+### The studio request
 
-The same proportions on every shape, so a product looks the same size whichever
-canvas it lands on. Verified by test on all three: the product is **placed** at
-exactly 65.0% / 21.0% / 14.0%, centred to within half a pixel, touching no edge.
+Every field is a constant in `briaProductShot.ts` except `padding_values`, which
+is computed per photograph. None is reachable from the browser.
 
-`measureComposition` reads that back as about **66% / 21% / 13%**, and the
-difference is not a placement error — it is the contact shadow. The measurement
-finds the product by contrast against the background, and the darkest part of a
-grounding shadow crosses that threshold, so a few rows under the feet are
-counted as product. It is the blind spot the module already documents, and it
-grew slightly when the shadow was strengthened. The placement metrics are the
-authority on framing; the measurement is the check that nothing has drifted.
+| Field | Value | Why |
+| --- | --- | --- |
+| `image_url` | the prepared cut-out, as a data URI | No public URL is created for it. |
+| `ref_image_url` | the approved reference, as a data URI | The accepted look, from BOE's own repository rather than an expiring fal.media URL. |
+| `padding_values` | computed, `[left, right, top, bottom]` | The size and position, as arithmetic. |
+| `placement_type` | `manual_padding` | The only mode that takes a size in pixels. |
+| `num_results` | `1` | Bria bills per result. |
+| `optimize_description` | `false` | The reference is used as given, not reinterpreted. |
+| `fast` | `true` | As accepted. |
+| `scene_description` | **not sent** | The schema documents it and `ref_image_url` as mutually exclusive. |
+| `sync_mode` | **not sent** | Sending it would keep the result out of fal's request history. |
+| `shot_size` | **not sent** | The schema: relevant only for `automatic` or `manual_placement`. Under `manual_padding` the canvas is cut-out + padding. |
+| `manual_placement_selection`, `original_quality` | **not sent** | Each belongs to a different placement mode. |
 
-**One product does not get the 65%.** A very wide piece — a long sideboard — is
-wider than the canvas at that height, so it is limited by the width instead
-(a 6% margin at each side) and comes back shorter than 65% and **whole**, rather
-than exactly 65% and cut off at both ends. It still stands on the same baseline,
-because the placement is anchored on the feet.
+#### The reference image, and nothing else
+
+The schema is explicit:
+
+> Either `ref_image_url` or `scene_description` has to be provided **but not
+> both**.
+
+They are documented as mutually exclusive modes, so only `ref_image_url` is sent.
+
+The accepted request carried both. That it returned an approved picture does not
+make it a supported combination — with two mutually exclusive inputs supplied,
+which one fal honoured is undefined, and building on undefined behaviour means
+the look can change without anything in this repository changing. The reference
+image is the approved standard in its own right, and it is the input this mode is
+documented to take.
+
+**There is no prompt constant anywhere in the runtime path.** Nothing describes
+the scene in words; the reference image is the description. Tests fail if a
+scene-wording constant reappears in the module, or if `scene_description` appears
+in the request body.
+
+#### Why `sync_mode` is omitted
+
+With `sync_mode: true` fal returns the image inline and, in its own words, *"the
+output data won't be available in the request history"*. That history is the
+record needed to audit what a run cost and to look at what came back, so it is
+left off.
+
+The consequence is that fal answers with a hosted URL. The transport downloads it
+**server-side** from an allowlisted fal host, so the browser is still never handed
+a provider URL — and a result hosted anywhere else is refused rather than fetched.
+That download is inside the route's time budget: the worst case is
+`(18s + 8s) + (20s + 8s) = 54s` against a 60s `maxDuration`, and a test asserts it
+fits.
+
+### The master, and how big the product is in it
+
+One canvas: **1000 × 1000**, which is exactly the 1,000,000 pixels Bria calls
+optimal and the shape the accepted result came back in. There is no output-shape
+chooser any more — landscape and portrait are a crop of this master, made later
+by somebody who can see the picture, rather than three separate paid generations.
+
+The product fills **53%** of the canvas height, the middle of the 52–55% the
+product owner asked for.
+
+```
+scale        = min( 530 / cutoutHeight ,  880 / cutoutWidth )
+placedWidth  = round(cutoutWidth  × scale)
+placedHeight = round(cutoutHeight × scale)
+
+left   = floor((1000 − placedWidth) / 2)
+right  = 1000 − placedWidth − left            ← the odd pixel, so the sum is exact
+top    = round((1000 − placedHeight) × 0.6)
+bottom = (1000 − placedHeight) − top
+```
+
+- `530` is 53% of the canvas height. `880` is the canvas less a 6% margin at
+  each side.
+- **`min` is what contains a wide product.** At 53% height a 3:1 sideboard would
+  be 1590px wide on a 1000px canvas; the width binds first, so it comes back
+  **shorter than 53% and whole** rather than exactly 53% and cropped. The plan
+  reports `widthLimited: true` when that happens.
+- `0.6` is 21:14 — the above-to-below ratio of the composition BOE approved
+  before the product height changed. Keeping the ratio keeps that balance while
+  the space a smaller product frees goes to both sides, which is what leaves
+  room to crop.
+- Both axes close exactly: `left + product + right = 1000` and
+  `top + product + bottom = 1000`, so the master is 1000 × 1000 whatever arrives.
+
+Nothing here was tuned against one chair. Every number is derived from the
+cut-out's own width and height, and the tests run it over a dining chair, a
+lounge chair, a tall cabinet, a low bench, a square stool, a long sideboard and
+a narrow lamp.
 
 ### The quality gate
 
-A cut-out smaller than the frame has to be enlarged, and enlarging invents
-nothing — it spreads the pixels the camera recorded over more of them. Measured
-on real results, 2.11× enlargement cost 71% of the detail, which is what the
-earlier blurry outputs were.
+Enlargement is capped at **1.15×**. A cut-out too small to fill the master is
+refused — before the second request is paid for — with the height the photograph
+would have needed. Because the product is now 53% of the canvas rather than 65%,
+this gate is more forgiving than it was: a product about **461px** tall suffices.
 
-So enlargement is capped at **1.15×**, and a photograph whose product is too
-small is **refused** rather than blurred, with the height it would have needed:
+### What is done locally, and what is not
 
-> The product is too small in this photograph to make a sharp catalogue image.
-> Take the photograph closer to the product, or upload a higher-resolution
-> photograph, and try again.
+Local: decode, EXIF orientation, validation, finding the product by its alpha,
+the padding arithmetic, one proportional crop-and-resize, and the safe PNG
+encoding of what comes back.
 
-The refusal is marked `noRetry` — the same photograph will be the same size next
-time, and each press costs a request.
-
-### What the local composition does, and what it refuses to do
-
-| Step | What it does | The rule it keeps |
-| --- | --- | --- |
-| Crop | Tight bounding box from alpha, at a low threshold with a 3-pixel density floor | A stray speck does not stretch the box; a two-pixel chair leg is inside it |
-| Defringe | Replaces the RGB of soft edge pixels with the colour of the solid product just inside | **Alpha is never modified** — no erosion, no choke, no thinned cane or spindles |
-| Tone | Exposure and contrast from the product's **own** statistics, over solid pixels only | Bounded 0.94×–1.35×, vetoed by the 98th percentile so white upholstery keeps its texture; an already-lit photograph receives almost nothing |
-| Scale | One Lanczos resize, both axes by one factor | Nothing is ever stretched |
-| Sharpen | Confined to an interior mask (the alpha, blurred and hard-thresholded) | No bright halo tracing the cut-out edge |
-| Shadows | A contact smear at each foot **at its own height**, plus one soft cast pool from the footprint | Four feet cast four shadows with floor between them, not one oval that reads as a plinth |
-| Background | A radial warm-neutral sweep drawn pixel by pixel | Continuous by construction — there is nothing in the function that could draw a horizon |
-
-Nothing is rotated, warped, skewed, redrawn or invented. An existing watermark in
-the source is product pixels like any other and passes through untouched.
-
-`measureComposition` (`composition.ts`) is how a finished image is checked
-against the table above: it finds the product against the plain background and
-reports height, margins, feet baseline and centring. The smoke script prints it
-after every real request.
-
-### A note on sharp
-
-sharp orders its operations internally, not by call order, and this has caused
-**four** real defects in this module — enough that it is written down rather than
-remembered:
-
-- `linear` after extract+resize did not apply at all;
-- `flatten` chained onto `composite` ran **before** the compositing it was meant
-  to follow, leaving an alpha channel on an image that would print black;
-- `removeAlpha` chained with `joinChannel` dropped alpha;
-- a shadow built as `create` → `joinChannel` → `extend` → `blur` came out
-  *fainter* when its opacity was raised.
-
-There is a fifth, different trap in the same family: sharp reads a raw
-**single-channel** buffer as sRGB and hands back **three** channels, so `mask[i]`
-afterwards is the red channel of pixel `i/3`. Two masks hit this — the defringe's
-weight mask and the sharpening guard — and neither failure was visible in the
-output: the defringe quietly stopped defringing and the guard quietly stopped
-guarding. Where order or channel count matters, each step is now its own
-pipeline, and `blurMask` is the one way a mask is blurred.
-
-### Why plain `fetch` and not `@fal-ai/client`
-
-The official client's `run()` retries automatically — `maxRetries: 3` over 429,
-502, 503 and 504 (`src/client.js`, `src/retry.js` in `@fal-ai/client` 1.10.1).
-On a chargeable call that turns one button press into as many as four billed
-requests. The adapter is therefore one `POST` with no retry. The contract it
-implements was read out of that same package rather than from memory:
-`https://fal.run/<id>`, `Authorization: Key <credentials>`, the input as the JSON
-body, `x-fal-request-id` on the response, and `BGRemoveInput` / `BGRemoveOutput`
-for the shapes — one image back, not an array.
+**Not local: the background, the lighting and the shadows.** Those were
+generated locally with sharp in the previous iteration, and that whole path is
+retired. The accepted result's scene is Bria's, and recreating it locally would
+be recreating something a person has already approved.
 
 ## Cost controls
 
-- One press of Generate is **one background-removal request** per photograph.
-  The composition that follows is local and costs nothing, so the output shape,
-  the three download formats and any re-download are all free.
-- A ref guard on the page blocks a second submission in the same frame, and the
-  button is disabled while a request is in flight. Verified in Chromium: six
-  rapid presses on a two-image queue produce exactly two requests.
-- The adapter **never retries** — including after a timeout, because a request
+- One press of Generate is **two billable requests** per photograph: the cut-out
+  and the studio image. A queue of five is ten requests, made one after another.
+  Nothing batches and nothing loops — a test asserts there is exactly one call
+  site for each stage and that neither sits inside a loop.
+- The composition that follows costs nothing, so re-downloading a result and
+  converting it between PNG, JPG and WebP are all free.
+- Neither adapter **ever retries** — including after a timeout, because a request
   that may already have been billed must not be billed again silently.
-- The existing per-user rate limiter (6 per minute) is unchanged.
+- The per-user rate limiter is 6 calls a minute, unchanged. It is deliberately
+  left where it was even though a call now costs two requests: it is exactly the
+  five-image queue plus one, so the ceiling still admits the largest run the page
+  can start.
+- A missing studio reference is detected **before** the studio request, so it
+  costs nothing.
+- A product too small in the frame is refused after the cut-out and **before**
+  the studio call, so a photograph that cannot work costs one request rather
+  than two.
 - An image beyond fal's 12 MB ceiling is refused locally rather than paid for
   and refused there.
-- A quality refusal is marked `noRetry`, so the page offers a different
-  photograph rather than another paid attempt at the same one.
-- Each request logs fal's request id, the duration and the outcome category —
-  never the image, the data URI or the key.
+- Each stage logs fal's request id, the duration and the outcome category —
+  never the image, the data URI, the scene description or the key. Both ids are
+  logged on success, so a two-request press can be reconciled against the fal
+  dashboard.
 
 ## Configuration
 
@@ -223,25 +238,42 @@ for the shapes — one image back, not an array.
 Get one from <https://fal.ai/dashboard/keys>. Put it in `.env.local` (or the
 deployment's environment) — never in a `NEXT_PUBLIC_` variable.
 
+### The approved studio reference
+
+`assets/image-editor/studio-reference.png` — **required**. It is sent as
+`ref_image_url` on every studio generation, and it is what keeps results
+consistent with the look the product owner accepted.
+
+It is deliberately **not** in `public/`: nothing in a browser needs it, the only
+reader is the server on its way to fal, and it travels as a data URI so no
+publicly reachable URL for it is ever created. `outputFileTracingIncludes` in
+`next.config.ts` is what puts it into a deployment.
+
+With the file missing, the route answers 503 and the page says the reference is
+not installed. **Nothing is substituted and nothing is regenerated** — a
+plausible studio image that is not the approved one is worse than a visible
+failure, because nobody downstream could tell it apart.
+
 ## The pieces
 
 | File | What it holds |
 | --- | --- |
 | `src/lib/imageEditor/validation.ts` | What counts as an uploadable photograph. Used by the browser AND the route, so the two cannot disagree. |
 | `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in when required. Otherwise the original bytes, untouched, up to 8192px. Server-only (sharp). |
-| `src/lib/imageEditor/briaBackgroundRemove.ts` | The only code that talks to a provider: the endpoint, the two-field body, and the failure mapping. Nothing generative. |
-| `src/lib/imageEditor/cutoutGeometry.ts` | Where the product is, how big it may be drawn, and whether it may be enlarged. Pure — no sharp, no provider. |
-| `src/lib/imageEditor/productTone.ts` | The exposure and contrast decision, measured from the product's own pixels. Pure. |
-| `src/lib/imageEditor/composeStudioImage.ts` | The studio image itself: background, placement, shadows, sharpening. Server-only (sharp). No network. |
-| `src/lib/imageEditor/composition.ts` | Measures a finished image against the approved composition. Used by tests and the smoke script, never in the request path. |
-| `src/lib/imageEditor/outputPresets.ts` | The three output shapes. The only place a preset name becomes pixels. |
+| `src/lib/imageEditor/falRequest.ts` | One request to fal: transport, host allowlist, failure classification, and the no-retry rule. Shared by both stages, so those rules exist once. |
+| `src/lib/imageEditor/briaBackgroundRemove.ts` | Stage one. Exists to learn the product's pixel size, which is what padding needs. |
+| `src/lib/imageEditor/briaProductShot.ts` | Stage two: the model id, the approved scene description, the fixed settings and the request body. |
+| `src/lib/imageEditor/studioReference.ts` | Loads the approved reference from disk and turns it into a data URI. Never substitutes one. |
+| `src/lib/imageEditor/studioMaster.ts` | The master canvas and the padding arithmetic. Pure — no sharp, no provider. |
+| `src/lib/imageEditor/cutoutGeometry.ts` | Where the product is in a cut-out, read from raw alpha. Pure. |
+| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product and scale it to the planned size. Server-only (sharp). Nothing creative. |
+| `src/lib/imageEditor/composition.ts` | Measures a finished image against the intended framing. Used by tests and the smoke script, never in the request path. |
 | `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
 | `src/lib/imageEditor/downloadFormats.ts` | Which download formats exist, and the guard. Client-safe. |
 | `src/lib/imageEditor/imageFormats.ts` | The sharp re-encoder behind the download menu. Server-only. |
 | `src/app/api/image-editor/convert/route.ts` | Re-encodes a finished image for download. Never calls fal, holds no provider key. |
 | `src/app/image-editor/QueueList.tsx`, `ResultCard.tsx` | The queue rows and the per-result actions. |
-| `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, the one provider call, then the local composition. Holds the API key; returns the image. |
-| `src/lib/imageEditor/noProductShot.test.ts` | Walks the whole runtime tree and fails if the generative endpoint reappears in any spelling. |
+| `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, then the two provider calls with the padding arithmetic between them. Holds the API key; returns the image. |
 | `src/app/image-editor/page.tsx` | The screen. |
 | `src/components/layout/ImageEditorLayout.tsx` | The module shell, per the BOE Module Layout Standard. |
 | `scripts/image-editor-smoke.mjs` | One real request from the command line. Chargeable. |
@@ -263,6 +295,7 @@ a status code and the request id.
 | Empty or malformed result | 422 | no image returned — try again |
 | Product too small in the frame | 422 `noRetry` | too small to make a sharp image — take it closer |
 | Nothing could be separated out | 422 `noRetry` | try a photograph with the product clearly visible |
+| Studio reference not installed | 503 `noRetry` | the reference image is not installed — ask an administrator |
 | Anything else | 502 | could not process — try again |
 
 ### Retry, and when it is not offered
@@ -295,24 +328,76 @@ one image in three formats costs one request, not three.
 
 ## Verifying against the real API
 
-```bash
-FAL_KEY=… npx tsx scripts/image-editor-smoke.mjs chair.jpg studio.png
+The live check is **the app**. `FAL_KEY` is already in `.env.local`, so there is
+nothing to type and no key on a command line.
+
+```
+npm run dev
 ```
 
-One billable request. It writes the finished PNG, and the intermediate cut-out
-alongside it as `<name>-cutout.png` so the two stages can be told apart when a
-result looks wrong. It prints the fal request id — check the fal dashboard shows
-exactly **one** billed request for it — and then the measured composition, so a
-framing regression is a number rather than an impression.
+Then:
 
-Everything that does not need the provider runs without a key or a network:
+1. open `/image-editor`
+2. upload the same chair
+3. generate **exactly once**
+
+That is **two billable requests**. The fal dashboard should show exactly two for
+the run, both with their results attached — which is the point of leaving
+`sync_mode` off.
+
+What to look at, in order:
+
+- **The chair should now fill about 53% of the frame height.** That is the one
+  defect in the accepted result, and the only thing this change was meant to fix.
+- The background, lighting and shadows should be the accepted scene, unchanged.
+- There should be clear space on all four sides to crop a landscape or portrait
+  from later.
+- The product itself — construction, angle, cane, finish, watermark — should be
+  the uploaded chair, untouched.
+
+The server log for the run prints both request ids, the computed padding and the
+planned height share, so a result that looks wrong can be traced to a stage
+rather than guessed at.
+
+### The developer's tool
+
+`scripts/image-editor-smoke.mjs` runs the same two requests without the app and
+writes the intermediates — the raw cut-out, the cropped and scaled cut-out that
+was actually sent, and the master — which is what to reach for when a result
+looks wrong and the stage responsible is not obvious. It reads the key from
+`.env.local` too.
 
 ```bash
-npx tsx --test "src/lib/imageEditor/*.test.ts"          # 190 tests
+npx tsx scripts/image-editor-smoke.mjs chair.jpg test-results/studio.png
+```
+
+It refuses to send anything if the approved reference is missing, so a
+misconfigured checkout costs nothing.
+
+### Everything that costs nothing
+
+```bash
+npx tsx --test "src/lib/imageEditor/*.test.ts"
 npx tsx --test src/app/api/image-editor/studio/route.test.ts
+npx tsx --test src/app/image-editor/page.test.ts
 ```
 
-`composeStudioImage.test.ts` composes real images end to end from cut-outs drawn
-in the test file — including a two-pixel leg, a soft edge, feet at different
-heights and a product too small for the frame — and measures the result. That is
-where a composition change is caught, not in review.
+Two of those are worth knowing about by name:
+
+- `studioMaster.test.ts` runs the padding arithmetic over seven furniture shapes
+  — dining chair, lounge chair, tall cabinet, low bench, square stool, long
+  sideboard, narrow lamp — and asserts the 52–55% band, exact centring, no
+  negative padding for any width/height combination, and that both axes close on
+  1000 × 1000.
+- `studioPipeline.test.ts` runs the real local path through sharp on cut-outs
+  drawn in the test file, including thin legs and an off-centre product in an
+  oversized frame, and asserts that the image sent to Bria is exactly the size
+  the padding plan assumed. Every defect in this feature so far has been in the
+  joins rather than in the pieces, which is what that test is for.
+
+### The measurement's blind spot
+
+`measureComposition` finds the product by contrast against the background, so a
+strong contact shadow reads as a point or two of extra height, and a decorative
+backdrop would be measured *as* the product. It answers "is the framing right",
+never "is the scene clean". Look at the image as well.

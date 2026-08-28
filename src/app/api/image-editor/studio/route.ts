@@ -1,7 +1,7 @@
 // POST /api/image-editor/studio
 //
 // Takes one factory-background furniture photograph and returns one square
-// studio image. Backs /image-editor and nothing else.
+// studio master. Backs /image-editor and nothing else.
 //
 // AUTH
 // ----
@@ -19,37 +19,42 @@
 //
 // HOW THE IMAGE IS MADE
 // ---------------------
-// One provider call, and it does one thing: `fal-ai/bria/background/remove`
-// returns the product on transparency. Everything after that is arithmetic —
-// composeStudioImage.ts builds the canvas, scales and places the product on the
-// preset's exact coordinates, generates the background and the shadows, and
-// corrects the product's tone. No generative model touches the result.
+// Two provider calls, in order, and the split between them is the whole design:
 //
-// That division is the point. Two paid Product Shot results proved a generative
-// model will not hold a composition: one invented a circular backdrop, the next
-// shrank the chair to about a fifth of the frame. Segmentation it does reliably;
-// placement is arithmetic and now lives here.
+//   1. `fal-ai/bria/background/remove` returns the product on transparency.
+//      This is not the picture — it is how the product's real pixel size is
+//      learned, which is the one thing padding cannot be computed without.
+//   2. the cut-out is cropped to the product and scaled so it will fill 53% of
+//      a 1000 x 1000 master, and `fal-ai/bria/product-shot` is asked for the
+//      studio scene around it with `placement_type: 'manual_padding'`.
+//
+// The scene — background, lighting, contact and cast shadows — is the model's,
+// and it is the one the product owner accepted. The SIZE is arithmetic, because
+// two earlier paid results proved wording cannot hold a size: one invented a
+// circular backdrop, the next shrank the chair to a fifth of the frame. The
+// accepted third result was right about everything except that the chair was
+// still too small, and that is what padding fixes.
 //
 // COST
 // ----
-// One call of this route is one billable request: the background removal, and
-// nothing else. A queue of five images is five separate calls, made one after
-// another by the browser — nothing here batches, and nothing here loops. The
-// model id is fixed in the adapter and unreachable from the browser, which
-// sends the photograph and at most the NAME of one of three output shapes; the
-// canvas that name selects costs nothing, because it is drawn locally. The
-// adapter never retries, including after a timeout: a request that may already
-// have been billed is not quietly billed again. The per-user rate limiter below
-// is unchanged.
+// One call of this route is TWO billable requests: the cut-out and the studio
+// image. That is the price of a framing that is computed rather than requested.
+// A queue of five images is ten requests, made one after another by the browser
+// — nothing here batches, and nothing here loops. Neither adapter retries,
+// including after a timeout: a request that may already have been billed is not
+// quietly billed again. The per-user rate limiter below is the spend ceiling.
+//
+// The browser sends the photograph and nothing else. There is no output shape
+// to choose any more: the master is square, and landscape or portrait is a crop
+// of it made later by somebody who can see the picture.
 //
 // THE API KEY
 // -----------
-// FAL_KEY, read here and passed to the adapter. It is never in a response body,
-// never in a client bundle, and never in the URL of the provider call. With no
-// key configured the route answers `configured: false` and the page says the
+// FAL_KEY, read here and passed to both adapters. It is never in a response
+// body, never in a client bundle, and never in the URL of a provider call. With
+// no key configured the route answers `configured: false` and the page says the
 // service is not set up — it does not return a placeholder or a stock picture,
-// because an image BOE cannot tell apart from a real one is worse than no
-// image.
+// because an image BOE cannot tell apart from a real one is worse than no image.
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -59,28 +64,38 @@ import {
   MAX_SOURCE_IMAGE_LABEL,
 } from '@/lib/imageEditor/validation'
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
-import {
-  removeBackground,
-  NO_RETRY_FAILURES,
-  type CutoutFailure,
-} from '@/lib/imageEditor/briaBackgroundRemove'
-import { composeStudioImage } from '@/lib/imageEditor/composeStudioImage'
-import { resolveOutputPreset } from '@/lib/imageEditor/outputPresets'
+import { removeBackground, NO_RETRY_FAILURES } from '@/lib/imageEditor/briaBackgroundRemove'
+import { measureCutout, prepareCutoutForShot } from '@/lib/imageEditor/prepareCutout'
+import { planPadding, checkEnlargement, MAX_ENLARGEMENT } from '@/lib/imageEditor/studioMaster'
+import { generateStudioShot, isNoRetry, type StudioFailure } from '@/lib/imageEditor/briaProductShot'
 
 // sharp is a native module and the whole image is held in memory. Neither works
 // on the edge runtime.
 export const runtime = 'nodejs'
 
-// Generation is tens of seconds, not hundreds of milliseconds. The adapter's own
-// timeout sits just under this so a slow provider produces a clean "please try
-// again" rather than a platform-level 504.
+// Two provider calls now sit inside one request, so the budget below is split
+// between them and leaves room to crop, resize and return.
 export const maxDuration = 60
+
+// Both stages may also spend RESULT_FETCH_TIMEOUT_MS downloading a hosted
+// result, so the worst case is (cutout + fetch) + (studio + fetch) and it has
+// to fit inside maxDuration above. A test asserts that it does.
+
+/** Background removal is the quick one. */
+const CUTOUT_TIMEOUT_MS = 18_000
+/** The studio scene is the slow one, even with `fast: true`. */
+const STUDIO_TIMEOUT_MS = 20_000
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 //
 // Per user, in memory, same shape and the same reasoning as /api/payroll/ask:
 // this is a spend guard on a route that costs money per call, not a security
-// control. Lower ceiling because an image costs more than an answer.
+// control.
+//
+// Six is deliberately left where it was even though a call now costs two
+// requests: it is exactly the five-image queue plus one, so the ceiling still
+// admits the largest run the page can start, and the real guard on spend is
+// that a person has to press Generate.
 
 const RATE_LIMIT_WINDOW_MS = 60_000
 const RATE_LIMIT_MAX = 6
@@ -114,7 +129,7 @@ function rateLimited(userId: string): boolean {
 // other needs an administrator, and the status code is how that reaches any
 // future caller as well as the browser.
 
-function statusFor(reason: CutoutFailure): number {
+function statusFor(reason: StudioFailure): number {
   switch (reason) {
     case 'timeout':             return 504
     case 'rate_limited':        return 429
@@ -122,7 +137,8 @@ function statusFor(reason: CutoutFailure): number {
     case 'moderation':
     case 'empty_result':        return 422
     case 'invalid_key':
-    case 'insufficient_credit': return 503
+    case 'insufficient_credit':
+    case 'reference_missing':   return 503
     default:                    return 502
   }
 }
@@ -157,9 +173,8 @@ export async function POST(req: NextRequest) {
   }
 
   let file: File
-  let form: FormData
   try {
-    form = await req.formData()
+    const form = await req.formData()
     const uploaded = form.get('image')
     if (!uploaded || typeof uploaded === 'string') {
       return NextResponse.json({ error: 'Choose a photograph to upload.' }, { status: 400 })
@@ -187,15 +202,12 @@ export async function POST(req: NextRequest) {
   const prepared = await prepareSourceImage(bytes, validation.mimeType)
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  // The one thing a person chooses about the request, and it arrives as a name.
-  // An unrecognised value becomes Square rather than an error or, worse, a
-  // canvas of the caller's choosing — the pixels live in outputPresets.ts.
-  const preset = resolveOutputPreset(form.get('preset'))
-
+  // ── Stage one: the cut-out, for its dimensions ──────────────────────────────
   const cutout = await removeBackground({
     bytes: prepared.bytes,
     mimeType: prepared.mimeType,
     apiKey,
+    timeoutMs: CUTOUT_TIMEOUT_MS,
   })
 
   if (!cutout.ok) {
@@ -219,45 +231,83 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Local from here on: no second provider call, no network.
-  const composed = await composeStudioImage(cutout.png, preset.key)
-
-  if (!composed.ok) {
-    if (composed.quality) {
-      // Measurements only — sizes and ratios, never image data.
-      console.warn('[image-editor/studio] refused on quality:', composed.quality.detail,
-        `request ${cutout.requestId || '-'}`)
-      return NextResponse.json(
-        { error: composed.quality.message, noRetry: true },
-        { status: 422 },
-      )
-    }
-    // Every other composition failure is deterministic in the same way: the same
-    // photograph segments the same, and an opaque or empty cut-out will be
-    // opaque or empty again. A retry would spend a second request to be told
-    // exactly this, so the card offers a different photograph instead.
-    console.error('[image-editor/studio] compose failed, request', cutout.requestId || '-')
-    return NextResponse.json({ error: composed.error, noRetry: true }, { status: 422 })
+  // ── Local: measure, plan the padding, crop and scale ────────────────────────
+  const measured = await measureCutout(cutout.png)
+  if (!measured.ok) {
+    console.warn('[image-editor/studio] unusable cut-out, request', cutout.requestId || '-')
+    return NextResponse.json({ error: measured.error, noRetry: true }, { status: 422 })
   }
 
-  const m = composed.metrics
+  const product = { width: measured.bounds.width, height: measured.bounds.height }
+
+  // The quality gate. A product too small to fill the master would have to be
+  // enlarged, and enlarging invents nothing — so it is refused with the height
+  // the photograph would have needed, before the second request is paid for.
+  const verdict = checkEnlargement(product)
+  if (!verdict.ok) {
+    // Measurements only — sizes and ratios, never image data.
+    console.warn('[image-editor/studio] refused on quality:',
+      `product ${product.width}x${product.height}`,
+      `would need ${verdict.scale.toFixed(2)}x (cap ${MAX_ENLARGEMENT})`,
+      `needs about ${verdict.needed}px tall`,
+      `request ${cutout.requestId || '-'}`)
+
+    return NextResponse.json({ error: verdict.message, noRetry: true }, { status: 422 })
+  }
+
+  const plan = planPadding(product)
+
+  const shaped = await prepareCutoutForShot(cutout.png, measured.bounds, plan.product)
+  if (!shaped.ok) {
+    console.error('[image-editor/studio] prepare failed, request', cutout.requestId || '-')
+    return NextResponse.json({ error: shaped.error, noRetry: true }, { status: 422 })
+  }
+
+  // ── Stage two: the studio scene around it ───────────────────────────────────
+  const studio = await generateStudioShot({
+    cutoutPng: shaped.png,
+    plan,
+    apiKey,
+    timeoutMs: STUDIO_TIMEOUT_MS,
+  })
+
+  if (!studio.ok) {
+    console.error(
+      '[image-editor/studio] studio failed:',
+      `category ${studio.reason}`,
+      `status ${studio.status ?? '-'}`,
+      `request ${studio.requestId || '-'}`,
+      `${studio.durationMs} ms`,
+      // Only set for a missing reference, and it is a path, never file contents.
+      studio.detail ?? '',
+    )
+
+    return NextResponse.json(
+      {
+        error: studio.message,
+        ...(isNoRetry(studio.reason) ? { noRetry: true } : {}),
+      },
+      { status: statusFor(studio.reason) },
+    )
+  }
+
   console.info(
     '[image-editor/studio] ok:',
-    `request ${cutout.requestId || '-'}`,
-    `${cutout.durationMs} ms`,
-    `cutout ${m.cutout.width}x${m.cutout.height}`,
-    `product ${m.bounds.width}x${m.bounds.height}`,
-    `scale ${m.scale.toFixed(2)}x`,
-    `preset ${m.preset} ${m.canvas.width}x${m.canvas.height}`,
-    `tone ${m.tone.reason} gain ${m.tone.gain.toFixed(2)}`,
-    `contact columns ${m.contactColumns}`,
+    `cutout request ${cutout.requestId || '-'} ${cutout.durationMs} ms`,
+    `studio request ${studio.requestId || '-'} ${studio.durationMs} ms`,
+    `product ${product.width}x${product.height}`,
+    `scale ${plan.scale.toFixed(3)}x`,
+    `placed ${plan.product.width}x${plan.product.height}`,
+    `padding [${plan.paddingValues.join(', ')}]`,
+    `height share ${(plan.heightShare * 100).toFixed(1)}%`,
+    plan.widthLimited ? 'width-limited' : '',
   )
 
   return NextResponse.json({
     configured: true,
     image: {
-      dataUrl: `data:image/png;base64,${composed.png.toString('base64')}`,
-      mimeType: 'image/png',
+      dataUrl: `data:${studio.contentType};base64,${studio.image.toString('base64')}`,
+      mimeType: studio.contentType,
     },
   })
 }

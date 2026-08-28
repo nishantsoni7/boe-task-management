@@ -104,17 +104,30 @@ describe('the run', () => {
   })
 })
 
-describe('the output shape', () => {
-  test('the browser sends a preset name, never dimensions', () => {
-    assert.match(PAGE, /form\.append\('preset', preset\)/)
-    assert.ok(!/shot_size/.test(PAGE), 'the page must not know about shot_size')
-    assert.ok(!/1200|800|1125/.test(PAGE.replace(/\/\/.*$/gm, '')), 'no dimensions in the page')
+describe('what the browser gets to decide', () => {
+  test('the browser sends the photograph and nothing else', () => {
+    // There is no output shape to choose any more: the master is square, and a
+    // landscape or portrait crop of it is made later by somebody who can see
+    // the picture. So the form has one field, and nothing the page sends can
+    // change what a request costs or what canvas comes back.
+    // Scoped to the generation call: the download menu builds its own form for
+    // the conversion route, which never touches a provider.
+    const generate = PAGE.slice(PAGE.indexOf('const generateOne'), PAGE.indexOf('const run ='))
+    const appends = generate.match(/form\.append\([^)]*\)/g) ?? []
+    assert.deepEqual(appends, ["form.append('image', item.file)"])
+    assert.ok(!PAGE.includes("'preset'"), 'no output shape is sent any more')
   })
 
-  test('the shapes come from the shared table', () => {
-    assert.match(PAGE, /from '@\/lib\/imageEditor\/outputPresets'/)
-    assert.match(PAGE, /DEFAULT_OUTPUT_PRESET/)
-    // The default is not spelled out here — it is whatever the table says.
-    assert.ok(!/useState<OutputPresetKey>\('(square|portrait|landscape)'\)/.test(PAGE))
+  test('the page knows no dimension, no placement and no model', () => {
+    const code = PAGE.replace(/\/\/.*$/gm, '')
+    for (const leak of [
+      'shot_size', 'padding_values', 'placement_type', 'num_results',
+      // Real identifiers, not bare "fal" — that is a substring of "false".
+      'fal.run', 'fal.ai', 'fal-ai', 'FAL_KEY', 'bria', 'product-shot', 'scene_description',
+    ]) {
+      assert.ok(!code.toLowerCase().includes(leak.toLowerCase()),
+        `the page must not know about ${leak}`)
+    }
+    assert.ok(!/\b(1000|1200|800|1125)\b/.test(code), 'no canvas dimensions in the page')
   })
 })
