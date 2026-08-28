@@ -8,8 +8,8 @@ import type { QueueItem } from '@/lib/imageEditor/queue'
 //
 // A completed card shows the photograph beside the studio image, because the
 // comparison is the only way to judge whether the product survived. A failed
-// card shows why, and offers a retry that says what a retry costs BEFORE it is
-// pressed rather than after.
+// card shows why, and offers a retry — which the person presses, never the
+// runner: nothing here retries on its own.
 
 function Panel({ label, src, alt, accent }: {
   label: string
@@ -90,16 +90,10 @@ export function ResultCard({
         )}
 
         {failed && (
-          <>
-            <button className="boe-btn boe-btn-ghost" onClick={() => onRetry(item.id)} disabled={busy}>
-              <RotateCcw size={13} strokeWidth={2} />
-              Retry
-            </button>
-            {/* Said before the click, not after. */}
-            <span style={{ fontSize: '11px', color: colors.tertiary }}>
-              Retrying uses another paid generation.
-            </span>
-          </>
+          <button className="boe-btn boe-btn-ghost" onClick={() => onRetry(item.id)} disabled={busy}>
+            <RotateCcw size={13} strokeWidth={2} />
+            Retry
+          </button>
         )}
 
         <button

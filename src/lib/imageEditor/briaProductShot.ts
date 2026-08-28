@@ -53,33 +53,79 @@ const REQUEST_ID_HEADER = 'x-fal-request-id'
  * the upload is interpolated into it, so an uploaded file has no text channel
  * through which to change what the model is asked for.
  *
- * It is the reference standard written out in full — framing, view, light,
- * shadow, background, and what must not change about the product — in the order
- * a photographer would set a shot up. The numbers are spelled as words because
- * Bria takes English prompts without special characters.
+ * It is BOE's approved reference written out in full, in the order a
+ * photographer sets a shot up: subject, studio, framing, angle, light, shadow,
+ * what may not appear, and — last — what may not change.
  *
- * The last paragraph is last on purpose. A model asked to make furniture look
- * good will happily redesign it, and the preservation clauses read as the final
- * word rather than as something the framing instructions above may trade away.
+ * TWO PARAGRAPHS EARN THEIR LENGTH
+ * --------------------------------
+ * The seventh names things a previous result invented: a circle, an arch, a
+ * halo, a panel, a textured wall, a platform. A model asked for a "studio" will
+ * happily supply a decorative backdrop, and naming what is forbidden is the
+ * only defence — describing what is wanted was not enough.
+ *
+ * The eighth is LAST on purpose. A model asked to make furniture look good will
+ * redesign it, and the preservation clause has to read as the final word rather
+ * than as something the framing and lighting above may trade away. A test
+ * asserts that ordering.
+ *
+ * The framing percentages are spelled as words because Bria takes English
+ * prompts without special characters.
  */
 export const STUDIO_SCENE_DESCRIPTION =
-  'Close premium furniture catalogue packshot of one product, horizontally centred in a seamless warm light grey cyclorama studio. ' +
-  'Present the complete product prominently so it occupies approximately sixty to sixty five percent of the image height, ' +
-  'with around twenty percent clear space above and sixteen percent clear space below the feet. ' +
-  'Keep balanced side margins and do not crop any part of the product. ' +
-  'Use a natural front three quarter furniture view, approximately twenty five to thirty five degrees from the front, ' +
-  'with the front dominant, one side visible, and a slight natural view of the seat or top surface. ' +
-  'Preserve the uploaded viewing angle whenever changing it would require reconstructing or inventing product details. ' +
-  'Use a large soft directional studio light from the upper left front, gentle opposite fill light, controlled highlights, ' +
-  'natural contrast, and sharp readable material texture. ' +
-  'Create compact contact shadows directly beneath every product foot and one subtle soft cast shadow extending away from the main light. ' +
-  'Use one continuous warm light grey studio background and floor transition with no visible horizon, wall and floor division, ' +
-  'skirting, corner, room, architecture, props, texture, decoration, text, or added logo. ' +
-  'Preserve the uploaded furniture product exactly. Keep its construction, geometry, proportions, viewing direction, legs, arms, ' +
-  'joints, cane pattern, rope pattern, upholstery, stitching, wood grain, metal details, finish, colours, materials, ' +
-  'and any existing product marking unchanged. ' +
-  'Do not add, remove, redesign, reshape, rotate, recolour, smooth, replace, or regenerate any product component.'
+  'Create a clean professional catalogue photograph using the exact furniture product from the supplied source image. ' +
+  'Place the product alone in a plain seamless photography studio. The background and floor must form one continuous ' +
+  'warm-neutral light-grey surface with a very soft natural tonal gradient. The studio must feel spacious, quiet and empty. ' +
+  'There must be no visible horizon line or obvious separation between wall and floor. ' +
+  'Position the complete product at the horizontal centre of the canvas. The product must occupy approximately sixty-five ' +
+  'percent of the canvas height. Keep approximately twenty-one percent clear space above the product and approximately ' +
+  'fourteen percent clear space below its lowest visible foot. Maintain balanced open space on the left and right. ' +
+  'Keep the complete product inside the frame without cropping. ' +
+  'Retain the exact viewing angle shown in the source photograph. Do not rotate the product or generate a different side. ' +
+  'If the source already shows a natural front three-quarter view, preserve that view exactly. Do not invent hidden ' +
+  'geometry to change the angle. ' +
+  'Use broad, soft, diffused studio lighting from the upper-left and slightly in front of the product. Light the furniture ' +
+  'evenly while retaining natural depth, wood grain, upholstery texture, cane work, metal details and edge definition. ' +
+  'Keep colours accurate to the supplied product. Do not make the wood unnaturally orange, glossy, pale or dark. ' +
+  'Create a small soft contact shadow directly beneath every visible foot so the furniture appears firmly grounded. ' +
+  'Add one restrained, feathered cast shadow extending gently toward the right and slightly behind the product. ' +
+  'The shadow must remain light, natural and secondary to the product. ' +
+  'The scene must contain only the supplied furniture product, the seamless background and its natural shadow. ' +
+  'Do not create a circle, arch, halo, frame, panel, niche, textured wall, fabric wall, concrete wall, room, interior, ' +
+  'platform, pedestal, stage, window, curtain, spotlight, plant, decoration, accessory or any other object. ' +
+  'Do not add any new text, watermark, brand name or logo. If the supplied product image already contains an existing ' +
+  'BOE watermark or marking, retain it without changing its design or position. ' +
+  'The supplied furniture is the product being sold. Preserve it exactly. Keep its construction, proportions, geometry, ' +
+  'dimensions, viewing angle, legs, stretchers, joints, rails, arms, backrest, seat, upholstery, stitching, cane, ' +
+  'wood grain, wood colour, finish, metal parts, hardware, curves, thicknesses and all visible details identical to the ' +
+  'source. Do not redesign, beautify, repair, simplify, replace, remove, add or invent any part of the furniture.'
 
+/**
+ * Everything about the request that costs money or decides the output.
+ *
+ * `num_results: 1` and `placement_type: 'manual_placement'` are the two that
+ * matter financially: Bria bills per result, and `placement_type: 'automatic'`
+ * returns TEN placements per request. Neither is a default being relied upon —
+ * both are stated, and asserted by the tests.
+ *
+ * WHAT IS DELIBERATELY ABSENT, AND WHY
+ * ------------------------------------
+ * Bria's placement fields are not independent — each belongs to one
+ * `placement_type`, and sending one from another mode is at best ignored and at
+ * worst a rejected request. With `manual_placement` the compatible set is
+ * exactly `manual_placement_selection` and `shot_size`, so these are never sent:
+ *
+ *   padding_values     belongs to placement_type 'manual_padding'
+ *   original_quality   belongs to placement_type 'original'
+ *   ref_image_url      an alternative to scene_description, never both
+ *
+ * `manual_padding` is the mode that would set the composition by arithmetic
+ * rather than by wording, and it cannot be used in one request: its padding is
+ * measured in pixels around the product CUTOUT, whose size BOE does not know
+ * without calling Bria's separate cutout API first — a second charge per image.
+ * The full reading of the schema, and what follows from it, is in
+ * outputPresets.ts.
+ */
 export const FIXED_SETTINGS = {
   num_results: 1,
   fast: true,

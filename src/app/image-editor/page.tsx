@@ -29,23 +29,23 @@ import { ResultCard } from './ResultCard'
 //
 // THE ONE THING THIS SCREEN IS CAREFUL ABOUT
 // ------------------------------------------
-// Every generated image is a paid request, so the screen never starts one by
-// accident. Choosing images costs nothing and says so. Generate does not
-// generate: it asks, in a sentence with the number in it, and waits for a
-// second deliberate press. The run itself is sequential — one request at a
-// time, one request per image — and a ref, not state, guards the entry so two
-// clicks in one frame cannot both start it.
+// Each image is generated exactly once. Generate starts the run directly, and
+// the protection against a second run is a ref rather than state, because state
+// updates on the next render and two clicks in one frame would otherwise both
+// start it. The run is sequential — one image at a time, in the order chosen.
 //
-// A failure never costs a success: results are kept on their own items as they
-// arrive, so an image that fails fourth leaves the first three downloadable.
-// Nothing is retried automatically, ever; a retry is a person pressing a button
-// that says what it will cost.
+// A failure never disturbs a success: results are kept on their own items as
+// they arrive, so an image that fails fourth leaves the first three
+// downloadable. Nothing is ever retried automatically; a retry is a person
+// pressing a button.
+//
+// The screen says nothing about providers, requests, credits or cost. That is
+// deliberate: a BOE employee is preparing a catalogue photograph, not
+// administering an account.
 
 type Phase =
-  /** Choosing images. Nothing has been sent. */
+  /** Choosing images, or looking at results. */
   | 'choosing'
-  /** The cost has been stated and is waiting for a deliberate confirmation. */
-  | 'confirming'
   /** A run is in flight. */
   | 'running'
 
@@ -206,9 +206,9 @@ export default function ImageEditorPage() {
   /**
    * Work the queue, one image at a time.
    *
-   * Sequential on purpose: five requests at once is five times the load on the
-   * provider and five charges racing each other, and a failure in the middle of
-   * that is far harder to report honestly than a failure in a line.
+   * Sequential on purpose: five at once is five times the load on the provider,
+   * and a failure in the middle of that is far harder to report honestly than a
+   * failure in a line.
    */
   const run = useCallback(async () => {
     if (runningRef.current) return
@@ -370,7 +370,6 @@ export default function ImageEditorPage() {
             </div>
             <div style={{ fontSize: '12px', color: colors.tertiary, maxWidth: '360px' }}>
               Tap to choose, or drag them here. JPG, PNG or WebP, up to {MAX_SOURCE_IMAGE_LABEL} each.
-              Nothing is generated until you confirm.
             </div>
           </div>
         )}
@@ -402,34 +401,14 @@ export default function ImageEditorPage() {
           </div>
         )}
 
-        {/* ── Cost confirmation ───────────────────────────────────────────── */}
+        {/* ── Generate ────────────────────────────────────────────────────── */}
         {pending > 0 && !running && (
-          phase === 'confirming' ? (
-            <div className="boe-card" style={{ padding: '14px', marginBottom: '14px' }}>
-              <div style={{ fontSize: '13px', color: colors.primary, fontWeight: 600, marginBottom: '4px' }}>
-                This will generate {pending} studio {pending === 1 ? 'image' : 'images'} using {pending} fal.ai {pending === 1 ? 'request' : 'requests'}.
-              </div>
-              <div style={{ fontSize: '12px', color: colors.tertiary, marginBottom: '12px' }}>
-                Each request is charged separately. Images are processed one at a time.
-              </div>
-              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button className="boe-btn boe-btn-primary" onClick={() => { void run() }}>
-                  <Wand2 size={13} strokeWidth={2} />
-                  Confirm and generate {pending}
-                </button>
-                <button className="boe-btn boe-btn-ghost" onClick={() => setPhase('choosing')}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-              <button className="boe-btn boe-btn-primary" onClick={() => setPhase('confirming')}>
-                <Wand2 size={13} strokeWidth={2} />
-                Generate Studio {pending === 1 ? 'Image' : 'Images'}
-              </button>
-            </div>
-          )
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            <button className="boe-btn boe-btn-primary" onClick={() => { void run() }} disabled={running}>
+              <Wand2 size={13} strokeWidth={2} />
+              {pending === 1 ? 'Generate Studio Image' : `Generate ${pending} Studio Images`}
+            </button>
+          </div>
         )}
 
         {/* ── Progress ────────────────────────────────────────────────────── */}

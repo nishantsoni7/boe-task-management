@@ -16,8 +16,9 @@ import { prepareSourceImage } from '../src/lib/imageEditor/prepareSource.ts'
 import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
 import { generateProductShot, MODEL_ID } from '../src/lib/imageEditor/briaProductShot.ts'
 import { resolveOutputPreset } from '../src/lib/imageEditor/outputPresets.ts'
+import { measureComposition, describeMeasurement } from '../src/lib/imageEditor/composition.ts'
 
-const [sourceFile, out = 'test-results/studio.png', preset = 'square'] = process.argv.slice(2)
+const [sourceFile, out = 'test-results/studio.png', preset = 'landscape'] = process.argv.slice(2)
 if (!sourceFile) {
   console.error('usage: FAL_KEY=… npx tsx scripts/image-editor-smoke.mjs <photo.jpg> [out.png] [square|portrait|landscape]')
   process.exit(1)
@@ -59,4 +60,25 @@ const png = Buffer.from(base64, 'base64')
 writeFileSync(out, png)
 console.log(`ok in ${result.durationMs} ms → ${out}`)
 console.log(`   ${result.image.width ?? '?'}x${result.image.height ?? '?'} ${contentType}, ${(png.length / 1e6).toFixed(2)} MB`)
-console.log(`   fal request id ${result.requestId || '-'} — check the dashboard shows ONE billed result`)
+console.log(`   request id ${result.requestId || '-'} — check the dashboard shows ONE billed result\n`)
+
+// The composition, measured rather than eyeballed.
+const measured = await measureComposition(png)
+if (!measured.ok) {
+  console.log(`composition: ${measured.error}`)
+} else {
+  console.log('composition, against the approved reference:')
+  for (const line of describeMeasurement(measured.measurement)) console.log(`   ${line}`)
+
+  const m = measured.measurement
+  const t = shape.target
+  const within = (actual, target, tolerance) => Math.abs(actual - target) <= tolerance
+  const verdict = [
+    ['product height', within(m.product.height, t.productHeight, t.productHeight * 0.06)],
+    ['space above',    within(m.product.top, t.productTop, t.productTop * 0.15)],
+    ['feet baseline',  within(m.product.bottom, t.feetBaseline, t.feetBaseline * 0.05)],
+    ['centred',        Math.abs(m.centreOffsetPx) <= m.canvas.width * 0.04],
+    ['not cropped',    !m.touchesEdge],
+  ]
+  console.log('\n   ' + verdict.map(([name, ok]) => `${ok ? 'MEETS' : 'MISSES'} ${name}`).join('\n   '))
+}

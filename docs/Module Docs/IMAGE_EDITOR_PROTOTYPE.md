@@ -24,22 +24,23 @@ file on disk, no history — closing the tab loses everything.
 | Rule | Why |
 | --- | --- |
 | Five images maximum | Each is a separate paid generation. |
-| Nothing is sent when an image is chosen | Selection costs nothing, and the row says "Waiting" until somebody confirms. |
+| Nothing is sent when an image is chosen | Selection does nothing until Generate is pressed; the row says "Waiting". |
 | One bad file never costs a good one | A rejected file is named and dropped; the rest stay queued. |
 | One request at a time, in order | Five at once is five charges racing each other and a failure that is hard to report honestly. |
 | A failure never costs a success | Results are kept per item, so an image that fails fourth leaves the first three downloadable. |
-| Retry is manual, and says what it costs | The warning sits beside the button, before the press. |
+| Retry is manual | A person presses it. Nothing here retries on its own, ever. |
 
-### Cost confirmation
+### Generating
 
-Generate does not generate. It states, with the number in it:
+**Generate** starts the run directly — one press, one image each. The button
+reads *Generate Studio Image* or *Generate 3 Studio Images*.
 
-> This will generate 3 studio images using 3 fal.ai requests.
-
-and waits for **Confirm and generate 3**. The guard against a second run is a
-ref rather than state, because state updates on the next render and two presses
-in one frame would otherwise both start a run. Verified in Chromium: six rapid
-presses on a two-image queue produce exactly two requests.
+The screen says nothing about providers, requests, credits or cost: an employee
+is preparing a catalogue photograph, not administering an account. The guard
+against a second run is a ref rather than state, because state updates on the
+next render and two presses in one frame would otherwise both start a run.
+Verified in Chromium: six rapid presses on a two-image queue produce exactly two
+requests.
 
 ## How the image is made
 
@@ -70,23 +71,52 @@ in `src/lib/imageEditor/briaProductShot.ts`, unreachable from the browser:
 | `shot_size` | from the chosen preset | Square `[1000,1000]`, Portrait `[900,1125]`, Landscape `[1200,800]` — see below. |
 | `padding_values`, `original_quality`, `ref_image_url` | not sent | Each belongs to a different placement mode. |
 
-### Output shapes
+### Output shapes and the approved composition
 
 Three, and the browser chooses between them by NAME. `shot_size` decides what
 Bria renders, so a route that accepted dimensions from a form would let a caller
 ask for a very large canvas on BOE's account; `outputPresets.ts` is the only
-place a name becomes pixels, and an unrecognised name resolves to Square.
+place a name becomes pixels, and an unrecognised name resolves to the default.
 
-| Preset | `shot_size` | Pixels |
-| --- | --- | --- |
-| Square 1:1 (default) | `[1000, 1000]` | 1.00 MP |
-| Portrait 4:5 | `[900, 1125]` | 1.01 MP |
-| Landscape 3:2 | `[1200, 800]` | 0.96 MP |
+**Landscape 3:2 is the default** — it is the shape of the approved reference.
 
-All three are exact ratios in round numbers near the ~1 MP Bria's own schema
-asks for. Occupancy does not change with the shape: the scene description states
-the product's height as a fraction of the IMAGE height, so a taller canvas gives
-a taller product rather than a smaller one.
+| Preset | `shot_size` | Product height | Top | Feet baseline | Centre |
+| --- | --- | --- | --- | --- | --- |
+| **Landscape 3:2** (default) | `[1200, 800]` | 520 px (65%) | 168 px (21%) | 688 px (86%) | x 600 |
+| Square 1:1 | `[1000, 1000]` | 650 px (65%) | 210 px (21%) | 860 px (86%) | x 500 |
+| Portrait 4:5 | `[900, 1125]` | 731 px (65%) | 236 px (21%) | 968 px (86%) | x 450 |
+
+The same proportions on every shape, so a product looks the same size whichever
+canvas it lands on.
+
+### Why the composition is asked for and not set
+
+The honest position, from the endpoint's own types:
+
+- `padding_values` **is** deterministic — pixels, ordered `[left, right, top,
+  bottom]`, valid only with `placement_type: 'manual_padding'`, and sized so
+  cutout + padding lands near 1 MP.
+- But it is padding around the product **cutout**, and Bria's own note says to
+  "first use the product cutout API, get the cutout and understand the size of
+  the result, and then define the required padding". BOE does not have the
+  cutout's pixel size: the source is an unsegmented factory photograph, and
+  getting it means a second billable request per image.
+- With `manual_padding` the canvas is cutout + padding and `shot_size` is
+  ignored; the two are alternatives, never a pair.
+
+So `shot_size` fixes the **canvas** deterministically, and the scene description
+asks for the **occupancy** inside it. Whether padding is applied before or after
+background generation is **not stated** in the endpoint types and fal's own
+documentation is unreachable from this environment — it is left undetermined
+rather than guessed, and it does not change the conclusion, because the missing
+cutout size blocks that route either way.
+
+`measureComposition` (`composition.ts`) is how a result is then checked against
+the table above: it finds the product against the plain background and reports
+height, margins, feet baseline and centring. The smoke script prints it after
+every real request. Its one blind spot is pinned by a test — given a decorative
+backdrop it measures the **backdrop**, so it answers "is the framing right",
+never "is the scene clean".
 
 **Unverified:** no shape has been rendered by the real API — see the blockers at
 the end.

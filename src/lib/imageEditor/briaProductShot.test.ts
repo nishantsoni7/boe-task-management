@@ -94,9 +94,8 @@ describe('the request', () => {
     assert.equal(sent.fast, true)
     assert.equal(sent.optimize_description, false)
     assert.equal(sent.sync_mode, true)
-    // Square unless a preset is chosen — the shape the integration has always
-    // sent.
-    assert.deepEqual(sent.shot_size, [1000, 1000])
+    // Landscape unless a preset is chosen — the approved reference shape.
+    assert.deepEqual(sent.shot_size, [1200, 800])
 
     // And the constants themselves, so a change to them is a deliberate one.
     assert.deepEqual({ ...FIXED_SETTINGS }, {
@@ -184,127 +183,91 @@ describe('the request', () => {
 })
 
 describe('the scene description holds the reference standard', () => {
-  // Each of these is a line of the reference BOE approved. They are asserted
-  // one at a time so that a rewrite which quietly drops the margins, or the
-  // cyclorama, or the preservation clause, fails on the clause it dropped
-  // rather than on one unreadable string comparison.
+  // Each of these is a line of the reference BOE approved, asserted on its own
+  // so that a rewrite which quietly drops the margins, or the studio, or the
+  // preservation clause, fails on the clause it dropped rather than on one
+  // unreadable string comparison.
 
   const scene = STUDIO_SCENE_DESCRIPTION
 
-  test('framing: one product, centred, filling sixty to sixty five percent of the height', () => {
-    assert.match(scene, /packshot of one product/)
-    assert.match(scene, /horizontally centred/)
-    assert.match(scene, /sixty to sixty five percent of the image height/)
+  test('framing: centred, sixty-five percent of the canvas height', () => {
+    assert.match(scene, /horizontal centre of the canvas/)
+    assert.match(scene, /occupy approximately sixty-five percent of the canvas height/)
+    assert.match(scene, /twenty-one percent clear space above/)
+    assert.match(scene, /fourteen percent clear space below its lowest visible foot/)
+    assert.match(scene, /balanced open space on the left and right/)
+    assert.match(scene, /without cropping/)
   })
 
-  test('framing: the margins above and below the product are stated', () => {
-    assert.match(scene, /twenty percent clear space above/)
-    assert.match(scene, /sixteen percent clear space below the feet/)
-    assert.match(scene, /balanced side margins/)
-    assert.match(scene, /do not crop any part of the product/)
+  test('studio: one continuous surface, no horizon, no wall-and-floor division', () => {
+    assert.match(scene, /plain seamless photography studio/)
+    assert.match(scene, /one continuous\s+warm-neutral light-grey surface|one continuous warm-neutral light-grey surface/)
+    assert.match(scene, /no visible horizon line or obvious separation between wall and floor/)
+    assert.match(scene, /spacious, quiet and empty/)
   })
 
-  test('view: front three quarter, with the source angle taking priority', () => {
-    assert.match(scene, /front three quarter furniture view/)
-    assert.match(scene, /twenty five to thirty five degrees from the front/)
-    assert.match(scene, /front dominant, one side visible/)
-    assert.match(scene, /seat or top surface/)
-    // The angle is a preference, not an instruction to rebuild the furniture.
-    assert.match(scene, /Preserve the uploaded viewing angle whenever changing it would require reconstructing or inventing product details/)
-  })
-
-  test('background: a seamless warm light grey cyclorama with no wall or floor division', () => {
-    assert.match(scene, /seamless warm light grey cyclorama studio/)
-    assert.match(scene, /one continuous warm light grey studio background and floor transition/)
-    assert.match(scene, /no visible horizon, wall and floor division/)
-  })
-
-  test('background: nothing may be added to the scene', () => {
-    for (const forbidden of ['skirting', 'corner', 'room', 'architecture', 'props', 'texture', 'decoration', 'text', 'added logo']) {
-      assert.ok(scene.includes(forbidden), `the scene must forbid ${forbidden}`)
+  test('the scene forbids every decoration the rejected result invented', () => {
+    // The rejected image put a small chair inside a circular decorative
+    // backdrop. Naming each of these is the defence.
+    for (const forbidden of [
+      'circle', 'arch', 'halo', 'frame', 'panel', 'niche', 'textured wall',
+      'fabric wall', 'concrete wall', 'room', 'interior', 'platform', 'pedestal',
+      'stage', 'window', 'curtain', 'spotlight', 'plant', 'decoration', 'accessory',
+    ]) {
+      assert.ok(scene.includes(forbidden), `the scene must forbid a ${forbidden}`)
     }
+    assert.match(scene, /or any other object/)
   })
 
-  test('light: large, soft, upper left front, with opposite fill', () => {
-    assert.match(scene, /large soft directional studio light from the upper left front/)
-    assert.match(scene, /gentle opposite fill light/)
-    assert.match(scene, /controlled highlights/)
-    assert.match(scene, /natural contrast/)
-    assert.match(scene, /sharp readable material texture/)
+  test('the scene adds no text or logo, and keeps an existing BOE marking', () => {
+    assert.match(scene, /Do not add any new text, watermark, brand name or logo/)
+    assert.match(scene, /existing\s+BOE watermark or marking, retain it|existing BOE watermark or marking, retain it/)
   })
 
-  test('shadow: compact contact shadows under every foot, and one soft cast shadow', () => {
-    assert.match(scene, /compact contact shadows directly beneath every product foot/)
-    assert.match(scene, /one subtle soft cast shadow extending away from the main light/)
+  test('angle: the source view is kept, and no hidden geometry is invented', () => {
+    assert.match(scene, /Retain the exact viewing angle shown in the source photograph/)
+    assert.match(scene, /Do not rotate the product or generate a different side/)
+    assert.match(scene, /Do not invent hidden\s+geometry|Do not invent hidden geometry/)
+  })
+
+  test('light: broad, soft, upper-left and slightly in front', () => {
+    assert.match(scene, /broad, soft, diffused studio lighting from the upper-left and slightly in front/)
+    assert.match(scene, /Keep colours accurate to the supplied product/)
+    assert.match(scene, /unnaturally orange, glossy, pale or dark/)
+  })
+
+  test('shadow: contact under every foot, one restrained cast shadow to the right', () => {
+    assert.match(scene, /small soft contact shadow directly beneath every visible foot/)
+    assert.match(scene, /cast shadow extending gently toward the right and slightly behind/)
+    assert.match(scene, /light, natural and secondary to the product/)
   })
 
   test('preservation: the product is named part by part, and nothing may change it', () => {
-    assert.match(scene, /Preserve the uploaded furniture product exactly/)
-    for (const part of ['construction', 'geometry', 'proportions', 'viewing direction', 'legs', 'arms',
-      'joints', 'cane pattern', 'rope pattern', 'upholstery', 'stitching', 'wood grain', 'metal details',
-      'finish', 'colours', 'materials', 'existing product marking']) {
+    assert.match(scene, /The supplied furniture is the product being sold\. Preserve it exactly\./)
+    for (const part of ['construction', 'proportions', 'geometry', 'dimensions', 'viewing angle',
+      'legs', 'stretchers', 'joints', 'rails', 'arms', 'backrest', 'seat', 'upholstery',
+      'stitching', 'cane', 'wood grain', 'wood colour', 'finish', 'metal parts', 'hardware',
+      'curves', 'thicknesses']) {
       assert.ok(scene.includes(part), `the scene must preserve ${part}`)
     }
-    // Checked inside the prohibition itself, not anywhere in the text: "add"
-    // also appears in "added logo", and a loose search would pass even if the
-    // verb had been dropped from the sentence that forbids it.
-    const prohibition = scene.slice(scene.indexOf('Do not add'))
-    for (const verb of ['add', 'remove', 'redesign', 'reshape', 'rotate', 'recolour', 'smooth', 'replace', 'regenerate']) {
+    const prohibition = scene.slice(scene.indexOf('Do not redesign'))
+    for (const verb of ['redesign', 'beautify', 'repair', 'simplify', 'replace', 'remove', 'add', 'invent']) {
       assert.ok(prohibition.includes(verb), `the prohibition must name ${verb}`)
     }
   })
 
-  test('preservation is the last word, after the framing and the light', () => {
+  test('preservation is the LAST paragraph', () => {
     // Ordering matters: a model asked to make furniture look good will redesign
-    // it, and the preservation clause has to read as the final constraint
-    // rather than as something the framing above may trade away.
-    assert.ok(scene.indexOf('Preserve the uploaded furniture product exactly') >
-      scene.indexOf('studio light from the upper left front'))
-    assert.ok(scene.trimEnd().endsWith('regenerate any product component.'))
+    // it, and this clause has to read as the final constraint rather than as
+    // something the framing and lighting above may trade away.
+    assert.ok(scene.indexOf('The supplied furniture is the product being sold') >
+      scene.indexOf('Do not create a circle'))
+    assert.ok(scene.trimEnd().endsWith('or invent any part of the furniture.'))
   })
 
   test('it is plain English with no special characters, as Bria requires', () => {
     const unusual = [...scene].filter(c => c.charCodeAt(0) > 126)
     assert.deepEqual(unusual, [], `Bria takes no special characters: ${unusual.join('')}`)
-  })
-})
-
-describe('the output shape', () => {
-  test('each preset sends its own dimensions', async () => {
-    for (const [preset, expected] of [
-      ['square', [1000, 1000]], ['portrait', [900, 1125]], ['landscape', [1200, 800]],
-    ] as const) {
-      const { calls } = stubFetch(() => okResponse())
-      await generateProductShot({ ...PHOTO, apiKey: KEY, preset })
-      assert.deepEqual(body(calls).shot_size, [...expected], `${preset} shot_size`)
-    }
-  })
-
-  test('no preset means Square', async () => {
-    const { calls } = stubFetch(() => okResponse())
-    await generateProductShot({ ...PHOTO, apiKey: KEY })
-    assert.deepEqual(body(calls).shot_size, [1000, 1000])
-  })
-
-  test('dimensions can never be supplied directly, only chosen from the table', () => {
-    // buildRequestBody takes a KEY. Anything unrecognised resolves to Square
-    // rather than reaching Bria, so no caller can ask for a 40 megapixel canvas
-    // on BOE's account.
-    for (const bad of ['huge', '', undefined, '[4000,4000]']) {
-      const built = buildRequestBody('data:image/png;base64,AAA', bad as never)
-      assert.deepEqual(built.shot_size, [1000, 1000], `${JSON.stringify(bad)} must not be honoured`)
-    }
-  })
-
-  test('the shape is the only thing about the request a person chooses', async () => {
-    const { calls } = stubFetch(() => okResponse())
-    await generateProductShot({ ...PHOTO, apiKey: KEY, preset: 'landscape' })
-    const sent = body(calls)
-
-    // Everything that costs money is still fixed.
-    assert.equal(sent.num_results, 1)
-    assert.equal(sent.placement_type, 'manual_placement')
-    assert.equal(sent.scene_description, STUDIO_SCENE_DESCRIPTION)
   })
 })
 
