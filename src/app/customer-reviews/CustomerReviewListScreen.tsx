@@ -57,7 +57,10 @@ const LIST_PARAMS = {
 const TAB_STATUSES: Record<Exclude<TabKey, 'all'>, readonly CustomerReviewStatus[]> = {
   preparing:      ['draft', 'ready_to_send'],
   awaiting_reply: ['sent'],
-  to_verify:      ['customer_responded', 'sent'],
+  // 'sent' is deliberately ABSENT. sent → verified no longer exists: a request
+  // nobody has heard back on is not waiting for a verifier, and listing it here
+  // would be a queue whose rows offer no action.
+  to_verify:      ['customer_responded'],
   finished:       ['verified', 'closed', 'cancelled'],
 }
 
@@ -149,9 +152,10 @@ export function CustomerReviewListScreen() {
 
   const inTab = useCallback((r: CustomerReviewRequest, key: TabKey): boolean => {
     if (key === 'all') return true
-    // "To verify" is the verifier's queue and it means something specific: a
-    // request that has actually left BOE and has not been checked yet. A draft
-    // is not waiting for a verifier, and a verified one is done.
+    // "To verify" is the verifier's queue and it means something specific: the
+    // customer has responded and nobody has checked it yet. A draft is not
+    // waiting for a verifier, a sent-and-silent request has nothing to check,
+    // and a verified one is done.
     if (key === 'to_verify') return r.verified_at === null && TAB_STATUSES.to_verify.includes(r.status)
     return TAB_STATUSES[key].includes(r.status)
   }, [])
@@ -294,6 +298,19 @@ export function CustomerReviewListScreen() {
                   <tr
                     key={r.id}
                     onClick={() => router.push(`/customer-reviews/${r.id}`)}
+                    // A row that only responds to a mouse is unusable from a
+                    // keyboard, and this list is somebody's working queue.
+                    // Enter and Space open it, matching what the pointer does.
+                    tabIndex={0}
+                    role="link"
+                    aria-label={`Open the review request for ${r.customer_name}`}
+                    onKeyDown={e => {
+                      if (e.key !== 'Enter' && e.key !== ' ') return
+                      e.preventDefault()
+                      router.push(`/customer-reviews/${r.id}`)
+                    }}
+                    onFocus={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
+                    onBlur={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
                     style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer', transition: 'background 0.1s' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLTableRowElement).style.background = colors.raised }}
                     onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}

@@ -131,6 +131,8 @@ export type CustomerReviewEventType =
   | 'status_changed'
   | 'whatsapp_opened'
   | 'evidence_recorded'
+  /** An administrator withdrew an attached image. Written by a delete trigger. */
+  | 'photo_removed'
 
 export type CustomerReviewEvent = {
   id: string

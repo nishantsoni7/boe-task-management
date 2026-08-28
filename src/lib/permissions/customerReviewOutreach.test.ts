@@ -357,11 +357,27 @@ describe('the module never claims a message was sent, or a review posted', () =>
   })
 
   test('the button says what it does, and does not claim delivery', () => {
+    // Whitespace-normalised: the copy is JSX and wraps wherever the line ends,
+    // so a phrase search on the raw source would break on a reflow rather than
+    // on a change of meaning.
+    const copy = launch.replace(/\s+/g, ' ')
     assert.ok(launch.includes('Open WhatsApp'))
-    assert.ok(launch.includes('You still have to press send there'))
+    assert.ok(copy.includes('still have to press send there'))
+    assert.ok(copy.includes('BOE never sends it for you'))
     for (const word of ['delivered', 'message sent successfully', 'sent to the customer']) {
-      assert.equal(launch.toLowerCase().includes(word), false, word)
+      assert.equal(copy.toLowerCase().includes(word), false, word)
     }
+  })
+
+  test('AND IT SAYS THE PHOTOGRAPHS ARE NOT SENT', () => {
+    // wa.me carries a phone number and a text parameter. It cannot attach a
+    // file, so any wording implying the project photographs go with the message
+    // would be false — and an employee would stop sending them by hand.
+    const copy = launch.replace(/\s+/g, ' ')
+    assert.ok(copy.includes('no photographs are attached'))
+    const form = read('src/components/customerReviews/RequestForm.tsx').replace(/\s+/g, ' ')
+    assert.ok(form.includes('are <strong>not</strong> attached'))
+    assert.ok(form.includes('never sent automatically'))
   })
 
   test('the detail screen keeps the six milestones separate', () => {

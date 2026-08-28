@@ -92,6 +92,46 @@ export function buildInvitationMessage(input: InvitationInput): string {
 }
 
 /**
+ * PHRASES THAT ASK FOR A VERDICT, which the two editable fragments must not
+ * contain.
+ *
+ * The locked closing sentences cannot be removed — but the greeting and the
+ * project reference ARE editable, and without this an employee in a hurry could
+ * type "please give us 5 stars" into a factual reference and send a message
+ * that solicits a rating in its first sentence and disclaims it in its last.
+ * The locked ending would still be there, and the invitation would still be
+ * steered. That is the hole this closes.
+ *
+ * A deliberately NARROW list, not a sentiment model. It catches the phrasings
+ * people actually use; it does not try to judge tone. A false positive costs an
+ * employee a rewrite, and a false negative costs a customer a steered ask, so
+ * the trade is made in that direction.
+ *
+ * Mirrored in SQL by customer_review_text_steers() — the browser check protects
+ * the person typing and the database check protects the customer.
+ */
+export const STEERING_PATTERNS: readonly RegExp[] = [
+  /(^|[^a-z])(5|five)[\s-]*stars?([^a-z]|$)/i,
+  /(^|[^a-z])5\s*\/\s*5([^a-z]|$)/i,
+  /5\s+out\s+of\s+5/i,
+  /(good|great|positive|excellent|best|nice|glowing)\s+(review|rating|feedback)/i,
+  /(rate|review)\s+us\s+(well|highly|positively|good)/i,
+  /please\s+(rate|review)/i,
+  /star\s+rating/i,
+  /★/,
+]
+
+/**
+ * Whether an editable fragment asks the customer for a particular rating or
+ * verdict. Applied to the greeting and the project reference, never to the
+ * locked sentences (which would obviously never match).
+ */
+export function containsSteeringLanguage(value: string | null | undefined): boolean {
+  if (!value) return false
+  return STEERING_PATTERNS.some(pattern => pattern.test(value))
+}
+
+/**
  * Whether a message still carries both locked sentences.
  *
  * A belt to buildInvitationMessage's braces. It is called by the create/edit

@@ -222,9 +222,12 @@ export function PhotoManager({
                       onClick={() => remove(photo)}
                       disabled={busy}
                       aria-label={`Remove ${photo.file_name}`}
+                      // 32px square. The icon is 13px; the padding is what makes
+                      // it hittable with a thumb rather than only with a mouse.
                       style={{
-                        display: 'inline-flex', alignItems: 'center', padding: '3px',
-                        border: 'none', background: 'transparent',
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        width: '32px', height: '32px', margin: '-6px -6px -6px 0',
+                        borderRadius: '6px', border: 'none', background: 'transparent',
                         color: colors.red, cursor: busy ? 'not-allowed' : 'pointer',
                       }}
                     >

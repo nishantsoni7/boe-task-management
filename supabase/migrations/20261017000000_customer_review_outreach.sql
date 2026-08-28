@@ -225,9 +225,20 @@ create table public.customer_review_requests (
   )
 );
 
--- The list screen's only ordering, and the two filters under it.
+-- TWO indexes, and no third.
+--
+--   created_idx  the list screen's ordering, and the only index every read of
+--                this table actually uses today.
+--   status_idx   the module's one operational dimension — the verifier queue is
+--                "customer_responded and not yet verified", and the tab strip is
+--                status. Kept even though the MVP filters in memory, because it
+--                is the query this table will grow into.
+--
+-- An owner index was considered and DELIBERATELY NOT created. Ownership is
+-- resolved by can_view_customer_review_request(), which looks a single row up by
+-- primary key — it never scans on created_by — so the index would have served no
+-- query that exists.
 create index customer_review_requests_created_idx on public.customer_review_requests (created_at desc);
-create index customer_review_requests_owner_idx   on public.customer_review_requests (created_by, created_at desc);
 create index customer_review_requests_status_idx  on public.customer_review_requests (status, created_at desc);
 
 drop trigger if exists customer_review_requests_set_updated_at on public.customer_review_requests;
@@ -292,7 +303,8 @@ create table public.customer_review_request_events (
     'created',            -- the draft was raised
     'status_changed',     -- a transition through the table in §8
     'whatsapp_opened',    -- the invitation was handed to WhatsApp. NOT "sent".
-    'evidence_recorded'   -- a public review URL was attached
+    'evidence_recorded',  -- a public review URL was attached
+    'photo_removed'       -- an administrator withdrew an attached image
   )),
 
   previous_status text check (previous_status is null or previous_status in (
@@ -323,10 +335,13 @@ create index customer_review_events_request_idx
 
 -- ═══ 5. Visibility and editorship predicates ═══════════════════════════════
 --
--- Three functions, called by every policy AND by every definer function, so
--- "who may read this request", "who may change it" and "who may open this
--- module" are each answered in exactly one place. SECURITY DEFINER + STABLE so
--- a policy can call them without recursing through RLS on public.users.
+-- TWO functions, called by every policy AND by every definer function, so "who
+-- may read this request" and "who may change it" are each answered in exactly
+-- one place. SECURITY DEFINER + STABLE so a policy can call them without
+-- recursing through RLS on public.users.
+--
+-- There is no third "may this person open the module" function — see the note
+-- below where one used to be.
 
 -- May this user READ this request?
 --
@@ -403,28 +418,16 @@ $$;
 revoke execute on function public.can_edit_customer_review_request(uuid, uuid) from public, anon;
 grant  execute on function public.can_edit_customer_review_request(uuid, uuid) to authenticated;
 
--- May this user open the module at all? `use` OR `verify` — a verifier who
--- could not open the module could not verify anything.
-create or replace function public.can_use_customer_review_outreach(p_user_id uuid default auth.uid())
-returns boolean
-language sql
-security definer
-set search_path = public, pg_temp
-stable
-as $$
-  select p_user_id is not null and exists (
-    select 1 from public.users u
-    where u.id = p_user_id and u.is_active
-      and (
-        u.role = 'admin'
-        or public.resolve_permission(p_user_id, 'customer_review_requests', 'use')
-        or public.resolve_permission(p_user_id, 'customer_review_requests', 'verify')
-      )
-  );
-$$;
-
-revoke execute on function public.can_use_customer_review_outreach(uuid) from public, anon;
-grant  execute on function public.can_use_customer_review_outreach(uuid) to authenticated;
+-- THERE IS NO can_use_customer_review_outreach(). One was written and removed
+-- in the pre-review audit, and the reason is worth keeping: nothing called it.
+--
+-- Module ENTRY is answered in two places that already exist — the route guard
+-- asks resolve_permission() for `use` and for `verify` (the shape
+-- src/app/meetings/layout.tsx established), and every policy below asks a
+-- narrower question about a specific row. A third function saying "may this
+-- person open the module" would have been a granted, definer-rights function
+-- with no caller: pure surface, and a tempting shortcut for a future policy
+-- that should be asking about a row instead.
 
 -- ═══ 6. Row-level security ═════════════════════════════════════════════════
 --
@@ -492,6 +495,40 @@ create policy "customer_review_requests_delete" on public.customer_review_reques
     and public.can_edit_customer_review_request(id, auth.uid())
   );
 
+-- A REQUEST THAT STILL HOLDS PHOTOGRAPHS CANNOT BE DELETED, and this trigger is
+-- about storage rather than about the record.
+--
+-- customer_review_request_photos cascades from the request, so deleting a draft
+-- would take its metadata rows with it — and the OBJECTS in the bucket would
+-- stay behind, now undiscoverable, because the rows that named their paths are
+-- the only index of them. Nothing could ever find or remove them again.
+--
+-- Refusing the delete makes the compensation the caller's, and it is a
+-- compensation the UI already performs: removing a photograph deletes the row
+-- and the object together. Empty the request, then discard it.
+create or replace function public.customer_review_requests_prevent_delete_with_photos()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  if exists (select 1 from public.customer_review_request_photos where request_id = old.id) then
+    raise exception 'CUSTOMER_REVIEW_HAS_PHOTOS: Remove the attached photographs before discarding this request'
+      using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+
+revoke execute on function public.customer_review_requests_prevent_delete_with_photos()
+  from public, anon, authenticated;
+
+drop trigger if exists customer_review_requests_prevent_delete_trg on public.customer_review_requests;
+create trigger customer_review_requests_prevent_delete_trg
+  before delete on public.customer_review_requests
+  for each row execute function public.customer_review_requests_prevent_delete_with_photos();
+
 -- ── customer_review_request_photos ──
 
 create policy "customer_review_photos_select" on public.customer_review_request_photos
@@ -529,15 +566,74 @@ create policy "customer_review_photos_insert" on public.customer_review_request_
     )
   );
 
--- Removing a photograph attached by mistake, while the request is still being
--- prepared. Review proof is NOT removable by a client: evidence offered for
--- verification must not vanish from under the verifier.
+-- Removing a photograph attached by mistake.
+--
+-- TWO DOORS, and the second one exists because the first is deliberately narrow.
+--
+--   the owner   may withdraw a PROJECT PHOTOGRAPH while the request is still
+--               being prepared. Review proof is not removable this way:
+--               evidence offered for verification must not vanish from under
+--               the verifier, and a sent request's photographs are part of the
+--               record.
+--
+--   an admin    may withdraw EITHER kind at ANY status. Without this door an
+--               image uploaded by accident — the wrong customer's site, a
+--               screenshot with a bystander in it, a photograph BOE turns out
+--               not to have permission for — would be permanently unremovable
+--               the moment the request left 'ready_to_send', with no safe route
+--               to correct it and no service-role path to fall back on. Every
+--               removal writes a photo_removed row to the append-only trail
+--               (see the trigger below), so a correction is recorded rather
+--               than silent.
 create policy "customer_review_photos_delete" on public.customer_review_request_photos
   for delete to authenticated
   using (
-    kind = 'project_photo'
-    and public.can_edit_customer_review_request(request_id, auth.uid())
+    (
+      kind = 'project_photo'
+      and public.can_edit_customer_review_request(request_id, auth.uid())
+    )
+    or exists (
+      select 1 from public.users u
+      where u.id = auth.uid() and u.is_active and u.role = 'admin'
+    )
   );
+
+-- Every removal is recorded. The row names the file and the kind, so the trail
+-- still reads correctly once the metadata row it describes is gone.
+create or replace function public.customer_review_photos_log_removal()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+begin
+  -- Skip when the parent request is itself going away. The trail cascades with
+  -- it, so the row would be written and immediately deleted — and on some
+  -- orderings the insert would fail against a row already being removed. The
+  -- request-deletion trigger below makes this branch unreachable in practice;
+  -- it is here so the function is correct on its own terms.
+  if not exists (select 1 from public.customer_review_requests where id = old.request_id) then
+    return old;
+  end if;
+
+  insert into public.customer_review_request_events
+    (request_id, event_type, detail, actor_id)
+  values
+    (old.request_id, 'photo_removed',
+     format('%s removed: %s',
+            case when old.kind = 'review_proof' then 'Proof image' else 'Project photograph' end,
+            left(coalesce(old.file_name, 'unnamed'), 120)),
+     coalesce(auth.uid(), old.uploaded_by));
+  return old;
+end;
+$$;
+
+revoke execute on function public.customer_review_photos_log_removal() from public, anon, authenticated;
+
+drop trigger if exists customer_review_photos_log_removal_trg on public.customer_review_request_photos;
+create trigger customer_review_photos_log_removal_trg
+  before delete on public.customer_review_request_photos
+  for each row execute function public.customer_review_photos_log_removal();
 
 -- ── customer_review_request_events ──
 --
@@ -555,6 +651,42 @@ create policy "customer_review_events_select" on public.customer_review_request_
 -- another table. Everything else could be, but is kept here with it so that
 -- "what does Ready to Send require" has ONE answer in the database, matching
 -- readyToSendBlockers() in src/lib/customerReviews/status.ts.
+--
+-- THE STEERING CHECK IS THE ONE WORTH READING TWICE. The closing two sentences
+-- of the invitation are a constant in the application and cannot be edited —
+-- but the greeting and the project reference ARE editable, and an employee in a
+-- hurry could type "please give us 5 stars" into a factual reference field and
+-- send a message that asks for a rating in its first sentence and disclaims it
+-- in its last. That would defeat the whole design, so the two editable
+-- fragments are checked HERE as well as in the browser: a browser check
+-- protects the person typing, and this one protects the customer.
+
+-- Does this fragment ask the customer for a particular rating or verdict?
+--
+-- A deliberately NARROW list of solicitation phrases, not a sentiment model.
+-- False positives are cheap (the employee rewrites a project reference) and a
+-- false negative is a real customer receiving a steered ask, so the patterns
+-- are written to catch the phrasings people actually use.
+create or replace function public.customer_review_text_steers(p_text text)
+returns boolean
+language sql
+immutable
+set search_path = public, pg_temp
+as $$
+  select p_text is not null and (
+    lower(p_text) ~ '(^|[^a-z])(5|five)[[:space:]-]*stars?([^a-z]|$)'
+    or lower(p_text) ~ '(^|[^a-z])5[[:space:]]*/[[:space:]]*5([^a-z]|$)'
+    or lower(p_text) ~ '5[[:space:]]+out[[:space:]]+of[[:space:]]+5'
+    or lower(p_text) ~ '(good|great|positive|excellent|best|nice|glowing)[[:space:]]+(review|rating|feedback)'
+    or lower(p_text) ~ '(rate|review)[[:space:]]+us[[:space:]]+(well|highly|positively|good)'
+    or lower(p_text) ~ 'please[[:space:]]+(rate|review)'
+    or lower(p_text) ~ 'star[[:space:]]+rating'
+    or p_text like '%★%'
+  );
+$$;
+
+revoke execute on function public.customer_review_text_steers(text) from public, anon;
+grant  execute on function public.customer_review_text_steers(text) to authenticated;
 
 create or replace function public.assert_customer_review_ready(p_request_id uuid)
 returns void
@@ -592,11 +724,35 @@ begin
       using errcode = '23514';
   end if;
 
+  -- The two editable fragments must not ask for a rating. Checked before the
+  -- photograph rules so the employee fixes wording and attachments in the order
+  -- the form presents them.
+  if public.customer_review_text_steers(r.greeting_name) then
+    raise exception 'CUSTOMER_REVIEW_NOT_NEUTRAL: The greeting must not ask for a rating or a positive review'
+      using errcode = '23514';
+  end if;
+  if public.customer_review_text_steers(r.project_reference) then
+    raise exception 'CUSTOMER_REVIEW_NOT_NEUTRAL: The project reference must not ask for a rating or a positive review'
+      using errcode = '23514';
+  end if;
+
   select count(*) into v_photos
   from public.customer_review_request_photos
   where request_id = p_request_id and kind = 'project_photo';
 
-  if v_photos > 0 and r.image_permission_confirmed is not true then
+  -- AT LEAST ONE REAL PROJECT PHOTOGRAPH, by product decision. It anchors the
+  -- request to work BOE actually did for this customer: an outreach nobody can
+  -- show a photograph of is an outreach nobody can evidence.
+  --
+  -- The photographs are NOT attached to the WhatsApp message — wa.me carries
+  -- text only, and the employee shares images themselves if they choose to.
+  -- They are a private project reference stored with the request.
+  if v_photos = 0 then
+    raise exception 'CUSTOMER_REVIEW_NOT_READY: Attach at least one real photograph of this customer''s project'
+      using errcode = '23514';
+  end if;
+
+  if r.image_permission_confirmed is not true then
     raise exception 'CUSTOMER_REVIEW_NOT_READY: Confirm BOE has permission to share these photographs'
       using errcode = '23514';
   end if;
@@ -613,11 +769,27 @@ revoke execute on function public.assert_customer_review_ready(uuid) from public
 --
 --   draft              → ready_to_send, cancelled
 --   ready_to_send      → draft, sent, cancelled
---   sent               → customer_responded, verified, cancelled
+--   sent               → customer_responded, cancelled
 --   customer_responded → verified, cancelled
 --   verified           → closed
 --   closed             → (nothing)
 --   cancelled          → (nothing)
+--
+-- ONE PATH THROUGH THE MIDDLE, and the shortcut that used to exist is gone.
+--
+-- An earlier version allowed sent → verified. It was wrong. Verification means
+-- "somebody checked that this customer published a review", and a request in
+-- 'sent' is one where nothing has come back at all — so that edge let a
+-- verifier jump from "we sent a message" to "the review is confirmed" without
+-- any record of a response in between, and left 'customer_responded' as a step
+-- people could skip. The lifecycle is now linear:
+--
+--   sent → customer_responded → verified → closed
+--
+-- Recording a published review URL on a 'sent' request MOVES it to
+-- 'customer_responded' (see record_customer_review_evidence below), because a
+-- published review IS a response. That move is a status change with its own
+-- trail row, and it never verifies anything.
 --
 -- 'sent' is reachable only from 'ready_to_send' and only by a deliberate call:
 -- there is no path from "the employee opened WhatsApp" to "the message was
@@ -679,7 +851,7 @@ begin
   v_legal := case r.status
     when 'draft'              then p_next_status in ('ready_to_send', 'cancelled')
     when 'ready_to_send'      then p_next_status in ('draft', 'sent', 'cancelled')
-    when 'sent'               then p_next_status in ('customer_responded', 'verified', 'cancelled')
+    when 'sent'               then p_next_status in ('customer_responded', 'cancelled')
     when 'customer_responded' then p_next_status in ('verified', 'cancelled')
     when 'verified'           then p_next_status in ('closed')
     else false
@@ -829,8 +1001,18 @@ $$;
 revoke execute on function public.record_customer_review_whatsapp_opened(uuid) from public, anon;
 grant  execute on function public.record_customer_review_whatsapp_opened(uuid) to authenticated;
 
--- Attach the public review URL as factual evidence, without changing status.
--- Recording where a review is does not assert that anybody has checked it.
+-- Attach the public review URL as factual evidence.
+--
+-- ON A 'sent' REQUEST THIS ALSO MOVES IT TO 'customer_responded', and that is
+-- deliberate rather than incidental: a published review IS a response, and
+-- leaving the request in 'sent' would mean the record said "we heard nothing"
+-- while holding a link to what the customer wrote. The move is a real status
+-- change and writes its own trail row.
+--
+-- WHAT IT STILL DOES NOT DO is verify anything. verified_at is never touched
+-- here, by anyone, at any status: recording where a review is and confirming
+-- somebody checked it are two facts, and only a `verify` holder can assert the
+-- second.
 create or replace function public.record_customer_review_evidence(
   p_request_id uuid,
   p_review_url text
@@ -877,7 +1059,12 @@ begin
   end if;
 
   update public.customer_review_requests
-     set review_public_url = v_url
+     set review_public_url = v_url,
+         -- 'sent' → 'customer_responded'. Already-responded requests keep their
+         -- status; nothing here can reach 'verified'.
+         status       = case when r.status = 'sent' then 'customer_responded' else r.status end,
+         responded_at = case when r.status = 'sent' then now()  else r.responded_at end,
+         responded_by = case when r.status = 'sent' then v_uid  else r.responded_by end
    where id = p_request_id;
 
   insert into public.customer_review_request_events
@@ -886,6 +1073,17 @@ begin
     (p_request_id, 'evidence_recorded',
      'A public review link was recorded. It has not been verified.',
      v_uid);
+
+  -- A status change always leaves a status_changed row, whichever function made
+  -- it, so the trail reads the same however the request got here.
+  if r.status = 'sent' then
+    insert into public.customer_review_request_events
+      (request_id, event_type, previous_status, new_status, detail, actor_id)
+    values
+      (p_request_id, 'status_changed', 'sent', 'customer_responded',
+       'A published review link was recorded, which is a customer response.',
+       v_uid);
+  end if;
 
   select * into r from public.customer_review_requests where id = p_request_id;
   return r;
@@ -1014,26 +1212,28 @@ create policy "customer_review_photos_storage_select"
     )
   );
 
--- Deleting is the compensation path for a photograph attached by mistake, and
--- for cleaning up an upload whose metadata row never landed. Preparation stage
--- only, owner or admin. Once a request has been sent, its photographs are part
--- of the record.
+-- Deleting is the compensation path for a photograph attached by mistake, for
+-- cleaning up an upload whose metadata row never landed, and for an
+-- administrator correcting an image that should not be stored at all.
+--
+-- It MIRRORS customer_review_photos_delete on the metadata table exactly, and
+-- has to: a route that could remove the row but not the object would leave an
+-- orphan, and one that could remove the object but not the row would leave a
+-- broken reference. Owner + preparation stage, or an admin at any status.
 create policy "customer_review_photos_storage_delete"
   on storage.objects
   for delete to authenticated
   using (
     bucket_id = 'customer-review-photos'
-    and exists (
-      select 1 from public.customer_review_requests r
-      where r.id::text = split_part(storage.objects.name, '/', 1)
-        and r.status in ('draft', 'ready_to_send')
-        and (
-          exists (select 1 from public.users u where u.id = auth.uid() and u.is_active and u.role = 'admin')
-          or (
-            r.created_by = auth.uid()
-            and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
-          )
-        )
+    and (
+      exists (select 1 from public.users u where u.id = auth.uid() and u.is_active and u.role = 'admin')
+      or exists (
+        select 1 from public.customer_review_requests r
+        where r.id::text = split_part(storage.objects.name, '/', 1)
+          and r.status in ('draft', 'ready_to_send')
+          and r.created_by = auth.uid()
+          and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
+      )
     )
   );
 

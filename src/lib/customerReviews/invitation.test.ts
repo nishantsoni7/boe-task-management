@@ -14,6 +14,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  STEERING_PATTERNS,
+  containsSteeringLanguage,
   buildInvitationMessage,
   buildWaMeUrl,
   hasNeutralLanguage,
@@ -201,5 +203,75 @@ describe('preview-to-wa.me parity', () => {
     assert.equal(messageFromWaMeUrl('http://wa.me/91?text=hi'), null)
     assert.equal(messageFromWaMeUrl('https://evil.test/91?text=hi'), null)
     assert.equal(messageFromWaMeUrl('not a url'), null)
+  })
+})
+
+describe('the editable fragments cannot smuggle a rating request in', () => {
+  test('the phrasings people actually use are caught', () => {
+    for (const steer of [
+      'please give us 5 stars',
+      'give us five stars',
+      'a 5-star job',
+      'five star service',
+      'leave a good review',
+      'a positive review please',
+      'great feedback appreciated',
+      'please rate us',
+      'please review us',
+      'rate us highly',
+      'review us positively',
+      'our star rating',
+      '5/5 service',
+      '5 out of 5',
+      '★★★★★',
+    ]) {
+      assert.equal(containsSteeringLanguage(steer), true, steer)
+    }
+  })
+
+  test('it is case-insensitive, because nobody types carefully', () => {
+    assert.equal(containsSteeringLanguage('PLEASE GIVE US 5 STARS'), true)
+    assert.equal(containsSteeringLanguage('Leave A Good Review'), true)
+  })
+
+  test('an ordinary factual project reference passes', () => {
+    for (const ok of [
+      'your restaurant seating order',
+      'the hotel lobby chairs',
+      'your 40 café chairs (order #A-12)',
+      'the second batch we reviewed together',
+      'your reviewed drawings',
+      'the 5 tables delivered in August',
+      'Riverside Café',
+      'Ms Fernandes',
+    ]) {
+      assert.equal(containsSteeringLanguage(ok), false, ok)
+    }
+  })
+
+  test('blank input is not steering', () => {
+    for (const empty of ['', null, undefined]) {
+      assert.equal(containsSteeringLanguage(empty), false)
+    }
+  })
+
+  test('the pattern list is a narrow allow-nothing list, not a sentiment model', () => {
+    // If this ever grows past a handful of phrases somebody has started trying
+    // to judge tone, which is not what this is for.
+    assert.ok(STEERING_PATTERNS.length <= 12)
+    for (const pattern of STEERING_PATTERNS) {
+      assert.ok(pattern instanceof RegExp)
+    }
+  })
+
+  test('THE SAME RULE EXISTS SERVER-SIDE, so the browser is not the boundary', () => {
+    const sql = read('supabase/migrations/20261017000000_customer_review_outreach.sql')
+    assert.ok(sql.includes('create or replace function public.customer_review_text_steers'))
+    assert.ok(sql.includes('customer_review_text_steers(r.greeting_name)'))
+    assert.ok(sql.includes('customer_review_text_steers(r.project_reference)'))
+    // Both halves recognise the same three anchor phrasings.
+    for (const fragment of ['stars?', 'please', 'star']) {
+      assert.ok(sql.includes(fragment), fragment)
+    }
   })
 })

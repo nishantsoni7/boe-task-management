@@ -1,4 +1,6 @@
 import type { EffectivePermission } from './types'
+import { isEditableStatus } from '@/lib/customerReviews/status'
+import type { CustomerReviewStatus } from '@/lib/customerReviews/types'
 
 // Customer Review Outreach capability derivation.
 //
@@ -27,8 +29,9 @@ import type { EffectivePermission } from './types'
 //            so a verifier can always open the module.
 //
 // The consequence for Control Center is real and is handled: the module's
-// on/off toggle reads `use` rather than `view` for this one module — see
-// MODULE_ENTRY_ACTION_OVERRIDES in
+// on/off toggle reads `use` rather than `view` for this one module, because it
+// resolves the entry action from what the module registers — see
+// entryActionForModule() in ./levels and entryActionFor() in
 // src/app/admin/control-center/permissions/page.tsx.
 //
 // Admins bypass the engine entirely, matching every other cut-over module.
@@ -104,7 +107,11 @@ export function canEditThisRequest(
   role: string | null | undefined,
 ): boolean {
   if (!userId) return false
-  if (request.status !== 'draft' && request.status !== 'ready_to_send') return false
+  // The status list lives in ONE place — EDITABLE_STATUSES in
+  // customerReviews/status.ts, which mirrors can_edit_customer_review_request().
+  // It was spelled out inline here as well, which is two copies of a rule the
+  // database also holds, and two copies is how they drift.
+  if (!isEditableStatus(request.status as CustomerReviewStatus)) return false
   if (role === 'admin') return true
   return request.created_by === userId && caps.canUse
 }

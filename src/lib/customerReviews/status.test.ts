@@ -20,7 +20,6 @@ import {
   availableActions,
   canTransition,
   isEditableStatus,
-  isReadyToSend,
   isTerminalStatus,
   readyToSendBlockers,
   transitionRequiresVerify,
@@ -47,7 +46,9 @@ const complete: Parameters<typeof readyToSendBlockers>[0] = {
   whatsapp_number: '+919999900001',
   interaction_type: 'cafe_project',
   review_url: 'https://example.test/review',
-  image_permission_confirmed: false,
+  image_permission_confirmed: true,
+  greeting_name: null,
+  project_reference: null,
 }
 
 describe('the transition table', () => {
@@ -76,7 +77,7 @@ describe('the transition table', () => {
     assert.deepEqual(CUSTOMER_REVIEW_TRANSITIONS, {
       draft:              ['ready_to_send', 'cancelled'],
       ready_to_send:      ['draft', 'sent', 'cancelled'],
-      sent:               ['customer_responded', 'verified', 'cancelled'],
+      sent:               ['customer_responded', 'cancelled'],
       customer_responded: ['verified', 'cancelled'],
       verified:           ['closed'],
       closed:             [],
@@ -104,6 +105,11 @@ describe('the transition table', () => {
       ['ready_to_send', 'verified'],
       ['ready_to_send', 'closed'],
       ['sent', 'closed'],
+      // THE EDGE THAT WAS REMOVED. Verification means somebody checked that
+      // this customer published a review; a request in 'sent' is one where
+      // nothing has come back at all, so this jump let a verifier confirm a
+      // review with no record of a response in between.
+      ['sent', 'verified'],
       ['customer_responded', 'closed'],
       ['closed', 'verified'],
       ['cancelled', 'draft'],
@@ -114,12 +120,20 @@ describe('the transition table', () => {
     }
   })
 
-  test('a request is never verified without passing through an outreach that happened', () => {
-    // Reaching 'verified' always means somebody sent something first.
-    const reachesVerified = CUSTOMER_REVIEW_STATUSES
-      .filter(s => canTransition(s, 'verified'))
-      .sort()
-    assert.deepEqual(reachesVerified, ['customer_responded', 'sent'])
+  test('VERIFICATION IS REACHABLE FROM ONE PLACE ONLY: a recorded response', () => {
+    // The lifecycle is linear — sent → customer_responded → verified → closed —
+    // so a verified request always has a response behind it.
+    const reachesVerified = CUSTOMER_REVIEW_STATUSES.filter(s => canTransition(s, 'verified'))
+    assert.deepEqual(reachesVerified, ['customer_responded'])
+  })
+
+  test('the middle of the lifecycle is a single path with no shortcuts', () => {
+    assert.equal(canTransition('sent', 'customer_responded'), true)
+    assert.equal(canTransition('customer_responded', 'verified'), true)
+    assert.equal(canTransition('verified', 'closed'), true)
+    for (const [from, to] of [['sent', 'verified'], ['sent', 'closed'], ['customer_responded', 'closed']] as const) {
+      assert.equal(canTransition(from, to), false, `${from} → ${to}`)
+    }
   })
 
   test('closing is only ever reachable from verified', () => {
@@ -177,8 +191,11 @@ describe('who may make which move', () => {
 
   test('a verifier without `use` may verify and close, and may not run the outreach', () => {
     const v = viewer({ userId: OTHER, canUse: false, canVerify: true })
+    // Nothing on a sent request: there is no response to check yet, and
+    // sent → verified no longer exists.
+    assert.deepEqual(availableActions({ status: 'sent', created_by: OWNER }, v).map(a => a.to), [])
     assert.deepEqual(
-      availableActions({ status: 'sent', created_by: OWNER }, v).map(a => a.to),
+      availableActions({ status: 'customer_responded', created_by: OWNER }, v).map(a => a.to),
       ['verified'],
     )
     assert.deepEqual(
@@ -200,7 +217,11 @@ describe('who may make which move', () => {
     const admin = viewer({ userId: OTHER, isAdmin: true, canUse: false, canVerify: false })
     assert.deepEqual(
       availableActions({ status: 'sent', created_by: OWNER }, admin).map(a => a.to).sort(),
-      ['cancelled', 'customer_responded', 'verified'],
+      ['cancelled', 'customer_responded'],
+    )
+    assert.deepEqual(
+      availableActions({ status: 'customer_responded', created_by: OWNER }, admin).map(a => a.to).sort(),
+      ['cancelled', 'verified'],
     )
   })
 
@@ -233,15 +254,15 @@ describe('who may make which move', () => {
 
   test('verifying always asks what was checked', () => {
     const v = viewer({ canVerify: true })
-    const verify = availableActions({ status: 'sent', created_by: OWNER }, v).find(a => a.to === 'verified')
+    const verify = availableActions({ status: 'customer_responded', created_by: OWNER }, v)
+      .find(a => a.to === 'verified')
     assert.equal(verify?.prompt, 'verification_note')
   })
 })
 
 describe('ready-to-send prerequisites', () => {
-  test('a complete request with no photographs is ready', () => {
-    assert.deepEqual(readyToSendBlockers(complete, 0), [])
-    assert.equal(isReadyToSend(complete, 0), true)
+  test('a complete request with one photograph is ready', () => {
+    assert.deepEqual(readyToSendBlockers(complete, 1), [])
   })
 
   test('each missing field produces its own sentence', () => {
@@ -254,7 +275,7 @@ describe('ready-to-send prerequisites', () => {
       [{ review_url: null }, 'review destination'],
     ]
     for (const [patch, fragment] of cases) {
-      const blockers = readyToSendBlockers({ ...complete, ...patch }, 0)
+      const blockers = readyToSendBlockers({ ...complete, ...patch }, 1)
       assert.equal(blockers.length, 1, JSON.stringify(patch))
       assert.ok(blockers[0].includes(fragment), `${blockers[0]} should mention ${fragment}`)
     }
@@ -268,32 +289,72 @@ describe('ready-to-send prerequisites', () => {
       interaction_type: null,
       review_url: null,
       image_permission_confirmed: false,
+      greeting_name: null,
+      project_reference: null,
     }, 0)
-    assert.equal(blockers.length, 5)
+    // Five fields, plus the photograph and its sharing confirmation.
+    assert.equal(blockers.length, 7)
   })
 
-  test('PHOTOGRAPHS REQUIRE THE SHARING CONFIRMATION, and only when there are photographs', () => {
-    assert.deepEqual(readyToSendBlockers(complete, 0), [])
-    const withPhotos = readyToSendBlockers(complete, 2)
-    assert.equal(withPhotos.length, 1)
-    assert.ok(withPhotos[0].includes('permission to share'))
+  test('AT LEAST ONE PROJECT PHOTOGRAPH IS REQUIRED', () => {
+    // Product decision: a photograph anchors the request to work BOE actually
+    // did for this customer.
+    const none = readyToSendBlockers(complete, 0)
+    assert.equal(none.length, 1)
+    assert.ok(none[0].includes('at least one real photograph'))
+    assert.deepEqual(readyToSendBlockers(complete, 1), [])
+  })
 
-    assert.deepEqual(
-      readyToSendBlockers({ ...complete, image_permission_confirmed: true }, 2),
-      [],
-    )
+  test('the sharing confirmation is required alongside it', () => {
+    const blockers = readyToSendBlockers({ ...complete, image_permission_confirmed: false }, 2)
+    assert.equal(blockers.length, 1)
+    assert.ok(blockers[0].includes('permission to share'))
+  })
+
+  test('THE EDITABLE FRAGMENTS CANNOT ASK FOR A RATING', () => {
+    // The closing sentences are locked, so steering can only enter through the
+    // greeting or the project reference. Both are refused.
+    for (const steer of [
+      'please give us 5 stars',
+      'a five star job',
+      'leave a good review',
+      'please rate us',
+      'rate us highly',
+      '★★★★★',
+      '5/5 service',
+    ]) {
+      const viaReference = readyToSendBlockers({ ...complete, project_reference: steer }, 1)
+      assert.equal(viaReference.length, 1, `project reference: ${steer}`)
+      assert.ok(viaReference[0].includes('project reference'))
+
+      const viaGreeting = readyToSendBlockers({ ...complete, greeting_name: steer }, 1)
+      assert.equal(viaGreeting.length, 1, `greeting: ${steer}`)
+      assert.ok(viaGreeting[0].includes('greeting'))
+    }
+  })
+
+  test('an ordinary factual project reference is not refused', () => {
+    for (const ok of [
+      'your restaurant seating order',
+      'the hotel lobby chairs',
+      'your 40 café chairs (order #A-12)',
+      'the review of the second batch',
+      'your reviewed drawings',
+    ]) {
+      assert.deepEqual(readyToSendBlockers({ ...complete, project_reference: ok }, 1), [], ok)
+    }
   })
 
   test('the internal note is NOT a prerequisite', () => {
     // It never reaches the customer, so requiring it would be requiring
     // paperwork rather than requiring correctness.
-    assert.deepEqual(readyToSendBlockers(complete, 0), [])
+    assert.deepEqual(readyToSendBlockers(complete, 1), [])
   })
 
   test('the confirmation must be literally true, not merely truthy', () => {
     const blockers = readyToSendBlockers(
       { ...complete, genuine_customer_confirmed: undefined as unknown as boolean },
-      0,
+      1,
     )
     assert.equal(blockers.length, 1)
   })

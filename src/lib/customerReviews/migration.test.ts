@@ -156,7 +156,6 @@ describe('who can see what', () => {
     for (const name of [
       'can_view_customer_review_request',
       'can_edit_customer_review_request',
-      'can_use_customer_review_outreach',
     ]) {
       assert.ok(fnBody(name).includes('u.is_active'), `${name} does not check is_active`)
     }
@@ -178,7 +177,6 @@ describe('who can see what', () => {
     for (const name of [
       'can_view_customer_review_request',
       'can_edit_customer_review_request',
-      'can_use_customer_review_outreach',
     ]) {
       assert.ok(code.includes(`revoke execute on function public.${name}(`), `${name} is not revoked from public/anon`)
     }
@@ -279,12 +277,33 @@ describe('opening WhatsApp is never delivery', () => {
 })
 
 describe('no status claims a review exists', () => {
-  test('recording an evidence link changes no status', () => {
+  test('recording an evidence link can only move sent → customer_responded', () => {
     const body = fnBody('record_customer_review_evidence')
     const update = body.slice(body.indexOf('update public.customer_review_requests'))
-    assert.ok(update.includes('set review_public_url = v_url'))
-    assert.equal(update.slice(0, update.indexOf('where')).includes('status'), false)
+    const setClause = update.slice(0, update.indexOf('where'))
+
+    assert.ok(setClause.includes('set review_public_url = v_url'))
+    // The ONE status it may write, and the one source status it may write it
+    // from. A published review is a customer response; it is not a verification.
+    assert.ok(setClause.includes("when r.status = 'sent' then 'customer_responded'"))
+    assert.equal(/'verified'/.test(setClause), false, 'evidence must never reach verified')
+    assert.equal(setClause.includes('verified_at'), false)
+    assert.equal(setClause.includes('verified_by'), false)
+    assert.equal(setClause.includes('closed'), false)
     assert.ok(body.includes('It has not been verified.'))
+  })
+
+  test('that move writes its own status_changed row, so the trail is complete', () => {
+    const body = fnBody('record_customer_review_evidence')
+    assert.ok(body.includes("'status_changed', 'sent', 'customer_responded'"))
+  })
+
+  test('NOTHING ANYWHERE SETS verified_at EXCEPT the verify branch of the transition', () => {
+    // The single most important claim in the module: only a verify holder,
+    // through one branch of one function, can say a review was checked.
+    const writers = [...code.matchAll(/verified_at\s*=\s*case[\s\S]{0,120}/g)].map(m => m[0])
+    assert.equal(writers.length, 1, 'more than one statement writes verified_at')
+    assert.ok(writers[0].includes("when p_next_status = 'verified' then now()"))
   })
 
   test('the evidence URL is https-only wherever it can be written', () => {
@@ -462,9 +481,19 @@ describe('the domain values agree with the schema', () => {
     }
   })
 
-  test('nothing stores a rating, a score or a sentiment', () => {
+  test('nothing STORES a rating, a score or a sentiment', () => {
+    // Scoped to column definitions on purpose. These words now appear in
+    // customer_review_text_steers(), which exists to REFUSE them in the
+    // invitation — a file-wide ban would forbid the guard along with the
+    // thing it guards against.
+    const tables = code.slice(code.indexOf('create table public.customer_review_requests'),
+                             code.indexOf('create or replace function'))
     for (const forbidden of ['rating', 'stars', 'score', 'sentiment', 'reward', 'points']) {
-      assert.equal(new RegExp(`\\b${forbidden}\\b`).test(code), false, `${forbidden} must not exist`)
+      assert.equal(
+        new RegExp(`^\s*${forbidden}\b`, 'mi').test(tables),
+        false,
+        `no column may be called ${forbidden}`,
+      )
     }
   })
 })

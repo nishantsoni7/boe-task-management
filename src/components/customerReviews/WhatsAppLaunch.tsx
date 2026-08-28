@@ -30,6 +30,13 @@ import { waMePhone } from '@/lib/customerReviews/contact'
 // whatsapp_opened_at and NOT sent_at, and why confirming "I sent this" is a
 // separate, deliberate action on the request screen.
 //
+// IT ALSO DOES NOT SEND THE PHOTOGRAPHS. A wa.me link carries a phone number
+// and a text parameter and nothing else — there is no way to attach a file to
+// one. The project photographs on a request are BOE's own private reference,
+// and an employee who wants the customer to see them attaches them by hand in
+// the chat. Nothing in this component, or anywhere in the module, may imply
+// otherwise.
+//
 // REPEATED CLICKS are stopped twice over: a ref guard that rejects a second
 // click while the first is still in flight (state is too slow — two clicks in
 // the same tick would both see `busy === false`), and a cooldown afterwards, so
@@ -133,8 +140,8 @@ export function WhatsAppLaunchButton({
         {busy ? 'Opening…' : cooling ? 'Opened — wait a moment' : 'Open WhatsApp'}
       </button>
       <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
-        WhatsApp opens with this message ready. You still have to press send there — BOE never
-        sends it for you.
+        WhatsApp opens with this text ready, and nothing else — no photographs are attached. You
+        still have to press send there; BOE never sends it for you.
       </p>
       {!neutral && (
         <p role="alert" style={{ fontSize: '11px', color: colors.red, marginTop: '4px' }}>

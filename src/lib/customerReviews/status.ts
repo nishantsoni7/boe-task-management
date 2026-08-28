@@ -1,4 +1,5 @@
 import type { CustomerReviewRequest, CustomerReviewStatus } from './types'
+import { containsSteeringLanguage } from './invitation'
 
 // THE TRANSITION TABLE, and the prerequisites that guard the one transition
 // that matters.
@@ -26,7 +27,16 @@ export const CUSTOMER_REVIEW_TRANSITIONS: Readonly<
   // the only backwards move in the module. Everything after 'sent' describes
   // something that already reached a customer.
   ready_to_send:      ['draft', 'sent', 'cancelled'],
-  sent:               ['customer_responded', 'verified', 'cancelled'],
+  // ONE PATH THROUGH THE MIDDLE. sent → verified used to exist and was wrong:
+  // verification means "somebody checked that this customer published a
+  // review", and a request in 'sent' is one where nothing has come back at all,
+  // so that edge let a verifier jump from "we sent a message" to "the review is
+  // confirmed" with no record of a response in between. The lifecycle is now
+  // linear — sent → customer_responded → verified → closed — and recording a
+  // published review URL is what moves a sent request along it (see
+  // record_customer_review_evidence in 20261017000000), because a published
+  // review IS a response. That move never verifies anything.
+  sent:               ['customer_responded', 'cancelled'],
   customer_responded: ['verified', 'cancelled'],
   verified:           ['closed'],
   // Terminal. A closed request is a finished record; a cancelled one was
@@ -84,9 +94,13 @@ export function isEditableStatus(status: CustomerReviewStatus): boolean {
  *
  * `internal_note` is deliberately absent. It is context for BOE, it never
  * reaches the customer, and requiring it would be requiring paperwork rather
- * than requiring correctness. Project photographs are absent for the same
- * reason — they are never part of the WhatsApp message. What photographs DO
- * require is the sharing confirmation, which is the last check below.
+ * than requiring correctness.
+ *
+ * A PROJECT PHOTOGRAPH IS REQUIRED, by product decision. It anchors the request
+ * to work BOE actually did for this customer. Note what that does NOT mean:
+ * photographs are never attached to the WhatsApp message — wa.me carries text
+ * only — so they are a private project reference stored with the request, and
+ * the sharing confirmation is what covers the employee sending them by hand.
  */
 export function readyToSendBlockers(
   request: Pick<
@@ -97,6 +111,8 @@ export function readyToSendBlockers(
     | 'interaction_type'
     | 'review_url'
     | 'image_permission_confirmed'
+    | 'greeting_name'
+    | 'project_reference'
   >,
   projectPhotoCount: number,
 ): string[] {
@@ -117,18 +133,23 @@ export function readyToSendBlockers(
   if (!request.review_url) {
     blockers.push('Add the review destination (an https link).')
   }
-  if (projectPhotoCount > 0 && request.image_permission_confirmed !== true) {
+  // The invitation must still be a neutral ask. The locked sentences cannot be
+  // removed, so the only way to steer one is through the two editable
+  // fragments — which is exactly what this refuses.
+  if (containsSteeringLanguage(request.greeting_name)) {
+    blockers.push('Remove the rating request from the greeting — the customer chooses the rating.')
+  }
+  if (containsSteeringLanguage(request.project_reference)) {
+    blockers.push('Remove the rating request from the project reference — the customer chooses the rating.')
+  }
+  if (projectPhotoCount === 0) {
+    blockers.push('Attach at least one real photograph of this customer’s project.')
+  }
+  if (request.image_permission_confirmed !== true) {
     blockers.push('Confirm BOE has permission to share these photographs.')
   }
 
   return blockers
-}
-
-export function isReadyToSend(
-  request: Parameters<typeof readyToSendBlockers>[0],
-  projectPhotoCount: number,
-): boolean {
-  return readyToSendBlockers(request, projectPhotoCount).length === 0
 }
 
 // ─── What the screen offers ───────────────────────────────────────────────────

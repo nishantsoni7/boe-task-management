@@ -156,7 +156,7 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
         return
       }
       await load()
-      show('Review link recorded — it still needs verifying')
+      show('Review link recorded — the customer now counts as having responded, and it still needs verifying')
     } finally {
       inFlight.current = false
       setActing(false)
@@ -209,7 +209,10 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
     <CustomerReviewsLayout
       profile={profile}
       canVerify={caps.canVerify}
-      title={request.customer_name}
+      // The shared page header does not truncate, so a long customer name would
+      // push the header layout apart. It is bounded here and shown in full in
+      // the "Customer and project" card below, which wraps.
+      title={headerTitle(request.customer_name)}
       subtitle={interactionTypeLabel(request.interaction_type)}
       onSignOut={signOut}
       actions={
@@ -382,6 +385,10 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
 
         {/* ── Photographs ── */}
         <Card title="Project photographs">
+          <p style={{ fontSize: '11.5px', color: colors.muted, marginBottom: '10px', lineHeight: 1.5 }}>
+            BOE’s own record of this customer’s project. These were not attached to the WhatsApp
+            message — wa.me carries the text invitation only.
+          </p>
           <PhotoManager
             supabase={supabase}
             requestId={request.id}
@@ -417,6 +424,13 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
           </Row>
 
           {canRecordEvidence && (
+            <>
+            {request.status === 'sent' && (
+              <p style={{ fontSize: '11.5px', color: colors.secondary, marginTop: '6px', lineHeight: 1.5 }}>
+                Recording a published review here also marks the customer as having responded — a
+                published review is a response. It does <strong>not</strong> verify the request.
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-start', marginTop: '8px' }}>
               <input
                 className="boe-input"
@@ -435,6 +449,7 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
                 Record link
               </button>
             </div>
+            </>
           )}
 
           <div style={{ marginTop: '14px' }}>
@@ -632,12 +647,18 @@ function PromptModal({
   const copy = PROMPT_COPY[prompt.action.prompt!]
   const blocked = copy.required && prompt.value.trim() === ''
 
-  // Escape closes, and focus lands in the field — the modal conventions the
-  // rest of the app follows.
+  // Escape closes, focus lands in the field, and focus RETURNS to whatever
+  // opened the dialog when it goes. Without the last part a keyboard user is
+  // dropped at the top of the document every time they cancel, which is how a
+  // dialog turns a working queue into a scrolling exercise.
   useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel() }
     window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('keydown', onKey)
+      opener?.focus?.()
+    }
   }, [onCancel])
 
   return (
@@ -705,13 +726,26 @@ function PromptModal({
   )
 }
 
+/** A page-header-safe length. The full value is always shown in the body. */
+function headerTitle(name: string): string {
+  const trimmed = name.trim()
+  return trimmed.length > 48 ? `${trimmed.slice(0, 47)}…` : trimmed
+}
+
 function eventTitle(event: CustomerReviewEvent): string {
   switch (event.event_type) {
     case 'created':           return 'Request raised'
     case 'whatsapp_opened':   return 'WhatsApp opened'
     case 'evidence_recorded': return 'Evidence recorded'
-    case 'status_changed':
-      return `${CUSTOMER_REVIEW_STATUS_META[event.previous_status ?? 'draft'].label} → ${CUSTOMER_REVIEW_STATUS_META[event.new_status ?? 'draft'].label}`
+    case 'photo_removed':     return 'Photograph removed'
+    case 'status_changed': {
+      // A missing end reads as an em dash rather than as 'Draft'. Defaulting a
+      // status the row does not carry would put a transition in the trail that
+      // never happened.
+      const from = event.previous_status ? CUSTOMER_REVIEW_STATUS_META[event.previous_status].label : '—'
+      const to   = event.new_status ? CUSTOMER_REVIEW_STATUS_META[event.new_status].label : '—'
+      return `${from} → ${to}`
+    }
     default:                  return 'Updated'
   }
 }

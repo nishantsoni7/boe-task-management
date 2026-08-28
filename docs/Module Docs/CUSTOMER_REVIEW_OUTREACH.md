@@ -111,12 +111,27 @@ Seven statuses, and no eighth.
 ```
 draft              → ready_to_send, cancelled
 ready_to_send      → draft, sent, cancelled
-sent               → customer_responded, verified, cancelled
+sent               → customer_responded, cancelled
 customer_responded → verified, cancelled
 verified           → closed
 closed             → (terminal)
 cancelled          → (terminal)
 ```
+
+**The middle is one path, with no shortcut.** `sent → verified` existed in the
+first cut and was removed in the pre-review audit. Verification means "somebody
+checked that this customer published a review", and a request in `sent` is one
+where nothing has come back at all — so that edge let a verifier jump from "we
+sent a message" to "the review is confirmed" with no recorded response in
+between, and made `customer_responded` a step people could skip.
+
+**Recording a published review URL on a `sent` request moves it to
+`customer_responded`.** A published review *is* a response, and leaving the
+request in `sent` would mean the record said "we heard nothing" while holding a
+link to what the customer wrote. The move writes its own `status_changed` trail
+row. It never verifies anything: `verified_at` is written in exactly one place
+in the whole migration, and that is the `verify` branch of the transition
+function.
 
 * **One shared place.** `CUSTOMER_REVIEW_TRANSITIONS` in
   `src/lib/customerReviews/status.ts` is the browser's copy;
@@ -138,10 +153,29 @@ Checked in `readyToSendBlockers()` and, decisively, in
 3. a valid WhatsApp number
 4. an interaction type
 5. an https review destination
-6. **if any project photograph is attached** — the image-sharing confirmation
+6. a neutral invitation — the greeting and the project reference must not ask
+   for a rating or a positive review (`containsSteeringLanguage()` /
+   `customer_review_text_steers()`)
+7. **at least one real project photograph**
+8. the image-sharing confirmation
 
 The internal note is deliberately **not** a prerequisite: it never reaches the
 customer, so requiring it would be requiring paperwork.
+
+**Why a photograph is required, given that it is never sent.** A `wa.me` link
+carries a phone number and a text parameter and nothing else — there is no way
+to attach a file to one. The photograph is BOE's own private reference,
+anchoring the request to work actually done for this customer; an outreach
+nobody can show a photograph of is an outreach nobody can evidence. The employee
+shares images by hand in the chat if they choose to, which is what the
+image-sharing confirmation covers.
+
+**Why the steering check exists.** The closing two sentences are a constant and
+cannot be edited — but the greeting and the project reference are editable, and
+without this an employee could type "please give us 5 stars" into a factual
+reference and send a message that solicits a rating in its first sentence and
+disclaims it in its last. Checked in the browser *and* in
+`assert_customer_review_ready()`.
 
 ## 5. Data model
 
@@ -189,10 +223,23 @@ presence is never verification.
 * Uploading is two writes (object, then metadata row). If the row fails, **the
   object is removed again** before the function returns, so a failed attach
   leaves nothing orphaned.
-* `project_photo` can be attached and removed while the request is being
-  prepared. `review_proof` can be attached once the request is `sent` and
-  **cannot be removed by a client** — evidence offered for verification must not
+* `project_photo` can be attached and removed by its owner while the request is
+  being prepared. `review_proof` can be attached once the request is `sent` and
+  is **not** removable by its owner — evidence offered for verification must not
   vanish from under the verifier.
+* **An admin may withdraw either kind at any status**, and this is a deliberate
+  second door. Without it an image uploaded by accident — the wrong customer's
+  site, a bystander in shot, a photograph BOE turns out not to have permission
+  for — would be permanently unremovable the moment the request left
+  `ready_to_send`. Every removal writes a `photo_removed` row to the
+  append-only trail, so a correction is recorded rather than silent. The
+  metadata policy and the storage policy grant the same door, because a route
+  that removed one without the other would leave an orphan or a broken
+  reference.
+* **A request that still holds photographs cannot be deleted.** The metadata
+  rows cascade from the request and the objects do not, so deleting one would
+  strand every object it named with nothing left to name them. Empty it first;
+  removing a photograph deletes the row and the object together.
 
 ## 7. Screens and routes
 
@@ -249,7 +296,9 @@ is not a number, and an unsafe link.
 and a `wa.me` link was opened with the exact previewed message prefilled.
 
 **Does not:** that WhatsApp accepted it, that it was delivered, that it was
-read, or that anybody pressed send.
+read, or that anybody pressed send. **And it does not send the photographs** —
+a `wa.me` link cannot attach a file, so the project photographs stay in BOE's
+private bucket. Every label in the module says so.
 
 The button awaits `record_customer_review_whatsapp_opened()` **before** pointing
 the tab at `wa.me`; if the database refuses, the tab is closed and the message
@@ -271,6 +320,8 @@ clicks in one tick) and a 5-second cooldown.
 | `src/lib/customerReviews/photos.test.ts` | Type and size validation matching the bucket, extension laundering, path generation, collision resistance |
 | `src/lib/customerReviews/migration.test.ts` | RLS on every table, no `USING (true)`, append-only trail, the column grant excludes `status`, storage policies, SQL transition table **identical** to the UI's, deny-by-default registration |
 | `src/lib/permissions/customerReviewOutreach.test.ts` | Registry, protected/dependency wiring, capability derivation, per-request edit rule, the route guard, the launcher card, Control Center, and the screens' RPC and double-click discipline |
+| `src/lib/permissions/customerReviewEffectiveAccess.test.ts` | The resolver's four levels modelled against the migration's own seed rows — what admin, manager, member, an assigned user and an unauthorized user each end up holding |
+| `src/lib/customerReviews/securityContract.test.ts` | Every SECURITY DEFINER function: pinned `search_path`, revoke-then-grant, no `service_role`, `auth.uid()`-only identity, inactive-user refusal, `FOR UPDATE` locking, no mass assignment, no field forgery, safe errors — plus the RLS read gate, storage path forgery, orphan prevention and the admin correction route |
 
 Fictional data throughout (`+91 99999 000xx`, `example.test`).
 
@@ -324,6 +375,16 @@ applies it deliberately.
    with an owner.
 3. **The `+91` default** applies only to a bare 10-digit number. It is a
    deliberate assumption and is documented in `contact.ts`.
+3b. **Photo metadata is client-reported.** `mime_type` and `byte_size` on
+   `customer_review_request_photos` are what the browser said, not what the
+   object is. The real limits are enforced by the bucket
+   (`allowed_mime_types`, `file_size_limit`), so a false value can make the
+   size caption wrong and nothing else. Verifying it would need a server route
+   holding the service-role key, which this module deliberately does not have.
+3c. **The steering check is a phrase list, not a sentiment model.** It catches
+   the phrasings people actually use; a determined employee could still write a
+   steered reference it does not match. It is one control among several, not a
+   guarantee.
 4. **No notifications.** A verifier is not told a request is waiting; they open
    the To Verify tab. Adding one means touching the shared `notifications` enum,
    which is a separate migration.
@@ -337,6 +398,13 @@ applies it deliberately.
 7. **Browser verification was not completed**; see §14.
 
 ## 14. Verification status
+
+A pre-review audit of the first commit found and fixed: a NUL byte committed
+into a test file (git had classified it as binary), `sent → verified` as an
+unjustified shortcut, no way to correct an accidentally-uploaded image after
+sending, storage objects orphaned by deleting a draft that held photographs, and
+no check stopping an employee typing a rating request into the two editable
+invitation fragments. All are described in place above.
 
 * `npm test`, `npx tsc --noEmit`, `npx eslint`, and `next build` — see the
   delivery report accompanying this change for the exact results.

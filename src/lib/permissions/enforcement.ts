@@ -61,7 +61,7 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
 
   // Both actions this module registers are enforced in the database before they
   // are enforced anywhere else (20261017000000):
-  //   use    → can_use_customer_review_outreach(), the INSERT/UPDATE/DELETE
+  //   use    → the route guard's resolve_permission call, the INSERT/UPDATE/DELETE
   //            policies on customer_review_requests, the photo policies, the
   //            storage policies, and the ownership branch of
   //            transition_customer_review_request().

@@ -128,6 +128,8 @@ export function RequestForm({
       interaction_type: (draft.interactionType || null) as InteractionType | null,
       review_url: normalizedUrl,
       image_permission_confirmed: draft.imagePermissionConfirmed,
+      greeting_name: draft.greetingName,
+      project_reference: draft.projectReference,
     },
     projectPhotos.length,
   )
@@ -239,7 +241,10 @@ export function RequestForm({
     request, supabase, userId, onSaved,
   ])
 
-  const isReadyToSend = request?.status === 'ready_to_send'
+  // NOT "the prerequisites are met" — that is `blockers.length === 0`. This is the
+  // saved request's STATUS, which is what decides whether there is anything to
+  // open WhatsApp for.
+  const awaitingSend = request?.status === 'ready_to_send'
 
   return (
     <div style={{ maxWidth: '780px' }}>
@@ -387,8 +392,12 @@ export function RequestForm({
       {/* ── 5. Photographs ── */}
       <Section
         title="Project photographs"
-        subtitle="Optional. Real photographs of this customer’s own project, for you to share alongside the message."
+        subtitle="Required. Real photographs of this customer’s own project, kept with the request as BOE’s own reference."
       >
+        <p style={{ ...HINT, marginBottom: '10px' }}>
+          WhatsApp opens with the text invitation only — these photographs are <strong>not</strong> attached
+          to it and are never sent automatically. Share them yourself in the chat if you want to.
+        </p>
         <PhotoManager
           supabase={supabase}
           requestId={request?.id ?? null}
@@ -400,16 +409,14 @@ export function RequestForm({
           emptyHint="No photographs attached."
         />
 
-        {projectPhotos.length > 0 && (
-          <div style={{ marginTop: '12px' }}>
-            <Confirmation
-              checked={draft.imagePermissionConfirmed}
-              onChange={value => set('imagePermissionConfirmed', value)}
-              label="BOE has permission to share these photographs"
-              hint="Required before this request can be marked Ready to Send."
-            />
-          </div>
-        )}
+        <div style={{ marginTop: '12px' }}>
+          <Confirmation
+            checked={draft.imagePermissionConfirmed}
+            onChange={value => set('imagePermissionConfirmed', value)}
+            label="BOE has permission to share these photographs"
+            hint="Required before this request can be marked Ready to Send."
+          />
+        </div>
       </Section>
 
       {/* ── 6. What is still missing ── */}
@@ -477,7 +484,7 @@ export function RequestForm({
           because the moment an employee finishes preparing an invitation is the
           moment they want to send it. It is offered only once the request is
           actually Ready to Send — before that there is nothing to open. */}
-      {request && isReadyToSend && (
+      {request && awaitingSend && (
         <div style={{ marginTop: '18px', paddingTop: '16px', borderTop: `1px solid ${colors.border}` }}>
           <WhatsAppLaunchButton
             supabase={supabase}
