@@ -67,7 +67,10 @@ describe('the file is the newest migration and touches no earlier one', () => {
       // A REVOKE ... TRUNCATE is protective; an actual TRUNCATE statement is
       // the thing that must never appear.
       /\btruncate\s+(table\s+)?public\./i,
-      /delete from/i,
+      // A DELETE against somebody else's table. The module's own removal
+      // function deletes from customer_review_request_photos, which is the
+      // point of it.
+      /delete from public\.(?!customer_review)/i,
       /drop function public\.(?!customer_review)/,
     ]) {
       assert.equal(forbidden.test(code), false, `the migration contains ${forbidden}`)
@@ -110,7 +113,7 @@ describe('row-level security', () => {
 
   test('every policy is scoped to the authenticated role', () => {
     const policies = [...code.matchAll(/create policy "([^"]+)"[\s\S]*?for (\w+)([\s\S]*?);/g)]
-    assert.ok(policies.length >= 8)
+    assert.ok(policies.length >= 5)
     for (const match of policies) {
       assert.ok(/to authenticated/.test(match[0]), `${match[1]} is not scoped to authenticated`)
     }
@@ -367,7 +370,7 @@ describe('the column grant is what makes the RPC unavoidable', () => {
 
   test('anon holds nothing anywhere in the module', () => {
     assert.ok(code.includes('revoke insert, update, delete, truncate on public.customer_review_requests from anon'))
-    assert.ok(code.includes('revoke delete                   on public.customer_review_request_photos from anon'))
+    assert.ok(code.includes('revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon'))
   })
 
   test('AUTHENTICATED CANNOT REGISTER AN IMAGE — the privilege is gone, not just the policy', () => {
@@ -375,22 +378,22 @@ describe('the column grant is what makes the RPC unavoidable', () => {
     // route can create a photo row. Revoking the privilege as well means a
     // policy added back by mistake still could not write.
     assert.ok(code.includes(
-      'revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
     ))
   })
 })
 
 describe('storage', () => {
-  test('both remaining object policies are bucket-scoped', () => {
-    for (const policy of [
-      'customer_review_photos_storage_select',
-      'customer_review_photos_storage_delete',
-    ]) {
-      assert.ok(
-        statement(`create policy "${policy}"`).includes("bucket_id = 'customer-review-photos'"),
-        `${policy} is not bucket-scoped`,
-      )
-    }
+  test('THE BUCKET HAS EXACTLY ONE CLIENT POLICY, AND IT READS', () => {
+    // Uploading and removing are both server operations now, so a client holds
+    // no write policy on this bucket at all.
+    const policies = [...code.matchAll(/create policy "(customer_review_photos[^"]*)"\s*\n?\s*on storage\.objects\s+for (\w+)/g)]
+    assert.equal(policies.length, 1, policies.map(p => p[1]).join(', '))
+    assert.equal(policies[0][2], 'select')
+    assert.ok(
+      statement('create policy "customer_review_photos_storage_select"')
+        .includes("bucket_id = 'customer-review-photos'"),
+    )
   })
 
   test('reading an object asks the same question as reading the request', () => {
@@ -418,17 +421,16 @@ describe('storage', () => {
     }
   })
 
-  test('deleting is limited to the preparation stage', () => {
-    assert.ok(
-      statement('create policy "customer_review_photos_storage_delete"')
-        .includes("r.status in ('draft', 'ready_to_send')"),
-    )
-  })
-
-  test('proof images cannot be deleted by a client at all', () => {
-    assert.ok(
-      statement('create policy "customer_review_photos_delete"').includes("kind = 'project_photo'"),
-    )
+  test('NO CLIENT MAY DELETE AN OBJECT OR A ROW — removal is one server operation', () => {
+    // Deleting spans the bucket and the metadata table. A client holding either
+    // half would eventually perform exactly one of them, leaving an orphaned
+    // object or a record pointing at nothing.
+    assert.equal(code.includes('create policy "customer_review_photos_storage_delete"'), false)
+    assert.equal(code.includes('create policy "customer_review_photos_delete"'), false)
+    // The status and kind rules did not disappear — they moved into
+    // begin_customer_review_photo_removal(), which no client can call.
+    assert.ok(fnBody('begin_customer_review_photo_removal').includes("r.status not in ('draft', 'ready_to_send')"))
+    assert.ok(fnBody('begin_customer_review_photo_removal').includes('r.verified_at is not null'))
   })
 })
 

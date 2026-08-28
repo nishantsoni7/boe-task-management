@@ -12,18 +12,38 @@
 //
 // This module reads the bytes.
 //
-// THE PROPERTY THAT MAKES IT WORTH HAVING: the container must account for the
-// WHOLE FILE. A JPEG must end at its EOI marker, a PNG at its IEND chunk, and a
-// WEBP's RIFF header must declare the exact length it was given. That is what
-// rejects a polyglot — a valid image with a ZIP, a script or a second file
-// appended to it — rather than merely rejecting a wrong extension.
+// WHAT THIS IS, EXACTLY: a CONTAINER PARSER. It is not a decoder, and it does
+// not look at a single pixel.
 //
-// NO DEPENDENCIES, ON PURPOSE. `sharp` is in this repository and is used for
-// rendering, but libvips is not reliably present in every environment here (see
-// the /_next/image note in the project notes), and a validator that fails open
-// or fails hard depending on a native library is not a validator. Parsing three
-// well-documented container formats is fifty lines and is deterministic
-// everywhere, which is what a security boundary needs.
+// WHAT IT GUARANTEES
+//   * the format is decided from the signature, so a filename and a
+//     browser-reported type decide nothing;
+//   * only three containers are accepted — anything else, SVG and HTML and
+//     PDF and archives and executables included, is refused by name;
+//   * the container must account for the WHOLE FILE. A JPEG must end at its
+//     EOI, a PNG at its IEND, a WEBP's RIFF header must declare the exact
+//     length it was given. Data APPENDED to a valid image is therefore
+//     refused, which is the common polyglot shape;
+//   * a file that stops early, or whose header fields are impossible, is
+//     refused.
+//
+// WHAT IT DOES NOT GUARANTEE, and this is the honest boundary: it CANNOT
+// promise that every malformed image or every embedded payload is rejected. A
+// file whose container is well-formed but whose compressed data is corrupt
+// passes here, and a payload hidden INSIDE a structure this parser does not
+// descend into — a PNG ancillary chunk, a JPEG comment segment — is not seen.
+//
+// THAT GAP IS CLOSED DOWNSTREAM, not here. ./imageProcessing decodes every
+// accepted file with libvips and stores the RE-ENCODED output, so what reaches
+// the bucket is bytes a decoder produced. This module is the first of two
+// gates, and its job is to keep unsupported containers away from the decoder —
+// which matters because libvips accepts SVG and this does not.
+//
+// NO DEPENDENCIES IN THIS FILE, on purpose. It runs before any decoder and
+// decides which containers a decoder is allowed to see, so it must be
+// deterministic everywhere and must not fail open when a native library is
+// missing. Parsing three well-documented containers is fifty lines. The decode
+// that follows lives in ./imageProcessing, which does depend on sharp.
 //
 // PURE. No node imports, no I/O, no clock. Every branch is unit-testable with a
 // handful of bytes.

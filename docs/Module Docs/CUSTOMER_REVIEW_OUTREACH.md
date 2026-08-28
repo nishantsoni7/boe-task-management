@@ -236,12 +236,16 @@ presence is never verification.
   register one: `authenticated` holds no storage INSERT policy for this bucket,
   no metadata INSERT policy, and no INSERT privilege on the metadata table.
   The migration asserts all three at apply time.
-* The route **reads the bytes**. `inspectImageBytes()` parses the real
-  container — PNG signature + IHDR + IEND, JPEG SOI + SOF + EOI, WEBP RIFF —
-  and requires the container to account for the **whole file**, which is what
-  rejects a polyglot (a valid image with a ZIP, a script or a second image
-  appended). `mime_type` and `byte_size` are then written from that inspection,
-  so they are facts rather than claims.
+* **Two gates, in order.** `inspectImageBytes()` parses the container — PNG
+  signature + IHDR + IEND, JPEG SOI + SOF + EOI, WEBP RIFF — and requires it to
+  account for the **whole file**, so appended payloads are refused. It is a
+  parser, not a decoder, and its job is to keep unsupported containers away
+  from the decoder — which matters because **libvips accepts SVG and this does
+  not**.
+* **Then the file is decoded and re-encoded**, and the *output* is what is
+  stored. See §6a for exactly what that does and does not guarantee.
+  `mime_type` and `byte_size` describe the re-encoded bytes, so they are facts
+  a server established rather than claims a browser made.
 * `validateReviewPhoto()` still runs in the browser first. It is a **courtesy**
   — it saves a five-megabyte round trip to be told no — and is explicitly not
   the boundary.
@@ -278,10 +282,83 @@ presence is never verification.
   strand every object it named with nothing left to name them. Empty it first;
   removing a photograph deletes the row and the object together.
 
+## 6a. Byte validation — the exact guarantee
+
+Every accepted file is **decoded and re-encoded by libvips (`sharp`), and the
+re-encoded output is what is stored.** The uploaded bytes are never written,
+never hashed and never described by the metadata row.
+
+**What that guarantees**
+
+* The stored object is bytes a decoder produced, not bytes a caller supplied.
+* **EXIF, ICC, XMP and IPTC are gone.** This is a privacy fix as much as a
+  safety one: a phone photograph of a customer’s premises carries GPS
+  coordinates, a device serial and a timestamp, and BOE has no business
+  storing any of it. EXIF orientation is applied first, so photographs stay
+  upright.
+* Anything appended to the original is gone, because it was never part of the
+  decoded image. (It is also refused earlier, by the structural gate.)
+* A file the decoder cannot read is refused rather than stored as a future
+  broken thumbnail.
+* The parser and the decoder must **agree** on the format; a disagreement is a
+  refusal, not something to reconcile.
+* A decompression bomb is capped at 50 megapixels — far above a 48 MP phone
+  camera, far below trouble.
+
+**What it does not guarantee.** The structural parser on its own cannot prove
+that every malformed or embedded-payload file is rejected, and this
+documentation does not claim it does. What closes that gap is the re-encode:
+anything the decoder does not carry into its output does not reach storage.
+The residual boundary is the decoder itself — a vulnerability in libvips would
+be reached by any image-handling system that decodes, and this one decodes on
+the server, in a Node runtime, on bytes already narrowed to three containers.
+
+**Always refused:** SVG, HTML, scripts, executables, archives, PDF, GIF, TIFF
+and every other unsupported container; appended data; invalid or truncated
+length declarations; a signature that disagrees with the extension; an empty
+file; anything over 5 MB.
+
+**No dependency was added.** `sharp` is already in `package.json` and already
+runs server-side in production (`src/app/api/showroom/quotation/[id]/route.ts`,
+`src/lib/orders/confirmedPdfRender.ts`). `package-lock.json` is untouched.
+
+## 6b. Removing a photograph
+
+**Removal is one server operation**, `DELETE /api/customer-reviews/photos`,
+because it spans the private bucket and the metadata table and no transaction
+covers both. A browser that could delete either half on its own would sooner
+or later delete exactly one — leaving a file nothing names again, or a record
+pointing at nothing.
+
+| Step | What it does |
+| --- | --- |
+| **Mark** | `begin_customer_review_photo_removal()` re-checks the authorization in SQL, locks the row, stamps `removal_started_at` / `removal_by`. Every read filters the row out from this moment |
+| **Object** | the file is deleted from the private bucket |
+| **Row** | `finish_customer_review_photo_removal()` deletes the metadata; the delete trigger writes the `photo_removed` entry, crediting `removal_by` |
+
+**Partial failure is explicit.** If the object deletion fails, the row stays
+marked and still names its path — nothing is orphaned, the photograph is
+already invisible, and a retry converges because both functions are
+idempotent. If the row deletion fails, the caller is told the image is gone but
+the record is not, which is true.
+
+**Who may remove what** (enforced in the SQL, and again in the route):
+
+* the **owner** (with `use`): a project photograph while the request is `draft`
+  or `ready_to_send`; review proof only while the request is **unverified** —
+  evidence a verifier has acted on must not vanish from underneath their
+  decision;
+* an **admin**: either kind, at any status, verified included, as a correction.
+
+Both SQL halves take the actor as a parameter and are granted to
+**`service_role` alone** — a browser able to call either could name anybody.
+
 ## 7. Screens and routes
 
 | Route | Screen |
 | --- | --- |
+| `POST /api/customer-reviews/photos` | Trusted upload — validate, decode, re-encode, store |
+| `DELETE /api/customer-reviews/photos` | Trusted removal — mark, delete object, delete row, audit |
 | `/customer-reviews` | Request list — status tabs, search, desktop table / mobile cards, masked number, empty / loading / error states. Verifier-only “To Verify” tab |
 | `/customer-reviews/new` | Create — confirmations, customer, number, interaction, internal note, destination, invitation fields, live preview |
 | `/customer-reviews/[id]` | Request detail — six milestones, permission-gated actions, exact invitation, photographs, evidence, verification, history |
@@ -362,6 +439,8 @@ clicks in one tick) and a 5-second cooldown.
 | `src/lib/customerReviews/status.test.ts` | The transition table, terminal states, verifier-only moves, owner-only moves, Ready-to-Send blockers |
 | `src/lib/customerReviews/photos.test.ts` | The browser-side courtesy check, extension laundering, path shape, collision resistance |
 | `src/lib/customerReviews/imageBytes.test.ts` | The real validator, driven by byte fixtures built to spec: genuine PNG/JPEG/WEBP accepted; PDF, ZIP, ELF, EXE, SVG, HTML, GIF, TIFF refused; disguised, truncated, malformed and **polyglot** files refused; the size limit is the real length |
+| `src/lib/customerReviews/imageProcessing.test.ts` | The re-encode, run for real through libvips: the three formats survive; **EXIF does not**; appended payloads do not; **SVG is refused even though the decoder would take it**; damaged and truncated files are caught by the decoder |
+| `src/lib/customerReviews/photoRemoval.test.ts` | That a client can delete neither an object nor a metadata row; the route’s authorization, its three-step order, and its explicit partial-failure handling; the two SQL halves being service-role-only, locked and idempotent; verified proof being admin-only; the audit entry crediting the remover |
 | `src/lib/customerReviews/uploadRoute.test.ts` | The route: authentication before the body is read, `use` resolved, caller-scoped RLS read, kind/status rules, inspection before storage, server-generated path, no path field in the body, cleanup on metadata failure, closed-list errors, no service-role key on the client, and the database half of the boundary |
 | `src/lib/customerReviews/draftLeniency.test.ts` | Column nullability, what a bare draft may omit, that a supplied-but-invalid value is still refused, and that both gates re-check in the database |
 | `src/lib/customerReviews/migration.test.ts` | RLS on every table, no `USING (true)`, append-only trail, the column grant excludes `status`, storage policies, SQL transition table **identical** to the UI's, deny-by-default registration |
@@ -421,14 +500,10 @@ applies it deliberately.
    with an owner.
 3. **The `+91` default** applies only to a bare 10-digit number. It is a
    deliberate assumption and is documented in `contact.ts`.
-3b. **Image validation is structural, not a full decode.** The route parses
-   each container and requires it to account for the whole file, which is what
-   catches disguised, truncated and polyglot files. It does not decode pixel
-   data, so a file that is a structurally valid image but corrupt inside is
-   accepted and will simply render badly. A full decode would mean depending
-   on libvips, which is not reliably present in every environment here — and a
-   validator that fails open or hard depending on a native library is not a
-   validator.
+3b. **Image validation now decodes and re-encodes** (§6a). The residual
+   boundary is libvips itself: a vulnerability in the decoder would be reached
+   by any system that decodes images, this one included. It runs server-side,
+   in a Node runtime, on bytes already narrowed to three containers.
 3c. **The steering check is a phrase list, not a sentiment model.** It catches
    the phrasings people actually use; a determined employee could still write a
    steered reference it does not match. It is one control among several, not a

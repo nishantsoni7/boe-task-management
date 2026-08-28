@@ -124,6 +124,8 @@ export type CustomerReviewPhoto = {
   byte_size: number
   uploaded_by: string
   uploaded_at: string
+  /** Non-null while a removal is in flight. Every read filters these out. */
+  removal_started_at: string | null
 }
 
 export type CustomerReviewEventType =
@@ -215,7 +217,7 @@ export const CUSTOMER_REVIEW_LIST_COLUMNS = [
 ].join(', ')
 
 export const CUSTOMER_REVIEW_PHOTO_COLUMNS =
-  'id, request_id, kind, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at'
+  'id, request_id, kind, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at, removal_started_at'
 
 export const CUSTOMER_REVIEW_EVENT_COLUMNS =
   'id, request_id, event_type, previous_status, new_status, detail, actor_id, created_at'

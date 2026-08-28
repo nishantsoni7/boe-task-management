@@ -9,9 +9,14 @@
  * a stub.
  *
  * THE PROPERTY WORTH READING FOR: a container must account for the WHOLE FILE.
- * The polyglot cases below are the reason — a valid image with a ZIP, a script
- * or a second image appended to it is refused, and that is not something a
- * signature check alone can do.
+ * The appended-payload cases below are the reason — a valid image with a ZIP, a
+ * script or a second image stuck on the end is refused, and that is not
+ * something a signature check alone can do.
+ *
+ * WHAT THIS FILE DOES NOT CLAIM. A container parser cannot prove that every
+ * malformed image or every embedded payload is rejected; a well-formed
+ * container holding corrupt data passes here. That gap is closed by the
+ * decode-and-re-encode pass in ./imageProcessing, which has its own tests.
  *
  * Fictional bytes only. Nothing here touches the network, a database or storage.
  *
@@ -180,7 +185,7 @@ describe('A DISGUISED FILE IS REFUSED — the signature decides, not the name', 
   })
 })
 
-describe('A POLYGLOT IS REFUSED — the container must account for the whole file', () => {
+describe('AN APPENDED PAYLOAD IS REFUSED — the container must account for the whole file', () => {
   test('a JPEG with a ZIP appended after EOI', () => {
     const zip = [0x50, 0x4b, 0x03, 0x04, 0x14, 0x00]
     assert.equal(rejection(inspectImageBytes(jpeg(10, 10, { trailing: zip }), MAX)), 'trailing_data')

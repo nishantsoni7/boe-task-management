@@ -74,6 +74,16 @@ const INTERNAL_ONLY = [
   'customer_review_requests_prevent_delete_with_photos',
 ]
 
+/**
+ * The two halves of a removal. Reachable by service_role ALONE — they take the
+ * actor as a parameter, because the route is what establishes it from the
+ * session, so a browser able to call either could name anybody.
+ */
+const SERVICE_ROLE_ONLY = [
+  'begin_customer_review_photo_removal',
+  'finish_customer_review_photo_removal',
+]
+
 /** Functions that CHANGE the request's lifecycle, and so must lock the row. */
 const LIFECYCLE_WRITERS = [
   'transition_customer_review_request',
@@ -85,7 +95,7 @@ describe('the function inventory is exactly what is expected', () => {
   test('every function is accounted for in one list or the other', () => {
     assert.deepEqual(
       FUNCTIONS.map(f => f.name).sort(),
-      [...CLIENT_CALLABLE, ...INTERNAL_ONLY].sort(),
+      [...CLIENT_CALLABLE, ...INTERNAL_ONLY, ...SERVICE_ROLE_ONLY].sort(),
     )
   })
 })
@@ -144,10 +154,16 @@ describe('grants: who can execute what', () => {
     }
   })
 
-  test('no function is granted to service_role, because none needs it', () => {
-    // The module has no server route and no privileged path. If a grant to
-    // service_role ever appears, something has started depending on one.
-    assert.equal(/service_role/.test(code), false)
+  test('service_role is granted EXACTLY the two removal halves, and nothing else', () => {
+    // A grant to service_role is a statement that something privileged depends
+    // on it. Two things do, and both are named.
+    const granted = [...code.matchAll(/grant\s+execute on function public\.(\w+)\([^)]*\) to service_role/g)]
+      .map(m => m[1]).sort()
+    assert.deepEqual(granted, [...SERVICE_ROLE_ONLY].sort())
+    for (const name of SERVICE_ROLE_ONLY) {
+      const revoke = new RegExp(`revoke execute on function public\\.${name}\\([^)]*\\)\\s*\\n?\\s*from public, anon, authenticated`)
+      assert.ok(revoke.test(code), `${name} is not revoked from authenticated`)
+    }
   })
 
   test('the ORDER is revoke-then-grant, never the reverse', () => {
@@ -442,29 +458,29 @@ describe('storage: an object cannot be attached to somebody else’s request', (
   }
 
   test('the object path is the authorization, and it is the request id', () => {
-    for (const name of [
-      'customer_review_photos_storage_select',
-      'customer_review_photos_storage_delete',
-    ]) {
-      const body = policy(name)
-      assert.ok(body.includes("bucket_id = 'customer-review-photos'"), name)
-    }
-    // Reading resolves the request out of the first path segment; the delete
-    // policy's admin branch is bucket-wide on purpose, so it can reach an object
-    // whose request row is already gone.
-    assert.ok(policy('customer_review_photos_storage_select')
-      .includes("split_part(storage.objects.name, '/', 1)"))
+    const body = policy('customer_review_photos_storage_select')
+    assert.ok(body.includes("bucket_id = 'customer-review-photos'"))
+    // Reading resolves the request out of the first path segment. It is the
+    // only client policy on this bucket.
+    assert.ok(body.includes("split_part(storage.objects.name, '/', 1)"))
   })
 
-  test('NO CLIENT CAN UPLOAD AN OBJECT OR REGISTER ONE', () => {
-    // The two absences that make /api/customer-reviews/photos the only writer,
-    // and therefore make its byte inspection a boundary rather than advice.
-    assert.equal(code.includes('create policy "customer_review_photos_storage_insert"'), false)
-    assert.equal(code.includes('create policy "customer_review_photos_insert"'), false)
-    // Belt to those braces: the privilege is revoked as well, so a policy added
-    // back by mistake still could not write.
+  test('NO CLIENT CAN UPLOAD, REGISTER OR REMOVE AN IMAGE', () => {
+    // The four absences that make /api/customer-reviews/photos the only writer,
+    // and therefore make both its byte inspection and its removal a boundary
+    // rather than advice.
+    for (const absent of [
+      'customer_review_photos_storage_insert',
+      'customer_review_photos_storage_delete',
+      'customer_review_photos_insert',
+      'customer_review_photos_delete',
+    ]) {
+      assert.equal(code.includes(`create policy "${absent}"`), false, absent)
+    }
+    // Belt to those braces: every write privilege is revoked as well, so a
+    // policy added back by mistake still could not write.
     assert.ok(code.includes(
-      'revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
     ))
   })
 
@@ -512,23 +528,19 @@ describe('objects cannot be orphaned, and an accident can be corrected', () => {
   })
 
   test('an ADMIN can withdraw either kind of image at any status', () => {
-    const meta = code.slice(
-      code.indexOf('create policy "customer_review_photos_delete"'),
-      code.indexOf('create or replace function public.customer_review_photos_log_removal'),
-    )
-    assert.ok(meta.includes("u.role = 'admin'"))
-    // …and the storage policy agrees, or the row would go and the object stay.
-    const object = code.slice(code.indexOf('create policy "customer_review_photos_storage_delete"'))
-    assert.ok(object.slice(0, object.indexOf(';')).includes("u.role = 'admin'"))
+    // The whole status/kind ladder sits inside the non-admin branch, so an
+    // administrator passes it entirely.
+    const body = byName('begin_customer_review_photo_removal').body
+    assert.ok(body.includes('if not v_admin then'))
+    const beforeLadder = body.slice(0, body.indexOf('if not v_admin then'))
+    assert.equal(beforeLadder.includes('r.status not in'), false)
   })
 
-  test('a non-admin still cannot remove proof, or anything after sending', () => {
-    const meta = code.slice(
-      code.indexOf('create policy "customer_review_photos_delete"'),
-      code.indexOf('create or replace function public.customer_review_photos_log_removal'),
-    )
-    assert.ok(meta.includes("kind = 'project_photo'"))
-    assert.ok(meta.includes('can_edit_customer_review_request'))
+  test('a non-admin cannot remove VERIFIED proof, or a photograph after sending', () => {
+    const body = byName('begin_customer_review_photo_removal').body
+    assert.ok(body.includes("r.status not in ('draft', 'ready_to_send')"))
+    assert.ok(body.includes('if r.verified_at is not null then'))
+    assert.ok(body.includes('Verified proof can only be withdrawn by an administrator'))
   })
 
   test('every removal is recorded in the append-only trail', () => {

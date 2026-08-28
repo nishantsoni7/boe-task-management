@@ -79,6 +79,9 @@ export function RequestDetailScreen({ requestId }: { requestId: string }) {
         .from('customer_review_request_photos')
         .select(CUSTOMER_REVIEW_PHOTO_COLUMNS)
         .eq('request_id', requestId)
+        // A row being removed is already gone as far as the screen is concerned;
+        // its object may already have been deleted.
+        .is('removal_started_at', null)
         .order('uploaded_at', { ascending: true }),
       supabase
         .from('customer_review_request_events')

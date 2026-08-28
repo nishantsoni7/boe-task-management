@@ -16,13 +16,19 @@ import type { CustomerReviewPhoto, PhotoKind } from '@/lib/customerReviews/types
 
 // Project photographs and review proof, on a private bucket.
 //
-// UPLOADING GOES THROUGH THE SERVER. This component POSTs the file to
-// /api/customer-reviews/photos, which authenticates the caller, checks the
-// permission, reads the bytes, decides what the file really is, generates the
-// object key and writes both the object and its metadata row. The browser
-// cannot do any of that itself any more: the storage INSERT policy and the
-// metadata INSERT policy were both withdrawn from `authenticated`, so a direct
-// upload is refused by the database rather than merely discouraged here.
+// UPLOADING AND REMOVING BOTH GO THROUGH THE SERVER.
+//
+// POST /api/customer-reviews/photos authenticates the caller, checks the
+// permission, reads the bytes, decodes and re-encodes the image, generates the
+// object key and writes both the object and its metadata row.
+//
+// DELETE /api/customer-reviews/photos does the reverse as ONE operation:
+// mark, delete the object, delete the row, write the audit entry.
+//
+// The browser can do neither itself. `authenticated` holds no INSERT or DELETE
+// policy on the metadata table and no INSERT or DELETE policy on the bucket, so
+// a direct write or a half-removal is refused by the database rather than
+// merely discouraged here. Reading is still direct.
 //
 // validateReviewPhoto() still runs before the POST. It is a COURTESY — it saves
 // a five-megabyte round trip to be told no — and it is not the boundary. The
@@ -67,6 +73,7 @@ export function PhotoManager({
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const uploading = useRef(false)
+  const removing = useRef(false)
 
   // Signed URLs are minted per render pass and never stored anywhere. They
   // expire on their own, and a viewer who has lost access simply gets no URL —
@@ -149,27 +156,36 @@ export function PhotoManager({
   }, [requestId, kind, photos.length, onChanged])
 
   const remove = useCallback(async (photo: CustomerReviewPhoto) => {
-    if (busy) return
+    if (removing.current) return
+    removing.current = true
     setBusy(true)
     setError(null)
     try {
-      // The metadata row first: while it exists the object is still
-      // discoverable, so a failure here is recoverable and a failure after it
-      // leaves nothing dangling that anybody can see. Deleting IS still a client
-      // operation — the DELETE policies are deliberately kept, because the
-      // compensation path must not need a server route.
-      const { error: rowError } = await supabase
-        .from('customer_review_request_photos')
-        .delete()
-        .eq('id', photo.id)
-      if (rowError) { setError('That photo could not be removed.'); return }
-
-      await supabase.storage.from(REVIEW_PHOTO_BUCKET).remove([photo.storage_path]).catch(() => {})
+      // ONE call. Removing an attachment means deleting a private object AND a
+      // metadata row, and a browser that could do either half on its own would
+      // eventually do exactly one of them — leaving a file nothing names, or a
+      // record pointing at nothing. The database refuses both halves to
+      // `authenticated`, so this is the only path.
+      const response = await fetch('/api/customer-reviews/photos', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ photoId: photo.id }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        setError(typeof payload?.error === 'string'
+          ? payload.error
+          : 'That photo could not be removed.')
+        return
+      }
       await onChanged()
+    } catch {
+      setError('That photo could not be removed. Check your connection and try again.')
     } finally {
+      removing.current = false
       setBusy(false)
     }
-  }, [supabase, busy, onChanged])
+  }, [onChanged])
 
   return (
     <div>
@@ -281,7 +297,8 @@ export function PhotoManager({
             {REVIEW_PHOTO_TYPES_LABEL}, up to 5 MB each
             {kind === 'project_photo' ? `, ${MAX_PROJECT_PHOTOS} maximum` : ''}.
             {kind === 'project_photo' ? ' Use real photographs of this customer’s own project.' : ''}
-            {' '}Each file is checked on the server before it is stored.
+            {' '}Each file is checked on the server, re-encoded, and stripped of camera
+            metadata before it is stored.
           </p>
         </>
       )}

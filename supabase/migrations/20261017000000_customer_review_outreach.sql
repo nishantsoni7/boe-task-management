@@ -297,6 +297,28 @@ create table public.customer_review_request_photos (
   uploaded_by uuid not null default auth.uid() references public.users(id),
   uploaded_at timestamptz not null default now(),
 
+  -- ── Removal, in two steps ──
+  --
+  -- Deleting an attachment touches two systems — the bucket and this table —
+  -- and no transaction spans both. Doing it in one step means choosing which
+  -- inconsistency to risk: delete the row first and a failed object removal
+  -- leaves an orphan nothing can find again; delete the object first and a
+  -- failed row deletion leaves a record pointing at nothing.
+  --
+  -- So removal is MARKED before it is done. begin_customer_review_photo_removal
+  -- stamps these two columns, every read filters the row out from that moment,
+  -- the object is deleted, and finish_customer_review_photo_removal deletes the
+  -- row. A failure between the two leaves a marked row that still names its
+  -- path, so the operation is retryable and converges — and nothing is ever
+  -- both invisible and unreachable.
+  removal_started_at timestamptz,
+  removal_by uuid references public.users(id),
+
+  constraint customer_review_photos_removal_fields_consistent check (
+    (removal_started_at is null and removal_by is null)
+    or (removal_started_at is not null and removal_by is not null)
+  ),
+
   -- The path segment the storage policies rely on has to agree with the row's
   -- own request, or a member of one request could reach another's objects.
   constraint customer_review_photos_path_matches_request check (
@@ -574,37 +596,33 @@ create policy "customer_review_photos_select" on public.customer_review_request_
 -- read it. A client that tries goes through the route or does not go at all.
 -- The storage INSERT policy is absent for the same reason (see §10).
 
--- Removing a photograph attached by mistake.
+-- THERE IS NO DELETE POLICY ON THIS TABLE EITHER.
 --
--- TWO DOORS, and the second one exists because the first is deliberately narrow.
+-- An earlier version had one, and it created exactly the inconsistency the
+-- two-step removal above exists to prevent: a browser could delete the metadata
+-- row on its own and then fail — or simply decline — to remove the object,
+-- leaving a file in the bucket that nothing named any more. The reverse was
+-- equally available through the storage DELETE policy.
 --
---   the owner   may withdraw a PROJECT PHOTOGRAPH while the request is still
---               being prepared. Review proof is not removable this way:
---               evidence offered for verification must not vanish from under
---               the verifier, and a sent request's photographs are part of the
---               record.
+-- Removal is now one operation, in one place: DELETE /api/customer-reviews/photos
+-- authorizes the caller, marks the row, deletes the object, deletes the row, and
+-- leaves a photo_removed entry in the append-only trail. The two functions it
+-- uses are granted to service_role alone, so there is no client path to half of
+-- the job.
 --
---   an admin    may withdraw EITHER kind at ANY status. Without this door an
+-- WHO MAY REMOVE WHAT is unchanged and is enforced inside
+-- begin_customer_review_photo_removal():
+--
+--   the owner   a PROJECT PHOTOGRAPH, while the request is still being
+--               prepared. And REVIEW PROOF only while the request is unverified
+--               — evidence a verifier has already acted on must not vanish
+--               from underneath their decision.
+--
+--   an admin    either kind, at any status, verified included. Without this an
 --               image uploaded by accident — the wrong customer's site, a
---               screenshot with a bystander in it, a photograph BOE turns out
---               not to have permission for — would be permanently unremovable
---               the moment the request left 'ready_to_send', with no safe route
---               to correct it and no service-role path to fall back on. Every
---               removal writes a photo_removed row to the append-only trail
---               (see the trigger below), so a correction is recorded rather
---               than silent.
-create policy "customer_review_photos_delete" on public.customer_review_request_photos
-  for delete to authenticated
-  using (
-    (
-      kind = 'project_photo'
-      and public.can_edit_customer_review_request(request_id, auth.uid())
-    )
-    or exists (
-      select 1 from public.users u
-      where u.id = auth.uid() and u.is_active and u.role = 'admin'
-    )
-  );
+--               bystander in shot, a photograph BOE turns out not to have
+--               permission for — would be permanently unremovable, with no safe
+--               correction route at all.
 
 -- Every removal is recorded. The row names the file and the kind, so the trail
 -- still reads correctly once the metadata row it describes is gone.
@@ -631,7 +649,13 @@ begin
      format('%s removed: %s',
             case when old.kind = 'review_proof' then 'Proof image' else 'Project photograph' end,
             left(coalesce(old.file_name, 'unnamed'), 120)),
-     coalesce(auth.uid(), old.uploaded_by));
+     -- WHO REMOVED IT, and the order matters. removal_by is stamped by
+     -- begin_customer_review_photo_removal() with the authenticated caller the
+     -- route established; it is read FIRST because the delete itself arrives
+     -- through the service role, where auth.uid() is null. Falling back to the
+     -- uploader would credit the removal to whoever added the file, which is
+     -- usually somebody else entirely.
+     coalesce(old.removal_by, auth.uid(), old.uploaded_by));
   return old;
 end;
 $$;
@@ -642,6 +666,132 @@ drop trigger if exists customer_review_photos_log_removal_trg on public.customer
 create trigger customer_review_photos_log_removal_trg
   before delete on public.customer_review_request_photos
   for each row execute function public.customer_review_photos_log_removal();
+
+-- ── The two halves of a removal ───────────────────────────────────────────
+--
+-- Both are granted to service_role ALONE. They take the actor as a parameter,
+-- which would be a spoofing hole if a browser could call them — so no browser
+-- can: `authenticated` holds no EXECUTE on either, and DELETE /api/customer-
+-- reviews/photos is what establishes the actor from the session before calling.
+--
+-- The authorization is repeated HERE as well as in the route, on purpose. The
+-- route is the only caller today; this is what keeps the rule true if it ever
+-- is not.
+
+create or replace function public.begin_customer_review_photo_removal(
+  p_photo_id uuid,
+  p_actor_id uuid
+)
+returns public.customer_review_request_photos
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  p       public.customer_review_request_photos%rowtype;
+  r       public.customer_review_requests%rowtype;
+  v_admin boolean;
+begin
+  -- Locked, so two removals of one photograph cannot both proceed to delete an
+  -- object and then both try to delete the row.
+  select * into p from public.customer_review_request_photos where id = p_photo_id for update;
+  if not found then
+    raise exception 'CUSTOMER_REVIEW_PHOTO_NOT_FOUND: That photograph is no longer attached'
+      using errcode = 'P0002';
+  end if;
+
+  select (u.role = 'admin') into v_admin
+  from public.users u
+  where u.id = p_actor_id and u.is_active;
+  if v_admin is null then
+    raise exception 'CUSTOMER_REVIEW_UNAUTHORIZED: Your account is not active' using errcode = '42501';
+  end if;
+
+  select * into r from public.customer_review_requests where id = p.request_id;
+  if not found then
+    raise exception 'CUSTOMER_REVIEW_NOT_FOUND: That request no longer exists' using errcode = 'P0002';
+  end if;
+
+  -- An admin may correct anything, at any status. Everyone else is narrower.
+  if not v_admin then
+    if not (
+      r.created_by = p_actor_id
+      and public.resolve_permission(p_actor_id, 'customer_review_requests', 'use')
+    ) then
+      raise exception 'CUSTOMER_REVIEW_UNAUTHORIZED: Only the employee who raised this request can remove its photographs'
+        using errcode = '42501';
+    end if;
+
+    if p.kind = 'project_photo' then
+      -- Preparation stage only. Once a request has been sent, its photographs
+      -- are part of what was prepared.
+      if r.status not in ('draft', 'ready_to_send') then
+        raise exception 'CUSTOMER_REVIEW_LOCKED: Photographs cannot be removed once the request has been sent'
+          using errcode = '42501';
+      end if;
+    else
+      -- REVIEW PROOF, and the rule that matters: evidence a verifier has
+      -- already acted on must not vanish from underneath their decision. Before
+      -- verification the person who attached it may withdraw it; after
+      -- verification only an administrator can, as a correction.
+      if r.verified_at is not null then
+        raise exception 'CUSTOMER_REVIEW_LOCKED: Verified proof can only be withdrawn by an administrator'
+          using errcode = '42501';
+      end if;
+      if r.status not in ('sent', 'customer_responded') then
+        raise exception 'CUSTOMER_REVIEW_LOCKED: Proof cannot be removed at this stage'
+          using errcode = '42501';
+      end if;
+    end if;
+  end if;
+
+  -- Idempotent: a retry after a failed object deletion re-enters here and finds
+  -- the row already marked, which is exactly the state it wants.
+  if p.removal_started_at is null then
+    update public.customer_review_request_photos
+       set removal_started_at = now(),
+           removal_by = p_actor_id
+     where id = p_photo_id;
+    select * into p from public.customer_review_request_photos where id = p_photo_id;
+  end if;
+
+  return p;
+end;
+$$;
+
+revoke execute on function public.begin_customer_review_photo_removal(uuid, uuid)
+  from public, anon, authenticated;
+grant  execute on function public.begin_customer_review_photo_removal(uuid, uuid) to service_role;
+
+-- The second half: the object is gone, so the row goes and the trail gains its
+-- photo_removed entry (written by the trigger above, from removal_by).
+create or replace function public.finish_customer_review_photo_removal(p_photo_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  p public.customer_review_request_photos%rowtype;
+begin
+  select * into p from public.customer_review_request_photos where id = p_photo_id for update;
+  -- Already finished. A retry says so rather than failing, so a caller that
+  -- lost its response can converge.
+  if not found then return true; end if;
+
+  if p.removal_started_at is null then
+    raise exception 'CUSTOMER_REVIEW_BAD_REMOVAL: This photograph was not marked for removal'
+      using errcode = '23514';
+  end if;
+
+  delete from public.customer_review_request_photos where id = p_photo_id;
+  return true;
+end;
+$$;
+
+revoke execute on function public.finish_customer_review_photo_removal(uuid)
+  from public, anon, authenticated;
+grant  execute on function public.finish_customer_review_photo_removal(uuid) to service_role;
 
 -- ── customer_review_request_events ──
 --
@@ -1156,20 +1306,26 @@ grant update (
 
 revoke insert, update, delete, truncate on public.customer_review_requests from anon;
 
--- Photo metadata: DELETED under the policy above, never inserted and never
--- edited by a client.
+-- Photo metadata: READ-ONLY to every client role. No insert, no update, no
+-- delete, no truncate.
 --
--- INSERT is revoked from `authenticated` as well as from `anon`, which is belt
--- to the braces of the absent INSERT policy: a policy added by mistake later
--- still could not write, because the privilege is gone. Registering an image is
--- /api/customer-reviews/photos and nothing else.
+-- Each revocation is belt to the braces of an absent policy, and each is worth
+-- stating separately:
 --
--- UPDATE is revoked because a row that could be re-pointed at a different object
--- would make customer_review_photos_path_matches_request decorative — and would
--- let somebody rewrite mime_type or content_sha256 after the server established
--- them.
-revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon;
-revoke delete                   on public.customer_review_request_photos from anon;
+--   INSERT  registering an image is /api/customer-reviews/photos and nothing
+--           else, because only something that has READ the bytes may record
+--           what they are.
+--   UPDATE  a row that could be re-pointed at a different object would make
+--           customer_review_photos_path_matches_request decorative, and a row
+--           that could be edited would let somebody rewrite mime_type,
+--           byte_size or content_sha256 after the server established them.
+--   DELETE  removal spans the bucket and this table, and a client that could do
+--           one half would leave the other stranded. It is one server operation
+--           or it is nothing.
+--
+-- A policy added back by mistake later still could not write, because the
+-- privilege is gone.
+revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon;
 
 -- The trail: readable, never writable. Neither policy nor grant admits a write,
 -- and TRUNCATE — which no policy governs and no row trigger fires on — cannot
@@ -1224,30 +1380,25 @@ create policy "customer_review_photos_storage_select"
     )
   );
 
--- Deleting is the compensation path for a photograph attached by mistake, for
--- cleaning up an upload whose metadata row never landed, and for an
--- administrator correcting an image that should not be stored at all.
+-- THERE IS NO DELETE POLICY ON storage.objects FOR THIS BUCKET EITHER.
 --
--- It MIRRORS customer_review_photos_delete on the metadata table exactly, and
--- has to: a route that could remove the row but not the object would leave an
--- orphan, and one that could remove the object but not the row would leave a
--- broken reference. Owner + preparation stage, or an admin at any status.
-create policy "customer_review_photos_storage_delete"
-  on storage.objects
-  for delete to authenticated
-  using (
-    bucket_id = 'customer-review-photos'
-    and (
-      exists (select 1 from public.users u where u.id = auth.uid() and u.is_active and u.role = 'admin')
-      or exists (
-        select 1 from public.customer_review_requests r
-        where r.id::text = split_part(storage.objects.name, '/', 1)
-          and r.status in ('draft', 'ready_to_send')
-          and r.created_by = auth.uid()
-          and public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
-      )
-    )
-  );
+-- Together with the absent metadata DELETE policy, this is what makes removal
+-- ONE operation instead of two independent ones a client could perform in
+-- either order, or half of.
+--
+-- With a client storage DELETE policy, a browser could remove the object and
+-- leave the row — a record pointing at a file that no longer exists, rendering
+-- as a permanently broken preview for everyone who opens the request. With a
+-- client metadata DELETE policy it could do the reverse and strand the file.
+-- Neither is now expressible: `authenticated` holds no DELETE policy and no
+-- DELETE privilege on either side.
+--
+-- DELETE /api/customer-reviews/photos does the whole job — mark, delete the
+-- object, delete the row, leave the audit entry — and its two SQL halves are
+-- granted to service_role alone.
+--
+-- The bucket is therefore SELECT-only for every client role. Reading stays with
+-- the browser, through short-lived signed URLs, exactly as before.
 
 -- ═══ 11. Registration in the permission engine ═════════════════════════════
 --
@@ -1296,7 +1447,8 @@ on conflict (role, module_id, action_id) do nothing;
 
 do $$
 declare
-  v_n integer;
+  v_n   integer;
+  v_bad text;
 begin
   -- Every table carries RLS.
   select count(*) into v_n
@@ -1365,10 +1517,65 @@ begin
     raise exception 'a client INSERT policy exists on the customer-review-photos bucket';
   end if;
 
-  -- And the privilege is gone as well as the policy.
-  if has_table_privilege('authenticated', 'public.customer_review_request_photos', 'INSERT') then
-    raise exception 'authenticated still holds INSERT on customer_review_request_photos';
+  -- NO CLIENT MAY REMOVE ONE EITHER. Deleting spans the bucket and the metadata
+  -- table, and a client holding half of that is how an orphaned object or a
+  -- broken reference gets made. Both policies must be absent, and both
+  -- privileges gone.
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'public'
+    and tablename = 'customer_review_request_photos'
+    and cmd = 'DELETE';
+  if v_n <> 0 then
+    raise exception 'customer_review_request_photos has a DELETE policy; removal must go through the trusted route';
   end if;
+
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and cmd = 'DELETE'
+    and policyname like 'customer_review_photos%';
+  if v_n <> 0 then
+    raise exception 'a client DELETE policy exists on the customer-review-photos bucket';
+  end if;
+
+  -- The bucket is SELECT-only for clients: exactly one policy, and it reads.
+  select count(*) into v_n
+  from pg_policies
+  where schemaname = 'storage'
+    and tablename = 'objects'
+    and policyname like 'customer_review_photos%';
+  if v_n <> 1 then
+    raise exception 'the customer-review-photos bucket has % client polic(ies); it must have exactly one, for SELECT', v_n;
+  end if;
+
+  -- And the privileges are gone as well as the policies.
+  for v_bad in
+    select unnest(array['INSERT', 'UPDATE', 'DELETE'])
+  loop
+    if has_table_privilege('authenticated', 'public.customer_review_request_photos', v_bad) then
+      raise exception 'authenticated still holds % on customer_review_request_photos', v_bad;
+    end if;
+  end loop;
+
+  -- The two removal halves are reachable by service_role alone. Either one in
+  -- a browser's hands would be an actor-spoofing hole: both take the actor as a
+  -- parameter, because the route is what establishes it.
+  for v_bad in
+    select unnest(array[
+      'public.begin_customer_review_photo_removal(uuid, uuid)',
+      'public.finish_customer_review_photo_removal(uuid)'
+    ])
+  loop
+    if has_function_privilege('authenticated', v_bad, 'EXECUTE')
+       or has_function_privilege('anon', v_bad, 'EXECUTE') then
+      raise exception '% is executable by a client role', v_bad;
+    end if;
+    if not has_function_privilege('service_role', v_bad, 'EXECUTE') then
+      raise exception '% is not executable by service_role, so the removal route cannot work', v_bad;
+    end if;
+  end loop;
 
   -- Both actions are registered deny-by-default.
   select count(*) into v_n

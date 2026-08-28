@@ -3,17 +3,22 @@ import { createHash, randomUUID } from 'node:crypto'
 
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
+import { IMAGE_REJECTION_MESSAGES } from '@/lib/customerReviews/imageBytes'
 import {
-  IMAGE_REJECTION_MESSAGES,
-  inspectImageBytes,
-} from '@/lib/customerReviews/imageBytes'
+  PROCESSING_REJECTION_MESSAGES,
+  processReviewImage,
+} from '@/lib/customerReviews/imageProcessing'
 import {
   MAX_PROJECT_PHOTOS,
   REVIEW_PHOTO_BUCKET,
   REVIEW_PHOTO_MAX_BYTES,
 } from '@/lib/customerReviews/photos'
 
-// THE ONLY WAY AN IMAGE ENTERS THIS MODULE.
+// THE ONLY WAY AN IMAGE ENTERS OR LEAVES THIS MODULE.
+//
+// POST adds one. DELETE removes one. Both are here because both are the same
+// kind of thing: an operation that spans the private bucket and the metadata
+// table, which no client may perform half of.
 //
 // WHY A ROUTE AT ALL
 // ------------------
@@ -36,9 +41,10 @@ import {
 //      does not exist as far as this route is concerned;
 //   4. apply the kind/status rule (project photo while preparing, proof after
 //      sending) and the ownership rule;
-//   5. read the whole file into memory and INSPECT ITS BYTES;
+//   5. read the whole file into memory, gate it structurally, then DECODE AND
+//      RE-ENCODE it — the stored object is libvips output, never the upload;
 //   6. only then upload, to a path this server generates;
-//   7. insert the metadata with the INSPECTED type and size;
+//   7. insert the metadata describing the RE-ENCODED bytes;
 //   8. if that insert fails, remove the object again.
 //
 // NOTHING THE CLIENT SENDS NAMES A LOCATION. The body carries a request id, a
@@ -83,6 +89,10 @@ const MESSAGES = {
   one_proof:       'Only one proof image can be attached. Remove the current one first.',
   upload_failed:   'That photo could not be stored. Try again.',
   unavailable:     'Photo uploads are not configured on this deployment.',
+  photo_not_found: 'That photograph is no longer attached.',
+  remove_locked:   'That photograph can no longer be removed. Ask an administrator.',
+  remove_failed:   'That photograph could not be removed. Try again.',
+  remove_partial:  'The image was removed but the record could not be updated. Try again.',
 } as const
 
 const fail = (status: number, message: string) =>
@@ -191,13 +201,17 @@ export async function POST(req: NextRequest) {
   // The real length, the real container, and a container that accounts for the
   // whole file. This is the check that the browser's `file.type` was standing
   // in for, and it is the reason the stored mime_type is now a fact.
-  const inspection = inspectImageBytes(bytes, REVIEW_PHOTO_MAX_BYTES)
-  if (!inspection.ok) {
-    return fail(
-      inspection.reason === 'too_large' ? 413 : 415,
-      IMAGE_REJECTION_MESSAGES[inspection.reason],
-    )
+  const processed = await processReviewImage(bytes, REVIEW_PHOTO_MAX_BYTES)
+  if (!processed.ok) {
+    const message = processed.reason === 'undecodable' || processed.reason === 'too_many_pixels'
+      ? PROCESSING_REJECTION_MESSAGES[processed.reason]
+      : IMAGE_REJECTION_MESSAGES[processed.reason]
+    return fail(processed.reason === 'too_large' ? 413 : 415, message)
   }
+
+  // FROM HERE ON, `stored` is the file. The uploaded bytes are not written
+  // anywhere, are not hashed, and are not described by the metadata row.
+  const stored = processed.bytes
 
   // ── 6. The privileged client ──────────────────────────────────────────────
   const admin = adminClient()
@@ -210,7 +224,9 @@ export async function POST(req: NextRequest) {
   const service = admin.client
 
   // ── 7. Limits that need the existing rows ─────────────────────────────────
-  const digest = createHash('sha256').update(bytes).digest('hex')
+  // Hashed over the STORED bytes, so two uploads of the same photograph that
+  // differed only in EXIF collapse to one attachment.
+  const digest = createHash('sha256').update(stored).digest('hex')
 
   const { data: existing, error: existingError } = await service
     .from('customer_review_request_photos')
@@ -237,17 +253,17 @@ export async function POST(req: NextRequest) {
   // The request id first, because the storage SELECT policy reads ownership out
   // of split_part(name, '/', 1) and the metadata CHECK requires the two to
   // agree. Nothing the caller typed contributes a character.
-  const extension = inspection.mime === 'image/jpeg' ? 'jpg'
-    : inspection.mime === 'image/png' ? 'png'
+  const extension = processed.mime === 'image/jpeg' ? 'jpg'
+    : processed.mime === 'image/png' ? 'png'
     : 'webp'
   const storagePath = `${requestId}/${kind}/${randomUUID()}.${extension}`
 
   const { error: uploadError } = await service.storage
     .from(REVIEW_PHOTO_BUCKET)
-    .upload(storagePath, bytes, {
-      // The INSPECTED type, not the declared one. What is stored and what is
-      // served are the same fact.
-      contentType: inspection.mime,
+    .upload(storagePath, stored, {
+      // The re-encoded bytes, under the type they were encoded as. What is
+      // stored and what is served are the same fact.
+      contentType: processed.mime,
       upsert: false,
     })
   if (uploadError) return fail(500, MESSAGES.upload_failed)
@@ -262,8 +278,8 @@ export async function POST(req: NextRequest) {
       // Display only, and bounded. The filename is the one thing the caller
       // supplies that is kept, and it never reaches a path or a response.
       file_name: displayName,
-      mime_type: inspection.mime,
-      byte_size: bytes.length,
+      mime_type: processed.mime,
+      byte_size: stored.length,
       content_sha256: digest,
       uploaded_by: user.id,
     })
@@ -282,6 +298,126 @@ export async function POST(req: NextRequest) {
   return ok({ photo: { ...row, request_id: requestId } })
 }
 
+// ══ REMOVING ONE ════════════════════════════════════════════════════════════
+//
+// ONE OPERATION, because it spans two systems and no transaction covers both.
+//
+// A browser can no longer delete either half: the metadata table has no DELETE
+// policy and no DELETE privilege for `authenticated`, and the bucket has no
+// DELETE policy at all (migration 20261017000000 §6 and §10). Half a removal
+// is how an orphaned object or a permanently broken preview gets made, so
+// neither half is separately reachable.
+//
+// THE THREE STEPS, and the middle one is why there are three:
+//
+//   MARK    begin_customer_review_photo_removal() re-checks the authorization
+//           in SQL, locks the row, and stamps removal_started_at/removal_by.
+//           Every read filters the row out from this moment, so the
+//           photograph is already gone as far as the application is
+//           concerned.
+//   OBJECT  the file is deleted from the private bucket.
+//   ROW     finish_customer_review_photo_removal() deletes the metadata, and
+//           the delete trigger writes the photo_removed entry to the
+//           append-only trail — crediting removal_by, because the delete
+//           itself arrives through the service role where auth.uid() is null.
+//
+// A FAILURE BETWEEN THEM IS EXPLICIT. If the object deletion fails, the row
+// stays marked and still names its path, so nothing is orphaned and a retry
+// converges. If the row deletion fails, the caller is told the image is gone
+// but the record is not — which is true, and which a retry also converges,
+// because both functions are idempotent.
+
+export async function DELETE(req: NextRequest) {
+  const caller = await createClient()
+  const { data: { user }, error: authError } = await caller.auth.getUser()
+  if (authError || !user) return fail(401, MESSAGES.unauthenticated)
+
+  const { data: profile } = await caller
+    .from('users')
+    .select('role, is_active')
+    .eq('id', user.id)
+    .single()
+  if (!profile || profile.is_active !== true) return fail(403, MESSAGES.forbidden)
+
+  // `use` is required even of an admin correcting somebody else's upload —
+  // an administrator who does not hold the module has no business in it. The
+  // role short-circuit that follows is about WHOSE photograph they may touch.
+  const isAdmin = profile.role === 'admin'
+  if (!isAdmin) {
+    const { data: allowed } = await caller.rpc('resolve_permission', {
+      p_user_id: user.id,
+      p_module_key: 'customer_review_requests',
+      p_action_key: 'use',
+    })
+    if (allowed !== true) return fail(403, MESSAGES.forbidden)
+  }
+
+  let photoId: string
+  try {
+    const body = await req.json()
+    const raw = body?.photoId
+    if (typeof raw !== 'string' || !UUID_RE.test(raw)) return fail(400, MESSAGES.bad_request)
+    photoId = raw
+  } catch {
+    return fail(400, MESSAGES.bad_request)
+  }
+
+  // Read it as the CALLER first. A photograph on a request they may not see
+  // returns no row, so this route cannot be used to probe for one — and the
+  // path it works with comes from the database, never from the body.
+  const { data: visible } = await caller
+    .from('customer_review_request_photos')
+    .select('id, request_id, kind')
+    .eq('id', photoId)
+    .maybeSingle()
+  if (!visible) return fail(404, MESSAGES.photo_not_found)
+
+  const admin = adminClient()
+  if (!admin.ok) {
+    console.error('[customer-reviews:photos] missing env:', admin.missing.join(', '))
+    return fail(503, MESSAGES.unavailable)
+  }
+  const service = admin.client
+
+  // ── MARK ────────────────────────────────────────────────────────────────
+  const { data: marked, error: markError } = await service.rpc(
+    'begin_customer_review_photo_removal',
+    { p_photo_id: photoId, p_actor_id: user.id },
+  )
+  if (markError || !marked) {
+    // The database's own refusal codes, mapped to prewritten sentences. The
+    // message text itself is never forwarded: it is written for a person, but
+    // it is not this route's to choose.
+    const code = markError?.message ?? ''
+    if (code.includes('CUSTOMER_REVIEW_PHOTO_NOT_FOUND')) return fail(404, MESSAGES.photo_not_found)
+    if (code.includes('CUSTOMER_REVIEW_LOCKED')) return fail(409, MESSAGES.remove_locked)
+    if (code.includes('CUSTOMER_REVIEW_UNAUTHORIZED')) return fail(403, MESSAGES.forbidden)
+    return fail(500, MESSAGES.remove_failed)
+  }
+
+  const storagePath = (marked as { storage_path?: string }).storage_path
+  if (typeof storagePath !== 'string' || storagePath.length === 0) {
+    return fail(500, MESSAGES.remove_failed)
+  }
+
+  // ── OBJECT ──────────────────────────────────────────────────────────────
+  const { error: objectError } = await service.storage
+    .from(REVIEW_PHOTO_BUCKET)
+    .remove([storagePath])
+  if (objectError) {
+    // The row stays marked and still names the path. Nothing is orphaned, the
+    // photograph is already invisible, and calling again finishes the job.
+    return fail(500, MESSAGES.remove_failed)
+  }
+
+  // ── ROW ─────────────────────────────────────────────────────────────────
+  const { error: rowError } = await service.rpc('finish_customer_review_photo_removal', {
+    p_photo_id: photoId,
+  })
+  if (rowError) return fail(500, MESSAGES.remove_partial)
+
+  return ok({ removed: photoId })
+}
 /**
  * A filename fit to store and show, and nothing more.
  *

@@ -141,29 +141,36 @@ describe('who may call it', () => {
 describe('the file itself', () => {
   test('the declared size is refused first, and the REAL length checked after', () => {
     assert.ok(route.includes('(file as File).size > REVIEW_PHOTO_MAX_BYTES'))
-    assert.ok(route.includes('inspectImageBytes(bytes, REVIEW_PHOTO_MAX_BYTES)'))
+    assert.ok(route.includes('processReviewImage(bytes, REVIEW_PHOTO_MAX_BYTES)'))
   })
 
-  test('INSPECTION HAPPENS BEFORE ANYTHING IS STORED', () => {
+  test('VALIDATION AND RE-ENCODING HAPPEN BEFORE ANYTHING IS STORED', () => {
     assert.ok(
-      route.indexOf('inspectImageBytes(') < route.indexOf('.upload('),
-      'the upload must not precede the inspection',
+      route.indexOf('processReviewImage(') < route.indexOf('.upload('),
+      'the upload must not precede the decode',
     )
   })
 
-  test('a rejection returns the inspector’s prewritten sentence and nothing else', () => {
-    assert.ok(route.includes('IMAGE_REJECTION_MESSAGES[inspection.reason]'))
+  test('a rejection returns a prewritten sentence and nothing else', () => {
+    assert.ok(route.includes('IMAGE_REJECTION_MESSAGES[processed.reason]'))
+    assert.ok(route.includes('PROCESSING_REJECTION_MESSAGES[processed.reason]'))
   })
 
-  test('the STORED type and size come from the inspection, never from the client', () => {
-    assert.ok(route.includes('mime_type: inspection.mime'))
-    assert.ok(route.includes('byte_size: bytes.length'))
-    assert.equal(/mime_type:\s*file\.type|byte_size:\s*file\.size/.test(route), false)
+  test('THE STORED BYTES ARE THE DECODER’S OUTPUT, not the upload', () => {
+    // `stored` is the re-encoded buffer. The uploaded bytes are not written,
+    // not hashed, and not described by the metadata row.
+    assert.ok(route.includes('const stored = processed.bytes'))
+    assert.ok(route.includes('.upload(storagePath, stored, {'))
+    assert.ok(route.includes('byte_size: stored.length'))
+    assert.ok(route.includes("createHash('sha256').update(stored)"))
+    assert.equal(/\.upload\(storagePath, bytes\b/.test(route), false)
   })
 
-  test('the object is uploaded with the inspected content type', () => {
-    assert.ok(route.includes('contentType: inspection.mime'))
+  test('the stored type is the one it was re-encoded as', () => {
+    assert.ok(route.includes('mime_type: processed.mime'))
+    assert.ok(route.includes('contentType: processed.mime'))
     assert.ok(route.includes('upsert: false'))
+    assert.equal(/mime_type:\s*file\.type|byte_size:\s*file\.size/.test(route), false)
   })
 })
 
@@ -211,7 +218,7 @@ describe('nothing is left behind', () => {
   })
 
   test('a repeated upload is answered by CONTENT, not by a timer', () => {
-    assert.ok(route.includes("createHash('sha256').update(bytes).digest('hex')"))
+    assert.ok(route.includes("createHash('sha256').update(stored).digest('hex')"))
     assert.ok(route.includes('row.content_sha256 === digest'))
     assert.ok(route.includes('MESSAGES.duplicate'))
     // And the database refuses it too, whatever raced with what.
@@ -256,8 +263,9 @@ describe('errors are safe', () => {
     }
     // The one console line names ENV VARIABLE NAMES, never values or content.
     const logs = [...route.matchAll(/console\.\w+\(([^\n]*)/g)].map(m => m[1])
-    assert.equal(logs.length, 1)
-    assert.ok(logs[0].includes('admin.missing.join'))
+    // One per handler, and both name env VARIABLES rather than values.
+    assert.equal(logs.length, 2)
+    for (const line of logs) assert.ok(line.includes('admin.missing.join'))
   })
 
   test('private answers are never cached', () => {
@@ -290,9 +298,9 @@ describe('a client cannot go around the route', () => {
     assert.equal(sql.includes('create policy "customer_review_photos_insert"'), false)
   })
 
-  test('and the INSERT privilege is revoked, so a policy added later still fails', () => {
+  test('and every write privilege is revoked, so a policy added later still fails', () => {
     assert.ok(sql.includes(
-      'revoke insert, update, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
     ))
   })
 
@@ -300,7 +308,7 @@ describe('a client cannot go around the route', () => {
     const assertions = sql.slice(sql.indexOf('do $$'))
     assert.ok(assertions.includes('only the trusted upload route may register an image'))
     assert.ok(assertions.includes('a client INSERT policy exists on the customer-review-photos bucket'))
-    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_request_photos', 'INSERT')"))
+    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_request_photos', v_bad)"))
   })
 
   test('reading is still the client’s, through short-lived signed URLs', () => {
@@ -309,9 +317,12 @@ describe('a client cannot go around the route', () => {
     assert.ok(manager.includes('const SIGNED_URL_TTL_SECONDS = 300'))
   })
 
-  test('removing is still the client’s, so the compensation path needs no server', () => {
-    assert.ok(sql.includes('create policy "customer_review_photos_delete"'))
-    assert.ok(sql.includes('create policy "customer_review_photos_storage_delete"'))
+  test('REMOVING IS A SERVER OPERATION TOO — see photoRemoval.test.ts', () => {
+    // Both delete policies are gone: a client that could remove one half of an
+    // attachment would eventually leave the other half behind.
+    assert.equal(sql.includes('create policy "customer_review_photos_delete"'), false)
+    assert.equal(sql.includes('create policy "customer_review_photos_storage_delete"'), false)
+    assert.ok(route.includes('export async function DELETE(req: NextRequest)'))
   })
 })
 
