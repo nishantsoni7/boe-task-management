@@ -19,23 +19,28 @@
 //
 // HOW THE IMAGE IS MADE
 // ---------------------
-// One provider call and nothing else. `fal-ai/bria/product-shot` re-photographs
-// the uploaded product into the studio scene held server-side in
-// src/lib/imageEditor/briaProductShot.ts, and what it returns IS the finished
-// image. There is no local composition, no cut-out, no drawn shadow and no
-// resizing of the result: the 1000x1000 the model returns is what the employee
-// downloads.
+// One provider call, and it does one thing: `fal-ai/bria/background/remove`
+// returns the product on transparency. Everything after that is arithmetic —
+// composeStudioImage.ts builds the canvas, scales and places the product on the
+// preset's exact coordinates, generates the background and the shadows, and
+// corrects the product's tone. No generative model touches the result.
+//
+// That division is the point. Two paid Product Shot results proved a generative
+// model will not hold a composition: one invented a circular backdrop, the next
+// shrank the chair to about a fifth of the frame. Segmentation it does reliably;
+// placement is arithmetic and now lives here.
 //
 // COST
 // ----
-// One call of this route is one billable request for exactly one result. A queue
-// of five images is five separate calls, made one after another by the browser —
-// nothing here batches, and nothing here loops. Every setting that decides what
-// a request costs — the model id, num_results, the placement type — is fixed in
-// the adapter and unreachable from the browser, which sends the photograph and
-// at most the NAME of one of three output shapes. The adapter never retries,
-// including after a timeout: a request that may already have been billed is not
-// quietly billed again. The per-user rate limiter below is unchanged.
+// One call of this route is one billable request: the background removal, and
+// nothing else. A queue of five images is five separate calls, made one after
+// another by the browser — nothing here batches, and nothing here loops. The
+// model id is fixed in the adapter and unreachable from the browser, which
+// sends the photograph and at most the NAME of one of three output shapes; the
+// canvas that name selects costs nothing, because it is drawn locally. The
+// adapter never retries, including after a timeout: a request that may already
+// have been billed is not quietly billed again. The per-user rate limiter below
+// is unchanged.
 //
 // THE API KEY
 // -----------
@@ -55,10 +60,11 @@ import {
 } from '@/lib/imageEditor/validation'
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
 import {
-  generateProductShot,
+  removeBackground,
   NO_RETRY_FAILURES,
-  type ProductShotFailure,
-} from '@/lib/imageEditor/briaProductShot'
+  type CutoutFailure,
+} from '@/lib/imageEditor/briaBackgroundRemove'
+import { composeStudioImage } from '@/lib/imageEditor/composeStudioImage'
 import { resolveOutputPreset } from '@/lib/imageEditor/outputPresets'
 
 // sharp is a native module and the whole image is held in memory. Neither works
@@ -108,7 +114,7 @@ function rateLimited(userId: string): boolean {
 // other needs an administrator, and the status code is how that reaches any
 // future caller as well as the browser.
 
-function statusFor(reason: ProductShotFailure): number {
+function statusFor(reason: CutoutFailure): number {
   switch (reason) {
     case 'timeout':             return 504
     case 'rate_limited':        return 429
@@ -186,53 +192,72 @@ export async function POST(req: NextRequest) {
   // canvas of the caller's choosing — the pixels live in outputPresets.ts.
   const preset = resolveOutputPreset(form.get('preset'))
 
-  const result = await generateProductShot({
+  const cutout = await removeBackground({
     bytes: prepared.bytes,
     mimeType: prepared.mimeType,
-    preset: preset.key,
     apiKey,
   })
 
-  if (!result.ok) {
-    // The provider's own response text never reaches the log or the browser:
-    // a category, a status code and fal's request id are enough to chase a
+  if (!cutout.ok) {
+    // The provider's own response text never reaches the log or the browser: a
+    // category, a status code and fal's request id are enough to chase a
     // failure, and none of them can carry image data or a credential.
     console.error(
-      '[image-editor/studio] failed:',
-      `category ${result.reason}`,
-      `status ${result.status ?? '-'}`,
-      `request ${result.requestId || '-'}`,
-      `${result.durationMs} ms`,
+      '[image-editor/studio] cutout failed:',
+      `category ${cutout.reason}`,
+      `status ${cutout.status ?? '-'}`,
+      `request ${cutout.requestId || '-'}`,
+      `${cutout.durationMs} ms`,
     )
 
     return NextResponse.json(
       {
-        error: result.message,
-        // Some failures cannot be helped by pressing the button again — a
-        // refused key, an empty account, a photograph the model will not take.
-        // The page offers a different photograph instead of a retry.
-        ...(NO_RETRY_FAILURES.has(result.reason) ? { noRetry: true } : {}),
+        error: cutout.message,
+        ...(NO_RETRY_FAILURES.has(cutout.reason) ? { noRetry: true } : {}),
       },
-      { status: statusFor(result.reason) },
+      { status: statusFor(cutout.reason) },
     )
   }
 
+  // Local from here on: no second provider call, no network.
+  const composed = await composeStudioImage(cutout.png, preset.key)
+
+  if (!composed.ok) {
+    if (composed.quality) {
+      // Measurements only — sizes and ratios, never image data.
+      console.warn('[image-editor/studio] refused on quality:', composed.quality.detail,
+        `request ${cutout.requestId || '-'}`)
+      return NextResponse.json(
+        { error: composed.quality.message, noRetry: true },
+        { status: 422 },
+      )
+    }
+    // Every other composition failure is deterministic in the same way: the same
+    // photograph segments the same, and an opaque or empty cut-out will be
+    // opaque or empty again. A retry would spend a second request to be told
+    // exactly this, so the card offers a different photograph instead.
+    console.error('[image-editor/studio] compose failed, request', cutout.requestId || '-')
+    return NextResponse.json({ error: composed.error, noRetry: true }, { status: 422 })
+  }
+
+  const m = composed.metrics
   console.info(
     '[image-editor/studio] ok:',
-    `request ${result.requestId || '-'}`,
-    `${result.durationMs} ms`,
-    `${result.image.width ?? '?'}x${result.image.height ?? '?'}`,
-    result.image.contentType,
-    `preset ${preset.key}`,
+    `request ${cutout.requestId || '-'}`,
+    `${cutout.durationMs} ms`,
+    `cutout ${m.cutout.width}x${m.cutout.height}`,
+    `product ${m.bounds.width}x${m.bounds.height}`,
+    `scale ${m.scale.toFixed(2)}x`,
+    `preset ${m.preset} ${m.canvas.width}x${m.canvas.height}`,
+    `tone ${m.tone.reason} gain ${m.tone.gain.toFixed(2)}`,
+    `contact columns ${m.contactColumns}`,
   )
 
   return NextResponse.json({
     configured: true,
     image: {
-      // Straight from the provider, at its native size and format. Nothing is
-      // upscaled, recompressed or recomposed.
-      dataUrl: result.image.dataUrl,
-      mimeType: result.image.contentType,
+      dataUrl: `data:image/png;base64,${composed.png.toString('base64')}`,
+      mimeType: 'image/png',
     },
   })
 }

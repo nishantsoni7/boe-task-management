@@ -5,16 +5,19 @@
 //
 // `preset` is square (default), portrait or landscape.
 //
-// THIS COSTS MONEY. One run is one billable fal request for one result, the
-// same request the route makes. It reads one local file, writes one local file,
+// THIS COSTS MONEY. One run is one billable fal request — the background
+// removal, the same one the route makes. The studio image is then composed
+// locally and costs nothing. It reads one local file, writes one local file,
 // and stores nothing else. The key is read from the environment and never
 // printed, and neither is fal's response body.
 
+import sharp from 'sharp'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import { prepareSourceImage } from '../src/lib/imageEditor/prepareSource.ts'
 import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
-import { generateProductShot, MODEL_ID } from '../src/lib/imageEditor/briaProductShot.ts'
+import { removeBackground, MODEL_ID } from '../src/lib/imageEditor/briaBackgroundRemove.ts'
+import { composeStudioImage } from '../src/lib/imageEditor/composeStudioImage.ts'
 import { resolveOutputPreset } from '../src/lib/imageEditor/outputPresets.ts'
 import { measureComposition, describeMeasurement } from '../src/lib/imageEditor/composition.ts'
 
@@ -38,29 +41,41 @@ console.log(`source ${prepared.width}x${prepared.height}` +
   `${prepared.reencoded ? ' (re-encoded for EXIF/size)' : ' (original bytes)'}, ` +
   `${(prepared.bytes.length / 1e6).toFixed(2)} MB`)
 const shape = resolveOutputPreset(preset)
-console.log(`calling ${MODEL_ID} — one result, one charge, ${shape.label} ${shape.shotSize.join('x')}`)
+console.log(`calling ${MODEL_ID} — one request, ${shape.label} ${shape.shotSize.join('x')} composed locally`)
 
-const result = await generateProductShot({
+const cutout = await removeBackground({
   bytes: prepared.bytes,
   mimeType: prepared.mimeType,
-  preset: shape.key,
   apiKey: process.env.FAL_KEY ?? '',
 })
 
-if (!result.ok) {
-  console.error(`failed: ${result.reason} — ${result.message}`)
-  console.error(`status ${result.status ?? '-'}, request ${result.requestId || '-'}, ${result.durationMs} ms`)
+if (!cutout.ok) {
+  console.error(`failed: ${cutout.reason} — ${cutout.message}`)
+  console.error(`status ${cutout.status ?? '-'}, request ${cutout.requestId || '-'}, ${cutout.durationMs} ms`)
   process.exit(2)
 }
 
-const [, contentType, base64] = result.image.dataUrl.match(/^data:([^;]+);base64,(.*)$/s) ?? []
-if (!base64) { console.error('the result was not a data URI'); process.exit(2) }
+// The cut-out is kept for review: if segmentation damaged a leg or a cane
+// panel, this is where it shows.
+const cutoutPath = out.replace(/\.png$/, '-cutout.png')
+writeFileSync(cutoutPath, cutout.png)
+const cutMeta = await sharp(cutout.png).metadata()
+console.log(`cutout in ${cutout.durationMs} ms → ${cutoutPath}`)
+console.log(`   ${cutMeta.width}x${cutMeta.height}, alpha ${cutMeta.hasAlpha ? 'yes' : 'NO — not a cut-out'}, ${(cutout.png.length / 1e6).toFixed(2)} MB`)
+console.log(`   request id ${cutout.requestId || '-'} — the dashboard should show ONE request\n`)
 
-const png = Buffer.from(base64, 'base64')
+const composed = await composeStudioImage(cutout.png, shape.key)
+if (!composed.ok) {
+  console.error(`compose refused: ${composed.quality ? composed.quality.message : composed.error}`)
+  if (composed.quality) console.error(`measured: ${composed.quality.detail}`)
+  process.exit(3)
+}
+
+const png = composed.png
 writeFileSync(out, png)
-console.log(`ok in ${result.durationMs} ms → ${out}`)
-console.log(`   ${result.image.width ?? '?'}x${result.image.height ?? '?'} ${contentType}, ${(png.length / 1e6).toFixed(2)} MB`)
-console.log(`   request id ${result.requestId || '-'} — check the dashboard shows ONE billed result\n`)
+console.log(`composed → ${out}`)
+console.log(`   product ${composed.metrics.bounds.width}x${composed.metrics.bounds.height} scaled ${composed.metrics.scale.toFixed(2)}x`)
+console.log(`   tone ${composed.metrics.tone.reason}, gain ${composed.metrics.tone.gain.toFixed(2)}, contact columns ${composed.metrics.contactColumns}\n`)
 
 // The composition, measured rather than eyeballed.
 const measured = await measureComposition(png)

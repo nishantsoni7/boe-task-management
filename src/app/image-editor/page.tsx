@@ -183,12 +183,16 @@ export default function ImageEditorPage() {
       return {
         status: 'failed',
         error: payload?.error ?? 'The studio image could not be generated.',
+        // The route marks the failures that a second press cannot fix. Passing
+        // it through is what stops an employee paying twice for the same answer.
+        noRetry: payload?.noRetry === true,
       }
     }
     if (payload?.configured === false) {
       return {
         status: 'failed',
         error: 'The image service is not set up yet. Ask your administrator to configure it.',
+        noRetry: true,
       }
     }
     const dataUrl: string | undefined = payload?.image?.dataUrl
@@ -199,6 +203,7 @@ export default function ImageEditorPage() {
     return {
       status: 'done',
       error: undefined,
+      noRetry: undefined,
       result: { dataUrl, mimeType: payload?.image?.mimeType ?? 'image/png' },
     }
   }, [supabase, router, preset])
@@ -243,7 +248,7 @@ export default function ImageEditorPage() {
 
   const retry = useCallback((id: string) => {
     if (runningRef.current) return
-    const back = updateItem(itemsRef.current, id, { status: 'waiting', error: undefined })
+    const back = updateItem(itemsRef.current, id, { status: 'waiting', error: undefined, noRetry: undefined })
     itemsRef.current = back
     setItems(back)
     void run()

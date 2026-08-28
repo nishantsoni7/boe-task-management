@@ -35,8 +35,10 @@
 // like a large, perfectly centred product.
 //
 // So these measurements answer "is the framing right", never "is the scene
-// clean". A result still has to be looked at. The scene description is what
-// keeps the backdrop away; this is what checks the framing once it has.
+// clean". A result still has to be looked at. What keeps a decorative backdrop
+// away is now structural rather than hoped for — the background is drawn
+// locally by composeStudioImage.ts and has nothing in it that could draw one —
+// but this function would not be the thing to notice if that changed.
 
 import sharp from 'sharp'
 

@@ -1,64 +1,29 @@
 // The three shapes a studio image may come back in, and the composition BOE
 // approved for each.
 //
-// The browser never sends dimensions — it sends a preset KEY, and this table is
-// the only place a key becomes pixels. That is the whole point: `shot_size` is
-// a provider field that decides what Bria renders, and a route that accepted
-// numbers from a form would let a caller ask for a 40-megapixel shot on BOE's
-// account.
+// These are the whole specification of the finished image. The provider does not
+// see any of them: it is asked only to remove a background, and every number
+// below is applied locally by composeStudioImage.ts. That is what makes the
+// composition repeatable — the same photograph produces the same framing every
+// time, because the framing is arithmetic rather than a request.
 //
-// ─── PLACEMENT: WHAT THE SCHEMA ACTUALLY ALLOWS ──────────────────────────────
+// The browser may name a preset. It may never supply a dimension: pixels come
+// from this table and nowhere else.
 //
-// Read from @fal-ai/client 1.10.1's ProductShotInput, verbatim:
+// THE APPROVED REFERENCE
+// ----------------------
+// A 3:2 landscape whose product fills 65% of the canvas height, with 21% clear
+// above and 14% below the lowest foot, horizontally centred. The other two
+// shapes carry the same proportions, so a product looks the same size whichever
+// canvas it lands on.
 //
-//   placement_type   'original' | 'automatic' | 'manual_placement' | 'manual_padding'
-//                    "Selecting 'manual_padding' will allow you to control the
-//                    position and size of the image by defining the desired
-//                    padding in pixels around the product."
+//   Landscape 3:2   1200 x 800    product 520px, top 168, feet 688, centre 600
+//   Square    1:1   1000 x 1000   product 650px, top 210, feet 860, centre 500
+//   Portrait  4:5    900 x 1125   product 731px, top 236, feet 968, centre 450
 //
-//   padding_values   "The desired padding in pixels around the product, when
-//                    using placement_type=manual_padding. The order of the
-//                    values is [left, right, top, bottom]. For optimal results,
-//                    the total number of pixels, including padding, should be
-//                    around 1,000,000. It is recommended to FIRST USE THE
-//                    PRODUCT CUTOUT API, get the cutout and understand the size
-//                    of the result, and then define the required padding and use
-//                    the cutout as an input for this API."
-//
-//   shot_size        "only relevant when placement_type=automatic or
-//                    placement_type=manual_placement"
-//
-// So, established rather than assumed:
-//
-//   * padding is in PIXELS, ordered [left, right, top, bottom];
-//   * padding is measured around the PRODUCT CUTOUT, not within a canvas;
-//   * with manual_padding the canvas is cutout + padding, and `shot_size` is
-//     ignored — the two are alternatives, never a pair;
-//   * the useful range is whatever keeps cutout + padding near 1 MP.
-//
-// WHY THIS MODULE STILL USES manual_placement
-// -------------------------------------------
-// Padding can only be computed from the cutout's pixel height and width, and
-// BOE does not have them: the source is an unsegmented factory photograph, and
-// Bria's own recommendation is to call its separate product-cutout API first.
-// That is a second billable request per image, against a rule that one source
-// image is one provider request. manual_padding is therefore deterministic in
-// principle and unusable in one call, so `shot_size` fixes the CANVAS here and
-// the scene description asks for the occupancy inside it.
-//
-// UNDETERMINED, and not guessed: whether padding is applied before or after the
-// background is generated. The endpoint types do not say, and fal's own
-// documentation could not be reached from this environment (its hosts are
-// refused by the egress policy). It does not affect the choice above, because
-// the blocker is the missing cutout size either way.
-//
-// COMPOSITION
-// -----------
-// The targets below are the approved reference, which is a 3:2 landscape. The
-// same proportions are carried to the other two shapes so a product looks the
-// same size whichever canvas it lands on. They are what the scene description
-// asks for and what `measureComposition` checks a returned image against; they
-// are NOT enforced by a provider setting, for the reason above.
+// A product much wider than it is tall is limited by the width instead, so that
+// a sideboard is whole rather than exactly 65% tall and cut off at both ends.
+// It still stands on the same baseline.
 
 export const OUTPUT_PRESET_KEYS = ['landscape', 'square', 'portrait'] as const
 
@@ -69,6 +34,18 @@ export const PRODUCT_HEIGHT_SHARE = 0.65
 export const SPACE_ABOVE_SHARE = 0.21
 export const SPACE_BELOW_SHARE = 0.14
 
+/**
+ * The clear space kept at each side, as a fraction of the canvas width.
+ *
+ * The height shares above describe the reference chair, which is roughly as
+ * tall as it is wide. A long sideboard is not: at 65% of the height a 3:1
+ * product is wider than a landscape canvas, and it would be silently cropped by
+ * the composite. This is the second constraint that stops that — the product is
+ * scaled by whichever of the two limits binds first, so a wide product comes
+ * back shorter than 65% and whole, rather than exactly 65% and clipped.
+ */
+export const SIDE_MARGIN_SHARE = 0.06
+
 export type CompositionTarget = {
   /** Product bounding-box height, in pixels. */
   productHeight: number
@@ -78,6 +55,8 @@ export type CompositionTarget = {
   feetBaseline: number
   /** Where the product's horizontal centre belongs. */
   centreX: number
+  /** The widest the product may be drawn, side margins respected. */
+  maxProductWidth: number
 }
 
 export type OutputPreset = {
@@ -85,7 +64,7 @@ export type OutputPreset = {
   /** What the employee sees. */
   label: string
   ratio: string
-  /** Exactly what is sent as `shot_size`. */
+  /** The finished canvas, in pixels. */
   shotSize: readonly [number, number]
   target: CompositionTarget
 }
@@ -97,6 +76,7 @@ function composition([width, height]: readonly [number, number]): CompositionTar
     productTop:    Math.round(height * SPACE_ABOVE_SHARE),
     feetBaseline:  Math.round(height * (1 - SPACE_BELOW_SHARE)),
     centreX:       Math.round(width / 2),
+    maxProductWidth: Math.round(width * (1 - 2 * SIDE_MARGIN_SHARE)),
   }
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { Download, RotateCcw, Trash2, AlertTriangle } from 'lucide-react'
+import { Download, RotateCcw, Trash2, AlertTriangle, ImageOff } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import type { QueueItem } from '@/lib/imageEditor/queue'
 
@@ -89,10 +89,20 @@ export function ResultCard({
           </button>
         )}
 
-        {failed && (
+        {/* Retry only where a retry could work. A product too small in the frame
+            is the same size on the next press, and that press costs a request —
+            so this failure offers the thing that WOULD help instead. */}
+        {failed && !item.noRetry && (
           <button className="boe-btn boe-btn-ghost" onClick={() => onRetry(item.id)} disabled={busy}>
             <RotateCcw size={13} strokeWidth={2} />
             Retry
+          </button>
+        )}
+
+        {failed && item.noRetry && (
+          <button className="boe-btn boe-btn-ghost" onClick={() => onRemove(item.id)} disabled={busy}>
+            <ImageOff size={13} strokeWidth={2} />
+            Choose a different photo
           </button>
         )}
 

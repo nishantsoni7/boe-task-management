@@ -35,6 +35,16 @@ export type QueueItem = {
   previewUrl: string
   /** Why it failed, in words an employee can act on. */
   error?: string
+  /**
+   * True when pressing Retry would fail the same way and cost another request.
+   *
+   * A product too small in the frame, a photograph nothing can be separated
+   * out of, a key an administrator has to fix: none of these change between one
+   * press and the next, so the card offers a different photograph instead of a
+   * retry. This is the difference between a failure worth another request and
+   * one that is not.
+   */
+  noRetry?: boolean
   result?: { dataUrl: string; mimeType: string }
 }
 
