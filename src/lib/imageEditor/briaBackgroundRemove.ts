@@ -60,6 +60,8 @@ export type CutoutResult =
       status?: number
       requestId?: string
       durationMs: number
+      /** Which part of the exchange failed. For the log only. */
+      phase?: 'request' | 'body' | 'download'
     }
 
 export type CutoutInput = {
@@ -69,12 +71,9 @@ export type CutoutInput = {
   mimeType: string
   apiKey: string
   timeoutMs?: number
+  /** Absolute time after which this call must be finished. */
+  deadlineAt?: number
 }
-
-/** The message for an empty result here is about separation specifically, which
- *  is more useful to an employee than the generic one. */
-const EMPTY_RESULT_MESSAGE =
-  'The product could not be separated from that photograph. Try a photograph with the product clearly visible.'
 
 /** The request body. Two fields, because the schema has two. */
 export function buildRequestBody(dataUrl: string) {
@@ -109,17 +108,28 @@ export async function removeBackground(input: CutoutInput): Promise<CutoutResult
     body: buildRequestBody(toDataUrl(input.bytes, input.mimeType)),
     apiKey: input.apiKey,
     timeoutMs: input.timeoutMs ?? PROVIDER_TIMEOUT_MS,
+    deadlineAt: input.deadlineAt,
     expect: 1,
   })
 
   if (!result.ok) {
+    // The transport's own message, unchanged.
+    //
+    // This used to rewrite `empty_result` into "the product could not be
+    // separated from that photograph", which conflated two different faults: a
+    // service that answered without an image, and a photograph with no findable
+    // product in it. Only the second is about the photograph, and only the
+    // second is decided here — by reading the alpha, in prepareCutout.ts. An
+    // employee sent to re-shoot a chair because fal had a bad minute is being
+    // sent to fix something that is not broken.
     return {
       ok: false,
       reason: result.reason,
-      message: result.reason === 'empty_result' ? EMPTY_RESULT_MESSAGE : result.message,
+      message: result.message,
       status: result.status,
       requestId: result.requestId,
       durationMs: result.durationMs,
+      phase: result.phase,
     }
   }
 

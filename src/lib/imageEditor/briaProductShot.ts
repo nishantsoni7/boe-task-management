@@ -102,13 +102,25 @@ export type StudioInput = {
   plan: PaddingPlan
   apiKey: string
   timeoutMs?: number
+  /** Absolute time after which this call must be finished. */
+  deadlineAt?: number
   /** Overridden by tests that put a fixture somewhere else. */
   referenceRoot?: string
 }
 
 export type StudioResult =
   | { ok: true; image: Buffer; contentType: string; requestId: string; durationMs: number }
-  | { ok: false; reason: StudioFailure; message: string; status?: number; requestId?: string; durationMs: number; detail?: string }
+  | {
+      ok: false
+      reason: StudioFailure
+      message: string
+      status?: number
+      requestId?: string
+      durationMs: number
+      detail?: string
+      /** Which part of the exchange failed. For the log only. */
+      phase?: 'request' | 'body' | 'download'
+    }
 
 const REFERENCE_MISSING_MESSAGE =
   'The studio reference image is not installed on this server. Ask your administrator to add it.'
@@ -181,6 +193,7 @@ export async function generateStudioShot(input: StudioInput): Promise<StudioResu
     ),
     apiKey: input.apiKey,
     timeoutMs: input.timeoutMs ?? PROVIDER_TIMEOUT_MS,
+    deadlineAt: input.deadlineAt,
     expect: 1,
   })
 
@@ -192,6 +205,7 @@ export async function generateStudioShot(input: StudioInput): Promise<StudioResu
       status: result.status,
       requestId: result.requestId,
       durationMs: result.durationMs,
+      phase: result.phase,
     }
   }
 

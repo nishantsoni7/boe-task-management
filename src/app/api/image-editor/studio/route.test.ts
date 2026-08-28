@@ -272,21 +272,62 @@ describe('runtime', () => {
     assert.match(SOURCE, /export const maxDuration = \d+/)
   })
 
-  test('the worst-case provider time fits inside the route’s own ceiling', () => {
-    // Two calls share one request, and either may ALSO spend the result-fetch
-    // timeout downloading a hosted image — which the studio stage now does on
-    // every run, because sync_mode is deliberately not sent. If the worst case
-    // overran maxDuration the failure would be a platform 504 rather than a
-    // sentence an employee can act on.
-    const ceiling = Number(/export const maxDuration = (\d+)/.exec(SOURCE)![1])
-    const cutout = Number(/CUTOUT_TIMEOUT_MS = ([\d_]+)/.exec(SOURCE)![1].replace(/_/g, ''))
-    const studio = Number(/STUDIO_TIMEOUT_MS = ([\d_]+)/.exec(SOURCE)![1].replace(/_/g, ''))
+  const constant = (name: string, source = SOURCE) =>
+    Number(new RegExp(`${name} = ([\\d_]+)`).exec(source)![1].replace(/_/g, ''))
+
+  test('every part of the request is accounted for, and the total fits', () => {
+    // A real run died because the budget was a sum nobody had checked: the
+    // cut-out was given 18s, its body needed more, and the request came back
+    // as a misclassified failure after 18026 ms.
+    const ceiling = Number(/export const maxDuration = (\d+)/.exec(SOURCE)![1]) * 1000
+    const budget = constant('ROUTE_BUDGET_MS')
+    const local = constant('LOCAL_WORK_MS')
+    const cutout = constant('CUTOUT_TIMEOUT_MS')
+    const studio = constant('STUDIO_TIMEOUT_MS')
 
     const transport = readFileSync(join(process.cwd(), 'src/lib/imageEditor/falRequest.ts'), 'utf8')
-    const fetchBudget = Number(/RESULT_FETCH_TIMEOUT_MS = ([\d_]+)/.exec(transport)![1].replace(/_/g, ''))
+    const download = constant('RESULT_FETCH_TIMEOUT_MS', transport)
 
-    const worstCase = (cutout + fetchBudget + studio + fetchBudget) / 1000
-    assert.ok(worstCase < ceiling, `worst case ${worstCase}s does not fit in ${ceiling}s`)
+    // Background removal sends sync_mode: true, so its cut-out arrives inline
+    // and NO download is reserved for it. Only the studio stage fetches a
+    // hosted result.
+    const accounted = local + cutout + studio + download
+
+    assert.ok(accounted <= budget,
+      `${accounted / 1000}s accounted against a ${budget / 1000}s budget`)
+
+    // And the providers alone must fit inside the deadline they are actually
+    // given, which is the budget less the local work reserved for the end.
+    assert.ok(cutout + studio + download <= budget - local,
+      `providers need ${(cutout + studio + download) / 1000}s but are given ${(budget - local) / 1000}s`)
+    assert.ok(budget < ceiling,
+      `the budget must leave headroom under the ${ceiling / 1000}s ceiling`)
+    assert.ok(ceiling - budget >= 3_000, 'less than 3s of headroom under maxDuration')
+  })
+
+  test('the cut-out gets the time its inline body needs', () => {
+    // sync_mode: true means the whole cut-out comes back inside the response
+    // body as base64, and streaming that is part of this budget. The observed
+    // failure took 18026 ms.
+    const cutout = constant('CUTOUT_TIMEOUT_MS')
+    assert.ok(cutout >= 25_000, `${cutout / 1000}s is not enough for an inline cut-out`)
+  })
+
+  test('the studio stage keeps the budget it already had', () => {
+    assert.equal(constant('STUDIO_TIMEOUT_MS'), 20_000)
+  })
+
+  test('a deadline is anchored once and passed to both stages', () => {
+    // The sum above is the intent; this is the guarantee. Every timeout is
+    // clamped to what is left, so a slow path degrades the next step instead of
+    // overrunning the platform's ceiling.
+    const body = postCode()
+    assert.match(body, /const deadlineAt = Date\.now\(\) \+ ROUTE_BUDGET_MS - LOCAL_WORK_MS/)
+    assert.equal(body.split('deadlineAt,').length - 1, 2, 'both adapters receive it')
+
+    const anchor = body.indexOf('const deadlineAt')
+    assert.ok(anchor < body.indexOf('req.formData()'),
+      'the deadline must be anchored before the upload is read')
   })
 
   test('provider errors are logged, not forwarded to the browser', () => {

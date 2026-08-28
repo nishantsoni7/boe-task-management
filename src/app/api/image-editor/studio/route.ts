@@ -74,17 +74,46 @@ import { generateStudioShot, isNoRetry, type StudioFailure } from '@/lib/imageEd
 // on the edge runtime.
 export const runtime = 'nodejs'
 
-// Two provider calls now sit inside one request, so the budget below is split
-// between them and leaves room to crop, resize and return.
 export const maxDuration = 60
 
-// Both stages may also spend RESULT_FETCH_TIMEOUT_MS downloading a hosted
-// result, so the worst case is (cutout + fetch) + (studio + fetch) and it has
-// to fit inside maxDuration above. A test asserts that it does.
+// ─── The time budget ──────────────────────────────────────────────────────────
+//
+// Two provider calls and some local work share one request, and every part of
+// that has to be accounted for or the platform kills the request mid-flight and
+// an employee gets a blank 504 instead of a sentence.
+//
+// The accounting, against maxDuration above:
+//
+//   local work        ~2s   prepare, measure, edge repair, resize, encode
+//   background remove  25s  sync_mode: true, so the cut-out arrives INLINE in
+//                           the response body. No separate download, and none
+//                           is reserved — but the body itself is a multi-
+//                           megabyte base64 data URI, and streaming it is part
+//                           of this budget. Eighteen seconds was not enough,
+//                           and cutting the body off mid-stream is what the
+//                           incident behind this comment looked like.
+//   product shot       20s  unchanged
+//   hosted download     8s  the studio stage only: sync_mode is not sent there,
+//                           so fal answers with a URL that has to be fetched
+//                          ────
+//                            55s  against a 56s budget, inside a 60s ceiling
+//
+// The sum is not the guarantee, though — it is only the intent. The guarantee
+// is DEADLINE_AT below: every timeout is clamped to what is left of it, so an
+// unexpected slow path degrades the next step instead of overrunning.
 
-/** Background removal is the quick one. */
-const CUTOUT_TIMEOUT_MS = 18_000
-/** The studio scene is the slow one, even with `fast: true`. */
+/** Of maxDuration, leaving headroom for the platform and for serialising the
+ *  finished master into the response. */
+const ROUTE_BUDGET_MS = 56_000
+
+/** Everything sharp does: prepare, measure, repair the edge, resize, encode.
+ *  Measured at well under a second for a megapixel photograph. */
+const LOCAL_WORK_MS = 2_000
+
+/** Background removal. The response body carries the whole cut-out inline. */
+const CUTOUT_TIMEOUT_MS = 25_000
+
+/** The studio scene is the slow one, even with `fast: true`. Unchanged. */
 const STUDIO_TIMEOUT_MS = 20_000
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
@@ -147,6 +176,12 @@ function statusFor(reason: StudioFailure): number {
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Anchored before anything else, so reading a large upload counts against the
+  // budget rather than quietly eating into the provider's share. The local work
+  // is subtracted rather than hoped for: what is reserved here is the time
+  // still needed AFTER the last provider call to encode the master and answer.
+  const deadlineAt = Date.now() + ROUTE_BUDGET_MS - LOCAL_WORK_MS
+
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -209,6 +244,7 @@ export async function POST(req: NextRequest) {
     mimeType: prepared.mimeType,
     apiKey,
     timeoutMs: CUTOUT_TIMEOUT_MS,
+    deadlineAt,
   })
 
   if (!cutout.ok) {
@@ -218,6 +254,7 @@ export async function POST(req: NextRequest) {
     console.error(
       '[image-editor/studio] cutout failed:',
       `category ${cutout.reason}`,
+      `phase ${cutout.phase ?? '-'}`,
       `status ${cutout.status ?? '-'}`,
       `request ${cutout.requestId || '-'}`,
       `${cutout.durationMs} ms`,
@@ -270,12 +307,14 @@ export async function POST(req: NextRequest) {
     plan,
     apiKey,
     timeoutMs: STUDIO_TIMEOUT_MS,
+    deadlineAt,
   })
 
   if (!studio.ok) {
     console.error(
       '[image-editor/studio] studio failed:',
       `category ${studio.reason}`,
+      `phase ${studio.phase ?? '-'}`,
       `status ${studio.status ?? '-'}`,
       `request ${studio.requestId || '-'}`,
       `${studio.durationMs} ms`,

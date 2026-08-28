@@ -143,9 +143,63 @@ left off.
 The consequence is that fal answers with a hosted URL. The transport downloads it
 **server-side** from an allowlisted fal host, so the browser is still never handed
 a provider URL — and a result hosted anywhere else is refused rather than fetched.
-That download is inside the route's time budget: the worst case is
-`(18s + 8s) + (20s + 8s) = 54s` against a 60s `maxDuration`, and a test asserts it
-fits.
+That download is inside the route's time budget, below.
+
+### The time budget
+
+Two provider calls and some local work share one request, and a real run failed
+because that was a sum nobody had checked:
+
+```
+[image-editor/studio] cutout failed: category empty_result status 200
+request 01a04960-94c5-7fb0-bdad-5810b92d5642 18026 ms
+```
+
+The photograph was a clear, isolated dining chair. 18026 ms was the 18-second
+cut-out timeout. **`sync_mode: true` means the cut-out comes back INSIDE the
+response body**, as a multi-megabyte base64 data URI — so the headers arrive
+early with a 200 and the body then streams for as long as it takes. Eighteen
+seconds was not enough, and the abort landed mid-body.
+
+| Part | Budget | Why |
+| --- | --- | --- |
+| Local work | 2s | prepare, measure, edge repair, resize, encode — measured well under a second |
+| Background removal | **25s** | the cut-out arrives inline; streaming it is part of this |
+| Product Shot | 20s | unchanged |
+| Hosted result download | 8s | **the studio stage only** — background removal sends `sync_mode`, so nothing is reserved for a download it does not make |
+| | **55s** | against a 56s budget, inside a 60s `maxDuration` |
+
+The sum is only the intent. The guarantee is a **deadline**, anchored at the top
+of the handler and passed to both adapters: every timeout is clamped to what is
+left of it, so an unexpected slow path degrades the next step rather than
+overrunning the platform's ceiling. A call with no time left returns without
+spending a request at all. A test reads all five constants and checks the
+arithmetic, and fails if the cut-out budget drops back below 25s.
+
+### Telling a timeout from an empty answer
+
+`AbortSignal.timeout` fires against the **whole exchange**, headers and body
+alike, so an abort can surface from `fetch`, from `response.json()`, or from
+reading a download. A bare `catch` around the body read called all of those an
+empty result — which is how a plain timeout came to be logged as "a valid 200
+carrying no image" and shown to an employee as a problem with their photograph.
+
+Now:
+
+| What happened | Reason | What the employee is told |
+| --- | --- | --- |
+| Aborted at any point | `timeout` | the service took too long — try again in a few minutes |
+| Well-formed 200 with no image | `empty_result` | the service did not return an image — try again |
+| Alpha analysis finds no product | local refusal | the product could not be separated — try a photograph with it clearly visible |
+
+Only the third is about the photograph, and only the third is decided here, by
+reading the cut-out's alpha in `prepareCutout.ts`. `empty_result` is **retryable**:
+a service answering without an image says nothing about the upload.
+
+Every failure also records a `phase` — `request`, `body` or `download` — in the
+log. "Timeout, status 200" and "timeout, no status" are different faults with
+different fixes, and not being able to tell them apart from the log is what this
+incident cost.
 
 ### The master, and how big the product is in it
 
@@ -339,8 +393,8 @@ a status code and the request id.
 | Unreadable or oversized image (400 / 413 / 415 / 422) | 422 | try a different photograph |
 | Moderation refusal | 422 | the service declined this photograph — try another |
 | Rate limited (429) | 429 | busy — wait a moment and try again |
-| Timed out | 504 | taking longer than expected — try again |
-| Empty or malformed result | 422 | no image returned — try again |
+| Timed out (request, body or download) | 504 | took too long — try again in a few minutes |
+| Empty or malformed result from the service | 422 | no image returned — try again |
 | Product too small in the frame | 422 `noRetry` | too small to make a sharp image — take it closer |
 | Nothing could be separated out | 422 `noRetry` | try a photograph with the product clearly visible |
 | Studio reference not installed | 503 `noRetry` | the reference image is not installed — ask an administrator |

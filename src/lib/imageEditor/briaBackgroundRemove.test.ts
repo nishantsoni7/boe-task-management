@@ -233,12 +233,33 @@ describe('failure categories', () => {
 
   test('the failures a retry cannot fix are marked', () => {
     for (const reason of ['not_configured', 'invalid_key', 'insufficient_credit',
-      'unsupported_image', 'moderation', 'empty_result'] as const) {
+      'unsupported_image', 'moderation'] as const) {
       assert.ok(NO_RETRY_FAILURES.has(reason))
     }
     for (const reason of ['rate_limited', 'timeout', 'provider_error'] as const) {
       assert.ok(!NO_RETRY_FAILURES.has(reason))
     }
+  })
+
+  test('an empty result IS retryable, because it is the service and not the photograph', () => {
+    // It used to be marked no-retry, back when this adapter rewrote it into
+    // "the product could not be separated from that photograph". Both were
+    // wrong about the same thing: a 200 carrying no image says nothing about
+    // the upload, and the next attempt may well work.
+    assert.equal(NO_RETRY_FAILURES.has('empty_result'), false)
+  })
+
+  test('an empty result does not blame the photograph', async () => {
+    stubFetch(() => new Response('{}', {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    }))
+
+    const result = await removeBackground({ ...PHOTO, apiKey: KEY })
+    assert.equal(result.ok, false)
+    if (result.ok) return
+    assert.equal(result.reason, 'empty_result')
+    assert.ok(!/separat|clearly visible/i.test(result.message),
+      `the adapter must not rewrite this into a photograph problem: ${result.message}`)
   })
 
   test('provider text never reaches the message, and no body is kept', async () => {
@@ -251,8 +272,11 @@ describe('failure categories', () => {
     if (result.ok) return
 
     assert.ok(!result.message.includes('fal_secret_abc'))
+    // `phase` says which part of the exchange failed. Like the others it is a
+    // fixed label, never anything read out of the response.
     assert.deepEqual(Object.keys(result).sort(),
-      ['durationMs', 'message', 'ok', 'reason', 'requestId', 'status'].sort())
+      ['durationMs', 'message', 'ok', 'phase', 'reason', 'requestId', 'status'].sort())
+    assert.ok(['request', 'body', 'download', undefined].includes(result.phase))
   })
 
   test('a network failure is a result, not an exception', async () => {

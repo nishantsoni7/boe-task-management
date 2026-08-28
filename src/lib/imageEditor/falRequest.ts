@@ -3,6 +3,10 @@
 // SERVER ONLY. Both provider stages go through here, so the rules that protect
 // BOE's account live in one place instead of being re-argued per adapter:
 //
+//   * a deadline covers the WHOLE exchange, headers and body alike. An
+//     AbortSignal passed to fetch keeps aborting while the body streams, so a
+//     200 whose body is cut off mid-read is a TIMEOUT, not an empty answer —
+//     see `wasAborted` below, and the incident that made it necessary.
 //   * ONE request per call. No retry of any kind, including after a timeout —
 //     a request that may already have been billed is not quietly billed again.
 //     This is also why `@fal-ai/client` is not used: its `run()` retries
@@ -75,6 +79,16 @@ export type FalResult =
       status?: number
       requestId?: string
       durationMs: number
+      /**
+       * Where it went wrong, for the log only.
+       *
+       * `request` never reached a response; `body` got headers and lost the
+       * body; `download` lost a hosted result. Worth recording because
+       * "timeout, status 200" and "timeout, no status" are different faults
+       * with different fixes, and telling them apart from the log alone is
+       * what this incident cost.
+       */
+      phase?: 'request' | 'body' | 'download'
     }
 
 /** Employee-facing wording. Deliberately says nothing about which provider,
@@ -86,15 +100,23 @@ export const MESSAGES: Record<FalFailure, string> = {
   rate_limited:        'The image service is busy right now. Wait a moment and try again.',
   unsupported_image:   'That photograph could not be processed. Try a different photograph of the product.',
   moderation:          'The image service declined to process this photograph. Try a different photograph of the product.',
-  timeout:             'The image is taking longer than expected. Please try again.',
-  empty_result:        'The image service did not return a usable image. Please try again.',
+  timeout:             'The image service took too long to process this photograph. Please try again in a few minutes.',
+  // Deliberately NOT "the product could not be separated": a 200 carrying no
+  // image is the service misbehaving, and telling an employee to photograph
+  // their chair differently would send them to fix something that is not broken.
+  empty_result:        'The image service did not return an image. Please try again.',
   provider_error:      'The image service could not process this photograph. Please try again.',
 }
 
 /** Failures where sending the same thing again cannot help. */
 export const NO_RETRY_FAILURES: ReadonlySet<FalFailure> = new Set<FalFailure>([
-  'not_configured', 'invalid_key', 'insufficient_credit', 'unsupported_image', 'moderation', 'empty_result',
+  'not_configured', 'invalid_key', 'insufficient_credit', 'unsupported_image', 'moderation',
 ])
+// `empty_result` is NOT on that list. A well-formed answer carrying no image is
+// the service misbehaving rather than anything about the photograph, and the
+// next attempt may well work. The deterministic refusals — a cut-out with no
+// product in it, a product too small for the frame — are local, and the route
+// marks those itself.
 
 /**
  * Which failure a response represents.
@@ -165,12 +187,37 @@ function resultUrls(payload: unknown): string[] {
   return [...one, ...many]
 }
 
+/**
+ * Did this fail because we abandoned it?
+ *
+ * `AbortSignal.timeout` fires against the whole exchange, so an abort can
+ * surface from `fetch`, from `response.json()` or from `arrayBuffer()`. The
+ * signal's own `aborted` flag is the reliable witness; the error name is
+ * checked too because an abort raised inside a stream does not always reach us
+ * as the same error object.
+ */
+function wasAborted(signal: AbortSignal, error: unknown): boolean {
+  if (signal.aborted) return true
+  return error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')
+}
+
 export type FalCall = {
   modelId: string
   /** The request body, already built and validated by the calling adapter. */
   body: unknown
   apiKey: string
   timeoutMs?: number
+  /**
+   * Absolute wall-clock time after which this call must be finished.
+   *
+   * Every timeout below is clamped to what is left of it, so no combination of
+   * a slow request and a slow download can push the route past the duration the
+   * platform will allow. Without this the budget is a sum of worst cases that
+   * nothing enforces.
+   */
+  deadlineAt?: number
+  /** Budget for downloading a hosted result, when one is returned. */
+  downloadMs?: number
   /** How many images the caller expects; extras are ignored, fewer is a failure. */
   expect?: number
 }
@@ -189,6 +236,24 @@ export async function callFal(call: FalCall): Promise<FalResult> {
     return { ok: false, reason: 'not_configured', message: MESSAGES.not_configured, durationMs: since() }
   }
 
+  /** What may be spent on one step: its own budget, or what is left of the
+   *  route's, whichever is smaller. */
+  const budget = (want: number): number => {
+    const remaining = call.deadlineAt === undefined
+      ? Number.POSITIVE_INFINITY
+      : call.deadlineAt - Date.now()
+    return Math.max(0, Math.min(want, remaining))
+  }
+
+  const requestMs = budget(call.timeoutMs ?? PROVIDER_TIMEOUT_MS)
+  if (requestMs <= 0) {
+    // Out of time before starting. Answered without spending a request, which
+    // is the whole point of knowing the deadline.
+    return { ok: false, reason: 'timeout', message: MESSAGES.timeout, durationMs: since(), phase: 'request' }
+  }
+
+  const signal = AbortSignal.timeout(requestMs)
+
   let response: Response
   try {
     response = await fetch(`https://fal.run/${call.modelId}`, {
@@ -199,14 +264,13 @@ export async function callFal(call: FalCall): Promise<FalResult> {
         Accept: 'application/json',
       },
       body: JSON.stringify(call.body),
-      signal: AbortSignal.timeout(call.timeoutMs ?? PROVIDER_TIMEOUT_MS),
+      signal,
     })
   } catch (e) {
-    const timedOut = e instanceof Error && (e.name === 'TimeoutError' || e.name === 'AbortError')
-    const reason: FalFailure = timedOut ? 'timeout' : 'provider_error'
-    // Deliberately no retry here, and none above: a timeout is the case where a
+    const reason: FalFailure = wasAborted(signal, e) ? 'timeout' : 'provider_error'
+    // Deliberately no retry here, and none below: a timeout is the case where a
     // charge is MOST likely to have already happened.
-    return { ok: false, reason, message: MESSAGES[reason], durationMs: since() }
+    return { ok: false, reason, message: MESSAGES[reason], durationMs: since(), phase: 'request' }
   }
 
   const requestId = response.headers.get(REQUEST_ID_HEADER) ?? ''
@@ -217,14 +281,20 @@ export async function callFal(call: FalCall): Promise<FalResult> {
     return { ok: false, reason, message: MESSAGES[reason], status: response.status, requestId, durationMs: since() }
   }
 
-  const fail = (reason: FalFailure): FalResult =>
-    ({ ok: false, reason, message: MESSAGES[reason], status: response.status, requestId, durationMs: since() })
+  const fail = (reason: FalFailure, phase?: 'request' | 'body' | 'download'): FalResult =>
+    ({ ok: false, reason, message: MESSAGES[reason], status: response.status, requestId, durationMs: since(), phase })
 
   let payload: unknown
   try {
     payload = await response.json()
-  } catch {
-    return fail('empty_result')
+  } catch (e) {
+    // THE FAULT THIS GUARD EXISTS FOR. The headers arrived — status 200 — and
+    // then the deadline fired while the body was still streaming, which with
+    // `sync_mode: true` is a multi-megabyte base64 data URI. A bare catch here
+    // called that an empty result, so a plain timeout was reported to an
+    // employee as "the product could not be separated from that photograph"
+    // and logged as a valid 200 carrying no image.
+    return fail(wasAborted(signal, e) ? 'timeout' : 'empty_result', 'body')
   }
 
   const urls = resultUrls(payload)
@@ -242,17 +312,24 @@ export async function callFal(call: FalCall): Promise<FalResult> {
       // the browser is never handed a provider URL.
       if (!isAllowedResultUrl(url)) return fail('empty_result')
 
+      const downloadMs = budget(call.downloadMs ?? RESULT_FETCH_TIMEOUT_MS)
+      if (downloadMs <= 0) return fail('timeout', 'download')
+
+      const downloadSignal = AbortSignal.timeout(downloadMs)
       try {
-        const download = await fetch(url, { signal: AbortSignal.timeout(RESULT_FETCH_TIMEOUT_MS) })
+        const download = await fetch(url, { signal: downloadSignal })
         if (!download.ok) {
-          return { ok: false, reason: 'provider_error', message: MESSAGES.provider_error, status: download.status, requestId, durationMs: since() }
+          return { ok: false, reason: 'provider_error', message: MESSAGES.provider_error, status: download.status, requestId, durationMs: since(), phase: 'download' }
         }
         images.push({
           contentType: download.headers.get('content-type') ?? '',
+          // Same trap as the body read above: this streams, and abandoning it
+          // half way is a timeout rather than a broken result.
           bytes: Buffer.from(await download.arrayBuffer()),
         })
-      } catch {
-        return { ok: false, reason: 'provider_error', message: MESSAGES.provider_error, requestId, durationMs: since() }
+      } catch (e) {
+        const reason: FalFailure = wasAborted(downloadSignal, e) ? 'timeout' : 'provider_error'
+        return { ok: false, reason, message: MESSAGES[reason], requestId, durationMs: since(), phase: 'download' }
       }
     }
   }
