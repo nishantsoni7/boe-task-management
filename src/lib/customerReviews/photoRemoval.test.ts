@@ -31,7 +31,8 @@ const stripComments = (source: string): string =>
     .filter(line => !line.trim().startsWith('//'))
     .join('\n')
 
-const route = stripComments(readFileSync(join(ROOT, 'src/app/api/customer-reviews/photos/route.ts'), 'utf8'))
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
+const route = read('src/app/api/customer-reviews/photos/route.ts')
 const manager = stripComments(readFileSync(join(ROOT, 'src/components/customerReviews/PhotoManager.tsx'), 'utf8'))
 const detail = readFileSync(join(ROOT, 'src/app/customer-reviews/[id]/RequestDetailScreen.tsx'), 'utf8')
 const edit = readFileSync(join(ROOT, 'src/app/customer-reviews/[id]/edit/EditRequestScreen.tsx'), 'utf8')
@@ -130,15 +131,39 @@ describe('the removal route', () => {
     // The only thing read from the body.
     assert.equal([...handler.matchAll(/body\?\.(\w+)/g)].map(m => m[1]).join(','), 'photoId')
     assert.equal(/body\?\.(storagePath|path|bucket|key)/.test(handler), false)
-    // And the path used is the one begin_… returned.
-    assert.ok(handler.includes('const storagePath = (marked as { storage_path?: string }).storage_path'))
+    // And the path acted on is the one begin_… returned.
+    assert.ok(handler.includes("(data as { storage_path?: string } | null)?.storage_path"))
+    assert.ok(handler.includes("return { outcome: 'ready', storagePath: path }"))
   })
 
-  test('it reads the photograph as the CALLER first, so RLS decides visibility', () => {
+  test('it reads the photograph as the CALLER, so RLS decides visibility', () => {
     const handler = route.slice(route.indexOf('export async function DELETE'))
+    assert.ok(handler.includes('const reader: PhotoVisibilityReader'))
     assert.ok(handler.includes('await caller'))
-    assert.ok(handler.includes("if (!visible) return fail(404"))
-    assert.ok(handler.indexOf('const { data: visible }') < handler.indexOf('adminClient()'))
+    assert.ok(handler.includes("from('customer_review_request_photos')"))
+  })
+
+  test('AN ID IT CANNOT RESOLVE IS ANSWERED IDENTICALLY, whatever the reason', () => {
+    // A completed removal, an id that never existed and another employee\u2019s
+    // photograph must be indistinguishable, or the difference is the
+    // disclosure. runPhotoRemoval returns `already_removed` for all three and
+    // the route maps it to the same 200 a real removal returns.
+    const flow = read('src/lib/customerReviews/photoRemovalFlow.ts')
+    assert.ok(flow.includes("if (!seen.visible) return { status: 'already_removed' }"))
+    assert.ok(route.includes("case 'removed':"))
+    assert.ok(route.includes("case 'already_removed':"))
+    assert.ok(route.includes('return ok({ removed: photoId })'))
+    // Nothing 404s a photograph any more.
+    assert.equal(route.includes('MESSAGES.photo_not_found'), false)
+  })
+
+  test('the resume read deliberately does NOT hide a marked row', () => {
+    const handler = route.slice(
+      route.indexOf('const reader: PhotoVisibilityReader'),
+      route.indexOf('const removal: PhotoRemovalService'),
+    )
+    assert.equal(handler.includes('removal_started_at'), false,
+      'the resume path must be able to see what it is resuming')
   })
 
   test('the three steps happen in the order that makes a failure recoverable', () => {
@@ -151,18 +176,28 @@ describe('the removal route', () => {
   })
 
   test('a failed object deletion stops there, leaving the row marked', () => {
-    const handler = route.slice(route.indexOf('export async function DELETE'))
-    const branch = handler.slice(handler.indexOf('if (objectError)'))
-    assert.ok(branch.includes('return fail(500, MESSAGES.remove_failed)'))
-    // It must NOT go on to delete the row, which would strand the object if the
-    // removal had in fact partly succeeded.
-    assert.ok(branch.indexOf('return fail') < branch.indexOf('finish_customer_review_photo_removal'))
+    // Behaviourally proven in photoRemovalRetry.test.ts; this pins the
+    // orchestration that decides it.
+    const flow = read('src/lib/customerReviews/photoRemovalFlow.ts')
+    assert.ok(flow.includes("if (!object.ok && !object.missing) return { status: 'failed', reason: 'object' }"))
+    // It must NOT go on to delete the row.
+    assert.ok(flow.indexOf("reason: 'object'") < flow.indexOf('finishRemoval(photoId)'))
+  })
+
+  test('AN ALREADY-DELETED OBJECT IS A SUCCESS, or the resume never converges', () => {
+    // On a resume the object is missing precisely BECAUSE the last attempt got
+    // that far. Treating that as a failure would stick the operation forever,
+    // one step from done.
+    const flow = read('src/lib/customerReviews/photoRemovalFlow.ts')
+    assert.ok(flow.includes('!object.ok && !object.missing'))
+    assert.ok(route.includes('missing: isMissingObjectError(error)'))
   })
 
   test('a failed row deletion is reported as exactly what it is', () => {
-    const handler = route.slice(route.indexOf('export async function DELETE'))
-    assert.ok(handler.includes('if (rowError) return fail(500, MESSAGES.remove_partial)'))
+    const flow = read('src/lib/customerReviews/photoRemovalFlow.ts')
+    assert.ok(flow.includes("if (!finished.ok) return { status: 'failed', reason: 'row' }"))
     assert.ok(route.includes("remove_partial:  'The image was removed but the record could not be updated. Try again.'"))
+    assert.ok(route.includes("outcome.reason === 'row'"))
   })
 
   test('the database refusals map to prewritten sentences, never to forwarded text', () => {

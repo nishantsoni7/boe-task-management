@@ -13,6 +13,14 @@ import {
   REVIEW_PHOTO_BUCKET,
   REVIEW_PHOTO_MAX_BYTES,
 } from '@/lib/customerReviews/photos'
+import {
+  isMissingObjectError,
+  runPhotoRemoval,
+  type BeginResult,
+  type PhotoRemovalService,
+  type PhotoVisibilityReader,
+  type RemovalOutcome,
+} from '@/lib/customerReviews/photoRemovalFlow'
 
 // THE ONLY WAY AN IMAGE ENTERS OR LEAVES THIS MODULE.
 //
@@ -89,7 +97,6 @@ const MESSAGES = {
   one_proof:       'Only one proof image can be attached. Remove the current one first.',
   upload_failed:   'That photo could not be stored. Try again.',
   unavailable:     'Photo uploads are not configured on this deployment.',
-  photo_not_found: 'That photograph is no longer attached.',
   remove_locked:   'That photograph can no longer be removed. Ask an administrator.',
   remove_failed:   'That photograph could not be removed. Try again.',
   remove_partial:  'The image was removed but the record could not be updated. Try again.',
@@ -362,16 +369,6 @@ export async function DELETE(req: NextRequest) {
     return fail(400, MESSAGES.bad_request)
   }
 
-  // Read it as the CALLER first. A photograph on a request they may not see
-  // returns no row, so this route cannot be used to probe for one — and the
-  // path it works with comes from the database, never from the body.
-  const { data: visible } = await caller
-    .from('customer_review_request_photos')
-    .select('id, request_id, kind')
-    .eq('id', photoId)
-    .maybeSingle()
-  if (!visible) return fail(404, MESSAGES.photo_not_found)
-
   const admin = adminClient()
   if (!admin.ok) {
     console.error('[customer-reviews:photos] missing env:', admin.missing.join(', '))
@@ -379,44 +376,87 @@ export async function DELETE(req: NextRequest) {
   }
   const service = admin.client
 
-  // ── MARK ────────────────────────────────────────────────────────────────
-  const { data: marked, error: markError } = await service.rpc(
-    'begin_customer_review_photo_removal',
-    { p_photo_id: photoId, p_actor_id: user.id },
-  )
-  if (markError || !marked) {
-    // The database's own refusal codes, mapped to prewritten sentences. The
-    // message text itself is never forwarded: it is written for a person, but
-    // it is not this route's to choose.
-    const code = markError?.message ?? ''
-    if (code.includes('CUSTOMER_REVIEW_PHOTO_NOT_FOUND')) return fail(404, MESSAGES.photo_not_found)
-    if (code.includes('CUSTOMER_REVIEW_LOCKED')) return fail(409, MESSAGES.remove_locked)
-    if (code.includes('CUSTOMER_REVIEW_UNAUTHORIZED')) return fail(403, MESSAGES.forbidden)
-    return fail(500, MESSAGES.remove_failed)
+  // THE RESUME READ, and it is deliberately unlike every other read in this
+  // module: it does NOT filter `removal_started_at`.
+  //
+  // Marking a row hides it from every list and detail screen — that is what
+  // marking is for. But this is the path that finishes an interrupted removal,
+  // and a resume that could not see the thing it is resuming would be no
+  // resume at all. The omission used to be accidental; it is now deliberate,
+  // and photoRemovalRetry.test.ts fails if anybody adds the filter here.
+  //
+  // It still runs as the CALLER, so their own RLS decides. What it does NOT do
+  // is turn "no row" into a distinct answer — see runPhotoRemoval.
+  const reader: PhotoVisibilityReader = {
+    async isVisibleToCaller(id) {
+      const { data, error } = await caller
+        .from('customer_review_request_photos')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle()
+      if (error) return { visible: false, failed: true }
+      return { visible: !!data, failed: false }
+    },
   }
 
-  const storagePath = (marked as { storage_path?: string }).storage_path
-  if (typeof storagePath !== 'string' || storagePath.length === 0) {
-    return fail(500, MESSAGES.remove_failed)
+  const removal: PhotoRemovalService = {
+    async beginRemoval(id, actorId): Promise<BeginResult> {
+      const { data, error } = await service.rpc(
+        'begin_customer_review_photo_removal',
+        { p_photo_id: id, p_actor_id: actorId },
+      )
+      if (error) {
+        // The database's own refusal codes, mapped to outcomes. The message
+        // text is never forwarded: it is written for a person, but it is not
+        // this route's to choose.
+        const code = error.message ?? ''
+        if (code.includes('CUSTOMER_REVIEW_PHOTO_NOT_FOUND')) return { outcome: 'gone' }
+        if (code.includes('CUSTOMER_REVIEW_LOCKED')) return { outcome: 'locked' }
+        if (code.includes('CUSTOMER_REVIEW_UNAUTHORIZED')) return { outcome: 'forbidden' }
+        return { outcome: 'error' }
+      }
+      const path = (data as { storage_path?: string } | null)?.storage_path
+      if (typeof path !== 'string' || path.length === 0) return { outcome: 'error' }
+      return { outcome: 'ready', storagePath: path }
+    },
+
+    async deleteObject(storagePath) {
+      const { error } = await service.storage.from(REVIEW_PHOTO_BUCKET).remove([storagePath])
+      if (!error) return { ok: true, missing: false }
+      return { ok: false, missing: isMissingObjectError(error) }
+    },
+
+    async finishRemoval(id) {
+      const { error } = await service.rpc('finish_customer_review_photo_removal', { p_photo_id: id })
+      return { ok: !error }
+    },
   }
 
-  // ── OBJECT ──────────────────────────────────────────────────────────────
-  const { error: objectError } = await service.storage
-    .from(REVIEW_PHOTO_BUCKET)
-    .remove([storagePath])
-  if (objectError) {
-    // The row stays marked and still names the path. Nothing is orphaned, the
-    // photograph is already invisible, and calling again finishes the job.
-    return fail(500, MESSAGES.remove_failed)
+  return respondTo(await runPhotoRemoval({ reader, service: removal }, user.id, photoId), photoId)
+}
+
+/**
+ * One outcome, one response.
+ *
+ * `already_removed` is a 200 on purpose, and it is the same 200 a genuine
+ * removal returns. A completed removal reporting as a failure was the defect;
+ * a completed removal reporting DIFFERENTLY from an unresolvable id would be a
+ * disclosure. Both are answered here, identically.
+ */
+function respondTo(outcome: RemovalOutcome, photoId: string) {
+  switch (outcome.status) {
+    case 'removed':
+    case 'already_removed':
+      return ok({ removed: photoId })
+    case 'refused':
+      return outcome.reason === 'locked'
+        ? fail(409, MESSAGES.remove_locked)
+        : fail(403, MESSAGES.forbidden)
+    case 'failed':
+      return outcome.reason === 'row'
+        ? fail(500, MESSAGES.remove_partial)
+        : fail(500, MESSAGES.remove_failed)
   }
-
-  // ── ROW ─────────────────────────────────────────────────────────────────
-  const { error: rowError } = await service.rpc('finish_customer_review_photo_removal', {
-    p_photo_id: photoId,
-  })
-  if (rowError) return fail(500, MESSAGES.remove_partial)
-
-  return ok({ removed: photoId })
 }
 /**
  * A filename fit to store and show, and nothing more.

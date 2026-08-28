@@ -336,11 +336,35 @@ pointing at nothing.
 | **Object** | the file is deleted from the private bucket |
 | **Row** | `finish_customer_review_photo_removal()` deletes the metadata; the delete trigger writes the `photo_removed` entry, crediting `removal_by` |
 
-**Partial failure is explicit.** If the object deletion fails, the row stays
-marked and still names its path — nothing is orphaned, the photograph is
-already invisible, and a retry converges because both functions are
-idempotent. If the row deletion fails, the caller is told the image is gone but
-the record is not, which is true.
+**Partial failure is explicit, and a retry resumes.** If the object deletion
+fails, the row stays marked and still names its path — nothing is orphaned, the
+photograph is already invisible, and calling again finishes the job. If the row
+deletion fails, the caller is told the image is gone but the record is not,
+which is true, and calling again deletes the row over an object that is already
+missing. Both SQL halves are idempotent, and a missing object counts as a
+**success** rather than a failure — on a resume it is missing precisely because
+the last attempt got that far.
+
+**The resume read is the one read in this module that does *not* hide a marked
+row.** Every list and detail query filters `removal_started_at`, because hiding
+the row is what marking is for. The route's own read deliberately does not: a
+resume that could not see the thing it is resuming would be no resume at all.
+That omission used to be accidental — the next person tidying reads would have
+added the filter and killed the retry silently — and it is now deliberate and
+pinned by a test. Marked rows are never restored to ordinary reads.
+
+**Every id the caller cannot resolve gets the same answer.** A completed
+removal, an id that never existed, and a photograph belonging to another
+employee all return the same success, and none of them reaches the privileged
+path. That is a requirement rather than a convenience: if a completed removal
+answered differently from somebody else's photograph, the difference would
+itself be the disclosure — a caller could walk uuids and learn which ones exist
+on requests they cannot see. A refusal (409/403) is only ever reachable for a
+photograph the caller can already read, so those answers disclose nothing new.
+
+The audit trail gains exactly one `photo_removed` entry per removal, however
+many times DELETE is called: the row is deleted once, and the trigger fires
+once. A call after completion writes nothing at all.
 
 **Who may remove what** (enforced in the SQL, and again in the route):
 
@@ -440,6 +464,7 @@ clicks in one tick) and a 5-second cooldown.
 | `src/lib/customerReviews/photos.test.ts` | The browser-side courtesy check, extension laundering, path shape, collision resistance |
 | `src/lib/customerReviews/imageBytes.test.ts` | The real validator, driven by byte fixtures built to spec: genuine PNG/JPEG/WEBP accepted; PDF, ZIP, ELF, EXE, SVG, HTML, GIF, TIFF refused; disguised, truncated, malformed and **polyglot** files refused; the size limit is the real length |
 | `src/lib/customerReviews/imageProcessing.test.ts` | The re-encode, run for real through libvips: the three formats survive; **EXIF does not**; appended payloads do not; **SVG is refused even though the decoder would take it**; damaged and truncated files are caught by the decoder |
+| `src/lib/customerReviews/photoRemovalRetry.test.ts` | The retry path, **driven for real** against a working stand-in for the database and the bucket: initial removal; object-deletion failure then resume; finalization failure then resume over an already-missing object; a marked row invisible to ordinary reads but visible to the resume path; owner and admin resumption; another employee unable to resume or probe; repeat-after-completion safe with no duplicate audit event |
 | `src/lib/customerReviews/photoRemoval.test.ts` | That a client can delete neither an object nor a metadata row; the route’s authorization, its three-step order, and its explicit partial-failure handling; the two SQL halves being service-role-only, locked and idempotent; verified proof being admin-only; the audit entry crediting the remover |
 | `src/lib/customerReviews/uploadRoute.test.ts` | The route: authentication before the body is read, `use` resolved, caller-scoped RLS read, kind/status rules, inspection before storage, server-generated path, no path field in the body, cleanup on metadata failure, closed-list errors, no service-role key on the client, and the database half of the boundary |
 | `src/lib/customerReviews/draftLeniency.test.ts` | Column nullability, what a bare draft may omit, that a supplied-but-invalid value is still refused, and that both gates re-check in the database |
