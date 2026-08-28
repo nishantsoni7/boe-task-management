@@ -56,7 +56,8 @@ upload ─▶ prepareSource ─▶ [1] fal-ai/bria/background/remove ─▶ tran
                                                                     │
    ┌────────────────────────────────────────────────────────────────┘
    ▼
- measure the product ─▶ quality gate ─▶ plan the padding ─▶ crop and scale
+ measure the product ─▶ quality gate ─▶ plan the padding
+   ─▶ crop ─▶ repair the edge ─▶ scale
    ─▶ [2] fal-ai/bria/product-shot (manual_padding) ─▶ 1000 x 1000 master
 ```
 
@@ -192,11 +193,57 @@ refused — before the second request is paid for — with the height the photog
 would have needed. Because the product is now 53% of the canvas rather than 65%,
 this gate is more forgiving than it was: a product about **461px** tall suffices.
 
+### The edge repair
+
+The first real master passed composition review and failed full-resolution edge
+review: a thin dark, sometimes jagged fringe around the top rail, the spindles,
+the seat perimeter and the outside of the legs.
+
+**Root cause.** Background removal assigns alpha; it does not repaint. At an
+antialiased boundary the stored RGB is still the photograph's own pixel — already
+a mix of product and dark factory background — while alpha merely says how much
+of that pixel the product covers. Composited onto a light studio sweep, the
+leftover share of factory background reads as a rim. Measured on a pale product
+over a dark background, a boundary pixel at alpha 163 composited **20.6 levels
+darker** than the same coverage of clean product.
+
+It was invisible in the browser preview because the preview is scaled down and
+averages the rim away. It is a one-pixel defect, and one pixel is what a
+1000 × 1000 master is inspected at.
+
+**The repair** (`decontaminateEdges.ts`) replaces the RGB of partly transparent
+pixels with the colour of nearby *opaque* product: a blurred copy of the solid
+pixels' colour divided by a blurred copy of the solid mask, which is a
+normalised average of the product just inside the edge. Only solid pixels donate
+— including the rim in its own replacement would average the contamination back
+in.
+
+What it may not do, and does not:
+
+| | |
+| --- | --- |
+| Alpha | **Never written.** The silhouette that arrives is the silhouette that leaves. Eroding alpha is the usual way to kill a fringe, and on furniture it thins the cane, the spindles and the metal tips. |
+| Fully opaque pixels | **Byte-identical.** Interior, wood grain and watermark are untouched. |
+| Fully transparent pixels | **Byte-identical.** The gaps between the legs stay gaps. |
+| Thin structures | A one-pixel bar keeps its core and gets its shoulders repaired. Where there is too little product within reach to borrow from, the pixel is left exactly as it arrived rather than guessed at. |
+| Sharpening, blurring, moving | None. This recolours pixels in place. |
+
+It runs **before** the resize, and that order matters: repairing first means the
+downscale averages clean product colour, while repairing after means every
+boundary pixel has already had contaminated neighbours averaged into it. Cost is
+43–130 ms for a 1–5 MP cut-out, against a 38 s provider budget.
+
+Measured on the fixtures: worst boundary error **20.6 → 2.2** levels on an
+ellipse, **21.0 → 2.6** on a chair with rail, spindles and legs; mean absolute
+error 6.9 → 0.8. After the resize the only opaque pixels that differ are the
+single row adjacent to the silhouette, by at most 7/255 — the resize legitimately
+averaging repaired neighbours in.
+
 ### What is done locally, and what is not
 
 Local: decode, EXIF orientation, validation, finding the product by its alpha,
-the padding arithmetic, one proportional crop-and-resize, and the safe PNG
-encoding of what comes back.
+the padding arithmetic, the edge repair, one proportional crop-and-resize, and
+the safe PNG encoding of what comes back.
 
 **Not local: the background, the lighting and the shadows.** Those were
 generated locally with sharp in the previous iteration, and that whole path is
@@ -266,7 +313,8 @@ failure, because nobody downstream could tell it apart.
 | `src/lib/imageEditor/studioReference.ts` | Loads the approved reference from disk and turns it into a data URI. Never substitutes one. |
 | `src/lib/imageEditor/studioMaster.ts` | The master canvas and the padding arithmetic. Pure — no sharp, no provider. |
 | `src/lib/imageEditor/cutoutGeometry.ts` | Where the product is in a cut-out, read from raw alpha. Pure. |
-| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product and scale it to the planned size. Server-only (sharp). Nothing creative. |
+| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product, repair its edge, scale it to the planned size. Server-only (sharp). Nothing creative. |
+| `src/lib/imageEditor/decontaminateEdges.ts` | Takes the factory background's colour out of partly transparent boundary pixels. Never writes alpha. |
 | `src/lib/imageEditor/composition.ts` | Measures a finished image against the intended framing. Used by tests and the smoke script, never in the request path. |
 | `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
 | `src/lib/imageEditor/downloadFormats.ts` | Which download formats exist, and the guard. Client-safe. |

@@ -24,8 +24,9 @@
 //   1. `fal-ai/bria/background/remove` returns the product on transparency.
 //      This is not the picture — it is how the product's real pixel size is
 //      learned, which is the one thing padding cannot be computed without.
-//   2. the cut-out is cropped to the product and scaled so it will fill 53% of
-//      a 1000 x 1000 master, and `fal-ai/bria/product-shot` is asked for the
+//   2. the cut-out is cropped to the product, its soft edge is stripped of the
+//      factory background's colour, and it is scaled so it will fill 53% of a
+//      1000 x 1000 master. `fal-ai/bria/product-shot` is then asked for the
 //      studio scene around it with `placement_type: 'manual_padding'`.
 //
 // The scene — background, lighting, contact and cast shadows — is the model's,
@@ -300,6 +301,8 @@ export async function POST(req: NextRequest) {
     `placed ${plan.product.width}x${plan.product.height}`,
     `padding [${plan.paddingValues.join(', ')}]`,
     `height share ${(plan.heightShare * 100).toFixed(1)}%`,
+    `edges repaired ${shaped.edges.repaired}`,
+    shaped.edges.skippedThin ? `thin edges left alone ${shaped.edges.skippedThin}` : '',
     plan.widthLimited ? 'width-limited' : '',
   )
 

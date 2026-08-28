@@ -7,11 +7,19 @@
 //      the product and background/remove returns the ORIGINAL frame with
 //      everything but the product made transparent — pad that and the padding
 //      is measured from the old photograph's edges, not the chair;
-//   2. resize by one factor so the product lands at the planned size, because
+//   2. take the factory background's colour out of the soft edge, because
+//      background removal assigns alpha without repainting and the leftover mix
+//      composites to a thin dark rim (see decontaminateEdges.ts);
+//   3. resize by one factor so the product lands at the planned size, because
 //      padding is pixels and the master is 1000 x 1000.
 //
 // Nothing else. No tone, no sharpening, no shadow, no background — the accepted
 // result's lighting and scene come from Bria and must not be pre-empted here.
+//
+// The edge is repaired BEFORE the resize, and that order matters. Repairing
+// first means the downscale averages clean product colour; repairing after
+// means every boundary pixel has already had contaminated neighbours averaged
+// into it, and the rim is baked in before anything can reach it.
 //
 // The resize is proportional and it is the only one: one scale factor applied
 // to both axes, so nothing is stretched, rotated or reshaped. In the ordinary
@@ -20,9 +28,18 @@
 
 import sharp from 'sharp'
 import { alphaBounds, type Bounds } from './cutoutGeometry'
+import { decontaminateEdges, type EdgeReport } from './decontaminateEdges'
 
 export type PreparedCutout =
-  | { ok: true; png: Buffer; source: { width: number; height: number }; bounds: Bounds }
+  | {
+      ok: true
+      png: Buffer
+      source: { width: number; height: number }
+      bounds: Bounds
+      /** Counts only — how many edge pixels were repaired, and how many were
+       *  too thin to repair safely. Never image data. */
+      edges: EdgeReport
+    }
   | { ok: false; error: string }
 
 /** Below this share of transparent pixels the image is not a cut-out at all. */
@@ -84,14 +101,29 @@ export async function prepareCutoutForShot(
   target: { width: number; height: number },
 ): Promise<PreparedCutout> {
   try {
-    const png = await sharp(cutoutPng)
+    // Cropped to raw so the edge repair can work on the pixels directly. Each
+    // step is its own pipeline: sharp orders its operations internally rather
+    // than by call order, and chaining a resize onto this would let it run
+    // before the recolouring it is supposed to follow.
+    const cropped = await sharp(cutoutPng)
       .ensureAlpha()
       .extract({ left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height })
+      .raw()
+      .toBuffer()
+
+    const edges = await decontaminateEdges(cropped, bounds.width, bounds.height)
+
+    const png = await sharp(cropped, {
+      raw: { width: bounds.width, height: bounds.height, channels: 4 },
+    })
+      // One resize, one factor, both axes: scaled as a whole, never stretched.
+      // sharp premultiplies alpha through this, so a transparent pixel's colour
+      // cannot bleed into an opaque neighbour.
       .resize(target.width, target.height, { kernel: 'lanczos3', fit: 'fill' })
       .png({ compressionLevel: 9 })
       .toBuffer()
 
-    return { ok: true, png, source: { width: bounds.width, height: bounds.height }, bounds }
+    return { ok: true, png, source: { width: bounds.width, height: bounds.height }, bounds, edges }
   } catch {
     return { ok: false, error: 'That photograph could not be prepared for the studio. Please try again.' }
   }

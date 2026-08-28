@@ -19,6 +19,7 @@ import sharp from 'sharp'
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { measureCutout, prepareCutoutForShot } from './prepareCutout'
 import { planPadding, checkEnlargement, MASTER_WIDTH, MASTER_HEIGHT, PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX } from './studioMaster'
 import { generateStudioShot } from './briaProductShot'
@@ -223,6 +224,162 @@ describe('the size the product owner asked for', () => {
     assert.equal(verdict.ok, false)
     if (verdict.ok) return
     assert.match(verdict.message, /too small/i)
+  })
+})
+
+describe('the edge repair, in the pipeline', () => {
+  /** A cut-out whose boundary carries dark factory background, as a real one does. */
+  async function contaminatedCutout() {
+    const W = 1400, H = 1600
+    const d = Buffer.alloc(W * H * 4)
+    const PRODUCT = { r: 198, g: 174, b: 140 }
+    const FACTORY = { r: 32, g: 28, b: 25 }
+    const cx = W / 2, cy = H / 2, rx = W * 0.32, ry = H * 0.36
+
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const nx = (x + 0.5 - cx) / rx, ny = (y + 0.5 - cy) / ry
+      const px = (1 - Math.sqrt(nx * nx + ny * ny)) * Math.min(rx, ry)
+      const c = Math.max(0, Math.min(1, px / 2 + 0.5))
+      const o = (y * W + x) * 4
+      d[o] = Math.round(PRODUCT.r * c + FACTORY.r * (1 - c))
+      d[o + 1] = Math.round(PRODUCT.g * c + FACTORY.g * (1 - c))
+      d[o + 2] = Math.round(PRODUCT.b * c + FACTORY.b * (1 - c))
+      d[o + 3] = Math.round(c * 255)
+    }
+    return sharp(d, { raw: { width: W, height: H, channels: 4 } }).png().toBuffer()
+  }
+
+  test('the repair runs, and reports what it did', async () => {
+    const { shaped } = await pipeline(await contaminatedCutout())
+    assert.ok(shaped.edges.repaired > 0, 'no edge pixel was repaired')
+    assert.ok(shaped.edges.solid > shaped.edges.repaired, 'the product must be mostly interior')
+  })
+
+  test('the product bounds are unchanged by it', async () => {
+    // Padding is computed from these. If the repair moved them, the sizing
+    // would shift and the accepted 53% framing with it.
+    const png = await contaminatedCutout()
+    const before = await measureCutout(png)
+    const after = await measureCutout(png)
+    assert.equal(before.ok && after.ok, true)
+    if (!before.ok || !after.ok) return
+
+    assert.deepEqual(before.bounds, after.bounds)
+    const { plan } = await pipeline(png)
+    assert.deepEqual(plan.product, planPadding({
+      width: before.bounds.width, height: before.bounds.height,
+    }).product)
+  })
+
+  test('the sizing plan and the image sent still agree exactly', async () => {
+    const { plan, shaped } = await pipeline(await contaminatedCutout())
+    const meta = await sharp(shaped.png).metadata()
+
+    assert.equal(meta.width, plan.product.width)
+    assert.equal(meta.height, plan.product.height)
+    assert.equal(plan.padding.left + meta.width! + plan.padding.right, MASTER_WIDTH)
+    assert.equal(plan.padding.top + meta.height! + plan.padding.bottom, MASTER_HEIGHT)
+    assert.ok(plan.heightShare >= PRODUCT_HEIGHT_MIN && plan.heightShare <= PRODUCT_HEIGHT_MAX)
+  })
+
+  test('the alpha silhouette that is sent is the one the resize produced', async () => {
+    // The repair never writes alpha, so the only thing that may shape the sent
+    // image is the one proportional resize.
+    const png = await contaminatedCutout()
+    const measured = await measureCutout(png)
+    assert.equal(measured.ok, true)
+    if (!measured.ok) return
+
+    const plan = planPadding({ width: measured.bounds.width, height: measured.bounds.height })
+    const repaired = await prepareCutoutForShot(png, measured.bounds, plan.product)
+    assert.equal(repaired.ok, true)
+    if (!repaired.ok) return
+
+    // The same crop and resize with no repair at all.
+    const plain = await sharp(png).ensureAlpha()
+      .extract({
+        left: measured.bounds.left, top: measured.bounds.top,
+        width: measured.bounds.width, height: measured.bounds.height,
+      })
+      .resize(plan.product.width, plan.product.height, { kernel: 'lanczos3', fit: 'fill' })
+      .png().toBuffer()
+
+    const a = await sharp(plain).ensureAlpha().extractChannel(3).raw().toBuffer()
+    const b = await sharp(repaired.png).ensureAlpha().extractChannel(3).raw().toBuffer()
+    assert.deepEqual(b, a, 'the repair changed the silhouette')
+  })
+
+  test('after the resize, only the boundary band differs, and only slightly', async () => {
+    // Opaque pixels one step in from the edge DO move, because the resize
+    // legitimately averages repaired neighbours into them. Nothing deeper may.
+    const png = await contaminatedCutout()
+    const measured = await measureCutout(png)
+    assert.equal(measured.ok, true)
+    if (!measured.ok) return
+    const plan = planPadding({ width: measured.bounds.width, height: measured.bounds.height })
+
+    const repaired = await prepareCutoutForShot(png, measured.bounds, plan.product)
+    assert.equal(repaired.ok, true)
+    if (!repaired.ok) return
+
+    const plain = await sharp(png).ensureAlpha()
+      .extract({
+        left: measured.bounds.left, top: measured.bounds.top,
+        width: measured.bounds.width, height: measured.bounds.height,
+      })
+      .resize(plan.product.width, plan.product.height, { kernel: 'lanczos3', fit: 'fill' })
+      .png().toBuffer()
+
+    const A = await sharp(plain).raw().toBuffer()
+    const B = await sharp(repaired.png).raw().toBuffer()
+    const W = plan.product.width, H = plan.product.height
+
+    const nonOpaque = (x: number, y: number) =>
+      x < 0 || y < 0 || x >= W || y >= H || B[(y * W + x) * 4 + 3] !== 255
+
+    let deepChanged = 0
+    let maxDelta = 0
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const o = (y * W + x) * 4
+      if (A[o + 3] !== 255 || B[o + 3] !== 255) continue
+
+      let delta = 0
+      for (let c = 0; c < 3; c++) delta = Math.max(delta, Math.abs(A[o + c] - B[o + c]))
+      if (!delta) continue
+      maxDelta = Math.max(maxDelta, delta)
+
+      // Is this pixel adjacent to the silhouette edge?
+      let adjacent = false
+      for (let dy = -1; dy <= 1 && !adjacent; dy++) for (let dx = -1; dx <= 1; dx++) {
+        if (nonOpaque(x + dx, y + dy)) { adjacent = true; break }
+      }
+      if (!adjacent) deepChanged++
+    }
+
+    assert.equal(deepChanged, 0, `${deepChanged} opaque pixels changed away from the edge`)
+    assert.ok(maxDelta <= 12, `a boundary pixel moved by ${maxDelta}, which is more than resampling`)
+  })
+
+  test('the repair happens before the resize, not after', () => {
+    // Order is the difference between averaging clean colour down and baking a
+    // rim in. sharp reorders chained operations, so this is asserted on source.
+    const source = readFileSync(join(process.cwd(), 'src/lib/imageEditor/prepareCutout.ts'), 'utf8')
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+
+    const repair = code.indexOf('decontaminateEdges(')
+    const resize = code.indexOf('.resize(')
+    assert.ok(repair > -1 && resize > -1)
+    assert.ok(repair < resize, 'the edge repair must precede the resize')
+  })
+
+  test('still one resize, and still no second provider call', () => {
+    const source = readFileSync(join(process.cwd(), 'src/lib/imageEditor/prepareCutout.ts'), 'utf8')
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+
+    assert.equal(code.split('.resize(').length - 1, 1, 'exactly one resize')
+    for (const banned of ['fetch(', 'callFal', 'removeBackground', 'generateStudioShot', 'https://']) {
+      assert.ok(!code.includes(banned), `${banned} must not appear in the preparation path`)
+    }
   })
 })
 
