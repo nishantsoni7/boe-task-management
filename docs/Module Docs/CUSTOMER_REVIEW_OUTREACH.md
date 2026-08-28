@@ -99,7 +99,7 @@ employee held, and turning it on would have written nothing.
 | --- | --- |
 | Launcher card | `src/app/modules/page.tsx` → `deriveCustomerReviewCapabilities(...).canAccessModule`, resolved for the **signed-in** user (View As lends nothing) |
 | Route entry (all four screens) | `src/app/customer-reviews/layout.tsx` → `hasPermission(..., 'use')` or `'verify'`, admin short-circuit, fails closed on a missing or inactive profile |
-| Reading a request | RLS `SELECT` policy on `customer_review_requests`, spelled out on the candidate row: an active user who is the owner, an admin, or holds `verify` |
+| Reading a request | RLS `SELECT` policy on `customer_review_requests` → `can_view_customer_review_request_row(created_by, auth.uid())`: an active user who is the owner, an admin, or holds `verify` |
 | Reading a photo or an event | RLS `SELECT` policies → `can_view_customer_review_request()`, which asks the same question about the parent request |
 | Creating a request | RLS `INSERT` policy: `created_by = auth.uid()`, `status = 'draft'`, no lifecycle field pre-set, and `use` (or admin) |
 | Editing a request | RLS `UPDATE` policy → `can_edit_customer_review_request()`, **plus a column grant** limiting writes to the ten form fields |
@@ -109,23 +109,41 @@ employee held, and turning it on would have written nothing.
 | Recording evidence | `record_customer_review_evidence()` — owner + `use`, status `sent` or `customer_responded`, https only |
 | Photograph objects | Storage policies on `storage.objects`, keyed on the request id in the object path |
 
-> **Why the request table does not use the shared helper.**
-> `can_view_customer_review_request()` resolves a request by reading
-> `customer_review_requests`. Guarding that same table with it makes
-> `INSERT ... RETURNING` impossible: Postgres applies the SELECT policy to the
-> row an insert is about to return, and the helper is `STABLE`, so it runs
-> against the statement's own snapshot where that row does not yet exist — the
-> policy evaluates false and the insert is refused `42501`. PostgREST turns
-> `.select()` into `RETURNING`, so this made every create in the UI fail.
-> The request policy therefore states the predicate directly; the child tables
-> keep the helper, because for them it is a different table. The migration
-> asserts this at apply time, and
-> `supabase/tests/customer_review_request_visibility_assertions.sql` proves it
-> against a real database.
+> **Why the request table has a predicate of its own.**
+> There are two of them, and the difference is the argument they take.
+> `can_view_customer_review_request(request_id, …)` resolves a request by
+> reading `customer_review_requests`. That is right for the photo, event and
+> storage policies, which hold a request id and need the parent looked up.
+> Used on `customer_review_requests` itself it is wrong twice: it re-queries
+> the table being guarded, and because it is `STABLE` the row an
+> `INSERT ... RETURNING` is about to return is not in its snapshot — the policy
+> evaluates false and the insert is refused `42501`. PostgREST turns
+> `.select()` into `RETURNING`, so that broke every create in the UI.
+>
+> `can_view_customer_review_request_row(created_by, …)` takes the value
+> instead, so it never touches the guarded table. It is `SECURITY DEFINER` for
+> a second reason: a policy body runs as the **caller**, so spelling the
+> predicate out inline would read `public.users` with the caller's privileges
+> and bind this module's visibility to that table's grants and row security.
+> Definer rights keep the question where it belongs.
+>
+> The migration asserts both properties at apply time, and
+> `supabase/tests/customer_review_request_visibility_assertions.sql` proves
+> them against a real database — including a case that locks `public.users`
+> down completely and shows the shipped policy still works while the inline
+> version goes blind.
 
-**There are no API routes.** Enforcement is in the database — RLS plus SECURITY
-DEFINER functions — which is the pattern Meetings (20260814000000) and Order
-Requests use. A route would have added a second place for the rules to live.
+**A request never goes through an API route.** Creating, reading, editing and
+every status change are RLS plus SECURITY DEFINER functions — the pattern
+Meetings (20260814000000) and Order Requests use. A route for those would have
+added a second place for the rules to live.
+
+**Photographs are the exception, and deliberately so.** They travel through
+`POST`/`DELETE /api/customer-reviews/photos`, because both operations span the
+private bucket and the metadata table, and because deciding what a file really
+is means reading its bytes on a server. The clients hold no storage
+INSERT/DELETE policy and no photo-metadata write policy at all, so that route
+is the only way an image enters or leaves the module. §9 covers it.
 
 ## 4. Status model
 

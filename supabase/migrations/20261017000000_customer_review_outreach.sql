@@ -420,6 +420,65 @@ $$;
 revoke execute on function public.can_view_customer_review_request(uuid, uuid) from public, anon;
 grant  execute on function public.can_view_customer_review_request(uuid, uuid) to authenticated;
 
+-- The same question, asked about a row the caller already has in hand.
+--
+-- WHY THIS EXISTS SEPARATELY FROM THE FUNCTION ABOVE.
+-- can_view_customer_review_request() resolves a request by SELECTing it. That
+-- is right for the child tables and the bucket, which hold a request id and
+-- need the parent looked up. It is wrong for customer_review_requests itself,
+-- twice over:
+--
+--   1. It re-queries the table being guarded. Because the function is STABLE it
+--      runs against the statement's own snapshot, so the row an
+--      INSERT ... RETURNING is about to return is invisible to it — the policy
+--      evaluates false and the insert is refused 42501. That was every create
+--      in the UI, for everybody, admins included.
+--
+--   2. Spelling the predicate out inline in the policy instead — which is how
+--      this was first fixed — trades one defect for a quieter one. A policy
+--      body runs as the CALLER, so an inline "select ... from public.users" is
+--      subject to whatever privileges and row security public.users carries.
+--      Today that is survivable: authenticated holds column SELECT on id, role
+--      and is_active (20260813000000), and the row policy is
+--      USING (is_active = true) (20260812000000), which happens to agree with
+--      the predicate's own is_active requirement. But the module's visibility
+--      would then depend on a neighbouring table's grants staying exactly as
+--      they are — and a future tightening of public.users would change who can
+--      see customer contact details, silently, with nothing in this module to
+--      say so.
+--
+-- SECURITY DEFINER closes both. It reads users with the definer's rights, like
+-- every other predicate in this module, and it takes created_by as a VALUE, so
+-- it never touches customer_review_requests at all.
+--
+-- IT TRUSTS NOTHING FROM THE CALLER BUT TWO IDENTIFIERS. Role, active state and
+-- effective permission are all derived here; none is a parameter.
+create or replace function public.can_view_customer_review_request_row(
+  p_created_by uuid,
+  p_user_id    uuid default auth.uid()
+)
+returns boolean
+language sql
+security definer
+set search_path = public, pg_temp
+stable
+as $$
+  select p_user_id is not null and exists (
+    select 1
+    from public.users u
+    where u.id = p_user_id
+      and u.is_active
+      and (
+        p_created_by = p_user_id
+        or u.role = 'admin'
+        or public.resolve_permission(p_user_id, 'customer_review_requests', 'verify')
+      )
+  );
+$$;
+
+revoke execute on function public.can_view_customer_review_request_row(uuid, uuid) from public, anon;
+grant  execute on function public.can_view_customer_review_request_row(uuid, uuid) to authenticated;
+
 -- May this user CHANGE this request's contents?
 --
 -- Narrower than reading, in two directions at once. A verifier reads every
@@ -503,23 +562,17 @@ alter table public.customer_review_request_events enable row level security;
 -- Written out below, the predicate reads `created_by` straight off the
 -- candidate row. Same three people, same active-user requirement, one table
 -- touched instead of two, and correct during the statement that inserts the row.
+-- The table name is written out rather than left implicit. Unqualified,
+-- created_by would resolve against whatever the predicate's inner scope happens
+-- to contain — correct today only because nothing else in scope has a column of
+-- that name. Passing it as an argument to a function that queries only users
+-- removes the question entirely.
 create policy "customer_review_requests_select" on public.customer_review_requests
   for select to authenticated
   using (
-    -- The users row is joined ONCE and gates all three branches, including the
-    -- owner's: a deactivated employee keeps nothing, not even their own work.
-    -- (auth.uid() being null makes this match no user and the policy false.)
-    exists (
-      select 1
-      from public.users u
-      where u.id = auth.uid()
-        and u.is_active
-        and (
-          -- `created_by` is the candidate row's own column, not a lookup.
-          created_by = auth.uid()
-          or u.role = 'admin'
-          or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
-        )
+    public.can_view_customer_review_request_row(
+      customer_review_requests.created_by,
+      auth.uid()
     )
   );
 
@@ -537,6 +590,20 @@ create policy "customer_review_requests_insert" on public.customer_review_reques
     and whatsapp_opened_at is null
     and whatsapp_opened_count = 0
     and review_public_url is null
+    -- THE ACTOR COLUMNS ARE PINNED TOO, and their absence here was a real gap.
+    -- Pinning only the timestamps left a client free to create a draft already
+    -- naming who sent, verified or closed it, and carrying a verification note
+    -- or a cancellation reason. None of that would make the request verified —
+    -- the status and timestamp checks above see to that — but all of it reaches
+    -- the detail screen, which renders verified_by as a person's name. An audit
+    -- trail that can be pre-populated by the person being audited is not one.
+    and sent_by is null
+    and responded_by is null
+    and verified_by is null
+    and verification_note is null
+    and closed_by is null
+    and cancelled_by is null
+    and cancel_reason is null
     and exists (
       select 1 from public.users u
       where u.id = auth.uid() and u.is_active
@@ -1524,30 +1591,74 @@ begin
     raise exception '% Customer Review Outreach polic(ies) are USING (true)', v_n;
   end if;
 
-  -- THE REQUEST'S OWN SELECT POLICY MUST NOT LOOK THE REQUEST UP AGAIN.
+  -- THE REQUEST'S OWN SELECT POLICY, CHECKED BY NAME.
   --
-  -- can_view_customer_review_request() is correct for the child tables and the
-  -- bucket, which ask about another table's row. On customer_review_requests
-  -- itself it re-queries the table being guarded, which is invisible on a plain
-  -- SELECT and fatal on INSERT ... RETURNING: the helper is STABLE, the new row
-  -- is not in its snapshot, and the insert is refused 42501. Asserted because
-  -- the mistake is a one-word convenience away and its symptom points at the
-  -- payload rather than at the policy.
+  -- Filtered by policyname, not merely by table and command: a second SELECT
+  -- policy added later would otherwise make SELECT INTO pick an arbitrary one
+  -- of the two and assert against whichever it happened to get.
   select coalesce(qual, '') into v_bad
   from pg_policies
   where schemaname = 'public'
     and tablename  = 'customer_review_requests'
-    and cmd        = 'SELECT';
+    and cmd        = 'SELECT'
+    and policyname = 'customer_review_requests_select';
 
-  if v_bad like '%can_view_customer_review_request%' then
+  if v_bad = '' then
+    raise exception 'customer_review_requests_select is missing';
+  end if;
+
+  -- 1. It must not resolve the request by looking it up. The request-id helper
+  --    is STABLE and re-reads this table, so the row an INSERT ... RETURNING is
+  --    about to return is invisible to it and the insert is refused 42501.
+  --    Matched on the exact name so that the _row variant does not count.
+  if v_bad ~ 'can_view_customer_review_request\(' then
     raise exception 'customer_review_requests_select re-queries its own table; INSERT ... RETURNING cannot pass it';
   end if;
 
-  -- ...and it must still gate on an active user rather than on ownership alone,
-  -- so that inlining the predicate did not quietly hand a deactivated employee
-  -- their own rows back.
+  -- 2. It must not read public.users in the policy body either. A policy runs
+  --    as the CALLER, so an inline read of users binds this module's visibility
+  --    to that table's grants and row security. The predicate belongs in a
+  --    SECURITY DEFINER function, where every other predicate here already is.
+  if v_bad ~* '\mfrom\M\s+(public\.)?users\M' then
+    raise exception 'customer_review_requests_select reads public.users as the caller; use the row predicate instead';
+  end if;
+
+  -- 3. It must go through the row predicate.
+  if v_bad not like '%can_view_customer_review_request_row%' then
+    raise exception 'customer_review_requests_select does not use can_view_customer_review_request_row()';
+  end if;
+
+  -- 4. ...which must be SECURITY DEFINER with a pinned search_path, or it
+  --    solves nothing: definer rights are the whole point, and an unpinned
+  --    search_path would let a caller resolve "users" to a table of their own
+  --    while running as the owner.
+  if not exists (
+    select 1 from pg_proc f
+    join pg_namespace n on n.oid = f.pronamespace
+    where n.nspname = 'public'
+      and f.proname = 'can_view_customer_review_request_row'
+      and f.prosecdef
+      and array_to_string(coalesce(f.proconfig, '{}'), ',') like '%search_path=public, pg_temp%'
+  ) then
+    raise exception 'can_view_customer_review_request_row is missing, is not SECURITY DEFINER, or does not pin search_path';
+  end if;
+
+  -- 5. ...and it must not query customer_review_requests, or it reintroduces
+  --    the very lookup it was written to avoid.
+  select coalesce(prosrc, '') into v_bad
+  from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public' and f.proname = 'can_view_customer_review_request_row';
+
+  -- Matched as a FROM/JOIN, not as any occurrence: the body legitimately
+  -- contains the string as resolve_permission()'s module key.
+  if v_bad ~* '(from|join)\s+(public\.)?customer_review_requests\M' then
+    raise exception 'can_view_customer_review_request_row queries customer_review_requests; it must decide from its arguments';
+  end if;
+
+  -- 6. ...and it must still require an active employee. The check moved out of
+  --    the policy and into here; it must not have been lost on the way.
   if v_bad not like '%is_active%' then
-    raise exception 'customer_review_requests_select no longer checks users.is_active';
+    raise exception 'can_view_customer_review_request_row no longer requires an active user';
   end if;
 
   -- The bucket is private.

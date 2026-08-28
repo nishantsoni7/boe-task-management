@@ -137,6 +137,29 @@ describe('row-level security', () => {
     ))
   })
 
+  test('the row predicate still admits exactly owner, admin and verifier', () => {
+    // The predicate moved out of the policy and into a function; it must not
+    // have changed on the way.
+    const body = fnBody('can_view_customer_review_request_row')
+    assert.ok(body.includes('p_created_by = p_user_id'), 'owner branch')
+    assert.ok(body.includes("u.role = 'admin'"), 'admin branch')
+    assert.ok(
+      body.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"),
+      'verifier branch',
+    )
+    // `use` opens the module; it does not disclose a colleague's customer.
+    assert.equal(body.includes("'customer_review_requests', 'use'"), false)
+    // And the active-user requirement gates all three, not one of them.
+    assert.ok(body.includes('u.is_active'), 'must require an active user')
+    assert.ok(body.indexOf('u.is_active') < body.indexOf('and ('),
+      'is_active must sit outside the three-way or')
+    // It decides from its arguments; it never reads the table it guards.
+    assert.equal(
+      /(from|join)\s+(public\.)?customer_review_requests\b/i.test(body), false,
+      'the row predicate must not query customer_review_requests',
+    )
+  })
+
   test('the CHILD tables read through the shared predicate', () => {
     // They ask about another table's row, which is what the helper is for.
     for (const policy of [
@@ -151,43 +174,49 @@ describe('row-level security', () => {
   })
 
   test('the request table decides on the row it is given, not on a second lookup', () => {
-    // THE ONE THAT WAS WRONG. can_view_customer_review_request() resolves a
-    // request by selecting from public.customer_review_requests. On the child
-    // tables that is a different table. Here it is the table being guarded, and
-    // because the helper is STABLE it runs against the statement's own snapshot
-    // — where the row an `INSERT ... RETURNING` is about to return does not yet
-    // exist. The lookup finds nothing, the policy is false, and the insert is
-    // refused 42501. PostgREST turns .select() into RETURNING, so that was
-    // every create in the UI.
+    // THE ONE THAT WAS WRONG, TWICE. First it resolved the request by
+    // SELECTing it: the request-id helper is STABLE and re-reads this very
+    // table, so the row an `INSERT ... RETURNING` is about to return is not in
+    // its snapshot — policy false, insert refused 42501, every create in the
+    // UI broken. Then the fix for that read public.users inline, which runs as
+    // the CALLER and quietly tied this module's visibility to another table's
+    // grants and row security.
+    //
+    // Both are avoided the same way: delegate to a SECURITY DEFINER predicate
+    // that takes created_by as a value and queries only users.
     const policy = statement('create policy "customer_review_requests_select"')
 
+    // Not the request-id helper. Matched with the open paren so the _row
+    // variant does not satisfy it.
     assert.equal(
-      policy.includes('can_view_customer_review_request'), false,
+      /can_view_customer_review_request\(/.test(policy), false,
       'the request SELECT policy must not re-query the table it guards',
     )
-
-    // The same three branches, read off the candidate row.
-    assert.ok(policy.includes('created_by = auth.uid()'), 'owner branch')
-    assert.ok(policy.includes("u.role = 'admin'"), 'admin branch')
-    assert.ok(
-      policy.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"),
-      'verifier branch',
+    // Not an inline read of users either.
+    assert.equal(
+      /\bfrom\s+(public\.)?users\b/i.test(policy), false,
+      'the request SELECT policy must not read public.users as the caller',
     )
-    // The use grant still buys module entry, not sight of everybody.
-    assert.equal(policy.includes("'customer_review_requests', 'use'"), false)
-
-    // And still gated on an active employee — inlining a predicate is exactly
-    // where that check goes missing.
-    assert.ok(policy.includes('u.is_active'), 'must still require an active user')
+    // The delegation itself, with the candidate row's column named in full so
+    // nothing else in scope can rebind it.
+    assert.ok(policy.includes('can_view_customer_review_request_row('), 'delegates to the row predicate')
+    assert.ok(
+      policy.includes('customer_review_requests.created_by'),
+      'created_by must be qualified, not left to scope resolution',
+    )
     assert.equal(/\btrue\b/.test(policy), false, 'no unconditional branch')
   })
 
   test('the migration asserts that mistake cannot come back', () => {
     // Belt and braces: the file re-checks its own policy at apply time, so a
-    // future edit that reinstates the helper fails the migration rather than
-    // shipping a module whose create button never works.
+    // future edit that reinstates either mistake fails the migration rather
+    // than shipping a module whose create button never works — or one whose
+    // visibility depends on a neighbouring table's grants.
     assert.ok(code.includes(
       "raise exception 'customer_review_requests_select re-queries its own table",
+    ))
+    assert.ok(code.includes(
+      "raise exception 'customer_review_requests_select reads public.users as the caller",
     ))
   })
 })

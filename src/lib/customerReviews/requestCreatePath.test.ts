@@ -99,39 +99,69 @@ describe('the policy that lets it work', () => {
     return code.slice(start, code.indexOf(';', start))
   })()
 
+  /** The definer predicate the policy delegates to. */
+  const rowPredicate = () => {
+    const start = code.indexOf('create or replace function public.can_view_customer_review_request_row')
+    assert.notEqual(start, -1, 'the row predicate is missing')
+    return code.slice(start, code.indexOf('$$;', start))
+  }
+
+  test('the predicate has definer rights and a pinned search_path', () => {
+    // Without both, delegating solves nothing: definer rights are the point,
+    // and an unpinned search_path would let a caller resolve `users` to a
+    // table of their own while running as the owner.
+    const fn = rowPredicate()
+    assert.ok(fn.includes('security definer'))
+    assert.ok(fn.includes('set search_path = public, pg_temp'))
+    // It decides from its arguments; it never reads the guarded table.
+    assert.equal(
+      /(from|join)\s+(public\.)?customer_review_requests\b/i.test(fn), false,
+      'the predicate must not query customer_review_requests',
+    )
+  })
+
   test('the request SELECT policy does not re-query the table it guards', () => {
     // The whole reason `.select('id')` above can work.
-    assert.equal(policy.includes('can_view_customer_review_request'), false)
+    assert.equal(/can_view_customer_review_request\(/.test(policy), false)
     assert.equal(/from\s+public\.customer_review_requests/.test(policy), false,
       'the policy selects from the table it guards')
   })
 
   test('it reads created_by off the candidate row', () => {
-    assert.ok(policy.includes('created_by = auth.uid()'))
+    // Passed as an argument, with the table named, so no column added to
+    // anything else in scope can rebind it.
+    assert.ok(policy.includes('customer_review_requests.created_by'))
+    assert.ok(policy.includes('can_view_customer_review_request_row('))
+    // And the policy must not reach into users itself: that would run as the
+    // caller and tie this module's visibility to that table's grants.
+    assert.equal(/\bfrom\s+(public\.)?users\b/i.test(policy), false)
   })
 
   test('it still admits exactly the same three people', () => {
-    assert.ok(policy.includes("u.role = 'admin'"), 'admin')
+    const fn = rowPredicate()
+    assert.ok(fn.includes("u.role = 'admin'"), 'admin')
     assert.ok(
-      policy.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"),
+      fn.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"),
       'verifier',
     )
+    assert.ok(fn.includes('p_created_by = p_user_id'), 'owner')
     // `use` opens the module; it does not disclose a colleague's customer.
-    assert.equal(policy.includes("'customer_review_requests', 'use'"), false)
+    assert.equal(fn.includes("'customer_review_requests', 'use'"), false)
   })
 
   test('it still requires an active employee, on every branch including the owner’s', () => {
     // The join is what carries this, and it sits OUTSIDE the three-way or —
     // which is the difference between "a deactivated employee keeps their own
     // rows" and "a deactivated employee keeps nothing".
-    assert.ok(policy.includes('u.is_active'))
-    const or = policy.indexOf('and (')
-    assert.ok(policy.indexOf('u.is_active') < or,
+    const fn = rowPredicate()
+    assert.ok(fn.includes('u.is_active'))
+    assert.ok(fn.indexOf('u.is_active') < fn.indexOf('and ('),
       'is_active must gate all three branches, not sit inside one of them')
   })
 
   test('nothing about it is unconditional', () => {
     assert.equal(/\btrue\b/.test(policy), false)
+    assert.equal(/\btrue\b/.test(rowPredicate()), false)
   })
 })
 

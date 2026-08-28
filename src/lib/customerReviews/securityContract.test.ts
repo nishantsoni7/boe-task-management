@@ -60,6 +60,7 @@ const byName = (name: string) => {
  */
 const CLIENT_CALLABLE = [
   'can_view_customer_review_request',
+  'can_view_customer_review_request_row',
   'can_edit_customer_review_request',
   'customer_review_text_steers',
   'transition_customer_review_request',
@@ -438,26 +439,36 @@ describe('who can read a request', () => {
   })
 
   test('the request table asks the same question WITHOUT re-reading itself', () => {
-    // The helper reaches back into public.customer_review_requests. Guarding
-    // that same table with it makes INSERT ... RETURNING impossible — the
-    // STABLE helper cannot see the row the statement is inserting — so the
-    // request policy spells the predicate out instead. Same people, one table
-    // touched, correct during the insert.
+    // The request-id helper reaches back into public.customer_review_requests,
+    // which makes INSERT ... RETURNING impossible. Spelling the predicate out
+    // inline in the policy instead fixes that but reads public.users as the
+    // CALLER, binding this module to another table's grants. The policy
+    // therefore delegates to a definer-rights predicate that takes created_by
+    // as a value.
     const body = code.slice(code.indexOf('create policy "customer_review_requests_select"'))
     const policy = body.slice(0, body.indexOf(';'))
 
-    assert.equal(policy.includes('can_view_customer_review_request'), false,
+    assert.equal(/can_view_customer_review_request\(/.test(policy), false,
       'the request SELECT policy must not re-query its own table')
-    assert.ok(policy.includes('created_by = auth.uid()'))
-    assert.ok(policy.includes("u.role = 'admin'"))
-    assert.ok(policy.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
-    assert.ok(policy.includes('u.is_active'), 'a deactivated employee keeps nothing')
-    assert.equal(policy.includes("'customer_review_requests', 'use'"), false)
-
-    // Exactly three branches, as in the helper: owner, admin, verifier.
-    const branches = policy.slice(policy.indexOf('and ('))
-    assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
+    assert.equal(/\bfrom\s+(public\.)?users\b/i.test(policy), false,
+      'the request SELECT policy must not read users as the caller')
+    assert.ok(policy.includes('can_view_customer_review_request_row('))
+    assert.ok(policy.includes('customer_review_requests.created_by'),
+      'the candidate column must be qualified')
     assert.equal(/\btrue\b/.test(policy), false)
+
+    // The predicate it delegates to carries the whole rule.
+    const fn = byName('can_view_customer_review_request_row').body
+    assert.ok(fn.includes('security definer'), 'must have definer rights')
+    assert.ok(fn.includes('set search_path = public, pg_temp'), 'must pin search_path')
+    assert.ok(fn.includes('p_created_by = p_user_id'))
+    assert.ok(fn.includes("u.role = 'admin'"))
+    assert.ok(fn.includes("resolve_permission(p_user_id, 'customer_review_requests', 'verify')"))
+    assert.ok(fn.includes('u.is_active'), 'a deactivated employee keeps nothing')
+    assert.equal(fn.includes("'customer_review_requests', 'use'"), false)
+    // Three branches: owner, admin, verifier.
+    const branches = fn.slice(fn.indexOf('and ('))
+    assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
   })
 
   test('the phone number, the invitation and the evidence share that one gate', () => {

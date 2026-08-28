@@ -104,16 +104,78 @@ create table public.users (
   employment_type           text        check (employment_type in ('permanent', 'contract'))
 );
 
--- NO ROW-LEVEL SECURITY IS ENABLED ON THIS TABLE, and that is a deliberate
--- deviation rather than an oversight.
+-- ─── 3. Production's actual posture on public.users ──────────────────────────
 --
--- Production does restrict public.users — row security plus column-level GRANTs
--- from 20260813000000. Reproducing that here would mean inventing a policy this
--- repository does not contain, which is exactly what this baseline must not do.
--- Supabase's default privileges leave a new public table readable by
--- `authenticated`, which is what lets the application's profile read work.
+-- THIS SECTION WAS ADDED AFTER AN INDEPENDENT REVIEW, and the reason is worth
+-- recording because the omission had already misled one round of testing.
 --
--- This makes the local users table MORE permissive than production. It does not
--- affect any claim being tested: every Customer Review Outreach predicate reads
--- users from inside a SECURITY DEFINER function, where row security is bypassed
--- in production too.
+-- The first version of this baseline left public.users wide open and said so:
+-- "more permissive than production, but it does not affect any claim being
+-- tested, because every module predicate reads users from inside a SECURITY
+-- DEFINER function". That was true when it was written. It stopped being true
+-- the moment the request SELECT policy was rewritten to read users inline —
+-- and because this baseline could not tell the difference, a full green run
+-- proved nothing about whether that policy could read users in production at
+-- all. A test environment that cannot fail in the way production would is not
+-- evidence.
+--
+-- So the two real restrictions are reproduced here, quoted from the migrations
+-- that impose them. Both are still repository-sourced; nothing was taken from
+-- production.
+--
+--   supabase/migrations/20260812000000_attendance_payroll_isolation.sql
+--     CREATE POLICY "Users can read all active users" ON public.users
+--       FOR SELECT TO authenticated USING (is_active = true);
+--
+--   supabase/migrations/20260813000000_users_private_column_grants.sql
+--     REVOKE SELECT ON public.users FROM anon, authenticated;
+--     GRANT  SELECT (<named columns>) ON public.users TO authenticated;
+--
+-- ONE HONEST GAP REMAINS. No migration in this repository enables row security
+-- on public.users — the table predates the chain, so the ENABLE lives outside
+-- it. That it IS enabled in production is inferred from 20260812000000's own
+-- comment, which describes the policy as what "stops the anon key returning the
+-- whole employee directory". Enabling it here matches that description. If
+-- production turns out NOT to have it enabled, this baseline is stricter than
+-- production, which is the safe direction to be wrong in.
+
+alter table public.users enable row level security;
+
+create policy "Users can read all active users"
+  on public.users
+  for select
+  to authenticated
+  using (is_active = true);
+
+-- Column-level SELECT, mirroring 20260813000000. The list is the intersection of
+-- that migration's grant with the columns this baseline actually creates —
+-- monthly_salary, payroll_notes, performance_tracking_note, exit_date and
+-- performance_tracking_enabled are absent from the table above, so they cannot
+-- be named here. Every column the application's own profile read needs
+-- (USER_PROFILE_COLUMNS in src/lib/users/safeColumns.ts) is present.
+revoke select on public.users from anon, authenticated;
+
+grant select (
+  id,
+  full_name,
+  email,
+  phone,
+  role,
+  team,
+  position,
+  is_active,
+  created_at,
+  updated_at,
+  employee_code,
+  joining_date,
+  office_timing,
+  fingerprint_employee_code,
+  payroll_active,
+  employment_type,
+  is_deleted,
+  deleted_at,
+  deleted_by,
+  deletion_scheduled_at
+) on public.users to authenticated;
+
+revoke insert, update, delete on public.users from anon, authenticated;

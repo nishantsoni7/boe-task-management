@@ -159,52 +159,116 @@ begin
   return n;
 end $$;
 
--- ─── 1. The policy must not look its own table up again ────────────────────
+-- ─── 1. How the request policy is allowed to decide ────────────────────────
 --
--- Checked against pg_policies rather than against the migration text, so it
--- describes the database that exists rather than the file that built it.
+-- Read from pg_policies and pg_proc, so this describes the database that
+-- exists rather than the file that built it.
+--
+-- Two distinct mistakes are being guarded against, and the second one was
+-- introduced while fixing the first:
+--
+--   A. Resolving the request by SELECTing it. The request-id helper is STABLE
+--      and re-reads this very table, so the row an INSERT ... RETURNING is
+--      about to return is invisible to it: policy false, insert refused 42501.
+--
+--   B. Reading public.users inline in the policy body. A policy runs as the
+--      CALLER, so that binds this module's visibility to another table's
+--      grants and row security. It works today only because authenticated
+--      happens to hold column SELECT on id/role/is_active and the users row
+--      policy happens to agree with this predicate. Neither is this module's
+--      to rely on.
 
 do $$
-declare v_qual text;
+declare v_qual text; v_src text;
 begin
+  -- Filtered by policyname: a second SELECT policy added later would otherwise
+  -- make SELECT INTO assert against whichever row it happened to get.
   select coalesce(qual, '') into v_qual
   from pg_policies
-  where schemaname = 'public' and tablename = 'customer_review_requests' and cmd = 'SELECT';
+  where schemaname = 'public'
+    and tablename  = 'customer_review_requests'
+    and cmd        = 'SELECT'
+    and policyname = 'customer_review_requests_select';
 
   if v_qual is null or v_qual = '' then
-    raise exception 'customer_review_requests has no SELECT policy';
+    raise exception 'customer_review_requests_select is missing';
   end if;
-  if v_qual like '%can_view_customer_review_request%' then
+
+  -- (A) matched on the exact name, so the _row variant does not count.
+  if v_qual ~ 'can_view_customer_review_request\(' then
     raise exception 'the request SELECT policy re-queries its own table; INSERT ... RETURNING cannot pass it';
   end if;
-  if v_qual not like '%is_active%' then
-    raise exception 'the request SELECT policy no longer requires an active user';
+
+  -- (B)
+  if v_qual ~* '\mfrom\M\s+(public\.)?users\M' then
+    raise exception 'the request SELECT policy reads public.users as the caller; it must go through the definer predicate';
   end if;
-  if v_qual not like '%created_by%' then
-    raise exception 'the request SELECT policy no longer reads created_by off the candidate row';
+
+  if v_qual not like '%can_view_customer_review_request_row%' then
+    raise exception 'the request SELECT policy does not use can_view_customer_review_request_row()';
   end if;
+
   if v_qual ~ '\mtrue\M' then
     raise exception 'the request SELECT policy contains an unconditional branch';
   end if;
 
-  -- The CHILD tables must still go through the shared helper: they ask about
-  -- another table's row, where the lookup is both correct and necessary.
+  raise notice 'PASS  1a. the request policy neither re-reads its table nor reads users as the caller';
+
+  -- The predicate it delegates to must have definer rights and a pinned
+  -- search_path, or delegating solved nothing.
+  if not exists (
+    select 1 from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+    where n.nspname = 'public'
+      and f.proname = 'can_view_customer_review_request_row'
+      and f.prosecdef
+      and array_to_string(coalesce(f.proconfig, '{}'), ',') like '%search_path=public, pg_temp%'
+  ) then
+    raise exception 'can_view_customer_review_request_row is missing, not SECURITY DEFINER, or does not pin search_path';
+  end if;
+
+  select coalesce(prosrc, '') into v_src
+  from pg_proc f join pg_namespace n on n.oid = f.pronamespace
+  where n.nspname = 'public' and f.proname = 'can_view_customer_review_request_row';
+
+  -- FROM/JOIN rather than any occurrence: the body legitimately contains the
+  -- string as resolve_permission()'s module key.
+  if v_src ~* '(from|join)\s+(public\.)?customer_review_requests\M' then
+    raise exception 'can_view_customer_review_request_row queries customer_review_requests; it must decide from its arguments';
+  end if;
+  if v_src not like '%is_active%' then
+    raise exception 'can_view_customer_review_request_row no longer requires an active user';
+  end if;
+
+  -- Reachable by a signed-in employee, and by nobody else.
+  if not has_function_privilege('authenticated',
+       'public.can_view_customer_review_request_row(uuid,uuid)', 'EXECUTE') then
+    raise exception 'authenticated cannot execute the row predicate, so the policy cannot pass';
+  end if;
+  if has_function_privilege('anon',
+       'public.can_view_customer_review_request_row(uuid,uuid)', 'EXECUTE') then
+    raise exception 'anon can execute the row predicate';
+  end if;
+
+  raise notice 'PASS  1b. the row predicate is definer-rights, path-pinned, argument-only, and not anon-callable';
+
+  -- The CHILD tables must still go through the request-id helper: they ask
+  -- about another table's row, where the lookup is correct and necessary.
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'customer_review_request_photos'
-      and cmd = 'SELECT' and qual like '%can_view_customer_review_request%'
+      and cmd = 'SELECT' and qual ~ 'can_view_customer_review_request\('
   ) then
-    raise exception 'the photo SELECT policy no longer uses the shared predicate';
+    raise exception 'the photo SELECT policy no longer uses the request-id predicate';
   end if;
   if not exists (
     select 1 from pg_policies
     where schemaname = 'public' and tablename = 'customer_review_request_events'
-      and cmd = 'SELECT' and qual like '%can_view_customer_review_request%'
+      and cmd = 'SELECT' and qual ~ 'can_view_customer_review_request\('
   ) then
-    raise exception 'the event SELECT policy no longer uses the shared predicate';
+    raise exception 'the event SELECT policy no longer uses the request-id predicate';
   end if;
 
-  raise notice 'PASS  1. the request policy decides on the row; the children still share the predicate';
+  raise notice 'PASS  1c. the child tables still share the request-id predicate';
 end $$;
 
 -- ─── 2. THE DECISIVE REGRESSION: INSERT ... RETURNING ──────────────────────
@@ -389,72 +453,190 @@ begin
   raise notice 'PASS  5c. storage visibility is unchanged';
 end $$;
 
--- ─── 6. The INSERT policy still pins the sensitive columns ─────────────────
+-- ─── 6. What a create is allowed to claim ──────────────────────────────────
 --
--- The correction changed reading, not writing. Asserted here because a create
--- path that has just been unblocked is exactly when nobody re-checks what a
--- create is allowed to claim.
+-- The correction changed reading, not writing — which is exactly when nobody
+-- re-checks writing. Every column the INSERT policy pins is exercised, one at
+-- a time, and each refusal must be the RIGHT refusal.
+--
+-- WHY THE SQLSTATE IS ASSERTED. These began as "exception when others then
+-- pass", which is a test that cannot fail for the right reason: a typo, a
+-- missing grant, a constraint firing first, an absent function — all of them
+-- look identical to a policy doing its job. 42501 is the policy. Anything
+-- else is reported as a wrong-reason failure rather than a pass. The row
+-- count is checked too, because "it raised" and "it wrote nothing" are two
+-- claims.
+--
+-- Several cases set a timestamp and its paired actor together on purpose: the
+-- _fields_consistent CHECK constraints would otherwise refuse first with
+-- 23514, and this section is about the policy, not about the constraints.
 
-do $$
-declare v_ok boolean;
+create or replace function pg_temp.refused(p_user uuid, p_sql text, p_label text)
+returns void language plpgsql as $$
+declare v_state text; v_reached boolean := false; v_before bigint; v_after bigint;
 begin
+  select count(*) into v_before from public.customer_review_requests;
   execute format('set local request.jwt.claims = %L',
-                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000002',
-                                   'role', 'authenticated')::text);
+                 json_build_object('sub', p_user, 'role', 'authenticated')::text);
   set local role authenticated;
   begin
-    insert into public.customer_review_requests
-      (customer_name, created_by, status, sent_at, verified_at)
-    values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'verified', now(), now());
-    v_ok := false;
-  exception when others then v_ok := true;
+    execute p_sql;
+    v_reached := true;
+  exception when others then
+    v_state := sqlstate;
   end;
   reset role;
-  if not v_ok then
-    raise exception 'a client created a request already claiming sent and verified';
+  select count(*) into v_after from public.customer_review_requests;
+
+  if v_reached then
+    raise exception 'NOT REFUSED: %', p_label;
   end if;
-  raise notice 'PASS  6a. a create cannot claim sent/verified status or timestamps';
+  if v_state <> '42501' then
+    raise exception 'refused, but with % rather than 42501 — wrong reason: %', v_state, p_label;
+  end if;
+  if v_after <> v_before then
+    raise exception 'refused, yet a row appeared: %', p_label;
+  end if;
+  raise notice 'PASS      42501, no row  — %', p_label;
 end $$;
 
 do $$
-declare v_ok boolean;
 begin
-  execute format('set local request.jwt.claims = %L',
-                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000002',
-                                   'role', 'authenticated')::text);
-  set local role authenticated;
-  begin
-    insert into public.customer_review_requests (customer_name, created_by, status)
-    values ('Fixture Impersonation', 'ffffffff-0000-4000-8000-000000000003', 'draft');
-    v_ok := false;
-  exception when others then v_ok := true;
-  end;
-  reset role;
-  if not v_ok then
-    raise exception 'a client created a request owned by somebody else';
-  end if;
-  raise notice 'PASS  6b. a create cannot be attributed to another employee';
+  raise notice 'PASS  6. every column the INSERT policy pins, refused one at a time:';
 end $$;
 
 do $$
-declare v_ok boolean;
 begin
-  -- Somebody with no `use` grant cannot create at all, RETURNING or not.
-  execute format('set local request.jwt.claims = %L',
-                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000005',
-                                   'role', 'authenticated')::text);
-  set local role authenticated;
-  begin
-    insert into public.customer_review_requests (customer_name, created_by, status)
-    values ('Fixture Unauthorized', 'ffffffff-0000-4000-8000-000000000005', 'draft');
-    v_ok := false;
-  exception when others then v_ok := true;
-  end;
-  reset role;
-  if not v_ok then
-    raise exception 'an employee without `use` created a request';
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, verified_at, verified_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'verified', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'status, with its timestamps satisfied so only the policy can object');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, sent_at, sent_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'sent_at + sent_by');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, responded_at, responded_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'responded_at + responded_by');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, verified_at, verified_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'verified_at + verified_by');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, closed_at, closed_by, verified_at, verified_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now(), 'ffffffff-0000-4000-8000-000000000002', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'closed_at + closed_by');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, cancelled_at, cancelled_by)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now(), 'ffffffff-0000-4000-8000-000000000002')$q$,
+    'cancelled_at + cancelled_by');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, whatsapp_opened_at)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', now())$q$,
+    'whatsapp_opened_at');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, whatsapp_opened_count)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', 1)$q$,
+    'whatsapp_opened_count');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, review_public_url)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', 'https://example.test/published')$q$,
+    'review_public_url');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, verification_note)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', 'checked by me')$q$,
+    'verification_note');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests
+         (customer_name, created_by, status, cancel_reason)
+       values ('Fixture Forged', 'ffffffff-0000-4000-8000-000000000002', 'draft', 'never mind')$q$,
+    'cancel_reason');
+
+  -- ...and the two identity rules, which are not about columns but about who.
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000002',
+    $q$insert into public.customer_review_requests (customer_name, created_by, status)
+       values ('Fixture Impersonation', 'ffffffff-0000-4000-8000-000000000003', 'draft')$q$,
+    'a create attributed to another employee');
+  perform pg_temp.refused('ffffffff-0000-4000-8000-000000000005',
+    $q$insert into public.customer_review_requests (customer_name, created_by, status)
+       values ('Fixture Unauthorized', 'ffffffff-0000-4000-8000-000000000005', 'draft')$q$,
+    'a create by an employee without the use permission');
+end $$;
+
+-- ─── 6b. The predicate survives public.users being tightened ───────────────
+--
+-- THE POINT OF THE WHOLE DEFINER ARRANGEMENT, demonstrated rather than argued.
+--
+-- The baseline gives public.users the row security and column grants it has in
+-- production. Those happen to be compatible with reading users as the caller,
+-- which is why an inline policy passed every earlier test. This asks the
+-- question that matters instead: what happens when they are NOT compatible?
+--
+-- Below, the users read policy is dropped — row security stays on, so no
+-- authenticated caller can read any users row. That is a plausible future
+-- tightening, not a contrived one.
+
+do $$
+declare v_req uuid := 'aaaaaaaa-0000-4000-8000-000000000001'; v_seen integer;
+begin
+  drop policy "Users can read all active users" on public.users;
+
+  -- The shipped policy delegates to a SECURITY DEFINER predicate, so it reads
+  -- users with the definer's rights and is unaffected.
+  v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
+  if v_seen <> 1 then
+    raise exception 'with users locked down, the owner lost sight of their own request (saw %)', v_seen;
   end if;
-  raise notice 'PASS  6c. an employee without `use` cannot create one';
+  raise notice 'PASS  6b-i.  users fully locked down, and the owner still sees their request';
+
+  -- Now the same policy written the other way — reading users inline, as the
+  -- caller. This is the version an earlier round of this work shipped.
+  drop policy "customer_review_requests_select" on public.customer_review_requests;
+  create policy "customer_review_requests_select" on public.customer_review_requests
+    for select to authenticated
+    using (
+      exists (
+        select 1 from public.users u
+        where u.id = auth.uid() and u.is_active
+          and (customer_review_requests.created_by = auth.uid()
+               or u.role = 'admin'
+               or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify'))
+      )
+    );
+
+  v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
+  if v_seen <> 0 then
+    raise exception 'the inline-users policy was expected to go blind here, but saw % row(s) — this test no longer proves anything', v_seen;
+  end if;
+  raise notice 'PASS  6b-ii. the same policy reading users inline goes blind — which is what the definer predicate avoids';
+
+  -- Put both back.
+  drop policy "customer_review_requests_select" on public.customer_review_requests;
+  create policy "customer_review_requests_select" on public.customer_review_requests
+    for select to authenticated
+    using (
+      public.can_view_customer_review_request_row(
+        customer_review_requests.created_by, auth.uid())
+    );
+  create policy "Users can read all active users" on public.users
+    for select to authenticated using (is_active = true);
+
+  v_seen := pg_temp.visible_to('ffffffff-0000-4000-8000-000000000002', v_req);
+  if v_seen <> 1 then
+    raise exception 'restoring the shipped policy did not restore visibility (saw %)', v_seen;
+  end if;
+  raise notice 'PASS  6b-iii. both restored, and visibility is back';
 end $$;
 
 -- ─── 7. Clean up ───────────────────────────────────────────────────────────
