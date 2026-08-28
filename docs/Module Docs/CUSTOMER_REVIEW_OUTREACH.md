@@ -99,7 +99,8 @@ employee held, and turning it on would have written nothing.
 | --- | --- |
 | Launcher card | `src/app/modules/page.tsx` → `deriveCustomerReviewCapabilities(...).canAccessModule`, resolved for the **signed-in** user (View As lends nothing) |
 | Route entry (all four screens) | `src/app/customer-reviews/layout.tsx` → `hasPermission(..., 'use')` or `'verify'`, admin short-circuit, fails closed on a missing or inactive profile |
-| Reading any request, photo or event | RLS `SELECT` policies → `can_view_customer_review_request()` |
+| Reading a request | RLS `SELECT` policy on `customer_review_requests`, spelled out on the candidate row: an active user who is the owner, an admin, or holds `verify` |
+| Reading a photo or an event | RLS `SELECT` policies → `can_view_customer_review_request()`, which asks the same question about the parent request |
 | Creating a request | RLS `INSERT` policy: `created_by = auth.uid()`, `status = 'draft'`, no lifecycle field pre-set, and `use` (or admin) |
 | Editing a request | RLS `UPDATE` policy → `can_edit_customer_review_request()`, **plus a column grant** limiting writes to the ten form fields |
 | Any status change | `transition_customer_review_request()` (SECURITY DEFINER) — transition table, then permission, then prerequisites |
@@ -107,6 +108,20 @@ employee held, and turning it on would have written nothing.
 | Opening WhatsApp | `record_customer_review_whatsapp_opened()` — owner + `use`, status must be `ready_to_send`, prerequisites re-checked |
 | Recording evidence | `record_customer_review_evidence()` — owner + `use`, status `sent` or `customer_responded`, https only |
 | Photograph objects | Storage policies on `storage.objects`, keyed on the request id in the object path |
+
+> **Why the request table does not use the shared helper.**
+> `can_view_customer_review_request()` resolves a request by reading
+> `customer_review_requests`. Guarding that same table with it makes
+> `INSERT ... RETURNING` impossible: Postgres applies the SELECT policy to the
+> row an insert is about to return, and the helper is `STABLE`, so it runs
+> against the statement's own snapshot where that row does not yet exist — the
+> policy evaluates false and the insert is refused `42501`. PostgREST turns
+> `.select()` into `RETURNING`, so this made every create in the UI fail.
+> The request policy therefore states the predicate directly; the child tables
+> keep the helper, because for them it is a different table. The migration
+> asserts this at apply time, and
+> `supabase/tests/customer_review_request_visibility_assertions.sql` proves it
+> against a real database.
 
 **There are no API routes.** Enforcement is in the database — RLS plus SECURITY
 DEFINER functions — which is the pattern Meetings (20260814000000) and Order

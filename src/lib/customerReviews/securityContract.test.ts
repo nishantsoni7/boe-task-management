@@ -427,15 +427,37 @@ describe('who can read a request', () => {
     assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
   })
 
-  test('every table in the module reads through that one predicate', () => {
+  test('the child tables read through that one predicate', () => {
     for (const policy of [
-      'customer_review_requests_select',
       'customer_review_photos_select',
       'customer_review_events_select',
     ]) {
       const body = code.slice(code.indexOf(`create policy "${policy}"`))
       assert.ok(body.slice(0, body.indexOf(';')).includes('can_view_customer_review_request'), policy)
     }
+  })
+
+  test('the request table asks the same question WITHOUT re-reading itself', () => {
+    // The helper reaches back into public.customer_review_requests. Guarding
+    // that same table with it makes INSERT ... RETURNING impossible — the
+    // STABLE helper cannot see the row the statement is inserting — so the
+    // request policy spells the predicate out instead. Same people, one table
+    // touched, correct during the insert.
+    const body = code.slice(code.indexOf('create policy "customer_review_requests_select"'))
+    const policy = body.slice(0, body.indexOf(';'))
+
+    assert.equal(policy.includes('can_view_customer_review_request'), false,
+      'the request SELECT policy must not re-query its own table')
+    assert.ok(policy.includes('created_by = auth.uid()'))
+    assert.ok(policy.includes("u.role = 'admin'"))
+    assert.ok(policy.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"))
+    assert.ok(policy.includes('u.is_active'), 'a deactivated employee keeps nothing')
+    assert.equal(policy.includes("'customer_review_requests', 'use'"), false)
+
+    // Exactly three branches, as in the helper: owner, admin, verifier.
+    const branches = policy.slice(policy.indexOf('and ('))
+    assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
+    assert.equal(/\btrue\b/.test(policy), false)
   })
 
   test('the phone number, the invitation and the evidence share that one gate', () => {

@@ -235,9 +235,9 @@ create table public.customer_review_requests (
 --                is the query this table will grow into.
 --
 -- An owner index was considered and DELIBERATELY NOT created. Ownership is
--- resolved by can_view_customer_review_request(), which looks a single row up by
--- primary key — it never scans on created_by — so the index would have served no
--- query that exists.
+-- decided by the SELECT policy in §6, which compares created_by on the row it is
+-- already looking at — it never scans on created_by — so the index would have
+-- served no query that exists.
 create index customer_review_requests_created_idx on public.customer_review_requests (created_at desc);
 create index customer_review_requests_status_idx  on public.customer_review_requests (status, created_at desc);
 
@@ -480,9 +480,48 @@ alter table public.customer_review_request_events enable row level security;
 
 -- ── customer_review_requests ──
 
+-- THIS POLICY ASKS ABOUT THE ROW IT IS GIVEN, and it must never go back to the
+-- table to find it.
+--
+-- It reads like a job for can_view_customer_review_request(), and it was one.
+-- That helper answers the same question — and is still the right answer for the
+-- child tables and the bucket below, which are asking about a DIFFERENT table's
+-- row. But it answers it by looking the request up in
+-- public.customer_review_requests, and here that is the very table being
+-- guarded. On a plain SELECT the lookup is merely redundant. On
+-- `INSERT ... RETURNING` it is fatal:
+--
+--   Postgres applies the SELECT policy to the row an INSERT is about to return.
+--   The helper is STABLE, so it runs against the statement's own snapshot — and
+--   the row being inserted is not in that snapshot. The lookup finds nothing,
+--   the policy evaluates false, and the INSERT is refused with 42501 "new row
+--   violates row-level security policy". Every time, for everybody, including
+--   an admin, with nothing wrong with the payload.
+--
+-- PostgREST turns .select() into RETURNING, so that was every create in the UI.
+--
+-- Written out below, the predicate reads `created_by` straight off the
+-- candidate row. Same three people, same active-user requirement, one table
+-- touched instead of two, and correct during the statement that inserts the row.
 create policy "customer_review_requests_select" on public.customer_review_requests
   for select to authenticated
-  using (public.can_view_customer_review_request(id, auth.uid()));
+  using (
+    -- The users row is joined ONCE and gates all three branches, including the
+    -- owner's: a deactivated employee keeps nothing, not even their own work.
+    -- (auth.uid() being null makes this match no user and the policy false.)
+    exists (
+      select 1
+      from public.users u
+      where u.id = auth.uid()
+        and u.is_active
+        and (
+          -- `created_by` is the candidate row's own column, not a lookup.
+          created_by = auth.uid()
+          or u.role = 'admin'
+          or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
+        )
+    )
+  );
 
 -- A request is born a draft, owned by its creator, claiming nothing.
 create policy "customer_review_requests_insert" on public.customer_review_requests
@@ -1483,6 +1522,32 @@ begin
     and (coalesce(qual, '') = 'true' or coalesce(with_check, '') = 'true');
   if v_n <> 0 then
     raise exception '% Customer Review Outreach polic(ies) are USING (true)', v_n;
+  end if;
+
+  -- THE REQUEST'S OWN SELECT POLICY MUST NOT LOOK THE REQUEST UP AGAIN.
+  --
+  -- can_view_customer_review_request() is correct for the child tables and the
+  -- bucket, which ask about another table's row. On customer_review_requests
+  -- itself it re-queries the table being guarded, which is invisible on a plain
+  -- SELECT and fatal on INSERT ... RETURNING: the helper is STABLE, the new row
+  -- is not in its snapshot, and the insert is refused 42501. Asserted because
+  -- the mistake is a one-word convenience away and its symptom points at the
+  -- payload rather than at the policy.
+  select coalesce(qual, '') into v_bad
+  from pg_policies
+  where schemaname = 'public'
+    and tablename  = 'customer_review_requests'
+    and cmd        = 'SELECT';
+
+  if v_bad like '%can_view_customer_review_request%' then
+    raise exception 'customer_review_requests_select re-queries its own table; INSERT ... RETURNING cannot pass it';
+  end if;
+
+  -- ...and it must still gate on an active user rather than on ownership alone,
+  -- so that inlining the predicate did not quietly hand a deactivated employee
+  -- their own rows back.
+  if v_bad not like '%is_active%' then
+    raise exception 'customer_review_requests_select no longer checks users.is_active';
   end if;
 
   -- The bucket is private.

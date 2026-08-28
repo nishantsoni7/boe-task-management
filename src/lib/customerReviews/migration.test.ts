@@ -1,12 +1,19 @@
 /**
  * The migration, audited against the SQL text.
  *
- * WHY A TEXT AUDIT. This migration has NOT been applied to any database — not
- * locally, not remotely — so there is no schema to introspect. What can be
- * proved without one is that the file says what it must say: RLS on every
- * table, no unconditional policy, an append-only trail, a column grant that
- * cannot reach `status`, storage policies keyed on the request id, and a
- * transition table identical to the browser's copy in ./status.ts.
+ * WHY A TEXT AUDIT. This migration is not applied to production, and CI has no
+ * database to introspect, so what this file can prove is that the SQL says what
+ * it must say: RLS on every table, no unconditional policy, an append-only
+ * trail, a column grant that cannot reach `status`, storage policies keyed on
+ * the request id, and a transition table identical to the browser's copy in
+ * ./status.ts.
+ *
+ * AND WHY A TEXT AUDIT IS NOT ENOUGH. Everything here passed while the module's
+ * create button was impossible: the request SELECT policy re-read its own
+ * table, so `INSERT ... RETURNING` could never satisfy it. Reading the SQL did
+ * not reveal that; executing it did, immediately. The behavioural counterpart
+ * is supabase/tests/customer_review_request_visibility_assertions.sql, and the
+ * two are meant to be run together.
  *
  * That last one is the point of the whole file. The UI's transition table and
  * the database's are two copies of one rule, and a divergence would mean either
@@ -130,9 +137,9 @@ describe('row-level security', () => {
     ))
   })
 
-  test('reading a request is decided in one place, by one function', () => {
+  test('the CHILD tables read through the shared predicate', () => {
+    // They ask about another table's row, which is what the helper is for.
     for (const policy of [
-      'customer_review_requests_select',
       'customer_review_photos_select',
       'customer_review_events_select',
     ]) {
@@ -141,6 +148,47 @@ describe('row-level security', () => {
         `${policy} does not use the shared predicate`,
       )
     }
+  })
+
+  test('the request table decides on the row it is given, not on a second lookup', () => {
+    // THE ONE THAT WAS WRONG. can_view_customer_review_request() resolves a
+    // request by selecting from public.customer_review_requests. On the child
+    // tables that is a different table. Here it is the table being guarded, and
+    // because the helper is STABLE it runs against the statement's own snapshot
+    // — where the row an `INSERT ... RETURNING` is about to return does not yet
+    // exist. The lookup finds nothing, the policy is false, and the insert is
+    // refused 42501. PostgREST turns .select() into RETURNING, so that was
+    // every create in the UI.
+    const policy = statement('create policy "customer_review_requests_select"')
+
+    assert.equal(
+      policy.includes('can_view_customer_review_request'), false,
+      'the request SELECT policy must not re-query the table it guards',
+    )
+
+    // The same three branches, read off the candidate row.
+    assert.ok(policy.includes('created_by = auth.uid()'), 'owner branch')
+    assert.ok(policy.includes("u.role = 'admin'"), 'admin branch')
+    assert.ok(
+      policy.includes("resolve_permission(auth.uid(), 'customer_review_requests', 'verify')"),
+      'verifier branch',
+    )
+    // The use grant still buys module entry, not sight of everybody.
+    assert.equal(policy.includes("'customer_review_requests', 'use'"), false)
+
+    // And still gated on an active employee — inlining a predicate is exactly
+    // where that check goes missing.
+    assert.ok(policy.includes('u.is_active'), 'must still require an active user')
+    assert.equal(/\btrue\b/.test(policy), false, 'no unconditional branch')
+  })
+
+  test('the migration asserts that mistake cannot come back', () => {
+    // Belt and braces: the file re-checks its own policy at apply time, so a
+    // future edit that reinstates the helper fails the migration rather than
+    // shipping a module whose create button never works.
+    assert.ok(code.includes(
+      "raise exception 'customer_review_requests_select re-queries its own table",
+    ))
   })
 })
 
