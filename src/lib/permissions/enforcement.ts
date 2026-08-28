@@ -61,15 +61,22 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
 
   // Both actions this module registers are enforced in the database before they
   // are enforced anywhere else (20261017000000):
-  //   use    → the route guard's resolve_permission call, the INSERT/UPDATE/DELETE
-  //            policies on customer_review_requests, the photo policies, the
-  //            storage policies, and the ownership branch of
-  //            transition_customer_review_request().
-  //   verify → the verified/closed branch of that same transition function,
-  //            and can_view_customer_review_request(), which is what lets a
-  //            verifier read outreach they did not raise.
+  //   use    → the route guard's resolve_permission call, the SELECT policy on
+  //            customer_review_test_cards (through
+  //            can_use_customer_review_test_cards()), the screenshot and
+  //            storage policies, book_customer_review_test_card(), and the
+  //            holder branch of transition_customer_review_test_card().
+  //   verify → the verified/returned branch of that same transition function,
+  //            and can_view_customer_review_test_card_row(), which is what lets
+  //            a verifier read tests they did not run.
   // In the screen: src/app/customer-reviews/layout.tsx (entry), the launcher
   // card, and src/lib/permissions/customerReviewOutreach.ts.
+  //
+  // NOTE ON THE KEY. The module key is still `customer_review_requests` while
+  // the tables are named for test cards. That is deliberate — the key is what
+  // existing Control Center grants are written against — and it is stated here
+  // because this file is where somebody tracing enforcement would notice the
+  // mismatch and wonder whether it is a bug.
   //
   // PREREQUISITE: this claim holds once 20261017000000 is APPLIED. The module
   // is unreachable until then — the resolver returns no rows for an

@@ -33,9 +33,7 @@ const stripComments = (source: string): string =>
 
 const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
 const route = read('src/app/api/customer-reviews/photos/route.ts')
-const manager = stripComments(readFileSync(join(ROOT, 'src/components/customerReviews/PhotoManager.tsx'), 'utf8'))
-const detail = readFileSync(join(ROOT, 'src/app/customer-reviews/[id]/RequestDetailScreen.tsx'), 'utf8')
-const edit = readFileSync(join(ROOT, 'src/app/customer-reviews/[id]/edit/EditRequestScreen.tsx'), 'utf8')
+const manager = stripComments(readFileSync(join(ROOT, 'src/components/customerReviews/ScreenshotManager.tsx'), 'utf8'))
 
 const migration = readFileSync(
   join(ROOT, 'supabase/migrations/20261017000000_customer_review_outreach.sql'), 'utf8',
@@ -55,41 +53,43 @@ function fnBody(name: string): string {
 
 describe('a browser cannot delete an object or a metadata row', () => {
   test('there is no DELETE policy on the metadata table', () => {
-    assert.equal(sql.includes('create policy "customer_review_photos_delete"'), false)
+    assert.equal(sql.includes('create policy "customer_review_test_screenshots_delete"'), false)
+    // `on <table>` sits on the line after the policy name, so the whitespace
+    // between them has to be allowed to include a newline.
     const policies = [...sql.matchAll(
-      /create policy "([^"]+)" on public\.customer_review_request_photos\s+for (\w+)/g,
+      /create policy "([^"]+)"\s+on public\.customer_review_test_card_screenshots\s+for (\w+)/g,
     )]
     assert.deepEqual(policies.map(p => p[2]), ['select'],
       'the metadata table must be SELECT-only for clients')
   })
 
   test('there is no DELETE policy on the bucket', () => {
-    assert.equal(sql.includes('create policy "customer_review_photos_storage_delete"'), false)
+    assert.equal(sql.includes('create policy "customer_review_test_screenshots_storage_delete"'), false)
   })
 
   test('THE BUCKET HAS EXACTLY ONE CLIENT POLICY, AND IT READS', () => {
-    const policies = [...sql.matchAll(/create policy "(customer_review_photos[^"]*)"\s*\n?\s*on storage\.objects\s+for (\w+)/g)]
+    const policies = [...sql.matchAll(/create policy "(customer_review_test[^"]*)"\s*\n?\s*on storage\.objects\s+for (\w+)/g)]
     assert.equal(policies.length, 1, `expected one, got: ${policies.map(p => p[1]).join(', ')}`)
     assert.equal(policies[0][2], 'select')
   })
 
   test('and the DELETE privilege is revoked, so a policy added later still fails', () => {
     assert.ok(sql.includes(
-      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate\n  on public.customer_review_test_card_screenshots from authenticated, anon',
     ))
   })
 
   test('the migration ASSERTS all of it at apply time', () => {
-    const assertions = sql.slice(sql.indexOf('do $$'))
+    const assertions = sql.slice(sql.indexOf('do $'))
     assert.ok(assertions.includes('has a DELETE policy; removal must go through the trusted route'))
-    assert.ok(assertions.includes('a client DELETE policy exists on the customer-review-photos bucket'))
+    assert.ok(assertions.includes('a client DELETE policy exists on the customer-review-test-screenshots bucket'))
     assert.ok(assertions.includes('it must have exactly one, for SELECT'))
-    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_request_photos', v_bad)"))
+    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_test_card_screenshots', v_col)"))
   })
 
   test('the component no longer deletes anything itself', () => {
     assert.equal(
-      /from\('customer_review_request_photos'\)[\s\S]{0,40}\.delete\(/.test(manager), false,
+      /from\('customer_review_test_card_screenshots'\)[\s\S]{0,40}\.delete\(/.test(manager), false,
       'the browser must not delete metadata',
     )
     assert.equal(
@@ -140,7 +140,7 @@ describe('the removal route', () => {
     const handler = route.slice(route.indexOf('export async function DELETE'))
     assert.ok(handler.includes('const reader: PhotoVisibilityReader'))
     assert.ok(handler.includes('await caller'))
-    assert.ok(handler.includes("from('customer_review_request_photos')"))
+    assert.ok(handler.includes("from('customer_review_test_card_screenshots')"))
   })
 
   test('AN ID IT CANNOT RESOLVE IS ANSWERED IDENTICALLY, whatever the reason', () => {
@@ -168,9 +168,9 @@ describe('the removal route', () => {
 
   test('the three steps happen in the order that makes a failure recoverable', () => {
     const handler = route.slice(route.indexOf('export async function DELETE'))
-    const mark = handler.indexOf("'begin_customer_review_photo_removal'")
+    const mark = handler.indexOf("'begin_customer_review_test_screenshot_removal'")
     const object = handler.indexOf('.remove([storagePath])')
-    const row = handler.indexOf("'finish_customer_review_photo_removal'")
+    const row = handler.indexOf("'finish_customer_review_test_screenshot_removal'")
     assert.ok(mark > 0 && object > mark && row > object,
       'mark, then object, then row')
   })
@@ -202,9 +202,9 @@ describe('the removal route', () => {
 
   test('the database refusals map to prewritten sentences, never to forwarded text', () => {
     const handler = route.slice(route.indexOf('export async function DELETE'))
-    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_LOCKED')"))
-    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_UNAUTHORIZED')"))
-    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_PHOTO_NOT_FOUND')"))
+    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_TEST_LOCKED')"))
+    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_TEST_UNAUTHORIZED')"))
+    assert.ok(handler.includes("code.includes('CUSTOMER_REVIEW_TEST_SCREENSHOT_NOT_FOUND')"))
     // The database's own message text is never returned.
     assert.equal(/fail\(\d+,\s*(markError|code|rowError|objectError)/.test(handler), false)
   })
@@ -214,8 +214,8 @@ describe('the removal route', () => {
 
 describe('the two SQL halves are unreachable from a browser', () => {
   const both = [
-    'begin_customer_review_photo_removal',
-    'finish_customer_review_photo_removal',
+    'begin_customer_review_test_screenshot_removal',
+    'finish_customer_review_test_screenshot_removal',
   ]
 
   test('neither is granted to authenticated or anon', () => {
@@ -240,9 +240,9 @@ describe('the two SQL halves are unreachable from a browser', () => {
     // begin_… takes p_actor_id because the ROUTE establishes the identity from
     // the session. A browser able to call it could name anybody.
     assert.ok(sql.includes('p_actor_id uuid'))
-    const assertions = sql.slice(sql.indexOf('do $$'))
+    const assertions = sql.slice(sql.indexOf('do $'))
     assert.ok(assertions.includes('is executable by a client role'))
-    assert.ok(assertions.includes('is not executable by service_role, so the removal route cannot work'))
+    assert.ok(assertions.includes('is not executable by service_role, so the trusted route cannot work'))
   })
 
   test('both pin search_path', () => {
@@ -252,51 +252,53 @@ describe('the two SQL halves are unreachable from a browser', () => {
   })
 
   test('the marking half locks the row, so two removals cannot both proceed', () => {
-    assert.ok(fnBody('begin_customer_review_photo_removal').includes('for update'))
-    assert.ok(fnBody('finish_customer_review_photo_removal').includes('for update'))
+    assert.ok(fnBody('begin_customer_review_test_screenshot_removal').includes('for update'))
+    assert.ok(fnBody('finish_customer_review_test_screenshot_removal').includes('for update'))
   })
 
   test('both are idempotent, so a retry after a lost response converges', () => {
-    assert.ok(fnBody('begin_customer_review_photo_removal').includes('if p.removal_started_at is null then'))
-    assert.ok(fnBody('finish_customer_review_photo_removal').includes('if not found then return true; end if;'))
+    assert.ok(fnBody('begin_customer_review_test_screenshot_removal').includes('if s.removal_started_at is null then'))
+    assert.ok(fnBody('finish_customer_review_test_screenshot_removal').includes('if not found then return true; end if;'))
   })
 })
 
 // ══ 4. WHO MAY REMOVE WHAT ══════════════════════════════════════════════════
 
 describe('authorization inside the marking function', () => {
-  const body = fnBody('begin_customer_review_photo_removal')
+  const body = fnBody('begin_customer_review_test_screenshot_removal')
 
   test('an inactive account is refused', () => {
     assert.ok(body.includes('where u.id = p_actor_id and u.is_active'))
     assert.ok(body.includes('if v_admin is null then'))
   })
 
-  test('a non-admin must own the request AND hold `use`', () => {
-    assert.ok(body.includes('r.created_by = p_actor_id'))
+  test('a non-admin must HOLD THE CARD and hold `use`', () => {
+    assert.ok(body.includes('c.booked_by = p_actor_id'))
     assert.ok(body.includes("resolve_permission(p_actor_id, 'customer_review_requests', 'use')"))
   })
 
-  test('a project photograph is removable only while the request is being prepared', () => {
-    assert.ok(body.includes("if r.status not in ('draft', 'ready_to_send') then"))
-  })
-
-  test('VERIFIED PROOF CANNOT BE WITHDRAWN BY THE EMPLOYEE', () => {
+  test('A TESTER MAY ONLY WITHDRAW WHILE THEY STILL HOLD THE CARD', () => {
     // Evidence a verifier has already acted on must not vanish from underneath
-    // their decision. This is the rule this whole branch exists for.
-    assert.ok(body.includes('if r.verified_at is not null then'))
-    assert.ok(body.includes('Verified proof can only be withdrawn by an administrator'))
+    // their decision — and evidence they are ABOUT to act on must not either.
+    // Once a card is submitted the screenshot is frozen for everyone but an
+    // administrator. This replaces the earlier two-kind ladder (a project
+    // photograph while preparing, proof until verification), which described a
+    // workflow that no longer exists.
+    assert.ok(body.includes("if c.status <> 'booked' then"))
+    assert.ok(body.includes('CUSTOMER_REVIEW_TEST_LOCKED'))
     // …and the check sits inside the non-admin branch, so a correction is still
     // possible.
     const nonAdmin = body.slice(body.indexOf('if not v_admin then'))
-    assert.ok(nonAdmin.includes('r.verified_at is not null'))
+    assert.ok(nonAdmin.includes("c.status <> 'booked'"))
   })
 
-  test('an admin may correct either kind at any status', () => {
-    // The entire status/kind ladder is inside `if not v_admin then`.
+  test('an admin may correct one at any status, verified included', () => {
+    // The entire status ladder is inside `if not v_admin then`. Without this an
+    // image uploaded by accident — a personal chat in shot, a colleague's number
+    // visible — would be permanently unremovable.
     assert.ok(body.includes('if not v_admin then'))
     const beforeLadder = body.slice(0, body.indexOf('if not v_admin then'))
-    assert.equal(beforeLadder.includes("r.status not in"), false)
+    assert.equal(beforeLadder.includes("c.status <>"), false)
   })
 
   test('every refusal carries an SQLSTATE a caller can branch on', () => {
@@ -309,27 +311,27 @@ describe('authorization inside the marking function', () => {
 // ══ 5. THE AUDIT ENTRY ══════════════════════════════════════════════════════
 
 describe('every removal is recorded, and credited to the right person', () => {
-  test('the delete trigger writes a photo_removed row', () => {
-    const trigger = fnBody('customer_review_photos_log_removal')
-    assert.ok(trigger.includes("'photo_removed'"))
-    assert.ok(sql.includes('before delete on public.customer_review_request_photos'))
+  test('the delete trigger writes a screenshot_removed row', () => {
+    const trigger = fnBody('customer_review_test_screenshots_log_removal')
+    assert.ok(trigger.includes("'screenshot_removed'"))
+    assert.ok(sql.includes('before delete on public.customer_review_test_card_screenshots'))
   })
 
   test('IT CREDITS removal_by, NOT the uploader', () => {
     // The delete arrives through the service role, where auth.uid() is null.
     // Falling back to the uploader would credit the removal to whoever added
     // the file, which is usually somebody else.
-    const trigger = fnBody('customer_review_photos_log_removal')
+    const trigger = fnBody('customer_review_test_screenshots_log_removal')
     assert.ok(trigger.includes('coalesce(old.removal_by, auth.uid(), old.uploaded_by)'))
   })
 
   test('removal_by is stamped by the marking function from the route’s actor', () => {
-    assert.ok(fnBody('begin_customer_review_photo_removal').includes('removal_by = p_actor_id'))
+    assert.ok(fnBody('begin_customer_review_test_screenshot_removal').includes('removal_by = p_actor_id'))
   })
 
   test('the trail itself remains unwritable by any client', () => {
     assert.ok(sql.includes(
-      'revoke insert, update, delete, truncate on public.customer_review_request_events from authenticated, anon',
+      'revoke insert, update, delete, truncate\n  on public.customer_review_test_card_events from authenticated, anon',
     ))
   })
 })
@@ -338,16 +340,26 @@ describe('every removal is recorded, and credited to the right person', () => {
 
 describe('consistency while a removal is in flight', () => {
   test('the two marking columns are consistent or absent together', () => {
-    assert.ok(sql.includes('constraint customer_review_photos_removal_fields_consistent check ('))
+    assert.ok(sql.includes('constraint customer_review_screenshot_removal_fields_consistent check ('))
   })
 
-  test('every screen that lists photographs filters a marked row out', () => {
-    for (const [label, source] of [['detail', detail], ['edit', edit]] as const) {
-      assert.ok(source.includes(".is('removal_started_at', null)"), `${label} does not filter`)
-    }
+  test('A MARKED ROW IS FILTERED OUT IN THE POLICY, not in each screen', () => {
+    // This USED to check that every screen listing images added
+    // .is('removal_started_at', null) to its query — the detail screen and the
+    // edit screen, one filter each. That was the weaker arrangement: it worked
+    // only while every author remembered, and a screen added later would have
+    // shown a half-removed image with nothing to say so.
+    //
+    // The filter now lives in the SELECT policy, so a marked row is invisible
+    // to every reader by construction, including one written next year. The
+    // screens no longer carry it because they no longer need to.
+    const policy = /create policy "customer_review_test_screenshots_select"[\s\S]*?;/.exec(sql)?.[0] ?? ''
+    assert.ok(policy, 'the screenshot SELECT policy is missing')
+    assert.ok(policy.includes('removal_started_at is null'),
+      'a half-removed screenshot would still be readable')
   })
 
-  test('the column is selected, so a filter cannot silently stop working', () => {
+  test('the column is still selected, so the state is visible to a reader', () => {
     const types = readFileSync(join(ROOT, 'src/lib/customerReviews/types.ts'), 'utf8')
     assert.ok(types.includes('removal_started_at'))
     assert.ok(types.includes("uploaded_at, removal_started_at'"))

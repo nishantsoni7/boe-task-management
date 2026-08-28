@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
 # ═════════════════════════════════════════════════════════════════════════════
-# TEST-ONLY RUNNER — Customer Review Outreach, isolated local database
+# TEST-ONLY RUNNER — Review Workflow Test (Internal), isolated local database
 # ═════════════════════════════════════════════════════════════════════════════
 #
 # WHAT THIS IS FOR
 # ----------------
-# customer_review_request_visibility_assertions.sql proves things no text audit
-# can — chiefly that an authorized employee's `INSERT ... RETURNING` is accepted,
-# which is the defect that shipped in 51d2f51 past 364 passing unit tests. That
-# file needs a database with the module's migration applied. This builds one.
+# customer_review_test_card_assertions.sql proves things no text audit can —
+# that booking is refused a second time with an exact SQLSTATE, that opening
+# WhatsApp moves no status, that a verified card leaves every active list, and
+# that an inactive account is refused everywhere. An earlier round of this module
+# shipped a policy defect past 364 passing unit tests precisely because nothing
+# executed the SQL. That file needs a database with the module's migration
+# applied. This builds one.
 #
 # It cannot use the repository's own migration history: the 210 files there
 # cannot construct a blank database, because public.users, tasks,
@@ -20,7 +23,12 @@
 #   1.   the test-only baseline (bootstrap/000_…_baseline.sql) — NOT a migration
 #   2-6. five real prerequisite migrations
 #   7.   the real pending migration, whose own assertion block runs inside it
-#   8.   the visibility assertions
+#   8.   the workflow assertions
+#   9.   the test-card FIXTURE — sixteen fictional cards, so the stack is ready
+#        for a manual walk-through. NOT a migration, and it carries its own
+#        refusal: it will not insert into a database without the disposable
+#        marker, so pointing psql at production and running it writes nothing.
+#        Clear it with supabase/fixtures/customer_review_test_cards_clear.sql.
 #
 # WHAT IT WILL NOT DO
 # -------------------
@@ -91,16 +99,18 @@
 # THE GUARDS HAVE THEIR OWN TESTS
 #   supabase/tests/run_customer_review_outreach_guard_tests.sh
 #   drives this script against a wrong container, a missing marker, a mismatched
-#   marker, a populated public schema, an existing auth identity and an existing
-#   storage object, and checks that each is refused with nothing written — then
-#   that the correct empty stack is accepted.
+#   marker, a populated public schema, an existing auth identity, an existing
+#   storage object and a database with no auth schema at all, and checks that
+#   each is refused with nothing written — then that the correct empty stack is
+#   accepted.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 BASELINE="supabase/tests/bootstrap/000_customer_review_module_baseline.sql"
-ASSERTIONS="supabase/tests/customer_review_request_visibility_assertions.sql"
+ASSERTIONS="supabase/tests/customer_review_test_card_assertions.sql"
+FIXTURE="supabase/fixtures/customer_review_test_cards.sql"
 PENDING="20261017000000_customer_review_outreach.sql"
 MIGRATIONS=(
   "20260609_create_attendance_records.sql"
@@ -166,7 +176,7 @@ require_disposable_stack || exit 1
 echo "══ marker present; public, auth, storage and the ledger are all empty — safe to build"
 echo
 
-echo "══ 1/8  baseline (TEST-ONLY, not a migration)"
+echo "══ 1/9  baseline (TEST-ONLY, not a migration)"
 echo "──      $BASELINE"
 psql_file "$REPO/$BASELINE"
 echo "        ✓ applied"
@@ -174,7 +184,7 @@ echo "        ✓ applied"
 step=2
 for m in "${MIGRATIONS[@]}"; do
   echo
-  echo "══ $step/8  $m"
+  echo "══ $step/9  $m"
   if [ "$m" = "$PENDING" ]; then
     # The file under review. It is allowed to differ from HEAD — but the
     # difference is printed rather than assumed, so a run can never quietly
@@ -195,10 +205,24 @@ for m in "${MIGRATIONS[@]}"; do
 done
 
 echo
-echo "══ 8/8  $ASSERTIONS"
+echo "══ 8/9  $ASSERTIONS"
 psql_file "$REPO/$ASSERTIONS"
 
 echo
-echo "══ all eight steps passed"
-echo "══ step 7 ran the migration's own do \$\$ … \$\$ assertion block, and step 8"
-echo "══ ran the visibility assertions; either would have aborted this script."
+echo "══ 9/9  $FIXTURE (TEST-ONLY, not a migration)"
+psql_file "$REPO/$FIXTURE"
+LOADED="$(_psql_raw "select count(*) from public.customer_review_test_cards where card_ref like 'TEST-0%'")"
+if [ "$LOADED" != "16" ]; then
+  echo "FATAL: the fixture loaded $LOADED card(s), expected 16." >&2
+  exit 1
+fi
+echo "        ✓ 16 test cards loaded"
+echo "        clear them with:"
+echo "          docker exec -i $DB_CONTAINER psql -U postgres -d $DB_NAME -v ON_ERROR_STOP=1 \\"
+echo "            -f - < supabase/fixtures/customer_review_test_cards_clear.sql"
+
+echo
+echo "══ all nine steps passed"
+echo "══ step 7 ran the migration's own do \$\$ … \$\$ assertion block, step 8 ran"
+echo "══ the workflow assertions, and step 9 loaded the fixture; any of the three"
+echo "══ would have aborted this script."

@@ -1,9 +1,14 @@
 /**
- * WhatsApp number handling: normalisation, validation, masking, and the one
- * place the full number is allowed to go.
+ * Phone numbers: normalising, masking, and keeping them out of everything that
+ * is not a wa.me path.
  *
- * Fictional numbers only. The +91 99999 000xx range used throughout is not a
- * real allocation.
+ * WHOSE NUMBERS THESE ARE. BOE internal team numbers, and only those — this
+ * module holds no customer contact data and has no column that could. The
+ * functions here turn a string into a canonical form and back into a display
+ * string; whether a number may be MESSAGED is answered by findAllowedNumber
+ * against the server-held allowlist, which has its own tests.
+ *
+ * Pure functions. No database, no network, and no real number in the file.
  *
  * Run:
  *   npx tsx --test src/lib/customerReviews/contact.test.ts
@@ -11,7 +16,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   DEFAULT_COUNTRY_CODE,
@@ -23,165 +28,147 @@ import {
 } from './contact'
 
 const ROOT = process.cwd()
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
-describe('normalising what an employee typed', () => {
+const E164 = '+919999900001'
+
+const okValue = (raw: string) => {
+  const result = normalizeWhatsAppNumber(raw)
+  assert.equal(result.ok, true, `expected ${raw} to normalise, got ${JSON.stringify(result)}`)
+  return result as Extract<typeof result, { ok: true }>
+}
+
+const rejected = (raw: string | null | undefined) => {
+  const result = normalizeWhatsAppNumber(raw)
+  assert.equal(result.ok, false, `expected ${String(raw)} to be refused`)
+  return result as Extract<typeof result, { ok: false }>
+}
+
+describe('normalising what somebody typed', () => {
   test('the shapes people actually paste all reach one canonical form', () => {
-    for (const input of [
+    for (const spelling of [
       '+919999900001',
       '+91 99999 00001',
       '+91-99999-00001',
-      '+91 (99999) 00001',
-      '0091 99999 00001',
+      '(+91) 99999 00001',
       '00919999900001',
-      '9999900001',
-      '99999 00001',
-      '  +919999900001  ',
+      '0091 99999 00001',
     ]) {
-      const result = normalizeWhatsAppNumber(input)
-      assert.ok(result.ok, `${input} should normalise`)
-      assert.equal(result.ok && result.e164, '+919999900001', input)
-      assert.equal(result.ok && result.digits, '919999900001', input)
+      assert.equal(okValue(spelling).e164, E164, spelling)
     }
   })
 
-  test('the default country code applies ONLY to a bare ten-digit number', () => {
+  test('a bare ten-digit number gets the default country code, and ONLY a bare ten', () => {
     assert.equal(DEFAULT_COUNTRY_CODE, '91')
-
-    // Bare national number → country code added.
-    const bare = normalizeWhatsAppNumber('9999900001')
-    assert.equal(bare.ok && bare.e164, '+919999900001')
-
-    // An international number is never silently turned into an Indian one.
-    const uk = normalizeWhatsAppNumber('+447700900001')
-    assert.equal(uk.ok && uk.e164, '+447700900001')
-
-    // Eleven digits with no '+' is taken at face value, not prefixed.
-    const eleven = normalizeWhatsAppNumber('19999900001')
-    assert.equal(eleven.ok && eleven.e164, '+19999900001')
+    assert.equal(okValue('9999900001').e164, E164)
+    // Eleven digits is not a national number with a missing code; it is either a
+    // typo or somebody else's country, and guessing would decide who is
+    // messaged.
+    assert.equal(okValue('99999000012').e164, '+99999000012')
   })
 
-  test('a different default country can be passed without touching the shared one', () => {
-    const result = normalizeWhatsAppNumber('7700900001', '44')
-    assert.equal(result.ok && result.e164, '+447700900001')
-    // The shared default is unchanged for the next caller.
-    const again = normalizeWhatsAppNumber('9999900001')
-    assert.equal(again.ok && again.e164, '+919999900001')
+  test('an international number is never silently turned into an Indian one', () => {
+    assert.equal(okValue('+14155550100').e164, '+14155550100')
+    assert.equal(okValue('+441632960001').e164, '+441632960001')
   })
 
-  test('nonsense is refused with a sentence, not an exception', () => {
-    for (const input of ['', '   ', 'call me', '12', '+0123456789', '9'.repeat(20)]) {
-      const result = normalizeWhatsAppNumber(input)
-      assert.equal(result.ok, false, JSON.stringify(input))
-      assert.ok(result.ok === false && result.error.length > 0)
+  test('it returns a RESULT rather than throwing', () => {
+    // A caller must handle the invalid case, not merely remember to catch it —
+    // and an exception carrying a phone number in its message is exactly what
+    // this shape avoids.
+    for (const junk of ['', '   ', 'nope', '+', 'abc def', '12345']) {
+      const result = rejected(junk)
+      assert.ok(result.error.length > 0)
+      assert.equal(/\d{6,}/.test(result.error), false, `the error carries digits: ${result.error}`)
     }
   })
 
-  test('the failure NEVER echoes the number back', () => {
-    // An error message is the classic place private data escapes to — a toast,
-    // a log line, a bug report. The refusal must be generic.
-    const result = normalizeWhatsAppNumber('+0123456789')
-    assert.equal(result.ok, false)
-    assert.equal(result.ok === false && result.error.includes('0123456789'), false)
+  test('null and undefined are refused, not coerced', () => {
+    rejected(null)
+    rejected(undefined)
   })
 
-  test('isValidWhatsAppNumber only accepts stored E.164', () => {
-    assert.equal(isValidWhatsAppNumber('+919999900001'), true)
-    assert.equal(isValidWhatsAppNumber('919999900001'), false)   // no '+'
-    assert.equal(isValidWhatsAppNumber('+0919999900001'), false) // leading zero
-    assert.equal(isValidWhatsAppNumber('+91 99999 00001'), false) // not canonical
-    assert.equal(isValidWhatsAppNumber(null), false)
-    assert.equal(isValidWhatsAppNumber(undefined), false)
+  test('a leading zero after the country code is refused', () => {
+    // E.164 forbids it, and accepting it would produce a number that looks
+    // valid and reaches nobody.
+    rejected('+09999900001')
+  })
+
+  test('too short and too long are both refused', () => {
+    rejected('+911')
+    rejected('+9199999000012345678')
+  })
+
+  test('isValidWhatsAppNumber agrees with the normaliser about the canonical form', () => {
+    assert.equal(isValidWhatsAppNumber(E164), true)
+    for (const bad of ['919999900001', '+91 99999 00001', '', null, undefined, '+0123']) {
+      assert.equal(isValidWhatsAppNumber(bad as string), false, String(bad))
+    }
   })
 })
 
-describe('masking', () => {
+describe('masking is a display control, and it is the default', () => {
   test('only the last four digits survive', () => {
-    assert.equal(maskWhatsAppNumber('+919999900001'), '•••• •••• 0001')
-    assert.equal(maskWhatsAppNumber('+447700912345'), '•••• •••• 2345')
+    assert.equal(maskWhatsAppNumber(E164), '•••• •••• 0001')
   })
 
-  test('the country code is NOT revealed by the mask', () => {
-    const masked = maskWhatsAppNumber('+919999900001')
+  test('THE COUNTRY CODE IS NOT SHOWN', () => {
+    // A country code plus a length is already a strong hint about who somebody
+    // is, and this string exists to be safe on a shared screen — and inside the
+    // screenshots this module asks testers to upload.
+    const masked = maskWhatsAppNumber(E164)
     assert.equal(masked.includes('91'), false)
-    assert.equal(masked.includes('+'), false)
+    assert.equal(masked.includes('9999'), false)
   })
 
-  test('two different numbers sharing a suffix mask identically — that is the point', () => {
-    assert.equal(
-      maskWhatsAppNumber('+919999900001'),
-      maskWhatsAppNumber('+447700900001'),
-    )
-  })
-
-  test('nothing to mask reads as an em dash, never as an empty mask', () => {
+  test('an absent number reads as an em dash, not as an empty mask', () => {
     assert.equal(maskWhatsAppNumber(null), '—')
+    assert.equal(maskWhatsAppNumber(undefined), '—')
     assert.equal(maskWhatsAppNumber(''), '—')
   })
-})
 
-describe('the one place the full number is allowed to go', () => {
-  test('waMePhone returns digits only, for the wa.me path', () => {
-    assert.equal(waMePhone('+919999900001'), '919999900001')
+  test('something too short to mask is still masked', () => {
+    assert.equal(maskWhatsAppNumber('+12'), '••••')
   })
 
-  test('a malformed stored number produces NO link rather than a guess', () => {
-    for (const value of [null, '', '919999900001', 'not a number', '+0919999900001']) {
-      assert.equal(waMePhone(value), null, JSON.stringify(value))
-    }
-  })
-
-  test('formatWhatsAppNumber is for the reveal control and groups readably', () => {
-    assert.equal(formatWhatsAppNumber('+919999900001'), '+91 99999 00001')
-    assert.equal(formatWhatsAppNumber(null), '—')
+  test('the readable form is for a deliberate reveal, and refuses a malformed value', () => {
+    assert.equal(formatWhatsAppNumber(E164), '+91 99999 00001')
     assert.equal(formatWhatsAppNumber('919999900001'), '—')
+    assert.equal(formatWhatsAppNumber(null), '—')
   })
 })
 
-describe('the number stays out of everywhere else', () => {
-  const moduleFiles = (dir: string): string[] => {
-    const out: string[] = []
-    for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
-      const path = `${dir}/${entry.name}`
-      if (entry.isDirectory()) out.push(...moduleFiles(path))
-      else if (/\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name)) out.push(path)
+describe('the wa.me path', () => {
+  test('digits only, no plus — which is what wa.me expects', () => {
+    assert.equal(waMePhone(E164), '919999900001')
+  })
+
+  test('A MALFORMED VALUE PRODUCES NO LINK AT ALL, not a guess', () => {
+    // A best guess here would be a link to the wrong person.
+    for (const bad of ['919999900001', '+91 99999 00001', 'nope', '', null, undefined]) {
+      assert.equal(waMePhone(bad as string), null, String(bad))
     }
-    return out
-  }
+  })
+})
 
-  const sources = [
-    ...moduleFiles('src/lib/customerReviews'),
-    ...moduleFiles('src/components/customerReviews'),
-    ...moduleFiles('src/app/customer-reviews'),
-  ]
+describe('the file keeps its own privacy promise', () => {
+  test('no function takes a context string that could carry a number elsewhere', () => {
+    const source = read('src/lib/customerReviews/contact.ts')
+    const executable = source.split('\n').filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*')).join('\n')
+    assert.equal(/context|label|message|log/i.test(executable.replace(/\/\*[\s\S]*?\*\//g, '')), false,
+      'a function here accepts something a number could be formatted into')
+  })
 
-  test('no module file logs, alerts or reports the number', () => {
-    // console.* with a request row in it is the realistic leak: a row carries
-    // whatsapp_number, so logging one publishes it to every browser console and
-    // every error reporter downstream.
-    for (const file of sources) {
-      const text = readFileSync(join(ROOT, file), 'utf8')
-      for (const match of text.matchAll(/console\.(log|warn|error|info|debug)\(([^\n]*)/g)) {
-        assert.equal(
-          /whatsapp|number|request\b(?!s)|row|data/i.test(match[2]),
-          false,
-          `${file} logs something that may carry the customer's number: ${match[0]}`,
-        )
-      }
+  test('nothing here logs, fetches or navigates', () => {
+    const source = read('src/lib/customerReviews/contact.ts')
+    for (const forbidden of ['console.', 'fetch(', 'window.', 'localStorage']) {
+      assert.equal(source.includes(forbidden), false, `contact.ts uses ${forbidden}`)
     }
   })
 
-  test('the list screen renders the number only through the mask', () => {
-    const list = readFileSync(join(ROOT, 'src/app/customer-reviews/CustomerReviewListScreen.tsx'), 'utf8')
-    assert.ok(list.includes('<MaskedNumber value={r.whatsapp_number} />'))
-    // No `revealable` on a list: a list is what gets screenshotted.
-    assert.equal(/MaskedNumber[^/]*revealable/.test(list), false)
-    assert.equal(list.includes('formatWhatsAppNumber'), false)
-  })
-
-  test('only the detail screen offers a reveal, and only for one record', () => {
-    const detail = readFileSync(
-      join(ROOT, 'src/app/customer-reviews/[id]/RequestDetailScreen.tsx'), 'utf8',
-    )
-    assert.ok(detail.includes('<MaskedNumber value={request.whatsapp_number} revealable />'))
+  test('and it holds no number of its own', () => {
+    const source = read('src/lib/customerReviews/contact.ts')
+    const executable = source.split('\n').filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*')).join('\n')
+    assert.deepEqual([...executable.matchAll(/\+\d{6,}/g)].map(m => m[0]), [])
   })
 })

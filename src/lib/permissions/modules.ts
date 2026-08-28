@@ -197,23 +197,32 @@ registerModule({
   ],
 })
 
-// Customer Review Outreach owns its own capability file
+// Review Workflow Test (Internal) owns its own capability file
 // (src/lib/permissions/customerReviewOutreach.ts), but the registration stays
 // here with the rest of the catalog so `npm run permissions:check` still sees
 // one complete list. Mirrors the seed in
 // supabase/migrations/20261017000000_customer_review_outreach.sql.
 //
+// THE KEY AND BOTH ACTION KEYS ARE DELIBERATELY UNCHANGED. This module's
+// purpose changed — it is now an internal rehearsal of a workflow, with no
+// customer contact of any kind — but `customer_review_requests`, `use` and
+// `verify` are the identifiers every existing Control Center grant is written
+// against, and renaming them would silently revoke all of them. The DISPLAY
+// name is what a human reads and is what changed. The ACTION display names stay
+// as well, because Control Center shows them against grants already made and a
+// relabelled action reads as a different one.
+//
 // TWO ACTIONS, AND NO `view`. Unlike every other module here, entry is `use`:
-// there is no read-only audience for one employee's own outreach, so a third
+// there is no read-only audience for a tester's own booked cards, so a third
 // "can open it and do nothing" grant would name an empty screen. `verify` is
-// the separate authority to say a review has actually been checked and to close
-// the request — protected (see levels.ts), because nobody should acquire it by
-// picking a level from a dropdown, and dependent on `use`, because a verifier
-// who cannot open the module cannot verify anything.
+// the separate authority to say a test was actually checked and to hand one
+// back — protected (see levels.ts), because nobody should acquire it by picking
+// a level from a dropdown, and dependent on `use`, because a verifier who
+// cannot open the module cannot verify anything.
 registerModule({
   moduleKey: 'customer_review_requests',
-  displayName: 'Customer Review Outreach',
-  description: 'Invite genuine customers to leave an honest review, and track the outreach.',
+  displayName: 'Review Workflow Test (Internal)',
+  description: 'Internal test workflow: book a test card, open WhatsApp to a BOE team number, confirm, screenshot, verify. No customer contact.',
   actions: [
     { actionKey: 'use',    displayName: 'Use Customer Review Outreach' },
     { actionKey: 'verify', displayName: 'Verify & Close Review Requests' },

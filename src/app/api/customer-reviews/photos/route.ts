@@ -9,9 +9,9 @@ import {
   processReviewImage,
 } from '@/lib/customerReviews/imageProcessing'
 import {
-  MAX_PROJECT_PHOTOS,
-  REVIEW_PHOTO_BUCKET,
-  REVIEW_PHOTO_MAX_BYTES,
+  MAX_TEST_SCREENSHOTS,
+  TEST_SCREENSHOT_BUCKET,
+  TEST_SCREENSHOT_MAX_BYTES,
 } from '@/lib/customerReviews/photos'
 import {
   isMissingObjectError,
@@ -27,6 +27,12 @@ import {
 // POST adds one. DELETE removes one. Both are here because both are the same
 // kind of thing: an operation that spans the private bucket and the metadata
 // table, which no client may perform half of.
+//
+// WHAT THE IMAGE IS. A screenshot the tester took of their own WhatsApp screen
+// after sending an internal test message. IT IS NOT PROOF OF A REVIEW — there
+// is no review anywhere in this module — and it is not proof of delivery
+// either. It is the artefact a verifier looks at to decide whether the WORKFLOW
+// was exercised, and that is the only claim made about it.
 //
 // WHY A ROUTE AT ALL
 // ------------------
@@ -45,27 +51,26 @@ import {
 //
 //   1. authenticate the caller, as the CALLER — not as the server;
 //   2. resolve customer_review_requests.use for them;
-//   3. read the request THROUGH THEIR OWN RLS, so a request they may not see
-//      does not exist as far as this route is concerned;
-//   4. apply the kind/status rule (project photo while preparing, proof after
-//      sending) and the ownership rule;
+//   3. read the card THROUGH THEIR OWN RLS, so a card they may not see does not
+//      exist as far as this route is concerned;
+//   4. apply the status rule (only while they still HOLD the card) and the
+//      ownership rule;
 //   5. read the whole file into memory, gate it structurally, then DECODE AND
 //      RE-ENCODE it — the stored object is libvips output, never the upload;
 //   6. only then upload, to a path this server generates;
 //   7. insert the metadata describing the RE-ENCODED bytes;
 //   8. if that insert fails, remove the object again.
 //
-// NOTHING THE CLIENT SENDS NAMES A LOCATION. The body carries a request id, a
+// NOTHING THE CLIENT SENDS NAMES A LOCATION. The body carries a card id, a
 // kind, and a file. The bucket is a constant, the object key is generated here
-// from the request id and a fresh uuid, and `uploaded_by` is the authenticated
+// from the card id and a fresh uuid, and `uploaded_by` is the authenticated
 // user — never a field. A caller cannot choose where their bytes land, cannot
-// write into another request's folder, and cannot register somebody else's
-// object.
+// write into another card's folder, and cannot register somebody else's object.
 //
-// PRIVACY. No response and no log line carries a filename, a customer name, a
-// phone number, a signed URL, a storage path or a byte of content. Rejections
-// are prewritten sentences chosen from a closed set (IMAGE_REJECTION_MESSAGES);
-// an unanticipated failure contributes no text of its own.
+// PRIVACY. No response and no log line carries a filename, a phone number, a
+// signed URL, a storage path or a byte of content. Rejections are prewritten
+// sentences chosen from a closed set (IMAGE_REJECTION_MESSAGES); an
+// unanticipated failure contributes no text of its own.
 
 export const runtime = 'nodejs'
 
@@ -74,8 +79,15 @@ export const maxDuration = 30
 
 const UUID_RE = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 
-/** The two kinds, and nothing else. */
-const KINDS = ['project_photo', 'review_proof'] as const
+/**
+ * ONE KIND, and nothing else.
+ *
+ * Kept as a list rather than collapsed to a literal because it is what the
+ * request body is validated against, and a list of one is the shape that stays
+ * correct if a second kind is ever justified. There are no project photographs
+ * and no review proof here: there are no projects and no reviews.
+ */
+const KINDS = ['test_screenshot'] as const
 type PhotoKind = (typeof KINDS)[number]
 
 /**
@@ -86,19 +98,17 @@ type PhotoKind = (typeof KINDS)[number]
  */
 const MESSAGES = {
   unauthenticated: 'Sign in to continue.',
-  forbidden:       'You do not have permission to attach photographs to this request.',
-  not_found:       'That request is not available.',
-  wrong_status:    'Photographs can only be attached while the request is being prepared.',
-  proof_status:    'A proof image can only be attached once the invitation has been sent.',
+  forbidden:       'You do not have permission to attach a screenshot to this test card.',
+  not_found:       'That test card is not available.',
+  wrong_status:    'A screenshot can only be attached while you still hold the card.',
   no_file:         'No file was received.',
   bad_request:     'That request could not be processed.',
-  too_many:        `You can attach up to ${MAX_PROJECT_PHOTOS} photographs.`,
-  duplicate:       'That photograph is already attached to this request.',
-  one_proof:       'Only one proof image can be attached. Remove the current one first.',
-  upload_failed:   'That photo could not be stored. Try again.',
-  unavailable:     'Photo uploads are not configured on this deployment.',
-  remove_locked:   'That photograph can no longer be removed. Ask an administrator.',
-  remove_failed:   'That photograph could not be removed. Try again.',
+  too_many:        `You can attach ${MAX_TEST_SCREENSHOTS} screenshot per test card. Remove the current one first.`,
+  duplicate:       'That screenshot is already attached to this test card.',
+  upload_failed:   'That screenshot could not be stored. Try again.',
+  unavailable:     'Screenshot uploads are not configured on this deployment.',
+  remove_locked:   'That screenshot can no longer be removed. Ask an administrator.',
+  remove_failed:   'That screenshot could not be removed. Try again.',
   remove_partial:  'The image was removed but the record could not be updated. Try again.',
 } as const
 
@@ -141,16 +151,16 @@ export async function POST(req: NextRequest) {
   }
 
   // ── 3. What was sent ──────────────────────────────────────────────────────
-  let requestId: string
+  let cardId: string
   let kind: PhotoKind
   let bytes: Uint8Array
   let displayName: string
   try {
     const form = await req.formData()
 
-    const rawId = form.get('requestId')
+    const rawId = form.get('cardId')
     if (typeof rawId !== 'string' || !UUID_RE.test(rawId)) return fail(400, MESSAGES.bad_request)
-    requestId = rawId
+    cardId = rawId
 
     const rawKind = form.get('kind')
     if (typeof rawKind !== 'string' || !(KINDS as readonly string[]).includes(rawKind)) {
@@ -164,7 +174,7 @@ export async function POST(req: NextRequest) {
     // The declared size is checked first so an oversized body is refused before
     // it is read into memory; the REAL length is checked again below, because
     // this one is still the client's claim.
-    if ((file as File).size > REVIEW_PHOTO_MAX_BYTES) {
+    if ((file as File).size > TEST_SCREENSHOT_MAX_BYTES) {
       return fail(413, IMAGE_REJECTION_MESSAGES.too_large)
     }
     bytes = new Uint8Array(await (file as File).arrayBuffer())
@@ -177,38 +187,36 @@ export async function POST(req: NextRequest) {
     return fail(400, MESSAGES.bad_request)
   }
 
-  // ── 4. May they attach to THIS request ────────────────────────────────────
+  // ── 4. May they attach to THIS card ───────────────────────────────────────
   //
-  // Read as the caller. can_view_customer_review_request() decides, so a request
-  // belonging to somebody else returns no row and this route cannot tell the
-  // difference between "not yours" and "does not exist" — which is the answer
-  // the employee should get too.
-  const { data: request } = await caller
-    .from('customer_review_requests')
-    .select('id, status, created_by')
-    .eq('id', requestId)
+  // Read as the caller. The card's SELECT policy decides, so a card belonging
+  // to somebody else returns no row and this route cannot tell the difference
+  // between "not yours" and "does not exist" — which is the answer the tester
+  // should get too.
+  const { data: card } = await caller
+    .from('customer_review_test_cards')
+    .select('id, status, booked_by')
+    .eq('id', cardId)
     .maybeSingle()
-  if (!request) return fail(404, MESSAGES.not_found)
+  if (!card) return fail(404, MESSAGES.not_found)
 
-  const isOwner = request.created_by === user.id
-  if (!isOwner && !isAdmin) return fail(403, MESSAGES.forbidden)
+  const holdsCard = card.booked_by === user.id
+  if (!holdsCard && !isAdmin) return fail(403, MESSAGES.forbidden)
 
-  if (kind === 'project_photo') {
-    // Mirrors can_edit_customer_review_request(): preparation stage only.
-    if (request.status !== 'draft' && request.status !== 'ready_to_send') {
-      return fail(409, MESSAGES.wrong_status)
-    }
-  } else if (request.status !== 'sent' && request.status !== 'customer_responded') {
-    // Proof is evidence attached AFTER the outreach happened.
-    return fail(409, MESSAGES.proof_status)
-  }
+  // WHILE THEY STILL HOLD IT, and no later. Once a card is submitted the
+  // evidence is what a verifier is about to look at, and once it is verified
+  // the evidence is what they looked at; neither may change underneath them.
+  // Mirrors begin_customer_review_test_screenshot_removal()'s status rule on
+  // the removal side, so a screenshot can be added and withdrawn in exactly the
+  // same window.
+  if (card.status !== 'booked') return fail(409, MESSAGES.wrong_status)
 
   // ── 5. What the bytes actually are ────────────────────────────────────────
   //
   // The real length, the real container, and a container that accounts for the
   // whole file. This is the check that the browser's `file.type` was standing
   // in for, and it is the reason the stored mime_type is now a fact.
-  const processed = await processReviewImage(bytes, REVIEW_PHOTO_MAX_BYTES)
+  const processed = await processReviewImage(bytes, TEST_SCREENSHOT_MAX_BYTES)
   if (!processed.ok) {
     const message = processed.reason === 'undecodable' || processed.reason === 'too_many_pixels'
       ? PROCESSING_REJECTION_MESSAGES[processed.reason]
@@ -231,42 +239,44 @@ export async function POST(req: NextRequest) {
   const service = admin.client
 
   // ── 7. Limits that need the existing rows ─────────────────────────────────
-  // Hashed over the STORED bytes, so two uploads of the same photograph that
-  // differed only in EXIF collapse to one attachment.
+  // Hashed over the STORED bytes, so two uploads of the same screenshot that
+  // differed only in metadata collapse to one attachment.
   const digest = createHash('sha256').update(stored).digest('hex')
 
   const { data: existing, error: existingError } = await service
-    .from('customer_review_request_photos')
-    .select('id, kind, content_sha256')
-    .eq('request_id', requestId)
+    .from('customer_review_test_card_screenshots')
+    .select('id, content_sha256, removal_started_at')
+    .eq('card_id', cardId)
   if (existingError) return fail(500, MESSAGES.upload_failed)
 
-  const sameKind = (existing ?? []).filter(row => row.kind === kind)
-  const limit = kind === 'project_photo' ? MAX_PROJECT_PHOTOS : 1
-  if (sameKind.length >= limit) {
-    return fail(409, kind === 'project_photo' ? MESSAGES.too_many : MESSAGES.one_proof)
-  }
+  // A row already marked for removal does not count against the limit and is
+  // not a duplicate: it is on its way out, and every reader already treats it
+  // as gone. Counting it would make a failed removal permanently block the
+  // replacement it exists to allow.
+  const live = (existing ?? []).filter(row => row.removal_started_at === null)
+
+  if (live.length >= MAX_TEST_SCREENSHOTS) return fail(409, MESSAGES.too_many)
 
   // REPEATED CLICKS, answered by the content rather than by a timer. Two
-  // requests carrying identical bytes for the same record are one upload; the
-  // second is refused whatever raced with what, and a genuinely different photo
+  // requests carrying identical bytes for the same card are one upload; the
+  // second is refused whatever raced with what, and a genuinely different image
   // is never blocked.
-  if ((existing ?? []).some(row => row.content_sha256 === digest)) {
+  if (live.some(row => row.content_sha256 === digest)) {
     return fail(409, MESSAGES.duplicate)
   }
 
   // ── 8. The path, generated HERE ───────────────────────────────────────────
   //
-  // The request id first, because the storage SELECT policy reads ownership out
-  // of split_part(name, '/', 1) and the metadata CHECK requires the two to
-  // agree. Nothing the caller typed contributes a character.
+  // The card id first, because the storage SELECT policy reads ownership out of
+  // split_part(name, '/', 1) and the metadata CHECK requires the two to agree.
+  // Nothing the caller typed contributes a character.
   const extension = processed.mime === 'image/jpeg' ? 'jpg'
     : processed.mime === 'image/png' ? 'png'
     : 'webp'
-  const storagePath = `${requestId}/${kind}/${randomUUID()}.${extension}`
+  const storagePath = `${cardId}/${kind}/${randomUUID()}.${extension}`
 
   const { error: uploadError } = await service.storage
-    .from(REVIEW_PHOTO_BUCKET)
+    .from(TEST_SCREENSHOT_BUCKET)
     .upload(storagePath, stored, {
       // The re-encoded bytes, under the type they were encoded as. What is
       // stored and what is served are the same fact.
@@ -277,9 +287,9 @@ export async function POST(req: NextRequest) {
 
   // ── 9. The metadata, from the inspection ──────────────────────────────────
   const { data: row, error: rowError } = await service
-    .from('customer_review_request_photos')
+    .from('customer_review_test_card_screenshots')
     .insert({
-      request_id: requestId,
+      card_id: cardId,
       kind,
       storage_path: storagePath,
       // Display only, and bounded. The filename is the one thing the caller
@@ -296,13 +306,13 @@ export async function POST(req: NextRequest) {
   if (rowError || !row) {
     // COMPENSATION. The object exists and nothing points at it; the metadata row
     // is what makes it discoverable and what the path constraint checks. Remove
-    // it before returning, so a failed attach leaves the request exactly as it
-    // was rather than leaving a file nobody can find again.
-    await service.storage.from(REVIEW_PHOTO_BUCKET).remove([storagePath])
+    // it before returning, so a failed attach leaves the card exactly as it was
+    // rather than leaving a file nobody can find again.
+    await service.storage.from(TEST_SCREENSHOT_BUCKET).remove([storagePath])
     return fail(500, MESSAGES.upload_failed)
   }
 
-  return ok({ photo: { ...row, request_id: requestId } })
+  return ok({ photo: { ...row, card_id: cardId } })
 }
 
 // ══ REMOVING ONE ════════════════════════════════════════════════════════════
@@ -317,13 +327,13 @@ export async function POST(req: NextRequest) {
 //
 // THE THREE STEPS, and the middle one is why there are three:
 //
-//   MARK    begin_customer_review_photo_removal() re-checks the authorization
+//   MARK    begin_customer_review_test_screenshot_removal() re-checks the authorization
 //           in SQL, locks the row, and stamps removal_started_at/removal_by.
 //           Every read filters the row out from this moment, so the
 //           photograph is already gone as far as the application is
 //           concerned.
 //   OBJECT  the file is deleted from the private bucket.
-//   ROW     finish_customer_review_photo_removal() deletes the metadata, and
+//   ROW     finish_customer_review_test_screenshot_removal() deletes the metadata, and
 //           the delete trigger writes the photo_removed entry to the
 //           append-only trail — crediting removal_by, because the delete
 //           itself arrives through the service role where auth.uid() is null.
@@ -390,7 +400,7 @@ export async function DELETE(req: NextRequest) {
   const reader: PhotoVisibilityReader = {
     async isVisibleToCaller(id) {
       const { data, error } = await caller
-        .from('customer_review_request_photos')
+        .from('customer_review_test_card_screenshots')
         .select('id')
         .eq('id', id)
         .maybeSingle()
@@ -402,17 +412,17 @@ export async function DELETE(req: NextRequest) {
   const removal: PhotoRemovalService = {
     async beginRemoval(id, actorId): Promise<BeginResult> {
       const { data, error } = await service.rpc(
-        'begin_customer_review_photo_removal',
-        { p_photo_id: id, p_actor_id: actorId },
+        'begin_customer_review_test_screenshot_removal',
+        { p_screenshot_id: id, p_actor_id: actorId },
       )
       if (error) {
         // The database's own refusal codes, mapped to outcomes. The message
         // text is never forwarded: it is written for a person, but it is not
         // this route's to choose.
         const code = error.message ?? ''
-        if (code.includes('CUSTOMER_REVIEW_PHOTO_NOT_FOUND')) return { outcome: 'gone' }
-        if (code.includes('CUSTOMER_REVIEW_LOCKED')) return { outcome: 'locked' }
-        if (code.includes('CUSTOMER_REVIEW_UNAUTHORIZED')) return { outcome: 'forbidden' }
+        if (code.includes('CUSTOMER_REVIEW_TEST_SCREENSHOT_NOT_FOUND')) return { outcome: 'gone' }
+        if (code.includes('CUSTOMER_REVIEW_TEST_LOCKED')) return { outcome: 'locked' }
+        if (code.includes('CUSTOMER_REVIEW_TEST_UNAUTHORIZED')) return { outcome: 'forbidden' }
         return { outcome: 'error' }
       }
       const path = (data as { storage_path?: string } | null)?.storage_path
@@ -421,13 +431,13 @@ export async function DELETE(req: NextRequest) {
     },
 
     async deleteObject(storagePath) {
-      const { error } = await service.storage.from(REVIEW_PHOTO_BUCKET).remove([storagePath])
+      const { error } = await service.storage.from(TEST_SCREENSHOT_BUCKET).remove([storagePath])
       if (!error) return { ok: true, missing: false }
       return { ok: false, missing: isMissingObjectError(error) }
     },
 
     async finishRemoval(id) {
-      const { error } = await service.rpc('finish_customer_review_photo_removal', { p_photo_id: id })
+      const { error } = await service.rpc('finish_customer_review_test_screenshot_removal', { p_screenshot_id: id })
       return { ok: !error }
     },
   }

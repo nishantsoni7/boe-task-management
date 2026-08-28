@@ -1,8 +1,7 @@
 import type { EffectivePermission } from './types'
-import { isEditableStatus } from '@/lib/customerReviews/status'
-import type { CustomerReviewStatus } from '@/lib/customerReviews/types'
+import type { TestCard } from '@/lib/customerReviews/types'
 
-// Customer Review Outreach capability derivation.
+// Review Workflow Test (Internal) — capability derivation.
 //
 // One place that turns the raw effective permissions for the
 // 'customer_review_requests' module into the booleans the guard, the launcher
@@ -11,20 +10,28 @@ import type { CustomerReviewStatus } from '@/lib/customerReviews/types'
 // exactly one capability — a button must never appear for a permission its RPC
 // will refuse.
 //
+// THE MODULE KEY IS UNCHANGED AND THAT IS DELIBERATE. This module's purpose
+// changed; its permission identifiers did not. `customer_review_requests` with
+// `use` and `verify` is what every existing Control Center grant is written
+// against, and renaming the key to match the new display name would silently
+// revoke all of them. The key is an identifier; the display name is the part a
+// human reads, and that is what changed.
+//
 // TWO ACTIONS, AND THE MODULE REGISTERS NO `view`.
 //
 // That is the decision worth stating, because every other cut-over module here
 // gates entry on `view` (see moduleVisibility.ts). It does not apply:
 //
 //   `use`    IS module entry. There is no read-only audience for this module —
-//            a `use` holder sees THEIR OWN outreach and nobody else's, so a
-//            "can open it but can do nothing" grant would name an empty screen.
-//            Adding `view` to make the shape uniform would have created a third
-//            permission that grants nothing, which is worse than the asymmetry.
+//            a `use` holder sees the available pool and THEIR OWN booked tests
+//            and nobody else's, so a "can open it but can do nothing" grant
+//            would name an empty screen. Adding `view` to make the shape
+//            uniform would have created a third permission that grants nothing,
+//            which is worse than the asymmetry.
 //
-//   `verify` is the authority to say a review has actually been checked, and to
-//            close the request. It is PROTECTED (see levels.ts): nobody should
-//            acquire "I confirm this customer really reviewed us" by picking a
+//   `verify` is the authority to say a test was actually checked, and to hand
+//            one back. It is PROTECTED (see levels.ts): nobody should acquire
+//            "I confirm this workflow was exercised correctly" by picking a
 //            level from a dropdown. It depends on `use` (ACTION_DEPENDENCIES),
 //            so a verifier can always open the module.
 //
@@ -40,19 +47,19 @@ export type CustomerReviewCapabilities = {
   /** May open the module at all. `use` OR `verify` — see below. */
   canAccessModule: boolean
   /**
-   * May raise a request, edit their own, mark it ready, open WhatsApp for it,
-   * confirm they sent it, record a reply, record evidence, and cancel it.
+   * May book an available test card, open WhatsApp for one they hold, confirm
+   * they sent it, attach a screenshot and submit it for verification.
    *
-   * All of that is ONE authority on purpose. Splitting "create" from "send"
-   * would produce an employee who can prepare an invitation and not deliver it,
-   * which is not a real BOE role — and every one of those steps is already
-   * scoped to the requests that employee raised.
+   * All of that is ONE authority on purpose. Splitting "book" from "submit"
+   * would produce a tester who can take a card and never hand it back, and
+   * every one of those steps is already scoped to the card that tester holds.
    */
   canUse: boolean
   /**
-   * May verify a request and close it. Independent of `canUse` in one
-   * direction: a verifier who does not hold `use` can read and check every
-   * request but cannot raise or send one.
+   * May verify a submitted test, return one to its tester, and read the history
+   * of verified ones. Independent of `canUse` in one direction: a verifier who
+   * does not hold `use` can check everybody's tests but cannot book one — which
+   * is the separation the workflow exists to exercise.
    */
   canVerify: boolean
 }
@@ -79,8 +86,8 @@ export function deriveCustomerReviewCapabilities(
 
   return {
     // Entry is the weakest thing this module grants, so the stronger authority
-    // implies it — a verifier must be able to open the module they are meant to
-    // check. ACTION_DEPENDENCIES already normalises a Custom save to include
+    // implies it — a verifier who could not open the module could not verify
+    // anything. ACTION_DEPENDENCIES already normalises a Custom save to include
     // `use`; this is the read-time half, for a grant made before that rule or
     // written directly.
     canAccessModule: canUse || canVerify,
@@ -90,28 +97,25 @@ export function deriveCustomerReviewCapabilities(
 }
 
 /**
- * Whether this person may CHANGE this request — the browser-side mirror of
- * can_edit_customer_review_request() (migration 20261017000000 §5).
+ * Whether this person is the tester currently holding this card — the
+ * browser-side mirror of the ownership half of the definer functions in
+ * migration 20261017000000 §8.
  *
- * Two narrowings, and both matter:
- *   * only while the request is still being prepared. Once it has been sent,
- *     what the customer received is a fact, and editing it afterwards would
- *     make the record a lie about what was sent.
- *   * only the employee who raised it, or an admin. A verifier reads every
- *     request and authors none of them.
+ * NOT an editorship check, because nothing in this module is editable. Card
+ * text is fixture-loaded and no client role holds INSERT or UPDATE on the table
+ * at all, so there is no "may I change this" question to answer. The only
+ * question a screen has is "is this mine to act on", which is this.
+ *
+ * An admin is included because every module here admits one, and because
+ * somebody has to be able to unstick a card whose tester has left.
  */
-export function canEditThisRequest(
-  request: { status: string; created_by: string },
+export function holdsThisCard(
+  card: Pick<TestCard, 'booked_by'>,
   userId: string | null | undefined,
   caps: CustomerReviewCapabilities,
   role: string | null | undefined,
 ): boolean {
   if (!userId) return false
-  // The status list lives in ONE place — EDITABLE_STATUSES in
-  // customerReviews/status.ts, which mirrors can_edit_customer_review_request().
-  // It was spelled out inline here as well, which is two copies of a rule the
-  // database also holds, and two copies is how they drift.
-  if (!isEditableStatus(request.status as CustomerReviewStatus)) return false
   if (role === 'admin') return true
-  return request.created_by === userId && caps.canUse
+  return card.booked_by === userId && caps.canUse
 }

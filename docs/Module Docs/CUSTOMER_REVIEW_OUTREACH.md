@@ -1,4 +1,4 @@
-# Customer Review Outreach
+# Review Workflow Test (Internal)
 
 **Status:** built, tested, **NOT deployed**. The migration exists in the
 repository and has **not been applied to any database — local or remote**. The
@@ -7,632 +7,379 @@ module is unreachable until it is.
 Route: `/customer-reviews` · Module key: `customer_review_requests` ·
 Migration: `supabase/migrations/20261017000000_customer_review_outreach.sql`
 
+> **Why the route and the module key still say "customer review".** They are
+> identifiers. The module key is what every Control Center grant is written
+> against, and renaming it would silently revoke all of them; the route is what
+> the guard and the launcher are wired to. The **display name**, the tables, the
+> functions and the entire product are named for what this is now. If you are
+> reading the key and expecting a customer-facing system, this document is the
+> correction.
+
 ---
 
-## 1. Purpose
+## 1. What this is
 
-An authorized BOE employee prepares a **neutral invitation** for a customer or
-project contact they have actually dealt with, opens WhatsApp with that
-invitation prefilled, and afterwards records what happened.
+An **internal rehearsal of a workflow**. An authorized BOE employee opens a list
+of **test cards**, books one, opens WhatsApp with a prefilled message addressed
+to a **BOE internal team number**, confirms by hand that they sent it, uploads a
+screenshot, and an administrator verifies that the workflow was exercised.
 
-The customer writes and publishes the review **themselves, from their own
-account, in their own words**. This system prepares an invitation. It does not
-send messages, and it never writes a review.
+```
+available  →  booked  →  submitted  →  verified
+```
 
-## 2. The ethical boundary
+The phase exists to test seven things and nothing else:
 
-These are product rules, and most of them are enforced structurally rather than
-by a policy somebody has to remember.
+1. permission-based module access,
+2. viewing available test cards,
+3. booking one card, atomically,
+4. opening WhatsApp with internal test content prefilled,
+5. manually confirming that the test message was sent,
+6. uploading a test screenshot,
+7. administrator verification — after which the card leaves every active
+   employee view and stays in the administrator's history.
 
-| The module must never… | What stops it |
+## 2. What this is NOT
+
+**It is not a customer review system**, and the schema is shaped so it cannot
+quietly become one.
+
+| It must never… | What stops it |
 | --- | --- |
-| Fabricate a customer, project or experience | `genuine_customer_confirmed` is a required confirmation, checked by `assert_customer_review_ready()` before a request can leave Draft |
-| Generate or supply review wording | There is no review-text field, table or code path. `buildInvitationMessage()` produces an invitation only, and its test asserts the message contains no quoted wording, no “you could say”, and no claim about BOE's work |
-| Ask an employee to post as a customer | Nothing in the module accepts review text at all |
-| Request five stars or any rating | Asserted by test against every spelling of “five star”, “rate us”, “good review” |
-| Insert praise or prescribed wording | The employee edits two fields — the greeting and a factual project reference. There is no message editor and **no `message_body` column** |
-| Hide or discourage critical feedback | The closing two sentences are constants (`NEUTRAL_FEEDBACK_SENTENCE`, `CUSTOMER_CHOICE_SENTENCE`), not fields. `hasNeutralLanguage()` disables the WhatsApp button if either is ever missing |
-| Reward anyone by submission, rating or sentiment | No rating, score, sentiment, points or leaderboard exists in the schema or the UI. Asserted by test against the migration text and the list screen |
-| Send WhatsApp messages automatically | The only outbound step is `window.open` on a `wa.me` link, started by a click. A person still presses send in WhatsApp |
-| Claim automatically that a review was posted | `review_public_url` is optional factual evidence recorded by a person. No status is derived from it, and `verified` requires a separate permission and a separate deliberate action |
-| Store unnecessary private data | One private field: the customer's WhatsApp number. Masked everywhere by default, never logged, never in a query string other than the `wa.me` URL |
+| Hold customer data | There is **no** `customer_name`, `whatsapp_number`, `interaction_type`, `greeting_name` or `project_reference` column. The migration's own assertion block fails if a column matching `customer_name\|customer_phone\|greeting\|whatsapp_number\|contact_` is ever added |
+| Point anywhere public | There is **no** review URL, no Google link, no destination column, no publish action and no external address in any screen. The migration fails if a column matching `review_url\|public_url\|review_link\|destination\|google` appears; `customerReviewOutreach.test.ts` fails if any screen or route contains a hard-coded `http(s)://` address |
+| Fabricate a review or a customer | Card text is **fixture-loaded filler that says what it is in its own first sentence**. `fixture.test.ts` fails on any card containing an endorsement phrase, a first-person account of an event, a signature, a contact detail, or a link |
+| Let an employee write or edit content | **No client role holds INSERT or UPDATE on the card table at all.** There is no form, no create route and no edit route. The migration asserts both the absent policies and the absent privileges |
+| Drop the mandatory label | The label is a constant (`INTERNAL_TEST_WARNING`), rendered by a component that takes **no content parameter**, and prepended by a builder with **no parameter that suppresses it and no branch**. Since employees cannot author text at all, there is nothing to edit it out of |
+| Message a customer | Every recipient comes from a **server-held allowlist**. A number not on it is a 403 with no link; a missing or malformed allowlist is a 503 |
+| Send anything automatically | Nothing here calls a WhatsApp API. `whatsappRoute.test.ts` walks all of `src/` and fails on any WhatsApp endpoint, token or client |
+| Treat an opened link as a sent message | `record_customer_review_test_card_whatsapp_opened()` **assigns no status**, and confirming is a separate RPC a person calls afterwards. Both are asserted, in the SQL, by two different test files |
 
-**Selecting who to ask.** The module does not filter, rank or suggest customers.
-Which customers to invite is the employee's judgment, and the list screen offers
-no signal that would steer it.
+## 3. The mandatory label
 
-## 3. Roles and permissions
+Every card and every message carries:
 
-Two permissions, registered in the existing Control Center permission engine.
+```
+INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH
+```
+
+It is applied by trusted application logic in
+`src/lib/customerReviews/internalTest.ts`, and it is **non-editable and
+impossible for an employee to remove**. That is structural, not procedural:
+
+* it is a **constant**, not a column — there is no row to edit;
+* `buildInternalTestMessage()` puts it **first and last**, always. It is not a
+  parameter, so no caller can decline it, and the builder contains no `if`;
+* `<InternalTestWarning />` renders the constant and accepts **no `children` and
+  no `text` prop** — a caller decides *where* it appears, never *what it says*;
+* **card text is not authored by employees at all**. It arrives from a fixture,
+  and `authenticated` holds no INSERT and no UPDATE privilege on any content
+  column;
+* the **server refuses to return an unlabelled message**, and the **browser
+  refuses to open one**, so a future refactor of the builder makes the control
+  go dead rather than the label go away;
+* the database holds its own copy —
+  `public.customer_review_internal_test_warning()` — so a card body containing a
+  copy of the label is refused by a CHECK constraint. A stored copy would be one
+  an editor could reword.
+
+The SQL constant is written with ASCII hyphens and the application constant with
+en dashes; `internalTest.test.ts` pins the two together on their normalized
+form, so the **words** cannot drift.
+
+## 4. Roles and permissions
+
+Two permissions, unchanged, in the existing Control Center permission engine.
 The module deliberately registers **no `view` action**.
 
 | Permission | Grants |
 | --- | --- |
-| `customer_review_requests.use` | **Module entry.** Raise a request, edit their own while it is being prepared, attach photographs, mark it Ready to Send, open WhatsApp, confirm they sent it, record a reply and evidence, cancel it. Sees **their own requests only** |
-| `customer_review_requests.verify` | Read **every** request, verify one, and close it. Implies module entry. Does **not** grant raising, editing or sending |
+| `customer_review_requests.use` | **Module entry.** See the available pool, book a card, open WhatsApp for a card they hold, confirm they sent it, attach and remove a screenshot, submit for verification. Sees the pool and **their own cards only** |
+| `customer_review_requests.verify` | Read **every** card, verify a submitted one, return one to its tester with a reason, and keep a history of verified ones. Implies module entry. Does **not** grant booking |
 
-* `verify` is a **PROTECTED action** (`src/lib/permissions/levels.ts`): no
-  preset level ever grants it. It has to be ticked deliberately in Custom.
-* `verify` **depends on** `use` (`ACTION_DEPENDENCIES`), so ticking it brings
-  module entry with it, and withdrawing `use` takes `verify` with it.
-* **Administrators hold both actions from the moment the migration applies** —
-  `role_permissions` gets an admin row for every action the module registers.
-  `manager` and `member` get nothing. Who else runs outreach, and who else is
-  trusted to verify it, are per-person decisions in Control Center.
-* The migration creates **no employee override**. That is a different level
-  from the role rows above, and the distinction is the whole reason those two
-  statements can both be true at once.
-* Admins bypass the engine, as in every other cut-over module.
+Expected access:
 
-### Effective permissions after the migration
-
-| Who | `use` | `verify` | Decided at |
-| --- | --- | --- | --- |
-| Admin role | **allowed** | **allowed** | `role` |
-| Manager role | denied | denied | `system_default` |
-| Member role | denied | denied | `system_default` |
-| Explicitly assigned user | allowed | denied | `employee_override` |
-| Explicitly assigned verifier | allowed | **allowed** | `employee_override` |
-| Unauthorized employee | denied | denied | `system_default` |
-
-Precedence is `employee_override > department > role > system_default`
-(20260660 §7). Ticking **Verify** in Custom brings **Use** with it, because
-`verify` depends on `use`. Proved in
-`src/lib/permissions/customerReviewEffectiveAccess.test.ts`.
-
-### Why `use` and not `view`
-
-Every other module here gates entry on `view` (`moduleVisibility.ts`). This one
-cannot: a `use` holder sees **their own** outreach and nobody else's, so a
-separate read-only grant would name an empty screen. `use` **is** entry.
-
-The consequence is handled rather than tolerated. `entryActionForModule()` in
-`levels.ts` resolves a module's entry action from the actions it registers
-(`['view', 'use']`, in that order), and Control Center's module switch reads it
-— so the On/Off control writes `use` for this module and `view` for every other
-one. Without that, the switch would have read “Hidden” however much access an
-employee held, and turning it on would have written nothing.
-
-### Where each permission is enforced
-
-| Surface | Enforcement |
-| --- | --- |
-| Launcher card | `src/app/modules/page.tsx` → `deriveCustomerReviewCapabilities(...).canAccessModule`, resolved for the **signed-in** user (View As lends nothing) |
-| Route entry (all four screens) | `src/app/customer-reviews/layout.tsx` → `hasPermission(..., 'use')` or `'verify'`, admin short-circuit, fails closed on a missing or inactive profile |
-| Reading a request | RLS `SELECT` policy on `customer_review_requests` → `can_view_customer_review_request_row(created_by, auth.uid())`: an active user who is the owner, an admin, or holds `verify` |
-| Reading a photo or an event | RLS `SELECT` policies → `can_view_customer_review_request()`, which asks the same question about the parent request |
-| Creating a request | RLS `INSERT` policy: `created_by = auth.uid()`, `status = 'draft'`, no lifecycle field pre-set, and `use` (or admin) |
-| Editing a request | RLS `UPDATE` policy → `can_edit_customer_review_request()`, **plus a column grant** limiting writes to the ten form fields |
-| Any status change | `transition_customer_review_request()` (SECURITY DEFINER) — transition table, then permission, then prerequisites |
-| Verifying / closing | The `verified`/`closed` branch of that function requires `verify` |
-| Opening WhatsApp | `record_customer_review_whatsapp_opened()` — owner + `use`, status must be `ready_to_send`, prerequisites re-checked |
-| Recording evidence | `record_customer_review_evidence()` — owner + `use`, status `sent` or `customer_responded`, https only |
-| Photograph objects | Storage policies on `storage.objects`, keyed on the request id in the object path |
-
-> **Why the request table has a predicate of its own.**
-> There are two of them, and the difference is the argument they take.
-> `can_view_customer_review_request(request_id, …)` resolves a request by
-> reading `customer_review_requests`. That is right for the photo, event and
-> storage policies, which hold a request id and need the parent looked up.
-> Used on `customer_review_requests` itself it is wrong twice: it re-queries
-> the table being guarded, and because it is `STABLE` the row an
-> `INSERT ... RETURNING` is about to return is not in its snapshot — the policy
-> evaluates false and the insert is refused `42501`. PostgREST turns
-> `.select()` into `RETURNING`, so that broke every create in the UI.
->
-> `can_view_customer_review_request_row(created_by, …)` takes the value
-> instead, so it never touches the guarded table. It is `SECURITY DEFINER` for
-> a second reason: a policy body runs as the **caller**, so spelling the
-> predicate out inline would read `public.users` with the caller's privileges
-> and bind this module's visibility to that table's grants and row security.
-> Definer rights keep the question where it belongs.
->
-> The migration asserts both properties at apply time, and
-> `supabase/tests/customer_review_request_visibility_assertions.sql` proves
-> them against a real database — including a case that locks `public.users`
-> down completely and shows the shipped policy still works while the inline
-> version goes blind.
-
-**A request never goes through an API route.** Creating, reading, editing and
-every status change are RLS plus SECURITY DEFINER functions — the pattern
-Meetings (20260814000000) and Order Requests use. A route for those would have
-added a second place for the rules to live.
-
-**Photographs are the exception, and deliberately so.** They travel through
-`POST`/`DELETE /api/customer-reviews/photos`, because both operations span the
-private bucket and the metadata table, and because deciding what a file really
-is means reading its bytes on a server. The clients hold no storage
-INSERT/DELETE policy and no photo-metadata write policy at all, so that route
-is the only way an image enters or leaves the module. §9 covers it.
-
-## 4. Status model
-
-Seven statuses, and no eighth.
-
-| Status | Means |
-| --- | --- |
-| `draft` | Being prepared. Incomplete is fine |
-| `ready_to_send` | Every sending prerequisite is met. Nothing has left BOE |
-| `sent` | The employee **confirmed** they sent it. A person's deliberate claim |
-| `customer_responded` | The customer replied. Says nothing about a review |
-| `verified` | A `verify` holder checked the evidence and said so |
-| `closed` | Verified and finished with |
-| `cancelled` | Abandoned before it was verified |
-
-### Transitions
-
-```
-draft              → ready_to_send, cancelled
-ready_to_send      → draft, sent, cancelled
-sent               → customer_responded, cancelled
-customer_responded → verified, cancelled
-verified           → closed
-closed             → (terminal)
-cancelled          → (terminal)
-```
-
-**The middle is one path, with no shortcut.** `sent → verified` existed in the
-first cut and was removed in the pre-review audit. Verification means "somebody
-checked that this customer published a review", and a request in `sent` is one
-where nothing has come back at all — so that edge let a verifier jump from "we
-sent a message" to "the review is confirmed" with no recorded response in
-between, and made `customer_responded` a step people could skip.
-
-**Recording a published review URL on a `sent` request moves it to
-`customer_responded`.** A published review *is* a response, and leaving the
-request in `sent` would mean the record said "we heard nothing" while holding a
-link to what the customer wrote. The move writes its own `status_changed` trail
-row. It never verifies anything: `verified_at` is written in exactly one place
-in the whole migration, and that is the `verify` branch of the transition
-function.
-
-* **One shared place.** `CUSTOMER_REVIEW_TRANSITIONS` in
-  `src/lib/customerReviews/status.ts` is the browser's copy;
-  `transition_customer_review_request()` holds the deciding copy.
-  `migration.test.ts` asserts the two are identical, branch by branch.
-* `verified` and `closed` need `verify`. Everything else needs to be the
-  **owner** (or an admin) — a verifier does not run somebody else's outreach.
-* Cancelling stops at `customer_responded`: a verified or closed request is a
-  finished record of something that happened.
-* There is no path from “WhatsApp was opened” to `sent`.
-
-### Ready-to-Send prerequisites
-
-Checked in `readyToSendBlockers()` and, decisively, in
-`assert_customer_review_ready()`:
-
-1. genuine-customer confirmation ticked
-2. customer / project name
-3. a valid WhatsApp number
-4. an interaction type
-5. an https review destination
-6. a neutral invitation — the greeting and the project reference must not ask
-   for a rating or a positive review (`containsSteeringLanguage()` /
-   `customer_review_text_steers()`)
-7. **at least one real project photograph**
-8. the image-sharing confirmation
-
-The internal note is deliberately **not** a prerequisite: it never reaches the
-customer, so requiring it would be requiring paperwork.
-
-**Why a photograph is required, given that it is never sent.** A `wa.me` link
-carries a phone number and a text parameter and nothing else — there is no way
-to attach a file to one. The photograph is BOE's own private reference,
-anchoring the request to work actually done for this customer; an outreach
-nobody can show a photograph of is an outreach nobody can evidence. The employee
-shares images by hand in the chat if they choose to, which is what the
-image-sharing confirmation covers.
-
-**Why the steering check exists.** The closing two sentences are a constant and
-cannot be edited — but the greeting and the project reference are editable, and
-without this an employee could type "please give us 5 stars" into a factual
-reference and send a message that solicits a rating in its first sentence and
-disclaims it in its last. Checked in the browser *and* in
-`assert_customer_review_ready()`.
-
-## 5. Data model
-
-`customer_review_requests`
-: One outreach. Holds the customer name, E.164 number, interaction type,
-internal note, the two editable invitation fragments, the review destination,
-the two confirmations, ownership, and the lifecycle timestamps. **No message
-body** — the invitation is assembled, never stored.
-
-`customer_review_request_photos`
-: Metadata for objects in the private bucket. `kind` is `project_photo` or
-`review_proof`. `storage_path` is UNIQUE, and a CHECK requires its first segment
-to equal the request id.
-
-`customer_review_request_events`
-: Append-only trail: `created`, `status_changed`, `whatsapp_opened`,
-`evidence_recorded`. No client role holds INSERT, UPDATE, DELETE or TRUNCATE,
-and there is no write policy of any kind.
-
-### The four facts that are never collapsed
-
-| Column | Means | Does **not** mean |
+| Who | `use` | `verify` |
 | --- | --- | --- |
-| `whatsapp_opened_at` / `_count` | The invitation was handed to WhatsApp | Sent, delivered, or read |
-| `sent_at` / `sent_by` | An employee confirmed they sent it | WhatsApp confirmed anything |
-| `responded_at` / `responded_by` | Somebody observed a reply | A review exists |
-| `verified_at` / `verified_by` | A `verify` holder checked it | — |
+| Admin | ✅ | ✅ |
+| Explicitly authorized employee | ✅ | — |
+| Explicit verifier | — (grant separately if they should also test) | ✅ |
+| Unauthorized or inactive employee | — | — |
 
-`review_public_url` is a fifth, separate fact: a link somebody pasted. Its
-presence is never verification.
+* **A verifier who does not hold `use` cannot book a card.** That is the
+  separation the workflow exists to exercise, and it is enforced in
+  `book_customer_review_test_card()` rather than only in the UI.
+* `verify` is a **PROTECTED action** (`src/lib/permissions/levels.ts`): no preset
+  level grants it; it has to be ticked deliberately in Custom.
+* `verify` **depends on** `use` (`ACTION_DEPENDENCIES`), so ticking it brings
+  module entry with it.
+* **An inactive account is refused everywhere**, including a deactivated admin
+  and a deactivated verifier, and including on their own booked card. Every
+  predicate and every definer function checks `users.is_active`, because
+  `resolve_effective_permissions` does not.
 
-## 6. Storage
+## 5. The screens
 
-* Bucket `customer-review-photos`: **private**, 5 MB per object,
-  `allowed_mime_types` = `image/jpeg`, `image/png`, `image/webp`.
-* **Uploads go through one trusted server route**,
-  `POST /api/customer-reviews/photos`. The browser cannot write an object or
-  register one: `authenticated` holds no storage INSERT policy for this bucket,
-  no metadata INSERT policy, and no INSERT privilege on the metadata table.
-  The migration asserts all three at apply time.
-* **Two gates, in order.** `inspectImageBytes()` parses the container — PNG
-  signature + IHDR + IEND, JPEG SOI + SOF + EOI, WEBP RIFF — and requires it to
-  account for the **whole file**, so appended payloads are refused. It is a
-  parser, not a decoder, and its job is to keep unsupported containers away
-  from the decoder — which matters because **libvips accepts SVG and this does
-  not**.
-* **Then the file is decoded and re-encoded**, and the *output* is what is
-  stored. See §6a for exactly what that does and does not guarantee.
-  `mime_type` and `byte_size` describe the re-encoded bytes, so they are facts
-  a server established rather than claims a browser made.
-* `validateReviewPhoto()` still runs in the browser first. It is a **courtesy**
-  — it saves a five-megabyte round trip to be told no — and is explicitly not
-  the boundary.
-* The **object key is generated on the server** from the request id and a fresh
-  uuid. No path, bucket or key is accepted from the body; the only three fields
-  read are `requestId`, `kind` and `file`.
-* A repeated upload is refused by **content hash** (`content_sha256`), in the
-  route and again by a per-request unique constraint — so a double click is one
-  attachment whatever races with what, and a genuinely different photograph is
-  never blocked.
-* Object key: `<request_id>/<kind>/<timestamp>_<random>.<ext>`. **Nothing the
-  user typed reaches the path** — only a sanitised extension. Collisions are
-  impossible; a crafted filename cannot escape the folder.
-* Reads are short-lived signed URLs only, and `createSignedUrl` is governed by
-  the same SELECT policy as reading the request. No public URL is ever built.
-* Uploading is two writes (object, then metadata row). If the row fails, **the
-  object is removed again** before the function returns, so a failed attach
-  leaves nothing orphaned.
-* `project_photo` can be attached and removed by its owner while the request is
-  being prepared. `review_proof` can be attached once the request is `sent` and
-  is **not** removable by its owner — evidence offered for verification must not
-  vanish from under the verifier.
-* **An admin may withdraw either kind at any status**, and this is a deliberate
-  second door. Without it an image uploaded by accident — the wrong customer's
-  site, a bystander in shot, a photograph BOE turns out not to have permission
-  for — would be permanently unremovable the moment the request left
-  `ready_to_send`. Every removal writes a `photo_removed` row to the
-  append-only trail, so a correction is recorded rather than silent. The
-  metadata policy and the storage policy grant the same door, because a route
-  that removed one without the other would leave an orphan or a broken
-  reference.
-* **A request that still holds photographs cannot be deleted.** The metadata
-  rows cascade from the request and the objects do not, so deleting one would
-  strand every object it named with nothing left to name them. Empty it first;
-  removing a photograph deletes the row and the object together.
+| Screen | Who | What it shows |
+| --- | --- | --- |
+| **Available** | `use` or `verify` | Cards with status `available` only. Each carries the label, the category, the reference, the title, a truncated preview and a **Book** action |
+| **My tests** | the tester | That person's `booked` and `submitted` cards. Scoped in the query as well as by RLS, because a verifier sees everybody's |
+| **To verify** | `verify` | Submitted cards awaiting a decision |
+| **History** | `verify` | Verified cards. **The only place a verified card appears anywhere in the module** |
 
-## 6a. Byte validation — the exact guarantee
+A verified card is not hidden cosmetically: `verified` is simply not a member of
+either active tab's status list, and it never returns to the pool.
 
-Every accepted file is **decoded and re-encoded by libvips (`sharp`), and the
-re-encoded output is what is stored.** The uploaded bytes are never written,
-never hashed and never described by the metadata row.
+### The card screen
 
-**What that guarantees**
+Five facts, five controls, and no control performs two of them:
 
-* The stored object is bytes a decoder produced, not bytes a caller supplied.
-* **EXIF, ICC, XMP and IPTC are gone.** This is a privacy fix as much as a
-  safety one: a phone photograph of a customer’s premises carries GPS
-  coordinates, a device serial and a timestamp, and BOE has no business
-  storing any of it. EXIF orientation is applied first, so photographs stay
-  upright.
-* Anything appended to the original is gone, because it was never part of the
-  decoded image. (It is also refused earlier, by the structural gate.)
-* A file the decoder cannot read is refused rather than stored as a future
-  broken thumbnail.
-* The parser and the decoder must **agree** on the format; a disagreement is a
-  refusal, not something to reconcile.
-* A decompression bomb is capped at 50 megapixels — far above a 48 MP phone
-  camera, far below trouble.
+| Fact | Written by | Moves the status? |
+| --- | --- | --- |
+| booked | `book_customer_review_test_card()` | available → booked |
+| whatsapp_opened | the trusted route, via a service-role RPC | **no** |
+| sent_confirmed | `confirm_customer_review_test_card_sent()` | **no** |
+| submitted | `transition_customer_review_test_card()` | booked → submitted |
+| verified | the same, with `verify` | submitted → verified |
 
-**What it does not guarantee.** The structural parser on its own cannot prove
-that every malformed or embedded-payload file is rejected, and this
-documentation does not claim it does. What closes that gap is the re-encode:
-anything the decoder does not carry into its output does not reach storage.
-The residual boundary is the decoder itself — a vulnerability in libvips would
-be reached by any image-handling system that decodes, and this one decodes on
-the server, in a Node runtime, on bytes already narrowed to three containers.
+## 6. WhatsApp
 
-**Always refused:** SVG, HTML, scripts, executables, archives, PDF, GIF, TIFF
-and every other unsupported container; appended data; invalid or truncated
-length declarations; a signature that disagrees with the extension; an empty
-file; anything over 5 MB.
+### The allowlist
 
-**No dependency was added.** `sharp` is already in `package.json` and already
-runs server-side in production (`src/app/api/showroom/quotation/[id]/route.ts`,
-`src/lib/orders/confirmedPdfRender.ts`). `package-lock.json` is untouched.
+Recipients come from one **server-only** environment variable:
 
-## 6b. Removing a photograph
+```
+BOE_INTERNAL_TEST_WHATSAPP_NUMBERS=Ops test phone|+919999900001,QA test phone|+919999900002
+```
 
-**Removal is one server operation**, `DELETE /api/customer-reviews/photos`,
-because it spans the private bucket and the metadata table and no transaction
-covers both. A browser that could delete either half on its own would sooner
-or later delete exactly one — leaving a file nothing names again, or a record
-pointing at nothing.
+* Comma- or newline-separated. Each entry is a full international number,
+  optionally `Label|+number`. `#` starts a comment.
+* **Not** a `NEXT_PUBLIC_` name, so Next never inlines it into a client bundle.
+  The numbers reach a browser only through `GET /api/customer-reviews/whatsapp`,
+  which requires an active account holding `use`.
+* **No real number is committed to this repository.** `.env.example` documents
+  the variable with placeholders; real values go in `.env.local`.
+* Numbers are **normalized and validated server-side**, strictly: an entry
+  without a country code is refused rather than guessed, because the guess would
+  decide who gets messaged.
 
-| Step | What it does |
+**It fails closed, every way it can fail.** Unset, empty, whitespace, comments
+only, or containing **one** bad entry among good ones: the whole list is refused
+and no link can be built by anybody. There is no default, no fallback and no
+built-in number anywhere in the code.
+
+### Why the server builds the link
+
+If the browser assembled the `wa.me` URL, the allowlist would be a suggestion:
+anything running in that tab could put a stranger's number in the path.
+`POST /api/customer-reviews/whatsapp` checks the number against the list,
+composes the message from the card row and the constants, and returns the URL —
+so the number in the link is one the **server** chose from its **own** list.
+
+A tester may also *type* a number instead of picking one. That is not a hole:
+what they type is checked against the same list on the server, and a number that
+is not on it comes back 403 with no link.
+
+### Opening is not sending
+
+* `record: false` (the default) **previews** the message and records nothing.
+* `record: true` records `whatsapp_opened_at`, a counter and the target — and
+  **touches no status**. The RPC that does it is granted to `service_role`
+  alone, because it takes the actor and the recipient as parameters and the
+  trusted route is what establishes both.
+* **Confirming is a separate, deliberate action** on a separate control, calling
+  a separate RPC, which also moves no status. Submitting is a third step.
+
+Nothing in this repository sends a WhatsApp message. There is no API client, no
+token and no outbound call — the only artefact produced is a URL string, and no
+test navigates to it.
+
+## 7. Evidence
+
+One screenshot per card, in a **private** bucket
+(`customer-review-test-screenshots`), read through short-lived signed URLs.
+
+**A screenshot is not proof of a review.** There is no review in this module. It
+is not proof of delivery either. It is the artefact a verifier looks at to
+decide whether the *workflow* was exercised, and the screens say so where it is
+uploaded and where it is checked.
+
+Upload and removal both go through `/api/customer-reviews/photos`, which is the
+**only writer**: `authenticated` holds no storage INSERT policy, no metadata
+INSERT policy, and no INSERT, UPDATE or DELETE privilege. The route
+authenticates the caller, resolves `use`, reads the card through **their own
+RLS**, checks the card is still `booked`, **decodes and re-encodes** the image,
+generates the object key itself, and only then writes.
+
+Removal is one operation in three steps — mark, delete the object, delete the
+row — so a failure between them leaves a retryable state rather than an orphaned
+file or a broken reference. A tester may withdraw a screenshot **only while they
+still hold the card**; an administrator may at any status, which is the only
+safe correction route for an image uploaded by accident.
+
+## 8. The database
+
+Three tables, all with RLS, none with an unconditional policy.
+
+| Table | Client access |
 | --- | --- |
-| **Mark** | `begin_customer_review_photo_removal()` re-checks the authorization in SQL, locks the row, stamps `removal_started_at` / `removal_by`. Every read filters the row out from this moment |
-| **Object** | the file is deleted from the private bucket |
-| **Row** | `finish_customer_review_photo_removal()` deletes the metadata; the delete trigger writes the `photo_removed` entry, crediting `removal_by` |
+| `customer_review_test_cards` | **SELECT only.** One policy. No INSERT, UPDATE or DELETE policy or privilege for any client role |
+| `customer_review_test_card_screenshots` | **SELECT only**, and a row marked for removal is filtered out in the policy itself |
+| `customer_review_test_card_events` | **SELECT only.** Append-only: no client holds INSERT, UPDATE, DELETE or TRUNCATE |
 
-**Partial failure is explicit, and a retry resumes.** If the object deletion
-fails, the row stays marked and still names its path — nothing is orphaned, the
-photograph is already invisible, and calling again finishes the job. If the row
-deletion fails, the caller is told the image is gone but the record is not,
-which is true, and calling again deletes the row over an object that is already
-missing. Both SQL halves are idempotent, and a missing object counts as a
-**success** rather than a failure — on a resume it is missing precisely because
-the last attempt got that far.
+### Browser-callable functions, and their exact signatures
 
-**The resume read is the one read in this module that does *not* hide a marked
-row.** Every list and detail query filters `removal_started_at`, because hiding
-the row is what marking is for. The route's own read deliberately does not: a
-resume that could not see the thing it is resuming would be no resume at all.
-That omission used to be accidental — the next person tidying reads would have
-added the filter and killed the retry silently — and it is now deliberate and
-pinned by a test. Marked rows are never restored to ordinary reads.
+The migration pins an **exact allow-list**: any function in this module granted
+to `authenticated` whose signature is not on it fails the migration at apply
+time.
 
-**Every id the caller cannot resolve gets the same answer.** A completed
-removal, an id that never existed, and a photograph belonging to another
-employee all return the same success, and none of them reaches the privileged
-path. That is a requirement rather than a convenience: if a completed removal
-answered differently from somebody else's photograph, the difference would
-itself be the disclosure — a caller could walk uuids and learn which ones exist
-on requests they cannot see. A refusal (409/403) is only ever reachable for a
-photograph the caller can already read, so those answers disclose nothing new.
-
-The audit trail gains exactly one `photo_removed` entry per removal, however
-many times DELETE is called: the row is deleted once, and the trigger fires
-once. A call after completion writes nothing at all.
-
-**Who may remove what** (enforced in the SQL, and again in the route):
-
-* the **owner** (with `use`): a project photograph while the request is `draft`
-  or `ready_to_send`; review proof only while the request is **unverified** —
-  evidence a verifier has acted on must not vanish from underneath their
-  decision;
-* an **admin**: either kind, at any status, verified included, as a correction.
-
-Both SQL halves take the actor as a parameter and are granted to
-**`service_role` alone** — a browser able to call either could name anybody.
-
-## 7. Screens and routes
-
-| Route | Screen |
+| Signature | EXECUTE |
 | --- | --- |
-| `POST /api/customer-reviews/photos` | Trusted upload — validate, decode, re-encode, store |
-| `DELETE /api/customer-reviews/photos` | Trusted removal — mark, delete object, delete row, audit |
-| `/customer-reviews` | Request list — status tabs, search, desktop table / mobile cards, masked number, empty / loading / error states. Verifier-only “To Verify” tab |
-| `/customer-reviews/new` | Create — confirmations, customer, number, interaction, internal note, destination, invitation fields, live preview |
-| `/customer-reviews/[id]` | Request detail — six milestones, permission-gated actions, exact invitation, photographs, evidence, verification, history |
-| `/customer-reviews/[id]/edit` | Edit — the same form with photographs live. Only while `draft` or `ready_to_send` |
+| `customer_review_internal_test_warning()` | `authenticated`, `service_role` |
+| `can_use_customer_review_test_cards()` | `authenticated` |
+| `can_view_customer_review_test_card(p_card_id uuid)` | `authenticated` |
+| `can_view_customer_review_test_card_row(p_booked_by uuid)` | `authenticated` |
+| `book_customer_review_test_card(p_card_id uuid)` | `authenticated` |
+| `confirm_customer_review_test_card_sent(p_card_id uuid)` | `authenticated` |
+| `transition_customer_review_test_card(p_card_id uuid, p_next_status text, p_detail text DEFAULT NULL)` | `authenticated` |
 
-Shell: `src/components/layout/CustomerReviewsLayout.tsx`, following the BOE
-Module Layout Standard (Home button to `/modules`, module-only navigation,
-shared user area).
+Service-role only — each takes something the trusted route establishes:
 
-## 8. Validation rules
-
-| Input | Rule |
+| Signature | Why it is not browser-callable |
 | --- | --- |
-| Customer / project name | Required (NOT NULL), non-blank, ≤ 120 chars |
-| WhatsApp number | Normalised to E.164. A **bare 10-digit** number gets `+91`; anything with `+`, `00`, or another length is taken at face value. Stored only if it matches `^\+[1-9][0-9]{7,14}$` (CHECK + client) |
-| Interaction type | One of eight fixed keys (CHECK) |
-| Internal note | ≤ 500 chars |
-| Greeting name | ≤ 120, non-blank if present |
-| Project reference | ≤ 160 chars |
-| Review destination | `https:` **only**, parseable, hostname present, **no credentials**, ≤ 500 chars. Refused: `http:`, `javascript:`, `data:`, `file:`, `ftp:`, bare hostnames |
-| Public review URL | Same rule, re-checked in the RPC and by a column CHECK |
-| Photographs | JPEG / PNG / WEBP, ≤ 5 MB, ≤ 6 project photos. An extension can never launder a disallowed type |
+| `record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)` | takes the actor **and** the allowlisted recipient |
+| `begin_customer_review_test_screenshot_removal(uuid, uuid)` | takes the actor |
+| `finish_customer_review_test_screenshot_removal(uuid)` | the second half of a removal |
 
-Draft saving is lenient. Three things are still checked on every save, because
-each would be stored *wrong* rather than merely missing: the name, a number that
-is not a number, and an unsafe link.
+Reachable by nobody but this module's own functions:
+`assert_customer_review_test_card_submittable(uuid)`,
+`customer_review_test_screenshots_log_removal()`.
 
-## 9. Privacy behaviour
+**No browser-callable function accepts an acting-user id.** One that did would
+be an oracle: a signed-in employee could pass a colleague's uuid and read back
+who is active, who is an admin and who holds `verify`. The uuid that *is*
+accepted is a row's `booked_by`, compared by equality against `auth.uid()`; the
+function reads `public.users` for the caller alone.
 
-* The number is masked to its **last four digits** everywhere by default
-  (`•••• •••• 0001`) — the country code is not shown. A deliberate per-instance
-  reveal exists on the detail screen only; the list has none, because a list is
-  what gets screenshotted.
-* Masking is a display control, not the boundary. Who may read a number at all
-  is the SELECT policy.
-* The number, the message body, signed URLs and proof contents are **never**
-  logged. A test walks every module file and fails on a `console.*` call whose
-  argument could carry a request row.
-* Validation failures never echo the number back.
-* The audit trail stores decisions, never the private data behind them.
-* A request the caller may not read returns **no row**, and the screen says “not
-  available” — it neither confirms nor denies that the request exists.
-* `service_role` is used nowhere in this module; every read and write is the
-  signed-in user's, under RLS.
+Every SECURITY DEFINER function pins `search_path = public, pg_temp`, asserted
+over the whole set rather than one at a time.
 
-## 10. What opening WhatsApp does and does not prove
+### Booking is atomic
 
-**Does:** the invitation was complete, the database re-authorized the employee,
-and a `wa.me` link was opened with the exact previewed message prefilled.
+`book_customer_review_test_card()` claims the row with a **single conditional
+UPDATE** carrying `status = 'available'` in its WHERE clause — not a read
+followed by a write, which is the shape that loses a race. Under READ COMMITTED
+a concurrent transaction blocks on the row lock, re-reads the committed new
+version, matches nothing, and raises `23514`
+(`CUSTOMER_REVIEW_TEST_ALREADY_BOOKED`). Two testers cannot both take one card.
 
-**Does not:** that WhatsApp accepted it, that it was delivered, that it was
-read, or that anybody pressed send.
+### Return, and why there is no fifth status
 
-**And it does not send the photographs.** A `wa.me` link carries a phone number
-and a text parameter; there is no way to attach a file to one. The project
-photographs are stored privately with the request as BOE's own reference. If
-the employee wants the customer to see them, they open each one from the
-request screen to save it and **attach the files themselves in WhatsApp before
-sending**. The request screen carries a download control on every photograph
-for exactly that, using the same short-lived signed URL the preview uses.
+A verifier who cannot use the evidence sends the card **back to `booked`** and
+records `return_reason`, `returned_at` and `returned_by`, plus a `returned` row
+in the trail. The alternatives were verifying evidence they could not check, or
+leaving the card stuck in the queue forever.
 
-The button awaits `record_customer_review_whatsapp_opened()` **before** pointing
-the tab at `wa.me`; if the database refuses, the tab is closed and the message
-never reaches WhatsApp. The RPC writes `whatsapp_opened_at` and never touches
-`status` or `sent_at`. Confirming “I sent this invitation” is a separate click,
-worded as the employee's own claim.
+Adding a `returned` status would have been a fifth state for something the four
+already express: the tester holds the card again, exactly as before, and the
+reason is on the row and in the trail where they will see it. This is the
+smallest state that answers the requirement.
 
-Repeated clicks are stopped twice: an in-flight ref (state is too slow for two
-clicks in one tick) and a 5-second cooldown.
+## 9. Test data
 
-## 11. Test coverage
+**Sixteen fictional cards**, covering all ten categories and short / medium /
+long bodies, plus a long unbroken token, punctuation and a newline.
 
-| File | Covers |
+They live in `supabase/fixtures/customer_review_test_cards.sql` — **outside the
+migration chain**, because a migration runs against production and test data
+that runs against production *is* test data in production. The migration asserts
+that it created no cards at all.
+
+**The fixture cannot reach production even if somebody runs it there.** It
+carries its own guard: it refuses to insert unless the database it is connected
+to carries the disposable-stack marker, which a person has to set deliberately
+and which no BOE deployment has. That is a property of the file, not of the
+harness around it — a guard that only exists in the runner protects only the
+people who use the runner. The teardown carries the same guard, because a DELETE
+pointed at production is worse than an INSERT.
+
+**Loading it:**
+
+```bash
+BOE_DB_CONTAINER=supabase_db_<project> supabase/tests/run_customer_review_outreach_local.sh
+```
+
+Step 9 of 9 loads the fixture and fails if all sixteen did not land.
+
+**Clearing it:**
+
+```bash
+docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+  -f - < supabase/fixtures/customer_review_test_cards_clear.sql
+```
+
+It removes exactly the sixteen rows by `card_ref` and nothing else — no
+TRUNCATE, no unqualified DELETE. Screenshots and the trail cascade with the
+cards; **objects in the private bucket do not**, so a stack that has had
+screenshots uploaded should be rebuilt with `supabase db reset --no-seed` rather
+than cleared with that file alone.
+
+> **A consequence worth stating.** Because cards come only from a fixture, a
+> production deployment of this migration shows an **empty Available list** —
+> there is no path by which a card gets created in a real deployment. That is
+> correct for a test phase and is a decision for the product owner if the module
+> is ever to hold real content.
+
+## 10. Tests
+
+| File | What it proves |
 | --- | --- |
-| `src/lib/customerReviews/invitation.test.ts` | Exact wording, locked sentences, no rating language, no supplied review text, the internal note is not even a parameter, **preview ↔ `wa.me` parity** |
-| `src/lib/customerReviews/contact.test.ts` | Normalisation, E.164 validation, masking, `waMePhone`, and a sweep asserting no module file logs the number |
-| `src/lib/customerReviews/destination.test.ts` | https-only, credentialled URLs, every unsafe protocol, no invented BOE review link |
-| `src/lib/customerReviews/status.test.ts` | The transition table, terminal states, verifier-only moves, owner-only moves, Ready-to-Send blockers |
-| `src/lib/customerReviews/photos.test.ts` | The browser-side courtesy check, extension laundering, path shape, collision resistance |
-| `src/lib/customerReviews/imageBytes.test.ts` | The real validator, driven by byte fixtures built to spec: genuine PNG/JPEG/WEBP accepted; PDF, ZIP, ELF, EXE, SVG, HTML, GIF, TIFF refused; disguised, truncated, malformed and **polyglot** files refused; the size limit is the real length |
-| `src/lib/customerReviews/imageProcessing.test.ts` | The re-encode, run for real through libvips: the three formats survive; **EXIF does not**; appended payloads do not; **SVG is refused even though the decoder would take it**; damaged and truncated files are caught by the decoder |
-| `src/lib/customerReviews/photoRemovalRetry.test.ts` | The retry path, **driven for real** against a working stand-in for the database and the bucket: initial removal; object-deletion failure then resume; finalization failure then resume over an already-missing object; a marked row invisible to ordinary reads but visible to the resume path; owner and admin resumption; another employee unable to resume or probe; repeat-after-completion safe with no duplicate audit event |
-| `src/lib/customerReviews/photoRemoval.test.ts` | That a client can delete neither an object nor a metadata row; the route’s authorization, its three-step order, and its explicit partial-failure handling; the two SQL halves being service-role-only, locked and idempotent; verified proof being admin-only; the audit entry crediting the remover |
-| `src/lib/customerReviews/uploadRoute.test.ts` | The route: authentication before the body is read, `use` resolved, caller-scoped RLS read, kind/status rules, inspection before storage, server-generated path, no path field in the body, cleanup on metadata failure, closed-list errors, no service-role key on the client, and the database half of the boundary |
-| `src/lib/customerReviews/draftLeniency.test.ts` | Column nullability, what a bare draft may omit, that a supplied-but-invalid value is still refused, and that both gates re-check in the database |
-| `src/lib/customerReviews/migration.test.ts` | RLS on every table, no `USING (true)`, append-only trail, the column grant excludes `status`, storage policies, SQL transition table **identical** to the UI's, deny-by-default registration |
-| `src/lib/permissions/customerReviewOutreach.test.ts` | Registry, protected/dependency wiring, capability derivation, per-request edit rule, the route guard, the launcher card, Control Center, and the screens' RPC and double-click discipline |
-| `src/lib/permissions/customerReviewEffectiveAccess.test.ts` | The resolver's four levels modelled against the migration's own seed rows — what admin, manager, member, an assigned user and an unauthorized user each end up holding |
-| `src/lib/customerReviews/securityContract.test.ts` | Every SECURITY DEFINER function: pinned `search_path`, revoke-then-grant, no `service_role`, `auth.uid()`-only identity, inactive-user refusal, `FOR UPDATE` locking, no mass assignment, no field forgery, safe errors — plus the RLS read gate, storage path forgery, orphan prevention and the admin correction route |
+| `internalTest.test.ts` | the label is first and last in every message, is not a parameter, has no branch, matches the SQL constant, and survives a `wa.me` round trip |
+| `allowlist.test.ts` | every failure mode refuses; one bad entry refuses the whole list; no default and no committed number |
+| `whatsappRoute.test.ts` | the allowlist is checked before a link exists; nothing in `src/` can send |
+| `status.test.ts` | the four statuses, who may make each move, what a submission needs, and that a verified card is in no active list |
+| `migration.test.ts` | the schema, the policies, the grants, and that the SQL transition table matches the browser's edge for edge |
+| `securityContract.test.ts` | function by function: pinned `search_path`, no acting-user parameter, row locks, SQLSTATEs, and what each grant admits |
+| `uploadRoute.test.ts` | the upload path, the generated key, and the two-route inventory |
+| `photoRemoval.test.ts`, `photoRemovalRetry.test.ts` | removal is one operation, is idempotent, and converges after a failure |
+| `fixture.test.ts` | the fixture cannot run against production, and none of its content reads as a review |
+| `customerReviewOutreach.test.ts` | the guard, the launcher, Control Center, and what the screens offer |
+| `supabase/tests/customer_review_test_card_assertions.sql` | **executed against a database**: exact SQLSTATEs, double booking, inactive accounts, visibility, and that a verified card leaves every active list |
 
-Fictional data throughout (`+91 99999 000xx`, `example.test`).
+### Running the live assertions
 
-## 12. Local setup and manual testing
+They need a **disposable** local stack. The runner names its target explicitly,
+requires the marker, and refuses if `public`, `auth`, `storage` or the migration
+ledger holds anything:
 
-The migration is **not applied**, so the module is unreachable until somebody
-applies it deliberately.
+```bash
+supabase start
+supabase db reset --no-seed
+export BOE_DB_CONTAINER=supabase_db_<project>
+docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -d postgres -c \
+  "comment on database postgres is 'boe-disposable-customer-review-test'"
+supabase/tests/run_customer_review_outreach_local.sh
+```
 
-1. Apply `20261017000000_customer_review_outreach.sql` to a **disposable local
-   or test** Supabase project. Never production, and not with `db push` against
-   the linked remote.
-2. `npm run permissions:sync` against that same project, so
-   `permission_modules` matches the registry.
-3. In Control Center → Access Control, grant a test employee **Use Customer
-   Review Outreach** (Custom). Grant a second employee **Verify & Close Review
-   Requests** — dependency resolution adds Use automatically.
-4. `npm run dev`, sign in as the `use` employee, open `/modules`. The Customer
-   Review Outreach card should appear.
-5. **No-permission check:** sign in as an employee with neither grant. The card
-   must be absent and `/customer-reviews` must bounce to `/coming-soon`.
-6. New Request → tick the genuine-customer confirmation, enter a **fictional**
-   name and number (`+91 99999 00001`), pick an interaction type, paste an
-   `https://example.test/...` destination. Save draft. Confirm the blockers list
-   clears as fields fill.
-7. Edit → attach a photograph → confirm “Ready to Send” is blocked until the
-   sharing confirmation is ticked.
-8. Mark Ready to Send. **Do not send a real message.** Verify the WhatsApp link
-   by inspecting it rather than following it:
-   ```bash
-   node -e "const {buildInvitationMessage,buildWaMeUrl,messageFromWaMeUrl}=require('./src/lib/customerReviews/invitation');const m=buildInvitationMessage({greetingName:null,customerName:'Test Customer',projectReference:null,reviewUrl:'https://example.test/r'});console.log(messageFromWaMeUrl(buildWaMeUrl('919999900001',m))===m)"
-   ```
-   or, in the browser, right-click → Copy Link on the button's opened tab, or
-   watch the network tab. Compare the decoded `text` parameter to the preview.
-9. Confirm “I sent this invitation”, record a reply, record an `https` evidence
-   link.
-10. Sign in as the verifier: confirm they can see the request, that Verify asks
-    what was checked, and that they cannot edit it. Confirm the **owner** is
-    never offered Verify.
-11. Repeat steps 4–9 at a 375 px viewport for the mobile card layout.
+The guards have their own tests:
+`supabase/tests/run_customer_review_outreach_guard_tests.sh`.
 
-## 13. Known limitations
+## 11. Deliberately not built
 
-1. **Selecting an existing project photograph is not implemented.** BOE has no
-   cross-module media library — images live inside Order submissions and
-   Showroom products behind their own buckets and authorization — and building
-   one would be a far larger piece of work than this module. Upload is the MVP
-   path. Existing-image selection remains a later integration.
-2. **No standing BOE review URL.** None exists in this repository, and inventing
-   one would send real customers to an unverified address. The employee pastes a
-   destination per request. A single configured default is a product decision
-   with an owner.
-3. **The `+91` default** applies only to a bare 10-digit number. It is a
-   deliberate assumption and is documented in `contact.ts`.
-3b. **Image validation now decodes and re-encodes** (§6a). The residual
-   boundary is libvips itself: a vulnerability in the decoder would be reached
-   by any system that decodes images, this one included. It runs server-side,
-   in a Node runtime, on bytes already narrowed to three containers.
-3c. **The steering check is a phrase list, not a sentiment model.** It catches
-   the phrasings people actually use; a determined employee could still write a
-   steered reference it does not match. It is one control among several, not a
-   guarantee.
-4. **No notifications.** A verifier is not told a request is waiting; they open
-   the To Verify tab. Adding one means touching the shared `notifications` enum,
-   which is a separate migration.
-5. **No API route decides anything about a request** (see §3). The one route
-   that exists, `/api/customer-reviews/photos`, exists because reading a file's
-   bytes needs a server and because removal spans the bucket and the metadata
-   table; it enforces the same rules the database does rather than new ones. Any
-   further server-side work must not become a second place the rules live.
-6. **Idempotency** is client locking (in-flight ref + cooldown) plus server-side
-   transition checks and a `FOR UPDATE` row lock — not an idempotency-key
-   platform. Two simultaneous “Mark Ready” calls: the second sees the new status
-   and is refused. Two simultaneous WhatsApp opens: both may record an open,
-   which is honest — the counter is a count of openings.
-7. **Browser verification was done against a test-only database**, not against
-   production's schema; see §14 for exactly what that does and does not show.
+Reviews, ratings, customers, campaigns, scheduling, message composition, public
+links, posting, analytics, leaderboards, incentives, notifications, and any
+automatic sending. None of these have storage here on purpose.
 
-## 14. Verification status
+## 12. Known limitations
 
-A pre-review audit of the first commit found and fixed: a NUL byte committed
-into a test file (git had classified it as binary), `sent → verified` as an
-unjustified shortcut, no way to correct an accidentally-uploaded image after
-sending, storage objects orphaned by deleting a draft that held photographs, and
-no check stopping an employee typing a rating request into the two editable
-invitation fragments. All are described in place above.
-
-* `npm test`, `npx tsc --noEmit`, `npx eslint`, and `next build` — see the
-  delivery report accompanying this change for the exact results.
-* **Browser verification has since been completed**, against an isolated local
-  Supabase stack rather than production. The migration was applied to a
-  throwaway database on top of a test-only `public.users`
-  (`supabase/tests/bootstrap/`), fictional identities were created, and the
-  screens were exercised signed in: create, edit, Ready to Send, an upload, the
-  `wa.me` link inspected without opening WhatsApp, and unauthorised direct
-  access. §12 remains the manual procedure.
-
-  **It found a blocking defect that 364 passing unit tests had not**: the
-  request SELECT policy re-read its own table, so `INSERT ... RETURNING` — what
-  PostgREST emits for `.select()` — was refused 42501 and no request could be
-  created by anyone, admins included. The tests all mock Supabase, so none of
-  them had ever met a policy. That is the argument for
-  `supabase/tests/customer_review_request_visibility_assertions.sql` and its
-  runner: they are the part of the suite that talks to a database.
-
-  **What it does not show.** The stand-in `public.users` carries production's
-  row security and column grants, quoted from 20260812000000 and 20260813000000,
-  but it is still a stand-in: no triggers, no indexes, no foreign key to
-  `auth.users`, and only the columns this module needs. Only this module's
-  migration chain was applied, so nothing here speaks to interaction with other
-  modules. No screenshots were produced — the preview pane could not composite,
-  so the screens were driven and read programmatically.
-
-## 15. Out of scope
-
-Not built, and deliberately: AI-written reviews, sample “genuine” reviews,
-WhatsApp Business API sending, bulk campaigns, scheduled follow-ups, analytics
-dashboards, leaderboards, points or incentives, sentiment analysis, rating
-tracking, a settings area, a reusable workflow engine, a general media library.
-
-## 16. Before this ships — needs a product-owner decision
-
-1. **Apply the migration** to a disposable project and run the §12 procedure.
-   Confirm the four prerequisites listed at the top of the migration file.
-2. **Who beyond an administrator should hold `verify`?** Administrators hold it
-   from the moment the migration applies. Anyone else is a per-person decision
-   in Control Center → Access Control.
-3. **Should BOE have one standing review URL?** If yes, that is a small follow-up
-   (a settings row plus a default in the form), and it is a decision, not an
-   implementation detail.
-4. **Should a verifier be notified** when a request is waiting? See limitation 4.
-5. Confirm the invitation wording in §2 is the wording BOE wants to send.
+* **The module ships empty in production.** See §9.
+* **Atomicity is proved by its mechanism, not by a concurrent run.** The
+  assertions file runs in one psql session, so it proves the conditional-UPDATE
+  shape structurally and the second-booking refusal behaviourally. A genuinely
+  concurrent test would need two sessions.
+* **`npm run permissions:check` needs a live database** and cannot be run
+  offline; the migration/registry agreement is asserted by `migration.test.ts`
+  instead.
+* **The disposable-stack test baseline is an incomplete stand-in for
+  production's `public.users`.** A green run proves things about this migration;
+  it is not evidence that production's users table behaves identically.

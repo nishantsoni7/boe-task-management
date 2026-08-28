@@ -196,11 +196,11 @@ export default function BoeOsHomePage() {
 
   // THE ONE MODULE canOpenModule CANNOT ANSWER FOR.
   //
-  // Customer Review Outreach registers `use` and `verify` and no `view` at all
+  // Review Workflow Test registers `use` and `verify` and no `view` at all
   // (src/lib/permissions/modules.ts), because it has no read-only audience — a
-  // holder sees their own outreach and nobody else's. canAccessManagementModule
-  // asks strictly for `view`, and asking it here would hide the card from every
-  // single person who actually holds the module.
+  // holder sees the unbooked pool and their own tests and nobody else's.
+  // canAccessManagementModule asks strictly for `view`, and asking it here
+  // would hide the card from every single person who actually holds the module.
   //
   // This is NOT a weaker gate. It reads the same resolver output, for the same
   // signed-in user, through the module's own capability derivation — the same
@@ -380,8 +380,8 @@ export default function BoeOsHomePage() {
     }] : []),
     ...(canOpenCustomerReviews ? [{
       key: 'customer_reviews',
-      title: 'Customer Review Outreach',
-      description: 'Invite genuine customers to leave an honest review, and track what happened.',
+      title: 'Review Workflow Test',
+      description: 'Internal test workflow. Book a test card, message a BOE team number, verify. No customer is contacted.',
       href: '/customer-reviews',
       accent: '#0E7490',
       icon: <ReviewOutreachIcon />,

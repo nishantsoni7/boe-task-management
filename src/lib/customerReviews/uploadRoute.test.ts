@@ -47,7 +47,7 @@ const raw = readFileSync(join(ROOT, ROUTE_PATH), 'utf8')
 const route = stripComments(raw)
 
 const manager = stripComments(
-  readFileSync(join(ROOT, 'src/components/customerReviews/PhotoManager.tsx'), 'utf8'),
+  readFileSync(join(ROOT, 'src/components/customerReviews/ScreenshotManager.tsx'), 'utf8'),
 )
 
 const migration = readFileSync(
@@ -77,7 +77,14 @@ describe('the endpoint', () => {
       }
       return out
     }
-    assert.equal(walk(apiDir).length, 1, 'this is an upload route, not a media service')
+    // TWO routes, and naming both is the point: a third appearing without
+    // anybody noticing is what this assertion exists to catch. The upload route
+    // is the only writer of an image; the whatsapp route is the only builder of
+    // a wa.me link. Neither is a general service.
+    const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
+    assert.equal(routes.length, 2, `unexpected routes: ${routes.join(', ')}`)
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
   })
 
   test('and it is the only place the client posts a file', () => {
@@ -86,7 +93,7 @@ describe('the endpoint', () => {
     assert.equal(manager.includes('.storage'), true, 'reading is still direct')
     assert.equal(/\.storage[\s\S]{0,60}\.upload\(/.test(manager), false, 'the browser must not upload')
     assert.equal(
-      /from\('customer_review_request_photos'\)[\s\S]{0,40}\.insert\(/.test(manager), false,
+      /from\('customer_review_test_card_screenshots'\)[\s\S]{0,40}\.insert\(/.test(manager), false,
       'the browser must not insert metadata',
     )
   })
@@ -105,7 +112,7 @@ describe('who may call it', () => {
     assert.ok(route.includes("if (!profile || profile.is_active !== true) return fail(403"))
   })
 
-  test('customer_review_requests.use is resolved for them', () => {
+  test('customer_review_test_cards.use is resolved for them', () => {
     assert.ok(route.includes("p_module_key: 'customer_review_requests'"))
     assert.ok(route.includes("p_action_key: 'use'"))
     assert.ok(route.includes('if (allowed !== true) return fail(403'))
@@ -120,19 +127,22 @@ describe('who may call it', () => {
   test('the request is read through the CALLER, so RLS decides visibility', () => {
     // Reading it with the service role would answer "does this row exist"
     // instead of "may this person see it".
-    assert.ok(route.includes("await caller\n    .from('customer_review_requests')")
-      || route.includes("caller\n    .from('customer_review_requests')"))
-    assert.ok(route.includes('if (!request) return fail(404'))
+    assert.ok(route.includes("await caller\n    .from('customer_review_test_cards')")
+      || route.includes("caller\n    .from('customer_review_test_cards')"))
+    assert.ok(route.includes('if (!card) return fail(404'))
   })
 
-  test('a non-owner who is not an admin is refused', () => {
-    assert.ok(route.includes('if (!isOwner && !isAdmin) return fail(403'))
+  test('somebody who does not hold the card, and is not an admin, is refused', () => {
+    assert.ok(route.includes('if (!holdsCard && !isAdmin) return fail(403'))
   })
 
-  test('the kind decides which statuses are allowed', () => {
-    assert.ok(route.includes("if (kind === 'project_photo')"))
-    assert.ok(route.includes("request.status !== 'draft' && request.status !== 'ready_to_send'"))
-    assert.ok(route.includes("request.status !== 'sent' && request.status !== 'customer_responded'"))
+  test('A SCREENSHOT MAY ONLY BE ATTACHED WHILE THE CARD IS BOOKED', () => {
+    // One rule now, not a kind ladder. Once a card is submitted the evidence is
+    // what a verifier is about to look at, and once it is verified it is what
+    // they looked at; neither may change underneath them. It mirrors the
+    // removal side exactly, so an image can be added and withdrawn in the same
+    // window.
+    assert.ok(route.includes("if (card.status !== 'booked') return fail(409, MESSAGES.wrong_status)"))
   })
 })
 
@@ -140,8 +150,8 @@ describe('who may call it', () => {
 
 describe('the file itself', () => {
   test('the declared size is refused first, and the REAL length checked after', () => {
-    assert.ok(route.includes('(file as File).size > REVIEW_PHOTO_MAX_BYTES'))
-    assert.ok(route.includes('processReviewImage(bytes, REVIEW_PHOTO_MAX_BYTES)'))
+    assert.ok(route.includes('(file as File).size > TEST_SCREENSHOT_MAX_BYTES'))
+    assert.ok(route.includes('processReviewImage(bytes, TEST_SCREENSHOT_MAX_BYTES)'))
   })
 
   test('VALIDATION AND RE-ENCODING HAPPEN BEFORE ANYTHING IS STORED', () => {
@@ -177,8 +187,8 @@ describe('the file itself', () => {
 // ── 4. The path ─────────────────────────────────────────────────────────────
 
 describe('where the bytes land is decided by the server', () => {
-  test('the key is generated here, from the request id and a fresh uuid', () => {
-    assert.ok(route.includes('const storagePath = `${requestId}/${kind}/${randomUUID()}.${extension}`'))
+  test('the key is generated here, from the card id and a fresh uuid', () => {
+    assert.ok(route.includes('const storagePath = `${cardId}/${kind}/${randomUUID()}.${extension}`'))
   })
 
   test('NO PATH, BUCKET OR KEY IS EVER TAKEN FROM THE BODY', () => {
@@ -190,15 +200,18 @@ describe('where the bytes land is decided by the server', () => {
     }
     // The three things it does read, and nothing more.
     const reads = [...route.matchAll(/form\.get\('(\w+)'\)/g)].map(m => m[1]).sort()
-    assert.deepEqual(reads, ['file', 'kind', 'requestId'])
+    assert.deepEqual(reads, ['cardId', 'file', 'kind'])
   })
 
-  test('the request id must be a uuid before it reaches a query or a path', () => {
+  test('the card id must be a uuid before it reaches a query or a path', () => {
     assert.ok(route.includes('!UUID_RE.test(rawId)'))
   })
 
-  test('the kind is checked against a closed list', () => {
-    assert.ok(route.includes("const KINDS = ['project_photo', 'review_proof'] as const"))
+  test('the kind is checked against a closed list, and the list holds ONE kind', () => {
+    // There are no project photographs and no review proof here: there are no
+    // projects and no reviews. The list survives as a list so the shape stays
+    // correct if a second kind is ever justified.
+    assert.ok(route.includes("const KINDS = ['test_screenshot'] as const"))
     assert.ok(route.includes('!(KINDS as readonly string[]).includes(rawKind)'))
   })
 
@@ -222,12 +235,15 @@ describe('nothing is left behind', () => {
     assert.ok(route.includes('row.content_sha256 === digest'))
     assert.ok(route.includes('MESSAGES.duplicate'))
     // And the database refuses it too, whatever raced with what.
-    assert.ok(sql.includes('constraint customer_review_photos_unique_content_per_request'))
+    assert.ok(sql.includes('constraint customer_review_screenshot_unique_content_per_card'))
   })
 
-  test('the per-request count limit is enforced server-side', () => {
-    assert.ok(route.includes('sameKind.length >= limit'))
-    assert.ok(route.includes('MAX_PROJECT_PHOTOS'))
+  test('the per-card count limit is enforced server-side', () => {
+    assert.ok(route.includes('live.length >= MAX_TEST_SCREENSHOTS'))
+    // A row already marked for removal does not count against the limit: it is
+    // on its way out, every reader already treats it as gone, and counting it
+    // would let a failed removal permanently block its own replacement.
+    assert.ok(route.includes('row.removal_started_at === null'))
   })
 })
 
@@ -295,24 +311,24 @@ describe('a client cannot go around the route', () => {
   })
 
   test('there is no metadata INSERT policy either', () => {
-    assert.equal(sql.includes('create policy "customer_review_photos_insert"'), false)
+    assert.equal(sql.includes('create policy "customer_review_test_screenshots_insert"'), false)
   })
 
   test('and every write privilege is revoked, so a policy added later still fails', () => {
     assert.ok(sql.includes(
-      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate\n  on public.customer_review_test_card_screenshots from authenticated, anon',
     ))
   })
 
   test('the migration ASSERTS all of that at apply time', () => {
-    const assertions = sql.slice(sql.indexOf('do $$'))
+    const assertions = sql.slice(sql.indexOf('do $'))
     assert.ok(assertions.includes('only the trusted upload route may register an image'))
-    assert.ok(assertions.includes('a client INSERT policy exists on the customer-review-photos bucket'))
-    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_request_photos', v_bad)"))
+    assert.ok(assertions.includes('a client INSERT policy exists on the customer-review-test-screenshots bucket'))
+    assert.ok(assertions.includes("has_table_privilege('authenticated', 'public.customer_review_test_card_screenshots', v_col)"))
   })
 
   test('reading is still the client’s, through short-lived signed URLs', () => {
-    assert.ok(sql.includes('create policy "customer_review_photos_storage_select"'))
+    assert.ok(sql.includes('create policy "customer_review_test_screenshots_storage_select"'))
     assert.ok(manager.includes('createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)'))
     assert.ok(manager.includes('const SIGNED_URL_TTL_SECONDS = 300'))
   })

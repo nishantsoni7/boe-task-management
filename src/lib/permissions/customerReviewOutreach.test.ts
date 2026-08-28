@@ -1,6 +1,6 @@
 /**
- * Customer Review Outreach — permissions, module visibility, and the screens
- * that read them.
+ * Review Workflow Test (Internal) — permissions, module visibility, and the
+ * screens that read them.
  *
  * Two halves:
  *   1. behavioural assertions on the capability derivation;
@@ -20,8 +20,8 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   NO_CUSTOMER_REVIEW_CAPABILITIES,
-  canEditThisRequest,
   deriveCustomerReviewCapabilities,
+  holdsThisCard,
 } from './customerReviewOutreach'
 import {
   ACTION_DEPENDENCIES,
@@ -58,7 +58,10 @@ describe('what the module registers', () => {
     const mod = getRegisteredModule(MODULE)
     assert.ok(mod, 'the module is not registered')
     assert.deepEqual(mod!.actions.map(a => a.actionKey).sort(), ['use', 'verify'])
-    assert.equal(mod!.displayName, 'Customer Review Outreach')
+    // The KEY is unchanged — every existing Control Center grant is written
+    // against it — and the display name is not, because that is the part a
+    // human reads and this module is no longer customer outreach.
+    assert.equal(mod!.displayName, 'Review Workflow Test (Internal)')
   })
 
   test('`use` is the module’s entry action', () => {
@@ -171,40 +174,40 @@ describe('deriving capabilities', () => {
   })
 })
 
-describe('editing one request', () => {
-  const OWNER = 'user-owner'
+describe('who holds one test card', () => {
+  const HOLDER = 'user-holder'
   const OTHER = 'user-other'
   const useCaps = deriveCustomerReviewCapabilities('member', allow('use'))
   const verifyCaps = deriveCustomerReviewCapabilities('member', allow('verify'))
 
-  test('the owner may edit while it is still being prepared', () => {
-    for (const status of ['draft', 'ready_to_send']) {
-      assert.equal(canEditThisRequest({ status, created_by: OWNER }, OWNER, useCaps, 'member'), true, status)
-    }
+  // THERE IS NO EDITORSHIP QUESTION IN THIS MODULE, and that is why the block
+  // that used to be here is gone rather than adapted. Card text is loaded from
+  // a fixture and no client role holds INSERT or UPDATE on the table at all, so
+  // "may I change this" has one answer for everybody and it is no. The only
+  // question a screen has is "is this mine to act on".
+
+  test('the tester holding the card may act on it', () => {
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, HOLDER, useCaps, 'member'), true)
   })
 
-  test('NOBODY edits a request that has already reached a customer', () => {
-    for (const status of ['sent', 'customer_responded', 'verified', 'closed', 'cancelled']) {
-      assert.equal(canEditThisRequest({ status, created_by: OWNER }, OWNER, useCaps, 'member'), false, status)
-      // Not even an admin: what the customer received is a fact.
-      assert.equal(canEditThisRequest({ status, created_by: OWNER }, OTHER, useCaps, 'admin'), false, status)
-    }
+  test('a VERIFIER does not run somebody else’s test for them', () => {
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, verifyCaps, 'member'), false)
   })
 
-  test('a VERIFIER does not author somebody else’s outreach', () => {
-    assert.equal(canEditThisRequest({ status: 'draft', created_by: OWNER }, OTHER, verifyCaps, 'member'), false)
+  test('another `use` holder cannot act on a card that is not theirs', () => {
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, useCaps, 'member'), false)
   })
 
-  test('another `use` holder cannot edit a request that is not theirs', () => {
-    assert.equal(canEditThisRequest({ status: 'draft', created_by: OWNER }, OTHER, useCaps, 'member'), false)
+  test('an admin may unstick a card whose tester has left', () => {
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, useCaps, 'admin'), true)
   })
 
-  test('an admin may fix a draft', () => {
-    assert.equal(canEditThisRequest({ status: 'draft', created_by: OWNER }, OTHER, useCaps, 'admin'), true)
+  test('an unbooked card is nobody’s to act on', () => {
+    assert.equal(holdsThisCard({ booked_by: null }, HOLDER, useCaps, 'member'), false)
   })
 
-  test('a signed-out caller edits nothing', () => {
-    assert.equal(canEditThisRequest({ status: 'draft', created_by: OWNER }, null, useCaps, 'member'), false)
+  test('a signed-out caller acts on nothing', () => {
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, null, useCaps, 'member'), false)
   })
 })
 
@@ -214,8 +217,10 @@ describe('the route guard', () => {
   const guard = read('src/app/customer-reviews/layout.tsx')
 
   test('every screen in the module is behind it', () => {
-    // A layout.tsx at the module root wraps /customer-reviews, /new, /[id] and
-    // /[id]/edit alike, so there is no route that can mount unguarded.
+    // A layout.tsx at the module root wraps /customer-reviews and
+    // /customer-reviews/[id] alike, so there is no route that can mount
+    // unguarded. (The /new and /[id]/edit routes are gone with the authoring
+    // workflow they served — nothing here is created or edited by a browser.)
     assert.ok(guard.includes('export default function CustomerReviewsGuard'))
   })
 
@@ -281,79 +286,176 @@ describe('Control Center', () => {
 })
 
 describe('the screens ask the database, and offer nothing it would refuse', () => {
-  const list = read('src/app/customer-reviews/CustomerReviewListScreen.tsx')
-  const detail = read('src/app/customer-reviews/[id]/RequestDetailScreen.tsx')
-  const form = read('src/components/customerReviews/RequestForm.tsx')
+  const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+  const detail = read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx')
 
   test('every status action comes from availableActions, never from an inline test', () => {
-    assert.ok(detail.includes('const actions = availableActions(request, {'))
+    assert.ok(detail.includes('availableActions(card, {'))
     assert.ok(detail.includes('canVerify: caps.canVerify,'))
     // No hand-rolled status branching deciding what to offer.
     assert.equal(/status === 'verified' &&/.test(detail), false)
   })
 
   test('every status change goes through the one RPC', () => {
-    assert.ok(detail.includes("supabase.rpc('transition_customer_review_request'"))
-    // Nothing writes a status column directly.
+    assert.ok(detail.includes("supabase.rpc('transition_customer_review_test_card'"))
+    // Nothing writes a status column directly — and it could not: no client
+    // role holds UPDATE on the card table at all.
     assert.equal(/\.update\(\{[^}]*status:/.test(detail), false)
-    assert.equal(/\.update\(\{[^}]*status:/.test(form), false)
+    assert.equal(/\.update\(\{[^}]*status:/.test(list), false)
   })
 
-  test('marking a request ready goes through the RPC too, so the DB re-checks it', () => {
-    assert.ok(form.includes("supabase.rpc('transition_customer_review_request'"))
-    assert.ok(form.includes("p_next_status: 'ready_to_send'"))
+  test('BOOKING goes through its own RPC, not through the transition', () => {
+    // Booking must be a single conditional UPDATE to win a race between two
+    // testers; routing it through the generic transition would lock a row it
+    // had already read, one step too late.
+    assert.ok(list.includes("supabase.rpc('book_customer_review_test_card'"))
+    assert.equal(list.includes('transition_customer_review_test_card'), false)
   })
 
-  test('the Ready to Send button is disabled until every blocker clears', () => {
-    assert.ok(form.includes('disabled={saving || blockers.length > 0}'))
-    assert.ok(form.includes('readyToSendBlockers('))
+  test('the Book button is drawn from canBookCard, and from nothing else', () => {
+    assert.ok(list.includes('canBookCard(card, {'))
+    assert.ok(list.includes('canUse: caps.canUse,'))
+  })
+
+  test('the Submit button is disabled until every prerequisite clears', () => {
+    assert.ok(detail.includes('submissionBlockers(card, screenshots.length)'))
+    assert.ok(detail.includes("const blocked = action.to === 'submitted' && blockers.length > 0"))
   })
 
   test('double submission is stopped by a ref, not only by disabled state', () => {
-    for (const [name, source] of [['the form', form], ['the detail screen', detail]] as const) {
-      assert.ok(source.includes('const inFlight = useRef(false)'), name)
-      assert.ok(source.includes('if (inFlight.current'), name)
+    for (const [name, source] of [['the list', list], ['the detail screen', detail]] as const) {
+      assert.ok(/const (booking|acting) = useRef\(false\)/.test(source), name)
+      assert.ok(/if \((booking|acting)\.current/.test(source), name)
     }
   })
 
-  test('the verifier queue and its tab are hidden from non-verifiers', () => {
-    assert.ok(list.includes('...(caps.canVerify ? [{'))
+  test('the verifier tabs are hidden from non-verifiers', () => {
+    assert.ok(list.includes('if (caps.canVerify) {'))
+    // ...and a non-verifier who types the URL is put back on Available rather
+    // than left on an empty screen with a promising name.
+    assert.ok(list.includes("setState({ tab: 'available' })"))
+  })
+
+  test('A VERIFIED CARD IS IN NO ACTIVE LIST', () => {
+    // The requirement, read off the tab definitions rather than described. It
+    // is not filtered out cosmetically: 'verified' is simply not in either
+    // active tab's status list.
+    const table = list.slice(list.indexOf('const TAB_STATUSES'), list.indexOf('export function TestCardListScreen'))
+    assert.ok(/available: \['available'\]/.test(table))
+    assert.ok(/mine:\s*\['booked', 'submitted'\]/.test(table))
+    assert.ok(/history:\s*\['verified'\]/.test(table))
+    const active = table.slice(table.indexOf('available:'), table.indexOf('to_verify:'))
+    assert.equal(active.includes("'verified'"), false, 'a verified card is still in an active tab')
+  })
+
+  test('and My tests is scoped to the signed-in person in the QUERY too', () => {
+    // RLS already narrows a `use` holder to their own cards — but a VERIFIER
+    // sees everybody's, so without this their "My tests" tab would show the
+    // whole company's work under a possessive heading.
+    assert.ok(list.includes("if (tab === 'mine') query = query.eq('booked_by', profile.id)"))
   })
 
   test('THE LIST IS NOT A DASHBOARD', () => {
-    // No scoring, no leaderboard, no totals per employee — a screen that
-    // measured employees on reviews collected would be an incentive to collect
-    // them by the wrong means.
+    // No scoring, no leaderboard, no totals per employee.
     //
     // Comments are stripped first: this is about what the screen DOES, and the
     // file's own header explains what it deliberately leaves out.
     const executable = list.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
-    for (const word of ['leaderboard', 'ranking', 'reward', 'incentive', 'sentiment', 'rating', 'stars']) {
+    for (const word of ['leaderboard', 'ranking', 'reward', 'incentive', 'sentiment', 'stars']) {
       assert.equal(new RegExp(`\\b${word}`, 'i').test(executable), false, `the list mentions ${word}`)
     }
-    // And no per-employee roll-up: the only numbers are how many rows a tab
-    // holds, which every list in this app shows.
     assert.equal(/by (owner|employee)|group\s*By|reduce\(/i.test(executable), false)
+  })
+
+  test('EVERY CARD CARRIES THE MANDATORY LABEL', () => {
+    // Rendered by a component that takes no content parameter, so no caller can
+    // give it different words or leave it out of one branch.
+    assert.ok(list.includes('<InternalTestWarning />'), 'the list page has no label')
+    assert.ok(list.includes('<InternalTestWarning compact />'), 'a card tile has no label')
+    assert.ok(detail.includes('<InternalTestWarning />'), 'the detail screen has no label')
   })
 })
 
-describe('the module never claims a message was sent, or a review posted', () => {
-  const detail = read('src/app/customer-reviews/[id]/RequestDetailScreen.tsx')
-  const launch = read('src/components/customerReviews/WhatsAppLaunch.tsx')
+describe('there is no public review destination, and no way to publish', () => {
+  const files = [
+    'src/app/customer-reviews/TestCardListScreen.tsx',
+    'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx',
+    'src/components/customerReviews/WhatsAppLaunch.tsx',
+    'src/components/customerReviews/ScreenshotManager.tsx',
+    'src/components/customerReviews/ReviewPieces.tsx',
+    'src/app/api/customer-reviews/whatsapp/route.ts',
+    'src/app/api/customer-reviews/photos/route.ts',
+  ]
 
-  test('opening WhatsApp writes only the opened record', () => {
-    assert.ok(launch.includes("supabase.rpc('record_customer_review_whatsapp_opened'"))
-    // It must not transition anything.
-    assert.equal(launch.includes('transition_customer_review_request'), false)
+  test('no screen or route holds a review destination, or an action that posts one', () => {
+    // MATCHED AS CODE, NOT AS PROSE. An earlier version of this test searched
+    // for the word "publish" anywhere in the file and failed on the list
+    // screen's own reassurance — "nothing is published anywhere" — which is a
+    // sentence the module should keep, not one it should lose to a test. What
+    // must not exist is a DESTINATION or an ACTION, so that is what is checked:
+    // an identifier, a URL, or a link out of the app.
+    for (const file of files) {
+      const source = read(file).split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+
+      for (const identifier of ['reviewUrl', 'review_url', 'reviewLink', 'publishReview',
+                                'postReview', 'shareToGoogle', 'googleReviewUrl']) {
+        assert.equal(source.includes(identifier), false, `${file} declares ${identifier}`)
+      }
+
+      // Any absolute http(s) address at all. The one address this module can
+      // produce comes from the server, so no screen has a reason to hold one.
+      const urls = [...source.matchAll(/https?:\/\/[^'"\s`)]+/g)].map(m => m[0])
+      assert.deepEqual(urls, [], `${file} contains a hard-coded address: ${urls.join(', ')}`)
+    }
   })
 
-  test('the RPC is awaited BEFORE the customer’s chat opens', () => {
+  test('the ONLY external address the module can produce is wa.me', () => {
+    const internalTest = read('src/lib/customerReviews/internalTest.ts')
+    assert.ok(internalTest.includes('https://wa.me/'))
+    // And it is built in exactly one place.
+    const builders = files
+      .map(f => read(f))
+      .filter(src => src.includes('https://wa.me/'))
+    assert.equal(builders.length, 0, 'a screen or route builds a wa.me URL of its own')
+  })
+})
+
+describe('the module never claims a message was sent', () => {
+  const detail = read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx')
+  const launch = read('src/components/customerReviews/WhatsAppLaunch.tsx')
+
+  test('OPENING WHATSAPP IS NOT CONFIRMING IT WAS SENT', () => {
+    // Two components, two controls, two calls. The whole module exists to
+    // demonstrate that collapsing them is wrong.
+    assert.ok(launch.includes('export function WhatsAppTestPanel'))
+    assert.ok(launch.includes('export function ConfirmSentControl'))
+    assert.ok(detail.includes("supabase.rpc('confirm_customer_review_test_card_sent'"))
+    // Opening transitions nothing.
+    assert.equal(launch.includes('transition_customer_review_test_card'), false)
+    assert.equal(launch.includes('confirm_customer_review_test_card_sent'), false)
+  })
+
+  test('the link is built by the SERVER, never by the browser', () => {
+    // If the browser assembled the URL the allowlist would be a suggestion.
+    assert.equal(launch.includes('https://wa.me/'), false, 'the browser builds its own wa.me URL')
+    assert.ok(launch.includes("fetch('/api/customer-reviews/whatsapp'"))
+    assert.ok(launch.includes('buildWaMeUrl') === false, 'the browser calls the URL builder directly')
+  })
+
+  test('the server’s answer is awaited BEFORE anything opens', () => {
     const body = launch.slice(launch.indexOf('const launch = useCallback'))
     assert.ok(
-      body.indexOf('record_customer_review_whatsapp_opened') < body.indexOf('tab.location.href = url'),
-      'the database check must land before the message reaches WhatsApp',
+      body.indexOf("fetch('/api/customer-reviews/whatsapp'") < body.indexOf('tab.location.href = built.waMeUrl'),
+      'the check must land before WhatsApp opens',
     )
     assert.ok(body.includes('tab?.close()'))
+  })
+
+  test('previewing the message records nothing', () => {
+    // `record` defaults to false on the server and is not sent by the preview
+    // call, so reading what you are about to send never writes to the card.
+    const preview = launch.slice(launch.indexOf('const loadPreview = useCallback'), launch.indexOf('const ready ='))
+    assert.equal(preview.includes('record: true'), false)
   })
 
   test('the button says what it does, and does not claim delivery', () => {
@@ -364,46 +466,28 @@ describe('the module never claims a message was sent, or a review posted', () =>
     assert.ok(launch.includes('Open WhatsApp'))
     assert.ok(copy.includes('still have to press send there'))
     assert.ok(copy.includes('BOE never sends it for you'))
+    assert.ok(copy.includes('Opening WhatsApp does not do it for you'))
     for (const word of ['delivered', 'message sent successfully', 'sent to the customer']) {
       assert.equal(copy.toLowerCase().includes(word), false, word)
     }
   })
 
-  test('AND IT SAYS THE PHOTOGRAPHS ARE NOT SENT', () => {
-    // wa.me carries a phone number and a text parameter. It cannot attach a
-    // file, so any wording implying the project photographs go with the message
-    // would be false — and an employee would stop sending them by hand.
-    const copy = launch.replace(/\s+/g, ' ')
-    assert.ok(copy.includes('no photographs are attached'))
-    const form = read('src/components/customerReviews/RequestForm.tsx').replace(/\s+/g, ' ')
-    assert.ok(form.includes('<strong> cannot</strong> attach photographs to it'))
-    assert.ok(form.includes('never sends them automatically'))
-    // And it says what the employee must do instead, which is the part that
-    // stops a photograph silently never reaching anybody.
-    assert.ok(form.includes('attach the files yourself in the chat before you send'))
-
-    const detail = read('src/app/customer-reviews/[id]/RequestDetailScreen.tsx').replace(/\s+/g, ' ')
-    assert.ok(detail.includes('<strong>BOE cannot attach them to WhatsApp</strong>'))
-    assert.ok(detail.includes('attach the files yourself in the chat'))
-    // A download control exists so they can actually do it.
-    assert.ok(detail.includes('downloadable'))
+  test('a screenshot is described as proof of the WORKFLOW, never of a review', () => {
+    const pieces = read('src/components/customerReviews/ReviewPieces.tsx').replace(/\s+/g, ' ')
+    assert.ok(pieces.includes('evidence that the workflow was exercised'))
+    assert.ok(pieces.includes('not a customer review, not proof that one exists'))
+    assert.ok(detail.includes('<ScreenshotIsNotProofNote />'))
   })
 
-  test('the detail screen keeps the six milestones separate', () => {
+  test('the detail screen keeps the five facts separate', () => {
     for (const label of [
-      'Invitation prepared',
+      'Booked',
       'WhatsApp opened',
-      'Employee confirmed sent',
-      'Customer responded',
-      'Public review evidence supplied',
+      'Tester confirmed sent',
+      'Submitted',
       'Verified',
     ]) {
-      assert.ok(detail.includes(label), `missing milestone: ${label}`)
+      assert.ok(detail.includes(label), `missing fact: ${label}`)
     }
-  })
-
-  test('evidence is described as unverified until a verifier says otherwise', () => {
-    assert.ok(detail.includes('It does not mean the request has been'))
-    assert.ok(detail.includes('only a verifier can say that'))
   })
 })

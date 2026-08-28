@@ -1,157 +1,101 @@
-import type { CustomerReviewRequest, CustomerReviewStatus } from './types'
-import { containsSteeringLanguage } from './invitation'
+import type { TestCard, TestCardStatus } from './types'
 
-// THE TRANSITION TABLE, and the prerequisites that guard the one transition
-// that matters.
+// THE TRANSITION TABLE, and the prerequisites that guard the two moves that
+// matter.
 //
 // This file is the browser's copy. The DECIDING copy is
-// transition_customer_review_request() in
+// transition_customer_review_test_card() in
 // supabase/migrations/20261017000000_customer_review_outreach.sql, which holds
 // the identical table and re-checks it on every call. They are written to match
 // deliberately: the UI must never offer a button whose RPC will refuse it, and
 // the RPC must never accept a move the UI would not have offered.
 //
-// The rule this file exists to state: a status is a claim about something that
-// happened in the real world, and every claim here is made by a person. Nothing
-// below infers a status from an event. In particular there is no transition
-// FROM "the employee opened WhatsApp" TO 'sent' — opening a link is not
-// evidence that a message was sent, and the two are recorded separately for
-// exactly that reason.
+// THE RULE THIS FILE EXISTS TO STATE: a status is a claim about something a
+// PERSON did, and nothing below infers one from an event. In particular there
+// is no transition FROM "the tester opened WhatsApp" TO anything at all —
+// opening a link is not evidence that a message was sent, and the two are
+// recorded by two different calls for exactly that reason. Booking is likewise
+// its own call (bookTestCard / book_customer_review_test_card) rather than a
+// transition, because it is the one move that must be atomic against a race
+// between two testers.
 
 /** Every legal move, by current status. An absent key is a terminal state. */
-export const CUSTOMER_REVIEW_TRANSITIONS: Readonly<
-  Record<CustomerReviewStatus, readonly CustomerReviewStatus[]>
+export const TEST_CARD_TRANSITIONS: Readonly<
+  Record<TestCardStatus, readonly TestCardStatus[]>
 > = {
-  draft:              ['ready_to_send', 'cancelled'],
-  // Back to draft is how an employee reopens a request to correct it, and it is
-  // the only backwards move in the module. Everything after 'sent' describes
-  // something that already reached a customer.
-  ready_to_send:      ['draft', 'sent', 'cancelled'],
-  // ONE PATH THROUGH THE MIDDLE. sent → verified used to exist and was wrong:
-  // verification means "somebody checked that this customer published a
-  // review", and a request in 'sent' is one where nothing has come back at all,
-  // so that edge let a verifier jump from "we sent a message" to "the review is
-  // confirmed" with no record of a response in between. The lifecycle is now
-  // linear — sent → customer_responded → verified → closed — and recording a
-  // published review URL is what moves a sent request along it (see
-  // record_customer_review_evidence in 20261017000000), because a published
-  // review IS a response. That move never verifies anything.
-  sent:               ['customer_responded', 'cancelled'],
-  customer_responded: ['verified', 'cancelled'],
-  verified:           ['closed'],
-  // Terminal. A closed request is a finished record; a cancelled one was
-  // abandoned before anybody verified it. Re-opening either would mean
-  // rewriting history rather than correcting a plan.
-  closed:             [],
-  cancelled:          [],
+  // Booking is NOT in this table. It happens through its own RPC, which claims
+  // the row with a conditional UPDATE so two testers cannot both take one card.
+  // Listing it here as an ordinary transition would invite a future caller to
+  // route it through the generic function, which locks a row it has already
+  // read — one lock too late to be a race guard.
+  available: [],
+  booked:    ['submitted'],
+  // BACK TO 'booked' IS THE RETURN PATH, and it is the only backwards move in
+  // the module. A verifier who cannot read the screenshot has to be able to
+  // hand the card back; the alternatives are verifying evidence they could not
+  // check, or leaving the card stuck in the queue forever. It needs `verify`
+  // (see VERIFIER_ONLY_TRANSITIONS) and it carries a reason.
+  submitted: ['verified', 'booked'],
+  // Terminal. A verified card is a finished record of a test that was checked.
+  verified:  [],
 }
 
-export function canTransition(
-  from: CustomerReviewStatus,
-  to: CustomerReviewStatus,
-): boolean {
-  return (CUSTOMER_REVIEW_TRANSITIONS[from] ?? []).includes(to)
+export function canTransition(from: TestCardStatus, to: TestCardStatus): boolean {
+  return (TEST_CARD_TRANSITIONS[from] ?? []).includes(to)
 }
 
 /**
  * The two transitions that need `customer_review_requests.verify`.
  *
  * Named as a set rather than checked inline so the UI, the capability
- * derivation and the tests all read one list. Everything else in the module
- * belongs to the employee who did the outreach.
+ * derivation and the tests all read one list. Verifying and returning are both
+ * a verifier's judgement about somebody else's evidence; everything before them
+ * belongs to the tester holding the card.
  */
-export const VERIFIER_ONLY_TRANSITIONS: ReadonlySet<CustomerReviewStatus> =
-  new Set<CustomerReviewStatus>(['verified', 'closed'])
+export const VERIFIER_ONLY_TRANSITIONS: ReadonlySet<TestCardStatus> =
+  new Set<TestCardStatus>(['verified', 'booked'])
 
-export function transitionRequiresVerify(to: CustomerReviewStatus): boolean {
+export function transitionRequiresVerify(to: TestCardStatus): boolean {
   return VERIFIER_ONLY_TRANSITIONS.has(to)
 }
 
-/** A request that can no longer move at all. */
-export function isTerminalStatus(status: CustomerReviewStatus): boolean {
-  return (CUSTOMER_REVIEW_TRANSITIONS[status] ?? []).length === 0
+/** A card that can no longer move at all. */
+export function isTerminalStatus(status: TestCardStatus): boolean {
+  return (TEST_CARD_TRANSITIONS[status] ?? []).length === 0
 }
 
-/** Statuses whose content is still editable. Mirrors can_edit_customer_review_request(). */
-export const EDITABLE_STATUSES: ReadonlySet<CustomerReviewStatus> =
-  new Set<CustomerReviewStatus>(['draft', 'ready_to_send'])
-
-export function isEditableStatus(status: CustomerReviewStatus): boolean {
-  return EDITABLE_STATUSES.has(status)
-}
-
-// ─── Ready-to-Send prerequisites ──────────────────────────────────────────────
+// ─── Submission prerequisites ─────────────────────────────────────────────────
 
 /**
- * The fields a request needs before it may leave 'draft', as sentences an
- * employee can act on.
+ * What a booked card needs before it may be submitted for verification, as
+ * sentences a tester can act on.
  *
- * Mirrors assert_customer_review_ready() in the migration, one check for one
- * check, in the same order. An empty array means the request is ready.
+ * Mirrors assert_customer_review_test_card_submittable() in the migration, one
+ * check for one check, in the same order. An empty array means it is ready.
  *
- * SAVING A DRAFT IS LENIENT AND THIS IS NOT: a half-filled draft is a normal
- * thing to have, and a half-filled invitation is not a thing to send.
+ * TWO THINGS, AND THEY ARE DELIBERATELY DIFFERENT THINGS:
  *
- * `internal_note` is deliberately absent. It is context for BOE, it never
- * reaches the customer, and requiring it would be requiring paperwork rather
- * than requiring correctness.
+ *   1. THE TESTER CONFIRMED THEY SENT IT. A separate, deliberate action, taken
+ *      after they actually pressed send in WhatsApp. `whatsapp_opened_at` is
+ *      NOT accepted in its place and never will be — opening a wa.me link hands
+ *      the text to WhatsApp and proves nothing about what happened next.
  *
- * A PROJECT PHOTOGRAPH IS REQUIRED, by product decision. It anchors the request
- * to work BOE actually did for this customer. Note what that does NOT mean:
- * photographs are never attached to the WhatsApp message — wa.me carries text
- * only — so they are a private project reference stored with the request, and
- * the sharing confirmation is what covers the employee sending them by hand.
+ *   2. A SCREENSHOT IS ATTACHED. Evidence that the WORKFLOW was exercised, and
+ *      nothing more than that. It is not proof of a review — there is no review
+ *      — and it is not proof of delivery either; it is the artefact a verifier
+ *      looks at to decide whether this test was actually run.
  */
-export function readyToSendBlockers(
-  request: Pick<
-    CustomerReviewRequest,
-    | 'genuine_customer_confirmed'
-    | 'customer_name'
-    | 'whatsapp_number'
-    | 'interaction_type'
-    | 'review_url'
-    | 'image_permission_confirmed'
-    | 'greeting_name'
-    | 'project_reference'
-  >,
-  projectPhotoCount: number,
+export function submissionBlockers(
+  card: Pick<TestCard, 'sent_confirmed_at'>,
+  screenshotCount: number,
 ): string[] {
   const blockers: string[] = []
 
-  if (request.genuine_customer_confirmed !== true) {
-    blockers.push('Confirm this is a genuine BOE customer or project contact.')
+  if (!card.sent_confirmed_at) {
+    blockers.push('Confirm that you sent the internal test message.')
   }
-  if (!request.customer_name || request.customer_name.trim() === '') {
-    blockers.push('Add the customer or project name.')
-  }
-  if (!request.whatsapp_number) {
-    blockers.push('Add a valid WhatsApp number.')
-  }
-  if (!request.interaction_type) {
-    blockers.push('Choose the interaction type.')
-  }
-  if (!request.review_url) {
-    blockers.push('Add the review destination (an https link).')
-  }
-  // The invitation must still be a neutral ask. The locked sentences cannot be
-  // removed, so the only way to steer one is through the two editable
-  // fragments — which is exactly what this refuses.
-  if (containsSteeringLanguage(request.greeting_name)) {
-    blockers.push('Remove the rating request from the greeting — the customer chooses the rating.')
-  }
-  if (containsSteeringLanguage(request.project_reference)) {
-    blockers.push('Remove the rating request from the project reference — the customer chooses the rating.')
-  }
-  // The photograph first, then the permission to share it — and the second only
-  // once there is something to share. Both must clear before a request is
-  // ready, so the end state is the same either way; what the ordering avoids is
-  // asking somebody to confirm permission for photographs that do not exist
-  // yet. assert_customer_review_ready() raises in this same order for the same
-  // reason.
-  if (projectPhotoCount === 0) {
-    blockers.push('Attach at least one real photograph of this customer’s project.')
-  } else if (request.image_permission_confirmed !== true) {
-    blockers.push('Confirm BOE has permission to share these photographs.')
+  if (screenshotCount === 0) {
+    blockers.push('Attach a screenshot of the internal test you sent.')
   }
 
   return blockers
@@ -159,53 +103,70 @@ export function readyToSendBlockers(
 
 // ─── What the screen offers ───────────────────────────────────────────────────
 
-export type CustomerReviewAction = {
-  to: CustomerReviewStatus
+export type TestCardAction = {
+  to: TestCardStatus
   /** The button's words. Plain operational language, not status names. */
   label: string
-  /** Whether this action needs a short note or URL before it can be taken. */
-  prompt?: 'verification_note' | 'cancel_reason' | 'review_link'
-  /** Rendered as the destructive option. */
+  /** Whether this action needs a short note before it can be taken. */
+  prompt?: 'verification_note' | 'return_reason'
+  /** Rendered as the cautionary option. */
   destructive?: boolean
 }
 
-const ACTION_LABELS: Record<CustomerReviewStatus, CustomerReviewAction> = {
-  ready_to_send:      { to: 'ready_to_send',      label: 'Mark Ready to Send' },
-  draft:              { to: 'draft',              label: 'Reopen for Editing' },
-  // The wording carries the whole point: the employee is confirming what THEY
-  // did, not reporting what WhatsApp did.
-  sent:               { to: 'sent',               label: 'I sent this invitation' },
-  customer_responded: { to: 'customer_responded', label: 'Customer replied', prompt: 'review_link' },
-  verified:           { to: 'verified',           label: 'Verify', prompt: 'verification_note' },
-  closed:             { to: 'closed',             label: 'Close request' },
-  cancelled:          { to: 'cancelled',          label: 'Cancel request', prompt: 'cancel_reason', destructive: true },
+const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
+  available: { to: 'available', label: 'Release' },
+  // The wording carries the point: the tester is handing over what THEY did.
+  submitted: { to: 'submitted', label: 'Submit for verification' },
+  verified:  { to: 'verified',  label: 'Verify test', prompt: 'verification_note' },
+  booked:    { to: 'booked',    label: 'Return to tester', prompt: 'return_reason', destructive: true },
 }
 
 /**
- * The moves this person may make on this request, in the order a screen should
+ * The moves this person may make on this card, in the order a screen should
  * offer them.
  *
  * Three separate gates, and all three have to pass:
  *   1. the transition table above,
  *   2. `verify` for the two verifier-only moves,
- *   3. ownership (or admin) for everything else — a verifier does not run
- *      somebody else's outreach for them.
+ *   3. HOLDING THE CARD (or being an admin) for everything else — a verifier
+ *      does not run somebody else's test for them.
  *
  * This is the UI half of the boundary. The RPC re-checks all three, and the RPC
  * is what actually refuses.
  */
 export function availableActions(
-  request: Pick<CustomerReviewRequest, 'status' | 'created_by'>,
+  card: Pick<TestCard, 'status' | 'booked_by'>,
   viewer: { userId: string | null; isAdmin: boolean; canUse: boolean; canVerify: boolean },
-): CustomerReviewAction[] {
+): TestCardAction[] {
   if (!viewer.userId) return []
 
-  const isOwner = request.created_by === viewer.userId
+  const holdsCard = card.booked_by === viewer.userId
 
-  return (CUSTOMER_REVIEW_TRANSITIONS[request.status] ?? [])
+  return (TEST_CARD_TRANSITIONS[card.status] ?? [])
     .filter(to => {
       if (transitionRequiresVerify(to)) return viewer.isAdmin || viewer.canVerify
-      return viewer.isAdmin || (isOwner && viewer.canUse)
+      return viewer.isAdmin || (holdsCard && viewer.canUse)
     })
     .map(to => ACTION_LABELS[to])
+}
+
+/**
+ * May this person book this card?
+ *
+ * The browser-side mirror of book_customer_review_test_card(). An admin is
+ * included because every module here admits one — and because somebody has to
+ * be able to exercise the workflow on a fresh deployment before any grant
+ * exists.
+ *
+ * THE ATOMICITY IS NOT HERE. This function decides what button to draw. Whether
+ * two testers clicking at once both get the card is decided by a conditional
+ * UPDATE in the database, and by nothing in this file.
+ */
+export function canBookCard(
+  card: Pick<TestCard, 'status'>,
+  viewer: { userId: string | null; isAdmin: boolean; canUse: boolean },
+): boolean {
+  if (!viewer.userId) return false
+  if (card.status !== 'available') return false
+  return viewer.isAdmin || viewer.canUse
 }

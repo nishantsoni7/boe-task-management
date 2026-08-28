@@ -246,15 +246,24 @@ describe('4. a marked row stays hidden from ordinary reads', () => {
     assert.deepEqual(seen, { visible: true, failed: false })
   })
 
-  test('and the real screens really do filter it', () => {
+  test('and the real READERS really do filter it — in the policy, not per screen', () => {
     // The stand-in above is only as honest as the code it stands in for.
-    for (const file of [
-      'src/app/customer-reviews/[id]/RequestDetailScreen.tsx',
-      'src/app/customer-reviews/[id]/edit/EditRequestScreen.tsx',
-    ]) {
-      const source = readFileSync(join(process.cwd(), file), 'utf8')
-      assert.ok(source.includes(".is('removal_started_at', null)"), file)
-    }
+    //
+    // This USED to check that each screen added .is('removal_started_at', null)
+    // to its own query — the detail screen and the edit screen, one filter
+    // each. That worked only while every author remembered, and a screen added
+    // later would have shown a half-removed image with nothing to say so.
+    //
+    // The filter now lives in the SELECT policy, so a marked row is invisible
+    // to every reader by construction, including one written next year — which
+    // is what makes the stand-in's `visible: false` an honest model of it.
+    const migration = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20261017000000_customer_review_outreach.sql'),
+      'utf8',
+    ).replace(/\r\n/g, '\n')
+    const policy = /create policy "customer_review_test_screenshots_select"[\s\S]*?;/.exec(migration)?.[0] ?? ''
+    assert.ok(policy, 'the screenshot SELECT policy is missing')
+    assert.ok(policy.includes('removal_started_at is null'))
   })
 
   test('THE ROUTE’S OWN READ DOES NOT FILTER — deliberately, and pinned here', () => {
@@ -263,7 +272,7 @@ describe('4. a marked row stays hidden from ordinary reads', () => {
     // dying silently in production.
     const route = readFileSync(join(process.cwd(), 'src/app/api/customer-reviews/photos/route.ts'), 'utf8')
     const reader = route.slice(route.indexOf('const reader: PhotoVisibilityReader'), route.indexOf('const removal: PhotoRemovalService'))
-    assert.ok(reader.includes("from('customer_review_request_photos')"))
+    assert.ok(reader.includes("from('customer_review_test_card_screenshots')"))
     assert.equal(reader.includes('removal_started_at'), false,
       'the resume read must not filter marked rows')
   })
@@ -405,18 +414,18 @@ describe('9. no direct client storage or metadata deletion becomes possible', ()
   const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 
   test('the metadata table and the bucket still have no DELETE policy', () => {
-    assert.equal(code.includes('create policy "customer_review_photos_delete"'), false)
-    assert.equal(code.includes('create policy "customer_review_photos_storage_delete"'), false)
+    assert.equal(code.includes('create policy "customer_review_test_screenshots_delete"'), false)
+    assert.equal(code.includes('create policy "customer_review_test_screenshots_storage_delete"'), false)
   })
 
   test('the DELETE privilege is still revoked', () => {
     assert.ok(code.includes(
-      'revoke insert, update, delete, truncate on public.customer_review_request_photos from authenticated, anon',
+      'revoke insert, update, delete, truncate\n  on public.customer_review_test_card_screenshots from authenticated, anon',
     ))
   })
 
   test('the two halves are still service-role only', () => {
-    for (const name of ['begin_customer_review_photo_removal', 'finish_customer_review_photo_removal']) {
+    for (const name of ['begin_customer_review_test_screenshot_removal', 'finish_customer_review_test_screenshot_removal']) {
       assert.ok(new RegExp(`revoke execute on function public\\.${name}\\([^)]*\\)\\s*\\n?\\s*from public, anon, authenticated`).test(code), name)
       assert.ok(new RegExp(`grant\\s+execute on function public\\.${name}\\([^)]*\\) to service_role`).test(code), name)
     }
@@ -424,9 +433,9 @@ describe('9. no direct client storage or metadata deletion becomes possible', ()
 
   test('the browser still deletes nothing itself', () => {
     const manager = readFileSync(
-      join(process.cwd(), 'src/components/customerReviews/PhotoManager.tsx'), 'utf8',
+      join(process.cwd(), 'src/components/customerReviews/ScreenshotManager.tsx'), 'utf8',
     )
-    assert.equal(/from\('customer_review_request_photos'\)[\s\S]{0,40}\.delete\(/.test(manager), false)
+    assert.equal(/from\('customer_review_test_card_screenshots'\)[\s\S]{0,40}\.delete\(/.test(manager), false)
     assert.equal(/\.storage[\s\S]{0,80}\.remove\(/.test(manager), false)
     assert.ok(manager.includes("method: 'DELETE',"))
   })

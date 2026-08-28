@@ -59,7 +59,11 @@ describe('what the migration actually seeds', () => {
     // admins included. permission_modules.is_active defaults to true
     // (20260660 §1), and this migration does not override it.
     assert.ok(code.includes("insert into public.permission_modules (module_key, display_name, description)"))
-    assert.ok(code.includes(`'${MODULE}', 'Customer Review Outreach'`))
+    // THE MODULE KEY IS UNCHANGED AND THE DISPLAY NAME IS NOT. The key is what
+    // every existing Control Center grant is written against; the display name
+    // is what a human reads, and it is what changed when the module became an
+    // internal test workflow.
+    assert.ok(code.includes(`'${MODULE}', 'Review Workflow Test (Internal)'`))
     // Scoped to the registration statement: users.is_active appears all over
     // this migration and is a different column entirely.
     const registration = code.slice(

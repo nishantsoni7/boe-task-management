@@ -1,27 +1,29 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
-import { Home, MessageSquareHeart, ShieldCheck } from 'lucide-react'
+import { useRouter, usePathname, useSearchParams } from 'next/navigation'
+import { History, Home, Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
-// The Customer Review Outreach module shell.
+// The Review Workflow Test (Internal) module shell.
 //
 // Complies with the BOE Module Layout Standard, same as MeetingsLayout: two
 // columns, a module header with a Home button back to /modules, module-only
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// TWO entries, because the module has two audiences and they ask different
-// questions:
+// FOUR entries, because the module has two audiences asking two questions each:
 //
-//   Requests    what am I preparing, and what did I send — the employee's own
-//               outreach, which is all the SELECT policy shows them anyway.
-//   To Verify   what is waiting for somebody to check it. Shown only to a
-//               verifier, because for anybody else it would be an empty screen
-//               with a promising name.
+//   Available   the unbooked pool. Anyone who may use the module sees it.
+//   My tests    the cards this person is holding or has submitted.
+//   To Verify   what is waiting for somebody to check it. Verifier only,
+//               because for anybody else it would be an empty screen with a
+//               promising name.
+//   History     verified tests, kept for the record. Verifier only, and it is
+//               the ONLY place a verified card appears — it leaves both active
+//               lists the moment it is verified.
 
 type CustomerReviewsLayoutProps = {
   profile: UserProfile | null
@@ -43,12 +45,20 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Requests',  path: '/customer-reviews', icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
+  { label: 'Available', path: '/customer-reviews', query: 'tab=available', icon: <Layers size={15} strokeWidth={1.8} /> },
+  { label: 'My tests',  path: '/customer-reviews', query: 'tab=mine',      icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
   {
     label: 'To Verify',
     path: '/customer-reviews',
     query: 'tab=to_verify',
     icon: <ShieldCheck size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
+  {
+    label: 'History',
+    path: '/customer-reviews',
+    query: 'tab=history',
+    icon: <History size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
 ]
@@ -59,17 +69,24 @@ export function CustomerReviewsLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
 
   const items = NAV_ITEMS.filter(item => !item.verifierOnly || canVerify)
   const href = (item: NavItem) => (item.query ? `${item.path}?${item.query}` : item.path)
 
-  // Only the list route highlights an entry at all — a detail or form screen is
-  // not one of the two questions the nav asks, so neither entry lights up
-  // there. That is honest rather than tidy: pretending "Requests" is selected
-  // while the user is three screens deep tells them nothing.
+  // Only the list route highlights an entry at all — a detail screen is not one
+  // of the four questions the nav asks, so nothing lights up there. That is
+  // honest rather than tidy: pretending "Available" is selected while the user
+  // is reading one card tells them nothing.
+  //
+  // EVERY ENTRY NOW CARRIES A QUERY, so the highlight has to read the actual
+  // tab rather than "the one without a query". An earlier version returned
+  // `!item.query`, which was correct while one entry had none and silently
+  // highlighted nothing once they all did.
+  const activeTab = searchParams.get('tab') ?? 'available'
   const isActive = (item: NavItem): boolean => {
     if (pathname !== '/customer-reviews') return false
-    return !item.query
+    return item.query === `tab=${activeTab}`
   }
 
   const navTo = (item: NavItem) => {
@@ -97,7 +114,7 @@ export function CustomerReviewsLayout({
             <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
-              <div className="boe-sidebar-brand-sub">Review Outreach</div>
+              <div className="boe-sidebar-brand-sub">Workflow Test</div>
             </div>
           </div>
           <button
