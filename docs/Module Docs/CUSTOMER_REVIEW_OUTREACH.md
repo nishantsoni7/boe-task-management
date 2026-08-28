@@ -569,14 +569,18 @@ applies it deliberately.
 4. **No notifications.** A verifier is not told a request is waiting; they open
    the To Verify tab. Adding one means touching the shared `notifications` enum,
    which is a separate migration.
-5. **No API routes**, by design (see §3). Any future server-side work must not
-   become a second place the rules live.
+5. **No API route decides anything about a request** (see §3). The one route
+   that exists, `/api/customer-reviews/photos`, exists because reading a file's
+   bytes needs a server and because removal spans the bucket and the metadata
+   table; it enforces the same rules the database does rather than new ones. Any
+   further server-side work must not become a second place the rules live.
 6. **Idempotency** is client locking (in-flight ref + cooldown) plus server-side
    transition checks and a `FOR UPDATE` row lock — not an idempotency-key
    platform. Two simultaneous “Mark Ready” calls: the second sees the new status
    and is refused. Two simultaneous WhatsApp opens: both may record an open,
    which is honest — the counter is a count of openings.
-7. **Browser verification was not completed**; see §14.
+7. **Browser verification was done against a test-only database**, not against
+   production's schema; see §14 for exactly what that does and does not show.
 
 ## 14. Verification status
 
@@ -589,11 +593,29 @@ invitation fragments. All are described in place above.
 
 * `npm test`, `npx tsc --noEmit`, `npx eslint`, and `next build` — see the
   delivery report accompanying this change for the exact results.
-* **Browser verification could not be completed**: the module's tables do not
-  exist in any database this environment can reach, and the only credentials
-  available point at production, which must not be used. The screens cannot be
-  exercised without applying the migration to a disposable project first.
-  §12 is the manual test procedure for whoever does that.
+* **Browser verification has since been completed**, against an isolated local
+  Supabase stack rather than production. The migration was applied to a
+  throwaway database on top of a test-only `public.users`
+  (`supabase/tests/bootstrap/`), fictional identities were created, and the
+  screens were exercised signed in: create, edit, Ready to Send, an upload, the
+  `wa.me` link inspected without opening WhatsApp, and unauthorised direct
+  access. §12 remains the manual procedure.
+
+  **It found a blocking defect that 364 passing unit tests had not**: the
+  request SELECT policy re-read its own table, so `INSERT ... RETURNING` — what
+  PostgREST emits for `.select()` — was refused 42501 and no request could be
+  created by anyone, admins included. The tests all mock Supabase, so none of
+  them had ever met a policy. That is the argument for
+  `supabase/tests/customer_review_request_visibility_assertions.sql` and its
+  runner: they are the part of the suite that talks to a database.
+
+  **What it does not show.** The stand-in `public.users` carries production's
+  row security and column grants, quoted from 20260812000000 and 20260813000000,
+  but it is still a stand-in: no triggers, no indexes, no foreign key to
+  `auth.users`, and only the columns this module needs. Only this module's
+  migration chain was applied, so nothing here speaks to interaction with other
+  modules. No screenshots were produced — the preview pane could not composite,
+  so the screens were driven and read programmatically.
 
 ## 15. Out of scope
 
