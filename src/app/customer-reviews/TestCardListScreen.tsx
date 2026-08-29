@@ -236,7 +236,7 @@ export function TestCardListScreen() {
     <CustomerReviewsLayout
       profile={profile}
       title="Review Workflow Test"
-      subtitle="Internal test workflow — no customer is contacted"
+      subtitle="Internal test workflow — you choose who each test goes to"
       canVerify={caps.canVerify}
       onSignOut={signOut}
     >
@@ -245,10 +245,18 @@ export function TestCardListScreen() {
         {/* The label leads the page, before any card is read. */}
         <InternalTestWarning />
 
+        {/*
+          WHAT THIS SAYS IS WHAT BOE CAN VOUCH FOR, and no more. It used to
+          promise that messages went "only to approved BOE internal team
+          numbers" and that "no customer is contacted" — both true under the
+          allowlist, and neither guaranteed once a tester can type any number.
+          The tester chooses the recipient, so the tester is told that plainly
+          rather than reassured with something the system no longer enforces.
+        */}
         <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.6, margin: 0 }}>
-          Every card here is fictional filler used to rehearse the workflow. Messages go only to
-          approved BOE internal team numbers, nothing is published anywhere, and no customer is
-          contacted at any point.
+          Every card here is fictional filler used to rehearse the workflow. You choose which
+          number each test goes to, nothing is published anywhere, and BOE never sends a message
+          for you — you press send yourself in WhatsApp.
         </p>
 
         <StatusTabs

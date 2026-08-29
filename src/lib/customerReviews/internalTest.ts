@@ -54,14 +54,22 @@ export const INTERNAL_TEST_WARNING =
  * The second line of every message: what the recipient should do with it.
  *
  * Separate from the warning because they answer different questions — the
- * warning says what this is NOT, and this says what it IS. A colleague who gets
- * one of these on their phone should be able to tell in one glance that a
- * system test reached them and that nothing is expected of them.
+ * warning says what this is NOT, and this says what it IS. Anyone who gets one
+ * of these on their phone should be able to tell in one glance that a system
+ * test reached them and that nothing is expected of them.
+ *
+ * IT NO LONGER CLAIMS WHO THE RECIPIENT IS. An earlier version said the message
+ * had been "sent to a BOE internal team number", which was true while the
+ * recipient came from an allowlist and stopped being true the moment a tester
+ * could type any number. A message that tells its reader something false about
+ * themselves is exactly the kind of claim this module refuses to make, so it now
+ * describes only what BOE can vouch for: where the message came from, and that
+ * a person sent it deliberately.
  */
 export const INTERNAL_TEST_EXPLANATION =
-  'This is an automated workflow test sent to a BOE internal team number. ' +
-  'It is not from a customer, it describes nothing real, and it must not be ' +
-  'forwarded, quoted or published anywhere.'
+  'This is an automated workflow test, sent deliberately by a member of BOE ' +
+  'staff from an internal test system. It is not from a customer, it describes ' +
+  'nothing real, and it must not be forwarded, quoted or published anywhere.'
 
 export type InternalTestMessageInput = {
   /** The fixture's short title for this card. */

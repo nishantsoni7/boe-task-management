@@ -129,8 +129,34 @@ describe('the message always carries it', () => {
 
   test('it explains what the recipient should do with it', () => {
     assert.ok(message.includes(INTERNAL_TEST_EXPLANATION))
-    assert.ok(INTERNAL_TEST_EXPLANATION.includes('BOE internal team number'))
     assert.ok(INTERNAL_TEST_EXPLANATION.includes('must not be'))
+    assert.ok(INTERNAL_TEST_EXPLANATION.includes('not from a customer'))
+  })
+
+  test('IT MAKES NO CLAIM ABOUT WHO THE RECIPIENT IS', () => {
+    // The defect a walkthrough surfaced: the message told a recipient it had
+    // been "sent to a BOE internal team number", which was true under the
+    // allowlist and false the moment any number could be typed. A message that
+    // tells its reader something untrue about themselves is the exact thing
+    // this module refuses to produce.
+    //
+    // What it may say is where it came from. What it may not say is who
+    // received it.
+    for (const claim of [
+      'internal team number',
+      'team number',
+      'approved number',
+      'your BOE',
+      'colleague',
+    ]) {
+      assert.equal(
+        INTERNAL_TEST_EXPLANATION.toLowerCase().includes(claim.toLowerCase()), false,
+        `the explanation claims something about the recipient: "${claim}"`,
+      )
+    }
+    // ...and it still says where it DID come from, which BOE can vouch for.
+    assert.ok(INTERNAL_TEST_EXPLANATION.includes('BOE'))
+    assert.ok(INTERNAL_TEST_EXPLANATION.includes('internal test system'))
   })
 
   test('it carries the card’s reference, so a screenshot can be matched back', () => {
