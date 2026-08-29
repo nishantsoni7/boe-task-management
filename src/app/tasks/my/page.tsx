@@ -74,6 +74,13 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low:    { label: 'Low',  color: colors.muted },
 }
 
+// ─── Task list grid ───────────────────────────────────────────────────────────
+// The desktop task row and the table header above it must resolve to identical
+// tracks, so the definition lives here once and both read it — editing it in a
+// single place is the only way they can stay aligned.
+const LIST_GRID_COLUMNS =
+  '28px minmax(420px, 2fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)'
+
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
   { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
@@ -224,7 +231,7 @@ function TaskCard({
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
+        gridTemplateColumns: LIST_GRID_COLUMNS,
         columnGap: '14px',
         alignItems: 'center',
         background: cardBackground,
@@ -1472,19 +1479,12 @@ function MyTasksContent() {
 
             return (
               <div style={{
-                width: '220px', flexShrink: 0,
+                width: '84px', flexShrink: 0,
                 position: 'relative',
                 background: 'rgba(248,250,252,0.6)',
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
                 <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
-                <div style={{
-                  fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
-                  textTransform: 'uppercase', color: colors.muted,
-                  padding: '14px 14px 8px',
-                }}>
-                  Task Type
-                </div>
                 {TYPE_TABS.map((item, i) => {
                   const isActive = taskType === item.key
                   const { Icon } = item
@@ -1492,9 +1492,16 @@ function MyTasksContent() {
                     <button
                       key={item.key}
                       onClick={() => handleTypeChange(item.key)}
+                      // The label is no longer drawn, so it has to be carried:
+                      // `title` for a pointer, `aria-label` for everything else.
+                      // The count is inside the accessible name because an
+                      // aria-label replaces the button's text content entirely.
+                      title={item.label}
+                      aria-label={`${item.label}, ${typeCounts[item.key]} tasks`}
+                      aria-pressed={isActive}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center',
-                        justifyContent: 'space-between', padding: '9px 14px',
+                        justifyContent: 'center', gap: '7px', padding: '12px 6px',
                         background: isActive ? '#fff' : 'transparent',
                         border: 'none',
                         borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #eef2f7' : 'none',
@@ -1503,20 +1510,21 @@ function MyTasksContent() {
                         ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
                       }}
                     >
-                      <span style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        fontSize: '12.5px', fontWeight: isActive ? 600 : 500,
-                        color: isActive ? item.accent : colors.secondary,
-                      }}>
-                        <Icon size={13} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
-                        {item.label}
-                      </span>
+                      <Icon
+                        size={15}
+                        aria-hidden="true"
+                        style={{
+                          color: isActive ? item.accent : colors.secondary,
+                          opacity: isActive ? 1 : 0.55,
+                          flexShrink: 0,
+                        }}
+                      />
                       <span style={{
                         fontSize: '12px', fontWeight: 700,
                         color: typeCounts[item.key] > 0 ? item.accent : colors.muted,
                         background: isActive ? `${item.accent}18` : 'rgba(0,0,0,0.04)',
-                        padding: '1px 8px', borderRadius: '10px',
-                        minWidth: '24px', textAlign: 'center',
+                        padding: '1px 6px', borderRadius: '10px',
+                        minWidth: '22px', textAlign: 'center',
                       }}>
                         {typeCounts[item.key]}
                       </span>
@@ -1611,8 +1619,8 @@ function MyTasksContent() {
             {!isMobile && (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
-        columnGap: '14px',
+                gridTemplateColumns: LIST_GRID_COLUMNS,
+                columnGap: '14px',
                 alignItems: 'center',
                 margin: '8px 24px 0',
                 padding: '8px 0',
