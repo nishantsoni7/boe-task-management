@@ -10,7 +10,7 @@ import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import { MyTaskViewTabs } from '@/components/tasks/MyTaskViewTabs'
+import { MyTaskViewTabs, MyTaskViewSelect } from '@/components/tasks/MyTaskViewTabs'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -33,7 +33,7 @@ import {
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
-  Paperclip, X,
+  Paperclip, X, CircleCheckBig, SendHorizontal,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useToast, Toast } from '@/components/ui/toast'
@@ -43,6 +43,8 @@ import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hook
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { perfTrack } from '@/lib/perf'
+import { canMarkComplete, canSubmitForApproval } from '@/lib/tasks/taskDetailAccess'
 
 
 // Tab membership, overdue-ness, staleness and date normalisation all live in
@@ -74,6 +76,29 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low:    { label: 'Low',  color: colors.muted },
 }
 
+// ─── Left rail heading band ───────────────────────────────────────────────────
+// The rail's heading sits in a band the same height as the workflow tab bar to
+// its right, so the two read as one header line across the card and the icon
+// options below start level with the first task row. The tab bar sizes itself
+// from its content (12px padding, a 12.5px label, a 2px active underline, and
+// the container's own 1px rule), so this is matched to it by measurement, not
+// derived from it: 45.75px is what the tab bar measures at 1440px (12px of
+// padding either side of a 12.5px line box, the 2px active underline, and the
+// 1px rule). Change one and check the other.
+const RAIL_HEADING_HEIGHT = '45.75px'
+
+// ─── Task list grid ───────────────────────────────────────────────────────────
+// The desktop task row and the table header above it must resolve to identical
+// tracks, so the definition lives here once and both read it — editing it in a
+// single place is the only way they can stay aligned.
+// Action holds up to FOUR buttons — complete/submit, pin, edit, delete — which
+// at 26px plus 2px gaps is 110px exactly, leaving the old track with no slack
+// at all. The 14px it now has comes out of Priority, which renders only High /
+// Med / Low at 10px and had it spare, so the row's TOTAL minimum width is
+// unchanged and no width that fitted before can overflow now.
+const LIST_GRID_COLUMNS =
+  '28px minmax(420px, 2fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(66px, 0.42fr) minmax(95px, 0.6fr) minmax(124px, 0.53fr)'
+
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
   { key: 'all',       label: 'View All',   Icon: LayoutList, accent: '#5B7FA6' },
@@ -100,7 +125,7 @@ const LIST_PARAMS = {
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
-  isPinned, onPin, onUnpin,
+  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy,
 }: {
   task: Task
   accentColor: string
@@ -113,6 +138,9 @@ function TaskCard({
   isPinned?: boolean
   onPin?: () => void
   onUnpin?: () => void
+  onComplete?: () => void
+  onSubmit?: () => void
+  actionBusy?: boolean
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -155,62 +183,94 @@ function TaskCard({
           padding: '10px 12px',
         }}
       >
-        {/* Row 1: star + title + actions */}
+        {/* Row 1: star + title, and nothing else — a phone has no width to
+            spare beside a task's name, and a truncated name is the one thing
+            on this card that cannot be guessed from the rest of it. The
+            actions sit on row 2. */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
           {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
-            color: titleColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            color: titleColor,
+            // Wraps instead of truncating. `anywhere` covers the pasted URL or
+            // unspaced code that would otherwise push the card sideways.
+            whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word',
+            lineHeight: 1.35,
             textDecoration: completed ? 'line-through' : 'none',
           }}>
             {task.title}
           </div>
-          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-            {(onPin || onUnpin) && (
-              <button
-                onClick={e => { e.stopPropagation(); if (isPinned) onUnpin?.(); else onPin?.() }}
-                title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: isPinned ? 'rgba(196,154,40,0.10)' : 'transparent', border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: isPinned ? '#C49A28' : colors.muted }}
-              >
-                <Pin size={13} />
-              </button>
+        </div>
+        {/* Row 2: meta on the left, actions hard right.
+            Pin is absent on purpose — Today's Focus is a desktop-side decision
+            and the button was the widest thing competing with the title.
+            Edit and Delete are gated on the CALLBACKS, not on `isSelf`: the
+            page withholds them under View As, where `isSelf` can still be
+            true, and a button that cannot act is worse than no button. */}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* The mobile card shows no status column, so this state — the one
+                that explains why the row carries no action — is called out. */}
+            {awaitingApproval && (
+              <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                {AWAITING_APPROVAL_LABEL}
+              </span>
             )}
-            {isSelf && (
-              <>
-                <button onClick={e => { e.stopPropagation(); onEdit?.() }} title="Edit"
-                  onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
-                  <Pencil size={13} />
-                </button>
-                <button onClick={e => { e.stopPropagation(); onDelete?.() }} title="Delete"
-                  onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
-                  <Trash2 size={13} />
-                </button>
-              </>
+            {!isSelf && assignerName && (
+              <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
+                {assignerName}
+              </span>
+            )}
+            <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+            {dateStr && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+                {overdue && <AlertCircle size={9} />}{dateStr}
+              </span>
             )}
           </div>
-        </div>
-        {/* Row 2: meta badges */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* The mobile card shows no status column, so this state — the one
-              that explains why the row carries no action — is called out. */}
-          {awaitingApproval && (
-            <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              {AWAITING_APPROVAL_LABEL}
-            </span>
-          )}
-          {!isSelf && assignerName && (
-            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
-              {assignerName}
-            </span>
-          )}
-          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
-          {dateStr && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
-              {overdue && <AlertCircle size={9} />}{dateStr}
-            </span>
+          {/* Nothing is reserved when neither is permitted: no spacer, no gap.
+              stopPropagation keeps a tap on either from opening the card. */}
+          {(onComplete || onSubmit || onEdit || onDelete) && (
+            <div style={{ display: 'flex', gap: '2px', flexShrink: 0, marginLeft: 'auto' }}>
+              {(onComplete || onSubmit) && (
+                <button
+                  onClick={e => { e.stopPropagation(); (onComplete ?? onSubmit)?.() }}
+                  disabled={actionBusy}
+                  aria-label={onComplete ? 'Complete task' : 'Submit for approval'}
+                  title={onComplete ? 'Complete Task' : 'Submit for Approval'}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '36px', height: '36px', borderRadius: '6px',
+                    background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
+                    border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+                    cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
+                    color: onComplete ? colors.green : colors.blue,
+                    opacity: actionBusy ? 0.55 : 1,
+                  }}
+                >
+                  {onComplete ? <CircleCheckBig size={15} /> : <SendHorizontal size={15} />}
+                </button>
+              )}
+              {onEdit && (
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit() }}
+                  aria-label="Edit task" title="Edit"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete() }}
+                  aria-label="Delete task" title="Delete"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -224,7 +284,7 @@ function TaskCard({
       onClick={onClick}
       style={{
         display: 'grid',
-        gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
+        gridTemplateColumns: LIST_GRID_COLUMNS,
         columnGap: '14px',
         alignItems: 'center',
         background: cardBackground,
@@ -337,6 +397,25 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: '2px',
       }}>
+        {(onComplete || onSubmit) && (
+          <button
+            onClick={e => { e.stopPropagation(); (onComplete ?? onSubmit)?.() }}
+            disabled={actionBusy}
+            title={onComplete ? 'Complete Task' : 'Submit for Approval'}
+            aria-label={onComplete ? 'Complete task' : 'Submit for approval'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '26px', height: '26px', borderRadius: '6px',
+              background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
+              border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+              cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
+              color: onComplete ? colors.green : colors.blue,
+              opacity: actionBusy ? 0.55 : 1,
+            }}
+          >
+            {onComplete ? <CircleCheckBig size={12} /> : <SendHorizontal size={12} />}
+          </button>
+        )}
         {/* Pin to Top 3 */}
         {(onPin || onUnpin) && (
           <button
@@ -1136,6 +1215,14 @@ function MyTasksContent() {
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
   const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
+  // The BUSY FLAG IS A REF, and the state beside it only drives the spinner.
+  // A state-only guard loses the race it exists to prevent: two clicks in one
+  // frame both read the pre-render value, both pass, and the task is completed
+  // twice — two activity rows and two notifications for one intended action.
+  // The detail page hit exactly this and fixed it the same way
+  // (statusUpdatingRef / reviewBusyRef in tasks/[id]/page.tsx).
+  const quickActionRef = useRef(false)
+  const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
   const creatorIds = useMemo(
@@ -1317,6 +1404,141 @@ function MyTasksContent() {
     showToast('Removed from Today\'s Focus')
   }
 
+  const applyQuickActionResult = (task: Task, patch: Partial<Task>) => {
+    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === task.id ? { ...t, ...patch } : t))
+    setSelectedTask(prev => prev?.id === task.id ? { ...prev, ...patch } : prev)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+  }
+
+  const handleQuickComplete = async (task: Task) => {
+    if (!canMarkComplete(task, userId) || viewAsUserId) return
+    if (quickActionRef.current) return
+    if (!window.confirm('Complete this task? It will move out of your active task list.')) return
+    quickActionRef.current = true
+    setQuickActionTaskId(task.id)
+    // Timed as the same action the detail page reports, so a completion counts
+    // once in the perf audit wherever it was performed.
+    const perf = perfTrack('task.complete')
+    try {
+      const now = new Date().toISOString()
+      // A task left blocked or waiting carries the reason it was stuck on.
+      // Completing it here has to clear those the way applyStatusChange does,
+      // or the row keeps a blocker that no longer describes anything — and the
+      // Waiting / Blocked tab is one of the places this button is reached from.
+      const updates: Record<string, unknown> = {
+        status: 'completed', completed_at: now, last_update_at: now,
+      }
+      if (task.status === 'blocked') updates.blocker_reason = null
+      if (task.status === 'waiting') {
+        updates.waiting_on_type    = null
+        updates.waiting_on_user_id = null
+        updates.waiting_on_text    = null
+      }
+      const { error } = await supabase
+        .from('tasks')
+        .update(updates)
+        .eq('id', task.id)
+        .eq('assigned_to', userId)
+      if (error) {
+        console.error('[my-tasks/quick-complete] task update failed:', error.message)
+        window.alert('Failed to complete this task. Please try again.')
+        return
+      }
+      perf.mark('update-task')
+      // Read the row back for its id: the notification card shows the PREVIOUS
+      // status, and that value lives only on the activity row it links to.
+      // Without activityLogId the card can only say "Status changed".
+      const { data: logRow, error: logError } = await supabase.from('task_activity_log').insert({
+        task_id: task.id,
+        actor_id: userId,
+        action: 'status_changed',
+        from_status: task.status,
+        to_status: 'completed',
+        note: null,
+      })
+        .select('id')
+        .single()
+      if (logError) console.error('[my-tasks/quick-complete] activity log failed:', logError.message)
+      perf.mark('insert-activity')
+
+      const recipient = task.created_by !== userId ? task.created_by : null
+      if (recipient) {
+        fetch('/api/notify-status-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: task.id,
+            taskTitle: task.title,
+            createdBy: task.created_by,
+            recipientId: recipient,
+            action: 'completed',
+            actorName: profile?.full_name,
+            // Null when the insert failed — the notification is then written
+            // unlinked, exactly as the detail page does.
+            activityLogId: logRow?.id ?? null,
+          }),
+        }).catch(err => console.error('[my-tasks/quick-complete] notification failed:', err))
+      }
+
+      // The same fields, cleared locally, so the list and the DB agree without
+      // a refetch.
+      const patch: Partial<Task> = { status: 'completed', last_update_at: now }
+      if (task.status === 'blocked') patch.blocker_reason = null
+      if (task.status === 'waiting') {
+        patch.waiting_on_type    = null
+        patch.waiting_on_user_id = null
+        patch.waiting_on_text    = null
+      }
+      applyQuickActionResult(task, patch)
+      showToast('Task completed')
+    } finally {
+      perf.end()
+      quickActionRef.current = false
+      setQuickActionTaskId(null)
+    }
+  }
+
+  const handleQuickSubmit = async (task: Task) => {
+    if (!canSubmitForApproval(task, userId) || viewAsUserId) return
+    if (quickActionRef.current) return
+    if (!window.confirm('Submit this completed work for approval?')) return
+    quickActionRef.current = true
+    setQuickActionTaskId(task.id)
+    // Submitting is a status move, which is how the detail page reports it.
+    const perf = perfTrack('task.status.update')
+    try {
+      const { data, error } = await supabase.rpc('transition_task_review', {
+        p_task_id: task.id,
+        p_action: 'submit',
+        p_note: null,
+      })
+      if (error) {
+        console.error('[my-tasks/quick-submit] review transition failed:', error.message)
+        const readable = error.message.includes(':')
+          ? error.message.slice(error.message.indexOf(':') + 1).trim()
+          : error.message
+        window.alert(readable || 'Failed to submit this task. Please try again.')
+        return
+      }
+      const result = (data ?? {}) as Partial<Task>
+      applyQuickActionResult(task, {
+        status: 'pending_approval',
+        last_update_at: result.last_update_at ?? task.last_update_at,
+        blocker_reason: null,
+        waiting_on_type: null,
+        waiting_on_user_id: null,
+        waiting_on_text: null,
+      })
+      showToast('Submitted for approval')
+    } finally {
+      perf.end()
+      quickActionRef.current = false
+      setQuickActionTaskId(null)
+    }
+  }
+
   const baseTasks = useMemo(
     () => filterByTaskType(allTasks, taskType, userId),
     [allTasks, taskType, userId],
@@ -1472,18 +1694,24 @@ function MyTasksContent() {
 
             return (
               <div style={{
-                width: '220px', flexShrink: 0,
+                width: '84px', flexShrink: 0,
                 position: 'relative',
                 background: 'rgba(248,250,252,0.6)',
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
                 <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
+                {/* Two lines, because 84px will not hold "TASK TYPE" on one. */}
                 <div style={{
+                  height: RAIL_HEADING_HEIGHT, boxSizing: 'border-box',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  borderBottom: `1px solid ${colors.border}`,
                   fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
                   textTransform: 'uppercase', color: colors.muted,
-                  padding: '14px 14px 8px',
+                  lineHeight: 1.2, userSelect: 'none',
                 }}>
-                  Task Type
+                  <span>Task</span>
+                  <span>Type</span>
                 </div>
                 {TYPE_TABS.map((item, i) => {
                   const isActive = taskType === item.key
@@ -1492,9 +1720,16 @@ function MyTasksContent() {
                     <button
                       key={item.key}
                       onClick={() => handleTypeChange(item.key)}
+                      // The label is no longer drawn, so it has to be carried:
+                      // `title` for a pointer, `aria-label` for everything else.
+                      // The count is inside the accessible name because an
+                      // aria-label replaces the button's text content entirely.
+                      title={item.label}
+                      aria-label={`${item.label}, ${typeCounts[item.key]} tasks`}
+                      aria-pressed={isActive}
                       style={{
                         width: '100%', display: 'flex', alignItems: 'center',
-                        justifyContent: 'space-between', padding: '9px 14px',
+                        justifyContent: 'center', gap: '7px', padding: '12px 6px',
                         background: isActive ? '#fff' : 'transparent',
                         border: 'none',
                         borderBottom: i < TYPE_TABS.length - 1 ? '1px solid #eef2f7' : 'none',
@@ -1503,20 +1738,21 @@ function MyTasksContent() {
                         ...(isActive ? { position: 'relative', zIndex: 1 } : {}),
                       }}
                     >
-                      <span style={{
-                        display: 'flex', alignItems: 'center', gap: '8px',
-                        fontSize: '12.5px', fontWeight: isActive ? 600 : 500,
-                        color: isActive ? item.accent : colors.secondary,
-                      }}>
-                        <Icon size={13} style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }} />
-                        {item.label}
-                      </span>
+                      <Icon
+                        size={15}
+                        aria-hidden="true"
+                        style={{
+                          color: isActive ? item.accent : colors.secondary,
+                          opacity: isActive ? 1 : 0.55,
+                          flexShrink: 0,
+                        }}
+                      />
                       <span style={{
                         fontSize: '12px', fontWeight: 700,
                         color: typeCounts[item.key] > 0 ? item.accent : colors.muted,
                         background: isActive ? `${item.accent}18` : 'rgba(0,0,0,0.04)',
-                        padding: '1px 8px', borderRadius: '10px',
-                        minWidth: '24px', textAlign: 'center',
+                        padding: '1px 6px', borderRadius: '10px',
+                        minWidth: '22px', textAlign: 'center',
                       }}>
                         {typeCounts[item.key]}
                       </span>
@@ -1538,11 +1774,26 @@ function MyTasksContent() {
               isMobile={isMobile}
             />
 
-            {/* Filter toolbar: Assignee, Priority, Search (right-aligned) */}
+            {/* Filter toolbar.
+                MOBILE is two even columns: the workflow select and the
+                assignee select. Priority and search are desktop-only — on a
+                phone they cost a row each and the workflow view already
+                answers most of what they were reached for.
+                DESKTOP is unchanged: assignee, priority, search right-aligned. */}
             <div style={{
-              padding: '14px 24px 12px',
-              display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
+              padding: isMobile ? '10px 14px' : '14px 24px 12px',
+              ...(isMobile
+                ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }
+                : { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }),
             }}>
+              {/* Workflow — mobile only; desktop keeps the tab strip above. */}
+              {isMobile && (
+                <MyTaskViewSelect
+                  activeTab={activeTab}
+                  counts={counts}
+                  onSelect={handleTabChange}
+                />
+              )}
               {/* Assignees */}
               {taskType !== 'self' && assignerOptions.length > 0 && (
                 <select
@@ -1565,7 +1816,12 @@ function MyTasksContent() {
                   ))}
                 </select>
               )}
-              {/* Priority */}
+              {/* An empty second column rather than a full-width workflow
+                  select: the grid stays even, and no option is invented for a
+                  filter that has nothing to offer in this Task Type. */}
+              {isMobile && !(taskType !== 'self' && assignerOptions.length > 0) && <div />}
+              {/* Priority — desktop only */}
+              {!isMobile && (
               <select
                 value={filterPriority}
                 onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
@@ -1583,7 +1839,9 @@ function MyTasksContent() {
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
-              {/* Search — aligned far right */}
+              )}
+              {/* Search — aligned far right, desktop only */}
+              {!isMobile && (
               <div style={{
                 marginLeft: 'auto',
                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -1605,14 +1863,15 @@ function MyTasksContent() {
                   }}
                 />
               </div>
+              )}
             </div>
 
             {/* Table header — desktop only */}
             {!isMobile && (
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: '28px minmax(300px, 1.4fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)',
-        columnGap: '14px',
+                gridTemplateColumns: LIST_GRID_COLUMNS,
+                columnGap: '14px',
                 alignItems: 'center',
                 margin: '8px 24px 0',
                 padding: '8px 0',
@@ -1653,6 +1912,9 @@ function MyTasksContent() {
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
+                    onComplete={!viewAsUserId && canMarkComplete(task, userId) ? () => handleQuickComplete(task) : undefined}
+                    onSubmit={!viewAsUserId && canSubmitForApproval(task, userId) ? () => handleQuickSubmit(task) : undefined}
+                    actionBusy={quickActionTaskId === task.id}
                     isMobile={isMobile}
                     isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
                     onPin={

@@ -39,10 +39,25 @@
 
 import type { Notification } from '@/lib/types'
 
-/** What the header needs about one task. */
+/**
+ * What the header needs about one task.
+ *
+ * BOTH SIDES OF THE TASK, not just the assignee. The header names the person
+ * the reader is dealing with, and that is only the assignee when the reader is
+ * NOT the assignee. A quotation request assigned to the reader used to render
+ * the reader's own name, which tells them nothing they did not already know —
+ * see `headerCounterpart`.
+ *
+ * The ids travel with the names because the rule is an identity comparison,
+ * never a string comparison: two people can share a display name, and a name
+ * parsed out of a title is not an authority on who anybody is.
+ */
 export type TaskHeaderInfo = {
   title: string
   assigneeName: string | null
+  assigneeId?: string | null
+  creatorName?: string | null
+  creatorId?: string | null
 }
 export type TaskHeaderMap = Record<string, TaskHeaderInfo>
 
@@ -64,6 +79,68 @@ export type NotificationPageEnrichment = {
 }
 
 export const ASSIGNEE_UNAVAILABLE = 'Assignee unavailable'
+
+/**
+ * WHO THE HEADER NAMES.
+ *
+ * `assignee`  — the reader is not the assignee, so the assignee is the
+ *                counterpart. Unchanged behaviour for every ordinary task a
+ *                creator is watching.
+ * `creator`   — the reader IS the assignee, so the useful name is the person
+ *                who assigned or created the work. This is the quotation case.
+ * `self`      — the reader is both sides. There is no counterpart, and their
+ *                own name is not one, so the header names nobody.
+ * `unknown`   — nothing resolved: a deleted user, a task the enrichment could
+ *                not read, or a row written before this field existed.
+ */
+export type HeaderCounterpartRelation = 'assignee' | 'creator' | 'self' | 'unknown'
+
+export type HeaderCounterpart = {
+  name: string | null
+  relation: HeaderCounterpartRelation
+}
+
+/**
+ * The person to name beside the task title, derived from the task's own
+ * assigned_to / created_by — never from notification title or body text.
+ *
+ * A viewer id of null (identity not resolved yet) falls back to the previous
+ * behaviour: name the assignee. That is the safe direction — it can only show
+ * what the page showed before, and it never invents a name.
+ */
+export function headerCounterpart(
+  info: TaskHeaderInfo | undefined,
+  viewerId: string | null | undefined,
+): HeaderCounterpart {
+  const clean = (v: unknown): string | null =>
+    typeof v === 'string' && v.trim() ? v.trim() : null
+
+  const assigneeName = clean(info?.assigneeName)
+  const creatorName  = clean(info?.creatorName)
+  const assigneeId   = clean(info?.assigneeId)
+  const creatorId    = clean(info?.creatorId)
+  const viewer       = clean(viewerId)
+
+  const viewerIsAssignee = !!viewer && !!assigneeId && assigneeId === viewer
+  const viewerIsCreator  = !!viewer && !!creatorId  && creatorId  === viewer
+
+  // Both sides are the reader: a self task. Naming them is noise.
+  if (viewerIsAssignee && viewerIsCreator) return { name: null, relation: 'self' }
+
+  if (viewerIsAssignee) {
+    if (creatorName) return { name: creatorName, relation: 'creator' }
+    // The reader is the assignee and the other side did not resolve. Falling
+    // back to the assignee would print the reader's own name, which is the
+    // defect this exists to remove.
+    return { name: null, relation: 'unknown' }
+  }
+
+  if (assigneeName) return { name: assigneeName, relation: 'assignee' }
+  // No assignee to name — an unassigned task still has an author worth showing,
+  // unless that author is the reader.
+  if (creatorName && !viewerIsCreator) return { name: creatorName, relation: 'creator' }
+  return { name: null, relation: 'unknown' }
+}
 
 /** The distinct task ids in a page. Bounded by the page. */
 export function collectTaskIds(rows: readonly Pick<Notification, 'task_id'>[]): string[] {
@@ -117,7 +194,7 @@ export async function enrichNotificationPage(
   // so waiting for them in sequence would double the latency for nothing.
   const [taskRes, actRes]: [Res, Res] = await Promise.all([
     taskIds.length
-      ? client.from('tasks').select('id, title, assigned_to').in('id', taskIds)
+      ? client.from('tasks').select('id, title, assigned_to, created_by').in('id', taskIds)
       : Promise.resolve({ data: [], error: null }),
     activityIds.length
       ? client.from('task_activity_log')
@@ -131,15 +208,25 @@ export async function enrichNotificationPage(
 
   const taskHeaders: TaskHeaderMap = {}
   const assigneeOf = new Map<string, string>()
+  const creatorOf = new Map<string, string>()
   // ONE set of people to resolve, from both sources.
   const peopleIds = new Set<string>()
 
   for (const t of taskRes.data ?? []) {
     const id = str(t.id)
     if (!id) continue
-    taskHeaders[id] = { title: typeof t.title === 'string' ? t.title : '', assigneeName: null }
+    taskHeaders[id] = {
+      title: typeof t.title === 'string' ? t.title : '',
+      assigneeName: null,
+      assigneeId: str(t.assigned_to),
+      creatorName: null,
+      creatorId: str(t.created_by),
+    }
     const assignee = str(t.assigned_to)
     if (assignee) { assigneeOf.set(id, assignee); peopleIds.add(assignee) }
+    // The creator joins the SAME people query — no extra round trip.
+    const creator = str(t.created_by)
+    if (creator) { creatorOf.set(id, creator); peopleIds.add(creator) }
   }
 
   const activityDetails: ActivityDetailMap = {}
@@ -183,6 +270,9 @@ export async function enrichNotificationPage(
   // ASSIGNEE_UNAVAILABLE for a task and as the parsed fallback for an actor.
   for (const [taskId, userId] of assigneeOf) {
     if (taskHeaders[taskId]) taskHeaders[taskId].assigneeName = nameById.get(userId) ?? null
+  }
+  for (const [taskId, userId] of creatorOf) {
+    if (taskHeaders[taskId]) taskHeaders[taskId].creatorName = nameById.get(userId) ?? null
   }
   for (const [activityId, userId] of actorOf) {
     if (activityDetails[activityId]) activityDetails[activityId].actorName = nameById.get(userId) ?? null
@@ -229,6 +319,10 @@ export async function enrichNotificationPage(
 export type NotificationRowContext = {
   taskTitle: string | null
   assigneeName: string | null
+  /** Both ids and the creator's name, so the header rule never parses text. */
+  assigneeId?: string | null
+  creatorName?: string | null
+  creatorId?: string | null
   activity: ActivityDetail | null
 }
 
@@ -247,6 +341,9 @@ export function rowContext(
   return {
     taskTitle: header?.title?.trim() ? header.title.trim() : null,
     assigneeName: header?.assigneeName ?? null,
+    assigneeId: header?.assigneeId ?? null,
+    creatorName: header?.creatorName ?? null,
+    creatorId: header?.creatorId ?? null,
     activity,
   }
 }

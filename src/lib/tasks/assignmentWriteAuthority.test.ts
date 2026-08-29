@@ -579,11 +579,19 @@ describe('18. migration 115 is untouched by this hotfix', () => {
     )
   })
 
-  test('the only migration newer than 115 is 116, which does not touch it', () => {
+  test('the migrations newer than 115 are 116 and 118, and neither touches it', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
     const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
-    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    assert.deepEqual(newer, [
+      '20261016000000_notifications_link_activity_log.sql',
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+    ])
+    // 118's statements reach user_top_tasks and read tasks.status. It replaces
+    // cleanup_top_tasks_on_completion() and names no health-check object.
+    const unpin = read('supabase/migrations/20261018000000_unpin_tasks_submitted_for_approval.sql')
+    assert.equal(/run_task_health_check/i.test(unpin), false)
+    assert.equal(/assigned_to|assignment/i.test(unpin), false)
     // And 116's STATEMENTS touch only `notifications`. Its commentary cites
     // run_task_health_check as the precedent for not replacing a live function
     // from the repository's copy — prose, not a statement.

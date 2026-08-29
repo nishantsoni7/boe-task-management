@@ -281,6 +281,12 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // participantAndOrderTotalSecurity.test.ts instead. It touched neither
       // the reset protocol nor the deletion claim — it replaced one function
       // body and read or wrote no table either of them cares about.
+      //
+      // 118 (Top 3 Focus unpin) IS in this list: it is unapplied. It touches
+      // user_top_tasks and reads tasks.status, so it reaches neither the reset
+      // protocol nor the deletion claim, and carrying the highest number it
+      // cannot apply ahead of 109-114.
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
     ])
   })
 

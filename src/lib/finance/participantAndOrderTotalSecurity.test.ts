@@ -688,10 +688,22 @@ describe('the applied migrations are frozen', () => {
       // is exact. Like 115 it IS pushed, which is why it also appears in
       // FROZEN and no longer in the pending list below.
       '20261016000000_notifications_link_activity_log.sql',
+      // 118. NOT APPLIED. A task submitted for approval, completed or
+      // cancelled loses its personal Top 3 Focus pin: the existing
+      // cleanup_top_tasks_on_completion() gains 'pending_approval', and a
+      // one-time delete clears the rows the trigger could never have reached
+      // because it only fires on a future status change. Recorded here for the
+      // same reason as 109-116: this list is exact.
+      //
+      // Numbered 118 and not 117 on purpose. 20261017000000 is already taken
+      // by the unapplied customer-review-outreach migration on another branch;
+      // two files sharing a version is the migration-history collision this
+      // repository has already had to repair once.
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
     ])
   })
 
-  test('109 to 114 are in ascending order, and none is pinned as applied', () => {
+  test('109 to 114 and 118 are in ascending order, and none is pinned as applied', () => {
     // The whole reason the module reset lives on this branch rather than on
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
@@ -708,6 +720,9 @@ describe('the applied migrations are frozen', () => {
       '20261012000000_allocation_ledger_as_single_source.sql',
       '20261013000000_payment_entry_destination_model.sql',
       '20261014000000_payment_destination_display_modes_and_custody.sql',
+      // 118. Unapplied, and last in filename order, so it cannot land in front
+      // of any of the six above.
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
@@ -116,7 +116,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // Declared BEFORE the list query because the list query needs to know whether
   // any of it is in flight — see `mutationInFlight`.
   const {
-    markRead, markTaskGroupRead, deleteTaskGroup, groupBusy,
+    markRead, markTaskGroupRead, deleteTaskGroup, groupBusy, busyTaskId,
     markAllRead, deleteSingle, deleteSelected: runDeleteSelected, deleteAll,
     pendingDeletes, markingAll, deletingBulk, deletingAll,
     error: mutationError, clearError,
@@ -236,10 +236,17 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // The optimistic update / snapshot / rollback / reconcile logic all lives in
   // useNotificationMutations; these wrappers only own local selection state.
 
-  const handleDeleteSingle = (id: string) => {
+  // ── WHY EVERY HANDLER BELOW IS useCallback ──────────────────────────────
+  //
+  // They are props on every card. Recreated each render, they made the cards'
+  // memoization worthless — a new function identity is a changed prop, so all
+  // twenty cards re-rendered whenever anything on the page changed. Stable
+  // here, the cards compare equal and only the one that actually changed
+  // repaints. Nothing about what they DO changed.
+  const handleDeleteSingle = useCallback((id: string) => {
     setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
     deleteSingle(id)
-  }
+  }, [deleteSingle])
 
   const handleDeleteSelected = () => {
     if (deletingBulk || selected.size === 0) return
@@ -264,9 +271,9 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   // It names the TASK, not the loaded ids. The page is bounded to the newest N
   // events, so an ids-based version would silently skip anything older and
   // leave unread rows behind with the badge still wrong.
-  const handleMarkGroupRead = (group: TaskGroup) => {
+  const handleMarkGroupRead = useCallback((group: TaskGroup) => {
     markTaskGroupRead(group.taskId)
-  }
+  }, [markTaskGroupRead])
 
   // Deletes NOTIFICATION ROWS for this reader and this task — ALL of them, not
   // only the loaded ones. The server resolves the set from the task id under
@@ -296,14 +303,14 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     markAllRead()
   }
 
-  const toggleSelect = (id: string) => {
+  const toggleSelect = useCallback((id: string) => {
     setSelected(prev => {
       const s = new Set(prev)
       if (s.has(id)) s.delete(id)
       else s.add(id)
       return s
     })
-  }
+  }, [])
 
   const openNotif = (n: Notification) => {
     if (!n.is_read) markRead(n.id)
@@ -311,9 +318,9 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     if (href) router.push(href)
   }
 
-  const handleRowClick = (n: Notification) => {
+  const handleRowClick = useCallback((n: Notification) => {
     if (!n.is_read) markRead(n.id)
-  }
+  }, [markRead])
 
   // NOTE: there is deliberately no early `return <LoadingScreen />` here.
   // Returning one unmounted the entire module shell — sidebar, header, Refresh,
@@ -469,7 +476,13 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                 filter={filter}
                 selected={selected}
                 pendingDeletes={pendingDeletes}
-                busy={groupBusy || markingAll || deletingBulk || deletingAll}
+                // ONE CARD'S BUSY STATE, NOT THE PAGE'S. A shared boolean
+                // changed on every card the instant any card was clicked,
+                // which is what made one group action repaint the whole list.
+                // The "one group action at a time" rule is unchanged — it is
+                // enforced in the mutation handlers, not by this prop.
+                busy={busyTaskId === item.taskId || markingAll || deletingBulk || deletingAll}
+                viewerId={userId ?? null}
                 isMobile={isMobile}
                 onToggleSelect={toggleSelect}
                 onMarkGroupRead={handleMarkGroupRead}

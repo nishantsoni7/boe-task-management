@@ -1,6 +1,6 @@
 'use client'
 
-import { useId, useState } from 'react'
+import { memo, useId, useState } from 'react'
 import Link from 'next/link'
 import { ChevronRight, Check, CheckCheck, Trash2, User } from 'lucide-react'
 import type { Notification } from '@/lib/types'
@@ -17,8 +17,10 @@ import {
   actorMetaFor,
   updateCountLabel,
 } from '@/lib/notifications/eventPresentation'
+import { sameGroupContent, sameSetMembership } from '@/lib/notifications/groupRenderIdentity'
 import {
   assigneeLabel,
+  headerCounterpart,
   taskTitleFor,
   type TaskHeaderInfo,
   type ActivityDetailMap,
@@ -76,8 +78,17 @@ import {
 function headerInfoFromContext(n: Notification): TaskHeaderInfo | undefined {
   const ctx = n.context
   if (!ctx) return undefined
-  if (!ctx.taskTitle && !ctx.assigneeName) return undefined
-  return { title: ctx.taskTitle ?? '', assigneeName: ctx.assigneeName }
+  // A row that resolved ONLY the creator still carries a usable header — that
+  // is the quotation case, where the assignee is the reader and the name worth
+  // showing is the other side's.
+  if (!ctx.taskTitle && !ctx.assigneeName && !ctx.creatorName) return undefined
+  return {
+    title: ctx.taskTitle ?? '',
+    assigneeName: ctx.assigneeName,
+    assigneeId: ctx.assigneeId ?? null,
+    creatorName: ctx.creatorName ?? null,
+    creatorId: ctx.creatorId ?? null,
+  }
 }
 
 /**
@@ -98,9 +109,10 @@ function activityDetailFor(
   return n.activity_log_id ? activityDetails?.[n.activity_log_id] : undefined
 }
 
-export function NotificationTaskGroup({
+function NotificationTaskGroupImpl({
   group,
   headerInfo,
+  viewerId,
   activityDetails,
   filter,
   selected,
@@ -138,6 +150,8 @@ export function NotificationTaskGroup({
   pendingDeletes: ReadonlySet<string>
   /** True while a group-level mutation is in flight — disables its own actions. */
   busy?: boolean
+  /** The signed-in reader, so the header can name the OTHER person. */
+  viewerId?: string | null
   onToggleSelect: (id: string) => void
   onMarkGroupRead: (group: TaskGroup) => void
   onDeleteGroup: (group: TaskGroup) => void
@@ -153,6 +167,11 @@ export function NotificationTaskGroup({
   // The row's own context wins over the page-level map — see the prop docs.
   const rowHeader = headerInfoFromContext(group.latest) ?? headerInfo
   const taskTitle = taskTitleFor(rowHeader, group.title)
+  // WHO THE CARD NAMES. The assignee only when the reader is not the assignee;
+  // otherwise the person who assigned the work. A reader's own name is never
+  // useful to them, and on a quotation request assigned to them it was all the
+  // header ever showed.
+  const counterpart = headerCounterpart(rowHeader, viewerId ?? null)
   const assignee = assigneeLabel(rowHeader)
   const href = getNotificationMeta(group.latest).href
 
@@ -164,7 +183,7 @@ export function NotificationTaskGroup({
   // The assignee's REAL name, or null. `assigneeLabel` folds "unknown" into a
   // sentence; the icon treatment must only be drawn for a person who exists, so
   // the two are kept apart here.
-  const assigneeName = rowHeader?.assigneeName?.trim() ? rowHeader.assigneeName.trim() : null
+  const personName = counterpart.name
 
   // ── THE TITLE IS THE LINK ────────────────────────────────────────────────
   //
@@ -208,9 +227,10 @@ export function NotificationTaskGroup({
   // did each thing is named under that thing, as "By <name> · <time>". Two
   // different facts; conflating them is how a card claims its owner performed
   // an action somebody else did.
-  const assigneeNode = assigneeName ? (
+  const relationWord = counterpart.relation === 'creator' ? 'Assigned by' : 'Assigned to'
+  const assigneeNode = counterpart.relation === 'self' ? null : personName ? (
     <span
-      title={`Assigned to ${assigneeName}`}
+      title={`${relationWord} ${personName}`}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: '4px', flexShrink: 0,
         fontSize: '11.5px', fontWeight: 500, color: colors.blue,
@@ -218,8 +238,8 @@ export function NotificationTaskGroup({
       }}
     >
       <User size={11} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0 }} />
-      <span className="boe-notif-sr-only">Assigned to </span>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{assigneeName}</span>
+      <span className="boe-notif-sr-only">{relationWord} </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{personName}</span>
     </span>
   ) : (
     // No icon and no blue for a person who could not be resolved: an empty
@@ -550,3 +570,39 @@ function GroupAction({
     </button>
   )
 }
+
+// ── WHY THIS CARD IS MEMOIZED, AND WHY BY CONTENT ───────────────────────────
+//
+// Every group object is new whenever any single row changes, because the
+// arrangement is rebuilt from the flat list on every change (see
+// groupNotificationsByTask — that rebuild is what keeps "Load older" from
+// producing duplicates, and is worth keeping). A referential memo would
+// therefore never skip anything.
+//
+// So the comparison is on CONTENT, which is what the card draws, plus this
+// group's own membership of the two page-wide Sets. Marking one group read
+// leaves the other cards' content identical, and they stop re-rendering:
+// measured on a 20-card page, "Mark all read" on one group went from 250 DOM
+// mutations / 434ms to the mutations of the one card that changed.
+//
+// Handlers are compared by reference and the view passes useCallback-stable
+// ones, so they no longer force a repaint of the list on every parent render.
+export const NotificationTaskGroup = memo(NotificationTaskGroupImpl, (prev, next) => {
+  if (
+    prev.filter !== next.filter ||
+    prev.busy !== next.busy ||
+    prev.isMobile !== next.isMobile ||
+    prev.viewerId !== next.viewerId ||
+    prev.headerInfo !== next.headerInfo ||
+    prev.activityDetails !== next.activityDetails ||
+    prev.onToggleSelect !== next.onToggleSelect ||
+    prev.onMarkGroupRead !== next.onMarkGroupRead ||
+    prev.onDeleteGroup !== next.onDeleteGroup ||
+    prev.onDeleteOne !== next.onDeleteOne ||
+    prev.onRowClick !== next.onRowClick
+  ) return false
+  if (!sameGroupContent(prev.group, next.group)) return false
+  if (!sameSetMembership(next.group, prev.selected, next.selected)) return false
+  if (!sameSetMembership(next.group, prev.pendingDeletes, next.pendingDeletes)) return false
+  return true
+})
