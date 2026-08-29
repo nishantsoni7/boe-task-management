@@ -69,6 +69,9 @@ import {
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
 import { generateProductShot, isNoRetry, type ProductShotFailure } from '@/lib/imageEditor/briaProductShot'
 import { upscaleImage, normaliseSquare, NO_RETRY_FAILURES } from '@/lib/imageEditor/seedvrUpscale'
+import {
+  VERIFICATION_HEADER, type VerificationStatus,
+} from '@/lib/imageEditor/verification'
 import { findProduct, planReframe, reframe } from '@/lib/imageEditor/generatedProduct'
 import {
   profile as measureProfile, comparePreservation, checkFraming,
@@ -266,23 +269,47 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: false }, { status: 422 })
   }
 
+  // ── What the gate can establish, and what it cannot ─────────────────────────
+  //
+  // Three outcomes, and the difference between the second and the third is the
+  // whole point:
+  //
+  //   CONFIRMED FAILURE   a check ran and failed. Refuse, and refuse HERE so
+  //                       the second billable request is never made.
+  //   INCONCLUSIVE        the comparison could not run, because the upload's
+  //                       own background defeated it. Continue, deliver, and
+  //                       say plainly that nobody verified it.
+  //   PASSED              compared, and the structure survived.
+  //
+  // Inconclusive used to be refused. That was wrong for this module's real
+  // traffic: BOE photographs furniture against textured concrete, so the
+  // located bounds fill the frame and the upload cannot be ground truth — on
+  // most genuine uploads, including ones where the product came back perfectly.
+  // Refusing them would refuse the module on the strength of a check that never
+  // ran. The rule that survives is the one that matters: an unverified image is
+  // never presented as a verified one.
+  let verification: VerificationStatus = 'manual_review_required'
+
   const shotProfile = await measureProfile(shot.image)
   if (originalProfile && shotProfile) {
     const report = comparePreservation(originalProfile, shotProfile, 'after product shot')
     console.info('[image-editor/studio] preservation', report.summary)
+
+    // A failed check is a failed check whether or not other checks were
+    // skipped: everything in `checks` was measured on the generated image and
+    // reached a verdict. Only the comparison against the upload can be missing.
     if (!report.ok) {
-      return NextResponse.json({ error: PRESERVATION_REFUSAL }, { status: 422 })
+      return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
     }
-    // An inconclusive comparison is NOT a pass, and it is caught HERE, before
-    // the second billable request. What makes it inconclusive is the upload's
-    // own background, which the upscale cannot improve — so the stage-two
-    // comparison would be inconclusive too, one paid request later.
     if (report.inconclusive) {
       console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${shot.requestId || '-'}`)
-      return NextResponse.json({ error: INCONCLUSIVE_MESSAGE, noRetry: true }, { status: 422 })
+      verification = 'manual_review_required'
+    } else {
+      verification = 'passed'
     }
   } else {
     console.warn('[image-editor/studio] preservation unmeasurable, request', shot.requestId || '-')
+    verification = 'manual_review_required'
   }
 
   // ── Local: reframe to the approved composition ──────────────────────────────
@@ -329,15 +356,17 @@ export async function POST(req: NextRequest) {
     const framing = checkFraming(finalProfile, { min: PRODUCT_HEIGHT_MIN, max: PRODUCT_HEIGHT_MAX }, plan.widthLimited)
     console.info('[image-editor/studio] preservation', report.summary, `; framing ${framing.ok ? 'ok' : 'FAILED'} [${framing.detail}]`)
     if (!report.ok) {
-      return NextResponse.json({ error: PRESERVATION_REFUSAL }, { status: 422 })
+      return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
     }
-    // An inconclusive comparison is NOT a pass. The smoke script may carry on
-    // so a person can look at the result; the route may not hand an employee an
-    // image whose structure was never verified and let them assume it was.
+    // The verdict can only get weaker across the two stages, never stronger: a
+    // stage that could not compare leaves the whole result unverified.
     if (report.inconclusive) {
       console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${upscaled.requestId || '-'}`)
-      return NextResponse.json({ error: INCONCLUSIVE_MESSAGE, noRetry: true }, { status: 422 })
+      verification = 'manual_review_required'
     }
+  } else {
+    console.warn('[image-editor/studio] preservation unmeasurable, request', upscaled.requestId || '-')
+    verification = 'manual_review_required'
   }
 
   // What SeedVR2 returned is inspected, not assumed: the factor's accepted
@@ -364,13 +393,20 @@ export async function POST(req: NextRequest) {
     normalised.resized ? 'normalised locally' : 'exact from the model',
     plan.widthLimited ? 'width-limited' : '',
     plan.clamped ? 'crop clamped to canvas' : '',
+    `verification ${verification}`,
   )
 
-  return NextResponse.json({
-    configured: true,
-    image: {
-      dataUrl: `data:image/png;base64,${master.toString('base64')}`,
-      mimeType: 'image/png',
+  // The header carries the verdict and nothing else. The body stays the image:
+  // no bounds, no densities, no request ids, no model names — an employee is
+  // preparing a catalogue photograph, not reading a provider's telemetry.
+  return NextResponse.json(
+    {
+      configured: true,
+      image: {
+        dataUrl: `data:image/png;base64,${master.toString('base64')}`,
+        mimeType: 'image/png',
+      },
     },
-  })
+    { headers: { [VERIFICATION_HEADER]: verification } },
+  )
 }

@@ -6,10 +6,10 @@ photograph and gets back one catalogue-style product image.
 **Bria makes the studio photograph from the original. BOE decides the framing,
 SeedVR2 supplies the resolution, and a gate checks the product survived.**
 
-> **This is an experiment, not an approved result.** The pipeline below has
-> never been run against the live API from this repository. What it is testing
-> is stated under [The rule](#the-rule); until a real run is compared it is an
-> open question.
+> **Visually accepted for an application trial**, on a live Irvine chair run
+> reviewed by hand. See [The live Irvine result](#the-live-irvine-result) for
+> the measurements and for what the automated comparison could and could not
+> establish.
 
 Not linked from the module launcher and not registered in `app_modules`. It is
 reached directly at **`/image-editor`** and is open to any signed-in BOE user —
@@ -91,12 +91,13 @@ Irvine chair's spindles fed Product Shot a prepared cut-out.** The playground
 run that produced the accepted result fed it the **original photograph**, with
 the approved studio image as `ref_image_url` and no scene description at all.
 
-Those are different inputs to the same model. Whether the difference is what
-saved the spindles — a cut-out strips the context the model uses to understand
-the object, so it has more to invent — is a plausible reading and an unproven
-one. **It is unproven until a real run through this code is compared against
-the original.** That comparison is what `scripts/image-editor-smoke.mjs` exists
-to set up.
+Those are different inputs to the same model, and the live run settled it: fed
+the original photograph, **Product Shot preserved the under-seat fan.** The
+individual members stayed open, no opaque block was created, and construction,
+cushion, legs, arms, back members, watermark and viewing angle all came back
+visually consistent. The reading that a cut-out strips the context the model
+uses to understand the object — leaving it more to invent — is consistent with
+that, though one accepted run does not prove the mechanism.
 
 What can be said without a run:
 
@@ -230,21 +231,57 @@ frame's area; the same product on a textured factory wall measures 83%, because
 the texture reaches every corner. Above 60% the upload is not usable as ground
 truth.
 
-When that happens the gate reports:
+When that happens the gate reports, and the route logs, exactly:
 
 > Structural comparison inconclusive; manual review required.
 
-**An inconclusive result is not a pass, and is never presented as one.** It is a
-separate field on the report rather than folded into `ok`, so a caller has to
-decide which it is:
+**This is the state most real uploads reach.** BOE photographs furniture against
+textured concrete, and the live Irvine run was inconclusive for exactly that
+reason while the result was visually perfect. So this is not a rare edge case to
+be refused — it is the normal path.
 
-- **The route refuses it** — 422, `noRetry`. It cannot ask an employee to eyeball
-  a result and it will not hand over an image whose structure was never
-  compared. It refuses at stage one, *before* the second billable request: what
-  makes it inconclusive is the upload's own background, which the upscale cannot
-  improve.
-- **The smoke script continues** and prints the warning, so a person can look at
-  the artefacts and judge.
+### Three outcomes, and the difference between them
+
+| Outcome | What it means | What the route does |
+| --- | --- | --- |
+| **Confirmed failure** | A check ran and failed. | **422**, `noRetry`, a product-preservation message. If established after Product Shot, **SeedVR2 is never called** — paying to upscale an image already known to be wrong is money spent to produce a refusal. |
+| **Inconclusive** | The comparison could not run: the upload's background defeated it. | **Continue to SeedVR2, deliver the image normally**, and mark it `manual_review_required`. |
+| **Pass** | Compared, and the structure survived. | Continue normally, marked `passed`. |
+
+A check that ran and failed is a confirmed failure whether or not *other* checks
+were skipped — everything in `checks` is measured on the generated image and
+reaches a verdict; only the comparison against the upload can be missing.
+
+**An inconclusive result is not a pass, and is never presented as one.** It is a
+separate field on the report rather than folded into `ok`. What it is not is a
+*failure*, and the correction that made this module usable was to stop treating
+it as one: refusing textured uploads would have refused most of the module's
+real traffic on the strength of a check that never ran.
+
+### How the verdict reaches the browser
+
+A response header, and nothing else:
+
+```
+X-BOE-Image-Verification: manual_review_required
+```
+
+A header rather than a field in the body, because the body is the image and
+nothing else — no bounds, no densities, no request ids, no model names. The
+header carries one of two words. There is no `failed` value: a confirmed failure
+is a 422 with no image, so no header accompanies it.
+
+The card then shows a short note under the comparison panels:
+
+> Please inspect fine product details before catalogue use.
+
+**Download is not blocked, and the layout does not change.** An unverified image
+is not a bad one — nobody has checked it, which is a different thing. An
+unrecognised or missing header reads as *undefined* and the card says nothing
+either way, so a mangled header can never become a silent "verified".
+
+The smoke script prints the same warning and carries on, so a person can look at
+the artefacts and judge.
 
 ### What it cannot do
 
@@ -269,9 +306,10 @@ so nobody reads the gate as a guarantee.
 - The per-user rate limiter is 6 a minute, unchanged.
 - **Everything that can be refused, is refused before the request that would
   pay for it.** A missing reference asset, a missing key, an image beyond fal's
-  12 MB ceiling — all local, all free. A stage-one preservation failure or an
-  inconclusive comparison stops the run **before** the upscale, so a photograph
-  that cannot work costs one request rather than two.
+  12 MB ceiling — all local, all free. A **confirmed** stage-one preservation
+  failure stops the run **before** the upscale, so a photograph whose result is
+  already known to be wrong costs one request rather than two. An inconclusive
+  comparison is not a failure and does not stop anything.
 - Each request logs fal's request id, the phase, the duration and the outcome
   category — never the image, the data URI or the key.
 
@@ -309,6 +347,7 @@ is missing and generate nothing — **before** any billable request.
 | `src/lib/imageEditor/studioReference.ts` | Reads the approved reference from disk, server-side, cached. Never substitutes a look-alike. |
 | `src/lib/imageEditor/generatedProduct.ts` | Finding a product in a fully opaque image by edge energy, measuring its structure, and planning the reframe. Server-only (sharp). No network. |
 | `src/lib/imageEditor/preservationGate.ts` | Whether a generated image may be served, and when that cannot be decided. No network, no model — it only measures. |
+| `src/lib/imageEditor/verification.ts` | The verdict's wire format: the header name, the two statuses, the note. Client-safe and dependency-free, imported by both the route and the card so they cannot drift. |
 | `src/lib/imageEditor/studioMaster.ts` | The master canvas and the framing constants. Pure — no sharp, no provider. |
 | `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
 | `src/lib/imageEditor/downloadFormats.ts` | Which download formats exist, and the guard. Client-safe. |
@@ -335,9 +374,8 @@ a status code and the request id.
 | Rate limited (429) | 429 | busy — wait a moment and try again |
 | Timed out (request, body or download) | 504 | took too long — try again in a few minutes |
 | Empty or malformed result from the service | 422 | no image returned — try again |
-| The product was not preserved | 422 | did not preserve the product accurately — try again, or a different photograph |
+| The product was **confirmed** not preserved | 422 `noRetry` | did not preserve the product accurately — try again, or a different photograph |
 | No product locatable in the result | 422 | did not preserve the product accurately — try again, or a different photograph |
-| Structure could not be compared | 422 `noRetry` | structural comparison inconclusive; manual review required |
 | The upscale came back the wrong shape | 422 | the upscaled image came back the wrong shape — try again |
 | Anything else | 502 | could not process — try again |
 
@@ -350,15 +388,12 @@ That is a cost control, not a cosmetic one. Retry costs up to two more requests,
 so it is only worth offering where the answer could actually change:
 
 - **`noRetry`** — no key configured, a key an administrator must fix, no credit,
-  a moderation refusal, and an **inconclusive** comparison. That last one is
-  deterministic: what makes it inconclusive is the upload's own cluttered
-  background, and the same photograph has the same background next time. A retry
-  buys another charge and the identical sentence.
+  a moderation refusal, and a **confirmed** preservation failure.
 - **Retry offered** — busy, timed out, an unexplained provider error, and a
-  **failed** preservation check. A generative model is not deterministic, so the
-  same photograph genuinely can come back better on the next press. That costs
-  money and the employee is choosing to spend it, which is why it is a button
-  rather than something the route does on its own.
+  generated image no product could be located in.
+
+An **inconclusive** comparison is not in either list, because it is not a
+failure: the image is delivered, and there is nothing to retry.
 
 Nothing retries on its own, in either case. A retry is a person pressing a
 button, always.
@@ -371,13 +406,55 @@ subsampling. A conversion is a format change and nothing else — same pixels,
 same dimensions, asserted by tests — and it **never calls fal**, so downloading
 one image in three formats costs nothing beyond the two requests that made it.
 
-## Verifying against the real API
+## The live Irvine result
 
-**Nothing in this repository has made a live request through this pipeline.**
-The container this was built in has no `FAL_KEY`, no `.env.local`, no reference
-asset, and no route to `fal.run`. Every number above about *sizes, thresholds
-and behaviour* is measured; every statement about *what the models will do to a
-chair* is a hypothesis. The live run is the experiment.
+One real run, reviewed by hand, and **visually accepted for an application
+trial**.
+
+| Stage | Measured |
+| --- | --- |
+| Product Shot | **16,088 ms**, returned **1024 × 1024** |
+| Product share before reframe | **33.5%** |
+| Product share after reframe | **52.9%** (target 53%, band 52–55%) |
+| SeedVR2 | **7,452 ms**, returned **1456 × 1456** |
+| Final delivery | **1440 × 1440** |
+| Total | **24.4 seconds** |
+| Billable requests | **two** |
+
+What the manual review found:
+
+- Product Shot **preserved the under-seat fan**. Individual members remain open;
+  no opaque block was created.
+- Construction, cushion, legs, arms, back members, watermark and viewing angle
+  all remained visually consistent with the photograph.
+- SeedVR2 **materially improved clarity**.
+- The final 1440 × 1440 output is suitable for a catalogue trial.
+
+Two of those numbers are worth dwelling on.
+
+**33.5% → 52.9%.** The reframe did exactly the job it exists for. Product Shot
+put the chair at a third of the frame height — the one defect in the originally
+accepted result — and the local crop corrected it without a model being asked
+to, and without a third request.
+
+**1456, not 1440.** `upscale_factor` did not round the way the arithmetic
+suggested, which is precisely why `normaliseSquare` inspects the result instead
+of trusting it. The 16 surplus pixels came off locally, with no crop. Had the
+route assumed 1440, it would have delivered a 1456 master.
+
+### What the automated comparison could not establish
+
+**The structural comparison was inconclusive** — the upload's textured concrete
+background defeated the location step, exactly as the gate is designed to
+report. So on the run that was accepted by eye, the automated check reached no
+verdict at all.
+
+That is the finding that changed the route. The gate was refusing inconclusive
+results; on BOE's real photographs that would have refused most uploads,
+including this one. It now delivers them marked `manual_review_required`.
+
+**The gate did not verify this result. A person did.** Nothing here should be
+read as the automated check having passed it.
 
 ### Through the app
 
@@ -449,12 +526,21 @@ SeedVR2 result", because that is all it is.
 
 ```bash
 npx tsx --test "src/lib/imageEditor/*.test.ts"
-npx tsx --test src/app/api/image-editor/studio/route.test.ts
+npx tsx --test "src/app/api/image-editor/studio/*.test.ts"
 npx tsx --test src/app/image-editor/page.test.ts
 ```
 
-Three are worth knowing about by name:
+Four are worth knowing about by name:
 
+- **`routeBehaviour.test.ts` runs the route.** `fetch` is stubbed, which covers
+  Supabase *and* fal, so the real pipeline executes end to end. The three
+  outcomes are driven by the **fixtures**, not by stubbing the gate: a cluttered
+  upload really does defeat the location step, and a filled-in fan really does
+  collapse the structure measurement to 7% of the original. It asserts a
+  textured upload reaches SeedVR2 and comes back 200 at exactly 1440 × 1440 with
+  `manual_review_required`; that a confirmed destruction returns 422 having made
+  **one** provider call; that a clean pair passes; and that both request bodies
+  are exactly the ones the Irvine review accepted.
 - `preservationGate.test.ts` builds a chair with a fan of sixteen 3px spindles
   and the same chair with that fan filled solid — the rejected result, made
   synthetically — and asserts the gate refuses the second. It also builds the
@@ -464,10 +550,14 @@ Three are worth knowing about by name:
   2000 and 1000 and asserts the delivered PNG is exactly 1440 × 1440 every time,
   with marks in all four corners surviving — proving nothing was cropped. A
   non-square result is asserted to be refused.
-- `route.test.ts` reads the route's own source and asserts the invariants no
-  other test can see: exactly two provider call sites, neither in a loop, the
-  reframe between them, the gate after both, an inconclusive result refused
-  **before** the second request, and the raw upscale never served.
+- `route.test.ts` reads the route's own source and asserts the invariants a
+  running test cannot see: exactly two provider call sites, neither in a loop,
+  the reframe between them, the gate after both, and the raw upscale never
+  served.
+
+`routeBehaviour.test.ts` writes a stand-in reference PNG if the checkout has
+none and removes it afterwards, leaving a real one alone. Without that the route
+would correctly refuse before every request and the whole file would be 503s.
 
 ### The measurement's blind spot
 

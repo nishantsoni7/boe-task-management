@@ -19,6 +19,7 @@ import {
   MAX_QUEUE_SIZE, type QueueItem, type RejectedFile,
 } from '@/lib/imageEditor/queue'
 import { DOWNLOAD_FORMATS, type DownloadFormat } from '@/lib/imageEditor/downloadFormats'
+import { VERIFICATION_HEADER, parseVerification } from '@/lib/imageEditor/verification'
 import { QueueList } from './QueueList'
 import { ResultCard } from './ResultCard'
 
@@ -202,6 +203,10 @@ export default function ImageEditorPage() {
       error: undefined,
       noRetry: undefined,
       result: { dataUrl, mimeType: payload?.image?.mimeType ?? 'image/png' },
+      // Whether anything actually verified this image. Unrecognised or missing
+      // reads as undefined, and the card then says nothing either way — it
+      // never invents a "verified".
+      verification: parseVerification(res.headers.get(VERIFICATION_HEADER)),
     }
   }, [supabase, router])
 
@@ -245,7 +250,9 @@ export default function ImageEditorPage() {
 
   const retry = useCallback((id: string) => {
     if (runningRef.current) return
-    const back = updateItem(itemsRef.current, id, { status: 'waiting', error: undefined, noRetry: undefined })
+    const back = updateItem(itemsRef.current, id, {
+      status: 'waiting', error: undefined, noRetry: undefined, verification: undefined,
+    })
     itemsRef.current = back
     setItems(back)
     void run()

@@ -1,8 +1,9 @@
 'use client'
 
-import { Download, RotateCcw, Trash2, AlertTriangle, ImageOff } from 'lucide-react'
+import { Download, RotateCcw, Trash2, AlertTriangle, ImageOff, Eye } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import type { QueueItem } from '@/lib/imageEditor/queue'
+import { MANUAL_REVIEW_NOTE, needsManualReview } from '@/lib/imageEditor/verification'
 
 // One finished — or one failed — image.
 //
@@ -78,6 +79,19 @@ export function ResultCard({
           {item.result && (
             <Panel label="Studio image" src={item.result.dataUrl} alt={`${item.name}, studio version`} accent />
           )}
+        </div>
+      )}
+
+      {/* A note, not a warning, and not a blocker: the image is fine as far as
+          anyone knows — nobody has checked it. It sits under the panels so the
+          comparison above it is unchanged, and Download is untouched. */}
+      {item.result && needsManualReview(item.verification) && (
+        <div style={{
+          display: 'flex', gap: '6px', alignItems: 'flex-start', marginTop: '10px',
+          fontSize: '11px', lineHeight: 1.4, color: colors.tertiary,
+        }}>
+          <Eye size={12} strokeWidth={2} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <span>{MANUAL_REVIEW_NOTE}</span>
         </div>
       )}
 

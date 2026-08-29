@@ -11,6 +11,7 @@
 // twenty would be a bill nobody agreed to.
 
 import { validateSourceImage, type SourceImageCandidate } from './validation'
+import type { VerificationStatus } from './verification'
 
 export const MAX_QUEUE_SIZE = 5
 
@@ -46,6 +47,14 @@ export type QueueItem = {
    */
   noRetry?: boolean
   result?: { dataUrl: string; mimeType: string }
+  /**
+   * What the route could establish about the delivered image.
+   *
+   * Absent on anything that has not finished. `manual_review_required` means
+   * the structural comparison could not run — the card says so, and nothing
+   * about downloading changes, because an unverified image is not a bad one.
+   */
+  verification?: VerificationStatus
 }
 
 export type RejectedFile = { name: string; reason: string }

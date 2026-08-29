@@ -197,8 +197,9 @@ describe('the background cannot influence the verdict', () => {
 
   test('inconclusive is NOT folded into ok, so it can never read as verified', async () => {
     // `ok` alone would say "passed" here, and the structure was never compared.
-    // The two are kept apart so a caller has to decide which it is: the smoke
-    // script continues so a person can look, the route refuses.
+    // The two are kept apart so a caller can deliver the image while still
+    // telling the truth about it — which is what both callers do, marking it
+    // for manual review rather than claiming it was verified.
     const report = comparePreservation(
       await profileOf({ factoryBackground: true }),
       await profileOf({ factoryBackground: false }),

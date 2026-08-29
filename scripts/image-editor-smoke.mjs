@@ -123,8 +123,9 @@ async function underSeat(image, bounds, canvas, label) {
 function printReport(report, framing) {
   if (report.inconclusive) {
     console.log(`\nWARNING — ${INCONCLUSIVE_MESSAGE}`)
-    console.log('  The application route REFUSES this. The smoke run continues so')
-    console.log('  the result can be inspected by eye. It is not a pass.')
+    console.log('  The route DELIVERS this, marked manual_review_required, because')
+    console.log('  a textured factory background defeats the comparison on most real')
+    console.log('  uploads. It is not a pass. Look at the under-seat crops.')
   } else {
     console.log(`\n${report.ok ? 'PRESERVATION OK' : 'PRESERVATION FAILED'}`)
   }

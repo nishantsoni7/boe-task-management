@@ -205,26 +205,42 @@ describe('the pipeline', () => {
     assert.match(logged, /normalised\.delivered\.width/)
   })
 
-  test('an inconclusive comparison is REFUSED, never served as verified', () => {
-    // The route cannot ask an employee to eyeball the result, so it may not
-    // hand over an image whose structure was never actually compared.
+  test('an inconclusive comparison is DELIVERED, and never called verified', () => {
+    // BOE photographs furniture against textured concrete, so most genuine
+    // uploads cannot be compared at all. Refusing them would refuse the module
+    // on the strength of a check that never ran — so the image is delivered and
+    // the fact that nobody verified it travels with it.
     const body = postCode()
     assert.ok(body.includes('report.inconclusive'), 'the route must read the inconclusive flag')
-    assert.ok(body.includes('INCONCLUSIVE_MESSAGE'), 'and refuse with the agreed wording')
     const refusals = jsonResponses().filter(r => r.includes('INCONCLUSIVE_MESSAGE'))
-    assert.ok(refusals.length > 0, 'an inconclusive result must produce a refusal response')
-    for (const r of refusals) {
-      assert.ok(!r.includes('dataUrl'), 'an inconclusive result must not return an image')
+    assert.equal(refusals.length, 0, 'an inconclusive result must not be refused')
+    assert.match(body, /verification = 'manual_review_required'/)
+    assert.match(body, /VERIFICATION_HEADER\]: verification/)
+  })
+
+  test('a CONFIRMED failure is refused before the second billable request', () => {
+    // Paying to upscale an image already known to be wrong is money spent to
+    // produce a refusal.
+    const body = postCode()
+    const firstRefusal = body.indexOf('PRESERVATION_REFUSAL')
+    assert.ok(firstRefusal > -1 && firstRefusal < body.indexOf('upscaleImage('),
+      'a confirmed structural failure must stop before the upscale')
+  })
+
+  test('the verdict is a header, never measurements in the body', () => {
+    const body = postCode()
+    const returned = body.slice(body.lastIndexOf('return NextResponse.json('))
+    for (const leak of ['bounds', 'structure', 'summary', 'requestId', 'checks', 'plan.']) {
+      assert.ok(!returned.includes(leak), `"${leak}" must not reach the browser`)
     }
   })
 
-  test('inconclusive is caught BEFORE the second billable request', () => {
-    // What makes it inconclusive is the upload's own background, which the
-    // upscale cannot improve — so waiting until stage two would cost a paid
-    // request to reach the same refusal.
-    const body = postCode()
-    assert.ok(body.indexOf('report.inconclusive') < body.indexOf('upscaleImage('),
-      'the stage-one gate must check inconclusive before paying for the upscale')
+  test('the exact inconclusive wording is logged, verbatim', () => {
+    // The agreed sentence. Logged as its own argument so nothing interpolates
+    // around it and changes what an operator greps for.
+    const logged = logLines()
+    assert.ok(logged.some(l => /\bINCONCLUSIVE_MESSAGE\b/.test(l)),
+      'the inconclusive message must be logged')
   })
 
   test('no earlier provider or local-composition plumbing remains', () => {

@@ -70,9 +70,12 @@ export type PreservationReport = {
    * locatable in the upload, so structure and aspect were never verified.
    *
    * This is deliberately NOT folded into `ok`. An inconclusive result is not a
-   * pass and must never be presented as one; the caller decides whether to
-   * continue (a smoke run, so a person can look) or to refuse (the route, which
-   * cannot ask anyone to look).
+   * pass and must never be presented as one — but it is not a failure either,
+   * and the caller decides what to do about that. Both current callers deliver
+   * the image and say plainly that nobody checked it: BOE photographs furniture
+   * against textured concrete, so this is the state MOST real uploads reach,
+   * and refusing them would refuse the module on the strength of a check that
+   * never ran.
    */
   inconclusive: boolean
   checks: PreservationCheck[]
