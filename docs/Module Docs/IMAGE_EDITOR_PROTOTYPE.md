@@ -3,7 +3,13 @@
 One page, one job: an employee uploads one factory-background furniture
 photograph and gets back one catalogue-style product image.
 
-**Bria separates the product. BOE draws everything else.**
+**Bria makes the studio photograph from the original. BOE decides the framing,
+SeedVR2 supplies the resolution, and a gate checks the product survived.**
+
+> **This is an experiment, not an approved result.** The pipeline below has
+> never been run against the live API from this repository. What it is testing
+> is stated under [The rule](#the-rule); until a real run is compared it is an
+> open question.
 
 Not linked from the module launcher and not registered in `app_modules`. It is
 reached directly at **`/image-editor`** and is open to any signed-in BOE user —
@@ -48,47 +54,92 @@ requests.
 
 ## How the image is made
 
-**One provider call.** It removes the background. Everything else is local.
+**Two provider calls.** Bria renders the studio photograph, SeedVR2 supplies the
+resolution, and everything between and after them is local.
 
 ```
-upload → prepareSource → [1] fal-ai/bria/background/remove → transparent cut-out
-       → measure alpha → quality gate → plan the padding
-       → decontaminate the edge → one proportional resize → edge-safe sharpen
-       → composite over a locally drawn sweep, with locally drawn shadows
-       → 1440 × 1440 master
+upload → prepareSource → measure the upload (ground truth for the gate)
+       → [1] fal-ai/bria/product-shot   original photograph + ref_image_url
+       → locate the product by edge energy → preservation gate
+       → local reframe: one crop to put the product at 53% of the height
+       → [2] fal-ai/seedvr/upscale/image   noise_scale 0, PNG
+       → preservation gate again, and framing
+       → normalise to exactly 1440 × 1440 → delivered PNG
 ```
 
 ### The rule
 
-**The final visible furniture is the cut-out and nothing else.** It is the top
-layer; the background and shadows are drawn beneath it. Every opaque product
-pixel in the master is the cut-out's own pixel, and every transparent opening in
-the cut-out shows background through it.
+**The product must survive both models, and it is checked rather than trusted.**
 
-That is not a preference. Four paid results settled it:
+That is a weaker guarantee than the previous architecture offered, and the
+weakening is deliberate. It is worth setting out honestly why.
+
+Six paid results led here:
 
 | Attempt | What came back |
 | --- | --- |
 | Product Shot, scene description | A small chair inside a circular decorative backdrop. |
 | Product Shot, description rewritten | The circle went; the chair shrank to ~20% of the frame. |
 | Product Shot with a reference image | **Background, lighting and shadows accepted.** Chair too small. |
-| Product Shot with computed padding | Framing correct. **The fan of thin spindles under the seat came back as a dark continuous mass, the openings between them filled, edges smeared.** |
+| Product Shot with computed padding, **fed a prepared cut-out** | Framing correct. **The fan of thin spindles under the seat came back as a dark continuous mass, the openings between them filled, edges smeared.** |
+| Local composition over a drawn sweep | Geometry perfectly preserved — every product pixel was the cut-out's own. It did not look like a premium catalogue photograph. |
+| **Product Shot on the ORIGINAL photograph, in the fal playground** | The accepted look, and construction that held up. |
 
-Nothing in `ProductShotInput` preserves product pixels — `original_quality` is
-about output *dimensions* under `placement_type: 'original'`, and nothing else
-comes close. Placing a product into a generated scene means harmonising it with
-that scene's light, and harmonising is repainting. A fan of 3px spindles is
-exactly what a generative pass collapses: a plausible dark mass is cheaper to
-render than twelve thin separations.
+The distinction between rows four and six is the whole basis of this
+experiment, and it is easy to state wrongly. **The pipeline that destroyed the
+Irvine chair's spindles fed Product Shot a prepared cut-out.** The playground
+run that produced the accepted result fed it the **original photograph**, with
+the approved studio image as `ref_image_url` and no scene description at all.
 
-So the model segments, and BOE draws everything else.
+Those are different inputs to the same model. Whether the difference is what
+saved the spindles — a cut-out strips the context the model uses to understand
+the object, so it has more to invent — is a plausible reading and an unproven
+one. **It is unproven until a real run through this code is compared against
+the original.** That comparison is what `scripts/image-editor-smoke.mjs` exists
+to set up.
+
+What can be said without a run:
+
+- Nothing in `ProductShotInput` preserves product pixels. `original_quality` is
+  about output *dimensions* under `placement_type: 'original'`; there is no
+  pass-through mode. **Pixel identity is not available from this pipeline and
+  no check here can manufacture it.**
+- So the gate is the substitute, and it is honest about being one: it refuses
+  the failures that are measurable, and says so when it cannot measure.
+
+### The two requests
+
+**[1] `fal-ai/bria/product-shot`** — the original photograph as `image_url`, the
+approved studio image as `ref_image_url`, and **no `scene_description`**: Bria's
+schema documents the two as mutually exclusive, and the accepted playground run
+left the description empty. `placement_type: 'manual_placement'`,
+`manual_placement_selection: 'bottom_center'`, `shot_size: [1000, 1000]`,
+`num_results: 1`, `fast: true`, `optimize_description: false`. `sync_mode` is
+not sent, so the run stays in fal's history with its result attached.
+
+**[2] `fal-ai/seedvr/upscale/image`** — `upscale_mode: 'factor'` with the
+smallest factor that reaches 1440 from the actual reframed size,
+`output_format: 'png'` (the default is jpg, and a catalogue master is not
+delivered with jpeg artefacts in the wood grain), and **`noise_scale: 0`**.
+
+`noise_scale` is the one knob governing how much SeedVR invents; the default is
+0.1 and zero is the least it will do. The brief is resolution and edge clarity,
+not restoration — wood grain, cane, thin spindles and watermark text must come
+back as themselves.
+
+**The factor's accepted range is undocumented.** The contract says
+`upscale_factor?: number` with a default of 2 and states no minimum, maximum or
+integer constraint, and the package ships no JSON schema. So a fractional factor
+such as 1.44 is neither confirmed nor ruled out. It is sent because it is the
+smallest that reaches the master — and nothing downstream assumes it worked (see
+[Exactly 1440 × 1440](#exactly-1440--1440)). If a live run is refused at this
+stage, the factor is the first suspect and the fix is `upscale_factor: 2` with
+the surplus taken off locally.
 
 ### The master
 
-**1440 × 1440**, up from 1000. At 1000 a 1152px product was resampled down to
-530 — 46% of its linear detail — before anything else happened to it. The
-product is composited locally now, so there is no provider megapixel guidance to
-sit under and no reason to throw that away.
+**1440 × 1440.** At 1000 a 1152px product was resampled down to 530 — 46% of its
+linear detail — before anything else happened to it.
 
 | | |
 | --- | --- |
@@ -96,140 +147,131 @@ sit under and no reason to throw that away.
 | Product height | 53%, **763px** |
 | Maximum product width | 88%, **1267px** |
 | Horizontal centre | **720px** |
-| Vertical split | **60:40** above/below — 406px and 271px for a full-height product |
+| Vertical split | **60:40** above/below |
 
 A very wide product is limited by the width instead and comes back shorter than
 53% and **whole**, rather than exactly 53% and cropped.
 
-### The background
+### The reframe
 
-Drawn pixel by pixel, calibrated against the accepted real outputs. The earlier
-local sweep was a near-flat 235/232/227 and read as too cream, too bright and
-too flat; this one has somewhere to go.
+Product Shot returns a 1000px square with the product wherever it put it —
+typically too small, which was the one defect in the accepted result. The
+framing is fixed **locally**, between the two calls, by a single crop.
 
-```
-tone(nx, ny) = WALL + (FLOOR − WALL) · smoothstep(0.52, 0.98, ny)     wall into floor
-             + LIFT · exp(−(dx² + dy²) / (2 · 0.46² · 0.5))            behind the product
-             − FALLOFF · edgeness^1.7                                  corners and sides
+`planReframe` computes the crop side from `bounds.height / 0.53`, positions it so
+the product sits centred horizontally with the 60:40 vertical split, then grows
+the crop if it would cut the product and clamps it inside the canvas. It reports
+`widthLimited` when a wide product hit the 88% ceiling and `clamped` when the
+crop met an edge — both appear in the log, because either one explains a share
+that is not 53%.
 
-  dx = nx − 0.5,  dy = ny − 0.38
-  edgeness = min(1, √(0.85·sideness² + 0.95·topness²))
-  sideness = min(1, 2|dx|),  topness = max(0, 2(0.5 − ny))
+Cropping *before* the upscale rather than after is what makes the reframe free:
+the crop throws pixels away, and SeedVR2 then puts resolution back into what is
+left, instead of spending it on background that was about to be discarded.
 
-  WALL 178   FLOOR 212   LIFT 17   FALLOFF 32
-  warm offsets: r +4, g 0, b −6
-```
+### Finding the product without an alpha channel
 
-Measured on the finished sweep:
+Both generated images are fully opaque, so there is no alpha to measure and
+colour contrast is unusable — the background is a real gradient sweep, and a
+threshold against it measures the gradient. `generatedProduct.ts` uses **edge
+energy** instead: a Sobel magnitude map, thresholded, with the outermost rows
+and columns that contain enough edge pixels taken as the bounds.
 
-| Region | Measured | Target |
-| --- | --- | --- |
-| Upper corners | 148 | 140–160 |
-| Side edges, mid height | 155 | 140–160 |
-| Centre, behind the product | 187 | 180–190 |
-| Floor, centre | 214 | 195–220 |
-| Floor, left | 201 | 195–220 |
+`structureDensity` counts edge crossings per scanline over a band of the
+product's height, normalised by the product's width. A fan of separate spindles
+scores high; the same fan rendered as one opaque block scores almost nothing.
+That number is the regression detector.
 
-Warm-neutral throughout (r > g > b, 10 levels of separation — warm, not yellow).
-Largest step between adjacent rows: **1 level**, which is quantisation. There is
-no wall/floor line because nothing in the function could draw one.
+### Exactly 1440 × 1440
 
-### The shadows
+`upscale_factor: 1.44` on a 1000px square *should* return 1440. Nothing in the
+contract promises the model rounds the way we would, and the factor's accepted
+range is undocumented besides — so `normaliseSquare` inspects what actually came
+back rather than assuming:
 
-Both are built from the cut-out's own alpha and both sit **behind** it.
+- **Square and exactly 1440** — re-encoded as PNG and delivered.
+- **Square and any other size** — one proportional Lanczos resize to 1440. Never
+  a crop: a crop at this point could take a foot off.
+- **Not square** — **refused.** Squeezing a rectangle into a square would change
+  the product's proportions, which is the one thing this pipeline exists to
+  avoid.
 
-**Contact** — the lowest opaque pixel of each column that reaches the floor,
-smeared over a short band at *its own height* and blurred. Not one shared
-baseline: in a three-quarter view the back feet sit higher than the front ones,
-and a shadow on one line under all of them reads as a plinth. Biased down by 0.8
-of its half-thickness, so it is not mostly hidden behind the product but still
-overlaps the foot and *touches* it. Measured 51 levels deep 4px under a foot,
-and 12 levels in the open gap between legs.
+Both the returned and the delivered dimensions are logged on every request, so a
+model that quietly changed its rounding shows up in the log rather than in a
+catalogue.
 
-**Cast** — one pool from the footprint, leaning right and back. Each foot's
-influence spreads sideways as a gaussian (σ = 14% of the product width) and is
-clipped to the footprint's own span, so the per-leg pools merge into **one
-coherent shadow** that is still denser under the feet than between them. Before
-that spread existed, one row below the feet contained **seven separate dark
-runs** — detached blobs. It is now two.
+## The preservation gate
 
-Neither is a rectangle and neither is the silhouette: the cast shadow comes from
-the columns that touch the floor, never from the whole product.
+`preservationGate.ts` decides whether a generated image may be served. It runs
+after **both** stages. It is not in the browser and it makes no network call —
+it only measures.
 
-### Resize and sharpening
+Its ground truth is **the uploaded photograph**, which costs nothing because it
+is already in memory. A segmentation mask would be better ground truth and would
+cost a third billable request; the pipeline is two, so this is the best
+available.
 
-One proportional Lanczos resize, both axes by one factor. Nothing is rotated,
-stretched, warped or cropped. Then a restrained unsharp (σ 0.8, m1 0.4, **m2
-1.2**) confined to an interior mask — the alpha, blurred and hard-thresholded —
-so sharpening never crosses the edge and no pale outline forms.
+| Check | What it catches |
+| --- | --- |
+| Aspect ratio | A product that came back a different shape was redrawn. Tolerance 12%. |
+| Structure overall | Cane, lattice and spindles anywhere. Floor 55% of the original's density. |
+| **Under-seat structure** | The regression subject: 0.42–0.95 of the product's height, where "a fan of thin verticals became one opaque block" shows up as a collapse in edge crossings. **This is the check that would have caught the rejected result.** |
+| Extremities | A product touching the frame edge may have been cropped. |
+| Framing | The 52–55% band the reframe was supposed to achieve. |
 
-**No tone correction.** The product's colour is the photograph's. The only things
-permitted to change a product pixel are the edge decontamination, the
-interpolation of that one resize, and the bounded sharpening. Nothing invents
-detail; there is no upscaler and no restoration model.
+Every threshold is deliberately loose. A generative pass always moves these
+numbers a little; the gate is for obvious destruction, not for grading.
 
-### The enlargement gate
+### When it cannot decide
 
-1440 asks for a 763px product where 1000 asked for 530, so the old 1.15× cap was
-re-measured rather than carried over. Detail retained against a
-native-resolution render, mean absolute Laplacian over a subject with 1px
-spindles and a cane lattice:
+Edge energy locates a product on a plain background and **does not** on a
+cluttered one. Measured: a product on a plain sweep fills about 23% of the
+frame's area; the same product on a textured factory wall measures 83%, because
+the texture reaches every corner. Above 60% the upload is not usable as ground
+truth.
 
-| | | | |
-| --- | --- | --- | --- |
-| 1.10× 85.2% | 1.20× 80.8% | **1.30× 77.7% ← the cap** | 1.75× 63.3% ← the cliff |
-| 1.15× 82.5% | 1.25× 78.6% | 1.50× 72.1% | 2.00× 57.3% |
+When that happens the gate reports:
 
-**The cap is 1.30×, chosen from real source material rather than from the curve
-alone.** BOE's product photographs are around 1000px, and the Irvine chair used
-for acceptance testing cut out to **549 × 609**. Reaching 763 from 609 is
-**1.253×**, so a cap of 1.20 — or even 1.25 — would refuse the exact photograph
-the approved result was built from. A gate that rejects its own reference
-subject is a bug, not a quality control.
+> Structural comparison inconclusive; manual review required.
 
-77.7% retention at 1.30× is a real cost, accepted knowingly. What the cap still
-buys is the collapse beyond it: the curve falls away fastest between 1.5 and
-1.75, reaching 63%. Severe enlargement is still refused, with the take-it-closer
-message. **The cap must not go above 1.30.**
+**An inconclusive result is not a pass, and is never presented as one.** It is a
+separate field on the report rather than folded into `ok`, so a caller has to
+decide which it is:
 
-A product must be **588px** tall in the cut-out to pass — the gate works from the
-unrounded 763.2, not the placed 763. The enlargement ratio is logged on every
-request.
+- **The route refuses it** — 422, `noRetry`. It cannot ask an employee to eyeball
+  a result and it will not hand over an image whose structure was never
+  compared. It refuses at stage one, *before* the second billable request: what
+  makes it inconclusive is the upload's own background, which the upscale cannot
+  improve.
+- **The smoke script continues** and prints the warning, so a person can look at
+  the artefacts and judge.
 
-## Verifying the framing
+### What it cannot do
 
-`composition.ts` measures a finished master against the approved composition,
-for tests and the smoke script. It is never in the request path.
-
-It measures from **the cut-out's alpha and the placement plan**, not from colour.
-The previous version found the product by contrast against the four corners,
-which worked while the background was near-flat and broke the moment it became a
-real sweep: with corners at 148 and floor at 214, most of the background differs
-from the corners by more than the threshold, and it reported a known 53.0%
-placement as **71.8%** — it was measuring the gradient.
-
-Alpha has none of that trouble. It says exactly which pixels are product; it
-says nothing about the background, whatever the background is doing; it excludes
-shadows, because a shadow is not in the cut-out; and it excludes the gaps
-between spindles, because those are transparent. A background change cannot move
-the numbers, which is the property a verification tool needs.
-
-It answers "is the framing right". It never looks at the background, so it
-cannot answer "is the scene clean" — a master still has to be looked at.
+It cannot prove preservation. Two generative models render the final image and
+neither has a pass-through mode. It measures **edges**, so a product recoloured
+entirely but structurally identical still passes — a fact asserted in the tests
+so nobody reads the gate as a guarantee.
 
 ## Cost controls
 
-- One press of Generate is **one billable request** per photograph. A queue of
-  five is five requests, made one after another. Nothing batches and nothing
-  loops — a test asserts one call site and that it is not inside a loop.
-- Everything after that call is local and free: the composition, the three
-  download formats, any re-download.
+- One press of Generate is **two billable requests** per photograph, and never
+  more. A queue of five is ten requests, made one after another. Nothing batches
+  and nothing loops — a test asserts one call site per stage and that neither is
+  inside a loop.
+- Everything between and after those calls is local and free: the reframe, the
+  gate, the normalisation, the three download formats, any re-download.
 - The adapter **never retries**, including after a timeout, because a request
-  that may already have been billed must not be billed again silently.
+  that may already have been billed must not be billed again silently. The
+  `@fal-ai/client` package is deliberately not a dependency: its `run()` retries
+  three times over 429/502/503/504, so one press could become four charges. The
+  transport is plain `fetch`.
 - The per-user rate limiter is 6 a minute, unchanged.
-- A product too small for the master is refused **after** the cut-out and
-  before anything else, so a photograph that cannot work costs one request.
-- An image beyond fal's 12 MB ceiling is refused locally rather than paid for.
+- **Everything that can be refused, is refused before the request that would
+  pay for it.** A missing reference asset, a missing key, an image beyond fal's
+  12 MB ceiling — all local, all free. A stage-one preservation failure or an
+  inconclusive comparison stops the run **before** the upscale, so a photograph
+  that cannot work costs one request rather than two.
 - Each request logs fal's request id, the phase, the duration and the outcome
   category — never the image, the data URI or the key.
 
@@ -242,6 +284,19 @@ cannot answer "is the scene clean" — a master still has to be looked at.
 Get one from <https://fal.ai/dashboard/keys>. Put it in `.env.local` (or the
 deployment's environment) — never in a `NEXT_PUBLIC_` variable.
 
+And one file:
+
+| Path | Required | Purpose |
+| --- | --- | --- |
+| `assets/image-editor/studio-reference.png` | yes | The approved studio look, sent to Bria as `ref_image_url`. |
+
+It is deliberately **not** in `public/` and **not** in git: nothing in a browser
+needs it, the only reader is the server on its way to fal, and it travels as a
+data URI so no publicly reachable URL for it is ever created.
+`outputFileTracingIncludes` in `next.config.ts` is what puts it into a
+deployment. With it missing, the route and the smoke script both report that it
+is missing and generate nothing — **before** any billable request.
+
 ## The pieces
 
 | File | What it holds |
@@ -249,22 +304,21 @@ deployment's environment) — never in a `NEXT_PUBLIC_` variable.
 | `src/lib/imageEditor/validation.ts` | What counts as an uploadable photograph. Used by the browser AND the route, so the two cannot disagree. |
 | `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in when required. Otherwise the original bytes, untouched, up to 8192px. Server-only (sharp). |
 | `src/lib/imageEditor/falRequest.ts` | One request to fal: transport, host allowlist, failure classification, and the no-retry rule. Shared by both stages, so those rules exist once. |
-| `src/lib/imageEditor/briaBackgroundRemove.ts` | The one provider call. |
-| `src/lib/imageEditor/studioScene.ts` | The sweep, the shadows and the composite. Server-only (sharp). No network. |
-| `src/lib/imageEditor/studioMaster.ts` | The master canvas and the padding arithmetic. Pure — no sharp, no provider. |
-| `src/lib/imageEditor/cutoutGeometry.ts` | Where the product is in a cut-out, read from raw alpha. Pure. |
-| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product, repair its edge, scale it, sharpen inside it. Server-only (sharp). Nothing creative. |
-| `src/lib/imageEditor/decontaminateEdges.ts` | Takes the factory background's colour out of partly transparent boundary pixels. Never writes alpha. |
-| `src/lib/imageEditor/composition.ts` | Measures a finished image against the intended framing. Used by tests and the smoke script, never in the request path. |
+| `src/lib/imageEditor/briaProductShot.ts` | Stage one. The original photograph plus the approved reference; no scene description, no `sync_mode`. |
+| `src/lib/imageEditor/seedvrUpscale.ts` | Stage two, and `normaliseSquare` — which inspects what came back rather than assuming the factor worked. |
+| `src/lib/imageEditor/studioReference.ts` | Reads the approved reference from disk, server-side, cached. Never substitutes a look-alike. |
+| `src/lib/imageEditor/generatedProduct.ts` | Finding a product in a fully opaque image by edge energy, measuring its structure, and planning the reframe. Server-only (sharp). No network. |
+| `src/lib/imageEditor/preservationGate.ts` | Whether a generated image may be served, and when that cannot be decided. No network, no model — it only measures. |
+| `src/lib/imageEditor/studioMaster.ts` | The master canvas and the framing constants. Pure — no sharp, no provider. |
 | `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
 | `src/lib/imageEditor/downloadFormats.ts` | Which download formats exist, and the guard. Client-safe. |
 | `src/lib/imageEditor/imageFormats.ts` | The sharp re-encoder behind the download menu. Server-only. |
 | `src/app/api/image-editor/convert/route.ts` | Re-encodes a finished image for download. Never calls fal, holds no provider key. |
 | `src/app/image-editor/QueueList.tsx`, `ResultCard.tsx` | The queue rows and the per-result actions. |
-| `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, then the two provider calls with the padding arithmetic between them. Holds the API key; returns the image. |
+| `src/app/api/image-editor/studio/route.ts` | Auth, rate limit, validation, then the two provider calls with the reframe and the gate between them. Holds the API key; returns the image. |
 | `src/app/image-editor/page.tsx` | The screen. |
 | `src/components/layout/ImageEditorLayout.tsx` | The module shell, per the BOE Module Layout Standard. |
-| `scripts/image-editor-smoke.mjs` | One real request from the command line. Chargeable. |
+| `scripts/image-editor-smoke.mjs` | One real run from the command line, writing every artefact the acceptance review needs. Chargeable. |
 
 ## Failures the employee can act on
 
@@ -281,8 +335,10 @@ a status code and the request id.
 | Rate limited (429) | 429 | busy — wait a moment and try again |
 | Timed out (request, body or download) | 504 | took too long — try again in a few minutes |
 | Empty or malformed result from the service | 422 | no image returned — try again |
-| Product too small in the frame | 422 `noRetry` | too small to make a sharp image — take it closer |
-| Nothing could be separated out | 422 `noRetry` | try a photograph with the product clearly visible |
+| The product was not preserved | 422 | did not preserve the product accurately — try again, or a different photograph |
+| No product locatable in the result | 422 | did not preserve the product accurately — try again, or a different photograph |
+| Structure could not be compared | 422 `noRetry` | structural comparison inconclusive; manual review required |
+| The upscale came back the wrong shape | 422 | the upscaled image came back the wrong shape — try again |
 | Anything else | 502 | could not process — try again |
 
 ### Retry, and when it is not offered
@@ -290,30 +346,40 @@ a status code and the request id.
 A failure a second press cannot fix is marked **`noRetry`** in the response, and
 the result card then offers **Choose a different photo** instead of **Retry**.
 
-That is a cost control, not a cosmetic one. Retry costs another background
-removal, so it is only worth offering where the answer could actually change:
+That is a cost control, not a cosmetic one. Retry costs up to two more requests,
+so it is only worth offering where the answer could actually change:
 
 - **`noRetry`** — no key configured, a key an administrator must fix, no credit,
-  a moderation refusal, and **every local composition refusal**. The local half
-  of the pipeline is deterministic: the same photograph segments the same way, a
-  product too small in the frame is the same size next time, and an opaque
-  cut-out is opaque again. A retry buys a second charge and the identical
-  sentence.
-- **Retry offered** — busy, timed out, an unexplained provider error. These can
-  genuinely differ on the next press.
+  a moderation refusal, and an **inconclusive** comparison. That last one is
+  deterministic: what makes it inconclusive is the upload's own cluttered
+  background, and the same photograph has the same background next time. A retry
+  buys another charge and the identical sentence.
+- **Retry offered** — busy, timed out, an unexplained provider error, and a
+  **failed** preservation check. A generative model is not deterministic, so the
+  same photograph genuinely can come back better on the next press. That costs
+  money and the employee is choosing to spend it, which is why it is a button
+  rather than something the route does on its own.
 
 Nothing retries on its own, in either case. A retry is a person pressing a
 button, always.
 
 ## Download formats
 
-The locally composed image is the master. PNG downloads hand back exactly those bytes;
+The delivered 1440 × 1440 PNG is the master. PNG downloads hand back exactly those bytes;
 JPG and WebP are re-encoded server-side by sharp at quality 95 with no chroma
 subsampling. A conversion is a format change and nothing else — same pixels,
 same dimensions, asserted by tests — and it **never calls fal**, so downloading
-one image in three formats costs one request, not three.
+one image in three formats costs nothing beyond the two requests that made it.
 
 ## Verifying against the real API
+
+**Nothing in this repository has made a live request through this pipeline.**
+The container this was built in has no `FAL_KEY`, no `.env.local`, no reference
+asset, and no route to `fal.run`. Every number above about *sizes, thresholds
+and behaviour* is measured; every statement about *what the models will do to a
+chair* is a hypothesis. The live run is the experiment.
+
+### Through the app
 
 The live check is **the app**. `FAL_KEY` is already in `.env.local`, so there is
 nothing to type and no key on a command line.
@@ -332,34 +398,52 @@ That is **two billable requests**. The fal dashboard should show exactly two for
 the run, both with their results attached — which is the point of leaving
 `sync_mode` off.
 
-What to look at, in order:
+The server log for the run prints both request ids, the located product bounds,
+the crop, the achieved height share, and **both** the dimensions SeedVR2
+returned and the dimensions delivered — so a result that looks wrong can be
+traced to a stage rather than guessed at.
 
-- **The chair should now fill about 53% of the frame height.** That is the one
-  defect in the accepted result, and the only thing this change was meant to fix.
-- The background, lighting and shadows should be the accepted scene, unchanged.
-- There should be clear space on all four sides to crop a landscape or portrait
-  from later.
-- The product itself — construction, angle, cane, finish, watermark — should be
-  the uploaded chair, untouched.
-
-The server log for the run prints both request ids, the computed padding and the
-planned height share, so a result that looks wrong can be traced to a stage
-rather than guessed at.
-
-### The developer's tool
+### The developer's tool, and the acceptance review
 
 `scripts/image-editor-smoke.mjs` runs the same two requests without the app and
-writes the intermediates — the raw cut-out, the cropped and scaled cut-out that
-was actually sent, and the master — which is what to reach for when a result
-looks wrong and the stage responsible is not obvious. It reads the key from
-`.env.local` too.
+writes **every artefact the review needs**:
 
 ```bash
-npx tsx scripts/image-editor-smoke.mjs chair.jpg test-results/studio.png
+npx tsx scripts/image-editor-smoke.mjs "irvine chair.jpg" test-results/irvine/out.png
 ```
 
-It refuses to send anything if the approved reference is missing, so a
-misconfigured checkout costs nothing.
+| Artefact | What it is for |
+| --- | --- |
+| `out-0-original.png` | The bytes actually sent, not the file on disk. |
+| `out-1-shot.png` | The raw Product Shot result. |
+| `out-2-reframed.png` | After the local crop to 53%. |
+| `out-3-upscaled.png` | The raw SeedVR2 result, at whatever size it chose. |
+| `out.png` | The delivered 1440 × 1440 PNG. |
+| `out-underseat-original.png` | The fan of spindles as photographed. |
+| `out-underseat-shot.png` | The same band after Product Shot. |
+| `out-underseat-upscaled.png` | The same band after SeedVR2. |
+| `out-underseat-*-4x.png` | All three at 4×, **nearest neighbour** — a smooth kernel would invent edges between the spindles, which is the thing under examination. |
+
+The three under-seat crops are the review. The band is the same one the gate
+measures (0.42–0.95 of the product's height), so what is looked at is what the
+numbers describe. Put them side by side:
+
+- **original → shot → upscaled.** The spindles must stay individually visible,
+  with background showing through the gaps between them.
+- If they merge into a dark mass at the *shot* stage, feeding the original
+  photograph did not fix what the cut-out path broke, and the answer is not this
+  pipeline.
+- If they survive the shot and merge at the *upscale* stage, `noise_scale` is
+  already at zero and the next thing to try is skipping the upscale.
+
+It refuses before sending anything if `FAL_KEY` or the approved reference is
+missing, so a misconfigured checkout costs nothing. It prints request ids, stage
+timings, the returned and delivered dimensions, the framing measurement and
+every preservation warning — and **never the key or any base64 data**.
+
+It calls the result a **master** only once it has passed both the exact-size
+check and the preservation gate. Otherwise it says what failed and calls it "the
+SeedVR2 result", because that is all it is.
 
 ### Everything that costs nothing
 
@@ -369,22 +453,27 @@ npx tsx --test src/app/api/image-editor/studio/route.test.ts
 npx tsx --test src/app/image-editor/page.test.ts
 ```
 
-Two of those are worth knowing about by name:
+Three are worth knowing about by name:
 
-- `studioMaster.test.ts` runs the padding arithmetic over seven furniture shapes
-  — dining chair, lounge chair, tall cabinet, low bench, square stool, long
-  sideboard, narrow lamp — and asserts the 52–55% band, exact centring, no
-  negative padding for any width/height combination, and that both axes close on
-  1000 × 1000.
-- `studioPipeline.test.ts` runs the real local path through sharp on cut-outs
-  drawn in the test file, including thin legs and an off-centre product in an
-  oversized frame, and asserts that the image sent to Bria is exactly the size
-  the padding plan assumed. Every defect in this feature so far has been in the
-  joins rather than in the pieces, which is what that test is for.
+- `preservationGate.test.ts` builds a chair with a fan of sixteen 3px spindles
+  and the same chair with that fan filled solid — the rejected result, made
+  synthetically — and asserts the gate refuses the second. It also builds the
+  cluttered factory background that defeats the location step, and asserts the
+  gate reports that as **inconclusive** rather than passing it.
+- `seedvrUpscale.test.ts` feeds `normaliseSquare` results of 1439, 1441, 1408,
+  2000 and 1000 and asserts the delivered PNG is exactly 1440 × 1440 every time,
+  with marks in all four corners surviving — proving nothing was cropped. A
+  non-square result is asserted to be refused.
+- `route.test.ts` reads the route's own source and asserts the invariants no
+  other test can see: exactly two provider call sites, neither in a loop, the
+  reframe between them, the gate after both, an inconclusive result refused
+  **before** the second request, and the raw upscale never served.
 
 ### The measurement's blind spot
 
-`measureComposition` finds the product by contrast against the background, so a
-strong contact shadow reads as a point or two of extra height, and a decorative
-backdrop would be measured *as* the product. It answers "is the framing right",
-never "is the scene clean". Look at the image as well.
+The gate finds the product by edge energy, so a strong contact shadow reads as a
+point or two of extra height, and it cannot find a product at all against a
+cluttered background — which is why the inconclusive state exists. It answers
+"did the structure survive", never "is the scene clean" or "are the pixels the
+same". **Look at the image as well.** That is not a formality here: the gate is
+a substitute for a guarantee this pipeline cannot give.

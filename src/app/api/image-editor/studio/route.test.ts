@@ -92,7 +92,7 @@ describe('authorization', () => {
     const body = postHandler()
     const authResolved = body.indexOf('svc.auth.getUser(token)')
     const formRead     = body.indexOf('req.formData()')
-    const firstCall    = body.indexOf('removeBackground(')
+    const firstCall    = body.indexOf('generateProductShot(')
 
     assert.ok(authResolved > -1 && formRead > -1 && firstCall > -1)
     assert.ok(authResolved < formRead, 'the upload must not be read before the caller is authenticated')
@@ -102,103 +102,168 @@ describe('authorization', () => {
   test('the rate limit is applied before the provider call', () => {
     const body = postHandler()
     const limit = body.indexOf('rateLimited(user.id)')
-    assert.ok(limit > -1 && limit < body.indexOf('removeBackground('))
+    assert.ok(limit > -1 && limit < body.indexOf('generateProductShot('))
     assert.ok(body.includes('status: 429'))
   })
 })
 
 describe('the pipeline', () => {
-  test('exactly ONE provider call, and one call site', () => {
+  test('exactly TWO provider calls — one each, one call site each', () => {
     const body = postCode()
-    assert.equal(body.split('removeBackground(').length - 1, 1, 'one cut-out call site')
-    // The generative stage is gone. A press costs one request, not two.
-    assert.ok(!body.includes('generateStudioShot('))
+    assert.equal(body.split('generateProductShot(').length - 1, 1, 'one product shot call site')
+    assert.equal(body.split('upscaleImage(').length - 1, 1, 'one upscale call site')
   })
 
-  test('nothing loops or batches around the provider call', () => {
+  test('no other provider call exists anywhere in the route', () => {
     const body = postCode()
-    const before = body.slice(0, body.indexOf('removeBackground('))
-    const lastLoop = Math.max(before.lastIndexOf('for ('), before.lastIndexOf('while ('), before.lastIndexOf('.map('))
-    assert.ok(lastLoop < before.lastIndexOf('await'), 'the call looks like it sits inside a loop')
-  })
-
-  test('everything after the call is local — no network, no model', () => {
-    const body = postCode()
-    const after = body.slice(body.indexOf('removeBackground(') + 'removeBackground('.length)
-
-    assert.ok(after.includes('composeStudioScene('), 'the picture is built here')
-    assert.ok(!/fetch\(|https?:\/\//.test(after), 'nothing else is requested over the network')
-  })
-
-  test('the furniture layer is the cut-out, and the model never repaints it', () => {
-    // The rule the whole architecture rests on. A generative stage here would
-    // reintroduce the failure it was removed for: a fan of thin spindles under
-    // a seat came back as a dark mass with the openings filled.
-    for (const banned of [
-      'product-shot', 'productShot', 'ProductShot', 'generateStudioShot',
-      'scene_description', 'ref_image_url', 'padding_values', 'placement_type',
-      'studioReference', 'studio-reference', 'seedvr', 'upscal',
-    ]) {
-      assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
-        `the route must not reference ${banned}`)
+    for (const banned of ['removeBackground(', 'callFal(', 'fetch(']) {
+      assert.ok(!body.includes(banned), `${banned} must not appear`)
     }
   })
 
-  test('the size is decided locally, before the composition', () => {
+  test('nothing loops or batches around either call', () => {
     const body = postCode()
-    const plan = body.indexOf('planPadding(')
-    assert.ok(plan > body.indexOf('measureCutout('), 'the plan needs the measured product')
-    assert.ok(plan < body.indexOf('composeStudioScene('), 'the plan must precede the composition')
+    for (const call of ['generateProductShot(', 'upscaleImage(']) {
+      const before = body.slice(0, body.indexOf(call))
+      const lastLoop = Math.max(before.lastIndexOf('for ('), before.lastIndexOf('while ('), before.lastIndexOf('.map('))
+      assert.ok(lastLoop < before.lastIndexOf('await'), `${call} looks like it sits inside a loop`)
+    }
   })
 
-  test('the quality gate runs, and the enlargement is reported', () => {
+  test('Product Shot receives the ORIGINAL photograph, not a cut-out', () => {
     const body = postCode()
-    assert.ok(body.includes('checkEnlargement('))
-    assert.ok(body.indexOf('checkEnlargement(') < body.indexOf('composeStudioScene('))
-    assert.ok(body.includes('enlargement'), 'the ratio must reach the log')
+    assert.match(body, /photograph: prepared\.bytes/)
+    // The cut-out path is gone entirely.
+    for (const banned of ['prepareCutoutForShot', 'measureCutout', 'decontaminateEdges', 'composeStudioScene']) {
+      assert.ok(!SOURCE.includes(banned), `${banned} must not be in the route`)
+    }
+  })
+
+  test('the reframe happens locally, between the two calls', () => {
+    const body = postCode()
+    const shot = body.indexOf('generateProductShot(')
+    const frame = body.indexOf('reframe(')
+    const up = body.indexOf('upscaleImage(')
+    assert.ok(shot < frame && frame < up, 'crop the generated square before upscaling it')
+  })
+
+  test('the gate runs after BOTH stages', () => {
+    const body = postCode()
+    const calls = body.split('comparePreservation(').length - 1
+    assert.equal(calls, 2, 'preservation is checked after the shot and after the upscale')
+    assert.ok(body.includes('PRESERVATION_REFUSAL'), 'a failed check must refuse')
+  })
+
+  test('the ground truth is measured before anything is generated', () => {
+    const body = postCode()
+    assert.ok(body.indexOf('measureProfile(prepared.bytes)') < body.indexOf('generateProductShot('))
   })
 
   test('the browser cannot influence what the request costs', () => {
     const body = postCode()
-    const reads = body.match(/form\.get\(([^)]*)\)/g) ?? []
-    assert.deepEqual(reads, ["form.get('image')"])
+    assert.deepEqual(body.match(/form\.get\(([^)]*)\)/g) ?? [], ["form.get('image')"])
   })
 
-  test('no earlier provider, and none of its plumbing, remains anywhere', () => {
-    for (const banned of [
-      'photoroom', 'PHOTOROOM_API_KEY', 'sdk.photoroom.com',
-      'gemini', 'openai', '@fal-ai/client', 'composeStudioImage', 'productTone',
-    ]) {
-      assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
-        `the route must not reference ${banned}`)
+  test('no prompt or scene wording lives in the route', () => {
+    for (const phrase of ['scene_description', 'catalogue studio', 'warm neutral', 'rock', 'ocean']) {
+      assert.ok(!SOURCE.toLowerCase().includes(phrase.toLowerCase()), `"${phrase}"`)
     }
   })
 
-  test('the finished image is the locally composed master', () => {
+  test('what the upscaler returned is INSPECTED, never assumed', () => {
+    // `upscale_factor: 1.44` on a 1000px square should give 1440, but the
+    // factor's accepted range is undocumented and nothing promises the model
+    // rounds as we would. So the route measures the result and normalises it.
     const body = postCode()
-    assert.ok(body.includes('scene.png'))
+    assert.match(body, /normaliseSquare\(upscaled\.image, MASTER_SIDE\)/)
+    assert.ok(body.indexOf('normaliseSquare(') > body.indexOf('upscaleImage('))
+    // A blind resize to the master size would hide a wrongly shaped result.
+    assert.ok(!body.includes(".resize(MASTER_"), 'the size must be checked, not forced')
     assert.ok(body.includes("mimeType: 'image/png'"))
+  })
+
+  test('the delivered image is the normalised one, not the raw upscale', () => {
+    const body = postCode()
+    assert.match(body, /const master = normalised\.image/)
+    const returned = body.slice(body.lastIndexOf('return NextResponse.json('))
+    assert.ok(returned.includes('master.toString'), 'the response must carry the normalised bytes')
+    assert.ok(!returned.includes('upscaled.image'), 'the raw upscale must never be served')
+  })
+
+  test('nothing is cropped after the upscale', () => {
+    // A crop at this point could cut a foot off.
+    const body = postCode()
+    const after = body.slice(body.indexOf('upscaleImage('))
+    assert.ok(!after.includes('.extract('), 'nothing may be cropped off after the upscale')
+  })
+
+  test('both returned and delivered dimensions are logged', () => {
+    const logged = logLines().join('\n')
+    assert.match(logged, /seedvr returned/)
+    assert.match(logged, /delivered /)
+    assert.match(logged, /normalised\.returned\.width/)
+    assert.match(logged, /normalised\.delivered\.width/)
+  })
+
+  test('an inconclusive comparison is REFUSED, never served as verified', () => {
+    // The route cannot ask an employee to eyeball the result, so it may not
+    // hand over an image whose structure was never actually compared.
+    const body = postCode()
+    assert.ok(body.includes('report.inconclusive'), 'the route must read the inconclusive flag')
+    assert.ok(body.includes('INCONCLUSIVE_MESSAGE'), 'and refuse with the agreed wording')
+    const refusals = jsonResponses().filter(r => r.includes('INCONCLUSIVE_MESSAGE'))
+    assert.ok(refusals.length > 0, 'an inconclusive result must produce a refusal response')
+    for (const r of refusals) {
+      assert.ok(!r.includes('dataUrl'), 'an inconclusive result must not return an image')
+    }
+  })
+
+  test('inconclusive is caught BEFORE the second billable request', () => {
+    // What makes it inconclusive is the upload's own background, which the
+    // upscale cannot improve — so waiting until stage two would cost a paid
+    // request to reach the same refusal.
+    const body = postCode()
+    assert.ok(body.indexOf('report.inconclusive') < body.indexOf('upscaleImage('),
+      'the stage-one gate must check inconclusive before paying for the upscale')
+  })
+
+  test('no earlier provider or local-composition plumbing remains', () => {
+    for (const banned of ['photoroom', 'gemini', 'openai', '@fal-ai/client', 'studioScene', 'productTone']) {
+      assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()), banned)
+    }
   })
 })
 
-describe('retrying, and what it would cost', () => {
-  test('every deterministic refusal is marked noRetry', () => {
-    // A press costs two requests now. A product too small in the frame is the
-    // same size next time, and an unusable cut-out is unusable again.
+describe('retrying, and failure classification', () => {
+  test('the two stages are classified separately', () => {
     const body = postCode()
-    for (const marker of ['measured.error', 'verdict.message', 'shaped.error', 'scene.error']) {
-      const at = body.indexOf(marker)
-      assert.ok(at > -1, `${marker} must be answered`)
-      const answer = body.slice(at, at + 200)
-      assert.ok(answer.includes('noRetry: true'), `${marker} must not invite a retry`)
+    assert.ok(body.includes('product shot failed'), 'a Product Shot failure says so')
+    assert.ok(body.includes('upscale failed'), 'an upscale failure says so')
+    assert.ok(body.includes('isNoRetry(shot.reason)'))
+    assert.ok(body.includes('NO_RETRY_FAILURES.has(upscaled.reason)'))
+  })
+
+  test('no automatic retry exists anywhere', () => {
+    // `noRetry` and `NO_RETRY_FAILURES` are the response flag and the
+    // classification set — they mark a failure as not worth another press.
+    // What must not exist is a MECHANISM that presses again by itself.
+    const body = postCode().replace(/noRetry|NO_RETRY_FAILURES|isNoRetry/g, '')
+    for (const banned of ['retry', 'attempt', 'maxRetries', 'backoff']) {
+      assert.ok(!body.toLowerCase().includes(banned.toLowerCase()), `${banned} in the route`)
     }
   })
 
-  test('provider failures defer to the adapters about what may be retried', () => {
-    const body = postCode()
-    assert.ok(body.includes('NO_RETRY_FAILURES.has(cutout.reason)'))
+  test('a missing reference is a 503 and costs nothing', () => {
+    assert.ok(SOURCE.includes("case 'reference_missing'"))
+    const mapping = SOURCE.slice(SOURCE.indexOf('function statusFor'), SOURCE.indexOf('// ─── Route'))
+    assert.match(mapping, /reference_missing[\s\S]{0,60}503/)
   })
 
+  test('a preservation refusal is answered, not served', () => {
+    const body = postCode()
+    assert.ok(body.includes('PRESERVATION_REFUSAL'))
+    assert.match(body, /status: 422/)
+  })
 })
 
 describe('the API key', () => {
@@ -213,10 +278,10 @@ describe('the API key', () => {
     assert.ok(!SOURCE.includes('NEXT_PUBLIC_FAL'), 'the key must never be a public env var')
   })
 
-  test('one key is read once and passed to the one adapter', () => {
+  test('one key is read once and passed to both adapters', () => {
     const body = postCode()
     assert.equal(body.split('process.env.FAL_KEY').length - 1, 1)
-    assert.equal(body.split('apiKey,').length - 1, 1)
+    assert.equal(body.split('apiKey,').length - 1, 2)
   })
 
   test('a missing key is reported honestly rather than faked', () => {
@@ -260,45 +325,35 @@ describe('runtime', () => {
   const constant = (name: string, source = SOURCE) =>
     Number(new RegExp(`${name} = ([\\d_]+)`).exec(source)![1].replace(/_/g, ''))
 
-  test('every part of the request is accounted for, and the total fits', () => {
-    // One provider call now, and background removal sends sync_mode: true, so
-    // the cut-out arrives inline and NO hosted-result download is reserved.
+  test('the budget is declared, and the deadline is what enforces it', () => {
     const ceiling = Number(/export const maxDuration = (\d+)/.exec(SOURCE)![1]) * 1000
     const budget = constant('ROUTE_BUDGET_MS')
     const local = constant('LOCAL_WORK_MS')
-    const cutout = constant('CUTOUT_TIMEOUT_MS')
+    const shot = constant('PRODUCT_SHOT_TIMEOUT_MS')
+    const upscale = constant('UPSCALE_TIMEOUT_MS')
 
-    assert.ok(local + cutout <= budget,
-      `${(local + cutout) / 1000}s accounted against a ${budget / 1000}s budget`)
-    assert.ok(budget < ceiling, 'the budget must leave headroom under the ceiling')
-    assert.ok(ceiling - budget >= 3_000, 'less than 3s of headroom under maxDuration')
-  })
+    assert.ok(budget < ceiling, 'the budget must sit under the platform ceiling')
+    assert.ok(local + shot + upscale <= budget,
+      `${(local + shot + upscale) / 1000}s of stages against a ${budget / 1000}s budget`)
 
-  test('no Product Shot budget and no hosted-download reserve remain', () => {
-    assert.ok(!SOURCE.includes('STUDIO_TIMEOUT_MS'), 'the Product Shot budget is gone')
-    assert.ok(!SOURCE.includes('RESULT_FETCH'), 'no download budget is reserved here')
-  })
-
-  test('the cut-out keeps the time its inline body needs', () => {
-    assert.ok(constant('CUTOUT_TIMEOUT_MS') >= 25_000)
-  })
-
-  test('a deadline is anchored once and passed to the adapter', () => {
+    // Two generative calls in one request is tight, so the deadline — not the
+    // sum — is the guarantee. Every timeout clamps to what is left.
     const body = postCode()
     assert.match(body, /const deadlineAt = Date\.now\(\) \+ ROUTE_BUDGET_MS - LOCAL_WORK_MS/)
-    assert.equal(body.split('deadlineAt,').length - 1, 1)
+    assert.equal(body.split('deadlineAt,').length - 1, 2, 'both adapters receive it')
     assert.ok(body.indexOf('const deadlineAt') < body.indexOf('req.formData()'))
   })
 
   test('provider errors are logged, not forwarded to the browser', () => {
     const body = postHandler()
     assert.ok(body.includes('console.error'), 'provider detail goes to the server log')
-    assert.ok(body.includes('error: cutout.message'))
+    assert.ok(body.includes('error: shot.message'))
+    assert.ok(body.includes('error: upscaled.message'))
   })
 
   test('what is logged is a category, a status and an id — never an image', () => {
     const logs = logLines()
-    assert.ok(logs.length >= 3, 'both failures and the success are logged')
+    assert.ok(logs.length >= 4, 'both failures, the gate and the success are logged')
     for (const line of logs) {
       for (const leak of ['dataUrl', 'base64', 'prepared.bytes', '.png', 'scene_description']) {
         assert.ok(!line.includes(leak), `a log line must not carry ${leak}: ${line}`)
@@ -306,8 +361,9 @@ describe('runtime', () => {
     }
   })
 
-  test('the request id is logged, so a press can be reconciled with the dashboard', () => {
+  test('both request ids are logged, so a two-call press reconciles', () => {
     const body = postHandler()
-    assert.ok(body.includes('cutout.requestId'))
+    assert.ok(body.includes('shot.requestId'))
+    assert.ok(body.includes('upscaled.requestId'))
   })
 })

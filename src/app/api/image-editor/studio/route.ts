@@ -3,52 +3,61 @@
 // Takes one factory-background furniture photograph and returns one square
 // studio master. Backs /image-editor and nothing else.
 //
-// AUTH
-// ----
-// Any authenticated BOE user, checked the same way every other route in this
-// repository checks it: a bearer token, resolved server-side, then confirmed
-// against the `users` table so a valid Supabase token that belongs to nobody in
-// BOE is refused. No permission grant is read.
-//
-// WHAT IS STORED
+// AUTH / STORAGE
 // --------------
-// Nothing. The upload is read into memory, prepared, sent to the provider, and
-// the result is returned in the response body. No Supabase Storage object, no
-// table, no temporary file on disk.
+// A bearer token resolved server-side and confirmed against the `users` table.
+// Nothing is stored: the upload is read into memory and the result comes back
+// in the response body.
 //
 // HOW THE IMAGE IS MADE
 // ---------------------
-// ONE provider call, and it does one thing: `fal-ai/bria/background/remove`
-// returns the product on transparency. Everything after that is local:
+// TWO provider calls:
 //
-//   measure the alpha -> gate the enlargement -> plan the padding
-//   -> decontaminate the edge -> one proportional resize -> edge-safe sharpen
-//   -> composite over a locally drawn sweep, with locally drawn shadows
+//   [1] fal-ai/bria/product-shot   the studio photograph. The ORIGINAL upload
+//                                  is the main image and the approved studio
+//                                  photograph is the reference. No scene
+//                                  description — the reference drives the scene.
+//   local                          find the product by STRUCTURE, check it
+//                                  against the upload, crop the square so the
+//                                  product fills 53% of it.
+//   [2] fal-ai/seedvr/upscale/image  resolution only, to a 1440 master.
+//   local                          check it again, then encode.
 //
-// THE RULE
-// --------
-// The final visible furniture is the cut-out and nothing else. No generative
-// model repaints the product, because one did: asked to place the chair into a
-// generated scene, Bria Product Shot turned the fan of thin spindles under the
-// seat into a dark continuous mass and filled the openings between them.
-// Placing a product into a generated scene means harmonising it with that
-// scene's light, and harmonising is repainting. So the model segments, and BOE
-// draws everything else.
+// WHAT THIS ARCHITECTURE TRADES
+// -----------------------------
+// The scene is the accepted one — the sweep, the light and the shadows come
+// from the model that produced the result BOE approved, which local
+// composition could not match.
+//
+// The cost is that PIXEL IDENTITY IS NOT AVAILABLE. Both stages are generative
+// and neither has a pass-through mode. So the product is not trusted, it is
+// CHECKED: preservationGate.ts measures the uploaded photograph and the
+// generated one and refuses anything that lost its structure. That is a guard
+// against obvious destruction, not a proof of fidelity, and it cannot be made
+// into one without a segmentation mask that would cost a third billable
+// request.
+//
+// WHAT IS BEING TESTED HERE
+// -------------------------
+// The rejected application pipeline was `background removal -> prepared CUT-OUT
+// -> Product Shot`, and its result merged the fan of thin spindles under the
+// Irvine chair's seat into an opaque block. The accepted direct playground run
+// was `ORIGINAL photograph -> Product Shot with ref_image_url`, which is what
+// this route now sends. Whether feeding the whole photograph preserves the
+// chair better than feeding a cut-out did is the open question this experiment
+// exists to answer, and it is unanswered until a real run is compared.
 //
 // COST
 // ----
-// One call of this route is ONE billable request. A queue of five images is
-// five requests, made one after another by the browser — nothing here batches
-// and nothing here loops. The adapter never retries, including after a timeout:
-// a request that may already have been billed is not quietly billed again.
+// One call of this route is TWO billable requests. A queue of five is ten,
+// made one after another by the browser — nothing here batches or loops.
+// Neither adapter retries, including after a timeout: a request that may
+// already have been billed is not quietly billed again.
 //
 // THE API KEY
 // -----------
-// FAL_KEY, read here and passed to the adapter. It is never in a response body,
-// never in a client bundle, and never in the URL of the provider call. With no
-// key configured the route answers `configured: false` and the page says the
-// service is not set up — it does not return a placeholder, because an image
-// BOE cannot tell apart from a real one is worse than no image.
+// FAL_KEY, read here and passed to both adapters. Never in a response body,
+// never in a client bundle, never in a provider URL.
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
@@ -58,10 +67,18 @@ import {
   MAX_SOURCE_IMAGE_LABEL,
 } from '@/lib/imageEditor/validation'
 import { prepareSourceImage } from '@/lib/imageEditor/prepareSource'
-import { removeBackground, NO_RETRY_FAILURES, type CutoutFailure } from '@/lib/imageEditor/briaBackgroundRemove'
-import { measureCutout, prepareCutoutForShot } from '@/lib/imageEditor/prepareCutout'
-import { planPadding, checkEnlargement, MAX_ENLARGEMENT } from '@/lib/imageEditor/studioMaster'
-import { composeStudioScene } from '@/lib/imageEditor/studioScene'
+import { generateProductShot, isNoRetry, type ProductShotFailure } from '@/lib/imageEditor/briaProductShot'
+import { upscaleImage, normaliseSquare, NO_RETRY_FAILURES } from '@/lib/imageEditor/seedvrUpscale'
+import { findProduct, planReframe, reframe } from '@/lib/imageEditor/generatedProduct'
+import {
+  profile as measureProfile, comparePreservation, checkFraming,
+  PRESERVATION_REFUSAL, INCONCLUSIVE_MESSAGE,
+} from '@/lib/imageEditor/preservationGate'
+import {
+  MASTER_SIDE, PRODUCT_HEIGHT_SHARE,
+  PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX, SIDE_MARGIN_SHARE, ABOVE_SHARE_OF_LEFTOVER,
+} from '@/lib/imageEditor/studioMaster'
+import sharp from 'sharp'
 
 // sharp is a native module and the whole image is held in memory. Neither works
 // on the edge runtime.
@@ -71,33 +88,27 @@ export const maxDuration = 60
 
 // ─── The time budget ──────────────────────────────────────────────────────────
 //
-// One provider call and some local work share one request:
+// Two provider calls and some local work share one request:
 //
-//   local work         4s   prepare, measure, edge repair, resize, sharpen,
-//                           sweep and shadows at 1440 x 1440, encode
-//   background remove  25s  sync_mode: true, so the cut-out arrives INLINE in
-//                           the response body. No separate download, and none
-//                           is reserved. The body is a multi-megabyte base64
-//                           data URI and streaming it is part of this budget —
-//                           eighteen seconds once was not, and cutting the body
-//                           off mid-stream was reported as an empty result.
-//                     ────
-//                       29s  against a 50s budget, inside a 60s ceiling
+//   local work         4s   prepare, measure, reframe, check, encode
+//   product shot      22s   the studio photograph
+//   hosted download    6s   sync_mode is not sent, so a URL comes back
+//   upscale           20s   SeedVR2 to 1440
+//   hosted download    6s
+//                    ────
+//                      58s ... which does NOT fit a 60s ceiling with any
+//                      margin, so the deadline below is what actually holds it:
+//                      every timeout is clamped to what is left, and a stage
+//                      with no time returns without spending a request.
 //
-// The sum is only the intent. The guarantee is the deadline below: the
-// adapter's timeout is clamped to what is left of it, so a slow upload degrades
-// the provider call rather than overrunning the platform.
+// This is tight. Two generative calls in one HTTP request is the real cost of
+// the accepted architecture, and if the live runs overrun, the fix is a longer
+// maxDuration on a plan that allows one — not a shorter upscale.
 
-/** Of maxDuration, leaving headroom for the platform and for serialising a
- *  1440 x 1440 master into the response. */
-const ROUTE_BUDGET_MS = 50_000
-
-/** Everything sharp does. Larger than it was because the canvas is now
- *  1440 x 1440 and the sweep is drawn pixel by pixel. */
+const ROUTE_BUDGET_MS = 56_000
 const LOCAL_WORK_MS = 4_000
-
-/** Background removal. The response body carries the whole cut-out inline. */
-const CUTOUT_TIMEOUT_MS = 25_000
+const PRODUCT_SHOT_TIMEOUT_MS = 24_000
+const UPSCALE_TIMEOUT_MS = 22_000
 
 // ─── Rate limiting ────────────────────────────────────────────────────────────
 //
@@ -142,7 +153,7 @@ function rateLimited(userId: string): boolean {
 // other needs an administrator, and the status code is how that reaches any
 // future caller as well as the browser.
 
-function statusFor(reason: CutoutFailure): number {
+function statusFor(reason: ProductShotFailure): number {
   switch (reason) {
     case 'timeout':             return 504
     case 'rate_limited':        return 429
@@ -150,7 +161,8 @@ function statusFor(reason: CutoutFailure): number {
     case 'moderation':
     case 'empty_result':        return 422
     case 'invalid_key':
-    case 'insufficient_credit': return 503
+    case 'insufficient_credit':
+    case 'reference_missing':   return 503
     default:                    return 502
   }
 }
@@ -220,92 +232,144 @@ export async function POST(req: NextRequest) {
   const prepared = await prepareSourceImage(bytes, validation.mimeType)
   if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  // ── The one provider call ───────────────────────────────────────────────────
-  const cutout = await removeBackground({
-    bytes: prepared.bytes,
+  // ── Ground truth, measured before anything is generated ─────────────────────
+  // The uploaded photograph is what the result will be checked against, and it
+  // costs nothing because it is already here.
+  const originalProfile = await measureProfile(prepared.bytes)
+
+  // ── [1] Product Shot ────────────────────────────────────────────────────────
+  const shot = await generateProductShot({
+    photograph: prepared.bytes,
     mimeType: prepared.mimeType,
     apiKey,
-    timeoutMs: CUTOUT_TIMEOUT_MS,
+    timeoutMs: PRODUCT_SHOT_TIMEOUT_MS,
     deadlineAt,
   })
 
-  if (!cutout.ok) {
-    // The provider's own response text never reaches the log or the browser: a
-    // category, a phase, a status code and fal's request id are enough to chase
-    // a failure, and none can carry image data or a credential.
+  if (!shot.ok) {
     console.error(
-      '[image-editor/studio] cutout failed:',
-      `category ${cutout.reason}`,
-      `phase ${cutout.phase ?? '-'}`,
-      `status ${cutout.status ?? '-'}`,
-      `request ${cutout.requestId || '-'}`,
-      `${cutout.durationMs} ms`,
+      '[image-editor/studio] product shot failed:',
+      `category ${shot.reason}`, `phase ${shot.phase ?? '-'}`,
+      `status ${shot.status ?? '-'}`, `request ${shot.requestId || '-'}`,
+      `${shot.durationMs} ms`, shot.detail ?? '',
     )
-
     return NextResponse.json(
-      {
-        error: cutout.message,
-        ...(NO_RETRY_FAILURES.has(cutout.reason) ? { noRetry: true } : {}),
-      },
-      { status: statusFor(cutout.reason) },
+      { error: shot.message, ...(isNoRetry(shot.reason) ? { noRetry: true } : {}) },
+      { status: statusFor(shot.reason) },
     )
   }
 
-  // ── Local from here on. No network, no model. ───────────────────────────────
-  const measured = await measureCutout(cutout.png)
-  if (!measured.ok) {
-    console.warn('[image-editor/studio] unusable cut-out, request', cutout.requestId || '-')
-    return NextResponse.json({ error: measured.error, noRetry: true }, { status: 422 })
+  // ── Local: find the product by structure, and check it ──────────────────────
+  const shotFound = await findProduct(shot.image)
+  if (!shotFound) {
+    console.warn('[image-editor/studio] no product found in the generated image, request', shot.requestId || '-')
+    return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: false }, { status: 422 })
   }
 
-  const product = { width: measured.bounds.width, height: measured.bounds.height }
-
-  // The quality gate. A product too small for the master would have to be
-  // enlarged, and enlarging invents nothing — so it is refused with the height
-  // the photograph would have needed, rather than made soft.
-  const verdict = checkEnlargement(product)
-  if (!verdict.ok) {
-    console.warn('[image-editor/studio] refused on quality:',
-      `product ${product.width}x${product.height}`,
-      `would need ${verdict.scale.toFixed(2)}x (cap ${MAX_ENLARGEMENT})`,
-      `needs about ${verdict.needed}px tall`,
-      `request ${cutout.requestId || '-'}`)
-
-    return NextResponse.json({ error: verdict.message, noRetry: true }, { status: 422 })
+  const shotProfile = await measureProfile(shot.image)
+  if (originalProfile && shotProfile) {
+    const report = comparePreservation(originalProfile, shotProfile, 'after product shot')
+    console.info('[image-editor/studio] preservation', report.summary)
+    if (!report.ok) {
+      return NextResponse.json({ error: PRESERVATION_REFUSAL }, { status: 422 })
+    }
+    // An inconclusive comparison is NOT a pass, and it is caught HERE, before
+    // the second billable request. What makes it inconclusive is the upload's
+    // own background, which the upscale cannot improve — so the stage-two
+    // comparison would be inconclusive too, one paid request later.
+    if (report.inconclusive) {
+      console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${shot.requestId || '-'}`)
+      return NextResponse.json({ error: INCONCLUSIVE_MESSAGE, noRetry: true }, { status: 422 })
+    }
+  } else {
+    console.warn('[image-editor/studio] preservation unmeasurable, request', shot.requestId || '-')
   }
 
-  const plan = planPadding(product)
+  // ── Local: reframe to the approved composition ──────────────────────────────
+  const shotMeta = await sharp(shot.image).metadata()
+  const plan = planReframe(
+    shotFound.bounds,
+    { width: shotMeta.width ?? 0, height: shotMeta.height ?? 0 },
+    {
+      heightShare: PRODUCT_HEIGHT_SHARE,
+      aboveSplit: ABOVE_SHARE_OF_LEFTOVER,
+      maxWidthShare: 1 - 2 * SIDE_MARGIN_SHARE,
+    },
+  )
+  const reframed = await reframe(shot.image, plan)
 
-  const shaped = await prepareCutoutForShot(cutout.png, measured.bounds, plan.product)
-  if (!shaped.ok) {
-    console.error('[image-editor/studio] prepare failed, request', cutout.requestId || '-')
-    return NextResponse.json({ error: shaped.error, noRetry: true }, { status: 422 })
+  // ── [2] SeedVR2, for resolution only ────────────────────────────────────────
+  const upscaled = await upscaleImage({
+    image: reframed,
+    mimeType: 'image/png',
+    sourceSide: plan.crop.size,
+    targetSide: MASTER_SIDE,
+    apiKey,
+    timeoutMs: UPSCALE_TIMEOUT_MS,
+    deadlineAt,
+  })
+
+  if (!upscaled.ok) {
+    console.error(
+      '[image-editor/studio] upscale failed:',
+      `category ${upscaled.reason}`, `phase ${upscaled.phase ?? '-'}`,
+      `status ${upscaled.status ?? '-'}`, `request ${upscaled.requestId || '-'}`,
+      `${upscaled.durationMs} ms`,
+    )
+    return NextResponse.json(
+      { error: upscaled.message, ...(NO_RETRY_FAILURES.has(upscaled.reason) ? { noRetry: true } : {}) },
+      { status: statusFor(upscaled.reason) },
+    )
   }
 
-  const scene = await composeStudioScene(shaped.png, plan)
-  if (!scene.ok) {
-    console.error('[image-editor/studio] compose failed, request', cutout.requestId || '-')
-    return NextResponse.json({ error: scene.error, noRetry: true }, { status: 422 })
+  // ── Local: check again, then make it exactly the master size ────────────────
+  const finalProfile = await measureProfile(upscaled.image)
+  if (originalProfile && finalProfile) {
+    const report = comparePreservation(originalProfile, finalProfile, 'after upscale')
+    const framing = checkFraming(finalProfile, { min: PRODUCT_HEIGHT_MIN, max: PRODUCT_HEIGHT_MAX }, plan.widthLimited)
+    console.info('[image-editor/studio] preservation', report.summary, `; framing ${framing.ok ? 'ok' : 'FAILED'} [${framing.detail}]`)
+    if (!report.ok) {
+      return NextResponse.json({ error: PRESERVATION_REFUSAL }, { status: 422 })
+    }
+    // An inconclusive comparison is NOT a pass. The smoke script may carry on
+    // so a person can look at the result; the route may not hand an employee an
+    // image whose structure was never verified and let them assume it was.
+    if (report.inconclusive) {
+      console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${upscaled.requestId || '-'}`)
+      return NextResponse.json({ error: INCONCLUSIVE_MESSAGE, noRetry: true }, { status: 422 })
+    }
   }
+
+  // What SeedVR2 returned is inspected, not assumed: the factor's accepted
+  // range is undocumented and nothing promises the model rounds as we would.
+  // A non-square result is refused rather than squeezed.
+  const normalised = await normaliseSquare(upscaled.image, MASTER_SIDE)
+  if (!normalised.ok) {
+    console.error('[image-editor/studio] upscale returned an unusable image:',
+      normalised.returned ? `${normalised.returned.width}x${normalised.returned.height}` : 'unreadable',
+      `request ${upscaled.requestId || '-'}`)
+    return NextResponse.json({ error: normalised.error }, { status: 422 })
+  }
+  const master = normalised.image
 
   console.info(
     '[image-editor/studio] ok:',
-    `request ${cutout.requestId || '-'} ${cutout.durationMs} ms`,
-    `product ${product.width}x${product.height}`,
-    `enlargement ${shaped.scale.toFixed(3)}x`,
-    `placed ${plan.product.width}x${plan.product.height}`,
-    `padding [${plan.paddingValues.join(', ')}]`,
-    `height share ${(plan.heightShare * 100).toFixed(1)}%`,
-    `master ${scene.metrics.canvas.width}x${scene.metrics.canvas.height}`,
-    `edges repaired ${shaped.edges.repaired}`,
-    `feet ${scene.metrics.contactColumns} columns`,
+    `shot ${shot.requestId || '-'} ${shot.durationMs} ms`,
+    `upscale ${upscaled.requestId || '-'} ${upscaled.durationMs} ms factor ${upscaled.factor}x`,
+    `product ${shotFound.bounds.width}x${shotFound.bounds.height}`,
+    `crop ${plan.crop.size} at ${plan.crop.left},${plan.crop.top}`,
+    `share ${(plan.productHeightShare * 100).toFixed(1)}%`,
+    `seedvr returned ${normalised.returned.width}x${normalised.returned.height}`,
+    `delivered ${normalised.delivered.width}x${normalised.delivered.height}`,
+    normalised.resized ? 'normalised locally' : 'exact from the model',
     plan.widthLimited ? 'width-limited' : '',
+    plan.clamped ? 'crop clamped to canvas' : '',
   )
 
   return NextResponse.json({
     configured: true,
     image: {
-      dataUrl: `data:image/png;base64,${scene.png.toString('base64')}`,
+      dataUrl: `data:image/png;base64,${master.toString('base64')}`,
       mimeType: 'image/png',
     },
   })

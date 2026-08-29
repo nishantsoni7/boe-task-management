@@ -1,20 +1,40 @@
-// The Image Editor's verification tool: one real run of the studio pipeline,
-// without running the app.
+// The Image Editor's live acceptance tool: one real run, without the app.
 //
-//   npx tsx scripts/image-editor-smoke.mjs chair.jpg [out.png]
+//   npx tsx scripts/image-editor-smoke.mjs "irvine chair.jpg" test-results/irvine/out.png
 //
-// The key is read from .env.local, the same file the dev server reads. Nobody
-// types it, and it is never printed.
+// THIS COSTS MONEY. One run is TWO billable fal requests, and no more:
 //
-// THIS COSTS MONEY. One run is ONE billable fal request:
-// fal-ai/bria/background/remove. Everything after it is local.
+//   1. fal-ai/bria/product-shot        the studio photograph
+//   2. fal-ai/seedvr/upscale/image     resolution only
 //
-// It reads one local file, writes three (the raw cut-out, the prepared cut-out
-// that is composited, and the master), and stores nothing else. Neither the key
-// nor fal's response body is ever printed.
+// CONFIGURATION
+// -------------
+// FAL_KEY is read from .env.local, the same file the dev server reads, and the
+// approved reference from assets/image-editor/studio-reference.png. Both are
+// checked BEFORE anything is sent, so a misconfigured checkout costs nothing.
+// Neither the key nor any base64 image data is ever printed.
 //
-// This is the developer's tool. The live check the product owner runs is the
-// app itself — see the module doc.
+// WHAT IT WRITES, and why each one is needed for the acceptance review:
+//
+//   <out>-0-original.png          the input, exactly as it was sent
+//   <out>-1-shot.png              the raw Product Shot result
+//   <out>-2-reframed.png          after the local crop to 53%
+//   <out>-3-upscaled.png          the raw SeedVR2 result
+//   <out>                         the delivered 1440 x 1440 PNG
+//   <out>-underseat-original.png      the fan of spindles as photographed
+//   <out>-underseat-shot.png          the same band after Product Shot
+//   <out>-underseat-upscaled.png      the same band after SeedVR2
+//   <out>-underseat-original-4x.png   the three above at 4x, nearest
+//   <out>-underseat-shot-4x.png       neighbour, so no resampler can invent
+//   <out>-underseat-upscaled-4x.png   detail that is not in the pixels
+//
+// The three under-seat crops are the review. Put them side by side: the
+// rejected pipeline turned that fan of thin verticals into one opaque block,
+// and that is the failure this experiment exists to test for.
+//
+// A WORD ON "MASTER". The delivered PNG is only called the master once it has
+// passed the exact-size check and the preservation gate. Until then it is "the
+// SeedVR2 result", because that is all it is.
 
 import sharp from 'sharp'
 import { config } from 'dotenv'
@@ -22,13 +42,19 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { basename, dirname } from 'node:path'
 import { prepareSourceImage } from '../src/lib/imageEditor/prepareSource.ts'
 import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
-import { removeBackground, MODEL_ID as CUTOUT_MODEL } from '../src/lib/imageEditor/briaBackgroundRemove.ts'
-import { measureCutout, prepareCutoutForShot } from '../src/lib/imageEditor/prepareCutout.ts'
-import { planPadding, checkEnlargement, PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX } from '../src/lib/imageEditor/studioMaster.ts'
-import { composeStudioScene } from '../src/lib/imageEditor/studioScene.ts'
-import { measurePlacement, describeMeasurement } from '../src/lib/imageEditor/composition.ts'
+import { generateProductShot, MODEL_ID as SHOT_MODEL } from '../src/lib/imageEditor/briaProductShot.ts'
+import { upscaleImage, normaliseSquare, MODEL_ID as UPSCALE_MODEL } from '../src/lib/imageEditor/seedvrUpscale.ts'
+import { loadStudioReference, REFERENCE_PATH } from '../src/lib/imageEditor/studioReference.ts'
+import { findProduct, planReframe, reframe } from '../src/lib/imageEditor/generatedProduct.ts'
+import {
+  profile, comparePreservation, checkFraming, INCONCLUSIVE_MESSAGE,
+  UNDERSEAT_FROM, UNDERSEAT_TO,
+} from '../src/lib/imageEditor/preservationGate.ts'
+import {
+  MASTER_WIDTH, MASTER_HEIGHT, PRODUCT_HEIGHT_SHARE, PRODUCT_HEIGHT_MIN,
+  PRODUCT_HEIGHT_MAX, SIDE_MARGIN_SHARE, ABOVE_SHARE_OF_LEFTOVER,
+} from '../src/lib/imageEditor/studioMaster.ts'
 
-// The same file the dev server reads, so there is one place the key lives.
 config({ path: '.env.local', quiet: true })
 config({ quiet: true })
 
@@ -38,13 +64,76 @@ if (!sourceFile) {
   process.exit(1)
 }
 
+// ── Configuration, checked before a single byte is sent ──────────────────────
+
 const apiKey = process.env.FAL_KEY
 if (!apiKey) {
   console.error('FAL_KEY was not found in .env.local. Add it there; do not pass it on the command line.')
+  console.error('Nothing was billed.')
   process.exit(1)
 }
 
+const reference = await loadStudioReference()
+if (!reference.ok) {
+  console.error(`The approved studio reference is missing: ${reference.detail}`)
+  console.error(`Copy it to ${REFERENCE_PATH} and run again. Nothing was billed.`)
+  process.exit(1)
+}
+// The key's presence, never its value. The reference's size, never its bytes.
+console.log(`FAL_KEY loaded from .env.local (${apiKey.length} characters, not shown)`)
+console.log(`reference ${REFERENCE_PATH}, ${(reference.bytes / 1e6).toFixed(2)} MB\n`)
+
 mkdirSync(dirname(out), { recursive: true })
+const stem = out.replace(/\.png$/, '')
+
+/** Every artefact written, so the run ends with a list the reviewer can follow. */
+const written = []
+const write = (path, buffer) => { writeFileSync(path, buffer); written.push(path); return path }
+
+/**
+ * The under-seat band, at 100% and at 4x nearest neighbour.
+ *
+ * The band is the SAME one the gate measures — 0.42 to 0.95 of the product's
+ * own height — so what the reviewer looks at is what the numbers describe.
+ * Nearest neighbour on the enlargement because a smooth kernel would invent
+ * edges between the spindles, which is precisely the thing under examination.
+ */
+async function underSeat(image, bounds, canvas, label) {
+  const pad = Math.round(bounds.width * 0.04)
+  const left = Math.max(0, bounds.left - pad)
+  const top = Math.max(0, Math.round(bounds.top + bounds.height * UNDERSEAT_FROM))
+  const width = Math.min(canvas.width - left, bounds.width + pad * 2)
+  const height = Math.min(canvas.height - top, Math.round(bounds.height * (UNDERSEAT_TO - UNDERSEAT_FROM)))
+  if (width < 8 || height < 8) {
+    console.log(`  under-seat crop for ${label}: band too small to be useful, skipped`)
+    return
+  }
+
+  const region = { left, top, width, height }
+  const crop = await sharp(image).extract(region).png({ compressionLevel: 9 }).toBuffer()
+  write(`${stem}-underseat-${label}.png`, crop)
+  const big = await sharp(crop)
+    .resize(width * 4, height * 4, { kernel: 'nearest' })
+    .png({ compressionLevel: 9 }).toBuffer()
+  write(`${stem}-underseat-${label}-4x.png`, big)
+  console.log(`  under-seat ${label}: ${width}x${height} at ${left},${top}  (and 4x)`)
+}
+
+/** One preservation report, printed in full — warnings included. */
+function printReport(report, framing) {
+  if (report.inconclusive) {
+    console.log(`\nWARNING — ${INCONCLUSIVE_MESSAGE}`)
+    console.log('  The application route REFUSES this. The smoke run continues so')
+    console.log('  the result can be inspected by eye. It is not a pass.')
+  } else {
+    console.log(`\n${report.ok ? 'PRESERVATION OK' : 'PRESERVATION FAILED'}`)
+  }
+  for (const c of report.checks) console.log(`  ${c.ok ? 'ok  ' : 'FAIL'} ${c.name}: ${c.detail}`)
+  if (framing) console.log(`  ${framing.ok ? 'ok  ' : 'FAIL'} ${framing.name}: ${framing.detail}`)
+  return report
+}
+
+// ── The input, kept exactly as it is sent ────────────────────────────────────
 
 const bytes = readFileSync(sourceFile)
 const validation = validateSourceImage({ name: basename(sourceFile), type: '', size: bytes.byteLength })
@@ -52,86 +141,124 @@ if (!validation.ok) { console.error(validation.error); process.exit(1) }
 
 const prepared = await prepareSourceImage(bytes, validation.mimeType)
 if (!prepared.ok) { console.error(prepared.error); process.exit(1) }
+console.log(`source ${prepared.width}x${prepared.height}, ${(prepared.bytes.length / 1e6).toFixed(2)} MB`)
 
-console.log(`source ${prepared.width}x${prepared.height}` +
-  `${prepared.reencoded ? ' (re-encoded for EXIF/size)' : ' (original bytes)'}, ` +
-  `${(prepared.bytes.length / 1e6).toFixed(2)} MB`)
+// The bytes that actually go to the provider, not the file on disk — if
+// preparation rotated or re-encoded anything, this is what was compared.
+write(`${stem}-0-original.png`, await sharp(prepared.bytes).png({ compressionLevel: 9 }).toBuffer())
 
-// ── The one billable request ─────────────────────────────────────────────────
-console.log(`\n${CUTOUT_MODEL} — one billable request`)
-const cutout = await removeBackground({ bytes: prepared.bytes, mimeType: prepared.mimeType, apiKey })
+const originalProfile = await profile(prepared.bytes)
+console.log(originalProfile
+  ? `upload: product ${originalProfile.bounds.width}x${originalProfile.bounds.height}, ` +
+    `ground truth ${originalProfile.confident ? 'USABLE' : 'NOT usable (cluttered background)'}`
+  : 'upload: no product locatable')
 
-if (!cutout.ok) {
-  console.error(`failed: ${cutout.reason} — ${cutout.message}`)
-  console.error(`status ${cutout.status ?? '-'}, request ${cutout.requestId || '-'}, ${cutout.durationMs} ms`)
-  process.exit(1)
+if (originalProfile) {
+  await underSeat(prepared.bytes, originalProfile.bounds, originalProfile.canvas, 'original')
 }
 
-const cutoutPath = out.replace(/\.png$/, '-cutout.png')
-writeFileSync(cutoutPath, cutout.png)
-const cutMeta = await sharp(cutout.png).metadata()
-console.log(`      ${cutout.durationMs} ms → ${cutoutPath}`)
-console.log(`      ${cutMeta.width}x${cutMeta.height}, alpha ${cutMeta.hasAlpha ? 'yes' : 'NO — not a cut-out'}`)
-console.log(`      request id ${cutout.requestId || '-'}`)
-
-// ── Local: measure, gate, plan the padding ───────────────────────────────────
-const measured = await measureCutout(cutout.png)
-if (!measured.ok) { console.error(measured.error); process.exit(1) }
-
-const product = { width: measured.bounds.width, height: measured.bounds.height }
-const verdict = checkEnlargement(product)
-if (!verdict.ok) {
-  console.error(`\nrefused on quality: product ${product.width}x${product.height} ` +
-    `would need ${verdict.scale.toFixed(2)}x enlargement; needs about ${verdict.needed}px tall`)
-  console.error('Nothing further was billed.')
+// ── [1/2] Product Shot ───────────────────────────────────────────────────────
+console.log(`\n[1/2] ${SHOT_MODEL} — one billable request`)
+const startedAt = Date.now()
+const shot = await generateProductShot({
+  photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey,
+})
+if (!shot.ok) {
+  console.error(`failed: ${shot.reason} — ${shot.message}`)
+  console.error(`phase ${shot.phase ?? '-'}, status ${shot.status ?? '-'}, request ${shot.requestId || '-'}, ${shot.durationMs} ms`)
   process.exit(1)
 }
+write(`${stem}-1-shot.png`, shot.image)
+const shotMeta = await sharp(shot.image).metadata()
+console.log(`      ${shot.durationMs} ms  returned ${shotMeta.width}x${shotMeta.height}  request ${shot.requestId || '-'}`)
 
-const plan = planPadding(product)
-console.log(`\nproduct ${product.width}x${product.height} in the cut-out`)
-console.log(`scaled ${plan.scale.toFixed(3)}x → ${plan.product.width}x${plan.product.height}` +
-  `${plan.widthLimited ? ' (width-limited: a wide product, contained rather than cropped)' : ''}`)
-console.log(`padding [left ${plan.padding.left}, right ${plan.padding.right}, ` +
-  `top ${plan.padding.top}, bottom ${plan.padding.bottom}]`)
-console.log(`master ${plan.canvas.width}x${plan.canvas.height}, ` +
-  `product planned at ${(plan.heightShare * 100).toFixed(1)}% of the height`)
+// ── Local: locate, check, reframe ────────────────────────────────────────────
+const found = await findProduct(shot.image)
+if (!found) { console.error('no product could be located in the generated image'); process.exit(1) }
+console.log(`\nproduct in the shot: ${found.bounds.width}x${found.bounds.height} at ${found.bounds.left},${found.bounds.top}`)
+console.log(`  share before reframe: ${(found.bounds.height / (shotMeta.height ?? 1) * 100).toFixed(1)}%`)
+await underSeat(shot.image, found.bounds, { width: shotMeta.width, height: shotMeta.height }, 'shot')
 
-const shaped = await prepareCutoutForShot(cutout.png, measured.bounds, plan.product)
-if (!shaped.ok) { console.error(shaped.error); process.exit(1) }
-
-const sentPath = out.replace(/\.png$/, '-prepared.png')
-writeFileSync(sentPath, shaped.png)
-console.log(`prepared cut-out → ${sentPath}`)
-console.log(`enlargement ${shaped.scale.toFixed(3)}x, edges repaired ${shaped.edges.repaired}`)
-
-// ── Local: the studio scene ──────────────────────────────────────────────────
-console.log('\ncompositing locally — no further provider call')
-const scene = await composeStudioScene(shaped.png, plan)
-if (!scene.ok) { console.error(scene.error); process.exit(1) }
-
-writeFileSync(out, scene.png)
-const meta = await sharp(scene.png).metadata()
-console.log(`      ${meta.width}x${meta.height} ${meta.format}, ${(scene.png.length / 1e6).toFixed(2)} MB -> ${out}`)
-console.log(`      feet ${scene.metrics.contactColumns} columns, cast shadow ${scene.metrics.castDrawn ? 'drawn' : 'none'}`)
-console.log('\nThe fal dashboard should show exactly ONE request for this run.')
-
-// ── What came back, measured ─────────────────────────────────────────────────
-// From the cut-out's alpha and the placement plan, so the background and the
-// shadows cannot affect it.
-
-const check = await measurePlacement(shaped.png, plan)
-if (!check.ok) {
-  console.log(`\ncould not measure the result: ${check.error}`)
+const shotProfile = await profile(shot.image)
+let shotOk = null
+if (originalProfile && shotProfile) {
+  shotOk = printReport(comparePreservation(originalProfile, shotProfile, 'after product shot'))
 } else {
-  console.log('\nmeasured:')
-  for (const line of describeMeasurement(check.measurement)) console.log(`  ${line}`)
-
-  const share = check.measurement.heightShare
-  const within = share >= PRODUCT_HEIGHT_MIN - 0.01 && share <= PRODUCT_HEIGHT_MAX + 0.01
-  console.log(`\nproduct height ${(share * 100).toFixed(1)}% — ` +
-    (plan.widthLimited
-      ? 'width-limited, so shorter than the target by design'
-      : `${within ? 'within' : 'OUTSIDE'} the ${PRODUCT_HEIGHT_MIN * 100}-${PRODUCT_HEIGHT_MAX * 100}% target`))
-  console.log('This checks the framing only. It never looks at the background,')
-  console.log('so the scene still has to be looked at.')
+  console.log('\nWARNING — preservation could not be measured at this stage')
 }
+
+const plan = planReframe(found.bounds, { width: shotMeta.width, height: shotMeta.height }, {
+  heightShare: PRODUCT_HEIGHT_SHARE,
+  aboveSplit: ABOVE_SHARE_OF_LEFTOVER,
+  maxWidthShare: 1 - 2 * SIDE_MARGIN_SHARE,
+})
+const reframed = await reframe(shot.image, plan)
+write(`${stem}-2-reframed.png`, reframed)
+console.log(`\nreframed: ${plan.crop.size}px square at ${plan.crop.left},${plan.crop.top}`)
+console.log(`  share after reframe: ${(plan.productHeightShare * 100).toFixed(1)}%` +
+  `${plan.widthLimited ? '  (width-limited)' : ''}${plan.clamped ? '  (clamped to canvas)' : ''}`)
+
+// ── [2/2] SeedVR2 ────────────────────────────────────────────────────────────
+console.log(`\n[2/2] ${UPSCALE_MODEL} — one billable request`)
+const upscaled = await upscaleImage({
+  image: reframed, mimeType: 'image/png',
+  sourceSide: plan.crop.size, targetSide: MASTER_WIDTH, apiKey,
+})
+if (!upscaled.ok) {
+  console.error(`failed: ${upscaled.reason} — ${upscaled.message}`)
+  console.error(`phase ${upscaled.phase ?? '-'}, status ${upscaled.status ?? '-'}, request ${upscaled.requestId || '-'}, ${upscaled.durationMs} ms`)
+  process.exit(1)
+}
+write(`${stem}-3-upscaled.png`, upscaled.image)
+const upMeta = await sharp(upscaled.image).metadata()
+console.log(`      ${upscaled.durationMs} ms  returned ${upMeta.width}x${upMeta.height}  factor ${upscaled.factor}x  request ${upscaled.requestId || '-'}`)
+
+const upscaledFound = await findProduct(upscaled.image)
+if (upscaledFound) {
+  await underSeat(upscaled.image, upscaledFound.bounds, { width: upMeta.width, height: upMeta.height }, 'upscaled')
+}
+
+const finalProfile = await profile(upscaled.image)
+let finalReport = null
+if (originalProfile && finalProfile) {
+  finalReport = printReport(
+    comparePreservation(originalProfile, finalProfile, 'after upscale'),
+    checkFraming(finalProfile, { min: PRODUCT_HEIGHT_MIN, max: PRODUCT_HEIGHT_MAX }, plan.widthLimited),
+  )
+} else {
+  console.log('\nWARNING — preservation could not be measured at this stage')
+}
+
+// ── Exactly the delivered size, inspected rather than assumed ────────────────
+const normalised = await normaliseSquare(upscaled.image, MASTER_WIDTH)
+if (!normalised.ok) {
+  console.error(`\nThe upscaled image is unusable: ${normalised.error}`)
+  if (normalised.returned) console.error(`returned ${normalised.returned.width}x${normalised.returned.height}`)
+  console.error(`\nWrote ${written.length} artefacts for inspection:`)
+  for (const p of written) console.error(`  ${p}`)
+  process.exit(1)
+}
+write(out, normalised.image)
+
+console.log(`\nseedvr returned ${normalised.returned.width}x${normalised.returned.height}`)
+console.log(`delivered ${normalised.delivered.width}x${normalised.delivered.height}` +
+  ` (${normalised.resized ? 'normalised locally' : 'exact from the model'})`)
+
+// ── What it may be called ────────────────────────────────────────────────────
+const exactSize = normalised.delivered.width === MASTER_WIDTH && normalised.delivered.height === MASTER_HEIGHT
+const verified = exactSize && finalReport !== null && finalReport.ok && !finalReport.inconclusive
+console.log(verified
+  ? `\nMASTER — exact size and preservation verified: ${out}`
+  : `\nNOT a master — the SeedVR2 result at the delivered size. ${
+      !exactSize ? 'The size check did not pass.'
+      : finalReport === null ? 'Preservation was never measured.'
+      : finalReport.inconclusive ? INCONCLUSIVE_MESSAGE
+      : 'Preservation FAILED.'} Inspect it: ${out}`)
+if (shotOk && !shotOk.ok) console.log('The stage-one check had already failed; the route would have stopped there.')
+
+console.log(`\nWrote ${written.length} artefacts:`)
+for (const p of written) console.log(`  ${p}`)
+
+console.log(`\nTotal ${((Date.now() - startedAt) / 1000).toFixed(1)}s. The fal dashboard must show exactly TWO requests.`)
+console.log('The review is the three under-seat 4x crops side by side:')
+console.log('  original -> shot -> upscaled. The spindles must stay individually visible.')
