@@ -41,7 +41,21 @@ import type { TestCard } from '@/lib/customerReviews/types'
 // entryActionForModule() in ./levels and entryActionFor() in
 // src/app/admin/control-center/permissions/page.tsx.
 //
-// Admins bypass the engine entirely, matching every other cut-over module.
+// ADMINS DO NOT BYPASS THE ENGINE FOR `use`, and this module is deliberately
+// unlike the other cut-over modules in that one respect.
+//
+// The reason is that `use` is the only permission here whose database side has
+// no administrator branch at all. book_customer_review_test_card() asks
+// resolve_permission(uid, 'customer_review_requests', 'use') and nothing else,
+// so an administrator whose `use` was revoked in Control Center is refused
+// 42501 — while a blanket `role === 'admin'` here would still have drawn them
+// a Book button. That is precisely the failure this module's first rule
+// forbids: a button must never appear for a permission its RPC will refuse.
+//
+// It costs an administrator nothing they should have. The role_permissions
+// seed grants admin both actions, so resolve_permission answers true for them
+// by default; the only case that changes is the one where somebody deliberately
+// took the permission away, which is what taking it away is for.
 
 export type CustomerReviewCapabilities = {
   /** May open the module at all. `use` OR `verify` — see below. */
@@ -56,10 +70,14 @@ export type CustomerReviewCapabilities = {
    */
   canUse: boolean
   /**
-   * May verify a submitted test, return one to its tester, and read the history
-   * of verified ones. Independent of `canUse` in one direction: a verifier who
-   * does not hold `use` can check everybody's tests but cannot book one — which
-   * is the separation the workflow exists to exercise.
+   * May verify a submitted test and return one to its tester. Independent of
+   * `canUse` in one direction: a verifier who does not hold `use` can check
+   * everybody's tests but cannot book one — which is the separation the
+   * workflow exists to exercise.
+   *
+   * NOT "and read the history of verified ones". There is no history screen:
+   * once a card is verified it appears in no frontend list, and this capability
+   * grants nothing over a finished card.
    */
   canVerify: boolean
 }
@@ -74,15 +92,36 @@ export function deriveCustomerReviewCapabilities(
   role: string | null | undefined,
   permissions: readonly EffectivePermission[],
 ): CustomerReviewCapabilities {
-  if (role === 'admin') {
-    return { canAccessModule: true, canUse: true, canVerify: true }
-  }
-
   const allowed = (actionKey: string) =>
     permissions.some(p => p.actionKey === actionKey && p.allowed)
 
+  // CANDIDATE AUTHORITY IS THE RESOLVED PERMISSION, FOR EVERYBODY.
+  //
+  // The whole `if (role === 'admin') return { …all true }` short-circuit that
+  // stood at the top of this function is gone. It made every administrator a
+  // candidate: Book on the list, and on a card they held, WhatsApp, the
+  // screenshot controls, Confirm sent and Submit. For an administrator with
+  // `use` that was merely redundant. For one whose `use` had been revoked it
+  // drew controls the database refuses, which is the mismatch this module
+  // exists to avoid.
+  //
+  // Ownership is unaffected either way — holdsThisCard() and the definer
+  // functions have required booked_by = the actor since the previous
+  // correction, and none of that is loosened or tightened here. This is about
+  // what a screen OFFERS, not about what the database ALLOWS.
   const canUse = allowed('use')
-  const canVerify = allowed('verify')
+
+  // VERIFIER AUTHORITY STILL ADMITS AN ADMINISTRATOR, which is the asymmetry
+  // worth stating rather than leaving to be discovered.
+  //
+  // Verifying and returning are the two things an administrator is expected to
+  // be able to do here without a per-employee grant, and the seed gives them
+  // `verify` anyway. See the note in the module documentation: an administrator
+  // whose `verify` is explicitly revoked would still be offered Verify and
+  // still be refused by transition_customer_review_test_card(), so this branch
+  // is a smaller version of the same mismatch, kept because removing it was not
+  // part of the correction that was asked for.
+  const canVerify = allowed('verify') || role === 'admin'
 
   return {
     // Entry is the weakest thing this module grants, so the stronger authority

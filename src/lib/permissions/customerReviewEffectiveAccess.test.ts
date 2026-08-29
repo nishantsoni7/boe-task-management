@@ -136,13 +136,18 @@ describe('EFFECTIVE PERMISSIONS, person by person', () => {
       { actionKey: 'use',    allowed: true, source: 'role' },
       { actionKey: 'verify', allowed: true, source: 'role' },
     ])
-    // And the application agrees, by two independent routes: the engine rows
-    // above, and the role short-circuit every cut-over module has.
+    // And the application agrees — FROM THE ENGINE ROWS, which is now the only
+    // route for `use`. An administrator holds it because the role_permissions
+    // seed grants it, not because of their role name.
     assert.deepEqual(deriveCustomerReviewCapabilities('admin', effective), {
       canAccessModule: true, canUse: true, canVerify: true,
     })
+
+    // WITH NO ROWS AT ALL the answer differs, and that difference is the whole
+    // of the correction: candidate authority comes from the resolved
+    // permission, verifier authority still admits the role.
     assert.deepEqual(deriveCustomerReviewCapabilities('admin', []), {
-      canAccessModule: true, canUse: true, canVerify: true,
+      canAccessModule: true, canUse: false, canVerify: true,
     })
   })
 
@@ -201,16 +206,25 @@ describe('EFFECTIVE PERMISSIONS, person by person', () => {
     })
   })
 
-  test('AN EXPLICIT DENY beats the admin role row', () => {
+  test('AN EXPLICIT DENY beats the admin role row, ON THE SCREEN AS WELL', () => {
     // employee_override is the highest level, so revoking an individual admin
-    // is expressible. The SQL functions still short-circuit on users.role, so
-    // this changes the SCREEN and not the database — recorded here because it
-    // is a real asymmetry somebody will meet.
+    // is expressible.
     const effective = resolve({ use: { role: true, employeeOverride: false }, verify: { role: true } })
     assert.equal(effective.find(p => p.actionKey === 'use')?.allowed, false)
     assert.equal(effective.find(p => p.actionKey === 'use')?.source, 'employee_override')
-    // …and the role short-circuit in the derivation still admits them.
-    assert.equal(deriveCustomerReviewCapabilities('admin', effective).canUse, true)
+
+    // AND THE DERIVATION NOW AGREES. The line that stood here asserted the
+    // opposite — that the role short-circuit "still admits them" — and called
+    // the disagreement between screen and database "a real asymmetry somebody
+    // will meet". Somebody did: the screen drew a Book button that
+    // book_customer_review_test_card() refuses 42501, because it asks
+    // resolve_permission and has no administrator branch. The screen and the
+    // database give the same answer now.
+    assert.equal(deriveCustomerReviewCapabilities('admin', effective).canUse, false)
+
+    // Verifier authority is unaffected, and is checked here so this test is
+    // about `use` rather than about administrators in general.
+    assert.equal(deriveCustomerReviewCapabilities('admin', effective).canVerify, true)
   })
 })
 

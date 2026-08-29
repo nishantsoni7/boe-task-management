@@ -23,6 +23,10 @@ import {
   deriveCustomerReviewCapabilities,
   holdsThisCard,
 } from './customerReviewOutreach'
+// The two screen-side helpers this file now exercises directly, so that "an
+// admin without `use` is offered nothing" is asserted against the functions the
+// screens call rather than against their source text.
+import { availableActions, canBookCard } from '@/lib/customerReviews/status'
 import {
   ACTION_DEPENDENCIES,
   PRESET_LEVELS,
@@ -141,11 +145,43 @@ describe('deriving capabilities', () => {
     assert.deepEqual(caps, { canAccessModule: true, canUse: false, canVerify: true })
   })
 
-  test('an admin holds everything without a single grant row', () => {
-    assert.deepEqual(
-      deriveCustomerReviewCapabilities('admin', []),
-      { canAccessModule: true, canUse: true, canVerify: true },
-    )
+  // ── THE ADMIN SHORT-CIRCUIT FOR `use` IS GONE ──────────────────────────
+  //
+  // The test that stood here read 'an admin holds everything without a single
+  // grant row' and expected canUse: true from the role alone. That is what drew
+  // an administrator a Book button the database would refuse: booking asks
+  // resolve_permission(uid, …, 'use') and has no administrator branch.
+  //
+  // The three below replace it. They are separate tests because they fail for
+  // different reasons and a reader should be able to tell which broke.
+  test('AN ADMINISTRATOR WITH NO RESOLVED GRANT IS NOT A CANDIDATE', () => {
+    const caps = deriveCustomerReviewCapabilities('admin', [])
+    assert.equal(caps.canUse, false, 'the role alone still confers candidate authority')
+  })
+
+  test('…but they keep verifier authority, which is what the role is for here', () => {
+    const caps = deriveCustomerReviewCapabilities('admin', [])
+    assert.equal(caps.canVerify, true)
+    assert.equal(caps.canAccessModule, true, 'a verifier who cannot open the module cannot verify')
+  })
+
+  test('AN ADMINISTRATOR WHOSE use IS REVOKED IS NOT A CANDIDATE EITHER', () => {
+    // The case the bypass actually broke. An explicit employee override is the
+    // highest level in the engine, so revoking one individual administrator is
+    // expressible — and until now the screen ignored it.
+    const revoked: EffectivePermission[] = [
+      { actionKey: 'use', allowed: false, source: 'employee_override' },
+      { actionKey: 'verify', allowed: true, source: 'role' },
+    ]
+    const caps = deriveCustomerReviewCapabilities('admin', revoked)
+    assert.equal(caps.canUse, false)
+    assert.equal(caps.canVerify, true)
+  })
+
+  test('an administrator WITH the resolved grant is a candidate, like anyone', () => {
+    // The rule is "the resolved permission decides", not "administrators are
+    // excluded". The seed grants admin `use`, so this is the ordinary case.
+    assert.equal(deriveCustomerReviewCapabilities('admin', allow('use')).canUse, true)
   })
 
   test('a manager gets nothing from their role alone', () => {
@@ -179,7 +215,11 @@ describe('who holds one test card', () => {
   const OTHER = 'user-other'
   const useCaps = deriveCustomerReviewCapabilities('member', allow('use'))
   const verifyCaps = deriveCustomerReviewCapabilities('member', allow('verify'))
-  const adminCaps = deriveCustomerReviewCapabilities('admin', [])
+  // An administrator in the ORDINARY case: the role_permissions seed grants
+  // them `use`, so the engine resolves it and they are a candidate like anyone
+  // else. The no-grant case is `bare` further down, and it is a different
+  // person for a different reason.
+  const adminCaps = deriveCustomerReviewCapabilities('admin', allow('use', 'verify'))
 
   // THERE IS NO EDITORSHIP QUESTION IN THIS MODULE, and that is why the block
   // that used to be here is gone rather than adapted. Card text is loaded from
@@ -214,6 +254,48 @@ describe('who holds one test card', () => {
 
   test('an administrator holds a card they booked themselves, like anyone', () => {
     assert.equal(holdsThisCard({ booked_by: OTHER }, OTHER, adminCaps), true)
+  })
+
+  // ── AN ADMINISTRATOR WITHOUT `use` IS OFFERED NO CANDIDATE ACTION ────────
+  //
+  // The two corrections meet here. Ownership already stopped an administrator
+  // acting on somebody ELSE'S card; this is the other half — an administrator
+  // with no resolved `use` is not a candidate on ANY card, including one
+  // booked in their own name.
+  //
+  // Every candidate action is checked, not just Book, because they are drawn
+  // from three different places: canBookCard on the list, holdsThisCard for the
+  // WhatsApp / screenshot / confirm panel, and availableActions for Submit.
+  test('AN ADMIN WITHOUT use IS OFFERED NO BOOK, WHATSAPP, UPLOAD, CONFIRM OR SUBMIT', () => {
+    const bare = deriveCustomerReviewCapabilities('admin', [])
+    assert.equal(bare.canUse, false, 'precondition: this admin has no resolved use')
+
+    // BOOK — the list's button, on an unbooked card.
+    assert.equal(canBookCard({ status: 'available' }, { userId: OTHER, canUse: bare.canUse }), false)
+
+    // WHATSAPP, SCREENSHOT UPLOAD, SCREENSHOT REMOVAL and CONFIRM SENT are all
+    // drawn from `mine` on the detail screen, which is holdsThisCard(). False
+    // for a card they hold in their own name is the strong case: it cannot be
+    // explained away by the card belonging to somebody else.
+    assert.equal(holdsThisCard({ booked_by: OTHER }, OTHER, bare), false,
+      'an admin without use is offered candidate controls on their own card')
+
+    // SUBMIT — the only candidate transition.
+    assert.deepEqual(
+      availableActions({ status: 'booked', booked_by: OTHER },
+        { userId: OTHER, canUse: bare.canUse, canVerify: bare.canVerify }),
+      [],
+      'Submit is offered to an admin who is not a candidate',
+    )
+
+    // …and the verifier moves they SHOULD still be offered are untouched, so
+    // this test cannot pass by refusing everybody.
+    assert.deepEqual(
+      availableActions({ status: 'submitted', booked_by: HOLDER },
+        { userId: OTHER, canUse: bare.canUse, canVerify: bare.canVerify })
+        .map(a => a.to).sort(),
+      ['booked', 'verified'],
+    )
   })
 
   // The signature no longer accepts a role, so a caller cannot pass one and
@@ -362,16 +444,73 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.ok(list.includes("setState({ tab: 'available' })"))
   })
 
-  test('A VERIFIED CARD IS IN NO ACTIVE LIST', () => {
-    // The requirement, read off the tab definitions rather than described. It
-    // is not filtered out cosmetically: 'verified' is simply not in either
-    // active tab's status list.
+  test('A VERIFIED CARD IS IN NO LIST AT ALL', () => {
+    // The requirement, read off the tab definitions rather than described.
+    // 'verified' appears in NO tab's status list, so there is no query this
+    // screen can issue that would return one — not a filter that hides them,
+    // an absence of anything that asks.
     const table = list.slice(list.indexOf('const TAB_STATUSES'), list.indexOf('export function TestCardListScreen'))
     assert.ok(/available: \['available'\]/.test(table))
     assert.ok(/mine:\s*\['booked', 'submitted'\]/.test(table))
-    assert.ok(/history:\s*\['verified'\]/.test(table))
-    const active = table.slice(table.indexOf('available:'), table.indexOf('to_verify:'))
-    assert.equal(active.includes("'verified'"), false, 'a verified card is still in an active tab')
+    assert.ok(/to_verify:\s*\['submitted'\]/.test(table))
+    assert.equal(table.includes("'verified'"), false,
+      'some tab still asks the database for verified cards')
+  })
+
+  test('THERE IS NO HISTORY TAB, AND NO KEY THAT COULD REACH ONE', () => {
+    // Checked on the tab list itself, because a leftover key would still be a
+    // valid ?tab= value in the URL even with no button drawn for it.
+    const tabs = /const TABS = \[([^\]]*)\]/.exec(list)?.[1] ?? ''
+    assert.ok(tabs, 'the tab list is missing')
+    assert.deepEqual(
+      tabs.split(',').map(t => t.trim().replace(/'/g, '')).filter(Boolean),
+      ['available', 'mine', 'to_verify'],
+    )
+
+    // Nothing draws one, nothing routes to one, and the icon it used is no
+    // longer imported — a stray import is how a removed screen comes back.
+    const executable = list.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+    assert.equal(/history/i.test(executable), false, 'the list still mentions history')
+    assert.equal(/\bHistory\b/.test(executable), false, 'the History icon is still imported or used')
+  })
+
+  test('and the module shell offers no History entry either', () => {
+    const shell = read('src/components/layout/CustomerReviewsLayout.tsx')
+    const executable = shell.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+    assert.equal(/history/i.test(executable), false, 'the sidebar still links to history')
+    // Three entries, and the two that remain verifier-only are unchanged.
+    const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
+    assert.deepEqual(items, ['Available', 'My tests', 'To Verify'])
+  })
+
+  test('THE DETAIL SCREEN DECLINES A VERIFIED CARD TOO', () => {
+    // Removing a card from every list while its URL still renders the whole
+    // record would be hiding it, not removing it. The detail route is addressed
+    // by id, and a verifier who has just verified one is standing on that URL.
+    const detail = read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx')
+    assert.ok(detail.includes("status === 'verified'"), 'the detail screen still renders a verified card')
+    const branch = detail.slice(detail.indexOf("status === 'verified'"))
+    assert.ok(branch.slice(0, 200).includes('setNotFound(true)'),
+      'a verified card does not fall into the not-available branch')
+
+    // ...and verifying navigates away rather than reloading into that branch,
+    // which would read as an error instead of as success.
+    assert.ok(detail.includes("router.push('/customer-reviews?tab=to_verify')"))
+  })
+
+  test('NOTHING IS DELETED — this is a display rule, not a data change', () => {
+    // The record and its trail stay. Asserted against the whole module: no
+    // frontend file deletes a card, and the migration still has no DELETE
+    // policy for any client role.
+    const files = [
+      'src/app/customer-reviews/TestCardListScreen.tsx',
+      'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx',
+      'src/components/layout/CustomerReviewsLayout.tsx',
+    ]
+    for (const file of files) {
+      const executable = read(file).split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+      assert.equal(/\.delete\(\)/.test(executable), false, `${file} deletes rows`)
+    }
   })
 
   test('and My tests is scoped to the signed-in person in the QUERY too', () => {
