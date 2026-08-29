@@ -91,6 +91,23 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     // answer they should get.
     if (!cardRow) { setNotFound(true); setLoading(false); return }
 
+    // A VERIFIED CARD IS TREATED AS UNAVAILABLE, and it is the same answer the
+    // lists give by never asking for one.
+    //
+    // The lists cannot reach a verified card, but this route is addressed by
+    // id: a verifier who has just verified one is standing on its URL, and a
+    // bookmark or the browser's Back button would otherwise still render the
+    // whole record. Removing it from the lists and leaving it readable here
+    // would be hiding it, not removing it.
+    //
+    // The ROW IS UNTOUCHED. This is the frontend declining to display it, not a
+    // deletion and not an RLS change — the record and its audit trail are still
+    // in the database, still readable by anything that queries the database
+    // directly. Nothing about who may READ the row has changed.
+    if ((cardRow as unknown as TestCard).status === 'verified') {
+      setNotFound(true); setLoading(false); return
+    }
+
     setError(null)
     setCard(cardRow as unknown as TestCard)
     setScreenshots((shots ?? []) as unknown as TestCardPhoto[])
@@ -167,6 +184,16 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         return
       }
       setPrompt(null)
+
+      // VERIFYING IS THE END OF THE CARD'S LIFE IN THIS UI. Reloading would
+      // fetch a row this screen now declines to display and land the verifier
+      // on "that test card is not available", which reads like an error rather
+      // than like success. Going back to the list is the honest ending.
+      if (action.to === 'verified') {
+        router.push('/customer-reviews?tab=to_verify')
+        return
+      }
+
       await load()
     } catch {
       setError('That could not be done. Check your connection and try again.')
@@ -174,7 +201,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       acting.current = false
       setBusy(false)
     }
-  }, [supabase, cardId, load])
+  }, [supabase, cardId, load, router])
 
   if (authLoading || loading) return <LoadingScreen />
 

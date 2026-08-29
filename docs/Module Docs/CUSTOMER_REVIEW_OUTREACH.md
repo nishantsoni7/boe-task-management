@@ -43,8 +43,8 @@ The phase exists to test seven things and nothing else:
    number the tester chooses,
 5. manually confirming that the test message was sent,
 6. uploading a test screenshot,
-7. administrator verification — after which the card leaves every active
-   employee view and stays in the administrator's history.
+7. verification — after which the card leaves **every** frontend view. The
+   record and its audit trail stay in the database; no screen reads them back.
 
 ## 2. What this is NOT
 
@@ -104,7 +104,7 @@ The module deliberately registers **no `view` action**.
 | Permission | Grants |
 | --- | --- |
 | `customer_review_requests.use` | **Module entry.** See the available pool, book a card, and — **only on a card they themselves hold** — open WhatsApp for it, confirm they sent it, attach and remove its screenshot, and submit it. Sees the pool and their own cards only |
-| `customer_review_requests.verify` | Read **every** card, verify a submitted one, return one to its tester with a reason, and keep a history of verified ones. Implies module entry. Does **not** grant booking, and does **not** grant any tester action |
+| `customer_review_requests.verify` | Read **every** card, verify a submitted one, and return one to its tester with a reason. Implies module entry. Does **not** grant booking, and does **not** grant any tester action. Confers nothing over a card once it is verified — there is no screen that shows one |
 
 ### Tester actions belong to the card's holder, and to nobody else
 
@@ -128,6 +128,28 @@ verifier authority covers exactly two things: **verifying** a submitted card and
 An administrator books a card the same way anybody does: by holding `use`,
 which the `role_permissions` seed grants them. That is deliberate — it means an
 explicit revocation in Control Center actually revokes.
+
+**And the screen now agrees with the database about that.**
+`deriveCustomerReviewCapabilities` used to return all-capabilities for any
+`role === 'admin'`, so an administrator whose `use` had been revoked was still
+drawn a **Book** button — and `book_customer_review_test_card()`, which asks
+`resolve_permission` and has no administrator branch, refused it 42501. The
+short-circuit is gone: `canUse` is the resolved permission, for everybody.
+
+| Capability | Resolved from | Admin short-circuit? |
+| --- | --- | --- |
+| `canUse` | `customer_review_requests.use` | **No** — matches the SQL, which has none either |
+| `canVerify` | `customer_review_requests.verify` **or** `role === 'admin'` | Yes |
+| `canAccessModule` | `canUse \|\| canVerify` | via `canVerify` |
+
+> **The remaining asymmetry, stated rather than left to be found.**
+> `canVerify` still admits an administrator directly. An administrator whose
+> `verify` is explicitly revoked would be offered **Verify test** and refused by
+> `transition_customer_review_test_card()`, which is a smaller version of the
+> same mismatch. It is kept because narrowing verifier authority was not part of
+> the correction that was asked for, and because the seed grants admins
+> `verify` so the case only arises after a deliberate revocation. Closing it is
+> a one-line change to the same function.
 
 > **What this costs, stated rather than hidden.** Once a card is submitted its
 > screenshot is frozen for everybody, so an image uploaded by mistake can only
@@ -163,10 +185,33 @@ Expected access:
 | **Available** | `use` or `verify` | Cards with status `available` only. Each carries the label, the category, the reference, the title, a truncated preview and a **Book** action |
 | **My tests** | the tester | That person's `booked` and `submitted` cards. Scoped in the query as well as by RLS, because a verifier sees everybody's |
 | **To verify** | `verify` | Submitted cards awaiting a decision |
-| **History** | `verify` | Verified cards. **The only place a verified card appears anywhere in the module** |
 
-A verified card is not hidden cosmetically: `verified` is simply not a member of
-either active tab's status list, and it never returns to the pool.
+**There is no fourth screen.** A verified card appears in no list, and there is
+no History tab, no sidebar entry and no `?tab=` value that reaches one.
+
+### Why a verified card is not in the frontend at all
+
+The product owner's rule is that a finished card leaves the interface. It is
+implemented as an **absence of a query**, not as a filter:
+
+* `TAB_STATUSES` has three entries and none of them contains `verified`. Every
+  read the list makes is `.in('status', TAB_STATUSES[tab])`, so no query the
+  screen can issue asks for a verified card. There is nothing to un-hide and no
+  filter a URL could clear.
+* `TABS` has three keys, so `?tab=history` is not a value the URL codec
+  accepts — it falls back to Available.
+* **The card screen declines one too.** That route is addressed by id, and a
+  verifier who has just verified a card is standing on its URL; leaving it
+  readable there would be hiding the card from the lists rather than removing
+  it. A verified card takes the same "that test card is not available" path as
+  one the reader may not see, and verifying navigates back to **To verify**
+  rather than reloading into that message.
+
+> **Nothing is deleted, and nothing about who may READ a card changed.** The row
+> keeps every timestamp, the verifier's note and the whole append-only trail,
+> and RLS still lets a verifier select it — the live assertions read one back on
+> purpose (§9b) to prove it. What changed is that this module offers no way to
+> ask. Restoring a history screen later would be a new feature, not a rollback.
 
 ### The card screen
 
@@ -475,14 +520,14 @@ than cleared with that file alone.
 | `contact.test.ts` | every accepted spelling normalises to one form; empty, malformed, too-short, too-long and bare-national numbers are refused; no error echoes the input |
 | `recipientPrivacy.test.ts` | the reduction, its fail-closed cases, and that no full number reaches a column, a parameter, a log line, an event or a fixture |
 | `whatsappRoute.test.ts` | the number is validated and the confirmation required before a link exists; a non-owner is refused; nothing in `src/` can send; no environment variable is needed |
-| `status.test.ts` | the four statuses, who may make each move, what a submission needs, and that a verified card is in no active list |
+| `status.test.ts` | the four statuses, who may make each move, and what a submission needs |
 | `migration.test.ts` | the schema, the policies, the grants, and that the SQL transition table matches the browser's edge for edge |
 | `securityContract.test.ts` | function by function: pinned `search_path`, no acting-user parameter, row locks, SQLSTATEs, and what each grant admits |
 | `uploadRoute.test.ts` | the upload path, the generated key, and the two-route inventory |
 | `photoRemoval.test.ts`, `photoRemovalRetry.test.ts` | removal is one operation, is idempotent, and converges after a failure |
 | `fixture.test.ts` | the fixture cannot run against production, and none of its content reads as a review |
 | `customerReviewOutreach.test.ts` | the guard, the launcher, Control Center, and what the screens offer |
-| `supabase/tests/customer_review_test_card_assertions.sql` | **executed against a database**: exact SQLSTATEs, double booking, inactive accounts, visibility, and that a verified card leaves every active list |
+| `supabase/tests/customer_review_test_card_assertions.sql` | **executed against a database**: exact SQLSTATEs, double booking, inactive accounts, visibility, that a verified card matches none of the three tab status sets, and that its record survives anyway |
 
 ### Running the live assertions
 

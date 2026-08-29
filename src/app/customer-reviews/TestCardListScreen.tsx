@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { History, Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
+import { Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
 import { colors } from '@/lib/tokens'
@@ -17,7 +17,6 @@ import {
   TEST_CARD_AVAILABLE_COLUMNS,
   TEST_CARD_COLUMNS,
   TEST_CARD_STATUS_META,
-  formatTestDate,
   testCategoryLabel,
   type TestCard,
   type TestCardStatus,
@@ -25,19 +24,24 @@ import {
 
 // The test-card list.
 //
-// FOUR TABS, and each answers a different person's question:
+// THREE TABS, and each answers a different person's question about work that
+// is still live:
 //
 //   Available   what can I pick up? Unbooked cards, and nothing else.
 //   My tests    what am I holding, and what have I handed over? This person's
 //               own booked and submitted cards.
 //   To Verify   what is waiting for me to check it? Verifier only.
-//   History     what has been checked? Verified cards, verifier only — and the
-//               ONLY place a verified card appears anywhere in the module.
 //
-// A VERIFIED CARD LEAVES BOTH ACTIVE TABS, which is the requirement this
-// grouping exists to satisfy. It is not filtered out cosmetically: 'verified'
-// is simply not in either active tab's status list, and the tester's own tab
-// asks for their booked and submitted cards by status.
+// A VERIFIED CARD IS IN NO TAB AT ALL. It is the last status in the workflow
+// and the product owner's rule is that a finished card leaves the frontend
+// entirely — not into a History tab, not into a filter somebody could clear.
+//
+// THAT IS ENFORCED BY THE ABSENCE OF A QUERY, NOT BY HIDING ROWS. 'verified'
+// appears in no tab's status list, so no query this screen can issue asks for
+// one; there is no tab key that could reach it, and nothing to un-hide. The
+// record itself is untouched in the database, with its full audit trail — this
+// module simply offers no way to read it back, and adding one would be a new
+// feature rather than a restoration.
 //
 // IT IS NOT A DASHBOARD. There are no counters of tests completed, no
 // per-employee totals and no charts. The only numbers here are how many rows
@@ -47,7 +51,7 @@ import {
 // rendered by <InternalTestWarning />, which takes no content parameter and so
 // cannot be given different words by a caller.
 
-const TABS = ['available', 'mine', 'to_verify', 'history'] as const
+const TABS = ['available', 'mine', 'to_verify'] as const
 type TabKey = typeof TABS[number]
 
 // Module scope: useListUrlState needs a stable codec-map identity across
@@ -58,11 +62,13 @@ const LIST_PARAMS = {
   q:   textParam(),
 }
 
+// NO ENTRY CONTAINS 'verified', AND THAT IS THE WHOLE MECHANISM. Every read
+// this screen makes is `.in('status', TAB_STATUSES[tab])`, so a verified card
+// is outside every query it is capable of issuing.
 const TAB_STATUSES: Record<TabKey, readonly TestCardStatus[]> = {
   available: ['available'],
   mine:      ['booked', 'submitted'],
   to_verify: ['submitted'],
-  history:   ['verified'],
 }
 
 export function TestCardListScreen() {
@@ -105,7 +111,7 @@ export function TestCardListScreen() {
   // promising name.
   useEffect(() => {
     if (authLoading) return
-    if ((tab === 'to_verify' || tab === 'history') && !caps.canVerify) {
+    if (tab === 'to_verify' && !caps.canVerify) {
       setState({ tab: 'available' })
     }
   }, [authLoading, tab, caps.canVerify, setState])
@@ -218,7 +224,6 @@ export function TestCardListScreen() {
     if (caps.canVerify) {
       base.push(
         { key: 'to_verify', label: 'To verify', Icon: ShieldCheck, count: tab === 'to_verify' ? filtered.length : null, accent: accentFromBadge(TEST_CARD_STATUS_META.submitted) },
-        { key: 'history',   label: 'History',   Icon: History,     count: tab === 'history'   ? filtered.length : null, accent: accentFromBadge(TEST_CARD_STATUS_META.verified) },
       )
     }
     return base
@@ -229,8 +234,7 @@ export function TestCardListScreen() {
   const emptyMessage =
     tab === 'available' ? 'No test cards are available right now. Every one has been booked.'
       : tab === 'mine'   ? 'You are not holding any test cards. Book one from Available to start.'
-      : tab === 'to_verify' ? 'Nothing is waiting for verification.'
-      : 'No tests have been verified yet.'
+      : 'Nothing is waiting for verification.'
 
   return (
     <CustomerReviewsLayout
@@ -407,11 +411,12 @@ function TestCardTile({
         {preview}
       </p>
 
-      {card.status === 'verified' && card.verified_at && (
-        <div style={{ fontSize: '11px', color: colors.muted }}>
-          Verified {formatTestDate(card.verified_at)}
-        </div>
-      )}
+      {/*
+        THE "Verified <date>" LINE IS GONE ALONG WITH THE TAB THAT SHOWED IT.
+        No tab reads a verified card any more, so this branch could never have
+        rendered — and a branch that cannot run is worse than no branch: it
+        reads as though verified cards are still expected here.
+      */}
 
       <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '4px' }}>
         {showBook ? (

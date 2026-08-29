@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { History, Home, Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
+import { Home, Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -14,16 +14,19 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// FOUR entries, because the module has two audiences asking two questions each:
+// THREE entries, and all three are about work that is still live:
 //
 //   Available   the unbooked pool. Anyone who may use the module sees it.
 //   My tests    the cards this person is holding or has submitted.
 //   To Verify   what is waiting for somebody to check it. Verifier only,
 //               because for anybody else it would be an empty screen with a
 //               promising name.
-//   History     verified tests, kept for the record. Verifier only, and it is
-//               the ONLY place a verified card appears — it leaves both active
-//               lists the moment it is verified.
+//
+// THERE IS NO HISTORY ENTRY, AND THAT IS DELIBERATE. A verified card is
+// finished, and the product owner's rule is that a finished card appears in no
+// frontend list at all. The record and its audit trail stay in the database —
+// nothing is deleted — but the module offers no screen that reads them back.
+// Adding one later would be a new feature, not a restoration.
 
 type CustomerReviewsLayoutProps = {
   profile: UserProfile | null
@@ -52,13 +55,6 @@ const NAV_ITEMS: NavItem[] = [
     path: '/customer-reviews',
     query: 'tab=to_verify',
     icon: <ShieldCheck size={15} strokeWidth={1.8} />,
-    verifierOnly: true,
-  },
-  {
-    label: 'History',
-    path: '/customer-reviews',
-    query: 'tab=history',
-    icon: <History size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
 ]

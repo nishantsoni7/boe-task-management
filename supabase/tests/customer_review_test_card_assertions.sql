@@ -1152,10 +1152,24 @@ begin
     '8h. moving a verified card');
 end $$;
 
--- ─── 9. A verified card leaves the active lists and stays in history ───────
+-- ─── 9. A verified card leaves EVERY list, and the record stays ────────────
 --
--- The exact requirement, asked of the database with the queries the two screens
--- actually issue.
+-- The requirement changed: a verified card used to be shown in a verifier-only
+-- History tab, and the product owner's final rule is that it appears in no
+-- frontend list at all. The History tab is gone.
+--
+-- WHAT THAT CHANGED HERE, AND WHAT IT DID NOT.
+--
+-- It did not change the DATABASE. No policy was narrowed, no row is deleted,
+-- and a verifier can still SELECT a verified card — 9c below reads one on
+-- purpose, to prove the record and its trail survive. The removal is in the
+-- frontend: no tab's status list contains 'verified', so no query the module
+-- issues asks for one, and the detail screen declines to render one.
+--
+-- So the three counts below are asked with the queries the screens actually
+-- issue, and the verified card is expected to be outside all of them while
+-- still being READABLE to a direct query. Those are different questions and
+-- this section now asks both.
 
 do $$
 declare v_active integer; v_queue integer; v_history integer; v_pool integer;
@@ -1196,10 +1210,30 @@ begin
   if v_queue <> 0 then
     raise exception 'the verification queue still holds % card(s)', v_queue;
   end if;
+
+  -- THE RECORD IS STILL THERE, and this is the assertion that says "retained in
+  -- the database" is a fact rather than an intention. v_history is a direct
+  -- query for status = 'verified' as the VERIFIER, so it proves both that the
+  -- row survived verification and that RLS still lets a verifier read it.
+  --
+  -- No screen issues this query any more. That is the point: the frontend
+  -- stopped asking, the database did not stop answering.
   if v_history <> 1 then
-    raise exception 'the verifier''s history holds % verified card(s), expected 1', v_history;
+    raise exception 'the verified record is gone from the database (% row(s), expected 1)', v_history;
   end if;
-  raise notice 'PASS  9b. the verifier''s queue is empty and their history keeps the verified record';
+  raise notice 'PASS  9b. the queue is empty, and the verified record is still in the database';
+
+  -- AND THE CARD ITSELF IS OUTSIDE EVERY QUERY THE FRONTEND CAN ISSUE. Asked
+  -- by ID against the union of the three tabs' status sets, so this is about
+  -- the row that was actually verified rather than about the word 'verified'.
+  select count(*) into v_history
+  from public.customer_review_test_cards
+  where id = 'aaaaaaaa-0000-4000-8000-000000000001'
+    and status in ('available', 'booked', 'submitted');
+  if v_history <> 0 then
+    raise exception 'the verified card is still reachable through a frontend status set';
+  end if;
+  raise notice 'PASS  9b2. the verified card matches none of the three tab status sets';
 
   -- The trail survived every move, and the tester can still read it.
   if pg_temp.events_visible_to('ffffffff-0000-4000-8000-000000000002',
