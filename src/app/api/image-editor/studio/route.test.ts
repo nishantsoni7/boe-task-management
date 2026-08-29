@@ -185,7 +185,13 @@ describe('the pipeline', () => {
   test('the delivered image is the normalised one, not the raw upscale', () => {
     const body = postCode()
     assert.match(body, /const master = normalised\.image/)
-    const returned = body.slice(body.lastIndexOf('return NextResponse.json('))
+    // The SUCCESS response, found by the field only it carries. Anchoring on
+    // "the last return" broke the moment the pipeline gained a catch block
+    // whose refusal is now the last one — the assertion was still true, it was
+    // reading the wrong response.
+    const at = body.indexOf('configured: true')
+    assert.ok(at > -1, 'the success response must exist')
+    const returned = body.slice(body.lastIndexOf('return NextResponse.json(', at))
     assert.ok(returned.includes('master.toString'), 'the response must carry the normalised bytes')
     assert.ok(!returned.includes('upscaled.image'), 'the raw upscale must never be served')
   })
