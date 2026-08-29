@@ -65,15 +65,23 @@
 import sharp from 'sharp'
 import { config } from 'dotenv'
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
-import { basename, dirname } from 'node:path'
+import { createHash } from 'node:crypto'
+import { basename, dirname, join } from 'node:path'
 import { prepareSourceImage } from '../src/lib/imageEditor/prepareSource.ts'
 import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
-import { generateProductShot, MODEL_ID as SHOT_MODEL } from '../src/lib/imageEditor/briaProductShot.ts'
+import {
+  generateProductShot, buildRequestBody as buildAcceptedBody,
+  MODEL_ID as SHOT_MODEL,
+} from '../src/lib/imageEditor/briaProductShot.ts'
 import {
   generateLightingShot, LIGHTING_SCENE_DESCRIPTION,
+  buildRequestBody as buildLightingBody,
 } from '../src/lib/imageEditor/lightingPromptShot.ts'
 import { upscaleImage, normaliseSquare, MODEL_ID as UPSCALE_MODEL } from '../src/lib/imageEditor/seedvrUpscale.ts'
-import { loadStudioReference, REFERENCE_PATH } from '../src/lib/imageEditor/studioReference.ts'
+import {
+  loadStudioReference, resetReferenceCache, REFERENCE_PATH,
+} from '../src/lib/imageEditor/studioReference.ts'
+import { reportOnFile, measureReadability } from './lib/referenceReport.mjs'
 import { findProduct, planReframe, reframe } from '../src/lib/imageEditor/generatedProduct.ts'
 import {
   profile, comparePreservation, checkFraming, INCONCLUSIVE_MESSAGE,
@@ -99,12 +107,45 @@ config({ quiet: true })
 // Run both against the same photograph and compare the artefacts side by side.
 const LIGHTING_FLAG = '--lighting-prompt-test'
 const argv = process.argv.slice(2)
+
+/** Read `--flag <value>` and remove both from the argument list. */
+function takeOption(name) {
+  const at = argv.indexOf(name)
+  if (at === -1) return undefined
+  const value = argv[at + 1]
+  if (value === undefined || value.startsWith('--')) {
+    console.error(`${name} needs a value`)
+    process.exit(1)
+  }
+  argv.splice(at, 2)
+  return value
+}
+
+// --reference-report: measure a reference PNG and stop. NO provider request,
+// nothing billed. Run this on a candidate BEFORE spending anything on it.
+const reportPath = takeOption('--reference-report')
+
+// --reference <dir>: use the reference under <dir>/assets/image-editor/ instead
+// of this checkout's. The seam already exists on ProductShotInput, so pointing
+// at a different asset needs no production change at all.
+const referenceRoot = takeOption('--reference')
+
 const lightingMode = argv.includes(LIGHTING_FLAG)
 const [sourceFile, out = lightingMode ? 'test-results/lighting.png' : 'test-results/studio.png'] =
   argv.filter(a => a !== LIGHTING_FLAG)
 
+if (reportPath) {
+  // Zero cost, so it runs before every other check — including the key, which
+  // this mode does not need.
+  const report = await reportOnFile(reportPath)
+  process.exit(report.ok && report.verdict?.ok ? 0 : 1)
+}
+
 if (!sourceFile) {
-  console.error('usage: npx tsx scripts/image-editor-smoke.mjs <photo.jpg> [out.png] [--lighting-prompt-test]')
+  console.error('usage: npx tsx scripts/image-editor-smoke.mjs <photo.jpg> [out.png]')
+  console.error('                                              [--lighting-prompt-test]')
+  console.error('                                              [--reference <dir>]')
+  console.error('       npx tsx scripts/image-editor-smoke.mjs --reference-report <reference.png>')
   process.exit(1)
 }
 
@@ -130,15 +171,44 @@ if (lightingMode) {
     ` ${LIGHTING_SCENE_DESCRIPTION.split('\n\n').length} paragraphs (not printed — server-only)`)
   console.log('')
 } else {
-  const reference = await loadStudioReference()
+  // The module-level cache in studioReference IGNORES its `root` argument after
+  // the first call. Two arms in one process would therefore silently send the
+  // FIRST reference twice, succeed, and produce two near-identical results —
+  // after paying for four requests. Cleared here, and the identity assertion
+  // below is what actually catches it if it ever comes back.
+  resetReferenceCache()
+
+  const reference = await loadStudioReference(referenceRoot)
   if (!reference.ok) {
-    console.error(`The approved studio reference is missing: ${reference.detail}`)
-    console.error(`Copy it to ${REFERENCE_PATH} and run again. Nothing was billed.`)
+    console.error(`The studio reference is missing: ${reference.detail}`)
+    console.error(`Copy it to ${referenceRoot ? join(referenceRoot, REFERENCE_PATH) : REFERENCE_PATH}` +
+      ' and run again. Nothing was billed.')
     process.exit(1)
   }
-  // The reference's size, never its bytes.
+
+  // WHICH reference is about to be sent, proved rather than assumed.
+  //
+  // The data URI that will travel to Bria is decoded back to bytes and hashed,
+  // then compared against a hash of the file on disk we were told to use. They
+  // match only if the reference actually loaded is the reference requested. An
+  // A/B whose two arms silently sent the same asset would look like "V2 changes
+  // nothing", which is the most expensive wrong answer available here.
+  const referenceFile = join(referenceRoot ?? '.', REFERENCE_PATH)
+  const onDisk = createHash('sha256').update(readFileSync(referenceFile)).digest('hex')
+  const loaded = createHash('sha256')
+    .update(Buffer.from(reference.dataUrl.split(',')[1], 'base64')).digest('hex')
+
+  if (onDisk !== loaded) {
+    console.error('The reference that loaded is NOT the reference requested.')
+    console.error(`  requested ${referenceFile}  sha256 ${onDisk}`)
+    console.error(`  loaded                        sha256 ${loaded}`)
+    console.error('Nothing was billed. Run each A/B arm in its own process.')
+    process.exit(1)
+  }
+
   console.log('MODE: accepted reference-driven pipeline')
-  console.log(`  reference ${REFERENCE_PATH}, ${(reference.bytes / 1e6).toFixed(2)} MB\n`)
+  console.log(`  reference ${referenceFile}, ${(reference.bytes / 1e6).toFixed(2)} MB`)
+  console.log(`  sha256 ${loaded}  (verified: loaded === requested)\n`)
 }
 
 mkdirSync(dirname(out), { recursive: true })
@@ -235,6 +305,22 @@ async function darkestRegion(image, bounds) {
   return best
 }
 
+/**
+ * A hash of the request SHAPE: the body the adapter builds, with both image
+ * fields replaced by a fixed placeholder.
+ *
+ * Rebuilt here from the same exported builder the adapter uses, so it cannot
+ * describe a body different from the one that went out, and so nothing about
+ * the request path had to change to make the experiment auditable.
+ */
+function sentBodyHash() {
+  const body = lightingMode
+    ? buildLightingBody('data:<redacted>')
+    : buildAcceptedBody('data:<redacted>', 'data:<redacted>')
+  const shape = Object.fromEntries(Object.entries(body).sort(([a], [b2]) => a.localeCompare(b2)))
+  return createHash('sha256').update(JSON.stringify(shape)).digest('hex').slice(0, 16)
+}
+
 /** One preservation report, printed in full — warnings included. */
 function printReport(report, framing) {
   if (report.inconclusive) {
@@ -280,7 +366,9 @@ console.log(`\n[1/2] ${SHOT_MODEL} — one billable request` +
 const startedAt = Date.now()
 const shot = lightingMode
   ? await generateLightingShot({ photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey })
-  : await generateProductShot({ photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey })
+  : await generateProductShot({
+      photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey, referenceRoot,
+    })
 if (!shot.ok) {
   console.error(`failed: ${shot.reason} — ${shot.message}`)
   console.error(`phase ${shot.phase ?? '-'}, status ${shot.status ?? '-'}, request ${shot.requestId || '-'}, ${shot.durationMs} ms`)
@@ -288,6 +376,15 @@ if (!shot.ok) {
 }
 write(`${stem}-1-shot.png`, shot.image)
 const shotMeta = await sharp(shot.image).metadata()
+
+// The proof that two arms differ ONLY by the reference bytes.
+//
+// The request body is hashed with both image fields redacted, so the hash
+// covers placement, shot size, num_results, fast, optimize_description and the
+// scene source key set — everything except the two images. Two runs printing
+// the same body hash and DIFFERENT reference hashes is a one-variable
+// experiment, demonstrated rather than asserted.
+console.log(`      request shape sha256 ${sentBodyHash()}`)
 console.log(`      ${shot.durationMs} ms  returned ${shotMeta.width}x${shotMeta.height}  request ${shot.requestId || '-'}`)
 
 // ── Local: locate, check, reframe ────────────────────────────────────────────
@@ -414,6 +511,25 @@ if (!deliveredFound) {
     width: b.width * 1.70,
     height: b.top + b.height * 0.30,
   }, 'region-upper-background')
+
+  // ── Dark-area readability, on FIXED regions ────────────────────────────────
+  //
+  // Fractions of the product box, identical in every run, so two arms measure
+  // the same rails and the same legs. Three numbers each: a region lifted by
+  // flattening it shows a higher mean and a COLLAPSED spread, which is exactly
+  // the washed-out failure — the mean alone cannot tell the two apart.
+  const readability = await measureReadability(normalised.image, b)
+  console.log('\ndark-area readability (fixed regions, fractions of the product box):')
+  console.log('  region              mean   stdDev   p5    box')
+  for (const r of readability) {
+    console.log(`  ${r.name.padEnd(18)}${r.mean.toFixed(1).padStart(5)}` +
+      `${r.stdDev.toFixed(1).padStart(9)}${r.p5.toFixed(1).padStart(7)}    ` +
+      `${r.box.x1 - r.box.x0}x${r.box.y1 - r.box.y0} at ${r.box.x0},${r.box.y0}`)
+    await crop(normalised.image, deliveredCanvas, {
+      left: r.box.x0, top: r.box.y0,
+      width: r.box.x1 - r.box.x0, height: r.box.y1 - r.box.y0,
+    }, `read-${r.name.replace(/[^a-z]+/gi, '-').toLowerCase()}`)
+  }
 }
 
 // ── What it may be called ────────────────────────────────────────────────────

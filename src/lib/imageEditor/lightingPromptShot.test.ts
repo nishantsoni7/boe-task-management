@@ -519,7 +519,8 @@ describe('the smoke script', () => {
     // The experiment sends no reference, so demanding one would refuse a run
     // that costs nothing to make correctly.
     const guard = SCRIPT.slice(SCRIPT.indexOf('if (lightingMode) {'), SCRIPT.indexOf('mkdirSync(dirname(out)'))
-    assert.ok(guard.includes('loadStudioReference()'), 'the accepted branch must still check')
+    assert.ok(guard.includes('loadStudioReference(referenceRoot)'),
+      'the accepted branch must still load and check a reference')
     const experimentBranch = guard.slice(0, guard.indexOf('} else {'))
     assert.ok(!experimentBranch.includes('loadStudioReference'))
   })
