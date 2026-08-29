@@ -465,13 +465,19 @@ describe('line-by-line against the production baseline', () => {
 describe('the migration is placed correctly', () => {
   const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
 
-  test('only 116 sits after it, and 116 is now applied too', () => {
+  test('only 116 and 118 sit after it, and 116 is now applied too', () => {
     // 115 was the last file when this was written. 116 (the notifications
     // activity-link column) was added later and has SINCE been pushed, so 116
     // — not 115 — is now the newest thing that has run against the database.
     // What this still guards is that 115 is the only migration 116 follows.
     const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
-    assert.deepEqual(newer, ['20261016000000_notifications_link_activity_log.sql'])
+    // 118 (Top 3 Focus unpin) was added after 116 and is UNAPPLIED. It is
+    // listed here for the same reason 116 is: this assertion is exact, so a
+    // file cannot appear after 115 without being named.
+    assert.deepEqual(newer, [
+      '20261016000000_notifications_link_activity_log.sql',
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+    ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
     // purpose, because the ledger pins a hash of the exact bytes the database

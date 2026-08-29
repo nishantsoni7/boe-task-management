@@ -114,12 +114,19 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
 
   test('5. no existing migration file is edited by this change', () => {
     // Every other migration is untouched — asserted for the applied one that
-    // matters most below, and structurally here: this file is the only one the
-    // branch adds, and it is the newest.
+    // matters most below, and structurally here: this branch added exactly one
+    // file, immediately after 115.
+    //
+    // 116 is no longer the newest file: 118 (the Top 3 Focus unpin) was added
+    // afterwards by unrelated work. What still holds, and is what this test
+    // was protecting, is that 116 sits directly on top of 115 and that nothing
+    // was inserted between them.
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20261016000000_notifications_link_activity_log.sql')
-    assert.equal(files[files.length - 2], '20261015000000_task_health_check_stops_notifying.sql')
+    const at = files.indexOf('20261016000000_notifications_link_activity_log.sql')
+    assert.ok(at > 0, '116 is present')
+    assert.equal(files[at - 1], '20261015000000_task_health_check_stops_notifying.sql')
+    assert.deepEqual(files.slice(at + 1), ['20261018000000_unpin_tasks_submitted_for_approval.sql'])
   })
 
   test('6. migration 115 still hashes to its pinned value', () => {
