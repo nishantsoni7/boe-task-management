@@ -37,6 +37,16 @@ export type NotificationMutations = {
   deleteTaskGroup: (taskId: string) => void
   /** True while a complete-group action is in flight. */
   groupBusy: boolean
+  /**
+   * The task id of the group action in flight, or null.
+   *
+   * `groupBusy` still guards against a second concurrent group action — that
+   * rule is unchanged. This exists so the LIST can disable one card instead of
+   * re-rendering all of them: a page-wide boolean changes on every card's props
+   * the moment any card is clicked, which is most of the cost the notifications
+   * page was paying per interaction.
+   */
+  busyTaskId: string | null
   markAllRead: () => void
   deleteSingle: (id: string) => void
   deleteSelected: (ids: string[]) => void
@@ -146,6 +156,9 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
     markTaskGroupRead,
     deleteTaskGroup,
     groupBusy: markTaskGroupMutation.isPending || deleteTaskGroupMutation.isPending,
+    busyTaskId:
+      (markTaskGroupMutation.isPending ? markTaskGroupMutation.variables ?? null : null) ??
+      (deleteTaskGroupMutation.isPending ? deleteTaskGroupMutation.variables ?? null : null),
     markAllRead,
     deleteSingle,
     deleteSelected,

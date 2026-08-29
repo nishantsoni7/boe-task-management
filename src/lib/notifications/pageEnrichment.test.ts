@@ -97,15 +97,32 @@ describe('11. the lookup is batched, never one request per group', () => {
 
 // ── 2. The assignee, not the actor ───────────────────────────────────────────
 
-describe('2. the header assignee comes from the task, never from an event', () => {
-  test('the name is read from tasks.assigned_to → users.full_name', async () => {
+describe('2. the header people come from the task, never from an event', () => {
+  test('the names are read from tasks.assigned_to / created_by → users.full_name', async () => {
+    // BOTH SIDES ARE FETCHED NOW. The header names the person the reader is
+    // dealing with, and when the reader IS the assignee that is the creator —
+    // see headerCounterpart. Both ids resolve through the SAME users query, so
+    // this is still three lookups for the whole page.
     const { client, calls } = stubClient({
-      tasks: [{ id: T1, title: 'test task', assigned_to: U1 }],
-      users: [{ id: U1, full_name: 'Nishant' }],
+      tasks: [{ id: T1, title: 'test task', assigned_to: U1, created_by: U2 }],
+      users: [{ id: U1, full_name: 'Nishant' }, { id: U2, full_name: 'Shravi' }],
     })
     const { taskHeaders: map } = await enrichNotificationPage(client, [{ task_id: T1 }])
-    assert.deepEqual(map[T1], { title: 'test task', assigneeName: 'Nishant' })
-    assert.deepEqual(calls[1].ids, [U1], 'the id came from the task row')
+    assert.deepEqual(map[T1], {
+      title: 'test task',
+      assigneeName: 'Nishant', assigneeId: U1,
+      creatorName: 'Shravi',   creatorId: U2,
+    })
+    assert.deepEqual(calls[1].ids.slice().sort(), [U1, U2].sort(),
+      'both ids came from the task row, in one query')
+  })
+
+  test('a task whose creator is also its assignee resolves one person, once', () => {
+    // The union is what keeps this at one users query — asserted directly
+    // because a regression here doubles a lookup on most pages.
+    const src = read('src/lib/notifications/pageEnrichment.ts')
+    assert.ok(src.includes('const peopleIds = new Set<string>()'))
+    assert.equal((src.match(/from\('users'\)/g) ?? []).length, 1)
   })
 
   test('the module reads no notification field that could carry an actor', () => {
@@ -118,12 +135,15 @@ describe('2. the header assignee comes from the task, never from an event', () =
 
   test('the select names exactly the columns needed, and nothing personal', () => {
     const src = read('src/lib/notifications/pageEnrichment.ts')
-    assert.ok(src.includes("select('id, title, assigned_to')"))
+    // created_by joined assigned_to: one more RELATIONSHIP column on a table
+    // the page already reads, and no additional query. Still nothing about a
+    // person beyond the display name the reader already sees on the task.
+    assert.ok(src.includes("select('id, title, assigned_to, created_by')"))
     assert.ok(src.includes("select('id, full_name')"))
     assert.ok(src.includes("select('id, actor_id, action, note, from_status, to_status')"))
     const selects = [...src.matchAll(/select\('([^']*)'\)/g)].map(m => m[1])
     assert.deepEqual(selects, [
-      'id, title, assigned_to',
+      'id, title, assigned_to, created_by',
       'id, actor_id, action, note, from_status, to_status',
       'id, full_name',
     ], 'exactly three selects, exactly these columns')
