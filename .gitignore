@@ -47,3 +47,9 @@ screenshots/
 scripts/.demo-task-ids.json
 supabase/.temp
 supabase/.temp/**
+
+# Image Editor local test output (source, provider result, measurements)
+test-results/
+
+# the approved studio reference — a licensed provider asset, never in git
+assets/image-editor/studio-reference.png

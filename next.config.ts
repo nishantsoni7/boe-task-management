@@ -10,6 +10,19 @@ const nextConfig: NextConfig = {
   // leaves it as a node_modules require at runtime.
   serverExternalPackages: ['pdfkit'],
 
+  // The Image Editor's approved studio reference is read from disk at request
+  // time and sent to Bria as `ref_image_url`. It is deliberately NOT in
+  // `public/` — nothing in a browser needs it — so Next has no way to know the
+  // server depends on it, and without this line it is left out of a deployment
+  // whose build tree contains it.
+  //
+  // This is NOT sufficient on its own: the reference is gitignored, so a build
+  // from a git clone has nothing for this to trace. Production is served by the
+  // private Supabase Storage bucket instead — see studioReference.ts.
+  outputFileTracingIncludes: {
+    '/api/image-editor/studio': ['./assets/image-editor/**'],
+  },
+
   images: {
     // Showroom product images are pasted URLs rather than uploads, so the hosts
     // the optimizer may fetch from are an explicit allowlist — see
