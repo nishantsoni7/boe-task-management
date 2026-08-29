@@ -74,6 +74,17 @@ const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   low:    { label: 'Low',  color: colors.muted },
 }
 
+// ─── Left rail heading band ───────────────────────────────────────────────────
+// The rail's heading sits in a band the same height as the workflow tab bar to
+// its right, so the two read as one header line across the card and the icon
+// options below start level with the first task row. The tab bar sizes itself
+// from its content (12px padding, a 12.5px label, a 2px active underline, and
+// the container's own 1px rule), so this is matched to it by measurement, not
+// derived from it: 45.75px is what the tab bar measures at 1440px (12px of
+// padding either side of a 12.5px line box, the 2px active underline, and the
+// 1px rule). Change one and check the other.
+const RAIL_HEADING_HEIGHT = '45.75px'
+
 // ─── Task list grid ───────────────────────────────────────────────────────────
 // The desktop task row and the table header above it must resolve to identical
 // tracks, so the definition lives here once and both read it — editing it in a
@@ -1485,6 +1496,19 @@ function MyTasksContent() {
               }}>
                 {/* soft right divider — sits at z:0 so active tab (z:1) paints over it */}
                 <div style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '1px', background: '#eef2f7', zIndex: 0 }} />
+                {/* Two lines, because 84px will not hold "TASK TYPE" on one. */}
+                <div style={{
+                  height: RAIL_HEADING_HEIGHT, boxSizing: 'border-box',
+                  display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', justifyContent: 'center',
+                  borderBottom: `1px solid ${colors.border}`,
+                  fontSize: '10px', fontWeight: 600, letterSpacing: '0.07em',
+                  textTransform: 'uppercase', color: colors.muted,
+                  lineHeight: 1.2, userSelect: 'none',
+                }}>
+                  <span>Task</span>
+                  <span>Type</span>
+                </div>
                 {TYPE_TABS.map((item, i) => {
                   const isActive = taskType === item.key
                   const { Icon } = item
