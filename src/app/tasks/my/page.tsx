@@ -10,7 +10,7 @@ import { statusBadgeClass, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
-import { MyTaskViewTabs } from '@/components/tasks/MyTaskViewTabs'
+import { MyTaskViewTabs, MyTaskViewSelect } from '@/components/tasks/MyTaskViewTabs'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -173,62 +173,75 @@ function TaskCard({
           padding: '10px 12px',
         }}
       >
-        {/* Row 1: star + title + actions */}
+        {/* Row 1: star + title, and nothing else — a phone has no width to
+            spare beside a task's name, and a truncated name is the one thing
+            on this card that cannot be guessed from the rest of it. The
+            actions sit on row 2. */}
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '6px' }}>
           {task.is_urgent && <Star size={11} fill="#C49A28" color="#C49A28" style={{ marginTop: '2px', flexShrink: 0 }} />}
           <div style={{
             flex: 1, minWidth: 0,
             fontSize: '13px', fontWeight: task.is_urgent ? 600 : 500,
-            color: titleColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            color: titleColor,
+            // Wraps instead of truncating. `anywhere` covers the pasted URL or
+            // unspaced code that would otherwise push the card sideways.
+            whiteSpace: 'normal', overflowWrap: 'anywhere', wordBreak: 'break-word',
+            lineHeight: 1.35,
             textDecoration: completed ? 'line-through' : 'none',
           }}>
             {task.title}
           </div>
-          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-            {(onPin || onUnpin) && (
-              <button
-                onClick={e => { e.stopPropagation(); if (isPinned) onUnpin?.(); else onPin?.() }}
-                title={isPinned ? 'Remove from Focus' : 'Add to Today\'s Focus'}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: isPinned ? 'rgba(196,154,40,0.10)' : 'transparent', border: `1px solid ${isPinned ? 'rgba(196,154,40,0.3)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: isPinned ? '#C49A28' : colors.muted }}
-              >
-                <Pin size={13} />
-              </button>
+        </div>
+        {/* Row 2: meta on the left, actions hard right.
+            Pin is absent on purpose — Today's Focus is a desktop-side decision
+            and the button was the widest thing competing with the title.
+            Edit and Delete are gated on the CALLBACKS, not on `isSelf`: the
+            page withholds them under View As, where `isSelf` can still be
+            true, and a button that cannot act is worse than no button. */}
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+          <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+            {/* The mobile card shows no status column, so this state — the one
+                that explains why the row carries no action — is called out. */}
+            {awaitingApproval && (
+              <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                {AWAITING_APPROVAL_LABEL}
+              </span>
             )}
-            {isSelf && (
-              <>
-                <button onClick={e => { e.stopPropagation(); onEdit?.() }} title="Edit"
-                  onMouseEnter={() => setHoveredEdit(true)} onMouseLeave={() => setHoveredEdit(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredEdit ? 'rgba(91,127,166,0.10)' : 'transparent', border: `1px solid ${hoveredEdit ? 'rgba(91,127,166,0.30)' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredEdit ? '#5B7FA6' : colors.muted }}>
-                  <Pencil size={13} />
-                </button>
-                <button onClick={e => { e.stopPropagation(); onDelete?.() }} title="Delete"
-                  onMouseEnter={() => setHoveredDel(true)} onMouseLeave={() => setHoveredDel(false)}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: hoveredDel ? `${colors.red}10` : 'transparent', border: `1px solid ${hoveredDel ? colors.red + '30' : 'transparent'}`, cursor: 'pointer', outline: 'none', color: hoveredDel ? colors.red : colors.muted }}>
-                  <Trash2 size={13} />
-                </button>
-              </>
+            {!isSelf && assignerName && (
+              <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
+                {assignerName}
+              </span>
+            )}
+            <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
+            {dateStr && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
+                {overdue && <AlertCircle size={9} />}{dateStr}
+              </span>
             )}
           </div>
-        </div>
-        {/* Row 2: meta badges */}
-        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-          {/* The mobile card shows no status column, so this state — the one
-              that explains why the row carries no action — is called out. */}
-          {awaitingApproval && (
-            <span className={statusBadgeClass(task.status)} style={{ fontSize: '10px', padding: '1px 7px', fontWeight: 600, whiteSpace: 'nowrap' }}>
-              {AWAITING_APPROVAL_LABEL}
-            </span>
-          )}
-          {!isSelf && assignerName && (
-            <span style={{ fontSize: '10.5px', fontWeight: 600, padding: '1px 7px', borderRadius: '20px', color: '#6B4FA0', background: 'rgba(155,111,212,0.10)', whiteSpace: 'nowrap' }}>
-              {assignerName}
-            </span>
-          )}
-          <span style={{ fontSize: '10px', fontWeight: 600, color: priority.color }}>{priority.label}</span>
-          {dateStr && (
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '10.5px', fontWeight: overdue ? 600 : 500, color: overdue ? colors.red : colors.secondary }}>
-              {overdue && <AlertCircle size={9} />}{dateStr}
-            </span>
+          {/* Nothing is reserved when neither is permitted: no spacer, no gap.
+              stopPropagation keeps a tap on either from opening the card. */}
+          {(onEdit || onDelete) && (
+            <div style={{ display: 'flex', gap: '2px', flexShrink: 0, marginLeft: 'auto' }}>
+              {onEdit && (
+                <button
+                  onClick={e => { e.stopPropagation(); onEdit() }}
+                  aria-label="Edit task" title="Edit"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                >
+                  <Pencil size={14} />
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  onClick={e => { e.stopPropagation(); onDelete() }}
+                  aria-label="Delete task" title="Delete"
+                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '36px', height: '36px', borderRadius: '6px', background: 'transparent', border: '1px solid transparent', cursor: 'pointer', outline: 'none', color: colors.muted }}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1570,11 +1583,26 @@ function MyTasksContent() {
               isMobile={isMobile}
             />
 
-            {/* Filter toolbar: Assignee, Priority, Search (right-aligned) */}
+            {/* Filter toolbar.
+                MOBILE is two even columns: the workflow select and the
+                assignee select. Priority and search are desktop-only — on a
+                phone they cost a row each and the workflow view already
+                answers most of what they were reached for.
+                DESKTOP is unchanged: assignee, priority, search right-aligned. */}
             <div style={{
-              padding: '14px 24px 12px',
-              display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
+              padding: isMobile ? '10px 14px' : '14px 24px 12px',
+              ...(isMobile
+                ? { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', alignItems: 'center' }
+                : { display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }),
             }}>
+              {/* Workflow — mobile only; desktop keeps the tab strip above. */}
+              {isMobile && (
+                <MyTaskViewSelect
+                  activeTab={activeTab}
+                  counts={counts}
+                  onSelect={handleTabChange}
+                />
+              )}
               {/* Assignees */}
               {taskType !== 'self' && assignerOptions.length > 0 && (
                 <select
@@ -1597,7 +1625,12 @@ function MyTasksContent() {
                   ))}
                 </select>
               )}
-              {/* Priority */}
+              {/* An empty second column rather than a full-width workflow
+                  select: the grid stays even, and no option is invented for a
+                  filter that has nothing to offer in this Task Type. */}
+              {isMobile && !(taskType !== 'self' && assignerOptions.length > 0) && <div />}
+              {/* Priority — desktop only */}
+              {!isMobile && (
               <select
                 value={filterPriority}
                 onChange={e => setState({ priority: e.target.value as typeof filterPriority })}
@@ -1615,7 +1648,9 @@ function MyTasksContent() {
                 <option value="medium">Medium</option>
                 <option value="low">Low</option>
               </select>
-              {/* Search — aligned far right */}
+              )}
+              {/* Search — aligned far right, desktop only */}
+              {!isMobile && (
               <div style={{
                 marginLeft: 'auto',
                 display: 'flex', alignItems: 'center', gap: '6px',
@@ -1637,6 +1672,7 @@ function MyTasksContent() {
                   }}
                 />
               </div>
+              )}
             </div>
 
             {/* Table header — desktop only */}
