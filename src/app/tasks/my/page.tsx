@@ -33,7 +33,7 @@ import {
 import {
   CheckCircle2, Star, AlertCircle,
   LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
-  Paperclip, X,
+  Paperclip, X, CircleCheckBig, SendHorizontal,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
 import { useToast, Toast } from '@/components/ui/toast'
@@ -43,6 +43,7 @@ import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hook
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { canMarkComplete, canSubmitForApproval } from '@/lib/tasks/taskDetailAccess'
 
 
 // Tab membership, overdue-ness, staleness and date normalisation all live in
@@ -118,7 +119,7 @@ const LIST_PARAMS = {
 // ─── Task card ────────────────────────────────────────────────────────────────
 function TaskCard({
   task, accentColor: _accentColor, userId, userMap, onClick, onEdit, onDelete, isMobile,
-  isPinned, onPin, onUnpin,
+  isPinned, onPin, onUnpin, onComplete, onSubmit, actionBusy,
 }: {
   task: Task
   accentColor: string
@@ -131,6 +132,9 @@ function TaskCard({
   isPinned?: boolean
   onPin?: () => void
   onUnpin?: () => void
+  onComplete?: () => void
+  onSubmit?: () => void
+  actionBusy?: boolean
 }) {
   const [hovered,     setHovered]     = useState(false)
   const [hoveredEdit, setHoveredEdit] = useState(false)
@@ -221,8 +225,27 @@ function TaskCard({
           </div>
           {/* Nothing is reserved when neither is permitted: no spacer, no gap.
               stopPropagation keeps a tap on either from opening the card. */}
-          {(onEdit || onDelete) && (
+          {(onComplete || onSubmit || onEdit || onDelete) && (
             <div style={{ display: 'flex', gap: '2px', flexShrink: 0, marginLeft: 'auto' }}>
+              {(onComplete || onSubmit) && (
+                <button
+                  onClick={e => { e.stopPropagation(); (onComplete ?? onSubmit)?.() }}
+                  disabled={actionBusy}
+                  aria-label={onComplete ? 'Complete task' : 'Submit for approval'}
+                  title={onComplete ? 'Complete Task' : 'Submit for Approval'}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '36px', height: '36px', borderRadius: '6px',
+                    background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
+                    border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+                    cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
+                    color: onComplete ? colors.green : colors.blue,
+                    opacity: actionBusy ? 0.55 : 1,
+                  }}
+                >
+                  {onComplete ? <CircleCheckBig size={15} /> : <SendHorizontal size={15} />}
+                </button>
+              )}
               {onEdit && (
                 <button
                   onClick={e => { e.stopPropagation(); onEdit() }}
@@ -368,6 +391,25 @@ function TaskCard({
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         gap: '2px',
       }}>
+        {(onComplete || onSubmit) && (
+          <button
+            onClick={e => { e.stopPropagation(); (onComplete ?? onSubmit)?.() }}
+            disabled={actionBusy}
+            title={onComplete ? 'Complete Task' : 'Submit for Approval'}
+            aria-label={onComplete ? 'Complete task' : 'Submit for approval'}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: '26px', height: '26px', borderRadius: '6px',
+              background: onComplete ? `${colors.green}12` : `${colors.blue}12`,
+              border: `1px solid ${onComplete ? colors.green + '35' : colors.blue + '35'}`,
+              cursor: actionBusy ? 'not-allowed' : 'pointer', outline: 'none',
+              color: onComplete ? colors.green : colors.blue,
+              opacity: actionBusy ? 0.55 : 1,
+            }}
+          >
+            {onComplete ? <CircleCheckBig size={12} /> : <SendHorizontal size={12} />}
+          </button>
+        )}
         {/* Pin to Top 3 */}
         {(onPin || onUnpin) && (
           <button
@@ -1167,6 +1209,7 @@ function MyTasksContent() {
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
   const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
+  const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
   const creatorIds = useMemo(
@@ -1346,6 +1389,96 @@ function MyTasksContent() {
     }
     queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
     showToast('Removed from Today\'s Focus')
+  }
+
+  const applyQuickActionResult = (task: Task, patch: Partial<Task>) => {
+    setTaskOverrides(prev => (prev ?? allTasksRaw).map(t => t.id === task.id ? { ...t, ...patch } : t))
+    setSelectedTask(prev => prev?.id === task.id ? { ...prev, ...patch } : prev)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', userId] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', userId] })
+    queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+  }
+
+  const handleQuickComplete = async (task: Task) => {
+    if (!canMarkComplete(task, userId) || viewAsUserId || quickActionTaskId) return
+    if (!window.confirm('Complete this task? It will move out of your active task list.')) return
+    setQuickActionTaskId(task.id)
+    try {
+      const now = new Date().toISOString()
+      const { error } = await supabase
+        .from('tasks')
+        .update({ status: 'completed', completed_at: now, last_update_at: now })
+        .eq('id', task.id)
+        .eq('assigned_to', userId)
+      if (error) {
+        console.error('[my-tasks/quick-complete] task update failed:', error.message)
+        window.alert('Failed to complete this task. Please try again.')
+        return
+      }
+      const { error: logError } = await supabase.from('task_activity_log').insert({
+        task_id: task.id,
+        actor_id: userId,
+        action: 'status_changed',
+        from_status: task.status,
+        to_status: 'completed',
+        note: null,
+      })
+      if (logError) console.error('[my-tasks/quick-complete] activity log failed:', logError.message)
+
+      const recipient = task.created_by !== userId ? task.created_by : null
+      if (recipient) {
+        fetch('/api/notify-status-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            taskId: task.id,
+            taskTitle: task.title,
+            createdBy: task.created_by,
+            recipientId: recipient,
+            action: 'completed',
+            actorName: profile?.full_name,
+          }),
+        }).catch(err => console.error('[my-tasks/quick-complete] notification failed:', err))
+      }
+
+      applyQuickActionResult(task, { status: 'completed', last_update_at: now })
+      showToast('Task completed')
+    } finally {
+      setQuickActionTaskId(null)
+    }
+  }
+
+  const handleQuickSubmit = async (task: Task) => {
+    if (!canSubmitForApproval(task, userId) || viewAsUserId || quickActionTaskId) return
+    if (!window.confirm('Submit this completed work for approval?')) return
+    setQuickActionTaskId(task.id)
+    try {
+      const { data, error } = await supabase.rpc('transition_task_review', {
+        p_task_id: task.id,
+        p_action: 'submit',
+        p_note: null,
+      })
+      if (error) {
+        console.error('[my-tasks/quick-submit] review transition failed:', error.message)
+        const readable = error.message.includes(':')
+          ? error.message.slice(error.message.indexOf(':') + 1).trim()
+          : error.message
+        window.alert(readable || 'Failed to submit this task. Please try again.')
+        return
+      }
+      const result = (data ?? {}) as Partial<Task>
+      applyQuickActionResult(task, {
+        status: 'pending_approval',
+        last_update_at: result.last_update_at ?? task.last_update_at,
+        blocker_reason: null,
+        waiting_on_type: null,
+        waiting_on_user_id: null,
+        waiting_on_text: null,
+      })
+      showToast('Submitted for approval')
+    } finally {
+      setQuickActionTaskId(null)
+    }
   }
 
   const baseTasks = useMemo(
@@ -1721,6 +1854,9 @@ function MyTasksContent() {
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
                     onEdit={!viewAsUserId && task.created_by === userId ? () => setEditingTask(task) : undefined}
                     onDelete={!viewAsUserId && task.created_by === userId ? () => handleDelete(task) : undefined}
+                    onComplete={!viewAsUserId && canMarkComplete(task, userId) ? () => handleQuickComplete(task) : undefined}
+                    onSubmit={!viewAsUserId && canSubmitForApproval(task, userId) ? () => handleQuickSubmit(task) : undefined}
+                    actionBusy={quickActionTaskId === task.id}
                     isMobile={isMobile}
                     isPinned={!!(top3Data?.pinnedIds?.has(task.id))}
                     onPin={
