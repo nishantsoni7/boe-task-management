@@ -1,44 +1,52 @@
-// Phone numbers: normalising them, masking them, and keeping them out of
-// everything that is not the wa.me URL.
+// Phone numbers: normalising them, validating them, masking them, and keeping
+// them out of everything that is not the wa.me URL.
 //
 // WHOSE NUMBERS THESE ARE
 // -----------------------
-// BOE INTERNAL TEAM NUMBERS, and only those. This module has no customer
-// contact details, no column that could hold one, and no path by which one
-// could be entered — the recipient of a test message is chosen from a
-// server-held allowlist (see ./allowlist.ts) and re-checked on the server
-// before any link is produced. Nothing here dials, sends, or contacts anybody:
-// the functions below turn a string into a canonical form and back into a
-// display string.
+// WHATEVER NUMBER THE AUTHORIZED TESTER TYPES. There is no allowlist and no
+// approved-recipient list: an employee who holds `use` and has booked the card
+// enters an international number and the server builds a wa.me link for it.
+//
+// That is a deliberate widening of an earlier design, and what replaced the
+// allowlist is worth naming, because "anyone" is not "unchecked":
+//
+//   * only an ACTIVE employee holding `customer_review_requests.use`, and only
+//     for a card THEY hold, can produce a link at all;
+//   * the number is normalised and validated ON THE SERVER, and a malformed,
+//     implausibly short or implausibly long one is refused with no link;
+//   * the tester must tick a confirmation that the number may receive an
+//     internal BOE test message;
+//   * the message still carries the permanent internal-test label, which no
+//     employee can edit or remove;
+//   * nothing sends. The artefact is a URL string; a person opens it and
+//     presses send themselves.
 //
 // THE PRIVACY RULE THIS FILE SUPPORTS
 // -----------------------------------
-// A colleague's mobile number is still personal data. It must never appear in a
-// console line, a thrown error, an analytics event, a notification, or a query
-// string other than the wa.me address the tester's own browser opens. Nothing
-// here formats a number into a message, and no function here takes a `context`
-// string that could carry one somewhere else.
+// A phone number is personal data, and now that any number may be typed it is
+// no longer necessarily a colleague's. It must never appear in a console line,
+// a thrown error, an analytics event, a notification, an audit row, a test
+// fixture, or any query string other than the wa.me address the tester's own
+// browser opens.
 //
-// Masking is a DISPLAY control, not an authorization one. Who may read a number
-// at all is decided by the allowlist route's permission check; masking is what
-// stops it being read over a shoulder or captured in a screenshot — and a
-// screenshot is precisely what this module asks testers to take.
-
-/**
- * BOE's default country. A tester typing a bare 10-digit Indian mobile is the
- * overwhelmingly common case, and making them type +91 every time would be
- * friction with no safety gain.
- *
- * AN ASSUMPTION, DELIBERATELY NARROW: it applies ONLY to a bare 10-digit input.
- * Anything longer, anything with a leading + or 00, and anything shorter is
- * taken at face value and either normalises to what was actually typed or is
- * refused. It is NOT applied to allowlist configuration, which must be written
- * in full international form — see parseInternalTestAllowlist.
- */
-export const DEFAULT_COUNTRY_CODE = '91'
+// THE FULL NUMBER IS NEVER STORED. What the card keeps is a masked last four
+// and a non-reversible fingerprint — see ./recipientPrivacy.ts. Masking here is
+// a DISPLAY control on top of that: it is what stops a number being read over a
+// shoulder or captured in a screenshot, and a screenshot is precisely what this
+// module asks testers to take.
 
 /** E.164: a leading '+', a non-zero first digit, and 8–15 digits in total. */
 const E164_RE = /^\+[1-9][0-9]{7,14}$/
+
+/**
+ * The plausibility bounds, named rather than buried in the regex above.
+ *
+ * E.164 caps a number at 15 digits including the country code, and no
+ * assignable number is shorter than 8. Anything outside that is not a number
+ * somebody mistyped — it is not a number.
+ */
+export const MIN_NUMBER_DIGITS = 8
+export const MAX_NUMBER_DIGITS = 15
 
 export type NormalizedNumber =
   | { ok: true; e164: string; digits: string }
@@ -47,48 +55,68 @@ export type NormalizedNumber =
 /**
  * Turn what somebody typed into E.164, or explain why it cannot be.
  *
- * Accepts the shapes people actually paste — spaces, dashes, brackets, a
- * leading 00, a leading +, a bare national number — and produces exactly one
- * canonical form. Returns a RESULT rather than throwing, so a caller cannot let
- * a validation failure escape as an exception carrying the number in its
- * message.
+ * ACCEPTS the shapes people actually paste: a leading `+` or `00`, spaces,
+ * hyphens, and parentheses around a country or area code. All of those are
+ * separators, and all of them are removed.
  *
- * NORMALISING IS NOT AUTHORISING. A number that comes out of this function is
- * well-formed and nothing more; whether it may be messaged is answered by
- * findAllowedNumber() against the server-held allowlist.
+ * REQUIRES THE COUNTRY CODE, and this is the one place the rule tightened when
+ * the allowlist went away. An earlier version treated a bare ten-digit input as
+ * an Indian mobile, which was a safe convenience while the only reachable
+ * numbers were BOE's own. Now that ANY number can be typed, silently deciding
+ * which country a bare number belongs to would be silently deciding who gets
+ * messaged. So a number must say where it is: `+…` or `00…`.
+ *
+ * Returns a RESULT rather than throwing, so a caller cannot let a validation
+ * failure escape as an exception carrying the number in its message. NO ERROR
+ * STRING BELOW CONTAINS ANY PART OF THE INPUT.
  */
-export function normalizeWhatsAppNumber(
-  raw: string | null | undefined,
-  defaultCountryCode: string = DEFAULT_COUNTRY_CODE,
-): NormalizedNumber {
+export function normalizeWhatsAppNumber(raw: string | null | undefined): NormalizedNumber {
   const input = (raw ?? '').trim()
-  if (input === '') return { ok: false, error: 'Enter an internal team WhatsApp number.' }
-
-  // Everything that is not a digit goes, except a single leading '+'. A '+'
-  // anywhere else is a typo, not an instruction.
-  const hadPlus = input.startsWith('+')
-  let digits = input.replace(/\D/g, '')
-
-  // 00 is the other way people write an international prefix.
-  if (!hadPlus && digits.startsWith('00')) digits = digits.slice(2)
-
-  if (digits === '') return { ok: false, error: 'That does not look like a phone number.' }
-
-  // A bare national number gets the default country code — and only a bare
-  // national number. See DEFAULT_COUNTRY_CODE.
-  if (!hadPlus && !input.startsWith('00') && digits.length === 10) {
-    digits = `${defaultCountryCode}${digits}`
+  if (input === '') {
+    return { ok: false, error: 'Enter the WhatsApp number this internal test should go to.' }
   }
 
-  const e164 = `+${digits}`
-  if (!E164_RE.test(e164)) {
+  // The separators a person legitimately types. Anything else — a letter, a
+  // slash, a comma — means this is not a phone number, and is caught below
+  // rather than quietly stripped.
+  const withoutSeparators = input.replace(/[\s()\-.‐-―]/g, '')
+
+  const hadPlus = withoutSeparators.startsWith('+')
+  const hadZeros = !hadPlus && withoutSeparators.startsWith('00')
+
+  const body = hadPlus ? withoutSeparators.slice(1)
+    : hadZeros ? withoutSeparators.slice(2)
+    : withoutSeparators
+
+  // Everything left must be a digit. Checked rather than stripped: stripping
+  // would turn "+91 98765 4321O" (a typed letter O) into a valid-looking number
+  // one digit short of the one that was meant.
+  if (!/^[0-9]+$/.test(body)) {
+    return { ok: false, error: 'That does not look like a phone number.' }
+  }
+
+  if (!hadPlus && !hadZeros) {
     return {
       ok: false,
-      error: 'Enter the number with its country code, for example +91 98765 43210.',
+      error: 'Include the country code, for example +91 98765 43210 or 0091 98765 43210.',
     }
   }
 
-  return { ok: true, e164, digits }
+  if (body.length < MIN_NUMBER_DIGITS) {
+    return { ok: false, error: 'That number is too short to be a WhatsApp number.' }
+  }
+  if (body.length > MAX_NUMBER_DIGITS) {
+    return { ok: false, error: 'That number is too long to be a WhatsApp number.' }
+  }
+
+  const e164 = `+${body}`
+  if (!E164_RE.test(e164)) {
+    // Reachable for a leading zero after the country code, which E.164 forbids
+    // and which would otherwise look valid.
+    return { ok: false, error: 'Enter the number with its country code, for example +91 98765 43210.' }
+  }
+
+  return { ok: true, e164, digits: body }
 }
 
 export function isValidWhatsAppNumber(value: string | null | undefined): boolean {
@@ -96,8 +124,7 @@ export function isValidWhatsAppNumber(value: string | null | undefined): boolean
 }
 
 /**
- * The number as a list row or a detail header shows it: the last four digits
- * and nothing else.
+ * The number as a screen shows it: the last four digits and nothing else.
  *
  * NOT the country code, and not the leading digits. A country code plus a
  * length is already a strong hint about who somebody is, and this string exists
@@ -111,30 +138,21 @@ export function maskWhatsAppNumber(value: string | null | undefined): string {
   return `•••• •••• ${digits.slice(-4)}`
 }
 
-/**
- * The number as WhatsApp wants it in a wa.me path: digits only, no '+'.
- *
- * Returns null rather than a best guess when the value is not a valid E.164
- * number, so a malformed entry produces no link at all instead of a link to the
- * wrong person.
- */
-export function waMePhone(value: string | null | undefined): string | null {
-  if (!isValidWhatsAppNumber(value)) return null
-  return (value as string).slice(1)
+/** The same shape, built from a stored last-four rather than a full number. */
+export function maskFromLastFour(lastFour: string | null | undefined): string {
+  if (!lastFour || !/^[0-9]{4}$/.test(lastFour)) return '—'
+  return `•••• •••• ${lastFour}`
 }
 
-/** Readable grouping for the reveal control. Never used in a link or a log. */
-export function formatWhatsAppNumber(value: string | null | undefined): string {
-  if (!isValidWhatsAppNumber(value)) return '—'
-  const digits = (value as string).slice(1)
-  if (digits.length <= 4) return `+${digits}`
-  // Country code is everything before the last ten digits, where there are ten
-  // to take; otherwise split off the leading two.
-  const nationalLength = digits.length > 10 ? 10 : Math.max(digits.length - 2, 0)
-  const country = digits.slice(0, digits.length - nationalLength)
-  const national = digits.slice(digits.length - nationalLength)
-  const grouped = national.length > 5
-    ? `${national.slice(0, national.length - 5)} ${national.slice(-5)}`
-    : national
-  return `+${country} ${grouped}`.trim()
-}
+// ── TWO HELPERS THAT USED TO BE HERE, AND WHY THEY ARE NOT ──────────────────
+//
+// waMePhone(e164) turned a stored number into wa.me path digits. Nothing stores
+// a number any more: the route validates what the tester typed and uses the
+// `digits` that normalizeWhatsAppNumber already returns, so the helper had one
+// job and no caller.
+//
+// formatWhatsAppNumber(e164) rendered a full number for a deliberate reveal
+// control. There is nothing to reveal — the card keeps four digits and a
+// fingerprint — so both the control and the formatter are gone. Leaving a
+// function whose only purpose is to display a full number would be leaving the
+// shape of the thing this module now refuses to keep.

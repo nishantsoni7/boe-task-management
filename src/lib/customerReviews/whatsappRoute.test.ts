@@ -1,21 +1,20 @@
 /**
- * THE WHATSAPP ROUTE — the only place a wa.me link is built, and the only place
- * the allowlist is enforced.
+ * THE WHATSAPP ROUTE — the only place a wa.me link is built.
  *
- * WHY THE SERVER BUILDS THE LINK. If the browser assembled the URL, the
- * allowlist would be a suggestion: a tester — or anything running in their tab
- * — could put any number in the path and the application would have produced a
- * WhatsApp link to a stranger. Building it here means the number in the link is
- * one the server chose from its own list, and the text is one the server
- * composed from a card row and a constant.
+ * ANY VALID NUMBER, AND WHAT STANDS IN PLACE OF THE ALLOWLIST. A tester enters
+ * whatever international number they want to test against. That widened who can
+ * be reached; it widened nothing about who can reach them, and this file is the
+ * list of what still has to be true:
  *
- * WHAT THIS FILE PROVES
- *   1. the allowlist is read and checked BEFORE any link exists
- *   2. a number that is not on it is refused, with no link in the response
- *   3. a missing or malformed allowlist is a 503, not an empty list
- *   4. the numbers are exposed only to somebody who holds `use`
- *   5. previewing records nothing, and opening records only an OPEN
- *   6. NOTHING SENDS — there is no WhatsApp API client in this repository
+ *   1. only an active `use` holder, and only for a card THEY hold
+ *   2. the number is validated ON THE SERVER, whatever the browser did
+ *   3. the confirmation is required by the REQUEST, not by the form
+ *   4. the message is composed here and carries the mandatory label
+ *   5. previewing records nothing; opening records only an OPEN
+ *   6. nothing full is stored, logged or returned — four digits and a
+ *      fingerprint
+ *   7. NOTHING SENDS — there is no WhatsApp API client in this repository
+ *   8. NO ENVIRONMENT VARIABLE is needed to reach a number
  *
  * Reads repository files only. No database, no network, no navigation.
  *
@@ -41,13 +40,14 @@ const stripComments = (source: string) =>
 const route = read('src/app/api/customer-reviews/whatsapp/route.ts')
 const routeCode = stripComments(route)
 const launch = read('src/components/customerReviews/WhatsAppLaunch.tsx')
+const launchCode = stripComments(launch)
 const sql = read('supabase/migrations/20261017000000_customer_review_outreach.sql')
 
 describe('NOTHING IN THIS REPOSITORY SENDS A WHATSAPP MESSAGE', () => {
   test('there is no WhatsApp API client, token or endpoint anywhere in src/', () => {
-    // The broadest assertion in the module, and the one worth having: a
-    // sending path could be added in a file nobody thought to check, so this
-    // walks the whole tree rather than the two files above.
+    // The broadest assertion in the module, and the one worth having: a sending
+    // path could be added in a file nobody thought to check, so this walks the
+    // whole tree rather than the two files above.
     const hits: string[] = []
     const walk = (dir: string) => {
       for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -80,170 +80,282 @@ describe('NOTHING IN THIS REPOSITORY SENDS A WHATSAPP MESSAGE', () => {
   test('the route itself makes no outbound call', () => {
     // Its only network surface is the Supabase client it uses to read the card
     // and record the open. There is no fetch to anywhere else.
-    const executable = route.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
-    assert.equal(/\bfetch\s*\(/.test(executable), false, 'the route fetches something')
-    assert.equal(/https?:\/\//.test(executable.replace(/https:\/\/wa\.me/g, '')), false,
-      'the route contains an address other than wa.me')
+    assert.equal(/\bfetch\s*\(/.test(routeCode), false, 'the route fetches something')
+    assert.equal(/https?:\/\//.test(routeCode), false,
+      'the route contains an absolute address')
   })
 
   test('the only address the module can produce comes from buildWaMeUrl', () => {
-    assert.ok(route.includes('buildWaMeUrl(target.digits, message)'))
+    assert.ok(route.includes('buildWaMeUrl(normalized.digits, message)'))
     // And the browser does not build one at all.
-    assert.equal(launch.includes('https://wa.me/'), false)
-    assert.equal(launch.includes('buildWaMeUrl'), false)
+    assert.equal(launchCode.includes('wa.me/'), false)
+    assert.equal(launchCode.includes('buildWaMeUrl'), false)
   })
 })
 
-describe('the allowlist is the boundary, and it is on the server', () => {
-  test('it is read from the server-only variable, in both handlers', () => {
-    assert.equal((route.match(/readInternalTestAllowlist\(\)/g) ?? []).length, 2)
-    assert.equal(route.includes('NEXT_PUBLIC_'), false)
+describe('THERE IS NO ALLOWLIST, AND NONE IS REQUIRED', () => {
+  test('the module no longer ships one', () => {
+    for (const gone of [
+      'src/lib/customerReviews/allowlist.ts',
+      'src/lib/customerReviews/allowlist.test.ts',
+    ]) {
+      assert.throws(() => read(gone), `${gone} still exists`)
+    }
   })
 
-  test('A MISSING OR MALFORMED LIST IS A 503, never an empty list', () => {
-    assert.equal((route.match(/if \(!allowlist\.ok\) \{/g) ?? []).length, 2)
-    assert.equal((route.match(/return fail\(503, MESSAGES\.allowlist_absent\)/g) ?? []).length, 2)
-    // ...and there is no branch that carries on with a shorter list.
-    assert.equal(/allowlist\.ok \?/.test(route), false)
-    assert.equal(/\|\| \[\]/.test(route), false, 'a fallback empty list exists')
+  test('NO ENVIRONMENT VARIABLE GATES A RECIPIENT', () => {
+    // The route reads process.env for exactly nothing. The one credential the
+    // recording path needs is the deployment's existing service-role key, read
+    // by adminClient() and by recipientPrivacy — neither of which decides WHO
+    // may be messaged.
+    assert.equal(routeCode.includes('process.env'), false, 'the route reads an environment variable')
+    assert.equal(route.includes('BOE_INTERNAL_TEST_WHATSAPP_NUMBERS'), false)
+    assert.equal(read('.env.example').includes('BOE_INTERNAL_TEST_WHATSAPP_NUMBERS'), false)
   })
 
-  test('THE CHECK HAPPENS BEFORE THE CARD IS EVEN READ', () => {
-    // Read first and checked first, so there is no branch in which a link is
-    // built and then discarded — a link that exists in a variable is a link a
-    // later edit could return.
+  test('and no approved-list code survives anywhere in the module', () => {
+    for (const file of [
+      'src/app/api/customer-reviews/whatsapp/route.ts',
+      'src/components/customerReviews/WhatsAppLaunch.tsx',
+      'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx',
+      'src/lib/customerReviews/contact.ts',
+    ]) {
+      const executable = stripComments(read(file))
+      assert.equal(/allowlist|approvedNumbers|findAllowedNumber/i.test(executable), false,
+        `${file} still has allowlist code`)
+    }
+  })
+})
+
+describe('the number is validated on the server', () => {
+  test('THE SERVER RE-VALIDATES, whatever the browser did', () => {
+    assert.ok(route.includes("import { normalizeWhatsAppNumber } from '@/lib/customerReviews/contact'"))
+    assert.ok(route.includes('const normalized = normalizeWhatsAppNumber(typedNumber)'))
+    assert.ok(route.includes('if (!normalized.ok) return fail(400, normalized.error)'))
+  })
+
+  test('IT IS VALIDATED BEFORE THE CARD IS READ AND BEFORE A LINK EXISTS', () => {
+    // There is no branch in which a link is built and then discarded — a link
+    // that exists in a variable is a link a later edit could return.
     const post = route.slice(route.indexOf('export async function POST'))
-    const check = post.indexOf('findAllowedNumber(candidateNumber, allowlist.numbers)')
-    const build = post.indexOf('buildWaMeUrl(')
+    const validate = post.indexOf('const normalized = normalizeWhatsAppNumber(typedNumber)')
     const cardRead = post.indexOf(".from('customer_review_test_cards')")
-    assert.ok(check !== -1 && build !== -1 && cardRead !== -1)
-    assert.ok(check < cardRead, 'the allowlist must be checked before the card is read')
-    assert.ok(check < build, 'the allowlist must be checked before a link is built')
+    const build = post.indexOf('buildWaMeUrl(')
+    assert.ok(validate !== -1 && cardRead !== -1 && build !== -1)
+    assert.ok(validate < cardRead, 'the number must be validated before the card is read')
+    assert.ok(validate < build, 'the number must be validated before a link is built')
   })
 
-  test('a number that is not on the list is a 403 with no link', () => {
-    assert.ok(route.includes('if (!target) return fail(403, MESSAGES.not_allowlisted)'))
-    // The refusal message names no number.
-    assert.ok(route.includes("not_allowlisted:  'That number is not an approved BOE internal test number.'"))
+  test('the raw input is length-bounded before anything else touches it', () => {
+    assert.ok(route.includes('const MAX_INPUT_LENGTH = 40'))
+    assert.ok(route.includes("typeof rawNumber !== 'string' || rawNumber.length > MAX_INPUT_LENGTH"))
   })
 
-  test('the SERVER’S entry is what builds the link, not the caller’s spelling', () => {
-    // findAllowedNumber returns the approved entry; the digits in the URL come
-    // from it, so a caller cannot slip a different recipient past the check by
-    // writing it differently.
-    assert.ok(route.includes('buildWaMeUrl(target.digits, message)'))
-    assert.equal(route.includes('buildWaMeUrl(candidateNumber'), false)
+  test('the wa.me path is built from DIGITS ONLY, from the normalised form', () => {
+    assert.ok(route.includes('buildWaMeUrl(normalized.digits, message)'))
+    assert.equal(route.includes('buildWaMeUrl(typedNumber'), false)
   })
 
-  test('the numbers reach a browser only through an authorized GET', () => {
-    const get = route.slice(route.indexOf('export async function GET'), route.indexOf('export async function POST'))
-    assert.ok(get.includes('const auth = await authorize()'))
-    assert.ok(get.includes("if ('response' in auth) return auth.response"))
-    // Label and E.164 only — nothing else about the entry is exposed.
-    assert.ok(get.includes('numbers: allowlist.numbers.map(n => ({ label: n.label, e164: n.e164 }))'))
+  test('the card id must be a uuid before it reaches a query', () => {
+    assert.ok(route.includes('!UUID_RE.test(rawId)'))
+  })
+})
+
+describe('THE CONFIRMATION IS REQUIRED BY THE REQUEST', () => {
+  test('it is checked on the server, before the number is even parsed', () => {
+    const post = route.slice(route.indexOf('export async function POST'))
+    const check = post.indexOf('if (!confirmed) return fail(400, MESSAGES.not_confirmed)')
+    const validate = post.indexOf('const normalized = normalizeWhatsAppNumber(typedNumber)')
+    assert.ok(check !== -1, 'the confirmation is not checked')
+    assert.ok(check < validate, 'the confirmation must be checked before the number is parsed')
   })
 
-  test('and `authorize` fails closed on every step', () => {
-    const fn = route.slice(route.indexOf('async function authorize'), route.indexOf('export async function GET'))
+  test('STRICTLY TRUE — a truthy value is not a confirmation', () => {
+    // `confirmed: 'yes'` or `1` would let a client tick the box by accident,
+    // which is the opposite of what a deliberate confirmation is for.
+    assert.ok(route.includes("confirmed = fields.confirmed === true"))
+    assert.equal(/confirmed\s*=\s*!!/.test(route), false)
+    assert.equal(/Boolean\(fields\.confirmed\)/.test(route), false)
+  })
+
+  test('and the browser cannot produce a link without ticking it', () => {
+    assert.ok(launch.includes("type=\"checkbox\""))
+    assert.ok(launch.includes('checked={confirmed}'))
+    // Both controls are gated on it.
+    assert.ok(launch.includes('const ready = enabled && normalized.ok && confirmed'))
+    assert.ok(launch.includes('disabled={!enabled || !normalized.ok || !confirmed || previewing}'))
+  })
+
+  test('THE SENTENCE IS THE SAME ON BOTH SIDES, word for word', () => {
+    // Two copies of one sentence is how they drift, so they are pinned to each
+    // other. The component keeps its own copy rather than importing the route's,
+    // because a Client Component must not pull in a module that reads
+    // server-only configuration.
+    const expected =
+      'I confirm this number may receive an internal BOE test message and the content will not be published as a customer review.'
+    assert.ok(route.includes(`export const RECIPIENT_CONFIRMATION =\n  '${expected}'`))
+    assert.ok(launch.includes(`export const RECIPIENT_CONFIRMATION =\n  '${expected}'`))
+  })
+})
+
+describe('authorization stays on the server', () => {
+  test('`authorize` fails closed on every step', () => {
+    const fn = route.slice(route.indexOf('async function authorize'), route.indexOf('export async function POST'))
     assert.ok(fn.includes('if (authError || !user) return { response: fail(401'))
     assert.ok(fn.includes("if (!profile || profile.is_active !== true) return { response: fail(403"))
     assert.ok(fn.includes("p_action_key: 'use'"))
     assert.ok(fn.includes('if (allowed !== true) return { response: fail(403'))
   })
 
-  test('a log line never carries a number', () => {
-    // The detail parseInternalTestAllowlist produces names the variable and a
-    // position, never a value — and the route logs that and nothing else.
-    for (const line of route.split('\n').filter(l => l.includes('console.error'))) {
-      assert.equal(/target|number|candidate/i.test(line), false, line.trim())
+  test('A NON-OWNER CANNOT GENERATE A LINK', () => {
+    // Two checks, and both are needed. RLS lets a VERIFIER read every card, so
+    // the read alone would not stop one producing a link for somebody else's
+    // test; the ownership check is what does.
+    assert.ok(route.includes(".from('customer_review_test_cards')"))
+    assert.ok(route.includes('if (!card) return fail(404, MESSAGES.not_found)'))
+    assert.ok(route.includes('if (!caller.isAdmin && card.booked_by !== caller.userId) return fail(403'))
+  })
+
+  test('and only while the card is booked', () => {
+    assert.ok(route.includes("if (card.status !== 'booked') return fail(409, MESSAGES.wrong_status)"))
+  })
+
+  test('the card is read AS THE CALLER, so RLS decides visibility', () => {
+    const post = route.slice(route.indexOf('export async function POST'))
+    const readAt = post.indexOf(".from('customer_review_test_cards')")
+    const clientAt = post.lastIndexOf('await createClient()', readAt)
+    assert.ok(clientAt !== -1 && clientAt < readAt, 'the card is not read through the caller')
+    // The service role appears only in the recording branch.
+    const adminAt = post.indexOf('adminClient()')
+    assert.ok(adminAt > readAt, 'the privileged client is built before the card is read')
+  })
+})
+
+describe('the message, and the label it must carry', () => {
+  test('it is composed from the CARD ROW and constants, never from the request', () => {
+    assert.ok(route.includes('const message = buildInternalTestMessage({'))
+    assert.ok(route.includes('title: card.test_title'))
+    assert.ok(route.includes('body: card.test_body'))
+    assert.ok(route.includes('reference: card.card_ref'))
+    // Nothing from the body reaches the text.
+    assert.equal(/buildInternalTestMessage\([\s\S]{0,200}typedNumber/.test(route), false)
+  })
+
+  test('THE LABEL CANNOT BE OVERRIDDEN THROUGH THE PAYLOAD', () => {
+    // The request has exactly four fields, and none of them is text.
+    const parse = route.slice(route.indexOf('const body = await req.json()'), route.indexOf('if (!confirmed)'))
+    const fields = [...parse.matchAll(/fields\.(\w+)/g)].map(m => m[1])
+    assert.deepEqual([...new Set(fields)].sort(), ['cardId', 'confirmed', 'number', 'record'])
+    for (const forbidden of ['message', 'text', 'warning', 'prefix', 'body', 'template']) {
+      assert.equal(fields.includes(forbidden), false, `the payload carries a ${forbidden} field`)
     }
+  })
+
+  test('and it is re-checked on the way out', () => {
+    assert.ok(route.includes('if (!hasInternalTestWarning(message))'))
+    assert.ok(route.includes('refusing to build an unlabelled test message'))
+    // The browser refuses too.
+    assert.ok(launch.includes('!hasInternalTestWarning(built.message'))
   })
 })
 
 describe('opening is not sending, and previewing is not opening', () => {
   test('RECORDING IS OPT-IN, and the default is not to record', () => {
-    assert.ok(route.includes("record = (body as Record<string, unknown>).record === true"))
+    assert.ok(route.includes('record = fields.record === true'))
     assert.ok(route.includes('if (record) {'))
     // The preview call does not ask for it.
-    const preview = launch.slice(launch.indexOf('const loadPreview = useCallback'), launch.indexOf('const ready ='))
+    const preview = launch.slice(launch.indexOf('const loadPreview = useCallback'), launch.indexOf('const launch = useCallback'))
     assert.equal(preview.includes('record: true'), false)
-    assert.ok(preview.includes('JSON.stringify({ cardId, number: chosenNumber })'))
+    assert.ok(preview.includes('JSON.stringify({ cardId, number: typed, confirmed: true })'))
   })
 
-  test('recording writes an OPEN, and the database refuses it a status', () => {
-    assert.ok(route.includes("admin.client.rpc('record_customer_review_test_card_whatsapp_opened'"))
-    // The RPC assigns no status — asserted against the SQL, because that is
-    // where it is actually true.
+  test('GENERATING OR OPENING A LINK MOVES NO STATUS', () => {
+    // Asserted against the SQL, because that is where it is actually true: the
+    // RPC has no status assignment at all.
     const fn = /create or replace function public\.record_customer_review_test_card_whatsapp_opened[\s\S]*?\$\$;/
       .exec(sql)?.[0] ?? ''
     assert.ok(fn, 'the RPC is missing')
-    const setClause = fn.slice(fn.indexOf('update public.customer_review_test_cards'), fn.indexOf('where id = p_card_id\n'))
-    assert.equal(/\bstatus\s*=/.test(setClause), false, 'opening WhatsApp assigns a status')
+    for (const chunk of fn.split('update public.customer_review_test_cards').slice(1)) {
+      const setClause = chunk.slice(0, chunk.indexOf('where'))
+      assert.equal(/\bstatus\s*=/.test(setClause), false, 'opening WhatsApp assigns a status')
+    }
+    // ...and the route calls nothing that could.
+    assert.equal(routeCode.includes('transition_customer_review_test_card'), false)
+    assert.equal(routeCode.includes('confirm_customer_review_test_card_sent'), false)
   })
 
   test('CONFIRMING IS A DIFFERENT CALL, MADE BY A PERSON, ON A DIFFERENT CONTROL', () => {
-    // Three separate things, and the module exists to demonstrate that
-    // collapsing any two of them is wrong.
-    // Checked against the EXECUTABLE source: the route's header comment
-    // explains that confirming is a different call, and a raw text search finds
-    // the explanation and reports it as the thing being explained.
-    assert.equal(routeCode.includes('confirm_customer_review_test_card_sent'), false,
-      'the WhatsApp route confirms a send')
     assert.ok(launch.includes('export function ConfirmSentControl'))
     const detail = read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx')
     assert.ok(detail.includes("supabase.rpc('confirm_customer_review_test_card_sent'"))
     assert.ok(detail.includes('onConfirm={confirmSent}'))
   })
 
-  test('the confirm control is a deliberate act, not a side effect of opening', () => {
-    const control = launch.slice(launch.indexOf('export function ConfirmSentControl'))
-    assert.ok(control.includes('Confirm internal test sent'))
-    assert.ok(control.includes('Only press this after you have actually sent the message'))
-    // It is enabled by the OPEN having happened, which is an ordering
-    // constraint — it does not fire on its own.
-    assert.ok(launch.includes('canConfirm={!!card.whatsapp_opened_at}') === false)
+  test('the recorder is reachable by service_role alone', () => {
+    assert.ok(sql.includes(
+      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  from public, anon, authenticated;',
+    ))
+    assert.ok(sql.includes(
+      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  to service_role;',
+    ))
   })
 
   test('a recording failure is reported, not swallowed', () => {
-    // supabase-js never throws; the error arrives in the result, and a route
-    // that ignores it reports success for a write that did not happen.
     assert.ok(route.includes('if (error) {'))
     assert.ok(route.includes('return fail(500, MESSAGES.record_failed)'))
   })
 })
 
-describe('what the route will not accept', () => {
-  test('the card id must be a uuid, and the number is length-bounded', () => {
-    assert.ok(route.includes('!UUID_RE.test(rawId)'))
-    assert.ok(route.includes("typeof rawNumber !== 'string' || rawNumber.length > 40"))
-  })
-
-  test('the card is read AS THE CALLER, so RLS decides visibility', () => {
-    assert.ok(route.includes(".from('customer_review_test_cards')"))
-    assert.ok(route.includes('if (!card) return fail(404, MESSAGES.not_found)'))
-    assert.equal(route.includes('adminClient().client\n    .from'), false)
-  })
-
-  test('only the holder or an admin, and only while the card is booked', () => {
-    assert.ok(route.includes('if (!caller.isAdmin && card.booked_by !== caller.userId) return fail(403'))
-    assert.ok(route.includes("if (card.status !== 'booked') return fail(409, MESSAGES.wrong_status)"))
-  })
-
-  test('every response is a prewritten sentence from a closed set', () => {
-    // An allow-list rather than a formatter: the alternative is a template that
-    // one day interpolates a value somebody forgot was caller-influenced. In
-    // this route that value would be a phone number.
+describe('what the route will not leak', () => {
+  test('every response is a prewritten sentence, or the validator’s own', () => {
     const messages = route.slice(route.indexOf('const MESSAGES = {'), route.indexOf('} as const'))
     assert.equal(/\$\{/.test(messages), false, 'a message interpolates something')
     for (const call of route.matchAll(/fail\(\d+,\s*([^)]+)\)/g)) {
       assert.ok(
-        call[1].startsWith('MESSAGES.') || call[1].startsWith('IMAGE_REJECTION'),
+        call[1].startsWith('MESSAGES.') || call[1] === 'normalized.error',
         `a failure returns something other than a fixed sentence: ${call[1]}`,
       )
     }
   })
 
+  test('NO LOG LINE CAN CARRY THE NUMBER', () => {
+    for (const line of route.split('\n').filter(l => l.includes('console.'))) {
+      assert.equal(/typedNumber|normalized\.(e164|digits)/.test(line), false,
+        `a log line references the number: ${line.trim()}`)
+    }
+  })
+
+  test('and the response carries only the last four', () => {
+    assert.ok(route.includes('target: { lastFour: normalized.e164.slice(-4) }'))
+  })
+
   test('nothing is cacheable', () => {
     assert.ok(route.includes("'Cache-Control': 'no-store, private'"))
+  })
+
+  test('THE GET HANDLER IS GONE with the list it used to serve', () => {
+    // It existed only to hand the approved numbers to the browser. There is no
+    // list, so there is nothing to hand over and no endpoint that could.
+    assert.equal(route.includes('export async function GET'), false)
+  })
+})
+
+describe('the screen says what it now does', () => {
+  test('it asks the tester to ENTER a number', () => {
+    assert.ok(launch.includes('Enter WhatsApp number'))
+    assert.equal(launch.includes('approved team number'), false)
+    assert.equal(launch.includes('Choose from the approved list'), false)
+  })
+
+  test('the field is a free-text tel input, not a picker', () => {
+    assert.ok(launch.includes('id="internal-test-number"'))
+    assert.ok(launch.includes('type="tel"'))
+    assert.equal(/<select/.test(launch), false, 'the recipient is still chosen from a list')
+  })
+
+  test('and it tells the tester what is kept', () => {
+    const copy = launch.replace(/\s+/g, ' ')
+    assert.ok(copy.includes('Include the country code'))
+    assert.ok(copy.includes('only the last four digits are ever stored'))
   })
 })

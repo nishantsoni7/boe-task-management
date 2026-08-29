@@ -557,23 +557,33 @@ end $$;
 -- ─── 5. Opening WhatsApp changes no status ─────────────────────────────────
 --
 -- The single most important negative in the module. The recording function is
--- granted to service_role alone (the route establishes both the actor and the
--- allowlisted recipient), so it is called here as the owner — and what is
--- checked is that the STATUS did not move.
+-- granted to service_role alone (the route establishes the actor, validates the
+-- number and REDUCES it before calling), so it is called here as the owner —
+-- and what is checked is that the STATUS did not move.
+--
+-- NOTE WHAT THIS BLOCK CANNOT DO, BECAUSE IT IS THE POINT: it has no phone
+-- number to pass. The function's parameters are a fingerprint and four digits,
+-- so there is nowhere in the signature a number could go. SQL never sees one.
 
 do $$
-declare v_before text; v_after text; v_count integer; v_target text;
+declare
+  v_before text; v_after text; v_count integer;
+  v_fingerprint text; v_last_four text;
+  -- 64 hex characters, and obviously a digest of nothing. The harness does not
+  -- hash a real number because it never has one.
+  v_probe_fingerprint text := 'abababababababababababababababababababababababababababababababab';
 begin
   select status into v_before from public.customer_review_test_cards
    where id = 'aaaaaaaa-0000-4000-8000-000000000001';
 
   perform public.record_customer_review_test_card_whatsapp_opened(
     'aaaaaaaa-0000-4000-8000-000000000001',
-    '+919999900001',
+    v_probe_fingerprint,
+    '0001',
     'ffffffff-0000-4000-8000-000000000002');
 
-  select status, whatsapp_opened_count, whatsapp_target
-    into v_after, v_count, v_target
+  select status, whatsapp_opened_count, whatsapp_target_fingerprint, whatsapp_target_last_four
+    into v_after, v_count, v_fingerprint, v_last_four
   from public.customer_review_test_cards where id = 'aaaaaaaa-0000-4000-8000-000000000001';
 
   if v_after <> v_before then
@@ -582,26 +592,52 @@ begin
   if v_count <> 1 then
     raise exception 'the open counter is %, expected 1', v_count;
   end if;
-  if v_target <> '+919999900001' then
-    raise exception 'the recorded target is %, expected the number the route supplied', v_target;
+  if v_fingerprint <> v_probe_fingerprint then
+    raise exception 'the recorded fingerprint is not the one the route supplied';
+  end if;
+  if v_last_four <> '0001' then
+    raise exception 'the recorded last-four is %, expected the four the route supplied', v_last_four;
   end if;
   raise notice 'PASS  5a. opening WhatsApp records preparation and moves no status';
 
   -- ...and the function is not reachable by a browser at all.
   if has_function_privilege('authenticated',
-       'public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)', 'EXECUTE') then
+       'public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)', 'EXECUTE') then
     raise exception 'a browser role can call the WhatsApp recorder, which takes an actor id';
   end if;
   raise notice 'PASS  5b. the WhatsApp recorder is reachable by service_role alone';
 
-  -- A malformed recipient is refused, whatever the route thought it had.
+  -- ANYTHING THAT IS NOT A REDUCED FORM IS REFUSED, and a phone number is the
+  -- case worth naming: a caller that tried to store one — because it had one,
+  -- which the route never does — is refused by the shape guard rather than
+  -- quietly writing it.
   begin
     perform public.record_customer_review_test_card_whatsapp_opened(
-      'aaaaaaaa-0000-4000-8000-000000000001', 'not-a-number',
+      'aaaaaaaa-0000-4000-8000-000000000001', 'not-a-digest', '0001',
       'ffffffff-0000-4000-8000-000000000002');
-    raise exception 'a malformed recipient was accepted';
+    raise exception 'a malformed fingerprint was accepted';
   exception when sqlstate '23514' then
-    raise notice 'PASS  5c. a recipient that is not a full international number is refused 23514';
+    raise notice 'PASS  5c. a fingerprint that is not a digest is refused 23514';
+  end;
+
+  begin
+    perform public.record_customer_review_test_card_whatsapp_opened(
+      'aaaaaaaa-0000-4000-8000-000000000001', v_probe_fingerprint, '00012',
+      'ffffffff-0000-4000-8000-000000000002');
+    raise exception 'a malformed last-four was accepted';
+  exception when sqlstate '23514' then
+    raise notice 'PASS  5d. a last-four that is not four digits is refused 23514';
+  end;
+
+  -- THE COLUMN CANNOT HOLD A NUMBER EITHER. Attempted directly, past the
+  -- function, as the owner: the CHECK constraint refuses it.
+  begin
+    update public.customer_review_test_cards
+       set whatsapp_target_fingerprint = '+919999900001'
+     where id = 'aaaaaaaa-0000-4000-8000-000000000001';
+    raise exception 'a phone number was accepted into the fingerprint column';
+  exception when sqlstate '23514' then
+    raise notice 'PASS  5e. the fingerprint column refuses a phone number outright';
   end;
 end $$;
 

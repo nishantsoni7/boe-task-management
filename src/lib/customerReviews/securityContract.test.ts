@@ -75,9 +75,9 @@ const INTERNAL_ONLY = [
 
 /**
  * Reachable by service_role ALONE. Each takes something the TRUSTED ROUTE
- * establishes — the actor from the session, or the recipient from the
- * server-held allowlist — so a browser able to call any of them could supply
- * either itself.
+ * establishes — the actor from the session, or the recipient already reduced to
+ * a fingerprint and four digits — so a browser able to call any of them could
+ * supply either itself.
  */
 const SERVICE_ROLE_ONLY = [
   'record_customer_review_test_card_whatsapp_opened',
@@ -199,7 +199,7 @@ describe('identity: who the function thinks it is acting for', () => {
     // in the grants section above and re-asserted here at the signature.
     for (const name of ['record_customer_review_test_card_whatsapp_opened',
                         'begin_customer_review_test_screenshot_removal']) {
-      assert.ok(byName(name).args.includes('p_actor_id uuid'), `${name} does not take an explicit actor`)
+      assert.ok(/p_actor_id\s+uuid/.test(byName(name).args), `${name} does not take an explicit actor`)
       const grant = new RegExp(`grant\\s+execute on function public\\.${name}\\([^)]*\\)[^;]*to authenticated`)
       assert.equal(grant.test(code), false, `${name} is granted to authenticated`)
     }

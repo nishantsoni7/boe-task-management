@@ -65,6 +65,59 @@ describe('the migration is one file, correctly sequenced', () => {
   })
 })
 
+describe('the file is structurally intact', () => {
+  // ADDED AFTER A REAL INCIDENT, and worth stating plainly: an edit to this
+  // migration was once applied with a replacement string containing `$'`,
+  // which String.replace reads as the special pattern "everything after the
+  // match" — so the tail of the file was spliced back into the middle of it.
+  // The result still contained every phrase the assertions below look for, and
+  // every one of them passed. Only the line count gave it away.
+  //
+  // These checks are cheap and they catch that class of damage: duplicated
+  // blocks, unbalanced dollar quotes, and a file that has silently doubled.
+
+  test('every dollar-quoted body is closed', () => {
+    // A function body opens and closes with `$$`, so the count must be even.
+    // An odd count means a body ran off the end of the file — which Postgres
+    // would refuse at apply time, and which no phrase-matching test would see.
+    const dollars = (code.match(/\$\$/g) ?? []).length
+    assert.equal(dollars % 2, 0, `${dollars} dollar-quote markers; a body is unclosed`)
+  })
+
+  test('every function has exactly one definition', () => {
+    const names = [...code.matchAll(/create or replace function public\.(\w+)\(/g)].map(m => m[1])
+    const seen = new Map()
+    for (const name of names) seen.set(name, (seen.get(name) ?? 0) + 1)
+    const repeated = [...seen].filter(([, n]) => n > 1).map(([name]) => name)
+    assert.deepEqual(repeated, [], `defined more than once: ${repeated.join(', ')}`)
+  })
+
+  test('every section header appears exactly once', () => {
+    // The numbered `═══ N. …` banners. A duplicate is the signature of a
+    // spliced file.
+    const headers = [...sql.matchAll(/^-- ═══ (\d+)\./gm)].map(m => m[1])
+    assert.deepEqual(
+      headers,
+      [...new Set(headers)],
+      `a section header is repeated: ${headers.join(', ')}`,
+    )
+    // ...and they are consecutive from 1, so none was lost either.
+    assert.deepEqual(headers, headers.map((_, i) => String(i + 1)))
+  })
+
+  test('there is exactly one assertion block, and it is last', () => {
+    const blocks = [...code.matchAll(/^do \$\$/gm)]
+    assert.equal(blocks.length, 1, `${blocks.length} top-level do-blocks; expected one`)
+    assert.ok(blocks[0].index > code.length * 0.5, 'the assertion block is not at the end of the file')
+  })
+
+  test('and every table is created exactly once', () => {
+    const tables = [...code.matchAll(/create table public\.(\w+)/g)].map(m => m[1])
+    assert.deepEqual(tables, [...new Set(tables)], `a table is created twice: ${tables.join(', ')}`)
+    assert.equal(tables.length, 3)
+  })
+})
+
 describe('the product this module is, and the product it is not', () => {
   test('THE FOUR STATUSES ARE THE FOUR IN THE CHECK', () => {
     // The whole product correction in one assertion. Seven statuses described a
@@ -123,10 +176,24 @@ describe('the product this module is, and the product it is not', () => {
     assert.ok(code.includes('look like customer contact data'))
   })
 
-  test('the only phone column is the deployment’s own approved team number', () => {
-    assert.ok(code.includes('whatsapp_target text check ('))
-    assert.ok(/whatsapp_target ~ '\^\\\+\[1-9\]\[0-9\]\{7,14\}\$'/.test(code),
-      'whatsapp_target is not constrained to E.164')
+  test('THERE IS NO PHONE COLUMN AT ALL', () => {
+    // The correction that came with letting a tester type any number: the
+    // module stopped storing one. A column constrained to E.164 would be a
+    // column that holds a number, so the assertion is that no such constraint
+    // exists — and that the two columns which replaced it hold shapes a number
+    // cannot take.
+    assert.equal(code.includes('whatsapp_target text check ('), false,
+      'a column that holds a full number is back')
+    assert.equal(/~ '\^\\\+\[1-9\]\[0-9\]\{7,14\}\$'/.test(code), false,
+      'a column is constrained to E.164, which means it holds a number')
+
+    assert.ok(code.includes('whatsapp_target_fingerprint text check ('))
+    assert.ok(code.includes("whatsapp_target_fingerprint ~ '^[0-9a-f]{64}$'"))
+    assert.ok(code.includes('whatsapp_target_last_four text check ('))
+    assert.ok(code.includes("whatsapp_target_last_four ~ '^[0-9]{4}$'"))
+    // Both or neither: a fingerprint with no last four, or the reverse, would
+    // be a half-written recipient nothing could render or correlate.
+    assert.ok(code.includes('constraint customer_review_test_cards_target_consistent check ('))
   })
 
   test('the mandatory label exists in SQL, and a card body may not carry a copy', () => {
@@ -423,22 +490,30 @@ describe('WhatsApp is preparation, and never delivery', () => {
     // The single most important negative in the module.
     assert.equal(/set[\s\S]*?\bstatus\s*=/.test(fn), false,
       'the WhatsApp recorder assigns a status')
-    assert.ok(fn.includes('whatsapp_opened_at    = now()'))
-    assert.ok(fn.includes('whatsapp_opened_count = whatsapp_opened_count + 1'))
+    assert.ok(fn.includes('whatsapp_opened_at          = now()'))
+    assert.ok(fn.includes('whatsapp_opened_count       = whatsapp_opened_count + 1'))
   })
 
   test('it is reachable by service_role alone, because it takes an actor', () => {
     assert.ok(code.includes(
-      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  from public, anon, authenticated;',
+      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  from public, anon, authenticated;',
     ))
     assert.ok(code.includes(
-      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  to service_role;',
+      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  to service_role;',
     ))
   })
 
-  test('the recipient must be a full international number, checked in SQL too', () => {
+  test('THE RECIPIENT REACHES SQL ALREADY REDUCED, and nothing else is accepted', () => {
+    // The number is validated in the route and never travels further. What the
+    // function accepts is a digest and four digits — shapes a phone number
+    // cannot take — so "SQL never sees a number" is a property of the signature
+    // rather than a habit of its one caller.
     const fn = /create or replace function public\.record_customer_review_test_card_whatsapp_opened[\s\S]*?\$\$;/
       .exec(code)?.[0] ?? ''
+    assert.ok(fn.includes('p_target_fingerprint text'))
+    assert.ok(fn.includes('p_target_last_four   text'))
+    assert.ok(fn.includes("p_target_fingerprint !~ '^[0-9a-f]{64}$'"))
+    assert.ok(fn.includes("p_target_last_four !~ '^[0-9]{4}$'"))
     assert.ok(fn.includes('CUSTOMER_REVIEW_TEST_BAD_TARGET'))
   })
 

@@ -197,12 +197,32 @@ create table public.customer_review_test_cards (
   -- ── Preparation, which is not delivery ──
   whatsapp_opened_at    timestamptz,
   whatsapp_opened_count integer not null default 0 check (whatsapp_opened_count >= 0),
-  -- The last allowlisted internal team number a link was built for. E.164 or
-  -- nothing. Written only by the trusted route's service-role RPC, AFTER that
-  -- route has checked the number against the server-held allowlist.
-  whatsapp_target text check (
-    whatsapp_target is null
-    or whatsapp_target ~ '^\+[1-9][0-9]{7,14}$'
+  -- WHO THE LAST LINK WAS ADDRESSED TO — AND NOT THE NUMBER.
+  --
+  -- A tester may enter any valid international number, so what lands here is
+  -- not necessarily a colleague's. THE FULL NUMBER IS NEVER STORED. Two things
+  -- are, and neither can be turned back into it:
+  --
+  --   _last_four     four digits, so a person recognises a number they typed.
+  --   _fingerprint   a non-reversible HMAC of the E.164 form, keyed on the
+  --                  deployment's server-only credential, so two tests sent to
+  --                  the same number are visibly the same recipient.
+  --
+  -- Both are computed by the trusted route (src/lib/customerReviews/
+  -- recipientPrivacy.ts) and arrive already reduced; SQL never sees a number.
+  -- The CHECKs below are shape guards on that promise: a 64-character hex
+  -- digest cannot be a phone number, and four digits are four digits.
+  whatsapp_target_fingerprint text check (
+    whatsapp_target_fingerprint is null
+    or whatsapp_target_fingerprint ~ '^[0-9a-f]{64}$'
+  ),
+  whatsapp_target_last_four text check (
+    whatsapp_target_last_four is null
+    or whatsapp_target_last_four ~ '^[0-9]{4}$'
+  ),
+  constraint customer_review_test_cards_target_consistent check (
+    (whatsapp_target_fingerprint is null and whatsapp_target_last_four is null)
+    or (whatsapp_target_fingerprint is not null and whatsapp_target_last_four is not null)
   ),
 
   -- ── The tester's own claim ──
@@ -394,10 +414,10 @@ create table public.customer_review_test_card_events (
   -- Short, and either system-generated or a note the actor deliberately wrote
   -- about this event.
   --
-  -- NEVER A PHONE NUMBER. The trail is about what somebody decided; the number
-  -- a link was addressed to lives in one column (whatsapp_target) where it can
-  -- be masked on the way to a screen, not scattered through free text where it
-  -- cannot.
+  -- NEVER A PHONE NUMBER — and there is no number anywhere in this module to
+  -- put here. The trail is about what somebody decided; the recipient is
+  -- recorded on the card as four digits and a fingerprint, not scattered
+  -- through free text where it could neither be masked nor found again.
   detail text check (detail is null or length(detail) <= 500),
 
   actor_id uuid not null references public.users(id),
@@ -1048,17 +1068,25 @@ grant  execute on function public.confirm_customer_review_test_card_sent(uuid) t
 -- claim that a message was sent is confirm_customer_review_test_card_sent(),
 -- which a person calls afterwards.
 --
--- GRANTED TO service_role ALONE, like the removal halves, and for a related
--- reason: the recipient must be one of the deployment's approved internal team
--- numbers, that allowlist lives in a server-only environment variable, and SQL
--- cannot read it. POST /api/customer-reviews/whatsapp is what checks the number
--- against the allowlist and establishes the actor from the session before
--- calling this. A browser cannot reach it, so p_actor_id cannot be spoofed and
--- p_target cannot be an unapproved number.
+-- GRANTED TO service_role ALONE, like the removal halves — and the reason
+-- changed when the allowlist went away, so it is restated here rather than
+-- inherited.
+--
+-- It is NOT that SQL cannot check the recipient. It is that this function takes
+-- p_actor_id, and a function that is TOLD who is acting must not be reachable
+-- by the party it would be acting for. POST /api/customer-reviews/whatsapp
+-- establishes the actor from the session, validates the number, and REDUCES it
+-- before calling here.
+--
+-- WHICH IS THE OTHER HALF: the number never reaches SQL. What arrives is a
+-- non-reversible fingerprint and four digits, both computed in the route. No
+-- parameter of this function could carry a phone number, so no future caller
+-- can accidentally store one.
 create or replace function public.record_customer_review_test_card_whatsapp_opened(
-  p_card_id  uuid,
-  p_target   text,
-  p_actor_id uuid
+  p_card_id            uuid,
+  p_target_fingerprint text,
+  p_target_last_four   text,
+  p_actor_id           uuid
 )
 returns public.customer_review_test_cards
 language plpgsql
@@ -1093,25 +1121,30 @@ begin
       using errcode = '23514';
   end if;
 
-  -- Shape-checked here as well as in the route. The route decides WHICH numbers
-  -- are permitted; this refuses anything that is not a number at all, so a
-  -- future caller cannot store a label, a name or an empty string.
-  if p_target is null or p_target !~ '^\+[1-9][0-9]{7,14}$' then
-    raise exception 'CUSTOMER_REVIEW_TEST_BAD_TARGET: The test recipient must be a full international number'
+  -- SHAPE-CHECKED, AND THE SHAPE IS THE POINT. Both parameters are already
+  -- reduced forms, and refusing anything else is what makes "SQL never sees a
+  -- number" a property of the function rather than a habit of its one caller.
+  if p_target_fingerprint is null or p_target_fingerprint !~ '^[0-9a-f]{64}$' then
+    raise exception 'CUSTOMER_REVIEW_TEST_BAD_TARGET: The recipient fingerprint is not a digest'
+      using errcode = '23514';
+  end if;
+  if p_target_last_four is null or p_target_last_four !~ '^[0-9]{4}$' then
+    raise exception 'CUSTOMER_REVIEW_TEST_BAD_TARGET: The recipient last-four is not four digits'
       using errcode = '23514';
   end if;
 
   update public.customer_review_test_cards
-     set whatsapp_opened_at    = now(),
-         whatsapp_opened_count = whatsapp_opened_count + 1,
-         whatsapp_target       = p_target
+     set whatsapp_opened_at          = now(),
+         whatsapp_opened_count       = whatsapp_opened_count + 1,
+         whatsapp_target_fingerprint = p_target_fingerprint,
+         whatsapp_target_last_four   = p_target_last_four
    where id = p_card_id;
 
   insert into public.customer_review_test_card_events
     (card_id, event_type, detail, actor_id)
   values
     (p_card_id, 'whatsapp_opened',
-     'A wa.me link was built for an approved internal team number and opened. This does not confirm the message was sent.',
+     'A wa.me link was built and opened. This does not confirm the message was sent.',
      p_actor_id);
 
   select * into c from public.customer_review_test_cards where id = p_card_id;
@@ -1119,9 +1152,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)
+revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)
   from public, anon, authenticated;
-grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)
+grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)
   to service_role;
 
 -- ── The transition table ──────────────────────────────────────────────────
@@ -1329,8 +1362,11 @@ comment on table public.customer_review_test_cards is
 comment on column public.customer_review_test_cards.whatsapp_opened_at is
   'When a wa.me link was last built and opened for this card. Proves preparation only: it is not evidence that the message was sent, delivered or read. sent_confirmed_at is the tester''s separate, deliberate confirmation, and no status moves when this column does.';
 
-comment on column public.customer_review_test_cards.whatsapp_target is
-  'The approved BOE internal team number the last link was addressed to. Written only by the trusted route after checking the server-held allowlist. Never a customer number: this module has no customer contact data.';
+comment on column public.customer_review_test_cards.whatsapp_target_fingerprint is
+  'Non-reversible HMAC-SHA256 of the E.164 recipient, keyed on the deployment''s server-only credential and computed in the trusted route. Lets two tests sent to the same number be recognised as the same recipient. THE FULL NUMBER IS NEVER STORED, here or anywhere else in this module.';
+
+comment on column public.customer_review_test_cards.whatsapp_target_last_four is
+  'The final four digits of the recipient, so a tester recognises a number they typed. The only part of a recipient this module keeps in clear.';
 
 comment on table public.customer_review_test_card_events is
   'Append-only internal-test trail: booked, whatsapp_opened, sent_confirmed, submitted, verified, returned, screenshot_removed. No client role holds INSERT, UPDATE, DELETE or TRUNCATE; rows arrive only from the definer functions in 20261017000000. whatsapp_opened is NOT a delivery receipt.';
@@ -1696,7 +1732,7 @@ begin
   -- be a spoofing hole.
   for v_bad in
     select unnest(array[
-      'public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)',
+      'public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)',
       'public.begin_customer_review_test_screenshot_removal(uuid, uuid)',
       'public.finish_customer_review_test_screenshot_removal(uuid)'
     ])
@@ -1804,8 +1840,9 @@ begin
   end if;
 
   -- NO CUSTOMER CONTACT COLUMN EITHER, for the same reason and by the same
-  -- means. whatsapp_target is the deployment's own approved team number and is
-  -- excluded by name; anything else that looks like a customer identity fails.
+  -- means. The two whatsapp_target_* columns hold a fingerprint and four
+  -- digits rather than a number, and are excluded by name; anything else that
+  -- looks like stored contact data fails.
   select string_agg(c.relname || '.' || a.attname, ', ') into v_bad
   from pg_attribute a
   join pg_class c on c.oid = a.attrelid
@@ -1814,7 +1851,7 @@ begin
     and c.relname like 'customer_review%'
     and a.attnum > 0
     and not a.attisdropped
-    and a.attname <> 'whatsapp_target'
+    and a.attname not in ('whatsapp_target_fingerprint', 'whatsapp_target_last_four')
     and (a.attname ~* '(customer_name|customer_phone|greeting|whatsapp_number|contact_)');
   if v_bad is not null then
     raise exception 'these columns look like customer contact data, which this module must not hold: %', v_bad;

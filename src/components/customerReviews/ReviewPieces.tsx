@@ -1,10 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import type { BadgeMeta } from '@/lib/customerReviews/types'
-import { formatWhatsAppNumber, maskWhatsAppNumber } from '@/lib/customerReviews/contact'
 import { INTERNAL_TEST_WARNING } from '@/lib/customerReviews/internalTest'
 
 // Small pieces shared by the internal-test screens. Same visual language as
@@ -64,59 +62,18 @@ export function ReviewBadge({ meta }: { meta: BadgeMeta }) {
   )
 }
 
-/**
- * An internal team number, masked, with a deliberate reveal.
+/*
+ * MaskedNumber USED TO BE HERE, and its removal is part of the correction.
  *
- * Masked is the default everywhere, including for the person who chose it. The
- * reveal is a click rather than a hover so it cannot happen by accident while
- * somebody is scrolling past on a shared screen, and it is per-instance state
- * that resets on every navigation — there is no "remember revealed" anywhere.
+ * It rendered a stored number masked, with a click to reveal the full value for
+ * whoever genuinely needed it. Nothing stores a full number now — a card keeps
+ * four digits and a non-reversible fingerprint — so there is no full value to
+ * reveal, and a component shaped to reveal one is a component somebody would
+ * eventually find a number to feed it.
  *
- * `revealable` is false in a list. A list is the shape somebody screenshots,
- * and this module ASKS people to take screenshots, so a row-by-row reveal there
- * would put colleagues' numbers into the evidence by default.
+ * What replaced it is maskFromLastFour() in @/lib/customerReviews/contact,
+ * which takes the four digits the card actually has.
  */
-export function MaskedNumber({
-  value,
-  revealable = false,
-}: {
-  value: string | null
-  revealable?: boolean
-}) {
-  const [revealed, setRevealed] = useState(false)
-
-  if (!value) return <span style={{ color: colors.muted }}>—</span>
-
-  if (!revealable) {
-    return (
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: colors.secondary }}>
-        {maskWhatsAppNumber(value)}
-      </span>
-    )
-  }
-
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
-      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '13px', color: colors.primary }}>
-        {revealed ? formatWhatsAppNumber(value) : maskWhatsAppNumber(value)}
-      </span>
-      <button
-        type="button"
-        onClick={() => setRevealed(v => !v)}
-        aria-label={revealed ? 'Hide the number' : 'Show the full number'}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '4px',
-          padding: '3px 8px', borderRadius: '6px', cursor: 'pointer',
-          border: `1px solid ${colors.border}`, background: 'transparent',
-          color: colors.tertiary, fontSize: '11px', fontWeight: 600,
-        }}
-      >
-        {revealed ? <EyeOff size={12} strokeWidth={2} /> : <Eye size={12} strokeWidth={2} />}
-        {revealed ? 'Hide' : 'Show'}
-      </button>
-    </span>
-  )
-}
 
 /**
  * The sentence that keeps "we opened WhatsApp" and "the message was sent"

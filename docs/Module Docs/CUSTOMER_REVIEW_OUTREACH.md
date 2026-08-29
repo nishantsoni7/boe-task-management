@@ -21,8 +21,9 @@ Migration: `supabase/migrations/20261017000000_customer_review_outreach.sql`
 
 An **internal rehearsal of a workflow**. An authorized BOE employee opens a list
 of **test cards**, books one, opens WhatsApp with a prefilled message addressed
-to a **BOE internal team number**, confirms by hand that they sent it, uploads a
-screenshot, and an administrator verifies that the workflow was exercised.
+to **any valid international number they enter**, confirms by hand that they
+sent it, uploads a screenshot, and an administrator verifies that the workflow
+was exercised.
 
 ```
 available  →  booked  →  submitted  →  verified
@@ -33,7 +34,8 @@ The phase exists to test seven things and nothing else:
 1. permission-based module access,
 2. viewing available test cards,
 3. booking one card, atomically,
-4. opening WhatsApp with internal test content prefilled,
+4. opening WhatsApp with internal test content prefilled, addressed to a
+   number the tester chooses,
 5. manually confirming that the test message was sent,
 6. uploading a test screenshot,
 7. administrator verification — after which the card leaves every active
@@ -51,7 +53,9 @@ quietly become one.
 | Fabricate a review or a customer | Card text is **fixture-loaded filler that says what it is in its own first sentence**. `fixture.test.ts` fails on any card containing an endorsement phrase, a first-person account of an event, a signature, a contact detail, or a link |
 | Let an employee write or edit content | **No client role holds INSERT or UPDATE on the card table at all.** There is no form, no create route and no edit route. The migration asserts both the absent policies and the absent privileges |
 | Drop the mandatory label | The label is a constant (`INTERNAL_TEST_WARNING`), rendered by a component that takes **no content parameter**, and prepended by a builder with **no parameter that suppresses it and no branch**. Since employees cannot author text at all, there is nothing to edit it out of |
-| Message a customer | Every recipient comes from a **server-held allowlist**. A number not on it is a 403 with no link; a missing or malformed allowlist is a 503 |
+| Send to a number nobody meant | The number is **normalised and validated on the server**, whatever the browser did: malformed, too short, too long or missing a country code is a 400 with no link. A **bare national number is refused rather than guessed**, so nothing decides which country a number belongs to |
+| Message anyone without saying so | The tester must tick a confirmation that the number may receive an internal BOE test message. It is required by the **request**, not by the form, and a truthy value is not a confirmation — only `true` is |
+| Keep the number afterwards | **It is never stored.** The card keeps four digits and a non-reversible fingerprint, computed in the route; the RPC has no parameter a number could arrive in, and the columns are shape-constrained to a digest and four digits |
 | Send anything automatically | Nothing here calls a WhatsApp API. `whatsappRoute.test.ts` walks all of `src/` and fails on any WhatsApp endpoint, token or client |
 | Treat an opened link as a sent message | `record_customer_review_test_card_whatsapp_opened()` **assigns no status**, and confirming is a separate RPC a person calls afterwards. Both are asserted, in the SQL, by two different test files |
 
@@ -144,41 +148,110 @@ Five facts, five controls, and no control performs two of them:
 
 ## 6. WhatsApp
 
-### The allowlist
+### Any valid number — and what checks it
 
-Recipients come from one **server-only** environment variable:
+There is **no allowlist and no environment variable**. An authorized tester
+types the number they want to test against, and the field says so: *Enter
+WhatsApp number*.
 
-```
-BOE_INTERNAL_TEST_WHATSAPP_NUMBERS=Ops test phone|+919999900001,QA test phone|+919999900002
-```
+"Any number" widened who can be reached. It widened nothing about who can reach
+them:
 
-* Comma- or newline-separated. Each entry is a full international number,
-  optionally `Label|+number`. `#` starts a comment.
-* **Not** a `NEXT_PUBLIC_` name, so Next never inlines it into a client bundle.
-  The numbers reach a browser only through `GET /api/customer-reviews/whatsapp`,
-  which requires an active account holding `use`.
-* **No real number is committed to this repository.** `.env.example` documents
-  the variable with placeholders; real values go in `.env.local`.
-* Numbers are **normalized and validated server-side**, strictly: an entry
-  without a country code is refused rather than guessed, because the guess would
-  decide who gets messaged.
+* **Only an active employee holding `customer_review_requests.use`, and only for
+  a card THEY hold.** Checked in the route and, independently, by the card's own
+  RLS — the read runs as the caller. A verifier can *read* every card; reading is
+  not holding.
+* **The number is normalised and validated on the server**, whatever the browser
+  did with it. The same function runs in both places; the browser's copy is a
+  courtesy that saves a round trip.
+* **The tester must tick the confirmation** (§ below). It is a required field of
+  the request.
+* **The message still carries the permanent internal-test label**, re-checked by
+  the server on the way out and by the browser before anything opens.
 
-**It fails closed, every way it can fail.** Unset, empty, whitespace, comments
-only, or containing **one** bad entry among good ones: the whole list is refused
-and no link can be built by anybody. There is no default, no fallback and no
-built-in number anywhere in the code.
+#### What counts as valid
+
+| Accepted | Refused |
+| --- | --- |
+| `+919999900001` | empty, whitespace |
+| `+91 99999 00001` | fewer than 8 digits |
+| `+91-99999-00001` | more than 15 digits |
+| `+91 (999) 990-0001` | letters or stray punctuation — `+91 98765 4321O` |
+| `0091 99999 00001` | a **bare national number** — `9999900001` |
+| `+1 (415) 555-0100` | a leading zero after the country code |
+
+Spaces, `+`, hyphens, dots, parentheses and the various Unicode dashes people
+paste out of documents are all separators and are removed. Anything else is
+**checked, not stripped** — stripping a mistyped letter would turn
+`+91 98765 4321O` into a valid-looking number one digit short of the one that
+was meant, and the link would open a chat with a stranger.
+
+**The country code is required**, and this is the one rule that got *stricter*
+when the allowlist went away. While only BOE's own numbers were reachable,
+assuming `+91` for a bare ten digits was a safe convenience. Now that any number
+can be typed, that assumption would be silently choosing which country gets
+messaged.
+
+**No error message contains any part of the input.** These strings are shown on
+a screen and returned by the route, and a validation message that quoted the
+number would put it somewhere nobody audited.
+
+### The confirmation
+
+Before a link is produced, the tester must tick:
+
+> I confirm this number may receive an internal BOE test message and the content
+> will not be published as a customer review.
+
+It is checked **on the server, before the number is even parsed**, and it is
+checked *strictly*: `confirmed === true`. `'yes'`, `1` or a missing field are not
+confirmations — a truthy check would let a client tick the box by accident,
+which is the opposite of what a deliberate confirmation is for.
+
+The sentence lives in two places (the route and the component, because a Client
+Component must not import a module that reads server-only configuration) and a
+source-contract test pins the two strings to each other.
+
+### What is kept afterwards
+
+**The number is never stored, never logged, never put in an event, and never in
+a fixture.** It exists in one request body, for the length of one request, and
+in the `wa.me` URL the server hands back to the browser that asked for it.
+
+What the card keeps instead:
+
+| Column | What it is |
+| --- | --- |
+| `whatsapp_target_last_four` | four digits, so a person recognises a number they typed |
+| `whatsapp_target_fingerprint` | HMAC-SHA256 of the E.164 form, keyed on the deployment's existing server-only credential and domain-separated |
+
+Both are computed in the route (`src/lib/customerReviews/recipientPrivacy.ts`)
+and arrive already reduced. **SQL never sees a number**: the RPC's parameters are
+a digest and four digits, and both are shape-guarded, so there is no future
+caller that could accidentally store one.
+
+> **Said honestly, because "hashed" would overclaim it.** A bare digest of a
+> phone number is not a secret — the space is small, and the last four are
+> stored in clear beside it. The HMAC key is the deployment's server-only
+> credential, which is not stored next to the data it protects. That does **not**
+> make the fingerprint secret against somebody holding both the database and the
+> server's environment; it means the **database alone** does not reveal the
+> numbers, which is the realistic leak this defends against. It also makes the
+> fingerprint deployment-scoped, and rotating the credential invalidates every
+> existing one — acceptable only because a fingerprint is a convenience for
+> correlating test rows and nothing depends on it.
 
 ### Why the server builds the link
 
-If the browser assembled the `wa.me` URL, the allowlist would be a suggestion:
-anything running in that tab could put a stranger's number in the path.
-`POST /api/customer-reviews/whatsapp` checks the number against the list,
-composes the message from the card row and the constants, and returns the URL —
-so the number in the link is one the **server** chose from its **own** list.
+Because everything above is only true if this is the only path. If the browser
+assembled the `wa.me` URL, the validation, the confirmation and the label would
+each be a suggestion that a devtools console could skip.
 
-A tester may also *type* a number instead of picking one. That is not a hole:
-what they type is checked against the same list on the server, and a number that
-is not on it comes back 403 with no link.
+`POST /api/customer-reviews/whatsapp` validates the number, requires the
+confirmation, reads the card **as the caller**, checks that the caller holds it,
+composes the message from the card row and the constants, and returns the URL.
+The browser builds nothing — a source-contract test asserts that the component
+contains no `wa.me` literal at all.
 
 ### Opening is not sending
 
@@ -247,7 +320,7 @@ Service-role only — each takes something the trusted route establishes:
 
 | Signature | Why it is not browser-callable |
 | --- | --- |
-| `record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)` | takes the actor **and** the allowlisted recipient |
+| `record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)` | takes the actor, plus the recipient **already reduced** to a fingerprint and four digits |
 | `begin_customer_review_test_screenshot_removal(uuid, uuid)` | takes the actor |
 | `finish_customer_review_test_screenshot_removal(uuid)` | the second half of a removal |
 
@@ -344,8 +417,9 @@ than cleared with that file alone.
 | File | What it proves |
 | --- | --- |
 | `internalTest.test.ts` | the label is first and last in every message, is not a parameter, has no branch, matches the SQL constant, and survives a `wa.me` round trip |
-| `allowlist.test.ts` | every failure mode refuses; one bad entry refuses the whole list; no default and no committed number |
-| `whatsappRoute.test.ts` | the allowlist is checked before a link exists; nothing in `src/` can send |
+| `contact.test.ts` | every accepted spelling normalises to one form; empty, malformed, too-short, too-long and bare-national numbers are refused; no error echoes the input |
+| `recipientPrivacy.test.ts` | the reduction, its fail-closed cases, and that no full number reaches a column, a parameter, a log line, an event or a fixture |
+| `whatsappRoute.test.ts` | the number is validated and the confirmation required before a link exists; a non-owner is refused; nothing in `src/` can send; no environment variable is needed |
 | `status.test.ts` | the four statuses, who may make each move, what a submission needs, and that a verified card is in no active list |
 | `migration.test.ts` | the schema, the policies, the grants, and that the SQL transition table matches the browser's edge for edge |
 | `securityContract.test.ts` | function by function: pinned `search_path`, no acting-user parameter, row locks, SQLSTATEs, and what each grant admits |

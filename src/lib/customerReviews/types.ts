@@ -103,8 +103,16 @@ export type TestCard = {
   /** Preparation, not delivery. See the module doc. */
   whatsapp_opened_at: string | null
   whatsapp_opened_count: number
-  /** The last allowlisted internal number a link was built for. */
-  whatsapp_target: string | null
+  /**
+   * WHO THE LAST LINK WENT TO — reduced, never the number.
+   *
+   * A tester may enter any valid international number, so the full value is
+   * never stored. The fingerprint is a non-reversible HMAC computed in the
+   * trusted route; the last four are what a person needs to recognise a number
+   * they typed. See src/lib/customerReviews/recipientPrivacy.ts.
+   */
+  whatsapp_target_fingerprint: string | null
+  whatsapp_target_last_four: string | null
 
   /** The tester's separate, deliberate claim that they pressed send. */
   sent_confirmed_at: string | null
@@ -183,7 +191,8 @@ export const TEST_CARD_COLUMNS = [
   'booked_at',
   'whatsapp_opened_at',
   'whatsapp_opened_count',
-  'whatsapp_target',
+  'whatsapp_target_fingerprint',
+  'whatsapp_target_last_four',
   'sent_confirmed_at',
   'sent_confirmed_by',
   'submitted_at',

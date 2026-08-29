@@ -8,10 +8,10 @@ import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import {
   InternalTestWarning,
-  MaskedNumber,
   ReviewBadge,
   ScreenshotIsNotProofNote,
 } from '@/components/customerReviews/ReviewPieces'
+import { maskFromLastFour } from '@/lib/customerReviews/contact'
 import { ScreenshotManager } from '@/components/customerReviews/ScreenshotManager'
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
@@ -287,9 +287,16 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               <dl style={{ margin: 0, display: 'grid', gap: '6px' }}>
                 <Fact label="WhatsApp opened" value={formatTestTimestamp(card.whatsapp_opened_at)} />
                 <Fact label="Times opened" value={String(card.whatsapp_opened_count)} />
+                {/*
+                  THE MASKED FORM IS THE ONLY FORM. There is no reveal control
+                  and no revealable prop, because there is nothing to reveal:
+                  the card stores four digits and a non-reversible fingerprint,
+                  and the number itself was never persisted. A verifier sees
+                  exactly what a tester sees.
+                */}
                 <Fact
                   label="Addressed to"
-                  value={<MaskedNumber value={card.whatsapp_target} revealable={caps.canVerify || !!isAdmin} />}
+                  value={maskFromLastFour(card.whatsapp_target_last_four)}
                 />
                 <Fact label="Tester confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
               </dl>

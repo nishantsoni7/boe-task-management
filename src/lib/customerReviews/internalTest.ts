@@ -119,9 +119,10 @@ export function hasInternalTestWarning(message: string): boolean {
 /**
  * The wa.me address that opens WhatsApp with the test message prefilled.
  *
- * `phoneDigits` is digits only, no '+', which is what wa.me expects — produce
- * it with waMePhone() in ./contact, which refuses a malformed number rather
- * than guessing.
+ * `phoneDigits` is digits only, no '+', which is what wa.me expects. The one
+ * caller passes the `digits` that normalizeWhatsAppNumber returned, so the
+ * value has already been validated as a whole international number — this
+ * function does not re-check it and must never be handed raw input.
  *
  * OPENING THIS URL SENDS NOTHING. It hands the message to WhatsApp with the
  * chat open and the text in the input box; a person still has to press send.

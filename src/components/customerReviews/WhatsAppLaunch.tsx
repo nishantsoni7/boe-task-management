@@ -4,32 +4,44 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, RefreshCw, Send } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { hasInternalTestWarning } from '@/lib/customerReviews/internalTest'
-import { maskWhatsAppNumber } from '@/lib/customerReviews/contact'
+import { maskFromLastFour, maskWhatsAppNumber, normalizeWhatsAppNumber } from '@/lib/customerReviews/contact'
 import { InternalTestWarning, WhatsAppOpenedNote } from './ReviewPieces'
 
 // The one control that reaches outside BOE — and it still does not send
 // anything.
 //
-// THE ALLOWLIST IS THE POINT, AND IT LIVES ON THE SERVER
-// -----------------------------------------------------
-// Nothing in this component builds a wa.me URL. It asks
-// /api/customer-reviews/whatsapp for the approved internal team numbers, the
-// tester picks one, and the SERVER composes the message and the link. If the
-// browser assembled the URL the allowlist would be a suggestion: anything
-// running in this tab could put a stranger's number in the path. Here, the
-// number in the link is one the server chose from its own list.
+// ANY VALID NUMBER, AND WHAT STANDS IN ITS PLACE
+// ----------------------------------------------
+// A tester types whatever international number they want to test against.
+// There is no approved list. What replaced it is not nothing:
 //
-// A tester may also TYPE a number instead of picking one. That is not a hole:
-// what they type is sent to the server and checked against the same list, and a
-// number that is not on it comes back 403 with no link. The picker is a
-// convenience; the server is the boundary.
+//   * the SERVER re-validates whatever is typed, whatever this component did
+//     with it, and refuses a malformed, too-short, too-long or country-code-less
+//     number with no link in the response;
+//   * the tester must tick a confirmation that the number may receive an
+//     internal BOE test message — required by the REQUEST, not by this form;
+//   * only an active `use` holder, and only for a card they hold, gets a link
+//     at all;
+//   * the message still carries the permanent internal-test label, which the
+//     server re-checks and this component re-checks again before opening.
+//
+// THE VALIDATION HERE IS A COURTESY. It saves a round trip to be told the
+// number is malformed and lets the tester see what they typed in canonical
+// form. It is not the boundary: the same function runs on the server, on the
+// value that actually reaches it.
+//
+// NOTHING IN THIS FILE BUILDS A wa.me URL. It asks
+// /api/customer-reviews/whatsapp, and the server composes both the message and
+// the link. If the browser assembled the URL, the validation, the confirmation
+// and the label would each be a suggestion a devtools console could skip.
 //
 // WHAT THE OPEN BUTTON DOES, IN ORDER
 //   1. opens a blank tab SYNCHRONOUSLY, inside the click, so the browser treats
 //      it as user-initiated and does not block it;
 //   2. asks the server for the link with `record: true` — which re-checks, on
 //      the server and in the database, that the caller holds this card, holds
-//      `use`, that the card is still booked, and that the number is approved;
+//      `use`, that the card is still booked, that the confirmation was given
+//      and that the number is well-formed;
 //   3. only then points that tab at the URL the server returned.
 //
 // If step 2 refuses, the tab is closed and nothing opens. That ordering is the
@@ -43,8 +55,9 @@ import { InternalTestWarning, WhatsAppOpenedNote } from './ReviewPieces'
 //     is a separate, deliberate action below.
 //   * It does not attach anything. A wa.me link carries a phone number and a
 //     text parameter and nothing else.
-//   * It does not contact a customer. Every number it can reach is a BOE
-//     internal team number from the deployment's own configuration.
+//   * It does not keep the number. The card stores four digits and a
+//     non-reversible fingerprint; this component holds what was typed only for
+//     as long as the screen is open.
 //
 // REPEATED CLICKS are stopped twice over: a ref guard that rejects a second
 // click while the first is still in flight (state is too slow — two clicks in
@@ -52,9 +65,18 @@ import { InternalTestWarning, WhatsAppOpenedNote } from './ReviewPieces'
 
 const COOLDOWN_MS = 5000
 
-type AllowedNumber = { label: string; e164: string }
+/**
+ * THE CONFIRMATION, WORD FOR WORD.
+ *
+ * The same sentence the route requires. It is written out here rather than
+ * imported from the route because a Client Component must not pull in a module
+ * that reads server-only configuration — and a source-contract test pins the
+ * two strings to each other, so they cannot drift.
+ */
+export const RECIPIENT_CONFIRMATION =
+  'I confirm this number may receive an internal BOE test message and the content will not be published as a customer review.'
 
-type Preview = { message: string; waMeUrl: string; target: { label: string; e164: string } }
+type Preview = { message: string; waMeUrl: string; target: { lastFour: string } }
 
 export function WhatsAppTestPanel({
   cardId,
@@ -68,17 +90,14 @@ export function WhatsAppTestPanel({
   onOpened?: () => void
   onError?: (message: string) => void
 }) {
-  const [numbers, setNumbers]   = useState<AllowedNumber[]>([])
-  const [listError, setListError] = useState<string | null>(null)
-  const [choice, setChoice]     = useState('')
-  const [typed, setTyped]       = useState('')
-  const [useTyped, setUseTyped] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [confirmed, setConfirmed] = useState(false)
 
-  const [preview, setPreview]   = useState<Preview | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(null)
   const [previewing, setPreviewing] = useState(false)
 
-  const [busy, setBusy]         = useState(false)
-  const [cooling, setCooling]   = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [cooling, setCooling] = useState(false)
   const inFlight = useRef(false)
   const cooldownTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -86,49 +105,29 @@ export function WhatsAppTestPanel({
     if (cooldownTimer.current) clearTimeout(cooldownTimer.current)
   }, [])
 
-  // THE ALLOWLIST, FETCHED ONCE. A failure here is shown as a failure — the
-  // panel does not fall back to a free-text field with no list to check
-  // against, because that is precisely the state the allowlist exists to
-  // prevent.
-  useEffect(() => {
-    let active = true
-    const load = async () => {
-      try {
-        const res = await fetch('/api/customer-reviews/whatsapp', { cache: 'no-store' })
-        const body = await res.json().catch(() => null)
-        if (!active) return
-        if (!res.ok) {
-          setListError(body?.error ?? 'Internal test numbers are not available.')
-          return
-        }
-        const list: AllowedNumber[] = Array.isArray(body?.numbers) ? body.numbers : []
-        setNumbers(list)
-        setChoice(list[0]?.e164 ?? '')
-        if (list.length === 0) setListError('No internal test numbers are configured.')
-      } catch {
-        if (active) setListError('Internal test numbers are not available.')
-      }
-    }
-    load()
-    return () => { active = false }
-  }, [])
+  // The courtesy check. `touched` keeps the message from appearing before the
+  // tester has typed anything, which would be scolding them for an empty field
+  // they have not reached yet.
+  const touched = typed.trim() !== ''
+  const normalized = normalizeWhatsAppNumber(typed)
+  const localError = touched && !normalized.ok ? normalized.error : null
 
-  const chosenNumber = useTyped ? typed.trim() : choice
+  const ready = enabled && normalized.ok && confirmed && !busy && !cooling
 
   /**
-   * Ask the server to compose the message. RECORDS NOTHING — `record` defaults
-   * to false server-side and is not sent here, so reading what you are about to
+   * Ask the server to compose the message. RECORDS NOTHING — `record` is not
+   * sent, and defaults to false server-side, so reading what you are about to
    * send never writes to the card.
    */
   const loadPreview = useCallback(async () => {
-    if (!chosenNumber) return
+    if (!normalized.ok || !confirmed) return
     setPreviewing(true)
     setPreview(null)
     try {
       const res = await fetch('/api/customer-reviews/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, number: chosenNumber }),
+        body: JSON.stringify({ cardId, number: typed, confirmed: true }),
       })
       const body = await res.json().catch(() => null)
       if (!res.ok) {
@@ -141,9 +140,7 @@ export function WhatsAppTestPanel({
     } finally {
       setPreviewing(false)
     }
-  }, [cardId, chosenNumber, onError])
-
-  const ready = enabled && !!chosenNumber && !listError && !busy && !cooling
+  }, [cardId, typed, normalized.ok, confirmed, onError])
 
   const launch = useCallback(async () => {
     if (inFlight.current || !ready) return
@@ -158,7 +155,7 @@ export function WhatsAppTestPanel({
       const res = await fetch('/api/customer-reviews/whatsapp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardId, number: chosenNumber, record: true }),
+        body: JSON.stringify({ cardId, number: typed, confirmed: true, record: true }),
       })
       const body = await res.json().catch(() => null)
 
@@ -171,7 +168,7 @@ export function WhatsAppTestPanel({
       const built = body as Preview
       // THE LAST LINE OF DEFENCE FOR THE MANDATORY LABEL. The server already
       // refuses to return an unlabelled message; if that ever changed, nothing
-      // opens rather than an unlabelled message reaching a colleague's phone.
+      // opens rather than an unlabelled message reaching somebody's phone.
       if (!built?.waMeUrl || !hasInternalTestWarning(built.message ?? '')) {
         tab?.close()
         onError?.('That message is missing its internal-test label and was not opened.')
@@ -195,7 +192,7 @@ export function WhatsAppTestPanel({
       inFlight.current = false
       setBusy(false)
     }
-  }, [ready, cardId, chosenNumber, onOpened, onError])
+  }, [ready, cardId, typed, onOpened, onError])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -206,72 +203,71 @@ export function WhatsAppTestPanel({
           htmlFor="internal-test-number"
           style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.secondary, marginBottom: '6px' }}
         >
-          Send the test to an approved BOE internal number
+          Enter WhatsApp number
         </label>
 
-        {listError ? (
-          <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>
-            {listError} Ask an administrator to configure the internal test numbers for this
-            deployment. No message can be prepared until they do.
+        <input
+          id="internal-test-number"
+          type="tel"
+          inputMode="tel"
+          autoComplete="off"
+          value={typed}
+          onChange={e => { setTyped(e.target.value); setPreview(null) }}
+          disabled={!enabled}
+          placeholder="+91 98765 43210"
+          aria-invalid={localError ? true : undefined}
+          aria-describedby="internal-test-number-help"
+          className="boe-input"
+          style={{ maxWidth: '340px' }}
+        />
+
+        <p
+          id="internal-test-number-help"
+          style={{ fontSize: '11px', color: colors.muted, margin: '6px 0 0', lineHeight: 1.5 }}
+        >
+          Include the country code. Spaces, hyphens and brackets are fine. The number is
+          re-checked on the server, and only the last four digits are ever stored.
+        </p>
+
+        {localError && (
+          <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: '6px 0 0' }}>
+            {localError}
           </p>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {!useTyped ? (
-              <select
-                id="internal-test-number"
-                value={choice}
-                onChange={e => { setChoice(e.target.value); setPreview(null) }}
-                disabled={!enabled}
-                className="boe-input"
-                style={{ maxWidth: '340px' }}
-              >
-                {numbers.map(n => (
-                  <option key={n.e164} value={n.e164}>
-                    {n.label} — {maskWhatsAppNumber(n.e164)}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                id="internal-test-number"
-                type="tel"
-                value={typed}
-                onChange={e => { setTyped(e.target.value); setPreview(null) }}
-                disabled={!enabled}
-                placeholder="+91 98765 43210"
-                className="boe-input"
-                style={{ maxWidth: '340px' }}
-              />
-            )}
+        )}
 
-            <button
-              type="button"
-              onClick={() => { setUseTyped(v => !v); setPreview(null) }}
-              style={{
-                alignSelf: 'flex-start', background: 'transparent', border: 'none',
-                padding: 0, cursor: 'pointer', color: colors.tertiary,
-                fontSize: '11px', fontWeight: 600, textDecoration: 'underline',
-              }}
-            >
-              {useTyped ? 'Choose from the approved list instead' : 'Type an approved number instead'}
-            </button>
-
-            {useTyped && (
-              <p style={{ fontSize: '11px', color: colors.muted, margin: 0, lineHeight: 1.5 }}>
-                Whatever you type is checked against the same approved list on the server. A number
-                that is not on it is refused and no link is produced.
-              </p>
-            )}
-          </div>
+        {normalized.ok && (
+          <p style={{ fontSize: '11px', color: colors.tertiary, margin: '6px 0 0' }}>
+            This will open a chat with {maskWhatsAppNumber(normalized.e164)}.
+          </p>
         )}
       </div>
+
+      {/* ── The confirmation ── */}
+      <label
+        style={{
+          display: 'flex', gap: '9px', alignItems: 'flex-start',
+          padding: '10px 12px', borderRadius: '8px',
+          background: colors.blueTint, border: '1px solid rgba(85,133,232,0.22)',
+          fontSize: '12px', lineHeight: 1.55, color: colors.secondary,
+          cursor: enabled ? 'pointer' : 'not-allowed',
+        }}
+      >
+        <input
+          type="checkbox"
+          checked={confirmed}
+          disabled={!enabled}
+          onChange={e => { setConfirmed(e.target.checked); setPreview(null) }}
+          style={{ marginTop: '2px', flexShrink: 0 }}
+        />
+        <span>{RECIPIENT_CONFIRMATION}</span>
+      </label>
 
       {/* ── What it says ── */}
       <div>
         <button
           type="button"
           onClick={loadPreview}
-          disabled={!enabled || !chosenNumber || !!listError || previewing}
+          disabled={!enabled || !normalized.ok || !confirmed || previewing}
           className="boe-btn boe-btn-secondary"
           style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
         >
@@ -296,7 +292,7 @@ export function WhatsAppTestPanel({
             </pre>
             <p style={{ fontSize: '11px', color: colors.muted, margin: 0 }}>
               This is exactly what WhatsApp will be handed, addressed to{' '}
-              {preview.target.label} ({maskWhatsAppNumber(preview.target.e164)}).
+              {maskFromLastFour(preview.target.lastFour)}.
             </p>
           </div>
         )}
