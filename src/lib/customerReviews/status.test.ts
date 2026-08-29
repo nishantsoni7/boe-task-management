@@ -28,11 +28,16 @@ import { ACTIVE_TESTER_STATUSES, TEST_CARD_STATUSES, type TestCardStatus } from 
 const HOLDER = 'user-holder'
 const OTHER = 'user-other'
 
-const tester   = { userId: HOLDER, isAdmin: false, canUse: true,  canVerify: false }
-const verifier = { userId: OTHER,  isAdmin: false, canUse: false, canVerify: true }
-const both     = { userId: OTHER,  isAdmin: false, canUse: true,  canVerify: true }
-const admin    = { userId: OTHER,  isAdmin: true,  canUse: true,  canVerify: true }
-const nobody   = { userId: OTHER,  isAdmin: false, canUse: false, canVerify: false }
+// THE VIEWER SHAPE HAS NO isAdmin FIELD, and that is the point of this file's
+// half of the ownership correction. availableActions() cannot consult a role
+// because it is never handed one; `admin` below is not a special viewer, it is
+// simply somebody who holds both actions and does not hold the card.
+const tester   = { userId: HOLDER, canUse: true,  canVerify: false }
+const verifier = { userId: OTHER,  canUse: false, canVerify: true }
+const both     = { userId: OTHER,  canUse: true,  canVerify: true }
+const admin    = { userId: OTHER,  canUse: true,  canVerify: true }
+const nobody   = { userId: OTHER,  canUse: false, canVerify: false }
+const adminHoldingIt = { userId: HOLDER, canUse: true, canVerify: true }
 
 const card = (status: TestCardStatus, booked_by: string | null = HOLDER) => ({ status, booked_by })
 
@@ -102,7 +107,7 @@ describe('who may make which move', () => {
   })
 
   test('a colleague who merely holds `use` is offered nothing', () => {
-    const colleague = { userId: OTHER, isAdmin: false, canUse: true, canVerify: false }
+    const colleague = { userId: OTHER, canUse: true, canVerify: false }
     assert.deepEqual(availableActions(card('booked'), colleague), [])
     assert.deepEqual(availableActions(card('submitted'), colleague), [])
   })
@@ -123,12 +128,46 @@ describe('who may make which move', () => {
     )
   })
 
-  test('an admin may act on a card they do not hold', () => {
-    assert.deepEqual(availableActions(card('booked'), admin).map(a => a.to), ['submitted'])
+  // ── THE ADMIN BYPASS, REMOVED ─────────────────────────────────────────────
+  //
+  // The test that stood here asserted 'an admin may act on a card they do not
+  // hold' and expected Submit to be offered on somebody else's booked card.
+  // That was the defect, not the specification: submitting is the tester's
+  // statement that THEY ran the test, and an administrator offering it is an
+  // administrator being invited to make that statement on another person's
+  // behalf.
+  //
+  // The two tests below are what replaces it. Note what is NOT lost: an
+  // administrator keeps every verifier move on a submitted card, which is the
+  // whole of the authority they need.
+  test('an administrator is offered NO tester action on a card they do not hold', () => {
+    assert.deepEqual(availableActions(card('booked'), admin), [],
+      'Submit must not be offered on somebody else’s card')
+  })
+
+  test('an administrator keeps verify and return, which is their actual authority', () => {
     assert.deepEqual(
       availableActions(card('submitted'), admin).map(a => a.to).sort(),
       ['booked', 'verified'],
     )
+  })
+
+  test('an administrator who booked the card themselves submits it like anyone', () => {
+    // Ownership, not role, is what changed the answer between this test and the
+    // one above it — the capabilities are identical and only `userId` differs.
+    assert.deepEqual(
+      availableActions(card('booked'), adminHoldingIt).map(a => a.to),
+      ['submitted'],
+    )
+  })
+
+  test('the two `use` holders are told apart by the card, not by anything else', () => {
+    // Same capabilities, same status, different holder — and the only reason
+    // the answers differ.
+    const holder = { userId: HOLDER, canUse: true, canVerify: false }
+    const other  = { userId: OTHER,  canUse: true, canVerify: false }
+    assert.deepEqual(availableActions(card('booked'), holder).map(a => a.to), ['submitted'])
+    assert.deepEqual(availableActions(card('booked'), other), [])
   })
 
   test('somebody with no permission is offered nothing, at any status', () => {
@@ -138,7 +177,7 @@ describe('who may make which move', () => {
   })
 
   test('a signed-out caller is offered nothing', () => {
-    const signedOut = { userId: null, isAdmin: true, canUse: true, canVerify: true }
+    const signedOut = { userId: null, canUse: true, canVerify: true }
     for (const status of TEST_CARD_STATUSES) {
       assert.deepEqual(availableActions(card(status), signedOut), [], status)
     }
@@ -182,7 +221,7 @@ describe('booking', () => {
   })
 
   test('a signed-out caller books nothing', () => {
-    assert.equal(canBookCard({ status: 'available' }, { userId: null, isAdmin: true, canUse: true }), false)
+    assert.equal(canBookCard({ status: 'available' }, { userId: null, canUse: true }), false)
   })
 })
 

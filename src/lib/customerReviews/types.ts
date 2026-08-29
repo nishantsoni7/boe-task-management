@@ -104,14 +104,12 @@ export type TestCard = {
   whatsapp_opened_at: string | null
   whatsapp_opened_count: number
   /**
-   * WHO THE LAST LINK WENT TO — reduced, never the number.
+   * WHO THE LAST LINK WENT TO — four digits, and nothing else.
    *
    * A tester may enter any valid international number, so the full value is
-   * never stored. The fingerprint is a non-reversible HMAC computed in the
-   * trusted route; the last four are what a person needs to recognise a number
-   * they typed. See src/lib/customerReviews/recipientPrivacy.ts.
+   * never stored. Four digits are what a person needs to recognise a number
+   * they typed, and that is the whole of what is kept.
    */
-  whatsapp_target_fingerprint: string | null
   whatsapp_target_last_four: string | null
 
   /** The tester's separate, deliberate claim that they pressed send. */
@@ -191,7 +189,6 @@ export const TEST_CARD_COLUMNS = [
   'booked_at',
   'whatsapp_opened_at',
   'whatsapp_opened_count',
-  'whatsapp_target_fingerprint',
   'whatsapp_target_last_four',
   'sent_confirmed_at',
   'sent_confirmed_by',

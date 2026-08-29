@@ -112,18 +112,19 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   }, [load])
 
   const isAdmin = profile?.role === 'admin'
-  const mine = card ? holdsThisCard(card, profile?.id, caps, profile?.role) : false
+  // NO ROLE IS PASSED, because none is consulted. Holding a card is the whole
+  // of what authorises a tester action, for an administrator as much as anyone.
+  const mine = card ? holdsThisCard(card, profile?.id, caps) : false
 
   const actions = useMemo(
     () => (card
       ? availableActions(card, {
           userId: profile?.id ?? null,
-          isAdmin: !!isAdmin,
           canUse: caps.canUse,
           canVerify: caps.canVerify,
         })
       : []),
-    [card, profile?.id, isAdmin, caps.canUse, caps.canVerify],
+    [card, profile?.id, caps.canUse, caps.canVerify],
   )
 
   const blockers = card ? submissionBlockers(card, screenshots.length) : []
@@ -290,7 +291,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                 {/*
                   THE MASKED FORM IS THE ONLY FORM. There is no reveal control
                   and no revealable prop, because there is nothing to reveal:
-                  the card stores four digits and a non-reversible fingerprint,
+                  the card stores four digits and nothing else,
                   and the number itself was never persisted. A verifier sees
                   exactly what a tester sees.
                 */}

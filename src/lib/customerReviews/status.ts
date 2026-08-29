@@ -128,15 +128,19 @@ const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
  * Three separate gates, and all three have to pass:
  *   1. the transition table above,
  *   2. `verify` for the two verifier-only moves,
- *   3. HOLDING THE CARD (or being an admin) for everything else — a verifier
- *      does not run somebody else's test for them.
+ *   3. HOLDING THE CARD for everything else.
+ *
+ * GATE 3 HAS NO ADMINISTRATOR EXCEPTION. A tester action belongs to the tester
+ * who booked the card — an administrator who did not run the test cannot submit
+ * it as though they had, and neither can a verifier. Administrator and verifier
+ * authority covers verifying and returning, which is gate 2.
  *
  * This is the UI half of the boundary. The RPC re-checks all three, and the RPC
  * is what actually refuses.
  */
 export function availableActions(
   card: Pick<TestCard, 'status' | 'booked_by'>,
-  viewer: { userId: string | null; isAdmin: boolean; canUse: boolean; canVerify: boolean },
+  viewer: { userId: string | null; canUse: boolean; canVerify: boolean },
 ): TestCardAction[] {
   if (!viewer.userId) return []
 
@@ -144,8 +148,8 @@ export function availableActions(
 
   return (TEST_CARD_TRANSITIONS[card.status] ?? [])
     .filter(to => {
-      if (transitionRequiresVerify(to)) return viewer.isAdmin || viewer.canVerify
-      return viewer.isAdmin || (holdsCard && viewer.canUse)
+      if (transitionRequiresVerify(to)) return viewer.canVerify
+      return holdsCard && viewer.canUse
     })
     .map(to => ACTION_LABELS[to])
 }
@@ -153,10 +157,10 @@ export function availableActions(
 /**
  * May this person book this card?
  *
- * The browser-side mirror of book_customer_review_test_card(). An admin is
- * included because every module here admits one — and because somebody has to
- * be able to exercise the workflow on a fresh deployment before any grant
- * exists.
+ * The browser-side mirror of book_customer_review_test_card(). `use` and
+ * nothing else — an administrator books a card by holding `use`, which the
+ * role_permissions seed grants them, rather than by being an administrator.
+ * That is what makes an explicit revocation in Control Center actually revoke.
  *
  * THE ATOMICITY IS NOT HERE. This function decides what button to draw. Whether
  * two testers clicking at once both get the card is decided by a conditional
@@ -164,9 +168,9 @@ export function availableActions(
  */
 export function canBookCard(
   card: Pick<TestCard, 'status'>,
-  viewer: { userId: string | null; isAdmin: boolean; canUse: boolean },
+  viewer: { userId: string | null; canUse: boolean },
 ): boolean {
   if (!viewer.userId) return false
   if (card.status !== 'available') return false
-  return viewer.isAdmin || viewer.canUse
+  return viewer.canUse
 }

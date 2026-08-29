@@ -53,8 +53,9 @@ import {
 //   2. resolve customer_review_requests.use for them;
 //   3. read the card THROUGH THEIR OWN RLS, so a card they may not see does not
 //      exist as far as this route is concerned;
-//   4. apply the status rule (only while they still HOLD the card) and the
-//      ownership rule;
+//   4. apply the OWNERSHIP rule — `card.booked_by = the caller`, with no
+//      administrator exception, because attaching and removing a screenshot are
+//      tester actions — and the status rule (only while they still hold it);
 //   5. read the whole file into memory, gate it structurally, then DECODE AND
 //      RE-ENCODE it — the stored object is libvips output, never the upload;
 //   6. only then upload, to a path this server generates;
@@ -107,7 +108,7 @@ const MESSAGES = {
   duplicate:       'That screenshot is already attached to this test card.',
   upload_failed:   'That screenshot could not be stored. Try again.',
   unavailable:     'Screenshot uploads are not configured on this deployment.',
-  remove_locked:   'That screenshot can no longer be removed. Ask an administrator.',
+  remove_locked:   'This test has been handed over, so its screenshot is frozen. Ask a verifier to return the card if it needs changing.',
   remove_failed:   'That screenshot could not be removed. Try again.',
   remove_partial:  'The image was removed but the record could not be updated. Try again.',
 } as const
@@ -149,6 +150,10 @@ export async function POST(req: NextRequest) {
     })
     if (allowed !== true) return fail(403, MESSAGES.forbidden)
   }
+
+  // `isAdmin` is deliberately NOT consulted below. It is resolved above only
+  // to decide whether the permission RPC needs asking; it authorises nothing
+  // here, because nothing here is an administrator's to do.
 
   // ── 3. What was sent ──────────────────────────────────────────────────────
   let cardId: string
@@ -200,8 +205,13 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (!card) return fail(404, MESSAGES.not_found)
 
-  const holdsCard = card.booked_by === user.id
-  if (!holdsCard && !isAdmin) return fail(403, MESSAGES.forbidden)
+  // THE HOLDER, AND ONLY THE HOLDER — no administrator branch.
+  //
+  // Attaching a screenshot is a tester action, so being an administrator does
+  // not authorise doing it on a card somebody else booked. RLS lets a verifier
+  // and an admin READ every card, which is what verification needs; reading is
+  // not holding, and this is the line that says so.
+  if (card.booked_by !== user.id) return fail(403, MESSAGES.forbidden)
 
   // WHILE THEY STILL HOLD IT, and no later. Once a card is submitted the
   // evidence is what a verifier is about to look at, and once it is verified
@@ -255,12 +265,28 @@ export async function POST(req: NextRequest) {
   // replacement it exists to allow.
   const live = (existing ?? []).filter(row => row.removal_started_at === null)
 
+  // ── THIS COUNT IS A COURTESY, NOT THE GUARANTEE ───────────────────────────
+  //
+  // It is a READ FOLLOWED BY A WRITE. Two concurrent uploads with different
+  // content both read zero here and both proceed — the count is correct for
+  // each request and wrong for the card. No amount of care at this point fixes
+  // that.
+  //
+  // What fixes it is a partial unique index in the database
+  // (customer_review_screenshot_one_live_per_card, migration 20261017000000
+  // §4): the second inserter blocks on the index and fails with 23505. Step 9
+  // below turns that into the SAME sentence this check produces, so a tester
+  // sees one answer however the race went.
+  //
+  // The check stays because it is cheaper and kinder: it refuses before five
+  // megabytes are decoded, re-encoded and uploaded.
   if (live.length >= MAX_TEST_SCREENSHOTS) return fail(409, MESSAGES.too_many)
 
   // REPEATED CLICKS, answered by the content rather than by a timer. Two
   // requests carrying identical bytes for the same card are one upload; the
   // second is refused whatever raced with what, and a genuinely different image
-  // is never blocked.
+  // is never blocked. Backed by its own partial unique index for the same
+  // reason as above.
   if (live.some(row => row.content_sha256 === digest)) {
     return fail(409, MESSAGES.duplicate)
   }
@@ -309,6 +335,24 @@ export async function POST(req: NextRequest) {
     // it before returning, so a failed attach leaves the card exactly as it was
     // rather than leaving a file nobody can find again.
     await service.storage.from(TEST_SCREENSHOT_BUCKET).remove([storagePath])
+
+    // ── THE RACE, ARRIVING AS A UNIQUE VIOLATION ────────────────────────────
+    //
+    // 23505 here means another request won: either it registered a live
+    // screenshot for this card first (one-live-per-card), or it registered
+    // these same bytes first (unique-live-content). Both are the states the
+    // count in step 7 was trying to prevent and could not, because it read
+    // before it wrote.
+    //
+    // The loser is told exactly what the count would have told it, so the
+    // outcome does not depend on which check caught it. The two indexes are
+    // distinguished by NAME rather than by guessing from the message text.
+    if (rowError?.code === '23505') {
+      const constraint = `${rowError.message ?? ''} ${rowError.details ?? ''}`
+      return fail(409, constraint.includes('unique_live_content')
+        ? MESSAGES.duplicate
+        : MESSAGES.too_many)
+    }
     return fail(500, MESSAGES.upload_failed)
   }
 

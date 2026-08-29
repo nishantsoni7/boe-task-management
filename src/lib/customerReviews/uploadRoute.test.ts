@@ -132,8 +132,32 @@ describe('who may call it', () => {
     assert.ok(route.includes('if (!card) return fail(404'))
   })
 
-  test('somebody who does not hold the card, and is not an admin, is refused', () => {
-    assert.ok(route.includes('if (!holdsCard && !isAdmin) return fail(403'))
+  test('ONLY THE HOLDER MAY ATTACH, AND AN ADMINISTRATOR IS NOT AN EXCEPTION', () => {
+    assert.ok(route.includes('if (card.booked_by !== user.id) return fail(403'))
+
+    // The check that stood here was `!holdsCard && !isAdmin`, which let an
+    // administrator attach a screenshot to a test somebody else ran — evidence
+    // presented under another person's name. Asserted as an ABSENCE as well as
+    // a presence, because the two forms differ by one disjunct and read alike.
+    assert.equal(/holdsCard/.test(route), false,
+      'the holds-or-is-admin helper is still there')
+    assert.equal(/isAdmin\s*(\|\||&&)|(\|\||&&)\s*!?\s*isAdmin/.test(route), false,
+      'isAdmin is still combined into an authorization decision')
+
+    // isAdmin is still COMPUTED — it decides whether the permission RPC needs
+    // asking at all — so its presence is not the defect. What must be true is
+    // that it never decides an ownership question. Its only permitted use is
+    // the permission-resolution branch near the top of each handler.
+    const uses = route.split('\n')
+      .map((line, i) => ({ line: line.trim(), i }))
+      .filter(u => /\bisAdmin\b/.test(u.line))
+    assert.ok(uses.length > 0, 'isAdmin vanished entirely — update this test')
+    for (const use of uses) {
+      assert.ok(
+        /^const isAdmin = profile\.role === 'admin'$/.test(use.line) || use.line === 'if (!isAdmin) {',
+        `isAdmin is used for something other than permission resolution: ${use.line}`,
+      )
+    }
   })
 
   test('A SCREENSHOT MAY ONLY BE ATTACHED WHILE THE CARD IS BOOKED', () => {
@@ -234,16 +258,87 @@ describe('nothing is left behind', () => {
     assert.ok(route.includes("createHash('sha256').update(stored).digest('hex')"))
     assert.ok(route.includes('row.content_sha256 === digest'))
     assert.ok(route.includes('MESSAGES.duplicate'))
-    // And the database refuses it too, whatever raced with what.
-    assert.ok(sql.includes('constraint customer_review_screenshot_unique_content_per_card'))
   })
 
-  test('the per-card count limit is enforced server-side', () => {
+  test('the per-card count limit is checked server-side before the bytes move', () => {
     assert.ok(route.includes('live.length >= MAX_TEST_SCREENSHOTS'))
     // A row already marked for removal does not count against the limit: it is
     // on its way out, every reader already treats it as gone, and counting it
     // would let a failed removal permanently block its own replacement.
     assert.ok(route.includes('row.removal_started_at === null'))
+  })
+})
+
+// ── 5b. ONE LIVE SCREENSHOT, AND WHERE THAT IS ACTUALLY TRUE ────────────────
+//
+// The count above is a READ FOLLOWED BY A WRITE. Two concurrent uploads with
+// different content both read zero and both proceed, so the route cannot be the
+// guarantee — and a test that only matched the route's source would have called
+// the defect fixed while it was still there.
+//
+// These tests are about the DATABASE. The behavioural proof that two concurrent
+// inserts really do collide runs against a live disposable stack in
+// supabase/tests/customer_review_test_card_assertions.sql and in the
+// concurrency probe the runner invokes; what is checkable here is that the
+// indexes exist, that they are PARTIAL in the specific way that matters, and
+// that the route turns the resulting error back into an ordinary answer.
+
+describe('one live screenshot per card is a DATABASE guarantee', () => {
+  test('the count in the route is documented as insufficient on its own', () => {
+    // Not decoration. The next person to read that check needs to know it is a
+    // courtesy, or they will "simplify" the index away as redundant.
+    const at = raw.indexOf('live.length >= MAX_TEST_SCREENSHOTS')
+    const preamble = raw.slice(Math.max(0, at - 1400), at)
+    assert.ok(/READ FOLLOWED BY A WRITE/i.test(preamble),
+      'the route does not say why its own count cannot be the guarantee')
+    assert.ok(preamble.includes('customer_review_screenshot_one_live_per_card'),
+      'the route does not name the index that actually enforces this')
+    // And that name is a real index, not a comment describing an intention.
+    assert.ok(sql.includes('create unique index customer_review_screenshot_one_live_per_card'))
+  })
+
+  test('TWO PARTIAL UNIQUE INDEXES EXIST', () => {
+    assert.ok(sql.includes(
+      'create unique index customer_review_screenshot_one_live_per_card\n' +
+      '  on public.customer_review_test_card_screenshots (card_id)\n' +
+      '  where removal_started_at is null;'),
+      'one-live-per-card index missing or not partial')
+
+    assert.ok(sql.includes(
+      'create unique index customer_review_screenshot_unique_live_content\n' +
+      '  on public.customer_review_test_card_screenshots (card_id, content_sha256)\n' +
+      '  where removal_started_at is null;'),
+      'unique-live-content index missing or not partial')
+  })
+
+  test('THE OLD TOTAL CONSTRAINT IS GONE, and its removal is the retry fix', () => {
+    // `unique (card_id, content_sha256)` counted rows already marked for
+    // removal. A failed object deletion therefore left the card permanently
+    // unable to accept a replacement — including the very same file, which is
+    // exactly what a person retries with.
+    assert.equal(sql.includes('customer_review_screenshot_unique_content_per_card'), false,
+      'the total (non-partial) uniqueness constraint is still there')
+
+    // No unqualified uniqueness on this table at all: every uniqueness rule it
+    // has must exclude rows on their way out.
+    const table = 'public.customer_review_test_card_screenshots'
+    for (const m of sql.matchAll(/create unique index (\w+)\n([\s\S]*?);/g)) {
+      if (!m[2].includes(table)) continue
+      assert.ok(m[2].includes('where removal_started_at is null'),
+        `index ${m[1]} on the screenshots table is not partial`)
+    }
+  })
+
+  test('the losing inserter is told the same thing the count would have told it', () => {
+    const branch = route.slice(route.indexOf('if (rowError || !row)'))
+    assert.ok(branch.includes("rowError?.code === '23505'"),
+      'a unique violation is not distinguished from a generic failure')
+    assert.ok(branch.includes('MESSAGES.duplicate'))
+    assert.ok(branch.includes('MESSAGES.too_many'))
+    // Told apart by INDEX NAME rather than by guessing from prose.
+    assert.ok(branch.includes("includes('unique_live_content')"))
+    // The object is still removed first, so losing the race leaves no orphan.
+    assert.ok(branch.indexOf('.remove([storagePath])') < branch.indexOf("'23505'"))
   })
 })
 
@@ -261,7 +356,9 @@ describe('errors are safe', () => {
       const tokens = match[1].split(/\?|:/).map(t => t.trim()).filter(Boolean)
       for (const token of tokens) {
         // The condition of a ternary is not a message.
-        if (/^kind ===|^inspection\.reason ===/.test(token)) continue
+        // The condition of a ternary is not a message: a comparison, or the
+        // constraint-name test that tells the two unique indexes apart.
+        if (/^kind ===|^inspection\.reason ===|^constraint\.includes\(/.test(token)) continue
         assert.ok(
           token.startsWith('MESSAGES.') || token.startsWith('IMAGE_REJECTION_MESSAGES'),
           `fail() called with something that is not a prewritten message: ${token}`,

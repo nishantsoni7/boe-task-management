@@ -55,9 +55,9 @@ import { InternalTestWarning, WhatsAppOpenedNote } from './ReviewPieces'
 //     is a separate, deliberate action below.
 //   * It does not attach anything. A wa.me link carries a phone number and a
 //     text parameter and nothing else.
-//   * It does not keep the number. The card stores four digits and a
-//     non-reversible fingerprint; this component holds what was typed only for
-//     as long as the screen is open.
+//   * It does not keep the number. The card stores four digits and nothing
+//     else; this component holds what was typed only for as long as the screen
+//     is open.
 //
 // REPEATED CLICKS are stopped twice over: a ref guard that rejects a second
 // click while the first is still in flight (state is too slow — two clicks in

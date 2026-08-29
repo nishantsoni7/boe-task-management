@@ -49,6 +49,17 @@ function fnBody(name: string): string {
   return sql.slice(start, close + tag.length)
 }
 
+// The same slice, taken from the migration WITH its comments intact — for the
+// one test that is about what the function explains rather than what it does.
+function fnBodyWithComments(name: string): string {
+  const start = migration.indexOf(`create or replace function public.${name}`)
+  assert.notEqual(start, -1, `${name} is missing`)
+  const tag = /\$[A-Za-z_]*\$/.exec(migration.slice(start))![0]
+  const open = migration.indexOf(tag, start)
+  const close = migration.indexOf(tag, open + tag.length)
+  return migration.slice(start, close + tag.length)
+}
+
 // ══ 1. THE CLIENT CANNOT DELETE EITHER HALF ═════════════════════════════════
 
 describe('a browser cannot delete an object or a metadata row', () => {
@@ -267,38 +278,68 @@ describe('the two SQL halves are unreachable from a browser', () => {
 describe('authorization inside the marking function', () => {
   const body = fnBody('begin_customer_review_test_screenshot_removal')
 
-  test('an inactive account is refused', () => {
+  test('an inactive account is refused, without asking what role it has', () => {
     assert.ok(body.includes('where u.id = p_actor_id and u.is_active'))
-    assert.ok(body.includes('if v_admin is null then'))
+    // The row is looked up to answer "is this account active", and for nothing
+    // else. It used to be read into v_admin so a role could be branched on
+    // later; there is no later branch now, so there is no variable.
+    assert.equal(body.includes('v_admin'), false, 'the admin variable is still declared or read')
   })
 
-  test('a non-admin must HOLD THE CARD and hold `use`', () => {
+  test('THE REMOVER MUST HOLD THE CARD, and hold `use`', () => {
     assert.ok(body.includes('c.booked_by = p_actor_id'))
     assert.ok(body.includes("resolve_permission(p_actor_id, 'customer_review_requests', 'use')"))
+    // Both, not either: an AND, so a `use` holder who does not hold this card
+    // is refused exactly as a holder without `use` is.
+    assert.ok(/not \(\s*c\.booked_by = p_actor_id\s*and public\.resolve_permission/.test(body),
+      'holding the card and holding `use` are not both required')
+  })
+
+  test('AN ADMINISTRATOR IS NOT AN EXCEPTION, and no role is consulted at all', () => {
+    // The test that stood here read 'an admin may correct one at any status,
+    // verified included', and it asserted the bypass as though it were the
+    // specification. It let an administrator withdraw evidence from a test
+    // somebody else ran, at any status — including after it had been verified.
+    //
+    // The function no longer reads a role anywhere. That is checked as an
+    // absence of the whole vocabulary rather than of one expression, because
+    // the bypass could return in several shapes.
+    for (const token of ["'admin'", 'v_admin', 'u.role', 'is_admin']) {
+      assert.equal(body.includes(token), false, `the removal function still consults ${token}`)
+    }
   })
 
   test('A TESTER MAY ONLY WITHDRAW WHILE THEY STILL HOLD THE CARD', () => {
     // Evidence a verifier has already acted on must not vanish from underneath
     // their decision — and evidence they are ABOUT to act on must not either.
-    // Once a card is submitted the screenshot is frozen for everyone but an
-    // administrator. This replaces the earlier two-kind ladder (a project
-    // photograph while preparing, proof until verification), which described a
-    // workflow that no longer exists.
+    // Once a card is submitted the screenshot is frozen, and now for EVERYBODY.
     assert.ok(body.includes("if c.status <> 'booked' then"))
     assert.ok(body.includes('CUSTOMER_REVIEW_TEST_LOCKED'))
-    // …and the check sits inside the non-admin branch, so a correction is still
-    // possible.
-    const nonAdmin = body.slice(body.indexOf('if not v_admin then'))
-    assert.ok(nonAdmin.includes("c.status <> 'booked'"))
+
+    // The status check is unconditional — not nested inside any branch that
+    // could exempt somebody from it.
+    const ladder = body.slice(body.indexOf("if c.status <> 'booked' then"))
+    assert.ok(ladder.includes("using errcode = '42501'"))
+    const before = body.slice(0, body.indexOf("if c.status <> 'booked' then"))
+    const opens = (before.match(/\bif [^;]*? then\b/g) ?? []).length
+    const closes = (before.match(/end if;/g) ?? []).length
+    assert.equal(opens, closes, 'the status check is nested inside an open branch')
   })
 
-  test('an admin may correct one at any status, verified included', () => {
-    // The entire status ladder is inside `if not v_admin then`. Without this an
-    // image uploaded by accident — a personal chat in shot, a colleague's number
-    // visible — would be permanently unremovable.
-    assert.ok(body.includes('if not v_admin then'))
-    const beforeLadder = body.slice(0, body.indexOf('if not v_admin then'))
-    assert.equal(beforeLadder.includes("c.status <>"), false)
+  test('THE COST OF THAT IS WRITTEN DOWN, not discovered by a tester', () => {
+    // Once a card is submitted nobody can withdraw its screenshot, so a
+    // mistaken upload is corrected by a verifier RETURNING the card. That is a
+    // real extra step and the next person to read this needs to find it here
+    // rather than rediscovering it as a bug report.
+    const commented = fnBodyWithComments('begin_customer_review_test_screenshot_removal')
+    assert.ok(/returned to its\s+-- tester|card to be returned/i.test(commented),
+      'the removal function does not say how a mistaken upload is corrected')
+
+    // And the sentence a tester actually sees points at the same route.
+    const route = readFileSync(
+      join(ROOT, 'src/app/api/customer-reviews/photos/route.ts'), 'utf8')
+    assert.ok(/remove_locked:\s*'[^']*verifier to return the card/.test(route),
+      'the refusal message still tells a tester to ask an administrator')
   })
 
   test('every refusal carries an SQLSTATE a caller can branch on', () => {

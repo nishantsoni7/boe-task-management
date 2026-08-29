@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import { normalizeWhatsAppNumber } from '@/lib/customerReviews/contact'
-import { fingerprintRecipient } from '@/lib/customerReviews/recipientPrivacy'
 import { buildInternalTestMessage, buildWaMeUrl, hasInternalTestWarning } from '@/lib/customerReviews/internalTest'
 import { testCategoryLabel } from '@/lib/customerReviews/types'
 
@@ -50,8 +49,8 @@ import { testCategoryLabel } from '@/lib/customerReviews/types'
 //   * IT DOES NOT OPEN WHATSAPP. It returns a URL. Whether anything navigates
 //     to it is the browser's business, and no test in this module does.
 //   * IT DOES NOT STORE OR LOG THE NUMBER. What reaches the database is four
-//     digits and a non-reversible fingerprint. No log line, no error message
-//     and no event detail in this file contains any part of a number.
+//     digits. No log line, no error message and no event detail in this file
+//     contains any part of a number.
 
 export const runtime = 'nodejs'
 
@@ -210,7 +209,14 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
   if (!card) return fail(404, MESSAGES.not_found)
 
-  if (!caller.isAdmin && card.booked_by !== caller.userId) return fail(403, MESSAGES.forbidden)
+  // THE HOLDER, AND ONLY THE HOLDER — no administrator branch.
+  //
+  // Producing a WhatsApp link is a tester action, so being an administrator
+  // does not authorise doing it on a card somebody else booked. RLS lets a
+  // verifier and an admin READ every card, which is what verification needs;
+  // reading is not holding, and this is the line that says so. The RPC below
+  // re-checks the same rule against auth-independent state.
+  if (card.booked_by !== caller.userId) return fail(403, MESSAGES.forbidden)
   if (card.status !== 'booked') return fail(409, MESSAGES.wrong_status)
 
   // ── The message, composed here and nowhere else ───────────────────────────
@@ -243,9 +249,13 @@ export async function POST(req: NextRequest) {
   // status — see migration 20261017000000 §8, where the function has no status
   // assignment at all.
   //
-  // WHAT GOES TO THE DATABASE IS NOT THE NUMBER: four digits and a
-  // non-reversible fingerprint, computed here. The full E.164 form does not
-  // leave this function.
+  // WHAT GOES TO THE DATABASE IS NOT THE NUMBER: four digits, sliced off the
+  // validated E.164 form. The full value does not leave this function.
+  //
+  // An earlier version also computed a keyed HMAC fingerprint so that two tests
+  // to the same number could be correlated. Nothing needed that, and it bought
+  // a credential dependency and a rotation hazard for no benefit, so it is
+  // gone. Four digits are the whole requirement.
   if (record) {
     const admin = adminClient()
     if (!admin.ok) {
@@ -254,18 +264,9 @@ export async function POST(req: NextRequest) {
       return fail(503, MESSAGES.unavailable)
     }
 
-    const stored = fingerprintRecipient(normalized.e164)
-    if (!stored.ok) {
-      // FAIL CLOSED rather than recording a weaker value. The reason is a
-      // fixed word from a closed set and names no number.
-      console.error('[customer-reviews:whatsapp] cannot fingerprint recipient:', stored.reason)
-      return fail(503, MESSAGES.unavailable)
-    }
-
     const { error } = await admin.client.rpc('record_customer_review_test_card_whatsapp_opened', {
       p_card_id: cardId,
-      p_target_fingerprint: stored.value.fingerprint,
-      p_target_last_four: stored.value.lastFour,
+      p_target_last_four: normalized.e164.slice(-4),
       p_actor_id: caller.userId,
     })
     if (error) {

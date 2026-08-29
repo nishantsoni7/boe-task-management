@@ -245,13 +245,13 @@ export function TestCardListScreen() {
         {/* The label leads the page, before any card is read. */}
         <InternalTestWarning />
 
-        {/*
-          WHAT THIS SAYS IS WHAT BOE CAN VOUCH FOR, and no more. It used to
-          promise that messages went "only to approved BOE internal team
-          numbers" and that "no customer is contacted" — both true under the
-          allowlist, and neither guaranteed once a tester can type any number.
-          The tester chooses the recipient, so the tester is told that plainly
-          rather than reassured with something the system no longer enforces.
+{/*
+          WHAT THIS SAYS IS WHAT BOE CAN VOUCH FOR, and no more.
+          Earlier wording promised that messages reached only approved internal
+          numbers and that nobody outside BOE could be contacted. Neither is
+          enforced: the tester chooses the recipient. So the tester is told that
+          plainly rather than reassured with a guarantee the system does not
+          make.
         */}
         <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.6, margin: 0 }}>
           Every card here is fictional filler used to rehearse the workflow. You choose which
@@ -324,7 +324,6 @@ export function TestCardListScreen() {
                 card={card}
                 showBook={tab === 'available' && canBookCard(card, {
                   userId: profile?.id ?? null,
-                  isAdmin: profile?.role === 'admin',
                   canUse: caps.canUse,
                 })}
                 booking={bookingId === card.id}

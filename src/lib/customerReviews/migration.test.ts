@@ -187,13 +187,39 @@ describe('the product this module is, and the product it is not', () => {
     assert.equal(/~ '\^\\\+\[1-9\]\[0-9\]\{7,14\}\$'/.test(code), false,
       'a column is constrained to E.164, which means it holds a number')
 
-    assert.ok(code.includes('whatsapp_target_fingerprint text check ('))
-    assert.ok(code.includes("whatsapp_target_fingerprint ~ '^[0-9a-f]{64}$'"))
+    // ONE COLUMN, AND IT HOLDS FOUR DIGITS.
     assert.ok(code.includes('whatsapp_target_last_four text check ('))
     assert.ok(code.includes("whatsapp_target_last_four ~ '^[0-9]{4}$'"))
-    // Both or neither: a fingerprint with no last four, or the reverse, would
-    // be a half-written recipient nothing could render or correlate.
-    assert.ok(code.includes('constraint customer_review_test_cards_target_consistent check ('))
+
+    // THE FINGERPRINT COLUMN IS GONE, along with the consistency constraint
+    // that paired it with the four digits. It was an HMAC of the E.164 form,
+    // kept so that two tests sent to one number could be correlated — a use
+    // this workflow does not have. What it did have was a dependency on a
+    // server credential (SUPABASE_SERVICE_ROLE_KEY, reused as a key, which is
+    // not what that credential is for) and no rotation story.
+    for (const token of ['whatsapp_target_fingerprint',
+                         'customer_review_test_cards_target_consistent']) {
+      assert.equal(code.includes(token), false,
+        `the recipient fingerprint survives somewhere: ${token}`)
+    }
+
+    // A 64-hex column is not forbidden outright — the screenshot table has one
+    // — so the check is that the ONLY one is the image content digest, which is
+    // about bytes the server itself produced and about no recipient.
+    const digests = [...code.matchAll(/(\w+) text (?:not null )?check \(\1 ~ '\^\[0-9a-f\]\{64\}\$'\)/g)]
+      .map(m => m[1])
+    assert.deepEqual(digests, ['content_sha256'])
+
+    // And nothing in the executable SQL builds, stores or reads one under
+    // another name. Prose is exempt on purpose: the column's COMMENT says the
+    // fingerprint existed and was removed, which is the sort of thing the next
+    // reader needs and the sort of thing a blunt keyword sweep would delete.
+    const executable = code
+      .split(/;\n/)
+      .filter(stmt => !/^\s*comment on /i.test(stmt))
+      .join(';\n')
+    assert.equal(/fingerprint|hmac/i.test(executable), false,
+      'a fingerprint or HMAC is referenced by executable SQL')
   })
 
   test('the mandatory label exists in SQL, and a card body may not carry a copy', () => {
@@ -490,17 +516,27 @@ describe('WhatsApp is preparation, and never delivery', () => {
     // The single most important negative in the module.
     assert.equal(/set[\s\S]*?\bstatus\s*=/.test(fn), false,
       'the WhatsApp recorder assigns a status')
-    assert.ok(fn.includes('whatsapp_opened_at          = now()'))
-    assert.ok(fn.includes('whatsapp_opened_count       = whatsapp_opened_count + 1'))
+    assert.ok(fn.includes('whatsapp_opened_at        = now()'))
+    assert.ok(fn.includes('whatsapp_opened_count     = whatsapp_opened_count + 1'))
+    assert.ok(fn.includes('whatsapp_target_last_four = p_target_last_four'))
+    // Three assignments and no fourth: the fingerprint is not written under a
+    // different name.
+    const setClause = fn.slice(fn.indexOf('set whatsapp_opened_at'), fn.indexOf('where id = p_card_id;', fn.indexOf('set whatsapp_opened_at')))
+    assert.equal(setClause.split('=').length - 1, 3, 'the recorder writes a fourth column')
   })
 
   test('it is reachable by service_role alone, because it takes an actor', () => {
+    // THREE ARGUMENTS. A grant that names a signature no longer defined is a
+    // silent no-op — it does not error, and it leaves the function granted to
+    // whatever it was granted to before — so the arity here is load-bearing.
     assert.ok(code.includes(
-      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  from public, anon, authenticated;',
+      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  from public, anon, authenticated;',
     ))
     assert.ok(code.includes(
-      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  to service_role;',
+      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  to service_role;',
     ))
+    assert.equal(code.includes('record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)'), false,
+      'the four-argument signature is still named somewhere')
   })
 
   test('THE RECIPIENT REACHES SQL ALREADY REDUCED, and nothing else is accepted', () => {
@@ -510,11 +546,19 @@ describe('WhatsApp is preparation, and never delivery', () => {
     // rather than a habit of its one caller.
     const fn = /create or replace function public\.record_customer_review_test_card_whatsapp_opened[\s\S]*?\$\$;/
       .exec(code)?.[0] ?? ''
-    assert.ok(fn.includes('p_target_fingerprint text'))
-    assert.ok(fn.includes('p_target_last_four   text'))
-    assert.ok(fn.includes("p_target_fingerprint !~ '^[0-9a-f]{64}$'"))
+    assert.ok(fn.includes('p_target_last_four text'))
     assert.ok(fn.includes("p_target_last_four !~ '^[0-9]{4}$'"))
     assert.ok(fn.includes('CUSTOMER_REVIEW_TEST_BAD_TARGET'))
+
+    // THE PARAMETER LIST IS THE PROPERTY. Four digits is a shape a telephone
+    // number cannot take, so "SQL never sees a number" holds for any caller
+    // rather than for the one caller that exists today. Counted, so a
+    // reintroduced parameter fails here even under an innocent name.
+    const params = fn.slice(fn.indexOf('(') + 1, fn.indexOf(')'))
+    assert.deepEqual(
+      params.split(',').map(x => x.trim().split(/\s+/)[0]).filter(Boolean),
+      ['p_card_id', 'p_target_last_four', 'p_actor_id'],
+    )
   })
 
   test('confirming a send is a SEPARATE function that also moves no status', () => {

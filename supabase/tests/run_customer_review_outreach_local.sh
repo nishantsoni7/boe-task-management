@@ -176,7 +176,7 @@ require_disposable_stack || exit 1
 echo "══ marker present; public, auth, storage and the ledger are all empty — safe to build"
 echo
 
-echo "══ 1/9  baseline (TEST-ONLY, not a migration)"
+echo "══ 1/10 baseline (TEST-ONLY, not a migration)"
 echo "──      $BASELINE"
 psql_file "$REPO/$BASELINE"
 echo "        ✓ applied"
@@ -184,7 +184,7 @@ echo "        ✓ applied"
 step=2
 for m in "${MIGRATIONS[@]}"; do
   echo
-  echo "══ $step/9  $m"
+  echo "══ $step/10 $m"
   if [ "$m" = "$PENDING" ]; then
     # The file under review. It is allowed to differ from HEAD — but the
     # difference is printed rather than assumed, so a run can never quietly
@@ -205,11 +205,11 @@ for m in "${MIGRATIONS[@]}"; do
 done
 
 echo
-echo "══ 8/9  $ASSERTIONS"
+echo "══ 8/10 $ASSERTIONS"
 psql_file "$REPO/$ASSERTIONS"
 
 echo
-echo "══ 9/9  $FIXTURE (TEST-ONLY, not a migration)"
+echo "══ 9/10 $FIXTURE (TEST-ONLY, not a migration)"
 psql_file "$REPO/$FIXTURE"
 LOADED="$(_psql_raw "select count(*) from public.customer_review_test_cards where card_ref like 'TEST-0%'")"
 if [ "$LOADED" != "16" ]; then
@@ -221,8 +221,106 @@ echo "        clear them with:"
 echo "          docker exec -i $DB_CONTAINER psql -U postgres -d $DB_NAME -v ON_ERROR_STOP=1 \\"
 echo "            -f - < supabase/fixtures/customer_review_test_cards_clear.sql"
 
+
 echo
-echo "══ all nine steps passed"
+echo "══ 10/10 the one-live-screenshot guarantee, at the DATABASE boundary"
+echo "──      Two psql PROCESSES, two connections, two transactions, two DIFFERENT"
+echo "──      images, one card. Neither can see the other's uncommitted row, which"
+echo "──      is exactly the situation the route's count-then-insert could not"
+echo "──      survive: both would read zero live screenshots and both would go on"
+echo "──      to insert. If the partial unique index is missing or non-partial,"
+echo "──      BOTH inserts succeed here and this step fails."
+echo "──"
+echo "──      The two are serialised on an advisory lock rather than fired at each"
+echo "──      other and hoped about. That makes the outcome deterministic — a"
+echo "──      flaky race test that passes when the timing happens to be serial is"
+echo "──      worse than no test — and it changes nothing about what is proven,"
+echo "──      because the loser still arrives with its own connection, its own"
+echo "──      transaction, and no knowledge of the winner's row."
+
+CONC_CARD='cccccccc-0000-4000-8000-000000000001'
+CONC_USER='ffffffff-0000-4000-8000-000000000002'
+RACE_DIR="$(mktemp -d)"
+trap 'rm -rf "$RACE_DIR"' EXIT
+
+# A card of its own, so the probe cannot disturb anything the assertions built.
+_psql_raw "
+  insert into public.users (id, full_name, email, role, team, is_active, created_at, updated_at)
+  values ('$CONC_USER', 'Concurrency Tester', 'conc.tester@example.test',
+          'member', 'sales', true, now(), now())
+  on conflict (id) do nothing;
+  insert into public.customer_review_test_cards
+    (id, card_ref, test_category, test_title, test_body, status, booked_by, booked_at)
+  values ('$CONC_CARD', 'TEST-990', 'restaurant_test', 'Concurrency probe',
+          'Harness filler. It describes nothing and is not attributed to anybody.',
+          'booked', '$CONC_USER', now())
+  on conflict (id) do nothing;
+  select 1" >/dev/null || {
+  echo "FATAL: could not set up the concurrency probe." >&2
+  echo "       Nothing further was written." >&2
+  exit 1
+}
+
+# $1 = a distinct content digest, $2 = a distinct object key, $3 = where to
+# put this session's output. Output goes to a FILE rather than a variable: a
+# background command substitution assigns in a subshell, and the parent would
+# read an empty string and report a pass it never observed.
+race_insert() {
+  docker exec -i "$DB_CONTAINER" psql -U postgres -d "$DB_NAME" -q -t -A >"$3" 2>&1 <<SQL
+begin;
+select pg_advisory_xact_lock(4242);
+insert into public.customer_review_test_card_screenshots
+  (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+values ('$CONC_CARD', 'test_screenshot',
+        '$CONC_CARD/test_screenshot/$2', '$2',
+        'image/png', 2048, '$1', '$CONC_USER');
+commit;
+SQL
+}
+
+race_insert "$(printf 'a%.0s' $(seq 64))" a.png "$RACE_DIR/a.out" &
+PID_A=$!
+race_insert "$(printf 'b%.0s' $(seq 64))" b.png "$RACE_DIR/b.out" &
+PID_B=$!
+wait "$PID_A" || true
+wait "$PID_B" || true
+
+LIVE="$(_psql_raw "select count(*) from public.customer_review_test_card_screenshots
+                    where card_id = '$CONC_CARD' and removal_started_at is null")"
+
+if [ "$LIVE" != "1" ]; then
+  echo "FATAL: after two concurrent inserts the card holds $LIVE live screenshot(s)." >&2
+  echo "       Expected exactly 1. The partial unique index is not doing its job." >&2
+  cat "$RACE_DIR"/*.out | sed 's/^/         /' >&2
+  exit 1
+fi
+echo "        ✓ exactly one of the two inserts survived"
+
+# ...and the loser failed for the RIGHT reason. A session lost to a deadlock, a
+# dropped connection or a typo would also leave one row behind, and would prove
+# nothing at all about the index.
+if ! grep -q 'duplicate key value' "$RACE_DIR"/a.out "$RACE_DIR"/b.out; then
+  echo "FATAL: neither session reported a unique violation." >&2
+  echo "       One insert must have failed ON THE INDEX, not on something else." >&2
+  cat "$RACE_DIR"/*.out | sed 's/^/         /' >&2
+  exit 1
+fi
+if ! grep -q 'customer_review_screenshot_one_live_per_card' "$RACE_DIR"/a.out "$RACE_DIR"/b.out; then
+  echo "FATAL: the unique violation did not come from the one-live-per-card index." >&2
+  cat "$RACE_DIR"/*.out | sed 's/^/         /' >&2
+  exit 1
+fi
+echo "        ✓ the loser failed on customer_review_screenshot_one_live_per_card"
+
+_psql_raw "
+  delete from public.customer_review_test_card_screenshots where card_id = '$CONC_CARD';
+  delete from public.customer_review_test_cards where id = '$CONC_CARD';
+  delete from public.users where id = '$CONC_USER';
+  select 1" >/dev/null || true
+echo "        ✓ probe rows removed"
+echo
+echo "══ all ten steps passed"
 echo "══ step 7 ran the migration's own do \$\$ … \$\$ assertion block, step 8 ran"
-echo "══ the workflow assertions, and step 9 loaded the fixture; any of the three"
-echo "══ would have aborted this script."
+echo "══ the workflow assertions, step 9 loaded the fixture, and step 10 raced two"
+echo "══ real sessions at the screenshot index; any of the four would have aborted"
+echo "══ this script."

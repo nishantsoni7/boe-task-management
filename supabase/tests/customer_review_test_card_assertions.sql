@@ -562,28 +562,30 @@ end $$;
 -- and what is checked is that the STATUS did not move.
 --
 -- NOTE WHAT THIS BLOCK CANNOT DO, BECAUSE IT IS THE POINT: it has no phone
--- number to pass. The function's parameters are a fingerprint and four digits,
--- so there is nowhere in the signature a number could go. SQL never sees one.
+-- number to pass. The function takes FOUR DIGITS and nothing else, so there is
+-- nowhere in the signature a number could go. SQL never sees one.
+--
+-- THE FINGERPRINT PARAMETER IS GONE. It used to sit between the card and the
+-- four digits — an HMAC of the E.164 form, so that two tests sent to one number
+-- could be correlated. Nothing in this workflow correlates recipients, and the
+-- key it borrowed was SUPABASE_SERVICE_ROLE_KEY, which is not a key for that.
+-- Every assertion below is the same assertion with one less thing stored.
 
 do $$
 declare
   v_before text; v_after text; v_count integer;
-  v_fingerprint text; v_last_four text;
-  -- 64 hex characters, and obviously a digest of nothing. The harness does not
-  -- hash a real number because it never has one.
-  v_probe_fingerprint text := 'abababababababababababababababababababababababababababababababab';
+  v_last_four text;
 begin
   select status into v_before from public.customer_review_test_cards
    where id = 'aaaaaaaa-0000-4000-8000-000000000001';
 
   perform public.record_customer_review_test_card_whatsapp_opened(
     'aaaaaaaa-0000-4000-8000-000000000001',
-    v_probe_fingerprint,
     '0001',
     'ffffffff-0000-4000-8000-000000000002');
 
-  select status, whatsapp_opened_count, whatsapp_target_fingerprint, whatsapp_target_last_four
-    into v_after, v_count, v_fingerprint, v_last_four
+  select status, whatsapp_opened_count, whatsapp_target_last_four
+    into v_after, v_count, v_last_four
   from public.customer_review_test_cards where id = 'aaaaaaaa-0000-4000-8000-000000000001';
 
   if v_after <> v_before then
@@ -592,9 +594,6 @@ begin
   if v_count <> 1 then
     raise exception 'the open counter is %, expected 1', v_count;
   end if;
-  if v_fingerprint <> v_probe_fingerprint then
-    raise exception 'the recorded fingerprint is not the one the route supplied';
-  end if;
   if v_last_four <> '0001' then
     raise exception 'the recorded last-four is %, expected the four the route supplied', v_last_four;
   end if;
@@ -602,10 +601,27 @@ begin
 
   -- ...and the function is not reachable by a browser at all.
   if has_function_privilege('authenticated',
-       'public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)', 'EXECUTE') then
+       'public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)', 'EXECUTE') then
     raise exception 'a browser role can call the WhatsApp recorder, which takes an actor id';
   end if;
   raise notice 'PASS  5b. the WhatsApp recorder is reachable by service_role alone';
+
+  -- THE OLD SIGNATURE IS NOT MERELY UNUSED, IT IS ABSENT. A leftover
+  -- four-argument overload would still accept a fingerprint from any caller
+  -- that remembered it, and the revoke/grant pair naming the NEW signature
+  -- would not have touched it — a grant against a signature that does not
+  -- exist is an error, but an old definition nobody names is simply left
+  -- behind with whatever privileges it had.
+  if exists (
+    select 1 from pg_proc pr
+    join pg_namespace n on n.oid = pr.pronamespace
+    where n.nspname = 'public'
+      and pr.proname = 'record_customer_review_test_card_whatsapp_opened'
+      and array_to_string(pr.proargtypes::oid[]::regtype[], ', ') <> 'uuid, text, uuid'
+  ) then
+    raise exception 'an old overload of the WhatsApp recorder still exists';
+  end if;
+  raise notice 'PASS  5c. exactly one recorder overload exists, and it takes three arguments';
 
   -- ANYTHING THAT IS NOT A REDUCED FORM IS REFUSED, and a phone number is the
   -- case worth naming: a caller that tried to store one — because it had one,
@@ -613,32 +629,166 @@ begin
   -- quietly writing it.
   begin
     perform public.record_customer_review_test_card_whatsapp_opened(
-      'aaaaaaaa-0000-4000-8000-000000000001', 'not-a-digest', '0001',
-      'ffffffff-0000-4000-8000-000000000002');
-    raise exception 'a malformed fingerprint was accepted';
-  exception when sqlstate '23514' then
-    raise notice 'PASS  5c. a fingerprint that is not a digest is refused 23514';
-  end;
-
-  begin
-    perform public.record_customer_review_test_card_whatsapp_opened(
-      'aaaaaaaa-0000-4000-8000-000000000001', v_probe_fingerprint, '00012',
+      'aaaaaaaa-0000-4000-8000-000000000001', '00012',
       'ffffffff-0000-4000-8000-000000000002');
     raise exception 'a malformed last-four was accepted';
   exception when sqlstate '23514' then
     raise notice 'PASS  5d. a last-four that is not four digits is refused 23514';
   end;
 
+  begin
+    perform public.record_customer_review_test_card_whatsapp_opened(
+      'aaaaaaaa-0000-4000-8000-000000000001', '+919999900001',
+      'ffffffff-0000-4000-8000-000000000002');
+    raise exception 'a phone number was accepted as the last four';
+  exception when sqlstate '23514' then
+    raise notice 'PASS  5e. a phone number offered as the last four is refused 23514';
+  end;
+
   -- THE COLUMN CANNOT HOLD A NUMBER EITHER. Attempted directly, past the
   -- function, as the owner: the CHECK constraint refuses it.
   begin
     update public.customer_review_test_cards
-       set whatsapp_target_fingerprint = '+919999900001'
+       set whatsapp_target_last_four = '+919999900001'
      where id = 'aaaaaaaa-0000-4000-8000-000000000001';
-    raise exception 'a phone number was accepted into the fingerprint column';
+    raise exception 'a phone number was accepted into the last-four column';
   exception when sqlstate '23514' then
-    raise notice 'PASS  5e. the fingerprint column refuses a phone number outright';
+    raise notice 'PASS  5f. the last-four column refuses a phone number outright';
   end;
+
+  -- AND THERE IS NO FINGERPRINT COLUMN TO WRITE ONE INTO.
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'customer_review_test_cards'
+      and column_name = 'whatsapp_target_fingerprint'
+  ) then
+    raise exception 'the fingerprint column still exists';
+  end if;
+  raise notice 'PASS  5g. the recipient fingerprint column is gone';
+end $$;
+
+-- ─── 5A. A TESTER ACTION BELONGS TO THE TESTER HOLDING THE CARD ────────────
+--
+-- Item 1 of the review, asserted against the running database rather than
+-- against the source. Card ...0001 is held by Fixture Tester (...0002).
+--
+-- The four cases the correction names, in the order they are worth reading:
+--
+--   a. the holder, who holds `use`               → SUCCEEDS
+--   b. Fixture Colleague, who ALSO holds `use`    → 42501
+--   c. Fixture Admin, who holds the card not at all → 42501
+--   d. Fixture Verifier, who can read every card  → 42501
+--
+-- WHAT IS DELIBERATELY NOT REFUSED: a verifier or an admin READING the card,
+-- and a verifier verifying or returning it. That is their whole authority, and
+-- sections 4 and 8 check it still works.
+--
+-- Note the shape of (b) and (c): they differ from (a) in the ACTOR and in
+-- nothing else — same card, same call, same permission in (b)'s case. If the
+-- ownership check were ever softened, (a) would still pass, so (a) alone would
+-- prove nothing.
+
+do $$
+declare v_role_leak boolean;
+begin
+  -- 5A-a. THE HOLDER SUCCEEDS. Stated first, because a rule that refuses
+  -- everybody is not the rule under test.
+  perform public.record_customer_review_test_card_whatsapp_opened(
+    'aaaaaaaa-0000-4000-8000-000000000001', '0001',
+    'ffffffff-0000-4000-8000-000000000002');
+  raise notice 'PASS  5A-a. the holder may generate and record a link';
+
+  -- 5A-b. ANOTHER PERSON WHO ALSO HOLDS `use`. The grant is asserted first, so
+  -- a refusal here cannot be explained away as a missing permission.
+  if not public.resolve_permission(
+       'ffffffff-0000-4000-8000-000000000003', 'customer_review_requests', 'use') then
+    raise exception 'Fixture Colleague does not actually hold use; this case proves nothing';
+  end if;
+  begin
+    perform public.record_customer_review_test_card_whatsapp_opened(
+      'aaaaaaaa-0000-4000-8000-000000000001', '0002',
+      'ffffffff-0000-4000-8000-000000000003');
+    raise exception 'ANOTHER use-HOLDER RECORDED A LINK ON A CARD THEY DO NOT HOLD';
+  exception when sqlstate '42501' then
+    raise notice 'PASS  5A-b. another `use` holder is refused 42501';
+  end;
+
+  -- 5A-c. AN ADMIN WHO DOES NOT HOLD THE CARD. The bypass this review removed.
+  begin
+    perform public.record_customer_review_test_card_whatsapp_opened(
+      'aaaaaaaa-0000-4000-8000-000000000001', '0003',
+      'ffffffff-0000-4000-8000-000000000001');
+    raise exception 'AN ADMIN PERFORMED A TESTER ACTION ON SOMEBODY ELSE''S CARD';
+  exception when sqlstate '42501' then
+    raise notice 'PASS  5A-c. a non-holding ADMIN is refused 42501';
+  end;
+
+  -- 5A-d. A VERIFIER. Reading every card does not make one a tester on any.
+  begin
+    perform public.record_customer_review_test_card_whatsapp_opened(
+      'aaaaaaaa-0000-4000-8000-000000000001', '0004',
+      'ffffffff-0000-4000-8000-000000000004');
+    raise exception 'A VERIFIER PERFORMED A TESTER ACTION';
+  exception when sqlstate '42501' then
+    raise notice 'PASS  5A-d. a verifier is refused 42501';
+  end;
+
+  -- 5A-e. NO ROLE IS READ ANYWHERE. The structural half, because a rule that
+  -- happens to refuse an admin today could still be re-softened by a branch
+  -- nobody notices; a function that cannot see a role cannot branch on one.
+  select bool_or(pg_get_functiondef(pr.oid) ~* '''admin''|v_admin|u\.role')
+    into v_role_leak
+  from pg_proc pr join pg_namespace n on n.oid = pr.pronamespace
+  where n.nspname = 'public'
+    and pr.proname in (
+      'record_customer_review_test_card_whatsapp_opened',
+      'confirm_customer_review_test_card_sent',
+      'begin_customer_review_test_screenshot_removal',
+      'transition_customer_review_test_card',
+      'book_customer_review_test_card');
+  if v_role_leak then
+    raise exception 'a tester-action function still consults a role';
+  end if;
+  raise notice 'PASS  5A-e. no tester-action function reads a role at all';
+end $$;
+
+-- The confirmation half of the same rule, run through each person's own RLS
+-- because confirm_...() reads auth.uid() rather than taking an actor.
+--
+-- SEPARATE FROM THE BLOCK ABOVE ON PURPOSE: it is a separate function with its
+-- own copy of the ownership check, and a correction applied to one and
+-- forgotten in the other is exactly the defect worth catching. Every case here
+-- is a REFUSAL, so section 6 still gets to prove that the holder's own
+-- confirmation is what unblocks submission.
+
+do $$
+begin
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    $q$select public.confirm_customer_review_test_card_sent('aaaaaaaa-0000-4000-8000-000000000001')$q$,
+    '42501',
+    '5A-f. an ADMIN confirming a send they did not make');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    $q$select public.confirm_customer_review_test_card_sent('aaaaaaaa-0000-4000-8000-000000000001')$q$,
+    '42501',
+    '5A-g. a VERIFIER confirming somebody else''s send');
+
+  -- ...and the same two on the submission itself. An admin cannot hand over a
+  -- test they did not run, whatever else is true of the card.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    $q$select public.transition_customer_review_test_card('aaaaaaaa-0000-4000-8000-000000000001', 'submitted')$q$,
+    '42501',
+    '5A-h. an ADMIN submitting a card they do not hold');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    $q$select public.transition_customer_review_test_card('aaaaaaaa-0000-4000-8000-000000000001', 'submitted')$q$,
+    '42501',
+    '5A-i. a VERIFIER submitting somebody else''s card');
 end $$;
 
 -- ─── 6. Confirming, and submitting ─────────────────────────────────────────
@@ -757,6 +907,158 @@ begin
   if v_n <> 1 then raise exception 'a verifier cannot see the private object (saw %)', v_n; end if;
 
   raise notice 'PASS  7c. screenshot metadata and the private object follow exactly who may read the card';
+end $$;
+
+-- ─── 7A. ONE LIVE SCREENSHOT PER CARD, ENFORCED BY THE DATABASE ────────────
+--
+-- Item 2 of the review. MAX_TEST_SCREENSHOTS = 1 was a count read in the route
+-- and then an insert — two concurrent uploads with different content both read
+-- zero and both succeeded. A source-code check could not have caught that,
+-- because the route's source was correct for each request taken alone.
+--
+-- Section 7 already registered ONE live screenshot on card ...0001. Everything
+-- below is about what happens to the second.
+--
+-- THE TRULY CONCURRENT CASE — two sessions inserting at the same instant — is
+-- not expressible in one psql session, so it is run as two parallel processes
+-- by run_customer_review_outreach_local.sh. What this block proves is the
+-- invariant that makes the concurrent case safe: the index exists, it is
+-- partial in the specific way that matters, and it refuses the second row.
+
+do $$
+declare v_n integer; v_pred text;
+begin
+  -- 7A-a. THE INDEXES EXIST AND ARE PARTIAL. Read from the catalogue rather
+  -- than from the migration text, so this says what the database actually has.
+  select count(*) into v_n
+  from pg_indexes
+  where schemaname = 'public'
+    and tablename = 'customer_review_test_card_screenshots'
+    and indexname = 'customer_review_screenshot_one_live_per_card';
+  if v_n <> 1 then raise exception 'the one-live-per-card index does not exist'; end if;
+
+  select indexdef into v_pred from pg_indexes
+  where indexname = 'customer_review_screenshot_one_live_per_card';
+  if v_pred !~ 'UNIQUE' then
+    raise exception 'the one-live-per-card index is not unique: %', v_pred;
+  end if;
+  if v_pred !~ 'removal_started_at IS NULL' then
+    raise exception 'the one-live-per-card index is not partial: %', v_pred;
+  end if;
+  raise notice 'PASS  7A-a. one live screenshot per card is a unique PARTIAL index';
+
+  select indexdef into v_pred from pg_indexes
+  where indexname = 'customer_review_screenshot_unique_live_content';
+  if v_pred is null then raise exception 'the unique-live-content index does not exist'; end if;
+  if v_pred !~ 'removal_started_at IS NULL' then
+    raise exception 'the unique-live-content index is not partial: %', v_pred;
+  end if;
+  raise notice 'PASS  7A-b. live content uniqueness is a partial index too';
+
+  -- 7A-c. THE OLD TOTAL CONSTRAINT IS GONE. It counted rows already marked for
+  -- removal, which is what made a failed object deletion permanent.
+  if exists (
+    select 1 from pg_constraint
+    where conname = 'customer_review_screenshot_unique_content_per_card'
+  ) then
+    raise exception 'the non-partial content constraint is still there';
+  end if;
+  raise notice 'PASS  7A-c. the non-partial uniqueness constraint is gone';
+
+  -- 7A-d. NO UNQUALIFIED UNIQUENESS ANYWHERE ON THIS TABLE except the storage
+  -- path, which is unique across ALL rows on purpose: an object key is a fact
+  -- about the bucket and stays taken until the object is actually deleted.
+  for v_pred in
+    select indexdef from pg_indexes
+    where schemaname = 'public'
+      and tablename = 'customer_review_test_card_screenshots'
+      and indexdef ~ 'UNIQUE'
+      and indexdef !~ 'removal_started_at IS NULL'
+  loop
+    if v_pred !~ 'storage_path' and v_pred !~ '\(id\)' then
+      raise exception 'a non-partial unique index can block a retry: %', v_pred;
+    end if;
+  end loop;
+  raise notice 'PASS  7A-d. every uniqueness rule but the object key excludes rows being removed';
+end $$;
+
+-- A SECOND LIVE SCREENSHOT IS REFUSED — with DIFFERENT content, which is the
+-- case the route's count could not stop.
+do $$
+begin
+  begin
+    insert into public.customer_review_test_card_screenshots
+      (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+    values ('aaaaaaaa-0000-4000-8000-000000000001', 'test_screenshot',
+            'aaaaaaaa-0000-4000-8000-000000000001/test_screenshot/second.png', 'second.png',
+            'image/png', 2048,
+            '2222222222222222222222222222222222222222222222222222222222222222',
+            'ffffffff-0000-4000-8000-000000000002');
+    raise exception 'A SECOND LIVE SCREENSHOT WAS ACCEPTED — the route count is the only guard';
+  exception when sqlstate '23505' then
+    raise notice 'PASS  7A-e. a second live screenshot with DIFFERENT content is refused 23505';
+  end;
+
+  -- And the same bytes twice, which the route also refuses but for its own
+  -- reasons; both paths end in the database.
+  begin
+    insert into public.customer_review_test_card_screenshots
+      (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+    values ('aaaaaaaa-0000-4000-8000-000000000001', 'test_screenshot',
+            'aaaaaaaa-0000-4000-8000-000000000001/test_screenshot/again.png', 'again.png',
+            'image/png', 2048,
+            '1111111111111111111111111111111111111111111111111111111111111111',
+            'ffffffff-0000-4000-8000-000000000002');
+    raise exception 'the same bytes were registered twice on one card';
+  exception when sqlstate '23505' then
+    raise notice 'PASS  7A-f. the same content twice on one card is refused 23505';
+  end;
+end $$;
+
+-- REMOVAL AND RE-UPLOAD ARE CONSISTENT — the half of item 2 that is about not
+-- painting a card into a corner.
+--
+-- The sequence below is the exact failure the old constraint produced: mark for
+-- removal, then have the object deletion fail (so `finish` never runs and the
+-- row stays), then retry with THE SAME FILE. Under `unique (card_id,
+-- content_sha256)` the retry was refused forever. Under the partial index the
+-- marked row is out of the way and the retry succeeds.
+do $$
+declare v_id uuid; v_live integer;
+begin
+  select id into v_id from public.customer_review_test_card_screenshots
+   where card_id = 'aaaaaaaa-0000-4000-8000-000000000001'
+     and removal_started_at is null;
+  if v_id is null then raise exception 'no live screenshot to remove'; end if;
+
+  -- The tester withdraws it. Only the marking half runs — exactly the state a
+  -- failed object deletion leaves behind.
+  perform public.begin_customer_review_test_screenshot_removal(
+    v_id, 'ffffffff-0000-4000-8000-000000000002');
+
+  select count(*) into v_live from public.customer_review_test_card_screenshots
+   where card_id = 'aaaaaaaa-0000-4000-8000-000000000001'
+     and removal_started_at is null;
+  if v_live <> 0 then raise exception 'the marked row still counts as live'; end if;
+  raise notice 'PASS  7A-g. a row marked for removal is no longer live, even before it is deleted';
+
+  -- THE SAME FILE AGAIN. This is the assertion the old constraint failed.
+  insert into public.customer_review_test_card_screenshots
+    (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+  values ('aaaaaaaa-0000-4000-8000-000000000001', 'test_screenshot',
+          'aaaaaaaa-0000-4000-8000-000000000001/test_screenshot/retry.png', 'retry.png',
+          'image/png', 2048,
+          '1111111111111111111111111111111111111111111111111111111111111111',
+          'ffffffff-0000-4000-8000-000000000002');
+  raise notice 'PASS  7A-h. the SAME file can be re-uploaded after a removal that never finished';
+
+  -- ...and the card is back to exactly one live screenshot, so the slot was
+  -- released rather than duplicated.
+  select count(*) into v_live from public.customer_review_test_card_screenshots
+   where card_id = 'aaaaaaaa-0000-4000-8000-000000000001'
+     and removal_started_at is null;
+  if v_live <> 1 then raise exception 'the card now has % live screenshots, expected 1', v_live; end if;
+  raise notice 'PASS  7A-i. the card holds exactly one live screenshot again';
 end $$;
 
 -- ─── 8. Submitting, verifying, returning ───────────────────────────────────

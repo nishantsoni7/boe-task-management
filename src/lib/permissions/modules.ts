@@ -204,8 +204,8 @@ registerModule({
 // supabase/migrations/20261017000000_customer_review_outreach.sql.
 //
 // THE KEY AND BOTH ACTION KEYS ARE DELIBERATELY UNCHANGED. This module's
-// purpose changed — it is now an internal rehearsal of a workflow, with no
-// customer contact of any kind — but `customer_review_requests`, `use` and
+// purpose changed — it is now an internal rehearsal of a workflow whose
+// recipient the tester chooses — but `customer_review_requests`, `use` and
 // `verify` are the identifiers every existing Control Center grant is written
 // against, and renaming them would silently revoke all of them. The DISPLAY
 // name is what a human reads and is what changed. The ACTION display names stay
@@ -222,7 +222,7 @@ registerModule({
 registerModule({
   moduleKey: 'customer_review_requests',
   displayName: 'Review Workflow Test (Internal)',
-  description: 'Internal test workflow: book a test card, open WhatsApp to a BOE team number, confirm, screenshot, verify. No customer contact.',
+  description: 'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
   actions: [
     { actionKey: 'use',    displayName: 'Use Customer Review Outreach' },
     { actionKey: 'verify', displayName: 'Verify & Close Review Requests' },

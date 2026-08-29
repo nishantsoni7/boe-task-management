@@ -22,8 +22,13 @@ Migration: `supabase/migrations/20261017000000_customer_review_outreach.sql`
 An **internal rehearsal of a workflow**. An authorized BOE employee opens a list
 of **test cards**, books one, opens WhatsApp with a prefilled message addressed
 to **any valid international number they enter**, confirms by hand that they
-sent it, uploads a screenshot, and an administrator verifies that the workflow
-was exercised.
+sent it, uploads a screenshot, and a verifier checks that the workflow was
+exercised.
+
+**The tester chooses the recipient**, so nothing here claims who receives a
+message — not that they are internal, and not that they are not a member of the
+public. What is true and enforced: nothing is posted anywhere, and BOE never
+sends the message. The artefact is a `wa.me` URL a person clicks.
 
 ```
 available  →  booked  →  submitted  →  verified
@@ -55,7 +60,7 @@ quietly become one.
 | Drop the mandatory label | The label is a constant (`INTERNAL_TEST_WARNING`), rendered by a component that takes **no content parameter**, and prepended by a builder with **no parameter that suppresses it and no branch**. Since employees cannot author text at all, there is nothing to edit it out of |
 | Send to a number nobody meant | The number is **normalised and validated on the server**, whatever the browser did: malformed, too short, too long or missing a country code is a 400 with no link. A **bare national number is refused rather than guessed**, so nothing decides which country a number belongs to |
 | Message anyone without saying so | The tester must tick a confirmation that the number may receive an internal BOE test message. It is required by the **request**, not by the form, and a truthy value is not a confirmation — only `true` is |
-| Keep the number afterwards | **It is never stored.** The card keeps four digits and a non-reversible fingerprint, computed in the route; the RPC has no parameter a number could arrive in, and the columns are shape-constrained to a digest and four digits |
+| Keep the number afterwards | **It is never stored.** The card keeps the last four digits and nothing else; the RPC has no parameter a number could arrive in, and the column is shape-constrained to four digits |
 | Send anything automatically | Nothing here calls a WhatsApp API. `whatsappRoute.test.ts` walks all of `src/` and fails on any WhatsApp endpoint, token or client |
 | Treat an opened link as a sent message | `record_customer_review_test_card_whatsapp_opened()` **assigns no status**, and confirming is a separate RPC a person calls afterwards. Both are asserted, in the SQL, by two different test files |
 
@@ -98,8 +103,37 @@ The module deliberately registers **no `view` action**.
 
 | Permission | Grants |
 | --- | --- |
-| `customer_review_requests.use` | **Module entry.** See the available pool, book a card, open WhatsApp for a card they hold, confirm they sent it, attach and remove a screenshot, submit for verification. Sees the pool and **their own cards only** |
-| `customer_review_requests.verify` | Read **every** card, verify a submitted one, return one to its tester with a reason, and keep a history of verified ones. Implies module entry. Does **not** grant booking |
+| `customer_review_requests.use` | **Module entry.** See the available pool, book a card, and — **only on a card they themselves hold** — open WhatsApp for it, confirm they sent it, attach and remove its screenshot, and submit it. Sees the pool and their own cards only |
+| `customer_review_requests.verify` | Read **every** card, verify a submitted one, return one to its tester with a reason, and keep a history of verified ones. Implies module entry. Does **not** grant booking, and does **not** grant any tester action |
+
+### Tester actions belong to the card's holder, and to nobody else
+
+Every action below requires the card to be booked by the person taking it —
+`card.booked_by = auth.uid()` in the functions the browser calls directly, and
+`card.booked_by = p_actor_id` in the two the server calls with an actor it
+established from the session. **There is no administrator exception**, in the
+routes or in the SQL:
+
+* generating and recording a WhatsApp link
+* confirming the test was sent
+* uploading a screenshot
+* removing a screenshot
+* submitting for verification
+
+An administrator or verifier reading somebody else's card is fine and necessary
+— that is what verification needs. **Reading is not holding.** Administrator and
+verifier authority covers exactly two things: **verifying** a submitted card and
+**returning** one to its tester.
+
+An administrator books a card the same way anybody does: by holding `use`,
+which the `role_permissions` seed grants them. That is deliberate — it means an
+explicit revocation in Control Center actually revokes.
+
+> **What this costs, stated rather than hidden.** Once a card is submitted its
+> screenshot is frozen for everybody, so an image uploaded by mistake can only
+> be corrected by a verifier **returning** the card to its tester first. That is
+> a real extra step, and it is the price of not letting administrators act as
+> testers.
 
 Expected access:
 
@@ -218,28 +252,24 @@ source-contract test pins the two strings to each other.
 a fixture.** It exists in one request body, for the length of one request, and
 in the `wa.me` URL the server hands back to the browser that asked for it.
 
-What the card keeps instead:
+What the card keeps instead is one column:
 
-| Column | What it is |
+| Column | What it holds |
 | --- | --- |
-| `whatsapp_target_last_four` | four digits, so a person recognises a number they typed |
-| `whatsapp_target_fingerprint` | HMAC-SHA256 of the E.164 form, keyed on the deployment's existing server-only credential and domain-separated |
+| `whatsapp_target_last_four` | the final four digits, so a person recognises a number they typed |
 
-Both are computed in the route (`src/lib/customerReviews/recipientPrivacy.ts`)
-and arrive already reduced. **SQL never sees a number**: the RPC's parameters are
-a digest and four digits, and both are shape-guarded, so there is no future
-caller that could accidentally store one.
+It is sliced off the validated E.164 form in the route. **SQL never sees a
+number** — the RPC's only recipient parameter is those four digits, shape-
+guarded, so no future caller can accidentally store one.
 
-> **Said honestly, because "hashed" would overclaim it.** A bare digest of a
-> phone number is not a secret — the space is small, and the last four are
-> stored in clear beside it. The HMAC key is the deployment's server-only
-> credential, which is not stored next to the data it protects. That does **not**
-> make the fingerprint secret against somebody holding both the database and the
-> server's environment; it means the **database alone** does not reveal the
-> numbers, which is the realistic leak this defends against. It also makes the
-> fingerprint deployment-scoped, and rotating the credential invalidates every
-> existing one — acceptable only because a fingerprint is a convenience for
-> correlating test rows and nothing depends on it.
+> **An earlier design also kept a keyed HMAC fingerprint** so that two tests
+> sent to the same number could be recognised as the same recipient. It is
+> gone. Nothing in this workflow correlates recipients, so the fingerprint was a
+> credential dependency and a rotation hazard bought for no benefit — and it
+> reused `SUPABASE_SERVICE_ROLE_KEY`, which is not what that credential is for.
+> If correlation is ever genuinely required, it needs a dedicated server-only
+> `CUSTOMER_REVIEW_RECIPIENT_HMAC_KEY` with fail-closed validation and a
+> documented rotation story — not a borrowed key.
 
 ### Why the server builds the link
 
@@ -287,8 +317,33 @@ generates the object key itself, and only then writes.
 Removal is one operation in three steps — mark, delete the object, delete the
 row — so a failure between them leaves a retryable state rather than an orphaned
 file or a broken reference. A tester may withdraw a screenshot **only while they
-still hold the card**; an administrator may at any status, which is the only
-safe correction route for an image uploaded by accident.
+still hold the card**, and nobody else may withdraw one at all — see the note
+under §4.
+
+### One live screenshot per card, enforced by the database
+
+`MAX_TEST_SCREENSHOTS = 1` used to be protected only by a count in the route.
+That was a **read followed by a write**: two concurrent uploads with different
+content both read zero and both inserted.
+
+Two partial unique indexes now make it a database guarantee:
+
+| Index | What it prevents |
+| --- | --- |
+| `customer_review_screenshot_one_live_per_card` on `(card_id) where removal_started_at is null` | a second live screenshot on one card, under any concurrency |
+| `customer_review_screenshot_unique_live_content` on `(card_id, content_sha256) where removal_started_at is null` | the same bytes registered twice while live |
+
+`where removal_started_at is null` is load-bearing on both. A row marked for
+removal is already invisible to every reader (the SELECT policy filters it), so
+it must not occupy the slot either — otherwise a **failed object deletion would
+leave the card permanently unable to accept a replacement, including the very
+same file**. The old plain `unique (card_id, content_sha256)` constraint had
+exactly that defect and is gone.
+
+The route still counts first, because refusing before five megabytes are decoded
+and uploaded is kinder. When the race is genuinely lost, the insert comes back
+`23505` and the route maps it to the same sentence the count would have
+produced — so a tester sees one answer however the race went.
 
 ## 8. The database
 
@@ -320,7 +375,7 @@ Service-role only — each takes something the trusted route establishes:
 
 | Signature | Why it is not browser-callable |
 | --- | --- |
-| `record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)` | takes the actor, plus the recipient **already reduced** to a fingerprint and four digits |
+| `record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)` | takes the actor, plus the recipient **already reduced** to four digits |
 | `begin_customer_review_test_screenshot_removal(uuid, uuid)` | takes the actor |
 | `finish_customer_review_test_screenshot_removal(uuid)` | the second half of a removal |
 

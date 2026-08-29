@@ -1,12 +1,16 @@
--- Review Workflow Test (Internal) — rehearsing a workflow against BOE's own
--- team, and nothing else.
+-- Review Workflow Test (Internal) — an internal rehearsal of a workflow.
 --
 -- WHAT THIS IS
 -- ------------
 -- An internal test phase. An authorized BOE employee opens a list of TEST
--- CARDS, books one, opens WhatsApp with a prefilled message addressed to a BOE
--- INTERNAL TEAM NUMBER, confirms by hand that they sent it, uploads a
--- screenshot, and an administrator verifies that the workflow was exercised.
+-- CARDS, books one, opens WhatsApp with a prefilled message addressed to ANY
+-- VALID NUMBER THE TESTER ENTERS, confirms by hand that they sent it, uploads a
+-- screenshot, and a verifier checks that the workflow was exercised.
+--
+-- WHAT IS NOT CLAIMED. The tester chooses the recipient, so this file promises
+-- nothing about who receives a message — not that they are internal, and not
+-- that they are not a member of the public. What IS true and enforced: nothing
+-- is posted anywhere, and BOE never sends the message.
 --
 --     available -> booked -> submitted -> verified
 --
@@ -197,32 +201,24 @@ create table public.customer_review_test_cards (
   -- ── Preparation, which is not delivery ──
   whatsapp_opened_at    timestamptz,
   whatsapp_opened_count integer not null default 0 check (whatsapp_opened_count >= 0),
-  -- WHO THE LAST LINK WAS ADDRESSED TO — AND NOT THE NUMBER.
+  -- WHO THE LAST LINK WAS ADDRESSED TO — FOUR DIGITS, AND NOTHING ELSE.
   --
   -- A tester may enter any valid international number, so what lands here is
-  -- not necessarily a colleague's. THE FULL NUMBER IS NEVER STORED. Two things
-  -- are, and neither can be turned back into it:
+  -- not necessarily a colleague's. THE FULL NUMBER IS NEVER STORED, and this is
+  -- the only trace of it that is.
   --
-  --   _last_four     four digits, so a person recognises a number they typed.
-  --   _fingerprint   a non-reversible HMAC of the E.164 form, keyed on the
-  --                  deployment's server-only credential, so two tests sent to
-  --                  the same number are visibly the same recipient.
+  -- AN EARLIER VERSION ALSO KEPT AN HMAC FINGERPRINT so that two tests sent to
+  -- the same number could be recognised as the same recipient. It is gone:
+  -- nothing in this workflow needs to correlate recipients, and a keyed digest
+  -- that nothing consults is a credential dependency and a rotation hazard
+  -- bought for no benefit. Four digits are what a person needs to recognise a
+  -- number they typed, and that is the whole requirement.
   --
-  -- Both are computed by the trusted route (src/lib/customerReviews/
-  -- recipientPrivacy.ts) and arrive already reduced; SQL never sees a number.
-  -- The CHECKs below are shape guards on that promise: a 64-character hex
-  -- digest cannot be a phone number, and four digits are four digits.
-  whatsapp_target_fingerprint text check (
-    whatsapp_target_fingerprint is null
-    or whatsapp_target_fingerprint ~ '^[0-9a-f]{64}$'
-  ),
+  -- The CHECK is a shape guard on the promise: four digits are four digits, and
+  -- a phone number is not.
   whatsapp_target_last_four text check (
     whatsapp_target_last_four is null
     or whatsapp_target_last_four ~ '^[0-9]{4}$'
-  ),
-  constraint customer_review_test_cards_target_consistent check (
-    (whatsapp_target_fingerprint is null and whatsapp_target_last_four is null)
-    or (whatsapp_target_fingerprint is not null and whatsapp_target_last_four is not null)
   ),
 
   -- ── The tester's own claim ──
@@ -343,9 +339,15 @@ create table public.customer_review_test_card_screenshots (
   -- sha256 of the accepted bytes, lower-case hex. It is what makes a repeated
   -- upload answerable by CONTENT rather than by a timer: the same screenshot
   -- offered twice for one card is one attachment, whatever raced with what.
+  --
+  -- THE UNIQUENESS THAT ENFORCES THAT IS A PARTIAL INDEX, DEFINED BELOW, not a
+  -- table constraint. A plain `unique (card_id, content_sha256)` was wrong in a
+  -- way that only showed up on a failure: a row MARKED for removal still
+  -- occupied the pair, so if the object deletion failed the tester could never
+  -- re-upload that same file — the card was permanently unable to carry the
+  -- screenshot it was supposed to have. The index below ignores marked rows,
+  -- which is the same rule every reader already applies.
   content_sha256 text not null check (content_sha256 ~ '^[0-9a-f]{64}$'),
-  constraint customer_review_screenshot_unique_content_per_card
-    unique (card_id, content_sha256),
 
   uploaded_by uuid not null default auth.uid() references public.users(id),
   uploaded_at timestamptz not null default now(),
@@ -378,6 +380,36 @@ create table public.customer_review_test_card_screenshots (
     split_part(storage_path, '/', 1) = card_id::text
   )
 );
+
+-- ═══ AT MOST ONE LIVE SCREENSHOT PER CARD, AND THE DATABASE SAYS SO ═══════
+--
+-- This is the guarantee, and it has to be here rather than in the route.
+--
+-- The route counts existing rows and refuses a second upload. That check is a
+-- READ FOLLOWED BY A WRITE, and two concurrent uploads with different content
+-- both read zero and both insert — the count is correct for each of them and
+-- wrong for the card. No amount of care in the route fixes that; only the
+-- database can serialise it.
+--
+-- A partial unique index does. The second inserter blocks on the index, then
+-- fails with 23505 once the first commits. The route maps that to the same
+-- sentence its own count produces, so a tester sees one answer however the
+-- race went.
+--
+-- WHERE removal_started_at IS NULL is the load-bearing part of both indexes.
+-- A row marked for removal is already gone as far as every reader is concerned
+-- (the SELECT policy filters it), so it must not occupy the slot either — or a
+-- failed object deletion would leave the card permanently unable to accept a
+-- replacement.
+create unique index customer_review_screenshot_one_live_per_card
+  on public.customer_review_test_card_screenshots (card_id)
+  where removal_started_at is null;
+
+-- ...and the same content cannot be registered twice while it is live. This is
+-- what makes a repeated upload idempotent by CONTENT rather than by a timer.
+create unique index customer_review_screenshot_unique_live_content
+  on public.customer_review_test_card_screenshots (card_id, content_sha256)
+  where removal_started_at is null;
 
 create index customer_review_screenshot_card_idx
   on public.customer_review_test_card_screenshots (card_id);
@@ -415,9 +447,9 @@ create table public.customer_review_test_card_events (
   -- about this event.
   --
   -- NEVER A PHONE NUMBER — and there is no number anywhere in this module to
-  -- put here. The trail is about what somebody decided; the recipient is
-  -- recorded on the card as four digits and a fingerprint, not scattered
-  -- through free text where it could neither be masked nor found again.
+  -- put here. The trail is about what somebody decided; the only trace of a
+  -- recipient is four digits on the card itself, not scattered through free
+  -- text where it could neither be masked nor found again.
   detail text check (detail is null or length(detail) <= 500),
 
   actor_id uuid not null references public.users(id),
@@ -691,14 +723,15 @@ create policy "customer_review_test_screenshots_select"
 -- WHO MAY REMOVE WHAT is enforced inside
 -- begin_customer_review_test_screenshot_removal():
 --
---   the tester  their own screenshot, while they still hold the card and it has
---               not been verified. Evidence a verifier has already acted on
---               must not vanish from underneath their decision.
+--   the tester holding the card, while they still hold it. That is the whole
+--   rule. There is no administrator exception: an administrator acting on
+--   somebody else's card would be an administrator performing a tester's
+--   action.
 --
---   an admin    any screenshot, at any status, verified included. Without this
---               an image uploaded by accident — a personal chat in shot, a
---               colleague's number visible — would be permanently unremovable,
---               with no safe correction route at all.
+--   What that costs, said plainly: once a card is submitted its screenshot is
+--   frozen for everybody, so an image uploaded by accident can only be
+--   corrected by a verifier RETURNING the card to its tester first. That is a
+--   real extra step and it is the price of the rule.
 
 -- Every removal is recorded. The row names the file, so the trail still reads
 -- correctly once the metadata row it describes is gone.
@@ -761,9 +794,8 @@ security definer
 set search_path = public, pg_temp
 as $$
 declare
-  s       public.customer_review_test_card_screenshots%rowtype;
-  c       public.customer_review_test_cards%rowtype;
-  v_admin boolean;
+  s public.customer_review_test_card_screenshots%rowtype;
+  c public.customer_review_test_cards%rowtype;
 begin
   -- Locked, so two removals of one screenshot cannot both proceed to delete an
   -- object and then both try to delete the row.
@@ -774,13 +806,12 @@ begin
       using errcode = 'P0002';
   end if;
 
-  -- An INACTIVE ACCOUNT IS REFUSED BEFORE ANYTHING ELSE, admin or not. The join
-  -- carries `is_active`, so a deactivated administrator produces a NULL here
-  -- rather than `true`.
-  select (u.role = 'admin') into v_admin
-  from public.users u
-  where u.id = p_actor_id and u.is_active;
-  if v_admin is null then
+  -- AN INACTIVE ACCOUNT IS REFUSED BEFORE ANYTHING ELSE. Asked as "is there an
+  -- active row for this person", with no interest in their role — because a
+  -- role no longer buys anything here.
+  if not exists (
+    select 1 from public.users u where u.id = p_actor_id and u.is_active
+  ) then
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Your account is not active' using errcode = '42501';
   end if;
 
@@ -789,19 +820,28 @@ begin
     raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: That test card no longer exists' using errcode = 'P0002';
   end if;
 
-  -- An admin may correct anything, at any status. Everyone else is narrower.
-  if not v_admin then
-    if not (
-      c.booked_by = p_actor_id
-      and public.resolve_permission(p_actor_id, 'customer_review_requests', 'use')
-    ) then
-      raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can remove its screenshot'
-        using errcode = '42501';
-    end if;
-    if c.status <> 'booked' then
-      raise exception 'CUSTOMER_REVIEW_TEST_LOCKED: A screenshot can only be removed while you still hold the card'
-        using errcode = '42501';
-    end if;
+  -- REMOVING A SCREENSHOT IS A TESTER ACTION, so it belongs to the tester
+  -- HOLDING THE CARD and to nobody else. There is no administrator branch.
+  --
+  -- An earlier version let an administrator withdraw any screenshot at any
+  -- status, on the argument that an image uploaded by accident would otherwise
+  -- be unremovable. That argument was real and it is now overruled: an
+  -- administrator acting on a card somebody else holds is an administrator
+  -- performing a tester's action, which is exactly what this module must not
+  -- allow. THE CONSEQUENCE IS STATED RATHER THAN HIDDEN — once a card is
+  -- submitted, its screenshot is frozen for everybody, and correcting a
+  -- mistaken upload after that point requires the card to be returned to its
+  -- tester first, which a verifier can do.
+  if not (
+    c.booked_by = p_actor_id
+    and public.resolve_permission(p_actor_id, 'customer_review_requests', 'use')
+  ) then
+    raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can remove its screenshot'
+      using errcode = '42501';
+  end if;
+  if c.status <> 'booked' then
+    raise exception 'CUSTOMER_REVIEW_TEST_LOCKED: A screenshot can only be removed while you still hold the card'
+      using errcode = '42501';
   end if;
 
   -- Idempotent: a retry after a failed object deletion re-enters here and finds
@@ -943,14 +983,18 @@ begin
   -- ACTIVE, and holding `use`. `verify` alone is NOT enough to book: a verifier
   -- checks other people's tests, and letting the checker also be the tester
   -- would remove the only separation the workflow has.
+  --
+  -- THERE IS NO ROLE BYPASS HERE. An administrator books a card the same way
+  -- anybody does — by holding `use`, which the role_permissions seed grants
+  -- them — rather than by being an administrator. The difference matters
+  -- because it makes an explicit revocation actually revoke: an admin whose
+  -- `use` is withdrawn in Control Center can no longer take a test card, which
+  -- is what withdrawing it is for.
   if not exists (
     select 1 from public.users u
     where u.id = v_uid
       and u.is_active
-      and (
-        u.role = 'admin'
-        or public.resolve_permission(v_uid, 'customer_review_requests', 'use')
-      )
+      and public.resolve_permission(v_uid, 'customer_review_requests', 'use')
   ) then
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: You do not have permission to book a test card'
       using errcode = '42501';
@@ -1012,13 +1056,13 @@ begin
     raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: That test card no longer exists' using errcode = 'P0002';
   end if;
 
+  -- THE HOLDER, AND ONLY THE HOLDER. No role bypass: this records that a
+  -- specific person pressed send, and nobody else can make that claim on their
+  -- behalf — least of all an administrator who was not there.
   if not (
-    exists (select 1 from public.users u where u.id = v_uid and u.is_active and u.role = 'admin')
-    or (
-      c.booked_by = v_uid
-      and public.resolve_permission(v_uid, 'customer_review_requests', 'use')
-      and exists (select 1 from public.users u where u.id = v_uid and u.is_active)
-    )
+    c.booked_by = v_uid
+    and public.resolve_permission(v_uid, 'customer_review_requests', 'use')
+    and exists (select 1 from public.users u where u.id = v_uid and u.is_active)
   ) then
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can confirm they sent it'
       using errcode = '42501';
@@ -1078,15 +1122,14 @@ grant  execute on function public.confirm_customer_review_test_card_sent(uuid) t
 -- establishes the actor from the session, validates the number, and REDUCES it
 -- before calling here.
 --
--- WHICH IS THE OTHER HALF: the number never reaches SQL. What arrives is a
--- non-reversible fingerprint and four digits, both computed in the route. No
--- parameter of this function could carry a phone number, so no future caller
--- can accidentally store one.
+-- WHICH IS THE OTHER HALF: the number never reaches SQL. What arrives is four
+-- digits, sliced off the validated E.164 form in the route. No parameter of
+-- this function could carry a phone number, so no future caller can
+-- accidentally store one.
 create or replace function public.record_customer_review_test_card_whatsapp_opened(
-  p_card_id            uuid,
-  p_target_fingerprint text,
-  p_target_last_four   text,
-  p_actor_id           uuid
+  p_card_id          uuid,
+  p_target_last_four text,
+  p_actor_id         uuid
 )
 returns public.customer_review_test_cards
 language plpgsql
@@ -1105,12 +1148,12 @@ begin
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Your account is not active' using errcode = '42501';
   end if;
 
+  -- THE HOLDER, AND ONLY THE HOLDER. No role bypass: producing a WhatsApp link
+  -- is a tester action, and an administrator doing it on somebody else's card
+  -- would be an administrator running somebody else's test.
   if not (
-    exists (select 1 from public.users u where u.id = p_actor_id and u.is_active and u.role = 'admin')
-    or (
-      c.booked_by = p_actor_id
-      and public.resolve_permission(p_actor_id, 'customer_review_requests', 'use')
-    )
+    c.booked_by = p_actor_id
+    and public.resolve_permission(p_actor_id, 'customer_review_requests', 'use')
   ) then
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can open WhatsApp for it'
       using errcode = '42501';
@@ -1121,23 +1164,19 @@ begin
       using errcode = '23514';
   end if;
 
-  -- SHAPE-CHECKED, AND THE SHAPE IS THE POINT. Both parameters are already
-  -- reduced forms, and refusing anything else is what makes "SQL never sees a
-  -- number" a property of the function rather than a habit of its one caller.
-  if p_target_fingerprint is null or p_target_fingerprint !~ '^[0-9a-f]{64}$' then
-    raise exception 'CUSTOMER_REVIEW_TEST_BAD_TARGET: The recipient fingerprint is not a digest'
-      using errcode = '23514';
-  end if;
+  -- SHAPE-CHECKED, AND THE SHAPE IS THE POINT. The parameter is already a
+  -- reduced form, and refusing anything else is what makes "SQL never sees a
+  -- number" a property of the signature rather than a habit of its one caller:
+  -- four digits are four digits, and a phone number is not.
   if p_target_last_four is null or p_target_last_four !~ '^[0-9]{4}$' then
     raise exception 'CUSTOMER_REVIEW_TEST_BAD_TARGET: The recipient last-four is not four digits'
       using errcode = '23514';
   end if;
 
   update public.customer_review_test_cards
-     set whatsapp_opened_at          = now(),
-         whatsapp_opened_count       = whatsapp_opened_count + 1,
-         whatsapp_target_fingerprint = p_target_fingerprint,
-         whatsapp_target_last_four   = p_target_last_four
+     set whatsapp_opened_at        = now(),
+         whatsapp_opened_count     = whatsapp_opened_count + 1,
+         whatsapp_target_last_four = p_target_last_four
    where id = p_card_id;
 
   insert into public.customer_review_test_card_events
@@ -1152,9 +1191,9 @@ begin
 end;
 $$;
 
-revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)
+revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)
   from public, anon, authenticated;
-grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)
+grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)
   to service_role;
 
 -- ── The transition table ──────────────────────────────────────────────────
@@ -1190,7 +1229,6 @@ as $$
 declare
   c        public.customer_review_test_cards%rowtype;
   v_uid    uuid := auth.uid();
-  v_admin  boolean;
   v_use    boolean;
   v_verify boolean;
   v_holder boolean;
@@ -1208,18 +1246,21 @@ begin
     raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: That test card no longer exists' using errcode = 'P0002';
   end if;
 
-  -- AN INACTIVE ACCOUNT IS REFUSED HERE, before role or permission is
-  -- considered. The join carries `is_active`, so a deactivated admin produces
-  -- NULL rather than true and falls into this branch with everybody else.
-  select (u.role = 'admin') into v_admin
-  from public.users u
-  where u.id = v_uid and u.is_active;
-  if v_admin is null then
+  -- AN INACTIVE ACCOUNT IS REFUSED HERE, before any permission is considered.
+  -- Asked as "is there an active row for this person" — their role is not
+  -- consulted, because no role grants anything in this function.
+  if not exists (
+    select 1 from public.users u where u.id = v_uid and u.is_active
+  ) then
     raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Your account is not active' using errcode = '42501';
   end if;
 
-  v_use    := v_admin or public.resolve_permission(v_uid, 'customer_review_requests', 'use');
-  v_verify := v_admin or public.resolve_permission(v_uid, 'customer_review_requests', 'verify');
+  -- RESOLVED FROM THE PERMISSION ENGINE, NOT FROM THE ROLE. An administrator
+  -- holds both through role_permissions, so nothing they legitimately do is
+  -- lost — but an explicit revocation in Control Center now actually revokes,
+  -- and being an administrator no longer stands in for holding a card.
+  v_use    := public.resolve_permission(v_uid, 'customer_review_requests', 'use');
+  v_verify := public.resolve_permission(v_uid, 'customer_review_requests', 'verify');
   v_holder := (c.booked_by = v_uid);
 
   if not (v_use or v_verify) then
@@ -1242,15 +1283,19 @@ begin
   -- ── Is this person allowed to make it? ──
   --
   -- Verifying and returning need `verify`, and nothing else does. Submitting
-  -- belongs to the tester holding the card (or an admin): a verifier does not
-  -- run somebody else's test for them.
+  -- belongs to the tester holding the card and to nobody else — not to a
+  -- verifier, and not to an administrator. Those two authorities cover
+  -- verification and returning, which is the whole of what they are for here.
   if p_next_status in ('verified', 'booked') then
     if not v_verify then
       raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Verifying or returning a test needs the Verify permission'
         using errcode = '42501';
     end if;
   else
-    if not (v_admin or (v_holder and v_use)) then
+    -- SUBMITTING IS A TESTER ACTION: the holder, and nobody else. An
+    -- administrator who did not run the test cannot hand it over as though
+    -- they had.
+    if not (v_holder and v_use) then
       raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can submit it'
         using errcode = '42501';
     end if;
@@ -1362,11 +1407,8 @@ comment on table public.customer_review_test_cards is
 comment on column public.customer_review_test_cards.whatsapp_opened_at is
   'When a wa.me link was last built and opened for this card. Proves preparation only: it is not evidence that the message was sent, delivered or read. sent_confirmed_at is the tester''s separate, deliberate confirmation, and no status moves when this column does.';
 
-comment on column public.customer_review_test_cards.whatsapp_target_fingerprint is
-  'Non-reversible HMAC-SHA256 of the E.164 recipient, keyed on the deployment''s server-only credential and computed in the trusted route. Lets two tests sent to the same number be recognised as the same recipient. THE FULL NUMBER IS NEVER STORED, here or anywhere else in this module.';
-
 comment on column public.customer_review_test_cards.whatsapp_target_last_four is
-  'The final four digits of the recipient, so a tester recognises a number they typed. The only part of a recipient this module keeps in clear.';
+  'The final four digits of the recipient, so a tester recognises a number they typed. THE ONLY TRACE OF A RECIPIENT THIS MODULE KEEPS — the full number is never stored, here or anywhere else. An earlier design also kept a keyed HMAC fingerprint so recipients could be correlated; nothing needed that, so it was removed rather than carried.';
 
 comment on table public.customer_review_test_card_events is
   'Append-only internal-test trail: booked, whatsapp_opened, sent_confirmed, submitted, verified, returned, screenshot_removed. No client role holds INSERT, UPDATE, DELETE or TRUNCATE; rows arrive only from the definer functions in 20261017000000. whatsapp_opened is NOT a delivery receipt.';
@@ -1437,7 +1479,7 @@ create policy "customer_review_test_screenshots_storage_select"
 
 insert into public.permission_modules (module_key, display_name, description) values
   ('customer_review_requests', 'Review Workflow Test (Internal)',
-   'Internal test workflow: book a test card, open WhatsApp to a BOE team number, confirm, screenshot, verify. No customer contact.')
+   'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.')
 on conflict (module_key) do update set
   display_name = excluded.display_name,
   description  = excluded.description;
@@ -1732,7 +1774,7 @@ begin
   -- be a spoofing hole.
   for v_bad in
     select unnest(array[
-      'public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)',
+      'public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)',
       'public.begin_customer_review_test_screenshot_removal(uuid, uuid)',
       'public.finish_customer_review_test_screenshot_removal(uuid)'
     ])
@@ -1840,9 +1882,10 @@ begin
   end if;
 
   -- NO CUSTOMER CONTACT COLUMN EITHER, for the same reason and by the same
-  -- means. The two whatsapp_target_* columns hold a fingerprint and four
-  -- digits rather than a number, and are excluded by name; anything else that
-  -- looks like stored contact data fails.
+  -- means. whatsapp_target_last_four holds four digits rather than a number
+  -- and is excluded by name; anything else that looks like stored contact data
+  -- fails — including a fingerprint column, if one is ever reintroduced without
+  -- the requirement that would justify it.
   select string_agg(c.relname || '.' || a.attname, ', ') into v_bad
   from pg_attribute a
   join pg_class c on c.oid = a.attrelid
@@ -1851,7 +1894,7 @@ begin
     and c.relname like 'customer_review%'
     and a.attnum > 0
     and not a.attisdropped
-    and a.attname not in ('whatsapp_target_fingerprint', 'whatsapp_target_last_four')
+    and a.attname <> 'whatsapp_target_last_four'
     and (a.attname ~* '(customer_name|customer_phone|greeting|whatsapp_number|contact_)');
   if v_bad is not null then
     raise exception 'these columns look like customer contact data, which this module must not hold: %', v_bad;

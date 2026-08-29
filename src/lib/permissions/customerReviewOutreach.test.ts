@@ -179,6 +179,7 @@ describe('who holds one test card', () => {
   const OTHER = 'user-other'
   const useCaps = deriveCustomerReviewCapabilities('member', allow('use'))
   const verifyCaps = deriveCustomerReviewCapabilities('member', allow('verify'))
+  const adminCaps = deriveCustomerReviewCapabilities('admin', [])
 
   // THERE IS NO EDITORSHIP QUESTION IN THIS MODULE, and that is why the block
   // that used to be here is gone rather than adapted. Card text is loaded from
@@ -187,27 +188,52 @@ describe('who holds one test card', () => {
   // question a screen has is "is this mine to act on".
 
   test('the tester holding the card may act on it', () => {
-    assert.equal(holdsThisCard({ booked_by: HOLDER }, HOLDER, useCaps, 'member'), true)
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, HOLDER, useCaps), true)
   })
 
   test('a VERIFIER does not run somebody else’s test for them', () => {
-    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, verifyCaps, 'member'), false)
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, verifyCaps), false)
   })
 
   test('another `use` holder cannot act on a card that is not theirs', () => {
-    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, useCaps, 'member'), false)
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, useCaps), false)
   })
 
-  test('an admin may unstick a card whose tester has left', () => {
-    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, useCaps, 'admin'), true)
+  // THE ADMIN BYPASS IS GONE, and this test replaces the one that asserted it.
+  //
+  // The removed test read 'an admin may unstick a card whose tester has left'.
+  // It described a real problem and the wrong remedy: it let an administrator
+  // open WhatsApp as somebody else, confirm a send they did not make, and
+  // submit evidence they did not produce. Unsticking a card is a verifier
+  // RETURNING it, which puts it back in the tester's hands rather than putting
+  // the tester's actions in somebody else's.
+  test('an administrator does not hold a card they did not book', () => {
+    assert.equal(adminCaps.canUse, true, 'the admin genuinely has use')
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, OTHER, adminCaps), false)
+  })
+
+  test('an administrator holds a card they booked themselves, like anyone', () => {
+    assert.equal(holdsThisCard({ booked_by: OTHER }, OTHER, adminCaps), true)
+  })
+
+  // The signature no longer accepts a role, so a caller cannot pass one and
+  // believe it counts for something. Checked structurally, because an extra
+  // argument to a JS function is silently ignored rather than a type error at
+  // every call site.
+  test('the function takes no role parameter at all', () => {
+    assert.equal(holdsThisCard.length, 3, 'card, userId, caps — and nothing else')
+
+    const src = read('src/lib/permissions/customerReviewOutreach.ts')
+    const body = src.slice(src.indexOf('export function holdsThisCard'))
+    assert.equal(/role/.test(body), false, 'holdsThisCard still mentions a role')
   })
 
   test('an unbooked card is nobody’s to act on', () => {
-    assert.equal(holdsThisCard({ booked_by: null }, HOLDER, useCaps, 'member'), false)
+    assert.equal(holdsThisCard({ booked_by: null }, HOLDER, useCaps), false)
   })
 
   test('a signed-out caller acts on nothing', () => {
-    assert.equal(holdsThisCard({ booked_by: HOLDER }, null, useCaps, 'member'), false)
+    assert.equal(holdsThisCard({ booked_by: HOLDER }, null, useCaps), false)
   })
 })
 

@@ -5,16 +5,21 @@
 // ------------------
 // An internal rehearsal of a workflow. An authorized BOE employee opens a list
 // of TEST CARDS, books one, opens WhatsApp with a prefilled message addressed
-// to a BOE TEAM NUMBER, confirms by hand that they sent it, uploads a
-// screenshot, and an administrator verifies that the workflow was exercised.
+// to ANY VALID NUMBER THE TESTER ENTERS, confirms by hand that they sent it,
+// uploads a screenshot, and a verifier checks that the workflow was exercised.
 //
 // WHAT THIS PHASE IS NOT
 // ----------------------
-// It is not a customer review system. Nothing here is addressed to a customer,
-// attributed to a customer, or publishable. There is no review destination, no
-// Google link, no public-posting action, and no path by which any of this
-// reaches a member of the public. The card text is obviously fictional filler
-// whose only job is to exercise layout and message handling.
+// It is not a customer review system. Nothing here is attributed to a customer
+// or publishable: there is no review destination, no Google link and no
+// public-posting action anywhere in the module. The card text is obviously
+// fictional filler whose only job is to exercise layout and message handling.
+//
+// WHAT IS NOT CLAIMED. The tester chooses the recipient, so nothing here can
+// promise who receives a message — not that they are internal, and not that
+// they are not a member of the public. What IS true, and enforced, is that
+// nothing is posted anywhere and that BOE never sends the message: the artefact
+// is a wa.me URL a person clicks.
 //
 // THE LABEL
 // ---------
@@ -58,13 +63,13 @@ export const INTERNAL_TEST_WARNING =
  * of these on their phone should be able to tell in one glance that a system
  * test reached them and that nothing is expected of them.
  *
- * IT NO LONGER CLAIMS WHO THE RECIPIENT IS. An earlier version said the message
- * had been "sent to a BOE internal team number", which was true while the
- * recipient came from an allowlist and stopped being true the moment a tester
- * could type any number. A message that tells its reader something false about
- * themselves is exactly the kind of claim this module refuses to make, so it now
- * describes only what BOE can vouch for: where the message came from, and that
- * a person sent it deliberately.
+ * IT CLAIMS NOTHING ABOUT WHO THE RECIPIENT IS. An earlier version described
+ * the reader as somebody on a BOE team, which was true while the recipient came
+ * from an allowlist and stopped being true the moment a tester could type any
+ * number. A message that tells its reader something false about themselves is
+ * exactly the kind of claim this module refuses to make, so it describes only
+ * what BOE can vouch for: where the message came from, and that a person sent
+ * it deliberately.
  */
 export const INTERNAL_TEST_EXPLANATION =
   'This is an automated workflow test, sent deliberately by a member of BOE ' +

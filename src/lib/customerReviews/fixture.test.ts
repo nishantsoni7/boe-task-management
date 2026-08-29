@@ -122,9 +122,49 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
   test('the runner loads it as its own explicitly-numbered step', () => {
     const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
     assert.ok(runner.includes(`FIXTURE="${FIXTURE}"`))
-    assert.ok(runner.includes('9/9'))
+
+    // The step number is derived rather than hard-coded, so adding a step to
+    // the runner is not a test failure — but MISNUMBERING one still is. The
+    // fixture must be step 9 of however many the runner declares, because the
+    // concurrency probe that follows it deliberately runs against a database
+    // the fixture has already populated.
+    const total = /══ all (\w+) steps passed/.exec(runner)?.[1]
+    assert.ok(total, 'the runner no longer says how many steps it has')
+    const totals = [...runner.matchAll(/══ \$?\w*\/(\d+)/g)].map(m => m[1])
+    assert.ok(totals.length > 0, 'the runner has no numbered steps at all')
+    assert.equal(new Set(totals).size, 1,
+      `the runner's steps disagree about the total: ${[...new Set(totals)].join(', ')}`)
+    assert.ok(runner.includes(`9/${totals[0]}`), 'the fixture is not step 9')
+
     // ...and checks that all sixteen landed, rather than assuming.
     assert.ok(runner.includes('the fixture loaded $LOADED card(s), expected 16'))
+  })
+
+  test('and the step after it proves the screenshot index under real concurrency', () => {
+    // The fixture step is followed by a probe that runs two psql PROCESSES at
+    // one card. It is in this file's care because it depends on the runner's
+    // step numbering staying coherent — and because a probe that silently
+    // stopped racing would still print a pass.
+    const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
+    assert.ok(runner.includes('10/10'), 'the concurrency probe is not the tenth step')
+
+    // Two background processes, waited on separately.
+    assert.equal((runner.match(/race_insert .*&$/gm) ?? []).length, 2,
+      'the probe does not start two concurrent sessions')
+    assert.ok(runner.includes('wait "$PID_A"') && runner.includes('wait "$PID_B"'))
+
+    // Output goes to files, not to variables assigned inside a background
+    // subshell — that assignment never reaches the parent, and the checks below
+    // would read an empty string and pass on nothing.
+    assert.ok(runner.includes('RACE_DIR'))
+    assert.equal(/RACE_\w+_OUT="\$\(/.test(runner), false,
+      'the probe assigns a background subshell’s output to a variable')
+
+    // And it fails for the right reasons: one row left, and the loser refused
+    // BY THE NAMED INDEX rather than by a deadlock or a dropped connection.
+    assert.ok(runner.includes('The partial unique index is not doing its job'))
+    assert.ok(runner.includes('duplicate key value'))
+    assert.ok(runner.includes('customer_review_screenshot_one_live_per_card'))
   })
 
   test('both files say how they are loaded and cleared', () => {

@@ -207,13 +207,26 @@ describe('authorization stays on the server', () => {
     assert.ok(fn.includes('if (allowed !== true) return { response: fail(403'))
   })
 
-  test('A NON-OWNER CANNOT GENERATE A LINK', () => {
+  test('A NON-OWNER CANNOT GENERATE A LINK, AND THERE IS NO ADMIN EXCEPTION', () => {
     // Two checks, and both are needed. RLS lets a VERIFIER read every card, so
     // the read alone would not stop one producing a link for somebody else's
     // test; the ownership check is what does.
     assert.ok(route.includes(".from('customer_review_test_cards')"))
     assert.ok(route.includes('if (!card) return fail(404, MESSAGES.not_found)'))
-    assert.ok(route.includes('if (!caller.isAdmin && card.booked_by !== caller.userId) return fail(403'))
+    assert.ok(route.includes('if (card.booked_by !== caller.userId) return fail(403'))
+
+    // THE ADMIN BRANCH IS GONE, not merely unused. An earlier version read
+    // `!caller.isAdmin && card.booked_by !== caller.userId`, which let an
+    // administrator open WhatsApp for a test somebody else booked. Checked as an
+    // absence, because an ownership check with a disjunct in front of it reads
+    // almost identically to one without.
+    assert.equal(/isAdmin\s*&&\s*card\.booked_by/.test(route), false,
+      'the ownership check still has an administrator escape hatch')
+
+    // ...and no other comparison against booked_by is admitted anywhere in the
+    // route, so the check above is the only one there is.
+    const comparisons = [...route.matchAll(/card\.booked_by\s*!==\s*[\w.]+/g)].map(m => m[0])
+    assert.deepEqual(comparisons, ['card.booked_by !== caller.userId'])
   })
 
   test('and only while the card is booked', () => {
@@ -292,12 +305,18 @@ describe('opening is not sending, and previewing is not opening', () => {
   })
 
   test('the recorder is reachable by service_role alone', () => {
+    // THREE PARAMETERS, NOT FOUR. The fingerprint argument is gone along with
+    // the column it fed; the signature in the grant is the load-bearing part,
+    // because a grant naming a signature that no longer exists is a silent
+    // no-op that leaves the function granted to whatever it was before.
     assert.ok(sql.includes(
-      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  from public, anon, authenticated;',
+      'revoke execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  from public, anon, authenticated;',
     ))
     assert.ok(sql.includes(
-      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)\n  to service_role;',
+      'grant  execute on function public.record_customer_review_test_card_whatsapp_opened(uuid, text, uuid)\n  to service_role;',
     ))
+    assert.equal(sql.includes('record_customer_review_test_card_whatsapp_opened(uuid, text, text, uuid)'), false,
+      'the four-argument signature is still referenced somewhere')
   })
 
   test('a recording failure is reported, not swallowed', () => {

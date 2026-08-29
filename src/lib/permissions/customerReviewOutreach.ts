@@ -106,16 +106,23 @@ export function deriveCustomerReviewCapabilities(
  * at all, so there is no "may I change this" question to answer. The only
  * question a screen has is "is this mine to act on", which is this.
  *
- * An admin is included because every module here admits one, and because
- * somebody has to be able to unstick a card whose tester has left.
+ * THERE IS NO ADMINISTRATOR BRANCH, and its removal is the point. An earlier
+ * version returned true for any admin, on the argument that somebody has to be
+ * able to unstick a card whose tester has left. That argument turned every
+ * tester action into something an administrator could perform on somebody
+ * else's test — opening WhatsApp as them, confirming a send they did not make,
+ * submitting evidence they did not produce. An administrator's authority here
+ * covers verifying and returning, and the way to unstick a card is to RETURN
+ * it, which a verifier can already do.
+ *
+ * The role parameter is gone from the signature rather than accepted and
+ * ignored, so a caller cannot pass one and believe it counts for something.
  */
 export function holdsThisCard(
   card: Pick<TestCard, 'booked_by'>,
   userId: string | null | undefined,
   caps: CustomerReviewCapabilities,
-  role: string | null | undefined,
 ): boolean {
   if (!userId) return false
-  if (role === 'admin') return true
   return card.booked_by === userId && caps.canUse
 }

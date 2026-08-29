@@ -241,17 +241,23 @@ describe('identity: who the function thinks it is acting for', () => {
     }
   })
 
+  // The pair below used to assert a NULL check on v_admin: the role was read
+  // with SELECT ... INTO, and a missing row left it NULL rather than false. No
+  // role is read anywhere in this module now, so the question is asked directly
+  // — "is there an active row for this person" — and a missing row is simply
+  // not-exists. The property under test is unchanged; only the shape is.
   test('the transition refuses when the caller has no active user row at all', () => {
     const body = byName('transition_customer_review_test_card').body
-    // SELECT ... INTO leaves v_admin NULL when no row matched, which is the
-    // deactivated / deleted case. It must raise rather than fall through as
-    // "not an admin".
-    assert.ok(body.includes('if v_admin is null then'))
+    assert.ok(body.includes('select 1 from public.users u where u.id = v_uid and u.is_active'))
+    assert.ok(body.includes("CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Your account is not active"))
+    assert.equal(body.includes('v_admin'), false, 'the transition still reads a role')
   })
 
   test('the removal half refuses an inactive actor the same way', () => {
     const body = byName('begin_customer_review_test_screenshot_removal').body
-    assert.ok(body.includes('if v_admin is null then'))
+    assert.ok(body.includes('select 1 from public.users u where u.id = p_actor_id and u.is_active'))
+    assert.ok(body.includes("CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Your account is not active"))
+    assert.equal(body.includes('v_admin'), false, 'the removal function still reads a role')
   })
 })
 
@@ -418,8 +424,39 @@ describe('permission enforcement inside the functions', () => {
     const body = byName('transition_customer_review_test_card').body
     assert.ok(body.includes("if p_next_status in ('verified', 'booked') then"))
     assert.ok(body.includes('if not v_verify then'))
-    // Every other move requires holding the card plus `use`, or admin.
-    assert.ok(body.includes('if not (v_admin or (v_holder and v_use)) then'))
+
+    // EVERY OTHER MOVE NEEDS BOTH HALVES AND NOTHING ELSE. The disjunct that
+    // stood here was `v_admin or (v_holder and v_use)`, which let an
+    // administrator submit a test they did not run. Its removal is the whole
+    // of this correction on the transition side.
+    assert.ok(body.includes('if not (v_holder and v_use) then'))
+    assert.equal(body.includes('v_admin'), false,
+      'the transition still has an administrator escape hatch')
+    assert.ok(body.includes("Only the tester holding this card can submit it"))
+  })
+
+  test('SUBMITTING IS THE HOLDER’S, and the two facts it needs are separate', () => {
+    const body = byName('transition_customer_review_test_card').body
+    // Holding is a comparison against the row, not a permission; `use` is a
+    // permission, not an identity. Requiring only one of them would be a
+    // different rule, so both are asserted where they are computed.
+    assert.ok(body.includes('v_holder := (c.booked_by = v_uid);'))
+    assert.ok(body.includes("v_use    := public.resolve_permission(v_uid, 'customer_review_requests', 'use');"))
+  })
+
+  test('THE VERIFY BRANCH IS THE ONLY PLACE A NON-HOLDER PASSES', () => {
+    // Stated as a whole-function property rather than by matching one line: the
+    // only authorization outcome that does not require v_holder is the one
+    // guarded by p_next_status in ('verified', 'booked').
+    const body = byName('transition_customer_review_test_card').body
+    const gate = body.slice(body.indexOf("if p_next_status in ('verified', 'booked') then"))
+    const elseAt = gate.indexOf('else')
+    const verifyBranch = gate.slice(0, elseAt)
+    const otherBranch = gate.slice(elseAt)
+    assert.equal(verifyBranch.includes('v_holder'), false,
+      'verifying a card wrongly requires holding it')
+    assert.ok(otherBranch.includes('v_holder'),
+      'a non-verifier move does not require holding the card')
   })
 
   test('booking requires `use` — a verifier alone cannot take a card', () => {
@@ -577,7 +614,26 @@ describe('storage: an object cannot be attached to somebody else’s card', () =
     assert.ok(code.includes('constraint customer_review_screenshot_path_matches_card check ('))
     assert.ok(code.includes("split_part(storage_path, '/', 1) = card_id::text"))
     assert.ok(code.includes('storage_path text not null unique'))
-    assert.ok(code.includes('constraint customer_review_screenshot_unique_content_per_card'))
+
+    // Content uniqueness moved from a table constraint to a PARTIAL index, and
+    // that is a behaviour change rather than a tidy-up: the constraint counted
+    // rows already marked for removal, so a failed object deletion left a card
+    // unable to accept the very file a person would retry with.
+    assert.equal(code.includes('constraint customer_review_screenshot_unique_content_per_card'), false)
+    assert.ok(code.includes(
+      'create unique index customer_review_screenshot_unique_live_content\n' +
+      '  on public.customer_review_test_card_screenshots (card_id, content_sha256)\n' +
+      '  where removal_started_at is null;'))
+  })
+
+  test('ONE LIVE SCREENSHOT PER CARD IS A DATABASE RULE, not a route’s count', () => {
+    // MAX_TEST_SCREENSHOTS = 1 was enforced by reading a count and then
+    // inserting. Two concurrent uploads with different content both read zero
+    // and both inserted; only the index below actually prevents that.
+    assert.ok(code.includes(
+      'create unique index customer_review_screenshot_one_live_per_card\n' +
+      '  on public.customer_review_test_card_screenshots (card_id)\n' +
+      '  where removal_started_at is null;'))
   })
 
   test('the stored type and size are FACTS the server established', () => {
@@ -606,14 +662,26 @@ describe('storage: an object cannot be attached to somebody else’s card', () =
 })
 
 describe('objects cannot be orphaned, and an accident can be corrected', () => {
-  test('an ADMIN can withdraw a screenshot at any status', () => {
-    // The whole status ladder sits inside the non-admin branch, so an
-    // administrator passes it entirely — which is the only safe correction
-    // route for an image uploaded by accident.
+  // The test that stood here asserted 'an ADMIN can withdraw a screenshot at
+  // any status'. It was the admin bypass written down as a requirement: it let
+  // an administrator withdraw evidence from a test somebody else ran, after a
+  // verifier had already acted on it. What replaces it states the rule and the
+  // price of the rule.
+  test('NOBODY WITHDRAWS A SCREENSHOT FROM A CARD THEY DO NOT HOLD', () => {
     const body = byName('begin_customer_review_test_screenshot_removal').body
-    assert.ok(body.includes('if not v_admin then'))
-    const beforeLadder = body.slice(0, body.indexOf('if not v_admin then'))
-    assert.equal(beforeLadder.includes("c.status <>"), false)
+    assert.ok(body.includes('c.booked_by = p_actor_id'))
+    assert.equal(body.includes('v_admin'), false)
+    assert.equal(body.includes("'admin'"), false)
+  })
+
+  test('and the correction route for a mistaken upload is a RETURN', () => {
+    // Not a lost capability, a relocated one: a verifier returns the card, the
+    // status goes back to booked, and the tester withdraws their own image.
+    const body = byName('transition_customer_review_test_card').body
+    assert.ok(body.includes("if p_next_status in ('verified', 'booked') then"))
+    const removal = byName('begin_customer_review_test_screenshot_removal').body
+    assert.ok(removal.includes("if c.status <> 'booked' then"),
+      'a returned card does not reopen removal')
   })
 
   test('a tester can only withdraw one while they still hold the card', () => {
