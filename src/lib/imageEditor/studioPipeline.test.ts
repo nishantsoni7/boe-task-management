@@ -13,27 +13,17 @@
  *   npx tsx --test src/lib/imageEditor/studioPipeline.test.ts
  */
 
-import { test, describe, afterEach, before } from 'node:test'
+import { test, describe, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import sharp from 'sharp'
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { measureCutout, prepareCutoutForShot } from './prepareCutout'
 import { planPadding, checkEnlargement, MASTER_WIDTH, MASTER_HEIGHT, PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX } from './studioMaster'
-import { generateStudioShot } from './briaProductShot'
-import { REFERENCE_PATH, resetReferenceCache } from './studioReference'
+import { composeStudioScene } from './studioScene'
 
 const realFetch = globalThis.fetch
-afterEach(() => { globalThis.fetch = realFetch; resetReferenceCache() })
-
-let root: string
-before(() => {
-  root = mkdtempSync(join(tmpdir(), 'boe-pipeline-'))
-  mkdirSync(join(root, 'assets', 'image-editor'), { recursive: true })
-  writeFileSync(join(root, REFERENCE_PATH), Buffer.from('REFERENCE-PNG'))
-})
+afterEach(() => { globalThis.fetch = realFetch })
 
 /**
  * A cut-out as background/remove returns one: the ORIGINAL frame, with
@@ -383,38 +373,45 @@ describe('the edge repair, in the pipeline', () => {
   })
 })
 
-describe('the request that would go to Bria', () => {
-  test('it carries the padding this cut-out produced, and one image', async () => {
-    const { plan, shaped } = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 } }))
+describe('what happens after the one provider call', () => {
+  test('the composition is local — no second request of any kind', async () => {
+    const { plan, shaped } = await pipeline(await cutout({
+      product: { left: 300, top: 250, width: 900, height: 1200 },
+    }))
 
-    const calls: string[] = []
-    globalThis.fetch = (async (_url: string | URL | Request, init?: RequestInit) => {
-      calls.push(String(init?.body))
-      return new Response(JSON.stringify({ images: [{ url: 'data:image/png;base64,TUFTVEVS', content_type: 'image/png' }] }), {
-        status: 200, headers: { 'Content-Type': 'application/json', 'x-fal-request-id': 'req-1' },
-      })
-    }) as typeof globalThis.fetch
+    let calls = 0
+    globalThis.fetch = (async () => { calls++; return new Response('{}') }) as typeof globalThis.fetch
 
-    const result = await generateStudioShot({ cutoutPng: shaped.png, plan, apiKey: 'k', referenceRoot: root })
+    const scene = await composeStudioScene(shaped.png, plan)
 
-    assert.equal(result.ok, true)
-    assert.equal(calls.length, 1, 'one billable request')
-
-    const body = JSON.parse(calls[0])
-    assert.deepEqual(body.padding_values, plan.paddingValues)
-    assert.equal(body.placement_type, 'manual_padding')
-    assert.equal(body.num_results, 1)
-    // The image sent is the prepared cut-out, byte for byte.
-    assert.equal(body.image_url, `data:image/png;base64,${shaped.png.toString('base64')}`)
+    assert.equal(scene.ok, true)
+    assert.equal(calls, 0, 'compositing must not reach the network')
   })
 
-  test('two different products produce two different padding arrays', async () => {
-    const chair = await pipeline(await cutout({ product: { left: 300, top: 250, width: 900, height: 1200 }, legs: false }))
+  test('the master is 1440 x 1440 and opaque', async () => {
+    const { plan, shaped } = await pipeline(await cutout({
+      product: { left: 300, top: 250, width: 900, height: 1200 },
+    }))
+    const scene = await composeStudioScene(shaped.png, plan)
+    assert.equal(scene.ok, true)
+    if (!scene.ok) return
+
+    const meta = await sharp(scene.png).metadata()
+    assert.equal(meta.width, 1440)
+    assert.equal(meta.height, 1440)
+    assert.equal(meta.hasAlpha ?? false, false)
+  })
+
+  test('two different products place differently, from their own dimensions', async () => {
+    const chair = await pipeline(await cutout({
+      product: { left: 300, top: 250, width: 900, height: 1200 }, legs: false,
+    }))
     const bench = await pipeline(await cutout({
       frame: { width: 3000, height: 1400 }, product: { left: 200, top: 300, width: 2400, height: 800 }, legs: false,
     }))
 
     assert.notDeepEqual(chair.plan.paddingValues, bench.plan.paddingValues,
       'the padding must be derived from the cut-out, not fixed')
+    assert.equal(bench.plan.widthLimited, true)
   })
 })

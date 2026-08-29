@@ -6,24 +6,15 @@
 // The key is read from .env.local, the same file the dev server reads. Nobody
 // types it, and it is never printed.
 //
-// THIS COSTS MONEY. One run is TWO billable fal requests — the same two the
-// route makes:
+// THIS COSTS MONEY. One run is ONE billable fal request:
+// fal-ai/bria/background/remove. Everything after it is local.
 //
-//   1. fal-ai/bria/background/remove, whose only purpose is to learn the
-//      product's real pixel size, because `padding_values` cannot be computed
-//      without it;
-//   2. fal-ai/bria/product-shot with placement_type=manual_padding, which is
-//      the picture.
-//
-// It reads one local file, writes three (the cut-out, the prepared cut-out that
-// was actually sent, and the master), and stores nothing else. Neither the key
+// It reads one local file, writes three (the raw cut-out, the prepared cut-out
+// that is composited, and the master), and stores nothing else. Neither the key
 // nor fal's response body is ever printed.
 //
 // This is the developer's tool. The live check the product owner runs is the
 // app itself — see the module doc.
-//
-// It needs the approved studio reference at assets/image-editor/studio-reference.png.
-// Without it nothing is sent and nothing is billed.
 
 import sharp from 'sharp'
 import { config } from 'dotenv'
@@ -34,9 +25,8 @@ import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
 import { removeBackground, MODEL_ID as CUTOUT_MODEL } from '../src/lib/imageEditor/briaBackgroundRemove.ts'
 import { measureCutout, prepareCutoutForShot } from '../src/lib/imageEditor/prepareCutout.ts'
 import { planPadding, checkEnlargement, PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX } from '../src/lib/imageEditor/studioMaster.ts'
-import { generateStudioShot, MODEL_ID as STUDIO_MODEL } from '../src/lib/imageEditor/briaProductShot.ts'
-import { loadStudioReference, REFERENCE_PATH } from '../src/lib/imageEditor/studioReference.ts'
-import { measureComposition, describeMeasurement } from '../src/lib/imageEditor/composition.ts'
+import { composeStudioScene } from '../src/lib/imageEditor/studioScene.ts'
+import { measurePlacement, describeMeasurement } from '../src/lib/imageEditor/composition.ts'
 
 // The same file the dev server reads, so there is one place the key lives.
 config({ path: '.env.local', quiet: true })
@@ -54,15 +44,6 @@ if (!apiKey) {
   process.exit(1)
 }
 
-// Checked before anything is billed.
-const reference = await loadStudioReference()
-if (!reference.ok) {
-  console.error(`The approved studio reference is missing: ${reference.detail}`)
-  console.error(`Copy the approved reference to ${REFERENCE_PATH} and run again.`)
-  process.exit(1)
-}
-console.log(`reference ${REFERENCE_PATH}, ${(reference.bytes / 1e6).toFixed(2)} MB\n`)
-
 mkdirSync(dirname(out), { recursive: true })
 
 const bytes = readFileSync(sourceFile)
@@ -76,8 +57,8 @@ console.log(`source ${prepared.width}x${prepared.height}` +
   `${prepared.reencoded ? ' (re-encoded for EXIF/size)' : ' (original bytes)'}, ` +
   `${(prepared.bytes.length / 1e6).toFixed(2)} MB`)
 
-// ── Request one: the cut-out ─────────────────────────────────────────────────
-console.log(`\n[1/2] ${CUTOUT_MODEL} — one billable request`)
+// ── The one billable request ─────────────────────────────────────────────────
+console.log(`\n${CUTOUT_MODEL} — one billable request`)
 const cutout = await removeBackground({ bytes: prepared.bytes, mimeType: prepared.mimeType, apiKey })
 
 if (!cutout.ok) {
@@ -118,32 +99,27 @@ console.log(`master ${plan.canvas.width}x${plan.canvas.height}, ` +
 const shaped = await prepareCutoutForShot(cutout.png, measured.bounds, plan.product)
 if (!shaped.ok) { console.error(shaped.error); process.exit(1) }
 
-const sentPath = out.replace(/\.png$/, '-sent.png')
+const sentPath = out.replace(/\.png$/, '-prepared.png')
 writeFileSync(sentPath, shaped.png)
 console.log(`prepared cut-out → ${sentPath}`)
+console.log(`enlargement ${shaped.scale.toFixed(3)}x, edges repaired ${shaped.edges.repaired}`)
 
-// ── Request two: the studio scene ────────────────────────────────────────────
-console.log(`\n[2/2] ${STUDIO_MODEL} — one billable request`)
-const studio = await generateStudioShot({ cutoutPng: shaped.png, plan, apiKey })
+// ── Local: the studio scene ──────────────────────────────────────────────────
+console.log('\ncompositing locally — no further provider call')
+const scene = await composeStudioScene(shaped.png, plan)
+if (!scene.ok) { console.error(scene.error); process.exit(1) }
 
-if (!studio.ok) {
-  console.error(`failed: ${studio.reason} — ${studio.message}`)
-  console.error(`status ${studio.status ?? '-'}, request ${studio.requestId || '-'}, ${studio.durationMs} ms`)
-  if (studio.detail) console.error(studio.detail)
-  process.exit(1)
-}
-
-writeFileSync(out, studio.image)
-const meta = await sharp(studio.image).metadata()
-console.log(`      ${studio.durationMs} ms → ${out}`)
-console.log(`      ${meta.width}x${meta.height} ${meta.format}, ${(studio.image.length / 1e6).toFixed(2)} MB`)
-console.log(`      request id ${studio.requestId || '-'}`)
-
-console.log('\nThe fal dashboard should show exactly TWO requests for this run,')
-console.log('both with their results, because sync_mode is not sent.')
+writeFileSync(out, scene.png)
+const meta = await sharp(scene.png).metadata()
+console.log(`      ${meta.width}x${meta.height} ${meta.format}, ${(scene.png.length / 1e6).toFixed(2)} MB -> ${out}`)
+console.log(`      feet ${scene.metrics.contactColumns} columns, cast shadow ${scene.metrics.castDrawn ? 'drawn' : 'none'}`)
+console.log('\nThe fal dashboard should show exactly ONE request for this run.')
 
 // ── What came back, measured ─────────────────────────────────────────────────
-const check = await measureComposition(studio.image)
+// From the cut-out's alpha and the placement plan, so the background and the
+// shadows cannot affect it.
+
+const check = await measurePlacement(shaped.png, plan)
 if (!check.ok) {
   console.log(`\ncould not measure the result: ${check.error}`)
 } else {
@@ -151,10 +127,11 @@ if (!check.ok) {
   for (const line of describeMeasurement(check.measurement)) console.log(`  ${line}`)
 
   const share = check.measurement.heightShare
-  const withinTarget = share >= PRODUCT_HEIGHT_MIN - 0.03 && share <= PRODUCT_HEIGHT_MAX + 0.03
+  const within = share >= PRODUCT_HEIGHT_MIN - 0.01 && share <= PRODUCT_HEIGHT_MAX + 0.01
   console.log(`\nproduct height ${(share * 100).toFixed(1)}% — ` +
-    `${withinTarget ? 'within' : 'OUTSIDE'} the ${(PRODUCT_HEIGHT_MIN * 100)}-${(PRODUCT_HEIGHT_MAX * 100)}% target` +
-    `${withinTarget ? '' : ' — this is the defect the padding change was meant to fix'}`)
-  console.log('The measurement finds the product by contrast, so a strong contact')
-  console.log('shadow reads a point or two tall. Look at the image as well.')
+    (plan.widthLimited
+      ? 'width-limited, so shorter than the target by design'
+      : `${within ? 'within' : 'OUTSIDE'} the ${PRODUCT_HEIGHT_MIN * 100}-${PRODUCT_HEIGHT_MAX * 100}% target`))
+  console.log('This checks the framing only. It never looks at the background,')
+  console.log('so the scene still has to be looked at.')
 }

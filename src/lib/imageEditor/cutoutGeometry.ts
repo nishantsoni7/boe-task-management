@@ -1,6 +1,7 @@
-// Where the product is in a cut-out.
+// Where the product is in a cut-out, and where it meets the floor.
 //
-// One job: read raw alpha and report the product's bounding box. That box is
+// Two jobs, both reading raw alpha and neither writing it: the product's
+// bounding box, and the underside the shadows are drawn from. That box is
 // what the whole framing is computed from — `padding_values` is measured in
 // pixels around the product, so the product's real size is the input to
 // studioMaster.ts, and getting this box wrong moves the chair.
@@ -70,4 +71,52 @@ export function alphaBounds(
   if (top < 0 || bottom < 0 || left < 0 || right < 0) return null
 
   return { left, top, right, bottom, width: right - left + 1, height: bottom - top + 1 }
+}
+
+/**
+ * The lowest product pixel in each column, relative to the bounds.
+ *
+ * This is what a contact shadow is drawn from: the underside of the product,
+ * column by column, so four feet cast four shadows with floor between them
+ * rather than one oval under the whole chair.
+ */
+export function lowestOpaqueRows(
+  alpha: Uint8Array | Buffer,
+  width: number,
+  bounds: Bounds,
+): Int32Array {
+  const lowest = new Int32Array(bounds.width).fill(-1)
+
+  for (let x = 0; x < bounds.width; x++) {
+    for (let y = bounds.height - 1; y >= 0; y--) {
+      if (alpha[(bounds.top + y) * width + bounds.left + x] >= ALPHA_THRESHOLD) {
+        lowest[x] = y
+        break
+      }
+    }
+  }
+
+  return lowest
+}
+
+/**
+ * Which columns stand on the floor.
+ *
+ * `rise` is how far above the product's lowest point a column may end and still
+ * count as touching. Generous, because in a three-quarter view the back feet
+ * sit visibly higher in the frame than the front ones while resting on the same
+ * floor; anything well above it — a seat rail, an apron, a stretcher — is
+ * excluded, which is what keeps this a contact shadow rather than a silhouette.
+ */
+export function contactColumns(lowest: Int32Array, rise: number): Uint8Array {
+  const mask = new Uint8Array(lowest.length)
+
+  let floor = -1
+  for (const y of lowest) if (y > floor) floor = y
+  if (floor < 0) return mask
+
+  for (let x = 0; x < lowest.length; x++) {
+    if (lowest[x] >= 0 && floor - lowest[x] <= rise) mask[x] = 255
+  }
+  return mask
 }

@@ -36,12 +36,19 @@ const PRODUCTS = [
 ]
 
 describe('the master canvas', () => {
-  test('it is square, and it is the megapixel Bria calls optimal', () => {
-    assert.equal(MASTER_WIDTH, 1000)
-    assert.equal(MASTER_HEIGHT, 1000)
-    // "For optimal results, the total number of pixels, including padding,
-    // should be around 1,000,000" — the schema, on padding_values.
-    assert.equal(MASTER_WIDTH * MASTER_HEIGHT, 1_000_000)
+  test('it is square, 1440 x 1440', () => {
+    // Larger than the 1000 it was: the product is composited locally now, so
+    // there is no provider megapixel guidance to sit under, and the photograph's
+    // own resolution stops being thrown away. At 1000 a 1152px product was
+    // resampled down to 530 before anything else happened to it.
+    assert.equal(MASTER_WIDTH, 1440)
+    assert.equal(MASTER_HEIGHT, 1440)
+  })
+
+  test('the approved targets fall out of the shares exactly', () => {
+    assert.equal(Math.round(MASTER_HEIGHT * PRODUCT_HEIGHT_SHARE), 763)
+    assert.equal(Math.round(MASTER_WIDTH * (1 - 2 * SIDE_MARGIN_SHARE)), 1267)
+    assert.equal(Math.round(MASTER_WIDTH / 2), 720)
   })
 
   test('every product lands on exactly that canvas', () => {
@@ -52,7 +59,7 @@ describe('the master canvas', () => {
       const plan = planPadding(p)
       assert.equal(plan.padding.left + plan.product.width + plan.padding.right, MASTER_WIDTH, p.name)
       assert.equal(plan.padding.top + plan.product.height + plan.padding.bottom, MASTER_HEIGHT, p.name)
-      assert.deepEqual(plan.canvas, { width: 1000, height: 1000 }, p.name)
+      assert.deepEqual(plan.canvas, { width: 1440, height: 1440 }, p.name)
     }
   })
 })
@@ -220,12 +227,12 @@ describe('the padding values sent to Bria', () => {
     }
   })
 
-  test('the total including padding is the megapixel Bria asks for', () => {
+  test('the padded total is exactly the master', () => {
     for (const p of PRODUCTS) {
       const plan = planPadding(p)
       const total = (plan.padding.left + plan.product.width + plan.padding.right)
         * (plan.padding.top + plan.product.height + plan.padding.bottom)
-      assert.equal(total, 1_000_000, p.name)
+      assert.equal(total, MASTER_WIDTH * MASTER_HEIGHT, p.name)
     }
   })
 })
@@ -258,12 +265,57 @@ describe('the quality gate', () => {
     assert.equal(checkEnlargement({ width: 90, height: verdict.needed }).ok, true)
   })
 
-  test('a smaller target is a more forgiving gate than the old one', () => {
-    // Worth stating: the product is 53% of the canvas now rather than 65%, so a
-    // photograph that used to be refused may now be fine. Nothing was loosened
-    // — the cap is the same 1.15x — the frame simply asks for less.
+  test('the cap was re-measured for the 1440 master, not carried over', () => {
+    // 1440 asks for a 763px product where 1000 asked for 530. Detail retained
+    // against a native render, on a subject with 1px spindles:
+    // 1.20x 80.8%, 1.25x 78.6%, 1.30x 77.7%, 1.50x 72.1%, 1.75x 63.3%.
+    assert.equal(MAX_ENLARGEMENT, 1.30)
+    // 1440 x 0.53 is 763.2 before it is rounded to a placed 763, and the gate
+    // works from the unrounded target, so the smallest usable source is 588.
     const needed = Math.ceil((MASTER_HEIGHT * PRODUCT_HEIGHT_SHARE) / MAX_ENLARGEMENT)
-    assert.ok(needed < 570, `a product must be ${needed}px tall, which is stricter than expected`)
+    assert.equal(needed, 588, `a product must be ${needed}px tall`)
+  })
+
+  test('THE IRVINE REGRESSION: the real acceptance-test source is accepted', () => {
+    // The cut-out the approved result was built from, measured from a real run:
+    //   product 549 x 609
+    // Reaching 763 from 609 is 1.253x. A cap of 1.20 — or 1.25 — refuses the
+    // exact photograph BOE signed the look off against, which is a gate that
+    // rejects its own reference subject.
+    const IRVINE = { width: 549, height: 609 }
+
+    const verdict = checkEnlargement(IRVINE)
+    assert.equal(verdict.ok, true, 'the Irvine source must be accepted')
+    assert.ok(Math.abs(verdict.scale - 1.253) < 0.002, `scale came out ${verdict.scale.toFixed(4)}`)
+
+    // And it is the HEIGHT that binds, not the width — 549 wide has room to spare.
+    const plan = planPadding(IRVINE)
+    assert.equal(plan.widthLimited, false)
+    assert.equal(plan.product.height, 763)
+    assert.ok(Math.abs(plan.heightShare - PRODUCT_HEIGHT_SHARE) < 0.005)
+  })
+
+  test('severe enlargement is still refused', () => {
+    // The gate was raised, not removed. Anything past 1.30 is still an honest
+    // refusal rather than a soft catalogue image.
+    for (const height of [587, 550, 500, 400, 300]) {
+      const scale = (MASTER_HEIGHT * PRODUCT_HEIGHT_SHARE) / height
+      assert.ok(scale > MAX_ENLARGEMENT, `${height}px should need more than the cap`)
+      assert.equal(checkEnlargement({ width: 500, height }).ok, false,
+        `a ${height}px product must be refused (${scale.toFixed(3)}x)`)
+    }
+  })
+
+  test('the boundary is exactly where the cap says it is', () => {
+    assert.equal(checkEnlargement({ width: 500, height: 588 }).ok, true, '588px is the first accepted')
+    assert.equal(checkEnlargement({ width: 500, height: 587 }).ok, false, '587px is the last refused')
+  })
+
+  test('the cap may not drift upwards', () => {
+    // Past 1.30 the gate stops protecting anything: the measured curve falls
+    // away fastest between 1.5 and 1.75, reaching 63% retention.
+    assert.ok(MAX_ENLARGEMENT <= 1.30, 'the cap must not be raised above 1.30')
+    assert.ok(MAX_ENLARGEMENT >= 1.25, 'below 1.25 the real Irvine source is refused')
   })
 
   test('the message names no provider, model or endpoint', () => {

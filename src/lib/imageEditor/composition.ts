@@ -1,58 +1,43 @@
-// Measuring a finished studio image against the approved composition.
+// Measuring a finished master against the composition BOE approved.
 //
 // SERVER ONLY (sharp is a native module). Nothing in the request path uses this:
-// it is how a result is CHECKED, by the smoke script and by tests, rather than
+// it is how a result is CHECKED, by tests and by the smoke script, rather than
 // how one is made.
 //
 // It exists because "the product looks about the right size" is not a review.
-// The reference BOE approved is a set of numbers — sixty-five percent of the
-// canvas height, twenty-one percent above, fourteen percent below the feet,
-// centred — and a returned image either meets them or does not.
+// The approved composition is a set of numbers — 53% of the canvas height,
+// centred, on a 60:40 split — and a master either meets them or does not.
 //
-// HOW THE PRODUCT IS FOUND
-// ------------------------
-// The studio background is, by instruction, one continuous near-uniform light
-// surface. So the product is what differs from it: the four corners give the
-// background colour, and any pixel far enough from that colour is product.
+// HOW THE PRODUCT IS FOUND, AND WHY IT CHANGED
+// --------------------------------------------
+// From the CUT-OUT'S ALPHA and the placement plan, not from colour.
 //
-// The shadow is the one complication. It differs from the background too, and
-// counting it would put the "feet" below the feet and report a taller product
-// than the photograph contains. It is excluded by CONTRAST: a feathered cast
-// shadow darkens the background by a tenth or so, while furniture against a
-// light sweep differs by several times that. The threshold sits between them.
+// The previous version found the product by contrast: it sampled the four
+// corners for a background colour and called anything far enough from it
+// product. That worked while the background was near-flat. It stopped working
+// the moment the background became a real studio sweep — corners at 148 and
+// floor at 214 — because most of the sweep then differs from the corners by
+// more than the threshold. It reported a 53.0% placement as 71.8%: it was
+// measuring the gradient.
 //
-// The limit of that, stated plainly: a very dark contact shadow immediately
-// under a foot can cross the threshold and add a few pixels to the measured
-// height. It cannot move the result far — contact shadows are at the feet by
-// definition — but a measurement that reads one or two percent tall on a
-// product with heavy grounding shadows is this, not the model.
+// Alpha has none of that trouble. It says exactly which pixels are product,
+// it says nothing about the background whatever the background is doing, it
+// excludes shadows because a shadow is not in the cut-out, and it excludes the
+// gaps between spindles because those are transparent. A background change
+// cannot move these numbers, which is the property a verification tool needs.
 //
-// THE BIGGER LIMIT, AND IT MATTERS
-// --------------------------------
-// This assumes the background IS plain. Give it an image with a decorative
-// backdrop — a circle, an arch, a panel — and it will measure the BACKDROP,
-// because the backdrop is what differs from the corners. The numbers will look
-// like a large, perfectly centred product.
-//
-// So these measurements answer "is the framing right", never "is the scene
-// clean". A result still has to be looked at. What keeps a decorative backdrop
-// away is now structural rather than hoped for — the background is drawn
-// locally by composeStudioImage.ts and has nothing in it that could draw one —
-// but this function would not be the thing to notice if that changed.
+// WHAT IT CAN AND CANNOT TELL YOU
+// -------------------------------
+// It answers "is the framing right". It cannot answer "is the scene clean" —
+// it never looks at the background at all. A master still has to be looked at.
 
 import sharp from 'sharp'
-
-/** How far from the background colour a pixel must be, per channel on average,
- *  to count as product. Generous enough for a pale cane back against a light
- *  sweep, high enough that a feathered shadow does not qualify. */
-const PRODUCT_DELTA = 30
-
-/** A shadow is a soft tone over many pixels; product is dense. A row or column
- *  needs this share of its span to be product before it counts. */
-const DENSITY_FLOOR = 0.004
+import { alphaBounds, ALPHA_THRESHOLD } from './cutoutGeometry'
+import { MASTER_WIDTH, MASTER_HEIGHT, type PaddingPlan } from './studioMaster'
 
 export type Measurement = {
   canvas: { width: number; height: number }
+  /** The product's real extent on the master, in canvas coordinates. */
   product: { left: number; top: number; right: number; bottom: number; width: number; height: number }
   /** Product height as a share of the canvas height. */
   heightShare: number
@@ -64,109 +49,105 @@ export type Measurement = {
   feetBaselineShare: number
   /** Product centre minus canvas centre, in pixels. Negative is left. */
   centreOffsetPx: number
-  /** The narrower side margin divided by the wider one; 1 is perfectly even. */
+  /** The narrower side margin divided by the wider; 1 is perfectly even. */
   sideBalance: number
   /** True when the product touches any edge — i.e. it may be cropped. */
   touchesEdge: boolean
+  /** How many of the product's own pixels are opaque, and how many transparent.
+   *  The second number is the openings a generative pass would have filled. */
+  opaquePixels: number
+  transparentPixels: number
 }
 
 export type MeasureResult =
   | { ok: true; measurement: Measurement }
   | { ok: false; error: string }
 
-export async function measureComposition(png: Buffer): Promise<MeasureResult> {
-  let data: Buffer
-  let width: number
-  let height: number
-
+/**
+ * Measure where the product actually landed.
+ *
+ * `preparedPng` is the cut-out as it was composited — already cropped,
+ * decontaminated, resized and sharpened — and `plan` is where it was placed.
+ * Together those are the master's product layer exactly, so this reports what
+ * is really in the picture rather than what was intended: if the crop or the
+ * resize went wrong, the alpha's extent says so.
+ */
+export async function measurePlacement(
+  preparedPng: Buffer,
+  plan: PaddingPlan,
+): Promise<MeasureResult> {
+  let width = 0
+  let height = 0
+  let alpha: Buffer
   try {
-    const raw = await sharp(png, { failOn: 'error' }).removeAlpha().raw().toBuffer({ resolveWithObject: true })
-    data = raw.data
-    width = raw.info.width
-    height = raw.info.height
+    const meta = await sharp(preparedPng, { failOn: 'error' }).metadata()
+    width = meta.width ?? 0
+    height = meta.height ?? 0
+    if (!width || !height) return { ok: false, error: 'The prepared cut-out could not be read.' }
+    alpha = await sharp(preparedPng).ensureAlpha().extractChannel(3).raw().toBuffer()
   } catch {
-    return { ok: false, error: 'That image could not be read.' }
+    return { ok: false, error: 'The prepared cut-out could not be read.' }
   }
 
-  if (!width || !height) return { ok: false, error: 'That image could not be read.' }
+  const bounds = alphaBounds(alpha, width, height)
+  if (!bounds) return { ok: false, error: 'The prepared cut-out has no product in it.' }
 
-  const at = (x: number, y: number) => {
-    const o = (y * width + x) * 3
-    return [data[o], data[o + 1], data[o + 2]] as const
-  }
-
-  // The background, taken from the four corners: on a seamless studio sweep they
-  // are background by definition, and averaging four resists one odd pixel.
-  const corners = [at(2, 2), at(width - 3, 2), at(2, height - 3), at(width - 3, height - 3)]
-  const bg = [0, 1, 2].map(c => corners.reduce((sum, p) => sum + p[c], 0) / corners.length)
-
-  const columnCounts = new Uint32Array(width)
-  const rowCounts = new Uint32Array(height)
-
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const [r, g, b] = at(x, y)
-      const delta = Math.abs(r - bg[0]) + Math.abs(g - bg[1]) + Math.abs(b - bg[2])
-      if (delta >= PRODUCT_DELTA * 3) {
-        columnCounts[x]++
-        rowCounts[y]++
-      }
+  let opaquePixels = 0
+  for (let y = bounds.top; y <= bounds.bottom; y++) {
+    for (let x = bounds.left; x <= bounds.right; x++) {
+      if (alpha[y * width + x] >= ALPHA_THRESHOLD) opaquePixels++
     }
   }
 
-  const firstDense = (counts: Uint32Array, span: number) =>
-    counts.findIndex(c => c >= Math.max(2, span * DENSITY_FLOOR))
-  const lastDense = (counts: Uint32Array, span: number) => {
-    for (let i = counts.length - 1; i >= 0; i--) {
-      if (counts[i] >= Math.max(2, span * DENSITY_FLOOR)) return i
-    }
-    return -1
-  }
+  // Alpha coordinates are relative to the prepared cut-out; the plan says where
+  // that sits on the canvas.
+  const left = plan.padding.left + bounds.left
+  const top = plan.padding.top + bounds.top
+  const right = left + bounds.width - 1
+  const bottom = top + bounds.height - 1
 
-  const top = firstDense(rowCounts, width)
-  const bottom = lastDense(rowCounts, width)
-  const left = firstDense(columnCounts, height)
-  const right = lastDense(columnCounts, height)
+  const canvasWidth = plan.canvas.width
+  const canvasHeight = plan.canvas.height
 
-  if (top < 0 || bottom < 0 || left < 0 || right < 0) {
-    return { ok: false, error: 'No product could be found against the background.' }
-  }
-
-  const productWidth = right - left + 1
-  const productHeight = bottom - top + 1
   const leftMargin = left
-  const rightMargin = width - 1 - right
+  const rightMargin = canvasWidth - 1 - right
+  const wider = Math.max(leftMargin, rightMargin)
 
   return {
     ok: true,
     measurement: {
-      canvas: { width, height },
-      product: { left, top, right, bottom, width: productWidth, height: productHeight },
-      heightShare: productHeight / height,
-      aboveShare: top / height,
-      belowShare: (height - 1 - bottom) / height,
-      feetBaselineShare: bottom / height,
-      centreOffsetPx: (left + right) / 2 - (width - 1) / 2,
-      sideBalance: Math.max(leftMargin, rightMargin) === 0
-        ? 1
-        : Math.min(leftMargin, rightMargin) / Math.max(leftMargin, rightMargin),
-      touchesEdge: top === 0 || left === 0 || bottom === height - 1 || right === width - 1,
+      canvas: { width: canvasWidth, height: canvasHeight },
+      product: { left, top, right, bottom, width: bounds.width, height: bounds.height },
+      heightShare: bounds.height / canvasHeight,
+      aboveShare: top / canvasHeight,
+      belowShare: (canvasHeight - 1 - bottom) / canvasHeight,
+      feetBaselineShare: (bottom + 1) / canvasHeight,
+      centreOffsetPx: (left + right + 1) / 2 - canvasWidth / 2,
+      sideBalance: wider === 0 ? 1 : Math.min(leftMargin, rightMargin) / wider,
+      touchesEdge: left <= 0 || top <= 0 || right >= canvasWidth - 1 || bottom >= canvasHeight - 1,
+      opaquePixels,
+      transparentPixels: bounds.width * bounds.height - opaquePixels,
     },
   }
 }
 
-/** One line per measurement, for the smoke script and the log. */
+/** The measurement in words, for a smoke run's output. */
 export function describeMeasurement(m: Measurement): string[] {
   const pct = (v: number) => `${(v * 100).toFixed(1)}%`
   return [
-    `canvas            ${m.canvas.width} x ${m.canvas.height}`,
-    `product box       ${m.product.width} x ${m.product.height} px at (${m.product.left}, ${m.product.top})`,
-    `product height    ${m.product.height} px, ${pct(m.heightShare)} of the canvas   [target 65%]`,
-    `space above       ${m.product.top} px, ${pct(m.aboveShare)}                     [target 21%]`,
-    `space below feet  ${m.canvas.height - 1 - m.product.bottom} px, ${pct(m.belowShare)}   [target 14%]`,
-    `feet baseline     ${m.product.bottom} px, ${pct(m.feetBaselineShare)} down       [target 86%]`,
-    `centre offset     ${m.centreOffsetPx.toFixed(1)} px from centre                  [target 0]`,
-    `side balance      ${m.sideBalance.toFixed(2)} (1.00 is even)`,
-    `touches an edge   ${m.touchesEdge ? 'YES — the product may be cropped' : 'no'}`,
+    `canvas          ${m.canvas.width} x ${m.canvas.height}`,
+    `product         ${m.product.width} x ${m.product.height} at ${m.product.left},${m.product.top}`,
+    `height share    ${pct(m.heightShare)}`,
+    `space above     ${pct(m.aboveShare)}`,
+    `space below     ${pct(m.belowShare)}`,
+    `feet baseline   ${pct(m.feetBaselineShare)}`,
+    `centre offset   ${m.centreOffsetPx.toFixed(1)}px`,
+    `side balance    ${m.sideBalance.toFixed(3)}`,
+    `touches edge    ${m.touchesEdge ? 'YES — the product may be cropped' : 'no'}`,
+    `openings        ${m.transparentPixels} transparent pixels inside the product box`,
   ]
 }
+
+/** The canvas this module expects, so a caller cannot quietly measure against
+ *  a different master than the one that is built. */
+export const EXPECTED_CANVAS = { width: MASTER_WIDTH, height: MASTER_HEIGHT } as const

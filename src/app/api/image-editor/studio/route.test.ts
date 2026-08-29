@@ -99,94 +99,85 @@ describe('authorization', () => {
     assert.ok(authResolved < firstCall, 'no provider call before the caller is authenticated')
   })
 
-  test('the rate limit is applied before either provider call', () => {
+  test('the rate limit is applied before the provider call', () => {
     const body = postHandler()
     const limit = body.indexOf('rateLimited(user.id)')
     assert.ok(limit > -1 && limit < body.indexOf('removeBackground('))
-    assert.ok(limit < body.indexOf('generateStudioShot('))
     assert.ok(body.includes('status: 429'))
   })
 })
 
 describe('the pipeline', () => {
-  test('exactly two provider calls, and exactly one call site each', () => {
+  test('exactly ONE provider call, and one call site', () => {
     const body = postCode()
     assert.equal(body.split('removeBackground(').length - 1, 1, 'one cut-out call site')
-    assert.equal(body.split('generateStudioShot(').length - 1, 1, 'one studio call site')
+    // The generative stage is gone. A press costs one request, not two.
+    assert.ok(!body.includes('generateStudioShot('))
   })
 
-  test('the cut-out comes first — the studio call needs its dimensions', () => {
+  test('nothing loops or batches around the provider call', () => {
     const body = postCode()
-    assert.ok(body.indexOf('removeBackground(') < body.indexOf('generateStudioShot('))
+    const before = body.slice(0, body.indexOf('removeBackground('))
+    const lastLoop = Math.max(before.lastIndexOf('for ('), before.lastIndexOf('while ('), before.lastIndexOf('.map('))
+    assert.ok(lastLoop < before.lastIndexOf('await'), 'the call looks like it sits inside a loop')
   })
 
-  test('nothing loops or batches around a provider call', () => {
+  test('everything after the call is local — no network, no model', () => {
     const body = postCode()
-    // One press, two requests. A `for`/`while`/`map` wrapped around either call
-    // would turn that into an unbounded bill.
-    for (const call of ['removeBackground(', 'generateStudioShot(']) {
-      const before = body.slice(0, body.indexOf(call))
-      const lastLoop = Math.max(before.lastIndexOf('for ('), before.lastIndexOf('while ('), before.lastIndexOf('.map('))
-      const lastAwait = before.lastIndexOf('await')
-      assert.ok(lastLoop < lastAwait, `${call} looks like it sits inside a loop`)
-    }
+    const after = body.slice(body.indexOf('removeBackground(') + 'removeBackground('.length)
+
+    assert.ok(after.includes('composeStudioScene('), 'the picture is built here')
+    assert.ok(!/fetch\(|https?:\/\//.test(after), 'nothing else is requested over the network')
   })
 
-  test('the size is decided locally, between the two calls', () => {
-    // The whole point of the change. If this moved back into the prompt, the
-    // framing would again be something the model may ignore.
-    const body = postCode()
-    const plan = body.indexOf('planPadding(')
-    assert.ok(plan > body.indexOf('measureCutout('), 'the plan needs the measured product')
-    assert.ok(plan < body.indexOf('generateStudioShot('), 'the plan must precede the studio call')
-  })
-
-  test('the quality gate runs before the second request is paid for', () => {
-    const body = postCode()
-    assert.ok(body.indexOf('checkEnlargement(') < body.indexOf('generateStudioShot('),
-      'a product too small must be refused before it costs a second request')
-  })
-
-  test('the browser cannot influence what the request costs', () => {
-    const body = postCode()
-    // One thing is read out of the request: the image. There is no output shape
-    // to choose any more, and no dimension, count or placement is taken from a form.
-    const reads = body.match(/form\.get\(([^)]*)\)/g) ?? []
-    assert.deepEqual(reads, ["form.get('image')"])
-
-    for (const field of [
-      'num_results', 'placement_type', 'shot_size', 'padding_values',
-      'scene_description', 'ref_image_url', 'optimize_description', 'model',
-    ]) {
-      assert.ok(!body.includes(field), `${field} must not be settable here`)
-    }
-  })
-
-  test('no prompt or scene wording lives in the route', () => {
-    // It is a server-side constant in the adapter, so there is exactly one of it.
-    for (const phrase of ['catalogue studio photograph', 'warm neutral', 'rock', 'ocean', 'dark theme']) {
-      assert.ok(!SOURCE.toLowerCase().includes(phrase), `the route must not contain "${phrase}"`)
-    }
-  })
-
-  test('no earlier provider, and none of its plumbing, remains anywhere', () => {
+  test('the furniture layer is the cut-out, and the model never repaints it', () => {
+    // The rule the whole architecture rests on. A generative stage here would
+    // reintroduce the failure it was removed for: a fan of thin spindles under
+    // a seat came back as a dark mass with the openings filled.
     for (const banned of [
-      'photoroom', 'PHOTOROOM_API_KEY', 'sdk.photoroom.com',
-      'gemini', 'openai', '@fal-ai/client',
-      // The local scene path this replaced.
-      'composeStudioImage', 'productTone', 'outputPresets',
+      'product-shot', 'productShot', 'ProductShot', 'generateStudioShot',
+      'scene_description', 'ref_image_url', 'padding_values', 'placement_type',
+      'studioReference', 'studio-reference', 'seedvr', 'upscal',
     ]) {
       assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
         `the route must not reference ${banned}`)
     }
   })
 
-  test('the finished image is whatever the studio stage returned', () => {
+  test('the size is decided locally, before the composition', () => {
     const body = postCode()
-    assert.ok(body.includes('studio.image'))
-    // The provider's own content type, not a hard-coded one: nothing here
-    // re-encodes the accepted result.
-    assert.ok(body.includes('studio.contentType'))
+    const plan = body.indexOf('planPadding(')
+    assert.ok(plan > body.indexOf('measureCutout('), 'the plan needs the measured product')
+    assert.ok(plan < body.indexOf('composeStudioScene('), 'the plan must precede the composition')
+  })
+
+  test('the quality gate runs, and the enlargement is reported', () => {
+    const body = postCode()
+    assert.ok(body.includes('checkEnlargement('))
+    assert.ok(body.indexOf('checkEnlargement(') < body.indexOf('composeStudioScene('))
+    assert.ok(body.includes('enlargement'), 'the ratio must reach the log')
+  })
+
+  test('the browser cannot influence what the request costs', () => {
+    const body = postCode()
+    const reads = body.match(/form\.get\(([^)]*)\)/g) ?? []
+    assert.deepEqual(reads, ["form.get('image')"])
+  })
+
+  test('no earlier provider, and none of its plumbing, remains anywhere', () => {
+    for (const banned of [
+      'photoroom', 'PHOTOROOM_API_KEY', 'sdk.photoroom.com',
+      'gemini', 'openai', '@fal-ai/client', 'composeStudioImage', 'productTone',
+    ]) {
+      assert.ok(!SOURCE.toLowerCase().includes(banned.toLowerCase()),
+        `the route must not reference ${banned}`)
+    }
+  })
+
+  test('the finished image is the locally composed master', () => {
+    const body = postCode()
+    assert.ok(body.includes('scene.png'))
+    assert.ok(body.includes("mimeType: 'image/png'"))
   })
 })
 
@@ -195,7 +186,7 @@ describe('retrying, and what it would cost', () => {
     // A press costs two requests now. A product too small in the frame is the
     // same size next time, and an unusable cut-out is unusable again.
     const body = postCode()
-    for (const marker of ['measured.error', 'verdict.message', 'shaped.error']) {
+    for (const marker of ['measured.error', 'verdict.message', 'shaped.error', 'scene.error']) {
       const at = body.indexOf(marker)
       assert.ok(at > -1, `${marker} must be answered`)
       const answer = body.slice(at, at + 200)
@@ -206,14 +197,8 @@ describe('retrying, and what it would cost', () => {
   test('provider failures defer to the adapters about what may be retried', () => {
     const body = postCode()
     assert.ok(body.includes('NO_RETRY_FAILURES.has(cutout.reason)'))
-    assert.ok(body.includes('isNoRetry(studio.reason)'))
   })
 
-  test('a missing studio reference is a 503, not something to try again', () => {
-    assert.ok(SOURCE.includes("case 'reference_missing'"), 'the reference failure must be mapped')
-    const mapping = SOURCE.slice(SOURCE.indexOf('function statusFor'), SOURCE.indexOf('// ─── Route'))
-    assert.match(mapping, /reference_missing[\s\S]{0,60}503/)
-  })
 })
 
 describe('the API key', () => {
@@ -228,10 +213,10 @@ describe('the API key', () => {
     assert.ok(!SOURCE.includes('NEXT_PUBLIC_FAL'), 'the key must never be a public env var')
   })
 
-  test('one key is read once and passed to both stages', () => {
+  test('one key is read once and passed to the one adapter', () => {
     const body = postCode()
     assert.equal(body.split('process.env.FAL_KEY').length - 1, 1)
-    assert.equal(body.split('apiKey,').length - 1, 2, 'both adapters receive it')
+    assert.equal(body.split('apiKey,').length - 1, 1)
   })
 
   test('a missing key is reported honestly rather than faked', () => {
@@ -276,65 +261,39 @@ describe('runtime', () => {
     Number(new RegExp(`${name} = ([\\d_]+)`).exec(source)![1].replace(/_/g, ''))
 
   test('every part of the request is accounted for, and the total fits', () => {
-    // A real run died because the budget was a sum nobody had checked: the
-    // cut-out was given 18s, its body needed more, and the request came back
-    // as a misclassified failure after 18026 ms.
+    // One provider call now, and background removal sends sync_mode: true, so
+    // the cut-out arrives inline and NO hosted-result download is reserved.
     const ceiling = Number(/export const maxDuration = (\d+)/.exec(SOURCE)![1]) * 1000
     const budget = constant('ROUTE_BUDGET_MS')
     const local = constant('LOCAL_WORK_MS')
     const cutout = constant('CUTOUT_TIMEOUT_MS')
-    const studio = constant('STUDIO_TIMEOUT_MS')
 
-    const transport = readFileSync(join(process.cwd(), 'src/lib/imageEditor/falRequest.ts'), 'utf8')
-    const download = constant('RESULT_FETCH_TIMEOUT_MS', transport)
-
-    // Background removal sends sync_mode: true, so its cut-out arrives inline
-    // and NO download is reserved for it. Only the studio stage fetches a
-    // hosted result.
-    const accounted = local + cutout + studio + download
-
-    assert.ok(accounted <= budget,
-      `${accounted / 1000}s accounted against a ${budget / 1000}s budget`)
-
-    // And the providers alone must fit inside the deadline they are actually
-    // given, which is the budget less the local work reserved for the end.
-    assert.ok(cutout + studio + download <= budget - local,
-      `providers need ${(cutout + studio + download) / 1000}s but are given ${(budget - local) / 1000}s`)
-    assert.ok(budget < ceiling,
-      `the budget must leave headroom under the ${ceiling / 1000}s ceiling`)
+    assert.ok(local + cutout <= budget,
+      `${(local + cutout) / 1000}s accounted against a ${budget / 1000}s budget`)
+    assert.ok(budget < ceiling, 'the budget must leave headroom under the ceiling')
     assert.ok(ceiling - budget >= 3_000, 'less than 3s of headroom under maxDuration')
   })
 
-  test('the cut-out gets the time its inline body needs', () => {
-    // sync_mode: true means the whole cut-out comes back inside the response
-    // body as base64, and streaming that is part of this budget. The observed
-    // failure took 18026 ms.
-    const cutout = constant('CUTOUT_TIMEOUT_MS')
-    assert.ok(cutout >= 25_000, `${cutout / 1000}s is not enough for an inline cut-out`)
+  test('no Product Shot budget and no hosted-download reserve remain', () => {
+    assert.ok(!SOURCE.includes('STUDIO_TIMEOUT_MS'), 'the Product Shot budget is gone')
+    assert.ok(!SOURCE.includes('RESULT_FETCH'), 'no download budget is reserved here')
   })
 
-  test('the studio stage keeps the budget it already had', () => {
-    assert.equal(constant('STUDIO_TIMEOUT_MS'), 20_000)
+  test('the cut-out keeps the time its inline body needs', () => {
+    assert.ok(constant('CUTOUT_TIMEOUT_MS') >= 25_000)
   })
 
-  test('a deadline is anchored once and passed to both stages', () => {
-    // The sum above is the intent; this is the guarantee. Every timeout is
-    // clamped to what is left, so a slow path degrades the next step instead of
-    // overrunning the platform's ceiling.
+  test('a deadline is anchored once and passed to the adapter', () => {
     const body = postCode()
     assert.match(body, /const deadlineAt = Date\.now\(\) \+ ROUTE_BUDGET_MS - LOCAL_WORK_MS/)
-    assert.equal(body.split('deadlineAt,').length - 1, 2, 'both adapters receive it')
-
-    const anchor = body.indexOf('const deadlineAt')
-    assert.ok(anchor < body.indexOf('req.formData()'),
-      'the deadline must be anchored before the upload is read')
+    assert.equal(body.split('deadlineAt,').length - 1, 1)
+    assert.ok(body.indexOf('const deadlineAt') < body.indexOf('req.formData()'))
   })
 
   test('provider errors are logged, not forwarded to the browser', () => {
     const body = postHandler()
     assert.ok(body.includes('console.error'), 'provider detail goes to the server log')
     assert.ok(body.includes('error: cutout.message'))
-    assert.ok(body.includes('error: studio.message'))
   })
 
   test('what is logged is a category, a status and an id — never an image', () => {
@@ -347,9 +306,8 @@ describe('runtime', () => {
     }
   })
 
-  test('both request ids are logged, so a two-call press can be reconciled', () => {
+  test('the request id is logged, so a press can be reconciled with the dashboard', () => {
     const body = postHandler()
     assert.ok(body.includes('cutout.requestId'))
-    assert.ok(body.includes('studio.requestId'))
   })
 })

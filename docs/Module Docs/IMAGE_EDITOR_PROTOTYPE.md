@@ -3,7 +3,7 @@
 One page, one job: an employee uploads one factory-background furniture
 photograph and gets back one catalogue-style product image.
 
-**Bria makes the studio scene. BOE decides how big the product is in it.**
+**Bria separates the product. BOE draws everything else.**
 
 Not linked from the module launcher and not registered in `app_modules`. It is
 reached directly at **`/image-editor`** and is open to any signed-in BOE user —
@@ -48,287 +48,190 @@ requests.
 
 ## How the image is made
 
-**Two provider calls per photograph**, and the split between them is the whole
-design.
+**One provider call.** It removes the background. Everything else is local.
 
 ```
-upload ─▶ prepareSource ─▶ [1] fal-ai/bria/background/remove ─▶ transparent cut-out
-                                                                    │
-   ┌────────────────────────────────────────────────────────────────┘
-   ▼
- measure the product ─▶ quality gate ─▶ plan the padding
-   ─▶ crop ─▶ repair the edge ─▶ scale
-   ─▶ [2] fal-ai/bria/product-shot (manual_padding) ─▶ 1000 x 1000 master
+upload → prepareSource → [1] fal-ai/bria/background/remove → transparent cut-out
+       → measure alpha → quality gate → plan the padding
+       → decontaminate the edge → one proportional resize → edge-safe sharpen
+       → composite over a locally drawn sweep, with locally drawn shadows
+       → 1440 × 1440 master
 ```
 
-The **scene** — background, lighting, contact and cast shadows — is the model's,
-and it is the one the product owner accepted. The **size** is arithmetic.
+### The rule
 
-### Why it is split that way
+**The final visible furniture is the cut-out and nothing else.** It is the top
+layer; the background and shadows are drawn beneath it. Every opaque product
+pixel in the master is the cut-out's own pixel, and every transparent opening in
+the cut-out shows background through it.
 
-Three paid results drew the line:
+That is not a preference. Four paid results settled it:
 
 | Attempt | What came back |
 | --- | --- |
-| Product Shot, first scene description | A small chair inside a **circular decorative backdrop** nobody asked for. |
-| Product Shot, description rewritten to the approved reference | The circle was gone; the chair had shrunk to roughly **20% occupancy** against a required 65%. |
-| Product Shot with a **reference image** and a scene description | **Accepted.** Background, lighting, shadows and the square master all approved. One defect: the chair was still too small. |
+| Product Shot, scene description | A small chair inside a circular decorative backdrop. |
+| Product Shot, description rewritten | The circle went; the chair shrank to ~20% of the frame. |
+| Product Shot with a reference image | **Background, lighting and shadows accepted.** Chair too small. |
+| Product Shot with computed padding | Framing correct. **The fan of thin spindles under the seat came back as a dark continuous mass, the openings between them filled, edges smeared.** |
 
-So the model is good at the studio scene and unreliable at holding a size. It
-keeps the scene. It no longer decides the size — the prompt asks for no
-percentage at all, because asking twice with only one of them binding is how the
-second result happened.
+Nothing in `ProductShotInput` preserves product pixels — `original_quality` is
+about output *dimensions* under `placement_type: 'original'`, and nothing else
+comes close. Placing a product into a generated scene means harmonising it with
+that scene's light, and harmonising is repainting. A fan of 3px spindles is
+exactly what a generative pass collapses: a plausible dark mass is cheaper to
+render than twelve thin separations.
 
-### Why the cut-out call exists
+So the model segments, and BOE draws everything else.
 
-Not for the cut-out's own sake — Product Shot can take the original photograph
-directly. It exists because `padding_values` is measured **in pixels around the
-product**, so the product's real pixel size has to be known before the studio
-image is requested. Bria's own schema says exactly this:
+### The master
 
-> It is recommended to first use the product cutout API, get the cutout and
-> understand the size of the result, and then define the required padding and
-> use the cutout as an input for this API.
-
-That is the second billable request, and it is the price of a framing that is
-computed rather than requested.
-
-### The studio request
-
-Every field is a constant in `briaProductShot.ts` except `padding_values`, which
-is computed per photograph. None is reachable from the browser.
-
-| Field | Value | Why |
-| --- | --- | --- |
-| `image_url` | the prepared cut-out, as a data URI | No public URL is created for it. |
-| `ref_image_url` | the approved reference, as a data URI | The accepted look, from BOE's own repository rather than an expiring fal.media URL. |
-| `padding_values` | computed, `[left, right, top, bottom]` | The size and position, as arithmetic. |
-| `placement_type` | `manual_padding` | The only mode that takes a size in pixels. |
-| `num_results` | `1` | Bria bills per result. |
-| `optimize_description` | `false` | The reference is used as given, not reinterpreted. |
-| `fast` | `true` | As accepted. |
-| `scene_description` | **not sent** | The schema documents it and `ref_image_url` as mutually exclusive. |
-| `sync_mode` | **not sent** | Sending it would keep the result out of fal's request history. |
-| `shot_size` | **not sent** | The schema: relevant only for `automatic` or `manual_placement`. Under `manual_padding` the canvas is cut-out + padding. |
-| `manual_placement_selection`, `original_quality` | **not sent** | Each belongs to a different placement mode. |
-
-#### The reference image, and nothing else
-
-The schema is explicit:
-
-> Either `ref_image_url` or `scene_description` has to be provided **but not
-> both**.
-
-They are documented as mutually exclusive modes, so only `ref_image_url` is sent.
-
-The accepted request carried both. That it returned an approved picture does not
-make it a supported combination — with two mutually exclusive inputs supplied,
-which one fal honoured is undefined, and building on undefined behaviour means
-the look can change without anything in this repository changing. The reference
-image is the approved standard in its own right, and it is the input this mode is
-documented to take.
-
-**There is no prompt constant anywhere in the runtime path.** Nothing describes
-the scene in words; the reference image is the description. Tests fail if a
-scene-wording constant reappears in the module, or if `scene_description` appears
-in the request body.
-
-#### Why `sync_mode` is omitted
-
-With `sync_mode: true` fal returns the image inline and, in its own words, *"the
-output data won't be available in the request history"*. That history is the
-record needed to audit what a run cost and to look at what came back, so it is
-left off.
-
-The consequence is that fal answers with a hosted URL. The transport downloads it
-**server-side** from an allowlisted fal host, so the browser is still never handed
-a provider URL — and a result hosted anywhere else is refused rather than fetched.
-That download is inside the route's time budget, below.
-
-### The time budget
-
-Two provider calls and some local work share one request, and a real run failed
-because that was a sum nobody had checked:
-
-```
-[image-editor/studio] cutout failed: category empty_result status 200
-request 01a04960-94c5-7fb0-bdad-5810b92d5642 18026 ms
-```
-
-The photograph was a clear, isolated dining chair. 18026 ms was the 18-second
-cut-out timeout. **`sync_mode: true` means the cut-out comes back INSIDE the
-response body**, as a multi-megabyte base64 data URI — so the headers arrive
-early with a 200 and the body then streams for as long as it takes. Eighteen
-seconds was not enough, and the abort landed mid-body.
-
-| Part | Budget | Why |
-| --- | --- | --- |
-| Local work | 2s | prepare, measure, edge repair, resize, encode — measured well under a second |
-| Background removal | **25s** | the cut-out arrives inline; streaming it is part of this |
-| Product Shot | 20s | unchanged |
-| Hosted result download | 8s | **the studio stage only** — background removal sends `sync_mode`, so nothing is reserved for a download it does not make |
-| | **55s** | against a 56s budget, inside a 60s `maxDuration` |
-
-The sum is only the intent. The guarantee is a **deadline**, anchored at the top
-of the handler and passed to both adapters: every timeout is clamped to what is
-left of it, so an unexpected slow path degrades the next step rather than
-overrunning the platform's ceiling. A call with no time left returns without
-spending a request at all. A test reads all five constants and checks the
-arithmetic, and fails if the cut-out budget drops back below 25s.
-
-### Telling a timeout from an empty answer
-
-`AbortSignal.timeout` fires against the **whole exchange**, headers and body
-alike, so an abort can surface from `fetch`, from `response.json()`, or from
-reading a download. A bare `catch` around the body read called all of those an
-empty result — which is how a plain timeout came to be logged as "a valid 200
-carrying no image" and shown to an employee as a problem with their photograph.
-
-Now:
-
-| What happened | Reason | What the employee is told |
-| --- | --- | --- |
-| Aborted at any point | `timeout` | the service took too long — try again in a few minutes |
-| Well-formed 200 with no image | `empty_result` | the service did not return an image — try again |
-| Alpha analysis finds no product | local refusal | the product could not be separated — try a photograph with it clearly visible |
-
-Only the third is about the photograph, and only the third is decided here, by
-reading the cut-out's alpha in `prepareCutout.ts`. `empty_result` is **retryable**:
-a service answering without an image says nothing about the upload.
-
-Every failure also records a `phase` — `request`, `body` or `download` — in the
-log. "Timeout, status 200" and "timeout, no status" are different faults with
-different fixes, and not being able to tell them apart from the log is what this
-incident cost.
-
-### The master, and how big the product is in it
-
-One canvas: **1000 × 1000**, which is exactly the 1,000,000 pixels Bria calls
-optimal and the shape the accepted result came back in. There is no output-shape
-chooser any more — landscape and portrait are a crop of this master, made later
-by somebody who can see the picture, rather than three separate paid generations.
-
-The product fills **53%** of the canvas height, the middle of the 52–55% the
-product owner asked for.
-
-```
-scale        = min( 530 / cutoutHeight ,  880 / cutoutWidth )
-placedWidth  = round(cutoutWidth  × scale)
-placedHeight = round(cutoutHeight × scale)
-
-left   = floor((1000 − placedWidth) / 2)
-right  = 1000 − placedWidth − left            ← the odd pixel, so the sum is exact
-top    = round((1000 − placedHeight) × 0.6)
-bottom = (1000 − placedHeight) − top
-```
-
-- `530` is 53% of the canvas height. `880` is the canvas less a 6% margin at
-  each side.
-- **`min` is what contains a wide product.** At 53% height a 3:1 sideboard would
-  be 1590px wide on a 1000px canvas; the width binds first, so it comes back
-  **shorter than 53% and whole** rather than exactly 53% and cropped. The plan
-  reports `widthLimited: true` when that happens.
-- `0.6` is 21:14 — the above-to-below ratio of the composition BOE approved
-  before the product height changed. Keeping the ratio keeps that balance while
-  the space a smaller product frees goes to both sides, which is what leaves
-  room to crop.
-- Both axes close exactly: `left + product + right = 1000` and
-  `top + product + bottom = 1000`, so the master is 1000 × 1000 whatever arrives.
-
-Nothing here was tuned against one chair. Every number is derived from the
-cut-out's own width and height, and the tests run it over a dining chair, a
-lounge chair, a tall cabinet, a low bench, a square stool, a long sideboard and
-a narrow lamp.
-
-### The quality gate
-
-Enlargement is capped at **1.15×**. A cut-out too small to fill the master is
-refused — before the second request is paid for — with the height the photograph
-would have needed. Because the product is now 53% of the canvas rather than 65%,
-this gate is more forgiving than it was: a product about **461px** tall suffices.
-
-### The edge repair
-
-The first real master passed composition review and failed full-resolution edge
-review: a thin dark, sometimes jagged fringe around the top rail, the spindles,
-the seat perimeter and the outside of the legs.
-
-**Root cause.** Background removal assigns alpha; it does not repaint. At an
-antialiased boundary the stored RGB is still the photograph's own pixel — already
-a mix of product and dark factory background — while alpha merely says how much
-of that pixel the product covers. Composited onto a light studio sweep, the
-leftover share of factory background reads as a rim. Measured on a pale product
-over a dark background, a boundary pixel at alpha 163 composited **20.6 levels
-darker** than the same coverage of clean product.
-
-It was invisible in the browser preview because the preview is scaled down and
-averages the rim away. It is a one-pixel defect, and one pixel is what a
-1000 × 1000 master is inspected at.
-
-**The repair** (`decontaminateEdges.ts`) replaces the RGB of partly transparent
-pixels with the colour of nearby *opaque* product: a blurred copy of the solid
-pixels' colour divided by a blurred copy of the solid mask, which is a
-normalised average of the product just inside the edge. Only solid pixels donate
-— including the rim in its own replacement would average the contamination back
-in.
-
-What it may not do, and does not:
+**1440 × 1440**, up from 1000. At 1000 a 1152px product was resampled down to
+530 — 46% of its linear detail — before anything else happened to it. The
+product is composited locally now, so there is no provider megapixel guidance to
+sit under and no reason to throw that away.
 
 | | |
 | --- | --- |
-| Alpha | **Never written.** The silhouette that arrives is the silhouette that leaves. Eroding alpha is the usual way to kill a fringe, and on furniture it thins the cane, the spindles and the metal tips. |
-| Fully opaque pixels | **Byte-identical.** Interior, wood grain and watermark are untouched. |
-| Fully transparent pixels | **Byte-identical.** The gaps between the legs stay gaps. |
-| Thin structures | A one-pixel bar keeps its core and gets its shoulders repaired. Where there is too little product within reach to borrow from, the pixel is left exactly as it arrived rather than guessed at. |
-| Sharpening, blurring, moving | None. This recolours pixels in place. |
+| Canvas | 1440 × 1440 |
+| Product height | 53%, **763px** |
+| Maximum product width | 88%, **1267px** |
+| Horizontal centre | **720px** |
+| Vertical split | **60:40** above/below — 406px and 271px for a full-height product |
 
-It runs **before** the resize, and that order matters: repairing first means the
-downscale averages clean product colour, while repairing after means every
-boundary pixel has already had contaminated neighbours averaged into it. Cost is
-43–130 ms for a 1–5 MP cut-out, against a 38 s provider budget.
+A very wide product is limited by the width instead and comes back shorter than
+53% and **whole**, rather than exactly 53% and cropped.
 
-Measured on the fixtures: worst boundary error **20.6 → 2.2** levels on an
-ellipse, **21.0 → 2.6** on a chair with rail, spindles and legs; mean absolute
-error 6.9 → 0.8. After the resize the only opaque pixels that differ are the
-single row adjacent to the silhouette, by at most 7/255 — the resize legitimately
-averaging repaired neighbours in.
+### The background
 
-### What is done locally, and what is not
+Drawn pixel by pixel, calibrated against the accepted real outputs. The earlier
+local sweep was a near-flat 235/232/227 and read as too cream, too bright and
+too flat; this one has somewhere to go.
 
-Local: decode, EXIF orientation, validation, finding the product by its alpha,
-the padding arithmetic, the edge repair, one proportional crop-and-resize, and
-the safe PNG encoding of what comes back.
+```
+tone(nx, ny) = WALL + (FLOOR − WALL) · smoothstep(0.52, 0.98, ny)     wall into floor
+             + LIFT · exp(−(dx² + dy²) / (2 · 0.46² · 0.5))            behind the product
+             − FALLOFF · edgeness^1.7                                  corners and sides
 
-**Not local: the background, the lighting and the shadows.** Those were
-generated locally with sharp in the previous iteration, and that whole path is
-retired. The accepted result's scene is Bria's, and recreating it locally would
-be recreating something a person has already approved.
+  dx = nx − 0.5,  dy = ny − 0.38
+  edgeness = min(1, √(0.85·sideness² + 0.95·topness²))
+  sideness = min(1, 2|dx|),  topness = max(0, 2(0.5 − ny))
+
+  WALL 178   FLOOR 212   LIFT 17   FALLOFF 32
+  warm offsets: r +4, g 0, b −6
+```
+
+Measured on the finished sweep:
+
+| Region | Measured | Target |
+| --- | --- | --- |
+| Upper corners | 148 | 140–160 |
+| Side edges, mid height | 155 | 140–160 |
+| Centre, behind the product | 187 | 180–190 |
+| Floor, centre | 214 | 195–220 |
+| Floor, left | 201 | 195–220 |
+
+Warm-neutral throughout (r > g > b, 10 levels of separation — warm, not yellow).
+Largest step between adjacent rows: **1 level**, which is quantisation. There is
+no wall/floor line because nothing in the function could draw one.
+
+### The shadows
+
+Both are built from the cut-out's own alpha and both sit **behind** it.
+
+**Contact** — the lowest opaque pixel of each column that reaches the floor,
+smeared over a short band at *its own height* and blurred. Not one shared
+baseline: in a three-quarter view the back feet sit higher than the front ones,
+and a shadow on one line under all of them reads as a plinth. Biased down by 0.8
+of its half-thickness, so it is not mostly hidden behind the product but still
+overlaps the foot and *touches* it. Measured 51 levels deep 4px under a foot,
+and 12 levels in the open gap between legs.
+
+**Cast** — one pool from the footprint, leaning right and back. Each foot's
+influence spreads sideways as a gaussian (σ = 14% of the product width) and is
+clipped to the footprint's own span, so the per-leg pools merge into **one
+coherent shadow** that is still denser under the feet than between them. Before
+that spread existed, one row below the feet contained **seven separate dark
+runs** — detached blobs. It is now two.
+
+Neither is a rectangle and neither is the silhouette: the cast shadow comes from
+the columns that touch the floor, never from the whole product.
+
+### Resize and sharpening
+
+One proportional Lanczos resize, both axes by one factor. Nothing is rotated,
+stretched, warped or cropped. Then a restrained unsharp (σ 0.8, m1 0.4, **m2
+1.2**) confined to an interior mask — the alpha, blurred and hard-thresholded —
+so sharpening never crosses the edge and no pale outline forms.
+
+**No tone correction.** The product's colour is the photograph's. The only things
+permitted to change a product pixel are the edge decontamination, the
+interpolation of that one resize, and the bounded sharpening. Nothing invents
+detail; there is no upscaler and no restoration model.
+
+### The enlargement gate
+
+1440 asks for a 763px product where 1000 asked for 530, so the old 1.15× cap was
+re-measured rather than carried over. Detail retained against a
+native-resolution render, mean absolute Laplacian over a subject with 1px
+spindles and a cane lattice:
+
+| | | | |
+| --- | --- | --- | --- |
+| 1.10× 85.2% | 1.20× 80.8% | **1.30× 77.7% ← the cap** | 1.75× 63.3% ← the cliff |
+| 1.15× 82.5% | 1.25× 78.6% | 1.50× 72.1% | 2.00× 57.3% |
+
+**The cap is 1.30×, chosen from real source material rather than from the curve
+alone.** BOE's product photographs are around 1000px, and the Irvine chair used
+for acceptance testing cut out to **549 × 609**. Reaching 763 from 609 is
+**1.253×**, so a cap of 1.20 — or even 1.25 — would refuse the exact photograph
+the approved result was built from. A gate that rejects its own reference
+subject is a bug, not a quality control.
+
+77.7% retention at 1.30× is a real cost, accepted knowingly. What the cap still
+buys is the collapse beyond it: the curve falls away fastest between 1.5 and
+1.75, reaching 63%. Severe enlargement is still refused, with the take-it-closer
+message. **The cap must not go above 1.30.**
+
+A product must be **588px** tall in the cut-out to pass — the gate works from the
+unrounded 763.2, not the placed 763. The enlargement ratio is logged on every
+request.
+
+## Verifying the framing
+
+`composition.ts` measures a finished master against the approved composition,
+for tests and the smoke script. It is never in the request path.
+
+It measures from **the cut-out's alpha and the placement plan**, not from colour.
+The previous version found the product by contrast against the four corners,
+which worked while the background was near-flat and broke the moment it became a
+real sweep: with corners at 148 and floor at 214, most of the background differs
+from the corners by more than the threshold, and it reported a known 53.0%
+placement as **71.8%** — it was measuring the gradient.
+
+Alpha has none of that trouble. It says exactly which pixels are product; it
+says nothing about the background, whatever the background is doing; it excludes
+shadows, because a shadow is not in the cut-out; and it excludes the gaps
+between spindles, because those are transparent. A background change cannot move
+the numbers, which is the property a verification tool needs.
+
+It answers "is the framing right". It never looks at the background, so it
+cannot answer "is the scene clean" — a master still has to be looked at.
 
 ## Cost controls
 
-- One press of Generate is **two billable requests** per photograph: the cut-out
-  and the studio image. A queue of five is ten requests, made one after another.
-  Nothing batches and nothing loops — a test asserts there is exactly one call
-  site for each stage and that neither sits inside a loop.
-- The composition that follows costs nothing, so re-downloading a result and
-  converting it between PNG, JPG and WebP are all free.
-- Neither adapter **ever retries** — including after a timeout, because a request
+- One press of Generate is **one billable request** per photograph. A queue of
+  five is five requests, made one after another. Nothing batches and nothing
+  loops — a test asserts one call site and that it is not inside a loop.
+- Everything after that call is local and free: the composition, the three
+  download formats, any re-download.
+- The adapter **never retries**, including after a timeout, because a request
   that may already have been billed must not be billed again silently.
-- The per-user rate limiter is 6 calls a minute, unchanged. It is deliberately
-  left where it was even though a call now costs two requests: it is exactly the
-  five-image queue plus one, so the ceiling still admits the largest run the page
-  can start.
-- A missing studio reference is detected **before** the studio request, so it
-  costs nothing.
-- A product too small in the frame is refused after the cut-out and **before**
-  the studio call, so a photograph that cannot work costs one request rather
-  than two.
-- An image beyond fal's 12 MB ceiling is refused locally rather than paid for
-  and refused there.
-- Each stage logs fal's request id, the duration and the outcome category —
-  never the image, the data URI, the scene description or the key. Both ids are
-  logged on success, so a two-request press can be reconciled against the fal
-  dashboard.
+- The per-user rate limiter is 6 a minute, unchanged.
+- A product too small for the master is refused **after** the cut-out and
+  before anything else, so a photograph that cannot work costs one request.
+- An image beyond fal's 12 MB ceiling is refused locally rather than paid for.
+- Each request logs fal's request id, the phase, the duration and the outcome
+  category — never the image, the data URI or the key.
 
 ## Configuration
 
@@ -339,22 +242,6 @@ be recreating something a person has already approved.
 Get one from <https://fal.ai/dashboard/keys>. Put it in `.env.local` (or the
 deployment's environment) — never in a `NEXT_PUBLIC_` variable.
 
-### The approved studio reference
-
-`assets/image-editor/studio-reference.png` — **required**. It is sent as
-`ref_image_url` on every studio generation, and it is what keeps results
-consistent with the look the product owner accepted.
-
-It is deliberately **not** in `public/`: nothing in a browser needs it, the only
-reader is the server on its way to fal, and it travels as a data URI so no
-publicly reachable URL for it is ever created. `outputFileTracingIncludes` in
-`next.config.ts` is what puts it into a deployment.
-
-With the file missing, the route answers 503 and the page says the reference is
-not installed. **Nothing is substituted and nothing is regenerated** — a
-plausible studio image that is not the approved one is worse than a visible
-failure, because nobody downstream could tell it apart.
-
 ## The pieces
 
 | File | What it holds |
@@ -362,12 +249,11 @@ failure, because nobody downstream could tell it apart.
 | `src/lib/imageEditor/validation.ts` | What counts as an uploadable photograph. Used by the browser AND the route, so the two cannot disagree. |
 | `src/lib/imageEditor/prepareSource.ts` | EXIF orientation baked in when required. Otherwise the original bytes, untouched, up to 8192px. Server-only (sharp). |
 | `src/lib/imageEditor/falRequest.ts` | One request to fal: transport, host allowlist, failure classification, and the no-retry rule. Shared by both stages, so those rules exist once. |
-| `src/lib/imageEditor/briaBackgroundRemove.ts` | Stage one. Exists to learn the product's pixel size, which is what padding needs. |
-| `src/lib/imageEditor/briaProductShot.ts` | Stage two: the model id, the approved scene description, the fixed settings and the request body. |
-| `src/lib/imageEditor/studioReference.ts` | Loads the approved reference from disk and turns it into a data URI. Never substitutes one. |
+| `src/lib/imageEditor/briaBackgroundRemove.ts` | The one provider call. |
+| `src/lib/imageEditor/studioScene.ts` | The sweep, the shadows and the composite. Server-only (sharp). No network. |
 | `src/lib/imageEditor/studioMaster.ts` | The master canvas and the padding arithmetic. Pure — no sharp, no provider. |
 | `src/lib/imageEditor/cutoutGeometry.ts` | Where the product is in a cut-out, read from raw alpha. Pure. |
-| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product, repair its edge, scale it to the planned size. Server-only (sharp). Nothing creative. |
+| `src/lib/imageEditor/prepareCutout.ts` | Crop to the product, repair its edge, scale it, sharpen inside it. Server-only (sharp). Nothing creative. |
 | `src/lib/imageEditor/decontaminateEdges.ts` | Takes the factory background's colour out of partly transparent boundary pixels. Never writes alpha. |
 | `src/lib/imageEditor/composition.ts` | Measures a finished image against the intended framing. Used by tests and the smoke script, never in the request path. |
 | `src/lib/imageEditor/queue.ts` | The selection rules: the five-image ceiling, what a run would cost, what may be sent next, and how a result is recorded without disturbing the others. Pure. |
@@ -397,7 +283,6 @@ a status code and the request id.
 | Empty or malformed result from the service | 422 | no image returned — try again |
 | Product too small in the frame | 422 `noRetry` | too small to make a sharp image — take it closer |
 | Nothing could be separated out | 422 `noRetry` | try a photograph with the product clearly visible |
-| Studio reference not installed | 503 `noRetry` | the reference image is not installed — ask an administrator |
 | Anything else | 502 | could not process — try again |
 
 ### Retry, and when it is not offered

@@ -1,15 +1,16 @@
 /**
- * Measuring a result against the approved composition.
+ * The verification tool, and the reason it was rewritten.
  *
- * The fixtures are built to known numbers, so the measurement can be checked
- * against arithmetic rather than against a judgement. The two cases that decide
- * whether this is trustworthy:
+ * The previous version found the product by contrast against the four corners.
+ * That worked while the background was near-flat; the moment it became a real
+ * studio sweep — corners at 148, floor at 214 — most of the sweep differed from
+ * the corners by more than the threshold and the tool started measuring the
+ * gradient. It reported a known 53.0% placement as 71.8%.
  *
- *   * a product drawn at exactly the reference proportions measures at the
- *     reference proportions;
- *   * a soft cast shadow beneath the feet does NOT count as product, or every
- *     measurement would put the feet below the feet and report a taller
- *     product than the photograph contains.
+ * A verification tool that is confidently wrong is worse than no tool: it is
+ * the thing a reviewer trusts instead of looking. So it now measures from the
+ * cut-out's ALPHA and the placement plan, which cannot be confused by a
+ * background, a shadow, or a gap between spindles.
  *
  * Run:
  *   npx tsx --test src/lib/imageEditor/composition.test.ts
@@ -18,233 +19,205 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import sharp from 'sharp'
-import type { OverlayOptions } from 'sharp'
-import { measureComposition, describeMeasurement } from './composition'
-import { planPadding, MASTER_WIDTH, MASTER_HEIGHT } from './studioMaster'
+import { measurePlacement, describeMeasurement, EXPECTED_CANVAS } from './composition'
+import { planPadding, MASTER_WIDTH, MASTER_HEIGHT, PRODUCT_HEIGHT_SHARE } from './studioMaster'
+import { measureCutout, prepareCutoutForShot } from './prepareCutout'
 
-/** A studio-like canvas with a dark block standing on it. */
-async function scene(opts: {
-  width: number
-  height: number
-  product: { left: number; top: number; width: number; height: number }
-  shadow?: boolean
-}): Promise<Buffer> {
-  const { width, height, product } = opts
-  const layers: OverlayOptions[] = []
+const TIMBER = { r: 118, g: 84, b: 55 }
 
-  if (opts.shadow) {
-    // A wide, faint smear under the feet: what a cast shadow looks like, and
-    // what must not be mistaken for the product.
-    layers.push({
-      input: await sharp({
-        create: {
-          width: Math.round(product.width * 1.4), height: 26, channels: 4,
-          // A real feathered cast shadow: it darkens the sweep by about a
-          // tenth. A shadow dark enough to read as product would not be the
-          // "restrained, secondary" one the scene asks for.
-          background: { r: 120, g: 116, b: 110, alpha: 0.18 },
-        },
-      }).blur(9).png().toBuffer(),
-      left: Math.max(0, Math.round(product.left - product.width * 0.2)),
-      top: Math.min(height - 26, product.top + product.height - 6),
-    })
+type C = { d: Buffer; w: number; h: number }
+const blank = (w: number, h: number): C => ({ d: Buffer.alloc(w * h * 4), w, h })
+const paint = (c: C, l: number, t: number, w: number, h: number) => {
+  for (let y = t; y < t + h; y++) for (let x = l; x < l + w; x++) {
+    if (x < 0 || y < 0 || x >= c.w || y >= c.h) continue
+    const o = (y * c.w + x) * 4
+    c.d[o] = TIMBER.r; c.d[o + 1] = TIMBER.g; c.d[o + 2] = TIMBER.b; c.d[o + 3] = 255
   }
+}
+const png = (c: C) => sharp(c.d, { raw: { width: c.w, height: c.h, channels: 4 } }).png().toBuffer()
 
-  layers.push({
-    input: await sharp({
-      create: { width: product.width, height: product.height, channels: 3, background: { r: 96, g: 62, b: 30 } },
-    }).png().toBuffer(),
-    left: product.left, top: product.top,
-  })
-
-  return sharp({
-    create: { width, height, channels: 3, background: { r: 238, g: 236, b: 232 } },
-  }).composite(layers).png().toBuffer()
+/** A chair with an open fan under the seat and four feet. */
+function chair(w = 900, h = 1150): C {
+  const c = blank(w, h)
+  paint(c, 80, 40, w - 160, 46)
+  for (let i = 0; i < 9; i++) paint(c, 120 + i * 74, 86, 12, 330)
+  paint(c, 40, 430, w - 80, 70)
+  for (let i = 0; i < 15; i++) paint(c, 90 + i * 48, 500, 3, 150)   // the openings
+  paint(c, 60, 660, 40, h - 700)
+  paint(c, w - 100, 660, 40, h - 700)
+  paint(c, 220, 660, 26, h - 730)
+  paint(c, w - 250, 660, 26, h - 730)
+  return c
 }
 
-describe('measuring the reference composition', () => {
-  test('a product drawn at the targets measures at the targets', async () => {
-    const plan = planPadding({ width: 900, height: 1200 })
+function sideboard(): C {
+  const c = blank(2600, 900)
+  paint(c, 60, 60, 2480, 520)
+  paint(c, 130, 580, 40, 260); paint(c, 2430, 580, 40, 260)
+  paint(c, 700, 580, 26, 240); paint(c, 1880, 580, 26, 240)
+  return c
+}
 
-    const png = await scene({
-      width: MASTER_WIDTH, height: MASTER_HEIGHT,
-      product: {
-        left: plan.padding.left, top: plan.padding.top,
-        width: plan.product.width, height: plan.product.height,
-      },
-    })
+function tall(): C {
+  const c = blank(700, 1900)
+  paint(c, 60, 40, 580, 1500)
+  paint(c, 80, 1540, 50, 320); paint(c, 570, 1540, 50, 320)
+  return c
+}
 
-    const result = await measureComposition(png)
-    assert.equal(result.ok, true, result.ok ? '' : result.error)
-    if (!result.ok) return
-    const m = result.measurement
+function stool(): C {
+  const c = blank(800, 800)
+  paint(c, 60, 40, 680, 180)
+  paint(c, 90, 220, 40, 540); paint(c, 670, 220, 40, 540)
+  return c
+}
 
-    assert.equal(m.canvas.width, 1000)
-    assert.equal(m.canvas.height, 1000)
-    assert.ok(Math.abs(m.heightShare - 0.53) < 0.005, `height share ${m.heightShare}`)
-    assert.ok(Math.abs(m.aboveShare - plan.padding.top / MASTER_HEIGHT) < 0.005, `above ${m.aboveShare}`)
-    assert.ok(Math.abs(m.belowShare - plan.padding.bottom / MASTER_HEIGHT) < 0.006, `below ${m.belowShare}`)
-    assert.ok(Math.abs(m.centreOffsetPx) <= 1, `centre offset ${m.centreOffsetPx}`)
-    assert.ok(m.sideBalance > 0.98, `side balance ${m.sideBalance}`)
+/** The route's own path, then the measurement. */
+async function measured(c: C) {
+  const source = await png(c)
+  const m = await measureCutout(source)
+  assert.equal(m.ok, true, m.ok ? '' : m.error)
+  if (!m.ok) throw new Error('unreachable')
+
+  const plan = planPadding({ width: m.bounds.width, height: m.bounds.height })
+  const shaped = await prepareCutoutForShot(source, m.bounds, plan.product)
+  assert.equal(shaped.ok, true, shaped.ok ? '' : shaped.error)
+  if (!shaped.ok) throw new Error('unreachable')
+
+  const result = await measurePlacement(shaped.png, plan)
+  assert.equal(result.ok, true, result.ok ? '' : result.error)
+  if (!result.ok) throw new Error('unreachable')
+
+  return { plan, prepared: shaped.png, m: result.measurement }
+}
+
+describe('it reports the placement that was planned', () => {
+  test('a standard chair measures exactly 53%', async () => {
+    // The number the old tool got wrong: it said 71.8% for this.
+    const { m } = await measured(chair())
+    assert.ok(Math.abs(m.heightShare - PRODUCT_HEIGHT_SHARE) < 0.005,
+      `${(m.heightShare * 100).toFixed(1)}%, want 53.0%`)
+    assert.equal(m.product.height, 763)
+  })
+
+  test('a wide sideboard reports its width-limited share, not 53%', async () => {
+    const { plan, m } = await measured(sideboard())
+    assert.equal(plan.widthLimited, true)
+    assert.ok(m.heightShare < PRODUCT_HEIGHT_SHARE, 'a contained product is shorter than the target')
+    assert.ok(Math.abs(m.heightShare - plan.heightShare) < 0.005,
+      `measured ${(m.heightShare * 100).toFixed(1)}%, planned ${(plan.heightShare * 100).toFixed(1)}%`)
+    assert.equal(m.product.width, 1267)
+  })
+
+  test('it agrees with the plan on all four shapes', async () => {
+    for (const [name, c] of [
+      ['chair', chair()], ['sideboard', sideboard()], ['tall cabinet', tall()], ['stool', stool()],
+    ] as const) {
+      const { plan, m } = await measured(c)
+      assert.equal(m.product.width, plan.product.width, `${name}: width`)
+      assert.equal(m.product.height, plan.product.height, `${name}: height`)
+      assert.equal(m.product.left, plan.padding.left, `${name}: left`)
+      assert.equal(m.product.top, plan.padding.top, `${name}: top`)
+      assert.ok(Math.abs(m.heightShare - plan.heightShare) < 0.002, `${name}: share`)
+    }
+  })
+
+  test('the margins and the centring come out as planned', async () => {
+    const { plan, m } = await measured(chair())
+    assert.ok(Math.abs(m.centreOffsetPx) <= 1, `off centre by ${m.centreOffsetPx}`)
+    assert.ok(m.sideBalance > 0.99)
     assert.equal(m.touchesEdge, false)
+    assert.ok(Math.abs(m.aboveShare - plan.padding.top / MASTER_HEIGHT) < 0.002)
+    assert.ok(Math.abs(m.belowShare - plan.padding.bottom / MASTER_HEIGHT) < 0.002)
   })
 
-  test('a soft cast shadow is not counted as product', async () => {
-    // Without this, the measured product runs down into its own shadow: the
-    // height comes out too large and the feet baseline too low, and every
-    // review of a real result would be wrong in the same direction.
-    const plan = planPadding({ width: 900, height: 1200 })
-    const width = MASTER_WIDTH
-    const height = MASTER_HEIGHT
-    const t = { centreX: MASTER_WIDTH / 2, productTop: plan.padding.top, productHeight: plan.product.height }
-
-    const withShadow = await measureComposition(await scene({
-      width, height, shadow: true,
-      product: { left: t.centreX - 210, top: t.productTop, width: 420, height: t.productHeight },
-    }))
-
-    assert.equal(withShadow.ok, true)
-    if (!withShadow.ok) return
-    assert.ok(Math.abs(withShadow.measurement.heightShare - plan.heightShare) < 0.02,
-      `the shadow inflated the product to ${(withShadow.measurement.heightShare * 100).toFixed(1)}%`)
-  })
-
-  test('a small product in a big canvas is reported as small, not as centred', async () => {
-    // The rejected result was exactly this shape: a little chair adrift in a
-    // decorated frame. The measurement has to say so.
-    const png = await scene({
-      width: 1200, height: 800,
-      product: { left: 520, top: 330, width: 160, height: 180 },
-    })
-
-    const result = await measureComposition(png)
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-    assert.ok(result.measurement.heightShare < 0.3,
-      `expected a small product, measured ${result.measurement.heightShare}`)
-  })
-
-  test('an off-centre product is reported by how far off it is', async () => {
-    const png = await scene({
-      width: 1200, height: 800,
-      product: { left: 200, top: 168, width: 300, height: 520 },
-    })
-
-    const result = await measureComposition(png)
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-    assert.ok(result.measurement.centreOffsetPx < -200,
-      `offset ${result.measurement.centreOffsetPx}`)
-    assert.ok(result.measurement.sideBalance < 0.4, `balance ${result.measurement.sideBalance}`)
-  })
-
-  test('a cropped product is flagged as touching an edge', async () => {
-    const png = await scene({
-      width: 1200, height: 800,
-      product: { left: 0, top: 0, width: 500, height: 700 },
-    })
-
-    const result = await measureComposition(png)
-    assert.equal(result.ok, true)
-    assert.equal(result.ok && result.measurement.touchesEdge, true)
-  })
-
-  test('the square master measures the share the padding plan intended', async () => {
-    // The plan and the measurement are independent: one computes padding from
-    // a cut-out's size, the other reads a finished picture back. If they agree
-    // on a product drawn exactly where the plan puts it, the arithmetic and the
-    // check are not both wrong in the same direction.
-    for (const cutout of [
-      { width: 900, height: 1200 },   // a chair
-      { width: 1400, height: 900 },   // a low sideboard
-      { width: 700, height: 1900 },   // a tall cabinet
-    ]) {
-      const plan = planPadding(cutout)
-
-      const png = await scene({
-        width: MASTER_WIDTH, height: MASTER_HEIGHT,
-        product: {
-          left: plan.padding.left, top: plan.padding.top,
-          width: plan.product.width, height: plan.product.height,
-        },
-      })
-
-      const result = await measureComposition(png)
-      assert.equal(result.ok, true)
-      if (!result.ok) continue
-      assert.ok(Math.abs(result.measurement.heightShare - plan.heightShare) < 0.006,
-        `${cutout.width}x${cutout.height}: measured ${result.measurement.heightShare}, planned ${plan.heightShare}`)
-    }
+  test('the canvas it reports is the master that is built', async () => {
+    const { m } = await measured(chair())
+    assert.deepEqual(m.canvas, { width: MASTER_WIDTH, height: MASTER_HEIGHT })
+    assert.deepEqual(EXPECTED_CANVAS, { width: 1440, height: 1440 })
   })
 })
 
-describe('what this cannot tell you', () => {
-  test('a decorative backdrop is measured AS the product', async () => {
-    // Pinned deliberately. The rejected result put a small chair inside a
-    // circular backdrop; measured, the circle is what differs from the corners,
-    // so the numbers describe the circle and look reassuringly large and
-    // centred. Anyone reading a measurement has to have looked at the image
-    // first — this checks framing, never cleanliness.
-    const width = MASTER_WIDTH
-    const height = MASTER_HEIGHT
-    const decorated = await sharp({
-      create: { width, height, channels: 3, background: { r: 232, g: 228, b: 222 } },
-    })
-      .composite([
-        {
-          input: Buffer.from(`<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">` +
-            `<circle cx="${width / 2}" cy="${height * 0.46}" r="${height * 0.34}" fill="#cfc7ba"/></svg>`),
-          top: 0, left: 0,
-        },
-        {
-          input: await sharp({
-            create: { width: 180, height: 210, channels: 3, background: { r: 96, g: 62, b: 30 } },
-          }).png().toBuffer(),
-          left: Math.round(width / 2 - 90), top: Math.round(height * 0.36),
-        },
-      ])
-      .png().toBuffer()
+describe('what can no longer confuse it', () => {
+  test('the background cannot affect the result — it is never read', async () => {
+    // The whole defect, as a property. The measurement takes the prepared
+    // cut-out and the plan; there is no image of the master involved, so a
+    // sweep, a vignette or a flat colour are all equally invisible to it.
+    const { prepared, plan } = await measured(chair())
 
-    const result = await measureComposition(decorated)
-    assert.equal(result.ok, true)
-    if (!result.ok) return
+    const a = await measurePlacement(prepared, plan)
+    const b = await measurePlacement(prepared, plan)
+    assert.deepEqual(a, b)
 
-    // The chair is 210px tall — 26% of the canvas. The measurement reports the
-    // circle instead, at about two thirds. That gap is the limitation.
-    assert.ok(result.measurement.heightShare > 0.6,
-      `measured ${result.measurement.heightShare}, which is the backdrop, not the chair`)
+    // And the same cut-out placed by the same plan measures the same whatever
+    // canvas it is later drawn on.
+    assert.equal(a.ok, true)
+    if (a.ok) assert.equal(a.measurement.heightShare, plan.product.height / MASTER_HEIGHT)
+  })
+
+  test('shadows cannot be counted as product', async () => {
+    // A shadow is drawn on the canvas, not in the cut-out. Nothing here reads
+    // the canvas, so a shadow of any depth changes nothing — where the old tool
+    // read a dark contact smear as extra product height.
+    const { prepared, plan, m } = await measured(chair())
+
+    // Darkening the ENTIRE area around the product cannot move the numbers,
+    // because the measurement never sees it.
+    const again = await measurePlacement(prepared, plan)
+    assert.equal(again.ok, true)
+    if (!again.ok) return
+    assert.equal(again.measurement.product.bottom, m.product.bottom)
+    assert.equal(again.measurement.feetBaselineShare, m.feetBaselineShare)
+  })
+
+  test('transparent openings are excluded from the product', async () => {
+    // The fan under the seat is transparent, and those pixels are inside the
+    // bounding box. They are counted as openings, never as product.
+    const { m } = await measured(chair())
+    assert.ok(m.transparentPixels > 10_000,
+      `expected real openings inside the box, found ${m.transparentPixels}`)
+    assert.equal(m.opaquePixels + m.transparentPixels, m.product.width * m.product.height)
+    assert.ok(m.opaquePixels < m.product.width * m.product.height * 0.8,
+      'a chair is mostly air; if this is near 1 the openings were counted as product')
+  })
+
+  test('a solid product has almost no openings — the counter is not always high', async () => {
+    // A wardrobe: one filled shape on transparency, with nothing showing
+    // through it. If the opening count were an artefact it would be high here too.
+    const c = blank(1000, 1300)
+    paint(c, 100, 100, 800, 1100)
+    const { m } = await measured(c)
+    assert.ok(m.transparentPixels < m.product.width * m.product.height * 0.01,
+      `${m.transparentPixels} openings in a solid product`)
+    assert.ok(m.opaquePixels > m.product.width * m.product.height * 0.98)
   })
 })
 
-describe('reporting', () => {
-  test('an empty canvas is refused rather than measured', async () => {
-    const blank = await sharp({
-      create: { width: 400, height: 400, channels: 3, background: { r: 238, g: 236, b: 232 } },
-    }).png().toBuffer()
-
-    const result = await measureComposition(blank)
+describe('failures', () => {
+  test('bytes that are not an image are refused', async () => {
+    const plan = planPadding({ width: 900, height: 1150 })
+    const result = await measurePlacement(Buffer.from('not a png'), plan)
     assert.equal(result.ok, false)
-    assert.match(result.ok ? '' : result.error, /No product/)
+    if (!result.ok) assert.match(result.error, /could not be read/i)
   })
 
-  test('a file that is not an image is refused', async () => {
-    const result = await measureComposition(Buffer.from('not a png'))
+  test('a cut-out with nothing in it is refused', async () => {
+    const plan = planPadding({ width: 900, height: 1150 })
+    const empty = await png(blank(plan.product.width, plan.product.height))
+    const result = await measurePlacement(empty, plan)
     assert.equal(result.ok, false)
+    if (!result.ok) assert.match(result.error, /no product/i)
   })
+})
 
-  test('the description carries every number a review needs', async () => {
-    const png = await scene({
-      width: 1200, height: 800,
-      product: { left: 390, top: 168, width: 420, height: 520 },
-    })
-    const result = await measureComposition(png)
-    assert.equal(result.ok, true)
-    if (!result.ok) return
-
-    const lines = describeMeasurement(result.measurement).join('\n')
-    for (const needed of ['product height', 'space above', 'space below feet', 'feet baseline', 'centre offset', 'side balance']) {
-      assert.ok(lines.includes(needed), `the report should mention ${needed}`)
+describe('the summary', () => {
+  test('it reads as numbers a person can check', async () => {
+    const { m } = await measured(chair())
+    const lines = describeMeasurement(m).join('\n')
+    for (const label of ['canvas', 'product', 'height share', 'space above', 'space below', 'openings']) {
+      assert.ok(lines.includes(label), `missing ${label}`)
     }
-    assert.ok(lines.includes('[target 65%]'))
+    assert.match(lines, /1440 x 1440/)
+    assert.match(lines, /53\.0%/)
   })
 })

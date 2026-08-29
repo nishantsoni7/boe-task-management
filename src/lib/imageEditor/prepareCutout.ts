@@ -10,11 +10,13 @@
 //   2. take the factory background's colour out of the soft edge, because
 //      background removal assigns alpha without repainting and the leftover mix
 //      composites to a thin dark rim (see decontaminateEdges.ts);
-//   3. resize by one factor so the product lands at the planned size, because
-//      padding is pixels and the master is 1000 x 1000.
+//   3. resize by one factor so the product lands at the planned size;
+//   4. restore, inside the product only, the acutance a resample costs.
 //
-// Nothing else. No tone, no sharpening, no shadow, no background — the accepted
-// result's lighting and scene come from Bria and must not be pre-empted here.
+// Nothing else. NO TONE CORRECTION: the product's colour is the photograph's,
+// and the only things permitted to change a pixel here are the edge repair, the
+// interpolation of one proportional resize, and the bounded sharpening below.
+// Nothing invents detail and nothing repaints anything.
 //
 // The edge is repaired BEFORE the resize, and that order matters. Repairing
 // first means the downscale averages clean product colour; repairing after
@@ -30,6 +32,58 @@ import sharp from 'sharp'
 import { alphaBounds, type Bounds } from './cutoutGeometry'
 import { decontaminateEdges, type EdgeReport } from './decontaminateEdges'
 
+/**
+ * Restrained unsharp settings.
+ *
+ * A resample costs acutance; this gives back roughly that much and no more.
+ * `m2` is the ceiling on how far a high-contrast edge may be pushed, and it is
+ * deliberately low — a large value is what turns a chair leg into a cartoon and
+ * puts a bright line beside every dark rail.
+ */
+const SHARPEN = { sigma: 0.8, m1: 0.4, m2: 1.2 } as const
+
+/** How far in from the cut-out's edge sharpening may reach. Sharpening across
+ *  an alpha boundary traces a pale outline around the product, which reads
+ *  instantly as "cut out". */
+const EDGE_GUARD_SIGMA = 2
+
+/**
+ * Sharpen the product's RGB and leave its alpha edge alone.
+ *
+ * The sharpened result is confined to an INTERIOR mask — the alpha, blurred and
+ * hard-thresholded, which excludes a few pixels all the way round. Outside that
+ * mask the original, unsharpened colour is kept, so no halo can form and the
+ * decontaminated edge is not undone.
+ *
+ * Alpha is copied through untouched.
+ */
+async function sharpenInterior(rgba: Buffer, width: number, height: number): Promise<Buffer> {
+  const pixels = width * height
+
+  const rgb = Buffer.allocUnsafe(pixels * 3)
+  const alpha = Buffer.allocUnsafe(pixels)
+  for (let i = 0; i < pixels; i++) {
+    rgb[i * 3] = rgba[i * 4]; rgb[i * 3 + 1] = rgba[i * 4 + 1]; rgb[i * 3 + 2] = rgba[i * 4 + 2]
+    alpha[i] = rgba[i * 4 + 3]
+  }
+
+  const sharpened = await sharp(rgb, { raw: { width, height, channels: 3 } })
+    .sharpen(SHARPEN).raw().toBuffer()
+
+  const interior = await sharp(alpha, { raw: { width, height, channels: 1 } })
+    .blur(EDGE_GUARD_SIGMA).toColourspace('b-w').raw().toBuffer()
+
+  const out = Buffer.allocUnsafe(pixels * 4)
+  for (let i = 0; i < pixels; i++) {
+    const inside = interior[i] >= 252
+    for (let c = 0; c < 3; c++) {
+      out[i * 4 + c] = inside ? sharpened[i * 3 + c] : rgb[i * 3 + c]
+    }
+    out[i * 4 + 3] = alpha[i]
+  }
+  return out
+}
+
 export type PreparedCutout =
   | {
       ok: true
@@ -39,6 +93,9 @@ export type PreparedCutout =
       /** Counts only — how many edge pixels were repaired, and how many were
        *  too thin to repair safely. Never image data. */
       edges: EdgeReport
+      /** What the product was scaled by. Below 1 is a reduction; above 1 is an
+       *  enlargement, and is gated upstream. */
+      scale: number
     }
   | { ok: false; error: string }
 
@@ -113,17 +170,32 @@ export async function prepareCutoutForShot(
 
     const edges = await decontaminateEdges(cropped, bounds.width, bounds.height)
 
-    const png = await sharp(cropped, {
+    // One resize, one factor, both axes: scaled as a whole, never stretched,
+    // rotated, warped or cropped. sharp premultiplies alpha through this, so a
+    // transparent pixel's colour cannot bleed into an opaque neighbour.
+    const resized = await sharp(cropped, {
       raw: { width: bounds.width, height: bounds.height, channels: 4 },
     })
-      // One resize, one factor, both axes: scaled as a whole, never stretched.
-      // sharp premultiplies alpha through this, so a transparent pixel's colour
-      // cannot bleed into an opaque neighbour.
       .resize(target.width, target.height, { kernel: 'lanczos3', fit: 'fill' })
-      .png({ compressionLevel: 9 })
+      .raw()
       .toBuffer()
 
-    return { ok: true, png, source: { width: bounds.width, height: bounds.height }, bounds, edges }
+    // Its own pipeline: sharp reorders chained operations, and a sharpen written
+    // after a resize is not guaranteed to run after it.
+    const sharpened = await sharpenInterior(resized, target.width, target.height)
+
+    const png = await sharp(sharpened, {
+      raw: { width: target.width, height: target.height, channels: 4 },
+    }).png({ compressionLevel: 9 }).toBuffer()
+
+    return {
+      ok: true,
+      png,
+      source: { width: bounds.width, height: bounds.height },
+      bounds,
+      edges,
+      scale: target.height / bounds.height,
+    }
   } catch {
     return { ok: false, error: 'That photograph could not be prepared for the studio. Please try again.' }
   }
