@@ -43,6 +43,7 @@ import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hook
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { perfTrack } from '@/lib/perf'
 import { canMarkComplete, canSubmitForApproval } from '@/lib/tasks/taskDetailAccess'
 
 
@@ -90,8 +91,13 @@ const RAIL_HEADING_HEIGHT = '45.75px'
 // The desktop task row and the table header above it must resolve to identical
 // tracks, so the definition lives here once and both read it — editing it in a
 // single place is the only way they can stay aligned.
+// Action holds up to FOUR buttons — complete/submit, pin, edit, delete — which
+// at 26px plus 2px gaps is 110px exactly, leaving the old track with no slack
+// at all. The 14px it now has comes out of Priority, which renders only High /
+// Med / Low at 10px and had it spare, so the row's TOTAL minimum width is
+// unchanged and no width that fitted before can overflow now.
 const LIST_GRID_COLUMNS =
-  '28px minmax(420px, 2fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(80px, 0.5fr) minmax(95px, 0.6fr) minmax(110px, 0.45fr)'
+  '28px minmax(420px, 2fr) minmax(110px, 0.75fr) minmax(90px, 0.6fr) minmax(66px, 0.42fr) minmax(95px, 0.6fr) minmax(124px, 0.53fr)'
 
 // ─── Left sidebar tab ─────────────────────────────────────────────────────────
 const TYPE_TABS: { key: TaskType; label: string; Icon: React.ElementType; accent: string }[] = [
@@ -1209,6 +1215,13 @@ function MyTasksContent() {
 
   // Allow manual task overrides (create / edit / delete) on top of cached data
   const [taskOverrides, setTaskOverrides] = useState<Task[] | null>(null)
+  // The BUSY FLAG IS A REF, and the state beside it only drives the spinner.
+  // A state-only guard loses the race it exists to prevent: two clicks in one
+  // frame both read the pre-render value, both pass, and the task is completed
+  // twice — two activity rows and two notifications for one intended action.
+  // The detail page hit exactly this and fixed it the same way
+  // (statusUpdatingRef / reviewBusyRef in tasks/[id]/page.tsx).
+  const quickActionRef = useRef(false)
   const [quickActionTaskId, setQuickActionTaskId] = useState<string | null>(null)
   const allTasks = taskOverrides ?? allTasksRaw
 
@@ -1400,14 +1413,32 @@ function MyTasksContent() {
   }
 
   const handleQuickComplete = async (task: Task) => {
-    if (!canMarkComplete(task, userId) || viewAsUserId || quickActionTaskId) return
+    if (!canMarkComplete(task, userId) || viewAsUserId) return
+    if (quickActionRef.current) return
     if (!window.confirm('Complete this task? It will move out of your active task list.')) return
+    quickActionRef.current = true
     setQuickActionTaskId(task.id)
+    // Timed as the same action the detail page reports, so a completion counts
+    // once in the perf audit wherever it was performed.
+    const perf = perfTrack('task.complete')
     try {
       const now = new Date().toISOString()
+      // A task left blocked or waiting carries the reason it was stuck on.
+      // Completing it here has to clear those the way applyStatusChange does,
+      // or the row keeps a blocker that no longer describes anything — and the
+      // Waiting / Blocked tab is one of the places this button is reached from.
+      const updates: Record<string, unknown> = {
+        status: 'completed', completed_at: now, last_update_at: now,
+      }
+      if (task.status === 'blocked') updates.blocker_reason = null
+      if (task.status === 'waiting') {
+        updates.waiting_on_type    = null
+        updates.waiting_on_user_id = null
+        updates.waiting_on_text    = null
+      }
       const { error } = await supabase
         .from('tasks')
-        .update({ status: 'completed', completed_at: now, last_update_at: now })
+        .update(updates)
         .eq('id', task.id)
         .eq('assigned_to', userId)
       if (error) {
@@ -1415,7 +1446,11 @@ function MyTasksContent() {
         window.alert('Failed to complete this task. Please try again.')
         return
       }
-      const { error: logError } = await supabase.from('task_activity_log').insert({
+      perf.mark('update-task')
+      // Read the row back for its id: the notification card shows the PREVIOUS
+      // status, and that value lives only on the activity row it links to.
+      // Without activityLogId the card can only say "Status changed".
+      const { data: logRow, error: logError } = await supabase.from('task_activity_log').insert({
         task_id: task.id,
         actor_id: userId,
         action: 'status_changed',
@@ -1423,7 +1458,10 @@ function MyTasksContent() {
         to_status: 'completed',
         note: null,
       })
+        .select('id')
+        .single()
       if (logError) console.error('[my-tasks/quick-complete] activity log failed:', logError.message)
+      perf.mark('insert-activity')
 
       const recipient = task.created_by !== userId ? task.created_by : null
       if (recipient) {
@@ -1437,21 +1475,39 @@ function MyTasksContent() {
             recipientId: recipient,
             action: 'completed',
             actorName: profile?.full_name,
+            // Null when the insert failed — the notification is then written
+            // unlinked, exactly as the detail page does.
+            activityLogId: logRow?.id ?? null,
           }),
         }).catch(err => console.error('[my-tasks/quick-complete] notification failed:', err))
       }
 
-      applyQuickActionResult(task, { status: 'completed', last_update_at: now })
+      // The same fields, cleared locally, so the list and the DB agree without
+      // a refetch.
+      const patch: Partial<Task> = { status: 'completed', last_update_at: now }
+      if (task.status === 'blocked') patch.blocker_reason = null
+      if (task.status === 'waiting') {
+        patch.waiting_on_type    = null
+        patch.waiting_on_user_id = null
+        patch.waiting_on_text    = null
+      }
+      applyQuickActionResult(task, patch)
       showToast('Task completed')
     } finally {
+      perf.end()
+      quickActionRef.current = false
       setQuickActionTaskId(null)
     }
   }
 
   const handleQuickSubmit = async (task: Task) => {
-    if (!canSubmitForApproval(task, userId) || viewAsUserId || quickActionTaskId) return
+    if (!canSubmitForApproval(task, userId) || viewAsUserId) return
+    if (quickActionRef.current) return
     if (!window.confirm('Submit this completed work for approval?')) return
+    quickActionRef.current = true
     setQuickActionTaskId(task.id)
+    // Submitting is a status move, which is how the detail page reports it.
+    const perf = perfTrack('task.status.update')
     try {
       const { data, error } = await supabase.rpc('transition_task_review', {
         p_task_id: task.id,
@@ -1477,6 +1533,8 @@ function MyTasksContent() {
       })
       showToast('Submitted for approval')
     } finally {
+      perf.end()
+      quickActionRef.current = false
       setQuickActionTaskId(null)
     }
   }
