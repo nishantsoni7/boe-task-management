@@ -331,9 +331,33 @@ And one file:
 It is deliberately **not** in `public/` and **not** in git: nothing in a browser
 needs it, the only reader is the server on its way to fal, and it travels as a
 data URI so no publicly reachable URL for it is ever created.
-`outputFileTracingIncludes` in `next.config.ts` is what puts it into a
-deployment. With it missing, the route and the smoke script both report that it
-is missing and generate nothing — **before** any billable request.
+
+**Because it is gitignored, a deployment built from a git clone does not have
+it.** This was verified rather than assumed — exporting `HEAD` to a clean tree
+leaves only the README, and the loader returns `missing`, which would make every
+generation in production fail with "reference not installed". So the server
+tries two sources in order:
+
+| Order | Source | Serves |
+| --- | --- | --- |
+| 1 | The local file, shipped by `outputFileTracingIncludes` | local development |
+| 2 | A **private** Supabase Storage bucket, downloaded server-side with the service-role key the app already holds | **production** |
+
+A local file always wins, and storage is not consulted when it is present — a
+developer's checkout must not depend on a network round trip.
+
+**Provisioning, once per environment:** create a Supabase Storage bucket named
+`image-editor` with **Public bucket OFF**, and upload the approved PNG as
+`studio-reference.png`. **No new Vercel environment variable is required** —
+`NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are already set.
+`IMAGE_EDITOR_REFERENCE_BUCKET` overrides the bucket name if a project needs a
+different one. No storage policy is needed: the service-role key bypasses
+row-level security, which is why the bucket can stay private.
+
+With **neither** source available the route reports it and generates nothing —
+**before** any billable request, so a misconfigured deployment costs nothing.
+The failure names both sources, because naming one sends an operator to the
+wrong system.
 
 ## The pieces
 
@@ -344,7 +368,7 @@ is missing and generate nothing — **before** any billable request.
 | `src/lib/imageEditor/falRequest.ts` | One request to fal: transport, host allowlist, failure classification, and the no-retry rule. Shared by both stages, so those rules exist once. |
 | `src/lib/imageEditor/briaProductShot.ts` | Stage one. The original photograph plus the approved reference; no scene description, no `sync_mode`. |
 | `src/lib/imageEditor/seedvrUpscale.ts` | Stage two, and `normaliseSquare` — which inspects what came back rather than assuming the factor worked. |
-| `src/lib/imageEditor/studioReference.ts` | Reads the approved reference from disk, server-side, cached. Never substitutes a look-alike. |
+| `src/lib/imageEditor/studioReference.ts` | Loads the approved reference — local file, then private Supabase Storage — server-side, cached per root. Never substitutes a look-alike. |
 | `src/lib/imageEditor/generatedProduct.ts` | Finding a product in a fully opaque image by edge energy, measuring its structure, and planning the reframe. Server-only (sharp). No network. |
 | `src/lib/imageEditor/preservationGate.ts` | Whether a generated image may be served, and when that cannot be decided. No network, no model — it only measures. |
 | `src/lib/imageEditor/verification.ts` | The verdict's wire format: the header name, the two statuses, the note. Client-safe and dependency-free, imported by both the route and the card so they cannot drift. |
