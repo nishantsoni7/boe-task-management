@@ -232,181 +232,205 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `That photograph is larger than ${MAX_SOURCE_IMAGE_LABEL}. Upload a smaller file.` }, { status: 400 })
   }
 
-  const prepared = await prepareSourceImage(bytes, validation.mimeType)
-  if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
-
-  // ── Ground truth, measured before anything is generated ─────────────────────
-  // The uploaded photograph is what the result will be checked against, and it
-  // costs nothing because it is already here.
-  const originalProfile = await measureProfile(prepared.bytes)
-
-  // ── [1] Product Shot ────────────────────────────────────────────────────────
-  const shot = await generateProductShot({
-    photograph: prepared.bytes,
-    mimeType: prepared.mimeType,
-    apiKey,
-    timeoutMs: PRODUCT_SHOT_TIMEOUT_MS,
-    deadlineAt,
-  })
-
-  if (!shot.ok) {
-    console.error(
-      '[image-editor/studio] product shot failed:',
-      `category ${shot.reason}`, `phase ${shot.phase ?? '-'}`,
-      `status ${shot.status ?? '-'}`, `request ${shot.requestId || '-'}`,
-      `${shot.durationMs} ms`, shot.detail ?? '',
-    )
-    return NextResponse.json(
-      { error: shot.message, ...(isNoRetry(shot.reason) ? { noRetry: true } : {}) },
-      { status: statusFor(shot.reason) },
-    )
-  }
-
-  // ── Local: find the product by structure, and check it ──────────────────────
-  const shotFound = await findProduct(shot.image)
-  if (!shotFound) {
-    console.warn('[image-editor/studio] no product found in the generated image, request', shot.requestId || '-')
-    return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: false }, { status: 422 })
-  }
-
-  // ── What the gate can establish, and what it cannot ─────────────────────────
+  // ── Everything below touches sharp ──────────────────────────────────────────
   //
-  // Three outcomes, and the difference between the second and the third is the
-  // whole point:
+  // Guarded so a decode or encode failure becomes a JSON refusal rather than an
+  // opaque 500. Without this the browser gets a non-JSON error page, the page's
+  // `payload?.error` is undefined, and an employee is told only "The studio
+  // image could not be generated" — which is what happened on the first
+  // production run and is why it took a log to diagnose.
   //
-  //   CONFIRMED FAILURE   a check ran and failed. Refuse, and refuse HERE so
-  //                       the second billable request is never made.
-  //   INCONCLUSIVE        the comparison could not run, because the upload's
-  //                       own background defeated it. Continue, deliver, and
-  //                       say plainly that nobody verified it.
-  //   PASSED              compared, and the structure survived.
-  //
-  // Inconclusive used to be refused. That was wrong for this module's real
-  // traffic: BOE photographs furniture against textured concrete, so the
-  // located bounds fill the frame and the upload cannot be ground truth — on
-  // most genuine uploads, including ones where the product came back perfectly.
-  // Refusing them would refuse the module on the strength of a check that never
-  // ran. The rule that survives is the one that matters: an unverified image is
-  // never presented as a verified one.
-  let verification: VerificationStatus = 'manual_review_required'
+  // WHAT THIS CANNOT CATCH: sharp failing to LOAD. `import sharp` runs when
+  // this module is first required, before any handler exists, so a missing
+  // native library kills the function itself and nothing here executes. That
+  // failure is fixed in next.config.ts, not caught here.
+  try {
+    const prepared = await prepareSourceImage(bytes, validation.mimeType)
+    if (!prepared.ok) return NextResponse.json({ error: prepared.error }, { status: 400 })
 
-  const shotProfile = await measureProfile(shot.image)
-  if (originalProfile && shotProfile) {
-    const report = comparePreservation(originalProfile, shotProfile, 'after product shot')
-    console.info('[image-editor/studio] preservation', report.summary)
+    // ── Ground truth, measured before anything is generated ─────────────────────
+    // The uploaded photograph is what the result will be checked against, and it
+    // costs nothing because it is already here.
+    const originalProfile = await measureProfile(prepared.bytes)
 
-    // A failed check is a failed check whether or not other checks were
-    // skipped: everything in `checks` was measured on the generated image and
-    // reached a verdict. Only the comparison against the upload can be missing.
-    if (!report.ok) {
-      return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
+    // ── [1] Product Shot ────────────────────────────────────────────────────────
+    const shot = await generateProductShot({
+      photograph: prepared.bytes,
+      mimeType: prepared.mimeType,
+      apiKey,
+      timeoutMs: PRODUCT_SHOT_TIMEOUT_MS,
+      deadlineAt,
+    })
+
+    if (!shot.ok) {
+      console.error(
+        '[image-editor/studio] product shot failed:',
+        `category ${shot.reason}`, `phase ${shot.phase ?? '-'}`,
+        `status ${shot.status ?? '-'}`, `request ${shot.requestId || '-'}`,
+        `${shot.durationMs} ms`, shot.detail ?? '',
+      )
+      return NextResponse.json(
+        { error: shot.message, ...(isNoRetry(shot.reason) ? { noRetry: true } : {}) },
+        { status: statusFor(shot.reason) },
+      )
     }
-    if (report.inconclusive) {
-      console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${shot.requestId || '-'}`)
-      verification = 'manual_review_required'
+
+    // ── Local: find the product by structure, and check it ──────────────────────
+    const shotFound = await findProduct(shot.image)
+    if (!shotFound) {
+      console.warn('[image-editor/studio] no product found in the generated image, request', shot.requestId || '-')
+      return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: false }, { status: 422 })
+    }
+
+    // ── What the gate can establish, and what it cannot ─────────────────────────
+    //
+    // Three outcomes, and the difference between the second and the third is the
+    // whole point:
+    //
+    //   CONFIRMED FAILURE   a check ran and failed. Refuse, and refuse HERE so
+    //                       the second billable request is never made.
+    //   INCONCLUSIVE        the comparison could not run, because the upload's
+    //                       own background defeated it. Continue, deliver, and
+    //                       say plainly that nobody verified it.
+    //   PASSED              compared, and the structure survived.
+    //
+    // Inconclusive used to be refused. That was wrong for this module's real
+    // traffic: BOE photographs furniture against textured concrete, so the
+    // located bounds fill the frame and the upload cannot be ground truth — on
+    // most genuine uploads, including ones where the product came back perfectly.
+    // Refusing them would refuse the module on the strength of a check that never
+    // ran. The rule that survives is the one that matters: an unverified image is
+    // never presented as a verified one.
+    let verification: VerificationStatus = 'manual_review_required'
+
+    const shotProfile = await measureProfile(shot.image)
+    if (originalProfile && shotProfile) {
+      const report = comparePreservation(originalProfile, shotProfile, 'after product shot')
+      console.info('[image-editor/studio] preservation', report.summary)
+
+      // A failed check is a failed check whether or not other checks were
+      // skipped: everything in `checks` was measured on the generated image and
+      // reached a verdict. Only the comparison against the upload can be missing.
+      if (!report.ok) {
+        return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
+      }
+      if (report.inconclusive) {
+        console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${shot.requestId || '-'}`)
+        verification = 'manual_review_required'
+      } else {
+        verification = 'passed'
+      }
     } else {
-      verification = 'passed'
-    }
-  } else {
-    console.warn('[image-editor/studio] preservation unmeasurable, request', shot.requestId || '-')
-    verification = 'manual_review_required'
-  }
-
-  // ── Local: reframe to the approved composition ──────────────────────────────
-  const shotMeta = await sharp(shot.image).metadata()
-  const plan = planReframe(
-    shotFound.bounds,
-    { width: shotMeta.width ?? 0, height: shotMeta.height ?? 0 },
-    {
-      heightShare: PRODUCT_HEIGHT_SHARE,
-      aboveSplit: ABOVE_SHARE_OF_LEFTOVER,
-      maxWidthShare: 1 - 2 * SIDE_MARGIN_SHARE,
-    },
-  )
-  const reframed = await reframe(shot.image, plan)
-
-  // ── [2] SeedVR2, for resolution only ────────────────────────────────────────
-  const upscaled = await upscaleImage({
-    image: reframed,
-    mimeType: 'image/png',
-    sourceSide: plan.crop.size,
-    targetSide: MASTER_SIDE,
-    apiKey,
-    timeoutMs: UPSCALE_TIMEOUT_MS,
-    deadlineAt,
-  })
-
-  if (!upscaled.ok) {
-    console.error(
-      '[image-editor/studio] upscale failed:',
-      `category ${upscaled.reason}`, `phase ${upscaled.phase ?? '-'}`,
-      `status ${upscaled.status ?? '-'}`, `request ${upscaled.requestId || '-'}`,
-      `${upscaled.durationMs} ms`,
-    )
-    return NextResponse.json(
-      { error: upscaled.message, ...(NO_RETRY_FAILURES.has(upscaled.reason) ? { noRetry: true } : {}) },
-      { status: statusFor(upscaled.reason) },
-    )
-  }
-
-  // ── Local: check again, then make it exactly the master size ────────────────
-  const finalProfile = await measureProfile(upscaled.image)
-  if (originalProfile && finalProfile) {
-    const report = comparePreservation(originalProfile, finalProfile, 'after upscale')
-    const framing = checkFraming(finalProfile, { min: PRODUCT_HEIGHT_MIN, max: PRODUCT_HEIGHT_MAX }, plan.widthLimited)
-    console.info('[image-editor/studio] preservation', report.summary, `; framing ${framing.ok ? 'ok' : 'FAILED'} [${framing.detail}]`)
-    if (!report.ok) {
-      return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
-    }
-    // The verdict can only get weaker across the two stages, never stronger: a
-    // stage that could not compare leaves the whole result unverified.
-    if (report.inconclusive) {
-      console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${upscaled.requestId || '-'}`)
+      console.warn('[image-editor/studio] preservation unmeasurable, request', shot.requestId || '-')
       verification = 'manual_review_required'
     }
-  } else {
-    console.warn('[image-editor/studio] preservation unmeasurable, request', upscaled.requestId || '-')
-    verification = 'manual_review_required'
-  }
 
-  // What SeedVR2 returned is inspected, not assumed: the factor's accepted
-  // range is undocumented and nothing promises the model rounds as we would.
-  // A non-square result is refused rather than squeezed.
-  const normalised = await normaliseSquare(upscaled.image, MASTER_SIDE)
-  if (!normalised.ok) {
-    console.error('[image-editor/studio] upscale returned an unusable image:',
-      normalised.returned ? `${normalised.returned.width}x${normalised.returned.height}` : 'unreadable',
-      `request ${upscaled.requestId || '-'}`)
-    return NextResponse.json({ error: normalised.error }, { status: 422 })
-  }
-  const master = normalised.image
-
-  console.info(
-    '[image-editor/studio] ok:',
-    `shot ${shot.requestId || '-'} ${shot.durationMs} ms`,
-    `upscale ${upscaled.requestId || '-'} ${upscaled.durationMs} ms factor ${upscaled.factor}x`,
-    `product ${shotFound.bounds.width}x${shotFound.bounds.height}`,
-    `crop ${plan.crop.size} at ${plan.crop.left},${plan.crop.top}`,
-    `share ${(plan.productHeightShare * 100).toFixed(1)}%`,
-    `seedvr returned ${normalised.returned.width}x${normalised.returned.height}`,
-    `delivered ${normalised.delivered.width}x${normalised.delivered.height}`,
-    normalised.resized ? 'normalised locally' : 'exact from the model',
-    plan.widthLimited ? 'width-limited' : '',
-    plan.clamped ? 'crop clamped to canvas' : '',
-    `verification ${verification}`,
-  )
-
-  // The header carries the verdict and nothing else. The body stays the image:
-  // no bounds, no densities, no request ids, no model names — an employee is
-  // preparing a catalogue photograph, not reading a provider's telemetry.
-  return NextResponse.json(
-    {
-      configured: true,
-      image: {
-        dataUrl: `data:image/png;base64,${master.toString('base64')}`,
-        mimeType: 'image/png',
+    // ── Local: reframe to the approved composition ──────────────────────────────
+    const shotMeta = await sharp(shot.image).metadata()
+    const plan = planReframe(
+      shotFound.bounds,
+      { width: shotMeta.width ?? 0, height: shotMeta.height ?? 0 },
+      {
+        heightShare: PRODUCT_HEIGHT_SHARE,
+        aboveSplit: ABOVE_SHARE_OF_LEFTOVER,
+        maxWidthShare: 1 - 2 * SIDE_MARGIN_SHARE,
       },
-    },
-    { headers: { [VERIFICATION_HEADER]: verification } },
-  )
+    )
+    const reframed = await reframe(shot.image, plan)
+
+    // ── [2] SeedVR2, for resolution only ────────────────────────────────────────
+    const upscaled = await upscaleImage({
+      image: reframed,
+      mimeType: 'image/png',
+      sourceSide: plan.crop.size,
+      targetSide: MASTER_SIDE,
+      apiKey,
+      timeoutMs: UPSCALE_TIMEOUT_MS,
+      deadlineAt,
+    })
+
+    if (!upscaled.ok) {
+      console.error(
+        '[image-editor/studio] upscale failed:',
+        `category ${upscaled.reason}`, `phase ${upscaled.phase ?? '-'}`,
+        `status ${upscaled.status ?? '-'}`, `request ${upscaled.requestId || '-'}`,
+        `${upscaled.durationMs} ms`,
+      )
+      return NextResponse.json(
+        { error: upscaled.message, ...(NO_RETRY_FAILURES.has(upscaled.reason) ? { noRetry: true } : {}) },
+        { status: statusFor(upscaled.reason) },
+      )
+    }
+
+    // ── Local: check again, then make it exactly the master size ────────────────
+    const finalProfile = await measureProfile(upscaled.image)
+    if (originalProfile && finalProfile) {
+      const report = comparePreservation(originalProfile, finalProfile, 'after upscale')
+      const framing = checkFraming(finalProfile, { min: PRODUCT_HEIGHT_MIN, max: PRODUCT_HEIGHT_MAX }, plan.widthLimited)
+      console.info('[image-editor/studio] preservation', report.summary, `; framing ${framing.ok ? 'ok' : 'FAILED'} [${framing.detail}]`)
+      if (!report.ok) {
+        return NextResponse.json({ error: PRESERVATION_REFUSAL, noRetry: true }, { status: 422 })
+      }
+      // The verdict can only get weaker across the two stages, never stronger: a
+      // stage that could not compare leaves the whole result unverified.
+      if (report.inconclusive) {
+        console.warn('[image-editor/studio]', INCONCLUSIVE_MESSAGE, `request ${upscaled.requestId || '-'}`)
+        verification = 'manual_review_required'
+      }
+    } else {
+      console.warn('[image-editor/studio] preservation unmeasurable, request', upscaled.requestId || '-')
+      verification = 'manual_review_required'
+    }
+
+    // What SeedVR2 returned is inspected, not assumed: the factor's accepted
+    // range is undocumented and nothing promises the model rounds as we would.
+    // A non-square result is refused rather than squeezed.
+    const normalised = await normaliseSquare(upscaled.image, MASTER_SIDE)
+    if (!normalised.ok) {
+      console.error('[image-editor/studio] upscale returned an unusable image:',
+        normalised.returned ? `${normalised.returned.width}x${normalised.returned.height}` : 'unreadable',
+        `request ${upscaled.requestId || '-'}`)
+      return NextResponse.json({ error: normalised.error }, { status: 422 })
+    }
+    const master = normalised.image
+
+    console.info(
+      '[image-editor/studio] ok:',
+      `shot ${shot.requestId || '-'} ${shot.durationMs} ms`,
+      `upscale ${upscaled.requestId || '-'} ${upscaled.durationMs} ms factor ${upscaled.factor}x`,
+      `product ${shotFound.bounds.width}x${shotFound.bounds.height}`,
+      `crop ${plan.crop.size} at ${plan.crop.left},${plan.crop.top}`,
+      `share ${(plan.productHeightShare * 100).toFixed(1)}%`,
+      `seedvr returned ${normalised.returned.width}x${normalised.returned.height}`,
+      `delivered ${normalised.delivered.width}x${normalised.delivered.height}`,
+      normalised.resized ? 'normalised locally' : 'exact from the model',
+      plan.widthLimited ? 'width-limited' : '',
+      plan.clamped ? 'crop clamped to canvas' : '',
+      `verification ${verification}`,
+    )
+
+    // The header carries the verdict and nothing else. The body stays the image:
+    // no bounds, no densities, no request ids, no model names — an employee is
+    // preparing a catalogue photograph, not reading a provider's telemetry.
+    return NextResponse.json(
+      {
+        configured: true,
+        image: {
+          dataUrl: `data:image/png;base64,${master.toString('base64')}`,
+          mimeType: 'image/png',
+        },
+      },
+      { headers: { [VERIFICATION_HEADER]: verification } },
+    )
+  } catch (e) {
+    // The category, never the stack: a libvips message can carry file paths.
+    console.error(
+      '[image-editor/studio] unhandled image failure:',
+      e instanceof Error ? `${e.name}: ${e.message}` : 'unknown',
+    )
+    return NextResponse.json(
+      { error: 'The image service could not process this photograph. Please try again.' },
+      { status: 500 },
+    )
+  }
 }
