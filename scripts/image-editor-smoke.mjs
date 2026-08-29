@@ -2,20 +2,6 @@
 //
 //   npx tsx scripts/image-editor-smoke.mjs "irvine chair.jpg" test-results/irvine/out.png
 //
-// TWO MODES
-// ---------
-//   (default)                 the ACCEPTED pipeline: ref_image_url drives the
-//                             scene, no scene_description.
-//   --lighting-prompt-test    the lighting EXPERIMENT: scene_description drives
-//                             the scene, no ref_image_url. ONE difference; every
-//                             other setting is imported from the accepted
-//                             adapter so it cannot drift.
-//
-// Run both against the same photograph to compare A against B. The mode changes
-// what stage one is asked for and nothing else — the reframe, the upscale, the
-// gate and the normalisation are shared, so a difference in the output is a
-// difference in the request.
-//
 // THIS COSTS MONEY. One run is TWO billable fal requests, and no more:
 //
 //   1. fal-ai/bria/product-shot        the studio photograph
@@ -42,18 +28,6 @@
 //   <out>-underseat-shot-4x.png       neighbour, so no resampler can invent
 //   <out>-underseat-upscaled-4x.png   detail that is not in the pixels
 //
-// And four regions of the DELIVERED image, at 100% and 4x, one per defect the
-// lighting experiment is trying to fix:
-//
-//   <out>-region-underseat.png        thin members still separate and readable
-//   <out>-region-darkest.png          the darkest part of THIS product, found
-//                                     by sweeping the product box, with its
-//                                     mean luminance printed
-//   <out>-region-floor-shadow.png     contact shadows touching the feet, and
-//                                     which way the cast shadow travels
-//   <out>-region-upper-background.png the rear wall behind the upper product —
-//                                     the shadow that should not be there
-//
 // The three under-seat crops are the review. Put them side by side: the
 // rejected pipeline turned that fan of thin verticals into one opaque block,
 // and that is the failure this experiment exists to test for.
@@ -69,9 +43,6 @@ import { basename, dirname } from 'node:path'
 import { prepareSourceImage } from '../src/lib/imageEditor/prepareSource.ts'
 import { validateSourceImage } from '../src/lib/imageEditor/validation.ts'
 import { generateProductShot, MODEL_ID as SHOT_MODEL } from '../src/lib/imageEditor/briaProductShot.ts'
-import {
-  generateLightingShot, LIGHTING_SCENE_DESCRIPTION,
-} from '../src/lib/imageEditor/lightingPromptShot.ts'
 import { upscaleImage, normaliseSquare, MODEL_ID as UPSCALE_MODEL } from '../src/lib/imageEditor/seedvrUpscale.ts'
 import { loadStudioReference, REFERENCE_PATH } from '../src/lib/imageEditor/studioReference.ts'
 import { findProduct, planReframe, reframe } from '../src/lib/imageEditor/generatedProduct.ts'
@@ -87,24 +58,9 @@ import {
 config({ path: '.env.local', quiet: true })
 config({ quiet: true })
 
-// ── Two modes ────────────────────────────────────────────────────────────────
-//
-// Default: the ACCEPTED reference-driven pipeline. Unchanged.
-//
-// --lighting-prompt-test: the lighting EXPERIMENT. One difference and one only
-// — `scene_description` replaces `ref_image_url` as the scene source. Every
-// other setting is imported from the accepted adapter, so the comparison cannot
-// accidentally be measuring two changes at once.
-//
-// Run both against the same photograph and compare the artefacts side by side.
-const LIGHTING_FLAG = '--lighting-prompt-test'
-const argv = process.argv.slice(2)
-const lightingMode = argv.includes(LIGHTING_FLAG)
-const [sourceFile, out = lightingMode ? 'test-results/lighting.png' : 'test-results/studio.png'] =
-  argv.filter(a => a !== LIGHTING_FLAG)
-
+const [sourceFile, out = 'test-results/studio.png'] = process.argv.slice(2)
 if (!sourceFile) {
-  console.error('usage: npx tsx scripts/image-editor-smoke.mjs <photo.jpg> [out.png] [--lighting-prompt-test]')
+  console.error('usage: npx tsx scripts/image-editor-smoke.mjs <photo.jpg> [out.png]')
   process.exit(1)
 }
 
@@ -117,29 +73,15 @@ if (!apiKey) {
   process.exit(1)
 }
 
-// The key's presence, never its value.
-console.log(`FAL_KEY loaded from .env.local (${apiKey.length} characters, not shown)`)
-
-if (lightingMode) {
-  // The experiment sends no reference image, so there is nothing to check: the
-  // prompt is a constant and cannot be missing from a checkout.
-  console.log('MODE: lighting prompt experiment')
-  console.log('  scene source: scene_description (a server-only constant)')
-  console.log('  ref_image_url: ABSENT — the schema allows one scene source, not both')
-  console.log(`  prompt: ${LIGHTING_SCENE_DESCRIPTION.length} characters,` +
-    ` ${LIGHTING_SCENE_DESCRIPTION.split('\n\n').length} paragraphs (not printed — server-only)`)
-  console.log('')
-} else {
-  const reference = await loadStudioReference()
-  if (!reference.ok) {
-    console.error(`The approved studio reference is missing: ${reference.detail}`)
-    console.error(`Copy it to ${REFERENCE_PATH} and run again. Nothing was billed.`)
-    process.exit(1)
-  }
-  // The reference's size, never its bytes.
-  console.log('MODE: accepted reference-driven pipeline')
-  console.log(`  reference ${REFERENCE_PATH}, ${(reference.bytes / 1e6).toFixed(2)} MB\n`)
+const reference = await loadStudioReference()
+if (!reference.ok) {
+  console.error(`The approved studio reference is missing: ${reference.detail}`)
+  console.error(`Copy it to ${REFERENCE_PATH} and run again. Nothing was billed.`)
+  process.exit(1)
 }
+// The key's presence, never its value. The reference's size, never its bytes.
+console.log(`FAL_KEY loaded from .env.local (${apiKey.length} characters, not shown)`)
+console.log(`reference ${REFERENCE_PATH}, ${(reference.bytes / 1e6).toFixed(2)} MB\n`)
 
 mkdirSync(dirname(out), { recursive: true })
 const stem = out.replace(/\.png$/, '')
@@ -175,64 +117,6 @@ async function underSeat(image, bounds, canvas, label) {
     .png({ compressionLevel: 9 }).toBuffer()
   write(`${stem}-underseat-${label}-4x.png`, big)
   console.log(`  under-seat ${label}: ${width}x${height} at ${left},${top}  (and 4x)`)
-}
-
-/**
- * One named region of the delivered image, at 100% and at 4x nearest neighbour.
- *
- * Nearest neighbour on purpose: a smooth kernel invents gradients between
- * pixels, and every one of these crops exists to judge exactly the thing a
- * gradient would fake — whether the spindles are separate, whether the dark
- * wood has readable grain, whether the shadow has an edge.
- */
-async function crop(image, canvas, region, label) {
-  const left = Math.max(0, Math.min(canvas.width - 1, Math.round(region.left)))
-  const top = Math.max(0, Math.min(canvas.height - 1, Math.round(region.top)))
-  const width = Math.max(0, Math.min(canvas.width - left, Math.round(region.width)))
-  const height = Math.max(0, Math.min(canvas.height - top, Math.round(region.height)))
-  if (width < 8 || height < 8) {
-    console.log(`  ${label}: region too small to be useful, skipped`)
-    return
-  }
-
-  const box = { left, top, width, height }
-  const small = await sharp(image).extract(box).png({ compressionLevel: 9 }).toBuffer()
-  write(`${stem}-${label}.png`, small)
-  write(`${stem}-${label}-4x.png`, await sharp(small)
-    .resize(width * 4, height * 4, { kernel: 'nearest' })
-    .png({ compressionLevel: 9 }).toBuffer())
-  console.log(`  ${label}: ${width}x${height} at ${left},${top}  (and 4x)`)
-}
-
-/**
- * The darkest part of the product, found rather than guessed.
- *
- * The fill-lighting instruction in the prompt is about deep shadow becoming
- * readable, and the only honest way to judge that is to look at whichever part
- * of THIS product is actually darkest — which differs per photograph. The
- * product box is swept with a window a fifth of its width and the darkest mean
- * wins. Its mean luminance is printed alongside so A and B can be compared as a
- * number as well as by eye.
- */
-async function darkestRegion(image, bounds) {
-  const w = Math.max(16, Math.round(bounds.width / 5))
-  const h = Math.max(16, Math.round(bounds.height / 5))
-  const { data, info } = await sharp(image).greyscale().raw().toBuffer({ resolveWithObject: true })
-
-  let best = null
-  const step = Math.max(4, Math.round(Math.min(w, h) / 4))
-  for (let top = bounds.top; top + h <= bounds.bottom; top += step) {
-    for (let left = bounds.left; left + w <= bounds.right; left += step) {
-      let sum = 0
-      for (let y = top; y < top + h; y += 2) {
-        const row = y * info.width
-        for (let x = left; x < left + w; x += 2) sum += data[row + x]
-      }
-      const mean = sum / (Math.ceil(h / 2) * Math.ceil(w / 2))
-      if (!best || mean < best.mean) best = { left, top, width: w, height: h, mean }
-    }
-  }
-  return best
 }
 
 /** One preservation report, printed in full — warnings included. */
@@ -275,12 +159,11 @@ if (originalProfile) {
 }
 
 // ── [1/2] Product Shot ───────────────────────────────────────────────────────
-console.log(`\n[1/2] ${SHOT_MODEL} — one billable request` +
-  (lightingMode ? '  (scene_description, no ref_image_url)' : '  (ref_image_url, no scene_description)'))
+console.log(`\n[1/2] ${SHOT_MODEL} — one billable request`)
 const startedAt = Date.now()
-const shot = lightingMode
-  ? await generateLightingShot({ photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey })
-  : await generateProductShot({ photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey })
+const shot = await generateProductShot({
+  photograph: prepared.bytes, mimeType: prepared.mimeType, apiKey,
+})
 if (!shot.ok) {
   console.error(`failed: ${shot.reason} — ${shot.message}`)
   console.error(`phase ${shot.phase ?? '-'}, status ${shot.status ?? '-'}, request ${shot.requestId || '-'}, ${shot.durationMs} ms`)
@@ -362,60 +245,6 @@ console.log(`\nseedvr returned ${normalised.returned.width}x${normalised.returne
 console.log(`delivered ${normalised.delivered.width}x${normalised.delivered.height}` +
   ` (${normalised.resized ? 'normalised locally' : 'exact from the model'})`)
 
-// ── The four lighting regions, from the DELIVERED image ──────────────────────
-//
-// One per defect the experiment is trying to fix, so a reviewer can answer each
-// acceptance question by looking at one picture rather than squinting at a
-// whole frame. Written in BOTH modes, at the same coordinates for the same
-// product, so the accepted output and the prompt-driven one line up.
-const deliveredCanvas = { width: normalised.delivered.width, height: normalised.delivered.height }
-const deliveredFound = await findProduct(normalised.image)
-
-if (!deliveredFound) {
-  console.log('\nNo product locatable in the delivered image; the region crops were skipped.')
-} else {
-  const b = deliveredFound.bounds
-  const share = b.height / deliveredCanvas.height
-  console.log(`\nproduct in the delivered image: ${b.width}x${b.height} at ${b.left},${b.top}`)
-  console.log(`  product height share: ${(share * 100).toFixed(1)}% of the frame`)
-  console.log('\nlighting regions:')
-
-  // 1. Under-seat structure — readability of the thin members, and preservation.
-  await crop(normalised.image, deliveredCanvas, {
-    left: b.left - b.width * 0.04,
-    top: b.top + b.height * UNDERSEAT_FROM,
-    width: b.width * 1.08,
-    height: b.height * (UNDERSEAT_TO - UNDERSEAT_FROM),
-  }, 'region-underseat')
-
-  // 2. The darkest part of THIS product — did the fill light open it up?
-  const darkest = await darkestRegion(normalised.image, b)
-  if (darkest) {
-    console.log(`  darkest product area: mean luminance ${darkest.mean.toFixed(1)} of 255`)
-    await crop(normalised.image, deliveredCanvas, darkest, 'region-darkest')
-  }
-
-  // 3. Floor and feet — contact shadows touching, cast shadow direction, and
-  //    whether the feet float. Wider than the product on both sides, because a
-  //    cast shadow that leans is the whole point and it leans outward.
-  await crop(normalised.image, deliveredCanvas, {
-    left: b.left - b.width * 0.35,
-    top: b.bottom - b.height * 0.10,
-    width: b.width * 1.70,
-    height: (deliveredCanvas.height - b.bottom) + b.height * 0.10,
-  }, 'region-floor-shadow')
-
-  // 4. Upper product and the rear background — the defect this experiment is
-  //    chiefly about: a strong shadow starting immediately behind the product
-  //    and falling onto the vertical background instead of the floor.
-  await crop(normalised.image, deliveredCanvas, {
-    left: b.left - b.width * 0.35,
-    top: 0,
-    width: b.width * 1.70,
-    height: b.top + b.height * 0.30,
-  }, 'region-upper-background')
-}
-
 // ── What it may be called ────────────────────────────────────────────────────
 const exactSize = normalised.delivered.width === MASTER_WIDTH && normalised.delivered.height === MASTER_HEIGHT
 const verified = exactSize && finalReport !== null && finalReport.ok && !finalReport.inconclusive
@@ -432,20 +261,5 @@ console.log(`\nWrote ${written.length} artefacts:`)
 for (const p of written) console.log(`  ${p}`)
 
 console.log(`\nTotal ${((Date.now() - startedAt) / 1000).toFixed(1)}s. The fal dashboard must show exactly TWO requests.`)
-
-if (lightingMode) {
-  console.log('\nThis was the EXPERIMENT. Run the accepted pipeline on the same photograph:')
-  console.log(`  npx tsx scripts/image-editor-smoke.mjs "${sourceFile}" test-results/accepted/out.png`)
-  console.log('\nThen compare, region by region:')
-  console.log('  region-upper-background  is the rear-wall shadow materially reduced?')
-  console.log('                           does the chair feel forward from the background?')
-  console.log('  region-floor-shadow      does the shadow travel AWAY from the bright side?')
-  console.log('                           does a contact shadow still touch every foot?')
-  console.log('  region-darkest           readable now, without looking washed out or grey?')
-  console.log('  region-underseat         every member still separate; nothing merged or redrawn.')
-  console.log('\nApprove only if all of those improve AND no product component changed.')
-  console.log('If it is worse or less consistent, keep the reference-driven pipeline.')
-} else {
-  console.log('The review is the three under-seat 4x crops side by side:')
-  console.log('  original -> shot -> upscaled. The spindles must stay individually visible.')
-}
+console.log('The review is the three under-seat 4x crops side by side:')
+console.log('  original -> shot -> upscaled. The spindles must stay individually visible.')
