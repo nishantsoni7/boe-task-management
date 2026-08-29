@@ -13,9 +13,9 @@ const TOP_TASK_SELECT = [
 ].join(', ')
 
 export type TopTasksData = {
-  /** All pinned task IDs (including completed/cancelled — for badge/unpin logic) */
+  /** All stored pin IDs — normally active because status transitions clean stale pins */
   pinnedIds: Set<string>
-  /** Active (non-completed, non-cancelled) pinned tasks in display_order */
+  /** Actionable pinned tasks in display_order */
   tasks: Task[]
 }
 
@@ -38,13 +38,17 @@ export function useTopTasks(userId: string | null | undefined) {
       const orderedIds = (pins as { task_id: string }[]).map(p => p.task_id)
       const pinnedIds  = new Set(orderedIds)
 
-      // Step 2: fetch active tasks only
+      // Step 2: fetch tasks that still require action from this user. A task
+      // submitted for approval belongs with its approver, not in the assignee's
+      // Top 3 Focus. The database trigger removes that pin transactionally;
+      // this filter also keeps the dashboard correct during cache/deploy skew.
       const { data: taskData } = await supabase
         .from('tasks')
         .select(TOP_TASK_SELECT)
         .in('id', orderedIds)
         .not('status', 'eq', 'completed')
         .neq('status', 'cancelled')
+        .neq('status', 'pending_approval')
 
       // Maintain display_order from pins
       const taskMap = new Map(
