@@ -680,6 +680,61 @@ describe('the private bucket', () => {
   })
 })
 
+describe('the two sentences the database writes onto the activity trail', () => {
+  const SCHEMA = sql
+  const DRAFTS = lf(readFileSync(join(MIGRATIONS, '20261023000000_review_workflow_ai_drafts.sql'), 'utf8'))
+
+  test('the drafts migration restates both functions, and says why', () => {
+    for (const fn of [
+      'create or replace function public.book_customer_review_test_card(p_card_id uuid)',
+      'create or replace function public.confirm_customer_review_test_card_sent(p_card_id uuid)',
+    ]) {
+      assert.ok(DRAFTS.includes(fn), `the drafts migration does not restate ${fn}`)
+    }
+    assert.ok(DRAFTS.includes('ROWS ALREADY WRITTEN ARE LEFT ALONE'))
+  })
+
+  test('the new wording replaces the old, in the new file only', () => {
+    assert.ok(DRAFTS.includes("'Review booked.'"))
+    assert.ok(DRAFTS.includes("'The candidate confirmed by hand that they sent the message.'"))
+    assert.equal(DRAFTS.includes("'Test card booked.'"), false)
+    assert.equal(DRAFTS.includes('they sent the internal test message'), false)
+
+    // 20261017000000 IS APPLIED IN PRODUCTION AND IS NOT EDITED. Its copy of
+    // the old sentences must still be there, or this file was changed instead
+    // of being superseded.
+    assert.ok(SCHEMA.includes("'Test card booked.'"))
+    assert.ok(SCHEMA.includes('they sent the internal test message'))
+  })
+
+  test('AND NOTHING ELSE ABOUT EITHER FUNCTION CHANGED', () => {
+    // The restatement is a copy with two sentences swapped. Anything else that
+    // differs is an unreviewed change to a shipped authorization path, so the
+    // bodies are compared line by line and exactly two lines may differ.
+    const bodyOf = (source: string, signature: string) => {
+      const start = source.indexOf(signature)
+      assert.ok(start >= 0, `missing: ${signature}`)
+      const end = source.indexOf('\n$$;', start)
+      assert.ok(end > start, `unterminated: ${signature}`)
+      return source.slice(start, end).replace(/\r\n/g, '\n').split('\n')
+    }
+
+    for (const signature of [
+      'create or replace function public.book_customer_review_test_card(p_card_id uuid)',
+      'create or replace function public.confirm_customer_review_test_card_sent(p_card_id uuid)',
+    ]) {
+      const before = bodyOf(SCHEMA, signature)
+      const after = bodyOf(DRAFTS, signature)
+      assert.equal(after.length, before.length, `${signature} changed length`)
+      const differing = before
+        .map((line, i) => (line === after[i] ? null : `${line}  ->  ${after[i]}`))
+        .filter(Boolean)
+      assert.equal(differing.length, 1,
+        `${signature} differs on ${differing.length} lines:\n${differing.join('\n')}`)
+    }
+  })
+})
+
 describe('permission registration', () => {
   test('the module key and both action keys are unchanged', () => {
     // They are what every existing Control Center grant is written against.

@@ -91,9 +91,6 @@ export async function POST(req: Request) {
   // built from buildSystemPrompt() plus the string above, every time. A second
   // batch with empty guidance is a rejected request, not a silent repeat of the
   // first.
-  const apiKey = process.env.ANTHROPIC_API_KEY
-  if (!apiKey) return fail(503, MESSAGES.not_configured)
-
   const admin = adminClient()
   if (!admin.ok) {
     // The NAMES of the missing variables, never their values.
@@ -116,6 +113,15 @@ export async function POST(req: Request) {
     return fail(503, MESSAGES.unavailable)
   }
   if ((availableCount ?? 0) > 0) return fail(409, MESSAGES.pool_not_empty)
+
+  // ── 4. The credential, read only once the request is going to be made ─────
+  //
+  // Last, deliberately. A caller who is refused for any of the reasons above
+  // should be told THAT reason: reading the key earlier meant a deployment
+  // without one answered "not configured" to a request whose real answer was
+  // "the pool is not empty".
+  const apiKey = process.env.ANTHROPIC_API_KEY
+  if (!apiKey) return fail(503, MESSAGES.not_configured)
 
   // ── 4. The model ──────────────────────────────────────────────────────────
   let text: string

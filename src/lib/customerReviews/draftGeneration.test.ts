@@ -78,6 +78,12 @@ describe('generation is gated on the RESOLVED verify permission, at every layer'
     const resolveAt = code.indexOf("p_action_key: 'verify'")
     assert.ok(resolveAt < code.indexOf('await req.json()'), 'the body is read before the permission')
     assert.ok(resolveAt < code.indexOf('process.env.ANTHROPIC_API_KEY'), 'the key is read before the permission')
+
+    // The credential is read LAST of all, after the pool check too. Reading it
+    // earlier meant a deployment without one answered "not configured" to a
+    // request whose real answer was "the pool is not empty".
+    assert.ok(code.indexOf('MESSAGES.pool_not_empty') < code.indexOf('process.env.ANTHROPIC_API_KEY'),
+      'the credential is read before the pool is checked')
   })
 
   test('THE DATABASE FUNCTION RESOLVES IT AGAIN, and is the one that decides', () => {

@@ -260,9 +260,6 @@ export function TestCardListScreen() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-        {/* The provenance status leads the page, before any draft is read. */}
-        <InternalTestWarning />
-
         {/*
           GENERATION IS VERIFIER-ONLY, and `caps.canVerify` is the RESOLVED
           permission — never a role. This is the weakest of the three checks

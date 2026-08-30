@@ -242,6 +242,36 @@ describe('the module no longer calls itself a test', () => {
     assert.ok(read('src/app/customer-reviews/TestCardListScreen.tsx').includes('title="Review Workflow"'))
   })
 
+  test('including the sidebar, which said "Workflow Test" longer than anything else', () => {
+    // The last one found, and only by looking at the running page: the module
+    // shell has its own brand sub-label, which no scan of the SCREENS list
+    // reached because it lives in the layout.
+    const shell = read('src/components/layout/CustomerReviewsLayout.tsx')
+    assert.ok(shell.includes('<div className="boe-sidebar-brand-sub">Review Workflow</div>'))
+    assert.equal(/Workflow Test/.test(executable(shell)), false)
+  })
+
+  test('and no label on the detail screen still calls anybody a tester', () => {
+    // Two more found only by walking a card through: the activity-trail label
+    // map and the fact list. status.ts already said "Return to candidate" while
+    // these two still said "tester", which is the inconsistency a reader
+    // notices first.
+    const detail = executable(read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx'))
+    assert.equal(/tester/i.test(detail), false)
+    assert.ok(detail.includes("sent_confirmed:     'Candidate confirmed sent'"))
+    assert.ok(detail.includes("returned:           'Returned to candidate'"))
+  })
+
+  test('and the list page carries no page-level provenance pill', () => {
+    // The status describes ONE draft. Above a list of twenty it labels nothing,
+    // and it read as a banner about the module rather than about a draft.
+    const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+    // Executable lines only — the comment above the card renderer still names
+    // the component, and a comment is not a render.
+    assert.equal(executable(list).includes('<InternalTestWarning />'), false)
+    assert.ok(list.includes('<InternalTestWarning compact />'), 'the per-card status is gone too')
+  })
+
   test('and the booking control says "Book"', () => {
     const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
     assert.ok(list.includes("{booking ? 'Booking…' : 'Book'}"))

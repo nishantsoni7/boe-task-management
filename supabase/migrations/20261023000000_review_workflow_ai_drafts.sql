@@ -137,6 +137,151 @@ update public.customer_review_test_cards c
    -- THE GUARD. Only an available card may be rewritten.
    and c.status = 'available';
 
+-- ── 3A. TWO SENTENCES THE DATABASE WRITES ONTO THE ACTIVITY TRAIL ─────────
+--
+-- Almost every user-facing string in this module lives in the application, but
+-- two do not: the `detail` written onto customer_review_test_card_events when a
+-- card is booked and when a candidate confirms they sent it. Those sentences
+-- appear under ACTIVITY on the card, and they still said "Test card booked."
+-- and "the internal test message".
+--
+-- 20261017000000 is applied in production and is not edited. The two functions
+-- are RESTATED here instead, byte-identical to their original bodies except for
+-- those two sentences, which is how this repository has changed a shipped
+-- function before.
+--
+-- ROWS ALREADY WRITTEN ARE LEFT ALONE. They record what the trail said at the
+-- time, on cards somebody has already worked; rewriting them would be editing
+-- an append-only audit record to make the past match today's vocabulary.
+
+create or replace function public.book_customer_review_test_card(p_card_id uuid)
+returns public.customer_review_test_cards
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  c     public.customer_review_test_cards%rowtype;
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Sign in to continue' using errcode = '42501';
+  end if;
+
+  -- ACTIVE, and holding `use`. `verify` alone is NOT enough to book: a verifier
+  -- checks other people's tests, and letting the checker also be the tester
+  -- would remove the only separation the workflow has.
+  --
+  -- THERE IS NO ROLE BYPASS HERE. An administrator books a card the same way
+  -- anybody does — by holding `use`, which the role_permissions seed grants
+  -- them — rather than by being an administrator. The difference matters
+  -- because it makes an explicit revocation actually revoke: an admin whose
+  -- `use` is withdrawn in Control Center can no longer take a test card, which
+  -- is what withdrawing it is for.
+  if not exists (
+    select 1 from public.users u
+    where u.id = v_uid
+      and u.is_active
+      and public.resolve_permission(v_uid, 'customer_review_requests', 'use')
+  ) then
+    raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: You do not have permission to book a test card'
+      using errcode = '42501';
+  end if;
+
+  update public.customer_review_test_cards
+     set status    = 'booked',
+         booked_by = v_uid,
+         booked_at = now()
+   where id = p_card_id
+     and status = 'available'
+  returning * into c;
+
+  if not found then
+    -- Missing and taken are different facts and the tester needs to be able to
+    -- tell them apart — a taken card is one they should stop waiting for.
+    -- Neither answer names who took it.
+    if not exists (select 1 from public.customer_review_test_cards where id = p_card_id) then
+      raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: That test card no longer exists'
+        using errcode = 'P0002';
+    end if;
+    raise exception 'CUSTOMER_REVIEW_TEST_ALREADY_BOOKED: Somebody else has already booked that test card'
+      using errcode = '23514';
+  end if;
+
+  insert into public.customer_review_test_card_events
+    (card_id, event_type, previous_status, new_status, detail, actor_id)
+  values
+    (p_card_id, 'booked', 'available', 'booked', 'Review booked.', v_uid);
+
+  return c;
+end;
+$$;
+
+create or replace function public.confirm_customer_review_test_card_sent(p_card_id uuid)
+returns public.customer_review_test_cards
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  c     public.customer_review_test_cards%rowtype;
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then
+    raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Sign in to continue' using errcode = '42501';
+  end if;
+
+  select * into c from public.customer_review_test_cards where id = p_card_id for update;
+  if not found then
+    raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: That test card no longer exists' using errcode = 'P0002';
+  end if;
+
+  -- THE HOLDER, AND ONLY THE HOLDER. No role bypass: this records that a
+  -- specific person pressed send, and nobody else can make that claim on their
+  -- behalf — least of all an administrator who was not there.
+  if not (
+    c.booked_by = v_uid
+    and public.resolve_permission(v_uid, 'customer_review_requests', 'use')
+    and exists (select 1 from public.users u where u.id = v_uid and u.is_active)
+  ) then
+    raise exception 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED: Only the tester holding this card can confirm they sent it'
+      using errcode = '42501';
+  end if;
+
+  if c.status <> 'booked' then
+    raise exception 'CUSTOMER_REVIEW_TEST_BAD_TRANSITION: A % card cannot be confirmed as sent', c.status
+      using errcode = '23514';
+  end if;
+
+  -- OPENING WHATSAPP FIRST IS REQUIRED, and it is required as an ORDERING
+  -- rather than as evidence. There is nothing to have sent if no link was ever
+  -- built, and this is the only place the two facts are related at all — the
+  -- open still confirms nothing by itself.
+  if c.whatsapp_opened_at is null then
+    raise exception 'CUSTOMER_REVIEW_TEST_NOT_READY: Open WhatsApp with the test message first'
+      using errcode = '23514';
+  end if;
+
+  -- Idempotent: confirming twice keeps the FIRST claim. A later click must not
+  -- quietly move the timestamp somebody may already have been shown.
+  if c.sent_confirmed_at is null then
+    update public.customer_review_test_cards
+       set sent_confirmed_at = now(),
+           sent_confirmed_by = v_uid
+     where id = p_card_id;
+
+    insert into public.customer_review_test_card_events
+      (card_id, event_type, detail, actor_id)
+    values
+      (p_card_id, 'sent_confirmed',
+       'The candidate confirmed by hand that they sent the message.', v_uid);
+  end if;
+
+  select * into c from public.customer_review_test_cards where id = p_card_id;
+  return c;
+end;
+$$;
+
 -- ── 4. THE BATCH INSERT ─────────────────────────────────────────────────────
 create or replace function public.create_customer_review_draft_batch(
   p_guidance text,

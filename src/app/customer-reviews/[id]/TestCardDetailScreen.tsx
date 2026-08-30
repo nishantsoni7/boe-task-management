@@ -272,7 +272,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
         )}
 
-        {/* A returned card says why, at the top, where the tester will see it. */}
+        {/* A returned card says why, at the top, where the candidate will see it. */}
         {card.return_reason && card.status === 'booked' && (
           <div style={{
             padding: '10px 12px', borderRadius: '8px',
@@ -325,13 +325,13 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                   and no revealable prop, because there is nothing to reveal:
                   the card stores four digits and nothing else,
                   and the number itself was never persisted. A verifier sees
-                  exactly what a tester sees.
+                  exactly what the candidate sees.
                 */}
                 <Fact
                   label="Addressed to"
                   value={maskFromLastFour(card.whatsapp_target_last_four)}
                 />
-                <Fact label="Tester confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
+                <Fact label="Candidate confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
               </dl>
             )}
           </Section>
@@ -466,7 +466,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             <dl style={{ margin: 0, display: 'grid', gap: '6px' }}>
               <Fact label="Booked" value={formatTestTimestamp(card.booked_at)} />
               <Fact label="WhatsApp opened" value={formatTestTimestamp(card.whatsapp_opened_at)} />
-              <Fact label="Tester confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
+              <Fact label="Candidate confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
               <Fact label="Submitted" value={formatTestTimestamp(card.submitted_at)} />
               <Fact label="Verified" value={formatTestTimestamp(card.verified_at)} />
               {card.verification_note && <Fact label="Verifier's note" value={card.verification_note} />}
@@ -501,10 +501,10 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 const EVENT_LABELS: Record<string, string> = {
   booked:             'Booked',
   whatsapp_opened:    'WhatsApp opened',
-  sent_confirmed:     'Tester confirmed sent',
+  sent_confirmed:     'Candidate confirmed sent',
   submitted:          'Submitted for verification',
   verified:           'Verified',
-  returned:           'Returned to tester',
+  returned:           'Returned to candidate',
   screenshot_removed: 'Screenshot removed',
 }
 
