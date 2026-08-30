@@ -143,11 +143,13 @@ describe('EFFECTIVE PERMISSIONS, person by person', () => {
       canAccessModule: true, canUse: true, canVerify: true,
     })
 
-    // WITH NO ROWS AT ALL the answer differs, and that difference is the whole
-    // of the correction: candidate authority comes from the resolved
-    // permission, verifier authority still admits the role.
+    // WITH NO ROWS AT ALL an administrator holds NOTHING here, and that is the
+    // whole of the correction: BOTH authorities come from the engine, because
+    // neither definer function has an administrator branch to match a bypass
+    // against. The row above is the one that matters in practice — the seed
+    // grants admin both actions, so this is the deliberately-revoked case.
     assert.deepEqual(deriveCustomerReviewCapabilities('admin', []), {
-      canAccessModule: true, canUse: false, canVerify: true,
+      canAccessModule: false, canUse: false, canVerify: false,
     })
   })
 

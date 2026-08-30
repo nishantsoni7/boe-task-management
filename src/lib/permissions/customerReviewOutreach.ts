@@ -41,21 +41,29 @@ import type { TestCard } from '@/lib/customerReviews/types'
 // entryActionForModule() in ./levels and entryActionFor() in
 // src/app/admin/control-center/permissions/page.tsx.
 //
-// ADMINS DO NOT BYPASS THE ENGINE FOR `use`, and this module is deliberately
-// unlike the other cut-over modules in that one respect.
+// ADMINS DO NOT BYPASS THE ENGINE AT ALL, for either action, and this module is
+// deliberately unlike the other cut-over modules in that respect.
 //
-// The reason is that `use` is the only permission here whose database side has
-// no administrator branch at all. book_customer_review_test_card() asks
-// resolve_permission(uid, 'customer_review_requests', 'use') and nothing else,
-// so an administrator whose `use` was revoked in Control Center is refused
-// 42501 — while a blanket `role === 'admin'` here would still have drawn them
-// a Book button. That is precisely the failure this module's first rule
-// forbids: a button must never appear for a permission its RPC will refuse.
+// The reason is that NEITHER permission has an administrator branch on the
+// database side:
 //
-// It costs an administrator nothing they should have. The role_permissions
-// seed grants admin both actions, so resolve_permission answers true for them
-// by default; the only case that changes is the one where somebody deliberately
-// took the permission away, which is what taking it away is for.
+//   `use`     book_customer_review_test_card() asks resolve_permission(uid,
+//             'customer_review_requests', 'use') and nothing else.
+//   `verify`  transition_customer_review_test_card() asks resolve_permission
+//             for 'verify' before it will move a card to verified or back to
+//             booked, and nothing else.
+//
+// So a blanket `role === 'admin'` here would draw buttons those functions
+// refuse 42501 — precisely the failure this module's first rule forbids: a
+// button must never appear for a permission its RPC will refuse. The engine is
+// the single source of truth for what somebody may do, and the role is not a
+// second source that outranks it.
+//
+// It costs an administrator nothing they should have. The role_permissions seed
+// grants admin BOTH actions, so resolve_permission answers true for them by
+// default and the ordinary administrator sees exactly what they saw before. The
+// only case that changes is the one where somebody deliberately revoked a
+// permission in Control Center, which is what revoking it is for.
 
 export type CustomerReviewCapabilities = {
   /** May open the module at all. `use` OR `verify` — see below. */
@@ -75,6 +83,11 @@ export type CustomerReviewCapabilities = {
    * everybody's tests but cannot book one — which is the separation the
    * workflow exists to exercise.
    *
+   * THE RESOLVED `verify` PERMISSION, for everybody. An administrator holds it
+   * because the role_permissions seed grants it, not because of their role
+   * name — so revoking it in Control Center takes these controls away, exactly
+   * as transition_customer_review_test_card() would.
+   *
    * NOT "and read the history of verified ones". There is no history screen:
    * once a card is verified it appears in no frontend list, and this capability
    * grants nothing over a finished card.
@@ -88,10 +101,24 @@ export const NO_CUSTOMER_REVIEW_CAPABILITIES: CustomerReviewCapabilities = {
   canVerify: false,
 }
 
+/**
+ * @param role RETAINED FOR THE CALL SITES, AND DELIBERATELY NOT CONSULTED.
+ *
+ * Nothing in this function reads it any more. It stays in the signature because
+ * both callers pass `profile.role` positionally and rewriting them was not part
+ * of this correction; `args: "after-used"` in the lint config means an unused
+ * FIRST parameter is not flagged, so its presence is not an accident the linter
+ * would have caught. A test pins the behaviour rather than the shape: every
+ * role string, and no role at all, must produce identical capabilities for
+ * identical permissions — so a future edit cannot quietly start consulting it
+ * again without failing.
+ */
 export function deriveCustomerReviewCapabilities(
   role: string | null | undefined,
   permissions: readonly EffectivePermission[],
 ): CustomerReviewCapabilities {
+  void role
+
   const allowed = (actionKey: string) =>
     permissions.some(p => p.actionKey === actionKey && p.allowed)
 
@@ -111,17 +138,18 @@ export function deriveCustomerReviewCapabilities(
   // what a screen OFFERS, not about what the database ALLOWS.
   const canUse = allowed('use')
 
-  // VERIFIER AUTHORITY STILL ADMITS AN ADMINISTRATOR, which is the asymmetry
-  // worth stating rather than leaving to be discovered.
+  // VERIFIER AUTHORITY IS THE RESOLVED PERMISSION TOO.
   //
-  // Verifying and returning are the two things an administrator is expected to
-  // be able to do here without a per-employee grant, and the seed gives them
-  // `verify` anyway. See the note in the module documentation: an administrator
-  // whose `verify` is explicitly revoked would still be offered Verify and
-  // still be refused by transition_customer_review_test_card(), so this branch
-  // is a smaller version of the same mismatch, kept because removing it was not
-  // part of the correction that was asked for.
-  const canVerify = allowed('verify') || role === 'admin'
+  // This line used to read `allowed('verify') || role === 'admin'`. That was
+  // the same defect as the `use` bypass, one door over and one size smaller: an
+  // administrator whose `verify` had been revoked was still offered Verify test
+  // and Return to tester, and transition_customer_review_test_card() refused
+  // both 42501 because it resolves 'verify' and has no administrator branch.
+  //
+  // An administrator still gets verifier authority the ordinary way — the
+  // role_permissions seed grants them `verify`, so the engine resolves it. What
+  // they no longer get is authority the engine has been told to withhold.
+  const canVerify = allowed('verify')
 
   return {
     // Entry is the weakest thing this module grants, so the stronger authority

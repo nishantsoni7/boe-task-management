@@ -159,10 +159,14 @@ describe('deriving capabilities', () => {
     assert.equal(caps.canUse, false, 'the role alone still confers candidate authority')
   })
 
-  test('…but they keep verifier authority, which is what the role is for here', () => {
+  test('…AND VERIFIER AUTHORITY IS THE RESOLVED PERMISSION TOO', () => {
+    // The last bypass. An administrator with no grant rows at all now holds
+    // nothing here, because transition_customer_review_test_card() resolves
+    // 'verify' and has no administrator branch either — so Verify test and
+    // Return to tester would have been drawn and then refused 42501.
     const caps = deriveCustomerReviewCapabilities('admin', [])
-    assert.equal(caps.canVerify, true)
-    assert.equal(caps.canAccessModule, true, 'a verifier who cannot open the module cannot verify')
+    assert.equal(caps.canVerify, false)
+    assert.equal(caps.canAccessModule, false, 'the module opens for somebody who can do nothing in it')
   })
 
   test('AN ADMINISTRATOR WHOSE use IS REVOKED IS NOT A CANDIDATE EITHER', () => {
@@ -175,13 +179,122 @@ describe('deriving capabilities', () => {
     ]
     const caps = deriveCustomerReviewCapabilities('admin', revoked)
     assert.equal(caps.canUse, false)
-    assert.equal(caps.canVerify, true)
+    assert.equal(caps.canVerify, true, 'revoking one action must not touch the other')
+  })
+
+  test('THE ROLE IS NOT READ AT ALL — same permissions, same answer, any role', () => {
+    // Stronger than asserting the two branches are gone, and it is the test
+    // that keeps them gone: if a future edit reintroduces a role check of any
+    // shape, two of these rows stop matching.
+    //
+    // `role` is still in the signature because both call sites pass
+    // profile.role positionally and rewriting them was not part of this
+    // correction. This is what makes that safe.
+    const cases: (string | null | undefined)[] = ['admin', 'manager', 'member', 'owner', '', null, undefined]
+    for (const permissions of [[], allow('use'), allow('verify'), allow('use', 'verify')]) {
+      const expected = deriveCustomerReviewCapabilities('member', permissions)
+      for (const role of cases) {
+        assert.deepEqual(
+          deriveCustomerReviewCapabilities(role, permissions), expected,
+          `role ${String(role)} changed the answer for [${permissions.map(p => p.actionKey).join(',')}]`,
+        )
+      }
+    }
   })
 
   test('an administrator WITH the resolved grant is a candidate, like anyone', () => {
     // The rule is "the resolved permission decides", not "administrators are
     // excluded". The seed grants admin `use`, so this is the ordinary case.
     assert.equal(deriveCustomerReviewCapabilities('admin', allow('use')).canUse, true)
+  })
+
+  // ══ VERIFY AND RETURN, FOR THE FOUR PEOPLE WHO MATTER ═══════════════════
+  //
+  // Asserted on the controls a screen would draw rather than on the capability
+  // flag, because "sees Verify and Return" is the claim being made. Both are
+  // verifier-only transitions off a SUBMITTED card, and the viewer never holds
+  // it — a verifier acting on somebody else's evidence is the whole point.
+  describe('who is offered Verify test and Return to tester', () => {
+    const SUBMITTED = { status: 'submitted' as const, booked_by: 'user-holder' }
+    const VIEWER = 'user-viewer'
+
+    const offered = (caps: ReturnType<typeof deriveCustomerReviewCapabilities>) =>
+      availableActions(SUBMITTED, {
+        userId: VIEWER, canUse: caps.canUse, canVerify: caps.canVerify,
+      }).map(a => a.label).sort()
+
+    test('1. an ADMIN WITH resolved verify sees Verify and Return', () => {
+      // The ordinary administrator: the role_permissions seed grants both, so
+      // the engine resolves them and nothing they had is lost.
+      const caps = deriveCustomerReviewCapabilities('admin', allow('use', 'verify'))
+      assert.equal(caps.canVerify, true)
+      assert.deepEqual(offered(caps), ['Return to tester', 'Verify test'])
+    })
+
+    test('2. an ADMIN whose verify is REVOKED sees NEITHER', () => {
+      // The correction. transition_customer_review_test_card() resolves
+      // 'verify' with no administrator branch, so it would refuse both 42501 —
+      // and a button that is always refused is worse than no button.
+      const revoked: EffectivePermission[] = [
+        { actionKey: 'use', allowed: true, source: 'role' },
+        { actionKey: 'verify', allowed: false, source: 'employee_override' },
+      ]
+      const caps = deriveCustomerReviewCapabilities('admin', revoked)
+      assert.equal(caps.canVerify, false)
+      assert.deepEqual(offered(caps), [])
+
+      // …and `use` is untouched, so this is a change to ONE authority rather
+      // than an administrator losing the module.
+      assert.equal(caps.canUse, true)
+    })
+
+    test('3. a NON-ADMIN verifier with resolved verify still sees both', () => {
+      // The case that proves the rule is about the permission and not about
+      // punishing administrators. This person holds `verify` and NOT `use`,
+      // which is the separation the workflow exists to exercise.
+      const caps = deriveCustomerReviewCapabilities('member', allow('verify'))
+      assert.equal(caps.canVerify, true)
+      assert.equal(caps.canUse, false)
+      assert.deepEqual(offered(caps), ['Return to tester', 'Verify test'])
+    })
+
+    test('4. NO TESTER OWNERSHIP OR DATABASE RULE MOVED', () => {
+      // This correction is one boolean on one screen-side derivation. Nothing
+      // about who OWNS a card, and nothing in SQL, may have shifted with it.
+
+      // (a) Ownership is still holder-only, and still ignores the role.
+      const adminCaps = deriveCustomerReviewCapabilities('admin', allow('use', 'verify'))
+      assert.equal(holdsThisCard({ booked_by: 'user-holder' }, VIEWER, adminCaps), false)
+      assert.equal(holdsThisCard({ booked_by: VIEWER }, VIEWER, adminCaps), true)
+      assert.equal(holdsThisCard.length, 3, 'holdsThisCard grew a parameter')
+
+      // (b) A verifier is still offered no CANDIDATE action, on any card —
+      // verify authority has never implied tester authority and still does not.
+      const verifierOnly = deriveCustomerReviewCapabilities('member', allow('verify'))
+      assert.deepEqual(
+        availableActions({ status: 'booked', booked_by: VIEWER },
+          { userId: VIEWER, canUse: verifierOnly.canUse, canVerify: verifierOnly.canVerify }),
+        [],
+        'a verifier can submit a card they hold',
+      )
+      assert.equal(canBookCard({ status: 'available' }, { userId: VIEWER, canUse: verifierOnly.canUse }), false)
+
+      // (c) THE DATABASE IS UNTOUCHED. Read off the migration: the two definer
+      // functions that gate these moves still resolve their permission and
+      // still carry no administrator branch, and the ownership half of the
+      // submit gate is still there. If this correction had leaked into SQL,
+      // this is where it would show.
+      const sql = read('supabase/migrations/20261017000000_customer_review_outreach.sql')
+      const fn = sql.slice(
+        sql.indexOf('create or replace function public.transition_customer_review_test_card'),
+      )
+      const body = fn.slice(0, fn.indexOf('$$;') + 3)
+      assert.ok(body.includes("v_verify := public.resolve_permission(v_uid, 'customer_review_requests', 'verify');"))
+      assert.ok(body.includes('if not v_verify then'))
+      assert.ok(body.includes('if not (v_holder and v_use) then'), 'the submit gate lost its ownership half')
+      assert.equal(body.includes('v_admin'), false, 'an administrator branch appeared in SQL')
+      assert.equal(body.includes("'admin'"), false, 'the transition consults a role')
+    })
   })
 
   test('a manager gets nothing from their role alone', () => {
@@ -267,8 +380,16 @@ describe('who holds one test card', () => {
   // from three different places: canBookCard on the list, holdsThisCard for the
   // WhatsApp / screenshot / confirm panel, and availableActions for Submit.
   test('AN ADMIN WITHOUT use IS OFFERED NO BOOK, WHATSAPP, UPLOAD, CONFIRM OR SUBMIT', () => {
-    const bare = deriveCustomerReviewCapabilities('admin', [])
+    // An administrator whose `use` is revoked and whose `verify` is intact.
+    // Chosen so the tail of this test — that verifier moves are untouched —
+    // still says something: with no grants at all they would now hold nothing,
+    // and "offered nothing" would pass for the wrong reason.
+    const bare = deriveCustomerReviewCapabilities('admin', [
+      { actionKey: 'use', allowed: false, source: 'employee_override' },
+      { actionKey: 'verify', allowed: true, source: 'role' },
+    ])
     assert.equal(bare.canUse, false, 'precondition: this admin has no resolved use')
+    assert.equal(bare.canVerify, true, 'precondition: their verify is intact')
 
     // BOOK — the list's button, on an unbooked card.
     assert.equal(canBookCard({ status: 'available' }, { userId: OTHER, canUse: bare.canUse }), false)

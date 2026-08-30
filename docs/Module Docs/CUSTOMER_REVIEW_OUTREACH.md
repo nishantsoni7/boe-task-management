@@ -129,27 +129,35 @@ An administrator books a card the same way anybody does: by holding `use`,
 which the `role_permissions` seed grants them. That is deliberate — it means an
 explicit revocation in Control Center actually revokes.
 
-**And the screen now agrees with the database about that.**
+**And the screen agrees with the database about that.**
 `deriveCustomerReviewCapabilities` used to return all-capabilities for any
-`role === 'admin'`, so an administrator whose `use` had been revoked was still
-drawn a **Book** button — and `book_customer_review_test_card()`, which asks
-`resolve_permission` and has no administrator branch, refused it 42501. The
-short-circuit is gone: `canUse` is the resolved permission, for everybody.
+`role === 'admin'`, so an administrator whose permission had been revoked was
+still drawn the controls — and the definer functions, which resolve their
+permission and have no administrator branch, refused them 42501.
+
+**Neither short-circuit remains.** Both capabilities are the resolved
+permission, for everybody:
 
 | Capability | Resolved from | Admin short-circuit? |
 | --- | --- | --- |
-| `canUse` | `customer_review_requests.use` | **No** — matches the SQL, which has none either |
-| `canVerify` | `customer_review_requests.verify` **or** `role === 'admin'` | Yes |
-| `canAccessModule` | `canUse \|\| canVerify` | via `canVerify` |
+| `canUse` | `customer_review_requests.use` | **No** — matches `book_customer_review_test_card()`, which has none either |
+| `canVerify` | `customer_review_requests.verify` | **No** — matches `transition_customer_review_test_card()`, which has none either |
+| `canAccessModule` | `canUse \|\| canVerify` | **No** |
 
-> **The remaining asymmetry, stated rather than left to be found.**
-> `canVerify` still admits an administrator directly. An administrator whose
-> `verify` is explicitly revoked would be offered **Verify test** and refused by
-> `transition_customer_review_test_card()`, which is a smaller version of the
-> same mismatch. It is kept because narrowing verifier authority was not part of
-> the correction that was asked for, and because the seed grants admins
-> `verify` so the case only arises after a deliberate revocation. Closing it is
-> a one-line change to the same function.
+An administrator gets both the ordinary way: the `role_permissions` seed grants
+them `use` and `verify`, so the engine resolves both and nothing they should
+have is lost. What they no longer get is authority the engine has been told to
+withhold — revoke `verify` for one administrator in Control Center and **Verify
+test** and **Return to tester** stop being drawn, exactly as
+`transition_customer_review_test_card()` would refuse them.
+
+> **The `role` parameter is still in the signature and is no longer read.** It
+> stays because both call sites pass `profile.role` positionally; the lint
+> config's `args: "after-used"` means an unused first parameter is not flagged,
+> so its presence is deliberate rather than an oversight. What guards it is a
+> behavioural test, not the shape: every role string — and no role at all —
+> must produce identical capabilities for identical permissions, so a future
+> edit cannot quietly start consulting it again.
 
 > **What this costs, stated rather than hidden.** Once a card is submitted its
 > screenshot is frozen for everybody, so an image uploaded by mistake can only
