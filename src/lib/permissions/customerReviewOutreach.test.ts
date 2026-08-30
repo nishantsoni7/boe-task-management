@@ -216,7 +216,7 @@ describe('deriving capabilities', () => {
   // flag, because "sees Verify and Return" is the claim being made. Both are
   // verifier-only transitions off a SUBMITTED card, and the viewer never holds
   // it — a verifier acting on somebody else's evidence is the whole point.
-  describe('who is offered Verify test and Return to tester', () => {
+  describe('who is offered Verify review and Return to candidate', () => {
     const SUBMITTED = { status: 'submitted' as const, booked_by: 'user-holder' }
     const VIEWER = 'user-viewer'
 
@@ -774,7 +774,7 @@ describe('the module never claims a message was sent', () => {
     for (const label of [
       'Booked',
       'WhatsApp opened',
-      'Tester confirmed sent',
+      'Candidate confirmed sent',
       'Submitted',
       'Verified',
     ]) {
