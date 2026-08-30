@@ -594,6 +594,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

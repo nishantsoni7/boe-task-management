@@ -298,6 +298,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // permission_modules and permission_actions rows, and carries a higher
       // number still.
       '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
   })
 

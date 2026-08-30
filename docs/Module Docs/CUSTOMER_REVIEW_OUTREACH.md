@@ -500,10 +500,20 @@ smallest state that answers the requirement.
 **Sixteen fictional cards**, covering all ten categories and short / medium /
 long bodies, plus a long unbroken token, punctuation and a newline.
 
-They live in `supabase/fixtures/customer_review_test_cards.sql` — **outside the
-migration chain**, because a migration runs against production and test data
-that runs against production *is* test data in production. The migration asserts
-that it created no cards at all.
+**The same sixteen cards exist in two places, for two different databases.**
+
+| File | Runs against | Guard |
+| --- | --- | --- |
+| `supabase/fixtures/customer_review_test_cards.sql` | a **disposable local stack** only | refuses any database without the disposable-stack marker |
+| `supabase/migrations/20261021000000_seed_customer_review_test_cards.sql` | **production**, as part of the migration chain | none — it is meant to run there |
+
+The schema migration (`20261017000000`) still creates **no cards** and still
+asserts its own emptiness. That is unchanged and is why the seed is a *separate*
+file: schema and test data can be applied, withheld and reviewed as two
+decisions, and `20261017000000`'s assertion still holds because it checks the
+table at the moment it applies, which is before the seed exists.
+
+`seed.test.ts` fails if the two files' rows ever diverge.
 
 **The fixture cannot reach production even if somebody runs it there.** It
 carries its own guard: it refuses to insert unless the database it is connected
@@ -519,7 +529,23 @@ pointed at production is worse than an INSERT.
 BOE_DB_CONTAINER=supabase_db_<project> supabase/tests/run_customer_review_outreach_local.sh
 ```
 
-Step 9 of 9 loads the fixture and fails if all sixteen did not land.
+Step 9 of 10 loads the fixture and fails if all sixteen did not land.
+
+**Checking a remote deployment without touching it:**
+
+```bash
+psql "$CONNECTION_STRING" -v ON_ERROR_STOP=1 -v expected_cards=0 \
+  -f supabase/tests/customer_review_remote_readiness.sql
+```
+
+`supabase/tests/customer_review_remote_readiness.sql` is **read-only** — no
+INSERT, UPDATE, DELETE, CREATE or GRANT anywhere in it, asserted by
+`seed.test.ts` — so it is safe to point at production. It checks the schema, the
+permission rows, the admin role seed, RLS and every policy, the ten functions,
+**the absence of any administrator-role bypass**, both partial unique indexes,
+the grants, the private bucket, and the card count. Pass `expected_cards=0`
+before the seed and `16` after; the variable is required, and a mismatch raises
+so the exit code is non-zero.
 
 **Clearing it:**
 
@@ -534,11 +560,28 @@ cards; **objects in the private bucket do not**, so a stack that has had
 screenshots uploaded should be rebuilt with `supabase db reset --no-seed` rather
 than cleared with that file alone.
 
-> **A consequence worth stating.** Because cards come only from a fixture, a
-> production deployment of this migration shows an **empty Available list** —
-> there is no path by which a card gets created in a real deployment. That is
-> correct for a test phase and is a decision for the product owner if the module
-> is ever to hold real content.
+### The production seed
+
+`20261021000000_seed_customer_review_test_cards.sql` puts the same sixteen cards
+into a real deployment, because a module deployed with zero cards is a module
+nobody can rehearse. What it is allowed to do is deliberately narrow:
+
+* **INSERT only**, into one table — no UPDATE, no DELETE, no TRUNCATE, and
+  `seed.test.ts` asserts their absence rather than trusting this sentence.
+* **`on conflict (card_ref) do nothing`**, never `do update`. That distinction is
+  the whole idempotency story: `card_ref` is `not null unique` and the sixteen
+  values are fixed literals, so a second apply inserts zero rows and rewrites
+  none — it can never overwrite a card somebody is part-way through testing.
+* **It cannot reach a real record.** The only table it touches is
+  `customer_review_test_cards`, which contains nothing but test cards.
+
+Verified on a disposable stack: schema first → 0 cards; seed → 16; seed again →
+still 16, with an md5 over every row identical before and after.
+
+> **What this does not change.** The cards are still obviously fictional filler
+> that says what it is in its own first sentence, the mandatory label still comes
+> from the message builder rather than the rows, and the fixture's marker guard
+> is untouched. Nothing was weakened to make the seed possible.
 
 ## 10. Tests
 
@@ -553,7 +596,8 @@ than cleared with that file alone.
 | `securityContract.test.ts` | function by function: pinned `search_path`, no acting-user parameter, row locks, SQLSTATEs, and what each grant admits |
 | `uploadRoute.test.ts` | the upload path, the generated key, and the two-route inventory |
 | `photoRemoval.test.ts`, `photoRemovalRetry.test.ts` | removal is one operation, is idempotent, and converges after a failure |
-| `fixture.test.ts` | the fixture cannot run against production, and none of its content reads as a review |
+| `fixture.test.ts` | the fixture cannot run against production, exactly one migration may insert a card, and none of its content reads as a review |
+| `seed.test.ts` | the production seed inserts and nothing else, is idempotent by `do nothing`, matches the fixture row for row, carries no contact data, and the remote-readiness script writes nothing |
 | `customerReviewOutreach.test.ts` | the guard, the launcher, Control Center, and what the screens offer |
 | `supabase/tests/customer_review_test_card_assertions.sql` | **executed against a database**: exact SQLSTATEs, double booking, inactive accounts, visibility, that a verified card matches none of the three tab status sets, and that its record survives anyway |
 
@@ -583,7 +627,10 @@ automatic sending. None of these have storage here on purpose.
 
 ## 12. Known limitations
 
-* **The module ships empty in production.** See §9.
+* **The SCHEMA migration ships empty**, and a separate seed migration
+  (`20261021000000`) puts the sixteen cards in. Applying the schema without the
+  seed leaves an authorized candidate looking at an empty Available list. See
+  §9.
 * **Atomicity is proved by its mechanism, not by a concurrent run.** The
   assertions file runs in one psql session, so it proves the conditional-UPDATE
   shape structurally and the second-booking refusal behaviourally. A genuinely

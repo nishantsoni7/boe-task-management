@@ -712,6 +712,7 @@ describe('the applied migrations are frozen', () => {
       // in the permission engine. Like 117 and 118 it only adds, and like them
       // its absence from FROZEN is the statement that it has not been pushed.
       '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
   })
 
@@ -739,6 +740,7 @@ describe('the applied migrations are frozen', () => {
       '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

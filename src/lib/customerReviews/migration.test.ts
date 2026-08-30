@@ -65,6 +65,10 @@ describe('the migration is one file, correctly sequenced', () => {
     assert.deepEqual(all.slice(all.indexOf(FILE) + 1), [
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
+      // The production seed for THIS module. It must sit behind the schema —
+      // it inserts into tables this file creates — and the filename ordering
+      // is what guarantees that whatever sequence the branches merge in.
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
   })
 

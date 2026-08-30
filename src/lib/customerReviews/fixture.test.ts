@@ -69,11 +69,49 @@ function cards(): { ref: string; category: string; title: string; body: string }
 const CARDS = cards()
 
 describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
-  test('it is not a migration, and is not in the migration directory', () => {
+  test('THIS FILE is not a migration, and no fixture is', () => {
     const migrations = readdirSync(join(ROOT, 'supabase/migrations'))
-    assert.equal(migrations.some(f => f.includes('test_card')), false)
+
+    // NO FIXTURE IS IN THE CHAIN. That is the property, and it is unchanged.
     assert.equal(migrations.some(f => f.includes('fixture')), false)
     assert.ok(FIXTURE.startsWith('supabase/fixtures/'))
+    assert.equal(migrations.includes('customer_review_test_cards.sql'), false)
+
+    // THE FILENAME PROXY IS GONE, and it is worth saying why rather than just
+    // deleting it. This used to read "no migration filename contains
+    // test_card", which was an accurate stand-in for "the fixture is not in the
+    // chain" right up until a migration legitimately carried card data.
+    //
+    // 20261021000000 is that migration: the production seed, which holds the
+    // same sixteen rows so a deployed module has something to book. It is named
+    // here rather than admitted by loosening the rule, so a SECOND unexplained
+    // card-carrying migration still fails.
+    assert.deepEqual(
+      migrations.filter(f => f.includes('test_card')),
+      ['20261021000000_seed_customer_review_test_cards.sql'],
+    )
+  })
+
+  test('AND THE SEED IS THE ONLY MIGRATION THAT MAY INSERT A CARD', () => {
+    // The boundary this file exists to defend, restated for the world where a
+    // production seed exists: exactly one migration inserts cards, and it is
+    // the one that says so in its name.
+    const dir = join(ROOT, 'supabase/migrations')
+    const inserters = readdirSync(dir)
+      .filter(f => f.endsWith('.sql'))
+      .filter(f => /insert\s+into\s+public\.customer_review_test_cards/i.test(
+        readFileSync(join(dir, f), 'utf8')
+          .split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')))
+    assert.deepEqual(inserters, ['20261021000000_seed_customer_review_test_cards.sql'])
+  })
+
+  test('and the seed carries no marker guard, because it is a production file', () => {
+    // The fixture's guard is what keeps IT out of production. The seed is meant
+    // to run there, so it has none — and must not gain one, or it would refuse
+    // the only database it exists for.
+    const seed = read('supabase/migrations/20261021000000_seed_customer_review_test_cards.sql')
+    assert.equal(seed.includes(MARKER), false)
+    assert.equal(seed.includes('REFUSING TO LOAD TEST DATA'), false)
   })
 
   test('THE MIGRATION INSERTS NO CARDS, and asserts that about itself', () => {
