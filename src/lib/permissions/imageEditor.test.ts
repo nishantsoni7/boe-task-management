@@ -341,9 +341,15 @@ describe('the /modules launcher card', () => {
     // 'assets' is assets_access — which is why this is a literal list.
     const keys = (LAUNCHER.match(/key: '[a-z_]+'/g) ?? [])
       .map(m => m.slice(6, -1)).sort()
+    //
+    // 'customer_reviews' is the Review Workflow Test card, added by a separate
+    // module on another branch. It is NAMED here rather than admitted by
+    // loosening the assertion, so a card appearing from anywhere else still
+    // fails — which is the whole point of pinning the set.
     assert.deepEqual(keys, [
-      'assets', 'attendance_payroll', 'control_center', 'finance', 'image_editor',
-      'meetings', 'members', 'orders', 'performance', 'samples', 'showroom', 'tasks',
+      'assets', 'attendance_payroll', 'control_center', 'customer_reviews',
+      'finance', 'image_editor', 'meetings', 'members', 'orders', 'performance',
+      'samples', 'showroom', 'tasks',
     ])
     // Exactly one Image Editor card, and an accent nobody else uses.
     assert.equal((LAUNCHER.match(/key: 'image_editor'/g) ?? []).length, 1)

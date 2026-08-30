@@ -17,6 +17,7 @@ import {
 } from '@/hooks/queries/usePermissionContext'
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
+import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
 import { Image as ImageIcon } from 'lucide-react'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -194,6 +195,25 @@ export default function BoeOsHomePage() {
       permissions: permsByModule.get(moduleKey) ?? [],
     })
 
+  // THE ONE MODULE canOpenModule CANNOT ANSWER FOR.
+  //
+  // Review Workflow Test registers `use` and `verify` and no `view` at all
+  // (src/lib/permissions/modules.ts), because it has no read-only audience — a
+  // holder sees the unbooked pool and their own tests and nobody else's.
+  // canAccessManagementModule asks strictly for `view`, and asking it here
+  // would hide the card from every single person who actually holds the module.
+  //
+  // This is NOT a weaker gate. It reads the same resolver output, for the same
+  // signed-in user, through the module's own capability derivation — the same
+  // function src/app/customer-reviews/layout.tsx branches on — so the card and
+  // the route still cannot disagree.
+  const canOpenCustomerReviews =
+    permsReady &&
+    deriveCustomerReviewCapabilities(
+      signedInRole,
+      permsByModule.get('customer_review_requests') ?? [],
+    ).canAccessModule
+
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves
   // through canOpenModule and has no app_modules fallback to fall back TO.
@@ -357,6 +377,15 @@ export default function BoeOsHomePage() {
       href: '/meetings',
       accent: '#7C2D12',
       icon: <MeetingsIcon />,
+      notificationCount: null,
+    }] : []),
+    ...(canOpenCustomerReviews ? [{
+      key: 'customer_reviews',
+      title: 'Review Workflow Test',
+      description: 'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
+      href: '/customer-reviews',
+      accent: '#0E7490',
+      icon: <ReviewOutreachIcon />,
       notificationCount: null,
     }] : []),
     ...(canOpenModule('orders') ? [{
@@ -737,6 +766,15 @@ function OrdersIcon() {
       <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
       <rect x="9" y="3" width="6" height="4" rx="1" />
       <line x1="9" y1="12" x2="15" y2="12" /><line x1="9" y1="16" x2="13" y2="16" />
+    </svg>
+  )
+}
+
+function ReviewOutreachIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+      <path d="M9.5 11.5h5M9.5 14h3" />
     </svg>
   )
 }

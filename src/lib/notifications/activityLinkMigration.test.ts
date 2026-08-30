@@ -117,16 +117,26 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
     // matters most below, and structurally here: this branch added exactly one
     // file, immediately after 115.
     //
-    // 116 is no longer the newest file: 118 (the Top 3 Focus unpin) was added
-    // afterwards by unrelated work. What still holds, and is what this test
-    // was protecting, is that 116 sits directly on top of 115 and that nothing
-    // was inserted between them.
+    // 116 IS NO LONGER THE NEWEST FILE, and three later files now sit after
+    // it: 117 (Customer Review Outreach), 118 (the Top 3 Focus unpin) and 120
+    // (the Image Editor module registration), added by unrelated branches. What still holds, and is what this test was
+    // protecting, is that 116 sits directly on top of 115 and that nothing was
+    // inserted between them.
+    //
+    // The tail is named exactly rather than tolerated by a loosened rule, so a
+    // further file appearing after 116 still fails here and still has to be
+    // accounted for on purpose.
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
     const at = files.indexOf('20261016000000_notifications_link_activity_log.sql')
     assert.ok(at > 0, '116 is present')
     assert.equal(files[at - 1], '20261015000000_task_health_check_stops_notifying.sql')
-    assert.deepEqual(files.slice(at + 1), ['20261018000000_unpin_tasks_submitted_for_approval.sql'])
+    assert.deepEqual(files.slice(at + 1), [
+      '20261017000000_customer_review_outreach.sql',
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
+    ])
   })
 
   test('6. migration 115 still hashes to its pinned value', () => {

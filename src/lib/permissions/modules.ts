@@ -197,6 +197,38 @@ registerModule({
   ],
 })
 
+// Review Workflow Test (Internal) owns its own capability file
+// (src/lib/permissions/customerReviewOutreach.ts), but the registration stays
+// here with the rest of the catalog so `npm run permissions:check` still sees
+// one complete list. Mirrors the seed in
+// supabase/migrations/20261017000000_customer_review_outreach.sql.
+//
+// THE KEY AND BOTH ACTION KEYS ARE DELIBERATELY UNCHANGED. This module's
+// purpose changed — it is now an internal rehearsal of a workflow whose
+// recipient the tester chooses — but `customer_review_requests`, `use` and
+// `verify` are the identifiers every existing Control Center grant is written
+// against, and renaming them would silently revoke all of them. The DISPLAY
+// name is what a human reads and is what changed. The ACTION display names stay
+// as well, because Control Center shows them against grants already made and a
+// relabelled action reads as a different one.
+//
+// TWO ACTIONS, AND NO `view`. Unlike every other module here, entry is `use`:
+// there is no read-only audience for a tester's own booked cards, so a third
+// "can open it and do nothing" grant would name an empty screen. `verify` is
+// the separate authority to say a test was actually checked and to hand one
+// back — protected (see levels.ts), because nobody should acquire it by picking
+// a level from a dropdown, and dependent on `use`, because a verifier who
+// cannot open the module cannot verify anything.
+registerModule({
+  moduleKey: 'customer_review_requests',
+  displayName: 'Review Workflow Test (Internal)',
+  description: 'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
+  actions: [
+    { actionKey: 'use',    displayName: 'Use Customer Review Outreach' },
+    { actionKey: 'verify', displayName: 'Verify & Close Review Requests' },
+  ],
+})
+
 // PI Drafts (/orders/drafts) is not a separate module — it lives under the same
 // /orders route tree and inherits this module's 'view' permission via the shared
 // src/app/orders/layout.tsx guard.

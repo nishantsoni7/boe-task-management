@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Search, CheckCircle2, Circle, LayoutGrid,
-  ListChecks, Package, Laptop2, CalendarCheck, Wallet, QrCode, Users, TrendingUp, Landmark, Truck,
+  ListChecks, Package, Laptop2, CalendarCheck, Wallet, QrCode, Users, TrendingUp, Landmark, Truck, MessageSquareHeart,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -20,6 +20,7 @@ import {
   ACCESS_LEVEL_LABELS,
   presetAllowedActions,
   enableModuleEntry,
+  entryActionForModule,
   detectAccessLevel as detectLevelForActions,
   protectedActionsClearedByPreset,
   actionDependencyChain,
@@ -158,14 +159,35 @@ function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>)
 // Custom modal. They are dormant, and they come back the moment view does.
 const MODULE_ENTRY_ACTION = 'view'
 
+/**
+ * ONE module expresses entry with a different key, and the switch has to follow
+ * it or it is a control that decides nothing.
+ *
+ * Customer Review Outreach registers `use` and `verify` and NO `view`
+ * (src/lib/permissions/modules.ts): a holder sees only their own outreach, so a
+ * separate read-only grant would name an empty screen. Without this resolution
+ * its card would read Hidden however much access the employee actually held,
+ * and turning the switch On would write nothing at all.
+ *
+ * entryActionForModule reads the module's OWN registered actions rather than a
+ * key-to-key map here, so the answer comes from one place —
+ * MODULE_ENTRY_ACTIONS in ./levels — and this screen, enableModuleEntry and the
+ * module guard cannot drift. `view` remains the answer for every other module,
+ * which is why MODULE_ENTRY_ACTION above is still the fallback.
+ */
+function entryActionFor(mod: ModuleState): string {
+  return entryActionForModule(mod.actions.map(a => a.actionKey)) ?? MODULE_ENTRY_ACTION
+}
+
 /** Visible/Hidden including any unsaved change the administrator has made. */
 function moduleIsAccessible(mod: ModuleState, overrides: Map<string, OverrideChoice>): boolean {
-  return effectiveMapForModule(mod, overrides)[MODULE_ENTRY_ACTION] === true
+  return effectiveMapForModule(mod, overrides)[entryActionFor(mod)] === true
 }
 
 /** Visible/Hidden as last loaded from the server, for the employee-list counters. */
 function moduleIsAccessibleAsLoaded(mod: ModuleState): boolean {
-  return mod.actions.some(a => a.actionKey === MODULE_ENTRY_ACTION && a.allowed)
+  const entry = entryActionFor(mod)
+  return mod.actions.some(a => a.actionKey === entry && a.allowed)
 }
 
 function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
@@ -345,6 +367,7 @@ const MODULE_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWi
   performance:      TrendingUp,
   finance:          Landmark,
   orders:           Truck,
+  customer_review_requests: MessageSquareHeart,
 }
 
 function ModuleIcon({ moduleKey, color }: { moduleKey: string; color: string }) {
@@ -398,6 +421,9 @@ const PROTECTED_ACTION_WORDS: Record<string, string> = {
   // simply read by nothing.
   view_quotations:       'View quotations and quoted prices',
   manage_quotations:     'Manage quotations',
+  // Customer Review Outreach. `use` is not protected — it is that module's
+  // entry — so only the sign-off authority needs naming here.
+  verify:                'Verify and close customer review requests',
   // One action key registered against two modules, so the words have to come
   // from the module being edited rather than from this map alone — see
   // protectedActionWords, which takes the module key for exactly this reason.

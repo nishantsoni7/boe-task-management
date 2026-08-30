@@ -583,9 +583,18 @@ describe('18. migration 115 is untouched by this hotfix', () => {
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
     const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
+    // 117 (Customer Review Outreach), 118 (the Top 3 Focus unpin) and 120 (the
+    // Image Editor module registration) came later and none touches task
+    // assignment: 117 creates three tables of its own and alters nothing that
+    // exists, 118's statements are checked below, and 120 writes only
+    // permission_modules and permission_actions rows. All three are named
+    // rather than allowed by a loosened rule.
     assert.deepEqual(newer, [
       '20261016000000_notifications_link_activity_log.sql',
+      '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

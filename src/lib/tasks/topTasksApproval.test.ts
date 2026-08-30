@@ -39,10 +39,16 @@ test('the migration is numbered 118, not the already-taken 117', () => {
   // collision, and this repository has already had to repair one.
   const files = fs.readdirSync('supabase/migrations').filter(f => f.endsWith('.sql'))
   assert.ok(files.includes(MIGRATION_FILE), '118 is present')
-  assert.equal(
-    files.some(f => f.startsWith('20261017000000')), false,
-    'this branch must not occupy 20261017000000',
-  )
+
+  // 117 IS NOW IN THIS TREE, and that is the situation this test was written to
+  // survive rather than a violation of it. The two branches have since merged,
+  // so the assertion "nothing occupies 117" is no longer the right shape: what
+  // the test defends is that THIS migration did not take 117, which is now
+  // stated by 117 being present AND belonging to the other module.
+  const at117 = files.filter(f => f.startsWith('20261017000000'))
+  assert.deepEqual(at117, ['20261017000000_customer_review_outreach.sql'],
+    '117 must be the customer-review migration, and only that')
+  assert.notEqual(MIGRATION_FILE, at117[0], 'this branch must not occupy 20261017000000')
 })
 
 test('no two migrations share a version stamp', () => {

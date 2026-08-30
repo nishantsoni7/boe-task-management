@@ -27,6 +27,32 @@ import type { EffectivePermission } from './types'
 //            it (see assetsAccess.ts, meetings.ts), so it is no longer
 //            something a preset hands out.
 
+/**
+ * The action keys that MEAN "may open this module", most common first.
+ *
+ * A module registers exactly one of them, and `view` is that one everywhere
+ * except Customer Review Outreach, which registers `use` and no `view` at all:
+ * a holder there sees only their own outreach, so a separate read-only grant
+ * would name an empty screen (see modules.ts and moduleVisibility.ts).
+ *
+ * This is an ORDERED PREFERENCE, not a set. If a module ever registered both,
+ * `view` would decide — which is the conservative answer, because `view` is
+ * what every route guard and the launcher already read.
+ */
+export const MODULE_ENTRY_ACTIONS = ['view', 'use'] as const
+
+/**
+ * The entry action for a module, given the actions it registers, or null when
+ * it registers none of them.
+ *
+ * Null is a real answer and callers must handle it: a module with no entry
+ * action cannot be switched on or off as a whole, and pretending otherwise
+ * would put an administrator in front of a control that decides nothing.
+ */
+export function entryActionForModule(moduleActionKeys: readonly string[]): string | null {
+  return MODULE_ENTRY_ACTIONS.find(action => moduleActionKeys.includes(action)) ?? null
+}
+
 export const ACCESS_LEVELS = ['no_access', 'viewer', 'contributor', 'manager', 'custom'] as const
 
 export type AccessLevel = (typeof ACCESS_LEVELS)[number]
@@ -116,6 +142,13 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // other and from finance.approve. Registered by 20260918000000.
   'allocate',
   'allocate_correct',
+  // Saying that a customer really did publish a review, and closing the request
+  // on the strength of it. Protected because it is the module's only claim
+  // about the outside world that anybody else will rely on, and because the
+  // separation from `use` is the whole safeguard: the employee who ran the
+  // outreach must not be able to sign off their own outreach by default.
+  // Registered by 20261017000000.
+  'verify',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -146,6 +179,11 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // Same reason, and NOT a dependency on approve_order: the two authorities are
   // independent in both directions by design.
   approve_advance_exception: 'view',
+  // Customer Review Outreach expresses module entry as `use`, not `view` (it
+  // registers no `view` at all — see modules.ts). A verifier who cannot open
+  // the module cannot verify anything, so ticking Verify in Custom brings Use
+  // with it. The chain stops there: `use` depends on nothing.
+  verify: 'use',
 }
 
 /** Every action `actionKey` depends on, nearest first. Cycle-safe. */
@@ -305,9 +343,11 @@ export function enableModuleEntry(
 ): Record<string, boolean> {
   const map: Record<string, boolean> = {}
   for (const action of moduleActionKeys) map[action] = currentlyAllowed[action] === true
-  // A module with no `view` action cannot express entry; leave it exactly as it
-  // was rather than inventing a key the module does not register.
-  if (moduleActionKeys.includes('view')) map['view'] = true
+  // A module that registers no entry action at all cannot express entry; leave
+  // it exactly as it was rather than inventing a key the module does not
+  // register.
+  const entry = entryActionForModule(moduleActionKeys)
+  if (entry) map[entry] = true
   return map
 }
 

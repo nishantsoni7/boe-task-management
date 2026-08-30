@@ -471,12 +471,18 @@ describe('the migration is placed correctly', () => {
     // — not 115 — is now the newest thing that has run against the database.
     // What this still guards is that 115 is the only migration 116 follows.
     const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
-    // 118 (Top 3 Focus unpin) was added after 116 and is UNAPPLIED. It is
-    // listed here for the same reason 116 is: this assertion is exact, so a
-    // file cannot appear after 115 without being named.
+    // 117 (Customer Review Outreach), 118 (Top 3 Focus unpin) and 120 (the
+    // Image Editor module registration) came later still and NONE is applied.
+    // All three appear in the pending list in
+    // participantAndOrderTotalSecurity.test.ts and deliberately not in FROZEN.
+    // This assertion is exact, so a file cannot appear after 115 without being
+    // named here.
     assert.deepEqual(newer, [
       '20261016000000_notifications_link_activity_log.sql',
+      '20261017000000_customer_review_outreach.sql',
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+      '20261021000000_seed_customer_review_test_cards.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
