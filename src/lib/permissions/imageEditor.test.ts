@@ -250,3 +250,113 @@ describe('the migration', () => {
     assert.match(SQL, /no tables|NO TABLES/i)
   })
 })
+
+// ═══ The launcher card ════════════════════════════════════════════════════════
+//
+// Registering the module in app_modules and ENGINE_GATED_MODULE_KEYS decides
+// AUTHORIZATION, not discovery. /modules renders a hardcoded array of card
+// definitions, each wrapped in canOpenModule(key); a module with no entry in
+// that array has no card however its permissions resolve. That is why View
+// resolution and ModuleGuard worked while the card was missing.
+//
+// These tests pin the entry and the gate around it. The gate itself —
+// canAccessManagementModule — is exercised directly above, so what is asserted
+// here is that the card is wired to it and to nothing weaker.
+
+describe('the /modules launcher card', () => {
+  const LAUNCHER = readFileSync(join(process.cwd(), 'src/app/modules/page.tsx'), 'utf8')
+
+  /** The card definition object, read with balanced brackets. */
+  const cardBlock = (() => {
+    const at = LAUNCHER.indexOf("key: 'image_editor'")
+    assert.ok(at > -1, 'the Image Editor card must exist in the launcher')
+    return LAUNCHER.slice(LAUNCHER.lastIndexOf('...(', at), LAUNCHER.indexOf('}] : []),', at))
+  })()
+
+  test('the card is gated by canOpenModule, the shared parent gate', () => {
+    // Not by app_modules.visibility_type, not by a role check, not by `create`.
+    assert.ok(cardBlock.startsWith("...(canOpenModule('image_editor') ?"), cardBlock.slice(0, 80))
+  })
+
+  test('View permission shows the card', () => {
+    // canOpenModule delegates to canAccessManagementModule, verified here.
+    assert.equal(canAccessManagementModule({
+      role: 'member', moduleKey: IMAGE_EDITOR_MODULE_KEY,
+      isModuleActive: true, permissions: VIEW_ONLY,
+    }), true)
+  })
+
+  test('no View hides the card', () => {
+    assert.equal(canAccessManagementModule({
+      role: 'member', moduleKey: IMAGE_EDITOR_MODULE_KEY,
+      isModuleActive: true, permissions: NEITHER,
+    }), false)
+  })
+
+  test('stored Use without View hides the card', () => {
+    // The dormant-child state must not light the launcher up either.
+    assert.equal(canAccessManagementModule({
+      role: 'member', moduleKey: IMAGE_EDITOR_MODULE_KEY,
+      isModuleActive: true, permissions: USE_WITHOUT_VIEW,
+    }), false)
+  })
+
+  test('an admin sees the card, under the existing convention', () => {
+    assert.equal(canAccessManagementModule({
+      role: 'admin', moduleKey: IMAGE_EDITOR_MODULE_KEY,
+      isModuleActive: true, permissions: NEITHER,
+    }), true)
+    // And through the module's own derivation, which admins bypass.
+    assert.equal(deriveImageEditorCapabilities('admin', NEITHER).canOpen, true)
+  })
+
+  test('the card opens /image-editor and is titled Image Editor', () => {
+    assert.match(cardBlock, /href: '\/image-editor'/)
+    assert.match(cardBlock, /title: 'Image Editor'/)
+  })
+
+  test('the description matches the registered module description exactly', () => {
+    const sql = readFileSync(join(process.cwd(),
+      'supabase/migrations/20261020000000_register_image_editor_module.sql'), 'utf8')
+    const description = 'Turn factory furniture photographs into catalogue studio images.'
+    assert.ok(cardBlock.includes(description), 'the card must use the registered description')
+    assert.ok(sql.includes(description), 'and the migration must register that same sentence')
+  })
+
+  test('the icon comes from a library already used in the app', () => {
+    assert.match(LAUNCHER, /import \{ Image as ImageIcon \} from 'lucide-react'/)
+    assert.match(cardBlock, /<ImageIcon size=\{26\} strokeWidth=\{1\.8\} \/>/)
+    const editor = readFileSync(join(process.cwd(), 'src/app/image-editor/page.tsx'), 'utf8')
+    assert.ok(editor.includes("from 'lucide-react'"), 'lucide is already in use by this module')
+  })
+
+  test('the card carries no notification count', () => {
+    assert.match(cardBlock, /notificationCount: null/)
+  })
+
+  test('no other launcher card changed', () => {
+    // The exact set, pinned. A card removed, renamed or added elsewhere fails
+    // here. Note the card `key` is the LAUNCHER's own identifier and is not
+    // always the permission module key — 'samples' is sample_tracking,
+    // 'assets' is assets_access — which is why this is a literal list.
+    const keys = (LAUNCHER.match(/key: '[a-z_]+'/g) ?? [])
+      .map(m => m.slice(6, -1)).sort()
+    assert.deepEqual(keys, [
+      'assets', 'attendance_payroll', 'control_center', 'finance', 'image_editor',
+      'meetings', 'members', 'orders', 'performance', 'samples', 'showroom', 'tasks',
+    ])
+    // Exactly one Image Editor card, and an accent nobody else uses.
+    assert.equal((LAUNCHER.match(/key: 'image_editor'/g) ?? []).length, 1)
+    assert.equal((LAUNCHER.match(/#BE185D/g) ?? []).length, 1)
+  })
+
+  test('every other card keeps its own gate', () => {
+    // The gates that were there before are untouched: this change adds a
+    // branch, it does not re-gate anything.
+    for (const gate of ["canOpenModule('finance')", "canOpenModule('meetings')",
+      "canOpenModule('orders')", "canOpenModule('sample_tracking')",
+      "effectiveProfile?.role === 'admin'"]) {
+      assert.ok(LAUNCHER.includes(gate), `${gate} must still gate its card`)
+    }
+  })
+})
