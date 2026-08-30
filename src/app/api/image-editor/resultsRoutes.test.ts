@@ -35,6 +35,7 @@ const CLEANUP = read('src/app/api/image-editor/cleanup/route.ts')
 const AUTH = read('src/lib/imageEditor/historyServer.ts')
 const MIGRATION = read('supabase/migrations/20261021000000_image_editor_result_history.sql')
 const VERCEL = read('vercel.json')
+const PURGE = read('src/app/api/permanently-delete-user/route.ts')
 
 /** Code with comments stripped, so an assertion cannot be satisfied — or
  *  tripped — by a sentence explaining what the route does not do. */
@@ -147,6 +148,19 @@ describe('the cleanup endpoint', () => {
     assert.match(CLEANUP, /timingSafeEqual/)
   })
 
+  test('a secret of the wrong LENGTH is rejected, not thrown over', () => {
+    // node:crypto's timingSafeEqual THROWS on buffers of unequal length. An
+    // unguarded compare would turn a wrong-length header into a 500 from an
+    // unhandled exception rather than a 401 — and a route that crashes on bad
+    // input is a route somebody can probe.
+    const body = code(CLEANUP)
+    assert.match(body, /if \(a\.length !== b\.length\) return false/)
+    assert.ok(
+      body.indexOf('a.length !== b.length') < body.indexOf('return timingSafeEqual'),
+      'the length check must come first',
+    )
+  })
+
   test('never sweeps a kept result', () => {
     assert.match(code(CLEANUP), /\.eq\('kept', false\)/)
   })
@@ -158,6 +172,13 @@ describe('the cleanup endpoint', () => {
     // Once a day. A schedule with more fields than this would be a different
     // decision than the one that was made.
     assert.match(config.crons[0].schedule, /^\d+ \d+ \* \* \*$/)
+  })
+
+  test('vercel.json adds NOTHING else', () => {
+    // This file did not exist before the sweep needed a schedule. A `functions`
+    // block, a build override or a header rule smuggled in here would change how
+    // every other route in the application is deployed.
+    assert.deepEqual(Object.keys(JSON.parse(VERCEL)).sort(), ['$schema', 'crons'])
   })
 })
 
@@ -195,5 +216,96 @@ describe('retention cannot be extended by a caller', () => {
   test('the studio route never writes expires_at either', () => {
     const studio = read('src/app/api/image-editor/studio/route.ts')
     assert.ok(!studio.includes('expires_at'), 'the seven days are the database\'s to set')
+  })
+})
+
+describe('an expired result cannot be read DIRECTLY either', () => {
+  /** One `create policy` block from the migration, by name. */
+  const policy = (name: string) => {
+    const at = MIGRATION.indexOf(`create policy ${name}\n`)
+    assert.ok(at >= 0, `${name} is not in the migration`)
+    const end = MIGRATION.indexOf(';', at)
+    return MIGRATION.slice(at, end)
+  }
+
+  test('the table SELECT policy requires kept OR a future expiry', () => {
+    const p = policy('image_editor_results_select_own')
+    assert.match(p, /for select/)
+    assert.match(p, /user_id = auth\.uid\(\)/, 'ownership is still required')
+    assert.match(p, /kept or expires_at > now\(\)/,
+      'the owner must not be able to read a row whose seven days have passed')
+  })
+
+  test('the storage SELECT policy requires the same of the object', () => {
+    const p = policy('image_editor_results_storage_select')
+    assert.match(p, /for select/)
+    assert.match(p, /split_part\(name, '\/', 1\) = auth\.uid\(\)::text/, 'ownership is still required')
+    assert.match(p, /from public\.image_editor_results r/,
+      'the object is authorized against the row that names it')
+    assert.match(p, /r\.storage_path = storage\.objects\.name/)
+    assert.match(p, /r\.kept or r\.expires_at > now\(\)/,
+      'an expired object must not be downloadable with the owner\'s own token')
+  })
+
+  test('Keep, Unkeep and Delete are NOT narrowed by expiry', () => {
+    // A retention rule on UPDATE or DELETE would strand the row it is meant to
+    // remove: the owner could not unkeep or delete something already expired,
+    // and neither could the sweep.
+    for (const name of [
+      'image_editor_results_update_own',
+      'image_editor_results_delete_own',
+      'image_editor_results_storage_delete',
+      'image_editor_results_storage_insert',
+    ]) {
+      assert.ok(!/expires_at/.test(policy(name)),
+        `${name} must stay on ownership alone or an expired result becomes undeletable`)
+    }
+  })
+
+  test('the migration refuses to finish if either SELECT rule loses the condition', () => {
+    assert.match(MIGRATION, /image_editor_results_select_own does not enforce/)
+    assert.match(MIGRATION, /image_editor_results_storage_select does not enforce/)
+  })
+
+  test('the listing route applies the same predicate', () => {
+    // Same rule in both places, written once in retention.ts.
+    assert.match(code(LIST), /\.or\(visibleFilter\(nowIso\)\)/)
+    const retention = read('src/lib/imageEditor/retention.ts')
+    assert.match(retention, /kept\.eq\.true,expires_at\.gt\.\$\{nowIso\}/)
+  })
+})
+
+describe('deleting an employee cannot orphan their objects', () => {
+  test('the owner reference RESTRICTS rather than cascades', () => {
+    assert.match(MIGRATION, /references public\.users\(id\) on delete restrict/)
+    assert.ok(!/references public\.users\(id\) on delete cascade/.test(MIGRATION),
+      'a cascade would delete the only record of where each object lives')
+    assert.match(MIGRATION, /does not RESTRICT on delete/, 'and the migration asserts it')
+  })
+
+  test('the permanent-delete route empties the history FIRST', () => {
+    const body = code(PURGE)
+    const purgeAt = body.indexOf('purgeUserResults')
+    assert.ok(purgeAt >= 0, 'the one route that removes a member must empty their results')
+
+    // Before every other destructive statement, not merely before the user row:
+    // a half-deleted member is worse than one who is still here.
+    for (const table of ['notifications', 'password_reset_log', 'tasks', 'task_activity_log', 'users']) {
+      const deleteAt = body.indexOf(`from('${table}')`)
+      if (deleteAt < 0) continue
+      assert.ok(purgeAt < deleteAt,
+        `the purge must run before anything touches ${table}`)
+    }
+  })
+
+  test('a failed purge stops the deletion instead of reporting success', () => {
+    const body = code(PURGE)
+    assert.match(body, /if \(!purge\.ok\)/)
+    const guardAt = body.indexOf('if (!purge.ok)')
+    assert.ok(
+      guardAt < body.indexOf("from('users')\n    .delete()"),
+      'nothing may be deleted once the purge has failed',
+    )
+    assert.match(body, /status: 500/)
   })
 })

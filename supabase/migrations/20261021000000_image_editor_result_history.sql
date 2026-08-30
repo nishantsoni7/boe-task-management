@@ -29,6 +29,22 @@
 -- to buy another week. A result un-kept after its window has passed is
 -- therefore due for deletion immediately, which the UI states before it acts.
 --
+-- Expiry is enforced by the POLICIES, not only by the listing query: both
+-- SELECT rules — on the table and on the object — require
+-- `kept or expires_at > now()`. An expired result is therefore unreadable and
+-- undownloadable the moment its window passes, with the caller's own token,
+-- whether or not the nightly sweep has reclaimed the bytes yet. Keep, Unkeep
+-- and Delete are unaffected: they are UPDATE and DELETE, and a person must
+-- always be able to unkeep or remove their own work.
+--
+-- WHEN AN EMPLOYEE IS DELETED
+-- ---------------------------
+-- The owner reference is ON DELETE RESTRICT and the reason is written out at
+-- the column. In short: the row is the only record of where the object is, so
+-- deleting it first orphans the bytes for ever. The permanent-delete route
+-- empties the history first and the database refuses the delete if anything is
+-- left.
+--
 -- THE PARENT GATE, WHICH NOW HAS A SURFACE
 -- ----------------------------------------
 -- 20261020000000 explained at length that the Image Editor could not inherit
@@ -83,10 +99,30 @@ on conflict (id) do nothing;
 create table if not exists public.image_editor_results (
   id                uuid primary key default gen_random_uuid(),
 
-  -- The owner, and the only person who will ever read this row. ON DELETE
-  -- CASCADE so removing an employee removes their history with them; the
-  -- objects are then swept as orphans by the cleanup route.
-  user_id           uuid not null references public.users(id) on delete cascade,
+  -- The owner, and the only person who will ever read this row.
+  --
+  -- ON DELETE RESTRICT, NOT CASCADE, AND THE REASON MATTERS
+  -- ------------------------------------------------------
+  -- This row is the ONLY record of where its storage object lives. A CASCADE
+  -- would delete it the instant the employee was removed and leave the object
+  -- behind: no row means no `storage_path`, and the sweep below only ever
+  -- looks at rows, so nothing would ever find those bytes again. They would sit
+  -- in a private bucket for ever, paid for and unreachable — the exact
+  -- unrecoverable case history.ts refuses to create by deleting the object
+  -- first.
+  --
+  -- So the database REFUSES to delete an employee who still has results. The
+  -- one application path that removes a person permanently
+  -- (POST /api/permanently-delete-user) empties this history first — object
+  -- then row, plus any leftover object under the employee's prefix — and only
+  -- deletes the user once that has verifiably succeeded. If it did not, the
+  -- delete stops with the rows intact and the administrator can retry, which is
+  -- recoverable in a way an orphan is not.
+  --
+  -- The RESTRICT is what makes that guarantee independent of any one route: a
+  -- future route, a script, or somebody deleting the auth user by hand gets a
+  -- loud foreign-key error instead of a silent bucket leak.
+  user_id           uuid not null references public.users(id) on delete restrict,
 
   -- Object key within `image-editor-results`, always '<user_id>/<id>.png'.
   -- The storage policies below parse the first segment, so this shape is
@@ -116,6 +152,42 @@ create table if not exists public.image_editor_results (
   -- clock or be extended by a caller.
   expires_at        timestamptz not null default (now() + interval '7 days')
 );
+
+-- `create table if not exists` above does nothing on a table that is already
+-- there, so the delete action is stated again for a database that received an
+-- earlier version of this file. Dropping and re-adding is the only way to
+-- change ON DELETE, and both statements are safe to re-run.
+
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint con
+    join pg_class c on c.oid = con.conrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'image_editor_results'
+      and con.conname = 'image_editor_results_user_id_fkey'
+      and con.confdeltype <> 'r'
+  ) then
+    alter table public.image_editor_results
+      drop constraint image_editor_results_user_id_fkey;
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint con
+    join pg_class c on c.oid = con.conrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'image_editor_results'
+      and con.conname = 'image_editor_results_user_id_fkey'
+  ) then
+    alter table public.image_editor_results
+      add constraint image_editor_results_user_id_fkey
+      foreign key (user_id) references public.users(id) on delete restrict;
+  end if;
+end $$;
 
 comment on table public.image_editor_results is
   'Per-user history of generated Image Editor masters. Private to the owner, '
@@ -147,11 +219,28 @@ alter table public.image_editor_results enable row level security;
 -- is legible on its own and a later widening of one cannot silently widen the
 -- others.
 
+-- SELECT carries the RETENTION RULE as well as the ownership rule. The listing
+-- route filters `kept OR expires_at > now()` too, but that route is one caller:
+-- a client with its own token reaching the table directly would otherwise read
+-- rows whose seven days have passed, and an expired result is one the employee
+-- was told no longer exists. Enforcing it here makes the window true of the
+-- TABLE rather than true of one query, and it holds whether or not the sweep
+-- has run.
+--
+-- `kept` disables the countdown entirely — a kept row is readable however old,
+-- which is what Keep means — and un-keeping restores the original window, so an
+-- expired row disappears again the moment it is unkept. Nothing else changes:
+-- UPDATE (Keep/Unkeep) and DELETE stay on ownership alone, deliberately, so an
+-- employee can still unkeep or delete something that has expired. A SELECT-only
+-- rule cannot strand a row.
 drop policy if exists image_editor_results_select_own on public.image_editor_results;
 create policy image_editor_results_select_own
   on public.image_editor_results
   for select to authenticated
-  using (user_id = auth.uid());
+  using (
+    user_id = auth.uid()
+    and (kept or expires_at > now())
+  );
 
 -- WITH CHECK only: an INSERT has no existing row to test. A caller cannot
 -- insert a row owned by somebody else.
@@ -202,6 +291,20 @@ create policy image_editor_results_module_entry_gate
 -- an object if a signed URL is ever minted by anything else, or if a client
 -- reaches the bucket directly with its own token.
 
+-- SELECT is the download, so it carries the RETENTION RULE too. Ownership alone
+-- would let the owner fetch the bytes of a result whose window has passed —
+-- directly, with their own token, after the listing had stopped showing it and
+-- before the nightly sweep reclaimed it. The object is looked up by its key,
+-- which IS `image_editor_results.storage_path`, and the same
+-- `kept or expires_at > now()` decides.
+--
+-- The row lookup runs under the reader's own privileges, so the policies above
+-- apply to it as well: no cross-user read can be smuggled in through this
+-- subquery, and losing module entry closes this door with the others.
+--
+-- INSERT and DELETE below stay on ownership alone. An expired object must still
+-- be deletable — by its owner, and by the sweep — or the retention rule would
+-- prevent the very deletion it exists to cause.
 drop policy if exists image_editor_results_storage_select on storage.objects;
 create policy image_editor_results_storage_select
   on storage.objects
@@ -209,6 +312,13 @@ create policy image_editor_results_storage_select
   using (
     bucket_id = 'image-editor-results'
     and split_part(name, '/', 1) = auth.uid()::text
+    and exists (
+      select 1
+      from public.image_editor_results r
+      where r.storage_path = storage.objects.name
+        and r.user_id = auth.uid()
+        and (r.kept or r.expires_at > now())
+    )
   );
 
 drop policy if exists image_editor_results_storage_insert on storage.objects;
@@ -331,5 +441,59 @@ begin
     raise exception
       'image_editor_results.expires_at does not default to seven days — refusing to '
       'leave the retention window undefined';
+  end if;
+
+  -- The owner reference RESTRICTS. A CASCADE here would delete the rows that
+  -- carry every storage_path the moment an employee was removed, orphaning
+  -- their objects permanently — see the column comment above. Read off
+  -- pg_constraint rather than trusted, because `create table if not exists`
+  -- silently keeps whatever an earlier run left behind.
+  if not exists (
+    select 1
+    from pg_constraint con
+    join pg_class c on c.oid = con.conrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname = 'image_editor_results'
+      and con.contype = 'f'
+      and con.conname = 'image_editor_results_user_id_fkey'
+      and con.confdeltype = 'r'
+  ) then
+    raise exception
+      'image_editor_results.user_id does not RESTRICT on delete — refusing to leave '
+      'a cascade that would orphan every storage object of a deleted employee';
+  end if;
+
+  -- Both SELECT rules carry the retention window as well as the owner. A policy
+  -- that checked ownership alone would let the owner read — and download — a
+  -- result whose seven days have passed, which is the one thing the listing
+  -- route already refuses to show them. Checked by reading the stored
+  -- expression, so a later edit that drops the condition fails the migration
+  -- rather than quietly widening it.
+  if not exists (
+    select 1 from pg_policy pol
+    join pg_class c on c.oid = pol.polrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relname = 'image_editor_results'
+      and pol.polname = 'image_editor_results_select_own'
+      and pg_get_expr(pol.polqual, pol.polrelid) like '%expires_at%'
+      and pg_get_expr(pol.polqual, pol.polrelid) like '%kept%'
+  ) then
+    raise exception
+      'image_editor_results_select_own does not enforce (kept or expires_at > now())';
+  end if;
+
+  if not exists (
+    select 1 from pg_policy pol
+    join pg_class c on c.oid = pol.polrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'storage' and c.relname = 'objects'
+      and pol.polname = 'image_editor_results_storage_select'
+      and pg_get_expr(pol.polqual, pol.polrelid) like '%expires_at%'
+      and pg_get_expr(pol.polqual, pol.polrelid) like '%kept%'
+  ) then
+    raise exception
+      'image_editor_results_storage_select does not enforce (kept or expires_at > now()) — '
+      'an expired object would still be downloadable directly';
   end if;
 end $$;

@@ -11,10 +11,33 @@ SeedVR2 supplies the resolution, and a gate checks the product survived.**
 > the measurements and for what the automated comparison could and could not
 > establish.
 
-Not linked from the module launcher and not registered in `app_modules`. It is
-reached directly at **`/image-editor`** and is open to any signed-in BOE user —
-deliberately, so the prototype adds no Control Center permission, no migration
-and no row anybody would later have to unpick.
+### Where it lives, and who may open it
+
+Registered in `app_modules` **and** in the permission engine by
+`20261020000000_register_image_editor_module.sql`, and shown as a card on the
+`/modules` launcher to anybody who holds module entry. The page is
+**`/image-editor`**, behind `ModuleGuard` like every other gated module.
+
+It is **not** open to any signed-in BOE user. Control Center carries two grants,
+both **denied by System Default** and true for `admin` by role default:
+
+| Control Center | Internal key | What it authorizes |
+| --- | --- | --- |
+| **View** | `image_editor.view` | Opening the module — the launcher card, the page, and *Recent results*. Costs nothing. |
+| **Use** | `image_editor.create` | Pressing **Generate**. Every press is two paid provider requests, so it is granted separately. |
+
+**Use** is a module-scoped label for the registry's shared `create` action: the
+map lives in the Control Center employee route and renames it here only, because
+`permission_actions.display_name` is global and renaming it there would rename
+`create` in every module.
+
+**Use without View is dormant**, following the house convention — an
+administrator may leave it stored while View is off, and it confers nothing
+until View returns. `deriveImageEditorCapabilities` reports `canGenerate` only
+when BOTH are allowed, and the studio route checks the same pair server-side, so
+the gate does not depend on the Control Center UI. Reading, keeping and deleting
+already-generated results need View alone; see
+[Authorization](#authorization).
 
 ## What it does
 
@@ -336,6 +359,7 @@ Every generated master is saved to the employee's own history and shown under
 | Keep holds it indefinitely | A kept result is never swept, however old. |
 | Unkeep restores the ORIGINAL window | It does not grant a fresh seven days. Unkeeping something already past its window makes it due immediately — the page warns before doing it. |
 | Delete is real | The owner's Delete removes the storage object and the row. It is not a hide. |
+| Expired means unreadable, not merely unlisted | Both SELECT policies — on the table and on the object — require `kept OR expires_at > now()`. An expired result cannot be read or downloaded even with the owner's own token, straight at the database, before the sweep has reclaimed anything. |
 | The photograph is never stored | Only the generated PNG master, plus the uploaded file's **name** so the row is recognisable. |
 
 ### What is stored
@@ -377,6 +401,31 @@ serverless function must not open a storage call per row at once.
 Saving mirrors this: object first, then row, and if the insert fails the object
 it just uploaded is removed, so the orphan window stays inside one function.
 
+### When a member is deleted
+
+Permanent member deletion (`POST /api/permanently-delete-user`, admin only, and
+only for a member already soft-deleted) **empties this history first, before it
+touches anything else**, and stops the whole deletion if it cannot.
+
+The reason is the ordering rule again, from the other end. The row is the only
+record of where its object lives, so `ON DELETE CASCADE` would take the rows
+with the member and strand every object they ever generated: no `storage_path`,
+so no sweep, no listing and no manual delete would ever find those bytes again.
+The foreign key is therefore **`ON DELETE RESTRICT`** — the database refuses to
+remove a member who still has results — and the route:
+
+1. lists the member's rows and deletes each **object then row**, with the same
+   function the sweep and the owner's Delete use;
+2. lists whatever is left under their `<user_id>/` prefix and removes it, which
+   collects any object whose row insert never landed;
+3. only then deletes notifications, tasks, logs and the member.
+
+If any step fails, **nothing is deleted** and the response is a 500 saying so.
+An administrator can press Delete again; the rows still carry every path. A
+member who is still here is recoverable, and an orphaned object is not. If
+`20261021000000` has not been applied the table is absent, there is nothing
+stored, and the step is a no-op rather than a blocker.
+
 ### When saving fails
 
 Persistence is **best effort and always last**. By the time it runs, two
@@ -393,6 +442,13 @@ Reading, keeping and deleting need module entry (`image_editor:view`) — **not*
 `create`. `create` authorizes *spending*; requiring it here would mean an
 employee whose Use access was withdrawn could no longer reach, or delete, work
 they had already made.
+
+Both SELECT policies carry the **retention window** as well as the owner:
+`kept OR expires_at > now()`, the same predicate the listing route applies. The
+route is one caller; the policy is what makes the seven days true of the table
+and the bucket. Keep, Unkeep and Delete are UPDATE and DELETE and stay on
+ownership alone — deliberately, so an employee can always unkeep or remove
+something that has already expired, and so the sweep can still delete it.
 
 The API routes act with the **service role, which bypasses row-level security**,
 so the `.eq('user_id', …)` on every statement is the authorization, not a

@@ -407,7 +407,8 @@ export default function BoeOsHomePage() {
       href: '/image-editor',
       accent: '#BE185D',
       icon: <ImageIcon size={26} strokeWidth={1.8} />,
-      // Nothing is stored, so there is nothing to count.
+      // A generated master is stored for its owner alone, and nothing about a
+      // private seven-day history is a company-wide count worth badging.
       notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{

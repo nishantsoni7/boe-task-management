@@ -19,7 +19,9 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { saveResult, deleteResult, sweepExpired, toHistoryResult } from './history'
+import {
+  saveResult, deleteResult, sweepExpired, toHistoryResult, purgeUserResults,
+} from './history'
 
 const ROW = {
   id: 'result-1',
@@ -291,5 +293,242 @@ describe('what reaches the browser', () => {
 
     assert.equal(wire.url, null)
     assert.equal(wire.kept, true)
+  })
+})
+
+// ─── Removing an employee ─────────────────────────────────────────────────────
+//
+// The lifecycle the foreign key cannot perform on its own. A CASCADE would take
+// these rows with the member and leave their objects in the bucket for ever,
+// because the row is the only record of where the object is. So the history is
+// emptied FIRST, and the caller is told plainly whether it worked.
+
+/** A bucket, in memory. Objects are keyed exactly as they are in storage:
+ *  '<user_id>/<result_id>.png'. `list` answers with names RELATIVE to the
+ *  prefix, which is what Supabase does and what the prefix sweep must handle. */
+function fakeBucket(objects: string[], log: (s: string) => void, opts: {
+  removeError?: string
+  listError?: string
+  /** Reports success without actually removing anything, the way a storage
+   *  that silently no-ops would. */
+  removeIsALie?: boolean
+} = {}) {
+  const held = new Set(objects)
+  return {
+    held,
+    async upload(path: string) { held.add(path); log(`upload:${path}`); return { error: null } },
+    async remove(paths: string[]) {
+      log(`remove:${paths.join(',')}`)
+      if (opts.removeError) return { error: { message: opts.removeError } }
+      if (!opts.removeIsALie) for (const p of paths) held.delete(p)
+      return { error: null }
+    },
+    async list(prefix: string, options?: { limit?: number; offset?: number }) {
+      log(`list:${prefix}`)
+      if (opts.listError) return { data: null, error: { message: opts.listError } }
+      const names = [...held]
+        .filter(p => p.startsWith(`${prefix}/`))
+        .map(p => p.slice(prefix.length + 1))
+        .sort()
+      const offset = options?.offset ?? 0
+      const limit = options?.limit ?? 100
+      return { data: names.slice(offset, offset + limit).map(name => ({ name })), error: null }
+    },
+  }
+}
+
+function fakeRows(
+  rows: { id: string; user_id: string; storage_path: string }[],
+  log: (s: string) => void,
+  opts: { listError?: { message: string; code?: string }; deleteError?: string } = {},
+) {
+  const held = [...rows]
+  return {
+    held,
+    async listRows(userId: string) {
+      log(`listRows:${userId}`)
+      if (opts.listError) return { data: null, error: opts.listError }
+      return { data: held.filter(r => r.user_id === userId), error: null }
+    },
+    async deleteRow(id: string, userId: string) {
+      log(`deleteRow:${id}`)
+      if (opts.deleteError) return { error: { message: opts.deleteError } }
+      const at = held.findIndex(r => r.id === id && r.user_id === userId)
+      if (at >= 0) held.splice(at, 1)
+      return { error: null }
+    },
+  }
+}
+
+describe('emptying one employee\'s history before they are deleted', () => {
+  test('every object goes before its own row, and nothing is left behind', async () => {
+    const { calls, note } = recorder()
+    const rows = [
+      { id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' },
+      { id: 'r2', user_id: 'user-1', storage_path: 'user-1/r2.png' },
+    ]
+    const bucket = fakeBucket(['user-1/r1.png', 'user-1/r2.png'], note)
+    const table = fakeRows(rows, note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, true)
+    assert.equal(report.rows, 2)
+    assert.equal(report.rowsDeleted, 2)
+    assert.deepEqual(report.reasons, [])
+
+    // Object then row, per result, in that order — the whole point.
+    assert.deepEqual(calls.slice(0, 5), [
+      'listRows:user-1',
+      'remove:user-1/r1.png', 'deleteRow:r1',
+      'remove:user-1/r2.png', 'deleteRow:r2',
+    ])
+
+    // The bucket and the table are both actually empty for this employee.
+    assert.equal([...bucket.held].filter(p => p.startsWith('user-1/')).length, 0)
+    assert.equal(table.held.filter(r => r.user_id === 'user-1').length, 0)
+  })
+
+  test('an object with no row — the save that died between upload and insert — is collected too', async () => {
+    const { note } = recorder()
+    const bucket = fakeBucket(['user-1/r1.png', 'user-1/orphan.png'], note)
+    const table = fakeRows([{ id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' }], note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, true)
+    assert.equal(report.rowsDeleted, 1)
+    assert.equal(report.orphanObjects, 1, 'the row-less object is the reason the prefix is swept')
+    assert.equal(bucket.held.has('user-1/orphan.png'), false)
+  })
+
+  test('nobody else\'s objects or rows are touched', async () => {
+    const { note } = recorder()
+    const bucket = fakeBucket(['user-1/r1.png', 'user-2/r9.png'], note)
+    const table = fakeRows([
+      { id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' },
+      { id: 'r9', user_id: 'user-2', storage_path: 'user-2/r9.png' },
+    ], note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, true)
+    assert.equal(bucket.held.has('user-2/r9.png'), true)
+    assert.deepEqual(table.held.map(r => r.id), ['r9'])
+  })
+
+  test('a failed object delete stops everything and KEEPS the row, so the path survives', async () => {
+    const { calls, note } = recorder()
+    const bucket = fakeBucket(['user-1/r1.png'], note, { removeError: 'storage is down' })
+    const table = fakeRows([{ id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' }], note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, false, 'the caller must not go on to delete the employee')
+    assert.equal(report.rowsDeleted, 0)
+    assert.ok(report.reasons.some(r => r.includes('storage is down')))
+    // The row is still there, which is what makes a retry possible at all.
+    assert.deepEqual(table.held.map(r => r.id), ['r1'])
+    assert.ok(!calls.includes('deleteRow:r1'), 'the row must never go while its object is still there')
+  })
+
+  test('a failed row delete is reported rather than swallowed', async () => {
+    const { note } = recorder()
+    const bucket = fakeBucket(['user-1/r1.png'], note)
+    const table = fakeRows(
+      [{ id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' }],
+      note,
+      { deleteError: 'row locked' },
+    )
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, false)
+    assert.ok(report.reasons.some(r => r.includes('row locked')))
+  })
+
+  test('a failed listing stops before anything is removed', async () => {
+    const { calls, note } = recorder()
+    const bucket = fakeBucket(['user-1/r1.png'], note)
+    const table = fakeRows([], note, { listError: { message: 'connection reset', code: '08006' } })
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, false)
+    assert.equal(calls.filter(c => c.startsWith('remove:')).length, 0)
+    assert.equal(bucket.held.has('user-1/r1.png'), true)
+  })
+
+  test('a table that is not there yet is nothing to purge, not a failure', async () => {
+    // The migration is not applied on every deployment at once. A member
+    // deletion must not be blocked by a table that does not exist — nothing is
+    // stored, so nothing can be orphaned.
+    for (const error of [
+      { message: 'relation "public.image_editor_results" does not exist', code: '42P01' },
+      { message: "Could not find the table 'public.image_editor_results' in the schema cache", code: 'PGRST205' },
+    ]) {
+      const { calls, note } = recorder()
+      const bucket = fakeBucket([], note)
+      const table = fakeRows([], note, { listError: error })
+
+      const report = await purgeUserResults(
+        { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+        'user-1',
+      )
+
+      assert.equal(report.ok, true, `${error.code} must not block a deletion`)
+      assert.equal(report.rows, 0)
+      assert.equal(calls.filter(c => c.startsWith('remove:')).length, 0)
+    }
+  })
+
+  test('a storage that reports removals it did not perform is bounded, not a spin', async () => {
+    const { note } = recorder()
+    const bucket = fakeBucket(
+      Array.from({ length: 100 }, (_, i) => `user-1/o${i}.png`),
+      note,
+      { removeIsALie: true },
+    )
+    const table = fakeRows([], note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.equal(report.ok, false)
+    assert.ok(report.reasons.some(r => r.includes('more than')))
+  })
+
+  test('an employee with no history is a clean no-op', async () => {
+    const { calls, note } = recorder()
+    const bucket = fakeBucket([], note)
+    const table = fakeRows([], note)
+
+    const report = await purgeUserResults(
+      { storage: bucket, listRows: table.listRows, deleteRow: table.deleteRow },
+      'user-1',
+    )
+
+    assert.deepEqual(report, { ok: true, rows: 0, rowsDeleted: 0, orphanObjects: 0, reasons: [] })
+    assert.equal(calls.filter(c => c.startsWith('remove:')).length, 0)
   })
 })
