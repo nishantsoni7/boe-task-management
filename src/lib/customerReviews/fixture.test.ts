@@ -102,7 +102,13 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
       .filter(f => /insert\s+into\s+public\.customer_review_test_cards/i.test(
         readFileSync(join(dir, f), 'utf8')
           .split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')))
-    assert.deepEqual(inserters, ['20261021000000_seed_customer_review_test_cards.sql'])
+    assert.deepEqual(inserters, [
+      '20261021000000_seed_customer_review_test_cards.sql',
+      // The drafts migration inserts nothing on its own — it UPDATES the
+      // available cards — but its batch function carries an INSERT, which is
+      // the statement this sweep matches. Named rather than excluded.
+      '20261023000000_review_workflow_ai_drafts.sql',
+    ])
   })
 
   test('and the seed carries no marker guard, because it is a production file', () => {
@@ -163,16 +169,18 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
 
     // The step number is derived rather than hard-coded, so adding a step to
     // the runner is not a test failure — but MISNUMBERING one still is. The
-    // fixture must be step 9 of however many the runner declares, because the
-    // concurrency probe that follows it deliberately runs against a database
-    // the fixture has already populated.
+    // fixture must be the SECOND-TO-LAST step of however many the runner
+    // declares, because the concurrency probe that follows it deliberately runs
+    // against a database the fixture has already populated.
     const total = /══ all (\w+) steps passed/.exec(runner)?.[1]
     assert.ok(total, 'the runner no longer says how many steps it has')
     const totals = [...runner.matchAll(/══ \$?\w*\/(\d+)/g)].map(m => m[1])
     assert.ok(totals.length > 0, 'the runner has no numbered steps at all')
     assert.equal(new Set(totals).size, 1,
       `the runner's steps disagree about the total: ${[...new Set(totals)].join(', ')}`)
-    assert.ok(runner.includes(`9/${totals[0]}`), 'the fixture is not step 9')
+    const last = Number(totals[0])
+    assert.ok(runner.includes(`${last - 1}/${last}`),
+      `the fixture is not step ${last - 1} of ${last}`)
 
     // ...and checks that all sixteen landed, rather than assuming.
     assert.ok(runner.includes('the fixture loaded $LOADED card(s), expected 16'))
@@ -184,7 +192,10 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
     // step numbering staying coherent — and because a probe that silently
     // stopped racing would still print a pass.
     const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
-    assert.ok(runner.includes('10/10'), 'the concurrency probe is not the tenth step')
+    const total = /══ \$?\w*\/(\d+)/.exec(runner)?.[1]
+    assert.ok(total, 'the runner has no numbered steps at all')
+    assert.ok(runner.includes(`${total}/${total}`),
+      `the concurrency probe is not the last (${total}th) step`)
 
     // Two background processes, waited on separately.
     assert.equal((runner.match(/race_insert .*&$/gm) ?? []).length, 2,

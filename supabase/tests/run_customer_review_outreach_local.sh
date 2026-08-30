@@ -111,7 +111,10 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASELINE="supabase/tests/bootstrap/000_customer_review_module_baseline.sql"
 ASSERTIONS="supabase/tests/customer_review_test_card_assertions.sql"
 FIXTURE="supabase/fixtures/customer_review_test_cards.sql"
-PENDING="20261017000000_customer_review_outreach.sql"
+PENDING="20261023000000_review_workflow_ai_drafts.sql"
+# Test-only, applied BETWEEN the two: three cards in three states, so the
+# rewrite guard in 20261023000000 can be checked against something.
+REWRITE_PROBE="supabase/tests/_review_workflow_drafts_before.sql"
 MIGRATIONS=(
   "20260609_create_attendance_records.sql"
   "20260645_create_control_center_v1.sql"
@@ -119,6 +122,7 @@ MIGRATIONS=(
   "20260661_add_permission_engine_bulk_resolver.sql"
   "20260662_fix_permission_resolver_team_cast.sql"
   "20261017000000_customer_review_outreach.sql"
+  "20261023000000_review_workflow_ai_drafts.sql"
 )
 
 MARKER="boe-disposable-customer-review-test"
@@ -176,7 +180,7 @@ require_disposable_stack || exit 1
 echo "══ marker present; public, auth, storage and the ledger are all empty — safe to build"
 echo
 
-echo "══ 1/10 baseline (TEST-ONLY, not a migration)"
+echo "══ 1/12 baseline (TEST-ONLY, not a migration)"
 echo "──      $BASELINE"
 psql_file "$REPO/$BASELINE"
 echo "        ✓ applied"
@@ -184,7 +188,7 @@ echo "        ✓ applied"
 step=2
 for m in "${MIGRATIONS[@]}"; do
   echo
-  echo "══ $step/10 $m"
+  echo "══ $step/12 $m"
   if [ "$m" = "$PENDING" ]; then
     # The file under review. It is allowed to differ from HEAD — but the
     # difference is printed rather than assumed, so a run can never quietly
@@ -199,17 +203,26 @@ for m in "${MIGRATIONS[@]}"; do
     echo "FATAL: prerequisite supabase/migrations/$m differs from HEAD. Refusing to run." >&2
     exit 1
   fi
+  if [ "$m" = "$PENDING" ]; then
+    echo "        laying down the rewrite probe first:"
+    echo "        $REWRITE_PROBE"
+    psql_file "$REPO/$REWRITE_PROBE"
+    echo "        ✓ three cards, one available, one booked, one verified"
+    step=$((step + 1))
+    echo
+    echo "══ $step/12 $m"
+  fi
   psql_file "$REPO/supabase/migrations/$m"
   echo "        ✓ applied"
   step=$((step + 1))
 done
 
 echo
-echo "══ 8/10 $ASSERTIONS"
+echo "══ 10/12 $ASSERTIONS"
 psql_file "$REPO/$ASSERTIONS"
 
 echo
-echo "══ 9/10 $FIXTURE (TEST-ONLY, not a migration)"
+echo "══ 11/12 $FIXTURE (TEST-ONLY, not a migration)"
 psql_file "$REPO/$FIXTURE"
 LOADED="$(_psql_raw "select count(*) from public.customer_review_test_cards where card_ref like 'TEST-0%'")"
 if [ "$LOADED" != "16" ]; then
@@ -223,7 +236,7 @@ echo "            -f - < supabase/fixtures/customer_review_test_cards_clear.sql"
 
 
 echo
-echo "══ 10/10 the one-live-screenshot guarantee, at the DATABASE boundary"
+echo "══ 12/12 the one-live-screenshot guarantee, at the DATABASE boundary"
 echo "──      Two psql PROCESSES, two connections, two transactions, two DIFFERENT"
 echo "──      images, one card. Neither can see the other's uncommitted row, which"
 echo "──      is exactly the situation the route's count-then-insert could not"
@@ -319,8 +332,8 @@ _psql_raw "
   select 1" >/dev/null || true
 echo "        ✓ probe rows removed"
 echo
-echo "══ all ten steps passed"
-echo "══ step 7 ran the migration's own do \$\$ … \$\$ assertion block, step 8 ran"
-echo "══ the workflow assertions, step 9 loaded the fixture, and step 10 raced two"
+echo "══ all twelve steps passed"
+echo "══ step 9 ran the migration's own do \$\$ … \$\$ assertion block, step 10 ran"
+echo "══ the workflow assertions, step 11 loaded the fixture, and step 12 raced two"
 echo "══ real sessions at the screenshot index; any of the four would have aborted"
 echo "══ this script."

@@ -72,6 +72,9 @@ describe('the migration is one file, correctly sequenced', () => {
       // The Image Editor's result history, from a separate branch. Higher
       // still, unapplied, and it touches nothing this module creates.
       '20261022000000_image_editor_result_history.sql',
+      // The drafts migration: it rewrites the still-available cards and adds
+      // the batch table, so it applies after both the schema and the seed.
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
   })
 
@@ -688,7 +691,7 @@ describe('permission registration', () => {
   test('it matches src/lib/permissions/modules.ts', () => {
     const modules = lf(readFileSync(join(ROOT, 'src/lib/permissions/modules.ts'), 'utf8'))
     assert.ok(modules.includes("moduleKey: 'customer_review_requests'"))
-    assert.ok(modules.includes("displayName: 'Review Workflow Test (Internal)'"))
+    assert.ok(modules.includes("displayName: 'Review Workflow'"))
   })
 
   test('both actions are deny-by-default, and no employee override is seeded', () => {
