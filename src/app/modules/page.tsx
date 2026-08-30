@@ -17,6 +17,7 @@ import {
 } from '@/hooks/queries/usePermissionContext'
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
+import { Image as ImageIcon } from 'lucide-react'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -366,6 +367,19 @@ export default function BoeOsHomePage() {
       accent: '#DC1F2E',
       icon: <OrdersIcon />,
       notificationCount: orderCount.count,
+    }] : []),
+    ...(canOpenModule('image_editor') ? [{
+      key: 'image_editor',
+      title: 'Image Editor',
+      // The registered module description, verbatim — permission_modules and
+      // app_modules both carry this sentence, and a card that paraphrased it
+      // would drift from what Control Center shows an administrator.
+      description: 'Turn factory furniture photographs into catalogue studio images.',
+      href: '/image-editor',
+      accent: '#BE185D',
+      icon: <ImageIcon size={26} strokeWidth={1.8} />,
+      // Nothing is stored, so there is nothing to count.
+      notificationCount: null,
     }] : []),
     ...(effectiveProfile?.role === 'admin' ? [{
       key: 'control_center',
