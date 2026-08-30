@@ -25,9 +25,18 @@ finishes → compare, download in PNG / JPG / WebP, or **Edit another set**.
 There is no output shape to choose: the master is square, with enough
 surrounding background to crop a landscape or portrait from later.
 
-Nothing is stored. Uploads are read into memory, sent to the provider, and the
-results come back in the response body as data URIs. No bucket, no table, no
-file on disk, no history — closing the tab loses everything.
+**The uploaded photograph is never stored.** It is read into memory, sent to the
+provider, and dropped — no bucket, no table, no file on disk.
+
+**The generated master is stored, for you alone, for seven days.** Every studio
+image you generate is saved to your own private history and appears under
+*Recent results*. Mark one **Keep** and it stays until you say otherwise;
+anything not kept is deleted seven days after it was generated. You can delete
+any of your own results at any time. Nobody else can see them — administrators
+included.
+
+See [Recent results](#recent-results) for the retention rules and how the
+deletion actually runs.
 
 ### The queue
 
@@ -313,11 +322,94 @@ so nobody reads the gate as a guarantee.
 - Each request logs fal's request id, the phase, the duration and the outcome
   category — never the image, the data URI or the key.
 
+## Recent results
+
+Every generated master is saved to the employee's own history and shown under
+*Recent results* on `/image-editor`.
+
+### The rules
+
+| Rule | Detail |
+| --- | --- |
+| Private to the owner | A result is visible only to the account that generated it. There is no admin view, no sharing and no company-wide gallery. |
+| Seven days from generation | The window is set by the database (`expires_at` defaults to `now() + interval '7 days'`) and is never written by the application. |
+| Keep holds it indefinitely | A kept result is never swept, however old. |
+| Unkeep restores the ORIGINAL window | It does not grant a fresh seven days. Unkeeping something already past its window makes it due immediately — the page warns before doing it. |
+| Delete is real | The owner's Delete removes the storage object and the row. It is not a hide. |
+| The photograph is never stored | Only the generated PNG master, plus the uploaded file's **name** so the row is recognisable. |
+
+### What is stored
+
+- Bucket **`image-editor-results`** — private, PNG only, 15 MB ceiling. Reads are
+  one-hour signed URLs minted by the API after it has checked ownership; no
+  public URL is ever constructed.
+- Table **`public.image_editor_results`** — owner, object key, source file name,
+  the verification verdict carried through unchanged from the generation
+  response, `kept`, `created_at`, `expires_at`.
+- Object key is always `<user_id>/<result_id>.png`. **The first segment is
+  load-bearing:** the storage policies authorize by parsing it.
+
+### How deletion actually runs
+
+`GET /api/image-editor/cleanup`, once a day at 03:00 UTC, scheduled by the
+`crons` entry in `vercel.json`. Vercel sends `Authorization: Bearer $CRON_SECRET`
+automatically; with `CRON_SECRET` unset the route answers **503 and deletes
+nothing**, so an unconfigured deployment never exposes an unauthenticated
+endpoint that removes rows.
+
+**The sweep is not load-bearing for privacy.** Expiry is enforced on *read* —
+the listing filters `kept OR expires_at > now()`, the exact complement of what
+the sweep selects. A cron that is late, fails, or was never scheduled costs
+storage; it can never make an expired image reappear.
+
+**Ordering: object first, then row.** Always, in both the sweep and the owner's
+manual delete, which share one function so they cannot drift apart:
+
+| Order | If the second step fails |
+| --- | --- |
+| object → row *(what we do)* | The row survives, is still due, and the next pass retries. Removing an object that is already gone is not an error, so the retry is harmless. |
+| row → object | The only record of where the object lives is destroyed. The bytes stay in a private bucket for ever — paid for, unreachable, invisible to every future sweep. |
+
+One failure never stops the rest: the sweep records it, moves on, and the failed
+row stays due for tomorrow. It runs sequentially and in batches of 500, because a
+serverless function must not open a storage call per row at once.
+
+Saving mirrors this: object first, then row, and if the insert fails the object
+it just uploaded is removed, so the orphan window stays inside one function.
+
+### When saving fails
+
+Persistence is **best effort and always last**. By the time it runs, two
+provider requests have been paid for and a finished image is in hand, so a
+storage fault must never turn that into a failed generation. It cannot throw and
+cannot change the status code. The response carries `historySaved: false`, and
+the result card shows an amber warning telling the employee to download now
+because this image will not be in their history. The picture is delivered either
+way.
+
+### Authorization
+
+Reading, keeping and deleting need module entry (`image_editor:view`) — **not**
+`create`. `create` authorizes *spending*; requiring it here would mean an
+employee whose Use access was withdrawn could no longer reach, or delete, work
+they had already made.
+
+The API routes act with the **service role, which bypasses row-level security**,
+so the `.eq('user_id', …)` on every statement is the authorization, not a
+defence in depth. The RLS and storage policies protect the table and bucket from
+everything else. A result belonging to somebody else answers **404, not 403** —
+a 403 would confirm the id exists.
+
+This table is also the first surface the Image Editor has had for the house
+`module_entry_open()` RESTRICTIVE gate, which `20261020000000` noted it could
+not attach for want of a table.
+
 ## Configuration
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `FAL_KEY` | yes | Server-side key for fal.ai. Without it the page says the service is not set up and generates nothing. |
+| `CRON_SECRET` | for cleanup | Shared secret for the daily sweep. Set it in Vercel, not only in `.env.local`. Unset ⇒ the cleanup route refuses (503) and expired results are hidden but never reclaimed. |
 
 Get one from <https://fal.ai/dashboard/keys>. Put it in `.env.local` (or the
 deployment's environment) — never in a `NEXT_PUBLIC_` variable.

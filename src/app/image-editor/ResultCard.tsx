@@ -1,9 +1,10 @@
 'use client'
 
-import { Download, RotateCcw, Trash2, AlertTriangle, ImageOff, Eye } from 'lucide-react'
+import { Download, RotateCcw, Trash2, AlertTriangle, ImageOff, Eye, CloudOff } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import type { QueueItem } from '@/lib/imageEditor/queue'
 import { MANUAL_REVIEW_NOTE, needsManualReview } from '@/lib/imageEditor/verification'
+import { RETENTION_DAYS } from '@/lib/imageEditor/retention'
 
 // One finished — or one failed — image.
 //
@@ -92,6 +93,24 @@ export function ResultCard({
         }}>
           <Eye size={12} strokeWidth={2} style={{ flexShrink: 0, marginTop: '2px' }} />
           <span>{MANUAL_REVIEW_NOTE}</span>
+        </div>
+      )}
+
+      {/* The image is fine; the copy of it is not. This is the one case where
+          Download stops being a convenience and becomes the only way to keep
+          the picture, so it is a warning rather than a note — the amber the
+          rest of the app uses for "act on this", not the red it uses for
+          "something failed", because nothing failed. */}
+      {item.result && item.historySaved === false && (
+        <div className="boe-alert-amber" style={{
+          display: 'flex', gap: '8px', alignItems: 'flex-start', marginTop: '10px',
+        }}>
+          <CloudOff size={14} strokeWidth={2} color={colors.amber} style={{ flexShrink: 0, marginTop: '1px' }} />
+          <div style={{ fontSize: '11px', color: colors.secondary, lineHeight: 1.45 }}>
+            <strong style={{ color: colors.primary }}>Not saved to your recent results.</strong>
+            {' '}Download it now — this image will not be in your {RETENTION_DAYS}-day
+            history and will be lost when you close this page.
+          </div>
         </div>
       )}
 

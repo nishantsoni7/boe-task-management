@@ -21,7 +21,10 @@
  *   * the caller is authenticated BEFORE the upload is read, so an anonymous
  *     POST cannot make BOE pay for anything;
  *   * the API key is read from the environment and never placed in a response;
- *   * nothing is persisted: no storage bucket, no insert, no file written;
+ *   * the UPLOADED PHOTOGRAPH is never persisted. Only the generated master
+ *     reaches the seven-day history, and only after both provider calls have
+ *     succeeded — a storage fault must never turn a paid-for image into a
+ *     failure;
  *   * the size limit is enforced against the bytes that ARRIVED, not against the
  *     size the multipart part claims;
  *   * the node runtime is declared, without which sharp cannot load at all.
@@ -313,13 +316,54 @@ describe('the API key', () => {
   })
 })
 
-describe('nothing is stored', () => {
-  test('no storage bucket, no table write, no file on disk', () => {
-    assert.ok(!SOURCE.includes('.storage'), 'no Supabase Storage')
-    assert.ok(!SOURCE.includes('.insert('), 'no row is written')
-    assert.ok(!SOURCE.includes('.upsert('), 'no row is written')
+describe('what is stored, and what still is not', () => {
+  // This block used to assert that NOTHING was stored. 20261021000000 gave the
+  // module a seven-day per-user history, so the contract changed — but only in
+  // one direction, and the parts that did not change are the ones worth
+  // guarding now.
+
+  test('the uploaded photograph is never stored', () => {
+    const body = postCode()
+    // The only thing handed to saveResult is `master`, the normalised output.
+    // `bytes` and `prepared.bytes` are the employee's own photograph and must
+    // not reach the bucket.
+    assert.match(body, /master,/, 'the generated master is what is saved')
+    assert.ok(!/upload\([^)]*\bbytes\b/.test(body), 'the raw upload is never uploaded')
+    assert.ok(
+      !/sourceBytes|prepared\.bytes\s*,\s*\n?\s*sourceFileName/.test(body),
+      'the prepared source is never stored either',
+    )
+  })
+
+  test('only the NAME of the upload is kept, not the file', () => {
+    assert.match(postCode(), /sourceFileName:\s*file\.name/)
+  })
+
+  test('no file is written to disk', () => {
     assert.ok(!SOURCE.includes('writeFile'), 'no file is written to disk')
     assert.ok(!SOURCE.includes("from 'node:fs'"), 'the filesystem is not touched')
+  })
+
+  test('history is written LAST, after both provider calls have succeeded', () => {
+    const body = postCode()
+    assert.ok(
+      body.indexOf('normaliseSquare(') < body.indexOf('saveResult('),
+      'the master must exist before anything is stored',
+    )
+  })
+
+  test('a storage failure never becomes a failed generation', () => {
+    const body = postCode()
+    // No throw, no non-2xx: the outcome is inspected and reported in the body.
+    assert.match(body, /historySaved:\s*saved\.ok/, 'the response states whether it saved')
+    assert.ok(
+      !/if\s*\(\s*!saved\.ok\s*\)\s*\{?\s*return/.test(body),
+      'a failed save must not return early — the image is still delivered',
+    )
+  })
+
+  test('the row is written for the caller, never for an id from the request', () => {
+    assert.match(postCode(), /userId:\s*user\.id/)
   })
 })
 
