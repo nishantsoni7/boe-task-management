@@ -26,8 +26,8 @@
 
 import { test, describe, before, after, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { existsSync, writeFileSync, unlinkSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import sharp from 'sharp'
 import { VERIFICATION_HEADER } from '@/lib/imageEditor/verification'
 import { MASTER_WIDTH, MASTER_HEIGHT } from '@/lib/imageEditor/studioMaster'
@@ -117,11 +117,30 @@ type Call = { url: string; body: unknown; headers: Record<string, string> }
  * failure that looks like a pipeline bug and is not.
  */
 let userSeq = 0
-function supabaseReply(url: string): Response {
+
+/**
+ * What the permission engine says for this test. Keyed by action, so a test can
+ * store the dormant-child state (view false, create true) that Control Center
+ * genuinely allows.
+ */
+let permissionGrants: Record<string, boolean> = { view: true, create: true }
+let permissionRole: string | null = 'member'
+/** Every resolve_permission action asked for, in order. */
+let permissionCalls: string[] = []
+
+function supabaseReply(url: string, init?: RequestInit): Response {
+  // resolve_permission(p_user_id, p_module_key, p_action_key)
+  if (url.includes('/rpc/resolve_permission')) {
+    const body = JSON.parse(String(init?.body ?? '{}'))
+    permissionCalls.push(String(body.p_action_key))
+    return new Response(JSON.stringify(permissionGrants[String(body.p_action_key)] === true), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    })
+  }
   const id = url.includes('/auth/') ? `user-${++userSeq}` : `user-${userSeq}`
   const json = url.includes('/auth/')
     ? { id, aud: 'authenticated', email: 'e@boe.test', app_metadata: {}, user_metadata: {}, created_at: '2020-01-01T00:00:00Z' }
-    : { id }
+    : { id, role: permissionRole }
   return new Response(JSON.stringify(json), {
     status: 200, headers: { 'Content-Type': 'application/json' },
   })
@@ -136,7 +155,7 @@ function stubFetch(shotImage: Buffer, opts: { upscaleSide?: number } = {}) {
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(typeof input === 'object' && 'url' in input ? input.url : input)
 
-    if (url.startsWith(SUPABASE_URL)) return supabaseReply(url)
+    if (url.startsWith(SUPABASE_URL)) return supabaseReply(url, init)
 
     const body = JSON.parse(String(init?.body ?? '{}'))
     providerCalls.push({
@@ -176,6 +195,9 @@ async function post(upload: Buffer) {
 }
 
 beforeEach(() => {
+  permissionGrants = { view: true, create: true }
+  permissionRole = 'member'
+  permissionCalls = []
   process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'stub-service-key'
   process.env.FAL_KEY = 'stub-fal-key'
@@ -312,9 +334,9 @@ describe('a confirmed pass', () => {
 describe('no retry was introduced', () => {
   test('a provider failure is answered once, not retried', async () => {
     let n = 0
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(typeof input === 'object' && 'url' in input ? input.url : input)
-      if (url.startsWith(SUPABASE_URL)) return supabaseReply(url)
+      if (url.startsWith(SUPABASE_URL)) return supabaseReply(url, init)
       n++
       return new Response('upstream detail', { status: 500 })
     }) as typeof globalThis.fetch
@@ -358,9 +380,9 @@ describe('what the browser is told', () => {
   })
 
   test('an upstream error body is never forwarded', async () => {
-    globalThis.fetch = (async (input: string | URL | Request) => {
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
       const url = String(typeof input === 'object' && 'url' in input ? input.url : input)
-      if (url.startsWith(SUPABASE_URL)) return supabaseReply(url)
+      if (url.startsWith(SUPABASE_URL)) return supabaseReply(url, init)
       return new Response('SECRET-UPSTREAM-DIAGNOSTIC', { status: 500 })
     }) as typeof globalThis.fetch
 
@@ -430,5 +452,93 @@ describe('the request bodies are byte-for-byte the reviewed ones', () => {
     const body = bodyOf('product-shot')!
     assert.notEqual(body.ref_image_url, body.image_url,
       'the reference must be the approved studio image, not the upload')
+  })
+})
+
+// ═══ Permission, and the state that must not leak ═════════════════════════════
+//
+// Generating costs two billable provider requests, so the grant is resolved
+// before the upload is read, before the studio reference is loaded, and before
+// any provider call. These tests execute the real route and count what it did.
+
+describe('permission enforcement', () => {
+  /** Run one POST under a stored permission state. */
+  async function attempt(grants: Record<string, boolean>, role = 'member') {
+    stubFetch(await chair())
+    permissionGrants = grants
+    permissionRole = role
+    const res = await post(await chair({ cluttered: true }))
+    return { res, providerCalls: [...providerCalls], asked: [...permissionCalls] }
+  }
+
+  test('View + Use generates normally', async () => {
+    const { res, providerCalls: calls } = await attempt({ view: true, create: true })
+    assert.equal(res.status, 200)
+    assert.equal(calls.length, 2)
+  })
+
+  test('View only is refused with 403, and spends nothing', async () => {
+    const { res, providerCalls: calls } = await attempt({ view: true, create: false })
+    assert.equal(res.status, 403)
+    assert.equal(calls.length, 0, 'a refusal must not reach a provider')
+    const payload = await res.json()
+    assert.match(payload.error, /permission to generate/i)
+    assert.equal(payload.noRetry, true, 'pressing again cannot grant permission')
+  })
+
+  test('neither grant is refused with 403', async () => {
+    const { res, providerCalls: calls } = await attempt({ view: false, create: false })
+    assert.equal(res.status, 403)
+    assert.equal(calls.length, 0)
+  })
+
+  test('Use stored WITHOUT View is refused — the dormant-child state', async () => {
+    // Control Center allows this pair to be stored. The Image Editor has no
+    // tables, so no RESTRICTIVE policy applies it and resolve_permission returns
+    // `create` = true on its own. The route must still refuse.
+    const { res, providerCalls: calls, asked } = await attempt({ view: false, create: true })
+    assert.equal(res.status, 403)
+    assert.equal(calls.length, 0, 'the dormant-child state must not spend money')
+    assert.ok(asked.includes('view'), 'the route must resolve `view`, not only `create`')
+  })
+
+  test('BOTH actions are resolved, never `create` alone', async () => {
+    const { asked } = await attempt({ view: true, create: true })
+    assert.ok(asked.includes('view'))
+    assert.ok(asked.includes('create'))
+  })
+
+  test('the refusal happens BEFORE the upload is read', async () => {
+    // Proved from the source: a body read after the refusal would still be a
+    // body read. The 403 must precede formData().
+    const SOURCE = readFileSync(
+      join(process.cwd(), 'src/app/api/image-editor/studio/route.ts'), 'utf8')
+    const guard = SOURCE.indexOf('canGenerate(svc')
+    assert.ok(guard > -1, 'the guard must exist')
+    for (const later of ['req.formData()', 'loadStudioReference', 'generateProductShot(', 'upscaleImage(']) {
+      const at = SOURCE.indexOf(later)
+      if (at === -1) continue
+      assert.ok(guard < at, `the permission check must precede ${later}`)
+    }
+  })
+
+  test('an admin generates without any grant row', async () => {
+    const { res, providerCalls: calls } = await attempt({ view: false, create: false }, 'admin')
+    assert.equal(res.status, 200)
+    assert.equal(calls.length, 2)
+  })
+
+  test('a missing role is refused, not treated as an ordinary employee', async () => {
+    const { res, providerCalls: calls } = await attempt({ view: true, create: true }, null as unknown as string)
+    assert.equal(res.status, 403)
+    assert.equal(calls.length, 0)
+  })
+
+  test('the refusal names no provider, module key or action', async () => {
+    const { res } = await attempt({ view: true, create: false })
+    const text = JSON.stringify(await res.json())
+    for (const leak of ['fal', 'bria', 'seedvr', 'image_editor', 'resolve_permission', 'create']) {
+      assert.ok(!text.toLowerCase().includes(leak.toLowerCase()), `"${leak}" reached the browser`)
+    }
   })
 })

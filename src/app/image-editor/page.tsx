@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ImageIcon, Upload, Wand2, Download, Loader2 } from 'lucide-react'
+import { ImageIcon, Upload, Wand2, Download, Loader2, Lock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
@@ -20,6 +20,10 @@ import {
 } from '@/lib/imageEditor/queue'
 import { DOWNLOAD_FORMATS, type DownloadFormat } from '@/lib/imageEditor/downloadFormats'
 import { VERIFICATION_HEADER, parseVerification } from '@/lib/imageEditor/verification'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import {
+  deriveImageEditorCapabilities, IMAGE_EDITOR_MODULE_KEY,
+} from '@/lib/permissions/imageEditor'
 import { QueueList } from './QueueList'
 import { ResultCard } from './ResultCard'
 
@@ -48,6 +52,18 @@ type Phase =
   | 'running'
 
 export default function ImageEditorPage() {
+  // Entry is already decided by ModuleGuard in layout.tsx; what this reads is
+  // the SECOND grant. `canGenerate` is false unless BOTH view and create are
+  // effective, so the dormant-child state cannot light the button up.
+  //
+  // This hides a control. It does not authorize anything: POST
+  // /api/image-editor/studio resolves the same two grants server-side before it
+  // reads the upload, and refuses with 403 whatever the browser believes.
+  const permissionContext = usePermissionContext()
+  const { canGenerate } = deriveImageEditorCapabilities(
+    permissionContext.role,
+    permissionContext.permissionsByModule.get(IMAGE_EDITOR_MODULE_KEY) ?? [],
+  )
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
@@ -387,7 +403,26 @@ export default function ImageEditorPage() {
 
         {/* ── Output shape ────────────────────────────────────────────────── */}
         {/* ── Generate ────────────────────────────────────────────────────── */}
-        {pending > 0 && !running && (
+        {/* Somebody with View but not Use gets a sentence, not a dead button.
+            A disabled control with no explanation reads as a fault in the
+            product; this says what is missing and who can grant it. The button
+            is not rendered at all, so there is nothing to click and no generic
+            failure to misread. The API refuses independently — this is the
+            explanation, never the boundary. */}
+        {pending > 0 && !running && !canGenerate && (
+          <div className="boe-alert-amber" style={{
+            display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '14px',
+          }}>
+            <Lock size={14} strokeWidth={2} color={colors.amber} style={{ flexShrink: 0, marginTop: '1px' }} />
+            <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.45 }}>
+              <strong style={{ color: colors.primary }}>Use access is not enabled for your account.</strong>
+              {' '}You can open the Image Editor and look at earlier results, but not generate
+              new studio images. Ask an administrator to enable <em>Use</em> for the Image Editor.
+            </div>
+          </div>
+        )}
+
+        {pending > 0 && !running && canGenerate && (
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
             <button className="boe-btn boe-btn-primary" onClick={() => { void run() }} disabled={running}>
               <Wand2 size={13} strokeWidth={2} />

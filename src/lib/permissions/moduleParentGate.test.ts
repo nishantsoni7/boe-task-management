@@ -147,7 +147,7 @@ describe('the gated registry', () => {
     for (const key of [...MIGRATED, ...CONTROLS]) {
       assert.ok(isEngineGatedModule(key), `${key} must be engine-gated`)
     }
-    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 9)
+    assert.equal(ENGINE_GATED_MODULE_KEYS.length, 10)
   })
 
   test('Attendance and Payroll are deliberately excluded', () => {

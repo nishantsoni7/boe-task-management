@@ -43,8 +43,27 @@ const ACTION_DISPLAY_LABELS: Record<string, string> = {
   manage_quotations: 'Submit Quotation Requests',
 }
 
-function actionDisplayLabel(action: PermissionActionRef): string {
-  return ACTION_DISPLAY_LABELS[action.action_key] ?? action.display_name
+/**
+ * Labels for an action that means something different in one module.
+ *
+ * The same idea as MODULE_SCOPED_ACTION_WORDS in the permissions page, which
+ * exists because `view_all` in Orders is not `view_all` in Finance. It is
+ * needed here for the same reason and one more: permission_actions.display_name
+ * is GLOBAL per action key, so renaming `create` to suit one module would
+ * rename it for Task Management, Meetings and Orders too.
+ *
+ * image_editor.create is "Use" because that is what the grant means to the
+ * person granting it — this module's only action spends money. The internal key
+ * stays `create`, a system action, so no new vocabulary was introduced.
+ */
+const MODULE_SCOPED_ACTION_LABELS: Record<string, Record<string, string>> = {
+  image_editor: { create: 'Use' },
+}
+
+function actionDisplayLabel(action: PermissionActionRef, moduleKey: string): string {
+  return MODULE_SCOPED_ACTION_LABELS[moduleKey]?.[action.action_key]
+    ?? ACTION_DISPLAY_LABELS[action.action_key]
+    ?? action.display_name
 }
 
 // GET — UI-ready permission tree for one employee: identity + every active
@@ -115,7 +134,7 @@ export async function GET(
           const source = resolved?.source ?? 'system_default'
           return {
             actionKey: action.action_key,
-            displayName: actionDisplayLabel(action),
+            displayName: actionDisplayLabel(action, mod.module_key),
             allowed: resolved?.allowed ?? defaultAllowed,
             source,
             sourceLabel: sourceLabel(source),

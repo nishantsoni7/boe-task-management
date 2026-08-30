@@ -266,3 +266,26 @@ registerModule({
     { actionKey: 'view_all', displayName: 'View All Company Orders' },
   ],
 })
+
+registerModule({
+  moduleKey: 'image_editor',
+  displayName: 'Image Editor',
+  description: 'Turn factory furniture photographs into catalogue studio images.',
+  actions: [
+    // BOTH display names are the GLOBAL vocabulary, deliberately.
+    //
+    // syncPermissionRegistry upserts permission_actions on conflict
+    // (action_key) and writes display_name with it, so a per-module label here
+    // would not be per-module at all: `npm run permissions:sync` would rename
+    // `create` to "Use" for Task Management, Meetings, Orders and everything
+    // else that has it.
+    //
+    // Control Center shows this module's `create` as "Use" through the
+    // module-scoped label map in
+    // src/app/api/control-center/permissions/employees/[id]/route.ts, which is
+    // the same mechanism MODULE_SCOPED_ACTION_WORDS already uses to say what
+    // `view_all` means in Orders versus Finance.
+    { actionKey: 'view', displayName: 'View' },
+    { actionKey: 'create', displayName: 'Create' },
+  ],
+})
