@@ -346,7 +346,24 @@ const PURGE_LIST_PAGE = 100
  * NEVER THROWS. It reports, and the caller decides — which for the deletion
  * route means refusing to remove the employee while anything is left, so the
  * rows that carry the storage paths survive and the administrator can try
- * again. A failure here is recoverable; an orphan is not.
+ * again.
+ *
+ * NOT ATOMIC, AND IT CANNOT BE
+ * ---------------------------
+ * Storage and Postgres are two systems with no transaction between them, and
+ * this works through the history one result at a time. A failure partway
+ * through therefore leaves EARLIER RESULTS ALREADY DELETED — object and row —
+ * and those deletions stand. There is no rollback: the bytes are gone and
+ * nothing here holds a copy to put back. Any code that claimed otherwise would
+ * be claiming to un-delete a file.
+ *
+ * What it offers instead is REPEATABILITY. Every run re-lists what is actually
+ * left, removing an object that is already gone is not an error, and a row
+ * whose object went first is simply retried — so calling this again continues
+ * from wherever the last attempt stopped and never double-counts or corrupts
+ * anything. `rowsDeleted` and `orphanObjects` therefore report what THIS
+ * attempt removed, not what the history contained, and the caller must say so
+ * rather than "nothing was deleted".
  */
 export async function purgeUserResults(
   deps: PurgeDeps,

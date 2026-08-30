@@ -33,9 +33,22 @@
 -- SELECT rules — on the table and on the object — require
 -- `kept or expires_at > now()`. An expired result is therefore unreadable and
 -- undownloadable the moment its window passes, with the caller's own token,
--- whether or not the nightly sweep has reclaimed the bytes yet. Keep, Unkeep
--- and Delete are unaffected: they are UPDATE and DELETE, and a person must
--- always be able to unkeep or remove their own work.
+-- whether or not the nightly sweep has reclaimed the bytes yet.
+--
+-- Keep, Unkeep and Delete are UPDATE and DELETE and are left on ownership
+-- alone. What that does NOT mean is that a client holding a user token can
+-- still reach an expired row: PostgreSQL applies the SELECT policy to any
+-- statement that reads the row (a WHERE clause does), and refuses an UPDATE
+-- whose resulting row would fail it — so with a user's own token an expired
+-- unkept row cannot be found, and unkeeping an expired KEPT row is refused
+-- outright. Both were measured, not assumed; see
+-- supabase/tests/image_editor_result_history_assertions.sql.
+--
+-- The application does none of it that way. Keep, Unkeep, Delete and the sweep
+-- all go through API routes acting with the SERVICE ROLE, which bypasses RLS
+-- entirely, so every one of those operations behaves exactly as it did before
+-- this condition existed. What the condition removes is a direct client's
+-- ability to touch material it is no longer allowed to see.
 --
 -- WHEN AN EMPLOYEE IS DELETED
 -- ---------------------------
@@ -229,10 +242,26 @@ alter table public.image_editor_results enable row level security;
 --
 -- `kept` disables the countdown entirely — a kept row is readable however old,
 -- which is what Keep means — and un-keeping restores the original window, so an
--- expired row disappears again the moment it is unkept. Nothing else changes:
--- UPDATE (Keep/Unkeep) and DELETE stay on ownership alone, deliberately, so an
--- employee can still unkeep or delete something that has expired. A SELECT-only
--- rule cannot strand a row.
+-- expired row disappears again the moment it is unkept.
+--
+-- WHAT THIS DOES TO UPDATE AND DELETE, WHICH IS NOT NOTHING
+-- ---------------------------------------------------------
+-- Those policies are unchanged and stay on ownership alone, but a SELECT rule
+-- is not confined to SELECT: PostgreSQL applies it to any statement that has to
+-- READ the row, which every `where id = …` does. Measured behaviour with a
+-- user's own token, once this condition is in place:
+--
+--   * an expired UNKEPT row cannot be found to update or delete — 0 rows;
+--   * unkeeping an expired KEPT row is REFUSED, because the resulting row would
+--     no longer be visible;
+--   * everything unexpired or kept behaves exactly as before.
+--
+-- That is acceptable here only because the application never does any of this
+-- with a user token. Keep, Unkeep, the owner's Delete and the nightly sweep all
+-- run in API routes holding the SERVICE ROLE, which bypasses row-level security,
+-- so the product behaviour — including "unkeeping an expired result deletes it"
+-- — is unchanged. The same suite that measured the refusals above proves the
+-- service-role path still works.
 drop policy if exists image_editor_results_select_own on public.image_editor_results;
 create policy image_editor_results_select_own
   on public.image_editor_results
@@ -302,9 +331,12 @@ create policy image_editor_results_module_entry_gate
 -- apply to it as well: no cross-user read can be smuggled in through this
 -- subquery, and losing module entry closes this door with the others.
 --
--- INSERT and DELETE below stay on ownership alone. An expired object must still
--- be deletable — by its owner, and by the sweep — or the retention rule would
--- prevent the very deletion it exists to cause.
+-- INSERT and DELETE below stay on ownership alone, and the sweep deletes with
+-- the service role, so an expired object is always reclaimable. With a USER
+-- token the same reading rule applies as on the table: an object whose row is no
+-- longer visible cannot be found by a `where name = …`, so a client cannot
+-- delete it either. Nothing in the application deletes an object with a user
+-- token — the routes hold the service role — so this costs the product nothing.
 drop policy if exists image_editor_results_storage_select on storage.objects;
 create policy image_editor_results_storage_select
   on storage.objects

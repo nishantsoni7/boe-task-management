@@ -426,7 +426,7 @@ describe('emptying one employee\'s history before they are deleted', () => {
     assert.deepEqual(table.held.map(r => r.id), ['r9'])
   })
 
-  test('a failed object delete stops everything and KEEPS the row, so the path survives', async () => {
+  test('a failed object delete KEEPS the row, so the path survives for a retry', async () => {
     const { calls, note } = recorder()
     const bucket = fakeBucket(['user-1/r1.png'], note, { removeError: 'storage is down' })
     const table = fakeRows([{ id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' }], note)
@@ -442,6 +442,51 @@ describe('emptying one employee\'s history before they are deleted', () => {
     // The row is still there, which is what makes a retry possible at all.
     assert.deepEqual(table.held.map(r => r.id), ['r1'])
     assert.ok(!calls.includes('deleteRow:r1'), 'the row must never go while its object is still there')
+  })
+
+  test('a failure partway leaves the EARLIER results deleted, and a retry finishes', async () => {
+    // The purge spans Storage and Postgres with no transaction between them and
+    // works one result at a time, so it cannot be atomic. What it can be is
+    // repeatable: this proves both halves of that, because the route's wording
+    // to an administrator depends on them.
+    const { note } = recorder()
+    const rows = [
+      { id: 'r1', user_id: 'user-1', storage_path: 'user-1/r1.png' },
+      { id: 'r2', user_id: 'user-1', storage_path: 'user-1/r2.png' },
+    ]
+    const held = new Set(['user-1/r1.png', 'user-1/r2.png'])
+    let locked: string | null = 'user-1/r2.png'
+    const table = fakeRows(rows, note)
+    const storage = {
+      async upload() { return { error: null } },
+      async remove(paths: string[]) {
+        if (locked && paths.includes(locked)) return { error: { message: 'object is locked' } }
+        for (const p of paths) held.delete(p)
+        return { error: null }
+      },
+      async list(prefix: string) {
+        return {
+          data: [...held].filter(p => p.startsWith(`${prefix}/`)).map(p => ({ name: p.slice(prefix.length + 1) })),
+          error: null,
+        }
+      },
+    }
+    const deps = { storage, listRows: table.listRows, deleteRow: table.deleteRow }
+
+    const first = await purgeUserResults(deps, 'user-1')
+    assert.equal(first.ok, false)
+    assert.equal(first.rowsDeleted, 1, 'the first result really was deleted')
+    assert.equal(held.has('user-1/r1.png'), false, 'and nothing can put it back')
+    assert.deepEqual(table.held.map(r => r.id), ['r2'], 'only the failed one is still listed')
+
+    // Repeatable: the second run re-lists what is actually left and finishes.
+    locked = null
+    const second = await purgeUserResults(deps, 'user-1')
+    assert.equal(second.ok, true)
+    assert.equal(second.rows, 1, 'it works from what remains, not from what there was')
+    assert.equal(second.rowsDeleted, 1)
+    assert.deepEqual(table.held, [])
+    assert.equal(held.size, 0)
   })
 
   test('a failed row delete is reported rather than swallowed', async () => {

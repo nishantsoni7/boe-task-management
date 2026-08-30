@@ -248,9 +248,14 @@ describe('an expired result cannot be read DIRECTLY either', () => {
   })
 
   test('Keep, Unkeep and Delete are NOT narrowed by expiry', () => {
-    // A retention rule on UPDATE or DELETE would strand the row it is meant to
-    // remove: the owner could not unkeep or delete something already expired,
-    // and neither could the sweep.
+    // The retention rule belongs on SELECT alone. Adding it to UPDATE or DELETE
+    // would stop the sweep and the owner's own Delete from removing the very
+    // rows the rule exists to remove.
+    //
+    // What a SELECT rule still does to those statements — with a USER token,
+    // not with the service role these routes hold — is measured against a real
+    // PostgreSQL in supabase/tests/image_editor_result_history_assertions.sql,
+    // because no source check can answer that.
     for (const name of [
       'image_editor_results_update_own',
       'image_editor_results_delete_own',
@@ -265,6 +270,30 @@ describe('an expired result cannot be read DIRECTLY either', () => {
   test('the migration refuses to finish if either SELECT rule loses the condition', () => {
     assert.match(MIGRATION, /image_editor_results_select_own does not enforce/)
     assert.match(MIGRATION, /image_editor_results_storage_select does not enforce/)
+  })
+
+  test('and a database suite exists that asks a real PostgreSQL, not a regex', () => {
+    // Source assertions cannot tell you whether an expired row is READABLE.
+    // These three files can, and the runner builds its own disposable database.
+    const runner = read('supabase/tests/run_image_editor_result_history_suite.sh')
+    const assertions = read('supabase/tests/image_editor_result_history_assertions.sql')
+    const fixture = read('supabase/tests/_image_editor_result_history_shaped_schema.sql')
+    assert.match(runner, /20261021000000_image_editor_result_history\.sql/,
+      'the suite applies the real migration, not a copy of it')
+    assert.match(fixture, /refusing to build a fixture in %/,
+      'and refuses to build anywhere but its own disposable database')
+    for (const claim of [
+      'owner A can SELECT an unexpired result',
+      'user B cannot SELECT any of A',
+      'owner A cannot SELECT their own expired unkept result',
+      'owner A can SELECT an expired kept result',
+      'owner A cannot read the expired unkept object',
+      'owner A can read the expired kept object',
+      'deleting a member with results is refused by the RESTRICT',
+      'the bucket is private, PNG-only and capped',
+    ]) {
+      assert.ok(assertions.includes(claim), `the suite must still check: ${claim}`)
+    }
   })
 
   test('the listing route applies the same predicate', () => {
@@ -304,8 +333,21 @@ describe('deleting an employee cannot orphan their objects', () => {
     const guardAt = body.indexOf('if (!purge.ok)')
     assert.ok(
       guardAt < body.indexOf("from('users')\n    .delete()"),
-      'nothing may be deleted once the purge has failed',
+      'the member must not be deleted once the purge has failed',
     )
     assert.match(body, /status: 500/)
+  })
+
+  test('the failure message does not claim an atomicity the purge does not have', () => {
+    // Storage and Postgres are two systems and the purge works one result at a
+    // time, so earlier results may already be gone when a later one fails.
+    // "Nothing was deleted" would be false, and it is what an administrator
+    // would act on.
+    const body = code(PURGE)
+    assert.ok(!/nothing was deleted/i.test(body), 'the purge is not atomic and must not say it is')
+    assert.match(body, /were NOT deleted/, 'the member and their other records are what survived')
+    assert.match(body, /may\s+'?\s*\+?\s*'?already have been removed/,
+      'and the part that may already be gone is stated')
+    assert.match(body, /safe to repeat/, 'with the one guarantee that does hold')
   })
 })

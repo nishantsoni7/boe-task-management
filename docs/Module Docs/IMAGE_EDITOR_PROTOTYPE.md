@@ -414,17 +414,33 @@ so no sweep, no listing and no manual delete would ever find those bytes again.
 The foreign key is therefore **`ON DELETE RESTRICT`** — the database refuses to
 remove a member who still has results — and the route:
 
-1. lists the member's rows and deletes each **object then row**, with the same
-   function the sweep and the owner's Delete use;
+1. lists the member's rows and deletes each **object then row**, one result at a
+   time, with the same function the sweep and the owner's Delete use;
 2. lists whatever is left under their `<user_id>/` prefix and removes it, which
    collects any object whose row insert never landed;
 3. only then deletes notifications, tasks, logs and the member.
 
-If any step fails, **nothing is deleted** and the response is a 500 saying so.
-An administrator can press Delete again; the rows still carry every path. A
-member who is still here is recoverable, and an orphaned object is not. If
-`20261021000000` has not been applied the table is absent, there is nothing
-stored, and the step is a no-op rather than a blocker.
+If any step fails, the response is a **500** and **the member and all their
+other records are left exactly as they were** — no notifications, tasks, logs or
+member row are touched.
+
+**The purge itself is not atomic, and cannot be.** Storage and Postgres are two
+systems with no transaction between them, and the history is worked through one
+result at a time, so a failure partway leaves **earlier results already deleted,
+object and row**. Those deletions stand; there is no rollback of a deleted
+object and nothing here holds a copy to restore. The route says exactly that:
+
+> Some of this member's Image Editor results could not be removed. The member
+> and their other records were NOT deleted, but part of their Image Editor
+> history may already have been removed and cannot be restored. Try again — it
+> is safe to repeat and will continue removing what is left.
+
+**Retrying is safe.** Every run re-lists what is actually still there, removing
+an object that is already gone is not an error, and a row whose object went
+first is simply retried — so a second press continues from wherever the first
+stopped. The rows that remain still carry their paths, which is what makes that
+possible. If `20261021000000` has not been applied the table is absent, there is
+nothing stored, and the step is a no-op rather than a blocker.
 
 ### When saving fails
 
@@ -446,9 +462,39 @@ they had already made.
 Both SELECT policies carry the **retention window** as well as the owner:
 `kept OR expires_at > now()`, the same predicate the listing route applies. The
 route is one caller; the policy is what makes the seven days true of the table
-and the bucket. Keep, Unkeep and Delete are UPDATE and DELETE and stay on
-ownership alone — deliberately, so an employee can always unkeep or remove
-something that has already expired, and so the sweep can still delete it.
+and the bucket.
+
+The UPDATE and DELETE policies are unchanged and stay on ownership alone — but a
+SELECT rule is not confined to SELECT. PostgreSQL applies it to any statement
+that has to *read* the row, which every `where id = …` does, and refuses an
+UPDATE whose resulting row would fail it. Measured, with a **user's own token**:
+
+| Statement | Before | Now |
+| --- | --- | --- |
+| Keep / Unkeep / Delete an unexpired result | works | works |
+| Delete an expired **kept** result | works | works |
+| Update or delete an expired **unkept** result | works | finds nothing (0 rows) |
+| **Unkeep** an expired **kept** result | works | **refused** (the new row would be invisible) |
+
+None of that is how the application does any of it. Keep, Unkeep, the owner's
+Delete and the nightly sweep all run in API routes holding the **service role**,
+which bypasses row-level security, so every one of those operations behaves
+exactly as before — including "unkeeping an expired result deletes it". What the
+condition removes is a *direct* client's ability to touch material it is no
+longer allowed to see.
+
+### Proving it, against a real database
+
+`supabase/tests/run_image_editor_result_history_suite.sh <psql-host-or-socket-dir> [port]`
+builds a disposable `boe_image_editor_history` database from
+`_image_editor_result_history_shaped_schema.sql`, applies the migration
+verbatim, and asks a running PostgreSQL what the policies actually do: owner
+reads their own, another user reads none, expired-unkept is unreadable (row and
+object), expired-kept stays readable, the four rows of the table above, losing
+module entry closes everything, a member with results cannot be deleted, the
+service role sweeps, and the bucket is private and PNG-only. It creates and drops
+its own database and refuses to build anywhere else; it never talks to a linked
+project.
 
 The API routes act with the **service role, which bypasses row-level security**,
 so the `.eq('user_id', …)` on every statement is the authorization, not a

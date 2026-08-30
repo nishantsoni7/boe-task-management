@@ -46,6 +46,9 @@ type Scenario = {
   tableAbsent?: boolean
   /** Make every storage removal fail. */
   storageBroken?: boolean
+  /** Make the removal of exactly this object key fail, so an earlier result is
+   *  really deleted before a later one fails — the partial case. */
+  failObject?: string
 }
 
 let scenario: Scenario
@@ -79,8 +82,11 @@ function install() {
       return json(names.map(name => ({ name })))
     }
     if (path.startsWith('/storage/v1/object/') && method === 'DELETE') {
-      if (scenario.storageBroken) return json({ message: 'storage is unavailable' }, 400)
       const prefixes = (body as { prefixes?: string[] })?.prefixes ?? []
+      if (scenario.storageBroken) return json({ message: 'storage is unavailable' }, 400)
+      if (scenario.failObject && prefixes.includes(scenario.failObject)) {
+        return json({ message: `object ${scenario.failObject} is locked` }, 400)
+      }
       scenario.objects = scenario.objects.filter(o => !prefixes.includes(o))
       return json(prefixes.map(name => ({ name })))
     }
@@ -194,18 +200,25 @@ describe('a deleted member takes their Image Editor results with them', () => {
   })
 })
 
-describe('when the history cannot be emptied, nothing is deleted at all', () => {
+describe('when the history cannot be emptied, the MEMBER is not deleted', () => {
   test('a storage failure stops the deletion before the member row', async () => {
     scenario.storageBroken = true
 
     const res = await run()
     assert.equal(res.status, 500)
     const payload = await res.json()
-    assert.match(payload.error, /Image Editor results could not be removed/)
 
     assert.equal(at(isMemberDelete), -1, 'the member must survive a failed purge')
     assert.equal(at(isResultRowDelete), -1, 'and so must the rows that carry the storage paths')
     assert.equal(scenario.rows.length, 2, 'so an administrator can simply try again')
+
+    // The wording is part of the contract. The purge is not atomic across
+    // Storage and Postgres, so "nothing was deleted" would be a claim this
+    // route cannot make — see the partial-failure test below.
+    assert.match(payload.error, /The member and their other records were NOT deleted/)
+    assert.match(payload.error, /may already have been removed/)
+    assert.match(payload.error, /safe to repeat/)
+    assert.ok(!/nothing was deleted/i.test(payload.error))
   })
 
   test('nothing else is destroyed either — the purge is the FIRST step', async () => {
@@ -215,6 +228,34 @@ describe('when the history cannot be emptied, nothing is deleted at all', () => 
       c.method === 'DELETE' &&
       /\/rest\/v1\/(notifications|tasks|task_activity_log|password_reset_log)/.test(c.path))
     assert.deepEqual(collateral, [], 'a member half-deleted is worse than one not deleted')
+  })
+
+  test('a PARTIAL failure says so, and a retry finishes the job', async () => {
+    // The honest case: the first result really is deleted, the second fails.
+    // Nothing can put the first one back — the bytes are gone — so the route
+    // must not pretend the history is untouched.
+    scenario.failObject = `${TARGET}/r2.png`
+
+    const first = await run()
+    assert.equal(first.status, 500)
+    const payload = await first.json()
+    assert.equal(payload.imageEditorResultsRemoved, 1, 'one result really did go')
+    assert.match(payload.error, /part of their Image Editor history may already have been removed/)
+    assert.match(payload.error, /cannot be restored/)
+
+    assert.deepEqual(scenario.rows.map(r => r.id), ['r2'], 'r1 is gone and stays gone')
+    assert.equal(at(isMemberDelete), -1, 'the member is untouched')
+
+    // The promise the message makes: pressing Delete again continues from here.
+    calls = []
+    scenario.failObject = undefined
+    const second = await run()
+    assert.equal(second.status, 200, 'a retry is safe and completes')
+    const done = await second.json()
+    assert.equal(done.deleted.imageEditorResults, 1, 'only what was left is removed again')
+    assert.deepEqual(scenario.rows, [])
+    assert.deepEqual(scenario.objects, [`${OTHER}/kept.png`])
+    assert.ok(at(isMemberDelete) >= 0, 'and the member finally goes')
   })
 })
 
