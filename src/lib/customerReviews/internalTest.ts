@@ -41,40 +41,46 @@
 // prepended by this file to whatever the card says.
 
 /**
- * The label that must appear on every card and at the start of every message.
+ * The provenance status shown beside every draft, on screen only.
  *
- * Exported as ONE constant so the card, the preview, the wa.me text and the
- * tests are provably the same string, and so that changing it is a change to
- * one visible line rather than a diff buried in a template.
+ * Exported as ONE constant so the card, the list and the detail header are
+ * provably the same words, and so that changing it is a change to one visible
+ * line rather than a diff buried in a template.
  *
- * MIRRORED IN SQL by public.customer_review_internal_test_warning() in
- * supabase/migrations/20261017000000_customer_review_outreach.sql, and the two
- * are pinned to each other by a source-contract test
- * (internalTest.test.ts → "the SQL constant is the same string").
+ * IT IS NEVER IN THE MESSAGE. buildReviewMessage carries the draft and nothing
+ * else — the recipient gets a review they can use, not a review annotated with
+ * our internal note about where it came from. A test asserts the absence.
  */
-export const INTERNAL_TEST_WARNING =
+export const DRAFT_STATUS = 'AI-generated draft'
+
+/**
+ * The wording this replaced, kept as a constant for ONE purpose: proving it is
+ * gone.
+ *
+ * The cards are drafts now, not internal filler, so
+ * "INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH" would be false
+ * wherever it appeared. It is retained here, unexported from the UI, because
+ * several guards need the exact string to assert that no card body, no
+ * generated draft and no message contains it — including the CHECK constraint
+ * in migration 20261017000000, which still refuses a body carrying it.
+ *
+ * Do not render this anywhere.
+ */
+export const RETIRED_TEST_WARNING =
   'INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH'
 
 /**
- * The second line of every message: what the recipient should do with it.
+ * WHAT THE MESSAGE USED TO CARRY, and why it no longer does.
  *
- * Separate from the warning because they answer different questions — the
- * warning says what this is NOT, and this says what it IS. Anyone who gets one
- * of these on their phone should be able to tell in one glance that a system
- * test reached them and that nothing is expected of them.
+ * There was a second constant here — INTERNAL_TEST_EXPLANATION — telling the
+ * recipient that an automated workflow test had reached them and that nothing
+ * was expected of them. It was correct for filler cards and is wrong for a
+ * draft review somebody actually intends to offer, so it is gone rather than
+ * reworded.
  *
- * IT CLAIMS NOTHING ABOUT WHO THE RECIPIENT IS. An earlier version described
- * the reader as somebody on a BOE team, which was true while the recipient came
- * from an allowlist and stopped being true the moment a tester could type any
- * number. A message that tells its reader something false about themselves is
- * exactly the kind of claim this module refuses to make, so it describes only
- * what BOE can vouch for: where the message came from, and that a person sent
- * it deliberately.
+ * The message is now the draft and nothing else. No label, no explanation, no
+ * reference, no category — see buildReviewMessage.
  */
-export const INTERNAL_TEST_EXPLANATION =
-  'This is an automated workflow test, sent deliberately by a member of BOE ' +
-  'staff from an internal test system. It is not from a customer, it describes ' +
-  'nothing real, and it must not be forwarded, quoted or published anywhere.'
 
 export type InternalTestMessageInput = {
   /** The fixture's short title for this card. */
@@ -90,43 +96,48 @@ export type InternalTestMessageInput = {
 const collapse = (value: string) => value.replace(/\s+/g, ' ').trim()
 
 /**
- * The exact text WhatsApp will be handed.
+ * The exact text WhatsApp will be handed: THE DRAFT, AND NOTHING ELSE.
  *
- * THE WARNING IS THE FIRST THING IN IT, and it is not optional. There is no
- * parameter that suppresses it, no branch that omits it, and no caller-supplied
- * prefix that could push it below the fold of a notification preview.
+ * No status, no reference, no category, no explanation. Everything the module
+ * knows ABOUT a draft — that a model wrote it, which card it is, what category
+ * it was filed under — is ours, not the recipient's, and stays on the screen.
+ *
+ * That is a deliberate narrowing from the version this replaces, which put a
+ * label at the top and the bottom and the card's reference in the middle. A
+ * person receiving a suggested review should receive a suggested review.
  *
  * This is the ONLY place a message is built. The preview on screen and the text
- * inside the wa.me URL both come from this call, so what a tester reads before
- * clicking is what the recipient would see — see buildWaMeUrl and the parity
- * test that decodes the URL back and compares it to this string.
+ * inside the wa.me URL both come from this call, so what a candidate reads
+ * before clicking is exactly what the recipient would see — see buildWaMeUrl
+ * and the parity test that decodes the URL back and compares it.
  */
-export function buildInternalTestMessage(input: InternalTestMessageInput): string {
-  return [
-    INTERNAL_TEST_WARNING,
-    '',
-    INTERNAL_TEST_EXPLANATION,
-    '',
-    `Test card: ${collapse(input.categoryLabel)} — ${collapse(input.title)}`,
-    `Reference: ${collapse(input.reference)}`,
-    '',
-    collapse(input.body),
-    '',
-    INTERNAL_TEST_WARNING,
-  ].join('\n')
+export function buildReviewMessage(input: InternalTestMessageInput): string {
+  return collapse(input.body)
 }
 
 /**
- * Whether a message still carries the mandatory label, at the very start and
- * again at the end.
+ * Whether a message is safe to hand to WhatsApp.
  *
- * A belt to buildInternalTestMessage's braces. The screen calls it before the
- * WhatsApp control is enabled, so that if the builder is ever refactored into
- * producing something without the label, the control goes dead rather than the
- * label quietly going away.
+ * The old guard asserted the mandatory label was PRESENT. This one asserts the
+ * opposite kind of thing — that nothing which belongs on our screen has leaked
+ * into the recipient's message:
+ *
+ *   * not the retired internal-test warning, which would now be a false claim;
+ *   * not the provenance status, which is ours to know and not theirs to read;
+ *   * not a link, an address or a telephone number, none of which a drafted
+ *     review has any reason to contain.
+ *
+ * The screen calls it before the WhatsApp control is enabled, so a builder that
+ * is ever refactored into leaking one of these leaves the control dead rather
+ * than sending it.
  */
-export function hasInternalTestWarning(message: string): boolean {
-  return message.startsWith(INTERNAL_TEST_WARNING) && message.trimEnd().endsWith(INTERNAL_TEST_WARNING)
+export function isSendableReviewMessage(message: string): boolean {
+  const text = message.trim()
+  if (!text) return false
+  if (text.includes(RETIRED_TEST_WARNING)) return false
+  if (text.includes(DRAFT_STATUS)) return false
+  if (/https?:\/\/|www\.|[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}|\+\d[\d\s()-]{7,}/i.test(text)) return false
+  return true
 }
 
 /**

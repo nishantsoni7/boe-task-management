@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { CheckCircle2, RefreshCw, Send } from 'lucide-react'
 import { colors } from '@/lib/tokens'
-import { hasInternalTestWarning } from '@/lib/customerReviews/internalTest'
+import { isSendableReviewMessage } from '@/lib/customerReviews/internalTest'
 import { maskFromLastFour, maskWhatsAppNumber, normalizeWhatsAppNumber } from '@/lib/customerReviews/contact'
 import { InternalTestWarning, WhatsAppOpenedNote } from './ReviewPieces'
 
@@ -74,7 +74,7 @@ const COOLDOWN_MS = 5000
  * two strings to each other, so they cannot drift.
  */
 export const RECIPIENT_CONFIRMATION =
-  'I confirm this number may receive an internal BOE test message and the content will not be published as a customer review.'
+  'I confirm this number may receive a draft review from BOE, and that BOE will not publish it anywhere.'
 
 type Preview = { message: string; waMeUrl: string; target: { lastFour: string } }
 
@@ -161,7 +161,7 @@ export function WhatsAppTestPanel({
 
       if (!res.ok) {
         tab?.close()
-        onError?.(body?.error ?? 'Could not open WhatsApp for this test card.')
+        onError?.(body?.error ?? 'Could not open WhatsApp for this review.')
         return
       }
 
@@ -169,9 +169,9 @@ export function WhatsAppTestPanel({
       // THE LAST LINE OF DEFENCE FOR THE MANDATORY LABEL. The server already
       // refuses to return an unlabelled message; if that ever changed, nothing
       // opens rather than an unlabelled message reaching somebody's phone.
-      if (!built?.waMeUrl || !hasInternalTestWarning(built.message ?? '')) {
+      if (!built?.waMeUrl || !isSendableReviewMessage(built.message ?? '')) {
         tab?.close()
-        onError?.('That message is missing its internal-test label and was not opened.')
+        onError?.('That message did not pass its safety check and was not opened.')
         return
       }
 
@@ -187,7 +187,7 @@ export function WhatsAppTestPanel({
       cooldownTimer.current = setTimeout(() => setCooling(false), COOLDOWN_MS)
     } catch {
       tab?.close()
-      onError?.('Could not open WhatsApp for this test card.')
+      onError?.('Could not open WhatsApp for this review.')
     } finally {
       inFlight.current = false
       setBusy(false)
@@ -200,14 +200,14 @@ export function WhatsAppTestPanel({
       {/* ── Who it goes to ── */}
       <div>
         <label
-          htmlFor="internal-test-number"
+          htmlFor="review-recipient-number"
           style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: colors.secondary, marginBottom: '6px' }}
         >
           Enter WhatsApp number
         </label>
 
         <input
-          id="internal-test-number"
+          id="review-recipient-number"
           type="tel"
           inputMode="tel"
           autoComplete="off"
@@ -216,13 +216,13 @@ export function WhatsAppTestPanel({
           disabled={!enabled}
           placeholder="+91 98765 43210"
           aria-invalid={localError ? true : undefined}
-          aria-describedby="internal-test-number-help"
+          aria-describedby="review-recipient-number-help"
           className="boe-input"
           style={{ maxWidth: '340px' }}
         />
 
         <p
-          id="internal-test-number-help"
+          id="review-recipient-number-help"
           style={{ fontSize: '11px', color: colors.muted, margin: '6px 0 0', lineHeight: 1.5 }}
         >
           Include the country code. Spaces, hyphens and brackets are fine. The number is
@@ -279,7 +279,7 @@ export function WhatsAppTestPanel({
           <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             <InternalTestWarning />
             <pre
-              data-testid="internal-test-message-preview"
+              data-testid="review-message-preview"
               style={{
                 margin: 0, padding: '12px', borderRadius: '8px',
                 background: '#F9FAFB',
@@ -355,7 +355,7 @@ export function ConfirmSentControl({
         color: '#166534', fontSize: '12px', fontWeight: 600,
       }}>
         <CheckCircle2 size={14} strokeWidth={2.2} />
-        You confirmed you sent this internal test.
+        You confirmed you sent this review.
       </div>
     )
   }
@@ -374,7 +374,7 @@ export function ConfirmSentControl({
         }}
       >
         <CheckCircle2 size={14} strokeWidth={2.2} />
-        {busy ? 'Recording…' : 'Confirm internal test sent'}
+        {busy ? 'Recording…' : 'Confirm sent'}
       </button>
       <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
         Only press this after you have actually sent the message in WhatsApp. Opening WhatsApp does

@@ -221,11 +221,11 @@ registerModule({
 // cannot open the module cannot verify anything.
 registerModule({
   moduleKey: 'customer_review_requests',
-  displayName: 'Review Workflow Test (Internal)',
-  description: 'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
+  displayName: 'Review Workflow',
+  description: 'Draft reviews for customers to use. The candidate chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
   actions: [
-    { actionKey: 'use',    displayName: 'Use Customer Review Outreach' },
-    { actionKey: 'verify', displayName: 'Verify & Close Review Requests' },
+    { actionKey: 'use',    displayName: 'Use Review Workflow' },
+    { actionKey: 'verify', displayName: 'Verify Reviews & Generate Drafts' },
   ],
 })
 

@@ -99,13 +99,13 @@ type PhotoKind = (typeof KINDS)[number]
  */
 const MESSAGES = {
   unauthenticated: 'Sign in to continue.',
-  forbidden:       'You do not have permission to attach a screenshot to this test card.',
-  not_found:       'That test card is not available.',
+  forbidden:       'You do not have permission to attach a screenshot to this review.',
+  not_found:       'That review is not available.',
   wrong_status:    'A screenshot can only be attached while you still hold the card.',
   no_file:         'No file was received.',
   bad_request:     'That request could not be processed.',
-  too_many:        `You can attach ${MAX_TEST_SCREENSHOTS} screenshot per test card. Remove the current one first.`,
-  duplicate:       'That screenshot is already attached to this test card.',
+  too_many:        `You can attach ${MAX_TEST_SCREENSHOTS} screenshot per review. Remove the current one first.`,
+  duplicate:       'That screenshot is already attached to this review.',
   upload_failed:   'That screenshot could not be stored. Try again.',
   unavailable:     'Screenshot uploads are not configured on this deployment.',
   remove_locked:   'This test has been handed over, so its screenshot is frozen. Ask a verifier to return the card if it needs changing.',

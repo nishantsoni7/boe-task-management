@@ -214,12 +214,12 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     return (
       <CustomerReviewsLayout
         profile={profile}
-        title="Test card"
+        title="Review"
         canVerify={caps.canVerify}
         onSignOut={signOut}
       >
         <p style={{ fontSize: '13px', color: colors.secondary }}>
-          That test card is not available.{' '}
+          That review is not available.{' '}
           <button
             type="button"
             onClick={() => router.push('/customer-reviews')}
@@ -284,7 +284,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         )}
 
         {/* ── The card's own text ── */}
-        <Section title="Test content">
+        <Section title="Review draft">
           <p style={{
             margin: 0, fontSize: '13px', color: colors.primary,
             lineHeight: 1.65, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
@@ -292,15 +292,15 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             {card.test_body}
           </p>
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
-            This text is fictional filler loaded from a test fixture. It describes nothing that
-            happened, is not attributed to anybody, and cannot be edited — not by you, not by an
-            administrator, and not through any screen in BOE.
+            This draft was written by AI for a customer to use, adapt or discard. It is not a
+            record of anything that happened, is not attributed to anybody, and cannot be edited —
+            not by you, not by an administrator, and not through any screen in BOE.
           </p>
         </Section>
 
         {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
-          <Section title="Send the internal test">
+          <Section title="Send the review">
             {canWorkOnIt ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <WhatsAppTestPanel
@@ -338,7 +338,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         )}
 
         {/* ── Step 3: the screenshot ── */}
-        <Section title="Test screenshot">
+        <Section title="Screenshot">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <ScreenshotIsNotProofNote />
             <ScreenshotManager
@@ -355,8 +355,8 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               canRemove={canWorkOnIt}
               emptyHint={
                 canWorkOnIt
-                  ? 'Attach a screenshot of the internal test message you sent.'
-                  : 'No screenshot is attached to this test card.'
+                  ? 'Attach a screenshot of the message you sent.'
+                  : 'No screenshot is attached to this review.'
               }
             />
           </div>

@@ -260,7 +260,7 @@ export function ScreenshotManager({
             }}
           >
             <ImagePlus size={14} strokeWidth={2} />
-            {busy ? 'Checking and uploading…' : 'Attach test screenshot'}
+            {busy ? 'Checking and uploading…' : 'Attach screenshot'}
           </label>
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
             {TEST_SCREENSHOT_TYPES_LABEL}, up to 5 MB. Each file is checked on the server,

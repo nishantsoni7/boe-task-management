@@ -381,8 +381,8 @@ export default function BoeOsHomePage() {
     }] : []),
     ...(canOpenCustomerReviews ? [{
       key: 'customer_reviews',
-      title: 'Review Workflow Test',
-      description: 'Internal test workflow. The tester chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
+      title: 'Review Workflow',
+      description: 'Draft reviews for customers to use. The candidate chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
       href: '/customer-reviews',
       accent: '#0E7490',
       icon: <ReviewOutreachIcon />,

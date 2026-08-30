@@ -191,7 +191,7 @@ describe('who may make which move', () => {
 
   test('a return is labelled as one, and asks for a reason', () => {
     const back = availableActions(card('submitted'), verifier).find(a => a.to === 'booked')!
-    assert.equal(back.label, 'Return to tester')
+    assert.equal(back.label, 'Return to candidate')
     assert.equal(back.prompt, 'return_reason')
     assert.equal(back.destructive, true)
   })
@@ -231,20 +231,20 @@ describe('what a submission needs', () => {
 
   test('the tester’s own confirmation, and a screenshot', () => {
     assert.deepEqual(submissionBlockers(unconfirmed, 0), [
-      'Confirm that you sent the internal test message.',
-      'Attach a screenshot of the internal test you sent.',
+      'Confirm that you sent the message.',
+      'Attach a screenshot of the message you sent.',
     ])
   })
 
   test('confirming alone is not enough', () => {
     assert.deepEqual(submissionBlockers(confirmed, 0), [
-      'Attach a screenshot of the internal test you sent.',
+      'Attach a screenshot of the message you sent.',
     ])
   })
 
   test('a screenshot alone is not enough either', () => {
     assert.deepEqual(submissionBlockers(unconfirmed, 1), [
-      'Confirm that you sent the internal test message.',
+      'Confirm that you sent the message.',
     ])
   })
 
@@ -260,7 +260,7 @@ describe('what a submission needs', () => {
       { sent_confirmed_at: null } as never,
       1,
     )
-    assert.ok(blockers.includes('Confirm that you sent the internal test message.'))
+    assert.ok(blockers.includes('Confirm that you sent the message.'))
   })
 })
 

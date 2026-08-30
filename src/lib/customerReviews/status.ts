@@ -92,10 +92,10 @@ export function submissionBlockers(
   const blockers: string[] = []
 
   if (!card.sent_confirmed_at) {
-    blockers.push('Confirm that you sent the internal test message.')
+    blockers.push('Confirm that you sent the message.')
   }
   if (screenshotCount === 0) {
-    blockers.push('Attach a screenshot of the internal test you sent.')
+    blockers.push('Attach a screenshot of the message you sent.')
   }
 
   return blockers
@@ -117,8 +117,8 @@ const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
   available: { to: 'available', label: 'Release' },
   // The wording carries the point: the tester is handing over what THEY did.
   submitted: { to: 'submitted', label: 'Submit for verification' },
-  verified:  { to: 'verified',  label: 'Verify test', prompt: 'verification_note' },
-  booked:    { to: 'booked',    label: 'Return to tester', prompt: 'return_reason', destructive: true },
+  verified:  { to: 'verified',  label: 'Verify review', prompt: 'verification_note' },
+  booked:    { to: 'booked',    label: 'Return to candidate', prompt: 'return_reason', destructive: true },
 }
 
 /**

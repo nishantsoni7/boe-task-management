@@ -49,7 +49,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Available', path: '/customer-reviews', query: 'tab=available', icon: <Layers size={15} strokeWidth={1.8} /> },
-  { label: 'My tests',  path: '/customer-reviews', query: 'tab=mine',      icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
+  { label: 'My reviews', path: '/customer-reviews', query: 'tab=mine',     icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
   {
     label: 'To Verify',
     path: '/customer-reviews',
