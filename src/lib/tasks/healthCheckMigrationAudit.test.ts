@@ -465,18 +465,23 @@ describe('line-by-line against the production baseline', () => {
 describe('the migration is placed correctly', () => {
   const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
 
-  test('only 116 sits after it, and 116 is now applied too', () => {
+  test('only 116 and 118 sit after it, and 116 is now applied too', () => {
     // 115 was the last file when this was written. 116 (the notifications
     // activity-link column) was added later and has SINCE been pushed, so 116
     // — not 115 — is now the newest thing that has run against the database.
     // What this still guards is that 115 is the only migration 116 follows.
     const newer = files.filter(f => f.slice(0, 14) > MIGRATION_FILE.slice(0, 14))
-    // 117 (Customer Review Outreach) came later still and is NOT applied — it
-    // appears in the pending list in participantAndOrderTotalSecurity.test.ts
-    // and deliberately not in FROZEN.
+    // 117 (Customer Review Outreach), 118 (Top 3 Focus unpin) and 120 (the
+    // Image Editor module registration) came later still and NONE is applied.
+    // All three appear in the pending list in
+    // participantAndOrderTotalSecurity.test.ts and deliberately not in FROZEN.
+    // This assertion is exact, so a file cannot appear after 115 without being
+    // named here.
     assert.deepEqual(newer, [
       '20261016000000_notifications_link_activity_log.sql',
       '20261017000000_customer_review_outreach.sql',
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

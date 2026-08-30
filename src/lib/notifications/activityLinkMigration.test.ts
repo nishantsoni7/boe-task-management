@@ -114,18 +114,28 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
 
   test('5. no existing migration file is edited by this change', () => {
     // Every other migration is untouched — asserted for the applied one that
-    // matters most below, and structurally here: this file is the only one the
-    // branch adds, and it was the newest when the branch landed.
+    // matters most below, and structurally here: this branch added exactly one
+    // file, immediately after 115.
     //
-    // 117 (Customer Review Outreach) has since been added by a LATER, unrelated
-    // change. It is named rather than allowed by a loosened rule, so a third
-    // file appearing after it still fails here and still has to be accounted
-    // for on purpose.
+    // 116 IS NO LONGER THE NEWEST FILE, and three later files now sit after
+    // it: 117 (Customer Review Outreach), 118 (the Top 3 Focus unpin) and 120
+    // (the Image Editor module registration), added by unrelated branches. What still holds, and is what this test was
+    // protecting, is that 116 sits directly on top of 115 and that nothing was
+    // inserted between them.
+    //
+    // The tail is named exactly rather than tolerated by a loosened rule, so a
+    // further file appearing after 116 still fails here and still has to be
+    // accounted for on purpose.
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], '20261017000000_customer_review_outreach.sql')
-    assert.equal(files[files.length - 2], '20261016000000_notifications_link_activity_log.sql')
-    assert.equal(files[files.length - 3], '20261015000000_task_health_check_stops_notifying.sql')
+    const at = files.indexOf('20261016000000_notifications_link_activity_log.sql')
+    assert.ok(at > 0, '116 is present')
+    assert.equal(files[at - 1], '20261015000000_task_health_check_stops_notifying.sql')
+    assert.deepEqual(files.slice(at + 1), [
+      '20261017000000_customer_review_outreach.sql',
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+    ])
   })
 
   test('6. migration 115 still hashes to its pinned value', () => {

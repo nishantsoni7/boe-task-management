@@ -48,10 +48,24 @@ const SHOTS = 'public.customer_review_test_card_screenshots'
 const EVENTS = 'public.customer_review_test_card_events'
 
 describe('the migration is one file, correctly sequenced', () => {
-  test('it exists, and nothing later has been added behind it', () => {
+  test('it exists, and everything sitting behind it is accounted for', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     assert.ok(all.includes(FILE), 'the migration file is missing')
-    assert.equal(all[all.length - 1], FILE, 'a newer migration exists; this one is no longer the head')
+
+    // THIS FILE IS NO LONGER THE NEWEST, and that is fine. It was when the
+    // branch was cut; main has since added two migrations numbered above it.
+    // Both are unapplied and neither touches anything this module creates, so
+    // whatever order the branches merge in, this one still applies before them
+    // and after everything that came earlier.
+    //
+    // They are NAMED rather than allowed by a loosened rule: a third file
+    // appearing behind this one still fails here and still has to be accounted
+    // for on purpose. That is the property the original "is the head"
+    // assertion was really defending.
+    assert.deepEqual(all.slice(all.indexOf(FILE) + 1), [
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+    ])
   })
 
   test('it creates the three tables and the private bucket, and nothing else', () => {

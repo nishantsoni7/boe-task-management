@@ -43,7 +43,11 @@ const stripComments = (source: string): string =>
     .join('\n')
 
 const ROUTE_PATH = 'src/app/api/customer-reviews/photos/route.ts'
-const raw = readFileSync(join(ROOT, ROUTE_PATH), 'utf8')
+// NORMALISED, like every other reader in these tests. Without this the
+// assertions below match against whatever line endings the checkout produced,
+// which makes them pass or fail for a reason that has nothing to do with the
+// route's content.
+const raw = readFileSync(join(ROOT, ROUTE_PATH), 'utf8').replace(/\r\n/g, '\n')
 const route = stripComments(raw)
 
 const manager = stripComments(

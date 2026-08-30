@@ -35,6 +35,15 @@ export type MyTaskViewTab = {
  * is — and the two compose: a Task Type narrows the collection, these tabs then
  * split it by state.
  */
+/**
+ * The label for the page's default state: no workflow tab selected, every
+ * active task listed. On desktop that state is "no tab is highlighted" and
+ * needs no label. The mobile dropdown has to name it, because a select always
+ * shows something, and an unnamed blank option would read as a broken tab
+ * rather than as the default view.
+ */
+export const ALL_ACTIVE_TASKS_LABEL = 'All Active Tasks'
+
 export const MY_TASK_VIEW_TABS: readonly MyTaskViewTab[] = [
   { key: 'today_actionable',   label: 'Today Actionable',      accent: '#2E9E6B' },
   { key: 'overdue_actionable', label: 'Overdue Actionable',    accent: '#C0551A' },
@@ -57,6 +66,12 @@ export function MyTaskViewTabs({
   onSelect: (key: MyTaskTabKey) => void
   isMobile?: boolean
 }) {
+  // Five tabs cost a phone two wrapped rows of chrome before a single task is
+  // visible. On mobile the same five choices — plus the default no-tab state —
+  // are offered by MyTaskViewSelect, which the page puts in its filter row.
+  // Nothing is dropped; the control changes shape.
+  if (isMobile) return null
+
   return (
     <div
       role="tablist"
@@ -65,17 +80,12 @@ export function MyTaskViewTabs({
         display: 'flex',
         gap: '0',
         borderBottom: `1px solid ${colors.border}`,
-        padding: isMobile ? '0 14px' : '0 24px',
-        // FIVE TABS NO LONGER FIT A PHONE IN ONE LINE, so on a narrow screen
-        // the strip WRAPS onto a second row.
-        //
-        // The previous attempt scrolled it horizontally with the scrollbar
-        // hidden, which is the failure mode this must not have: a tab that is
-        // present, reachable in principle, and invisible in practice with no
-        // affordance saying to swipe. Wrapping puts every tab on screen at
-        // every width, which is worth two rows of chrome on a phone.
-        flexWrap: isMobile ? 'wrap' : 'nowrap',
-        rowGap: isMobile ? '0px' : undefined,
+        padding: '0 24px',
+        // Desktop only, and it stays on one row. Nothing here may scroll
+        // horizontally behind a hidden scrollbar: a tab that is present,
+        // reachable in principle and invisible in practice with no affordance
+        // saying to swipe is a failure mode this strip has had once already.
+        flexWrap: 'nowrap',
       }}
     >
       {MY_TASK_VIEW_TABS.map(tab => {
@@ -90,11 +100,11 @@ export function MyTaskViewTabs({
             style={{
               display: 'flex', alignItems: 'center', gap: '6px',
               padding: '12px 4px',
-              marginRight: isMobile ? '14px' : '20px',
+              marginRight: '20px',
               background: 'transparent', border: 'none',
               borderBottom: `2px solid ${isActive ? tab.accent : 'transparent'}`,
               cursor: 'pointer', outline: 'none',
-              fontSize: isMobile ? '12px' : '12.5px',
+              fontSize: '12.5px',
               fontWeight: isActive ? 700 : 500,
               color: isActive ? tab.accent : colors.secondary,
               transition: 'color 0.12s, border-color 0.12s',
@@ -116,5 +126,56 @@ export function MyTaskViewTabs({
         )
       })}
     </div>
+  )
+}
+
+/**
+ * The mobile workflow control: one select carrying every choice the desktop
+ * strip offers, plus the default no-tab state as an explicit first option.
+ *
+ * The count travels in the option text rather than a badge, so the closed
+ * select still answers "how many are in the view I am looking at" — the one
+ * thing the desktop badges are for.
+ *
+ * It owns no data and does no filtering. `onSelect(null)` is the default
+ * view; the page hands that straight to the same URL-backed handler the
+ * desktop tabs use, so both widths drive identical state.
+ */
+export function MyTaskViewSelect({
+  activeTab,
+  counts,
+  onSelect,
+}: {
+  activeTab: MyTaskTabKey | null
+  counts: Record<MyTaskTabKey, number>
+  onSelect: (key: MyTaskTabKey | null) => void
+}) {
+  return (
+    <select
+      aria-label="Task view"
+      value={activeTab ?? ''}
+      onChange={e => onSelect(e.target.value === '' ? null : (e.target.value as MyTaskTabKey))}
+      style={{
+        width: '100%', minWidth: 0,
+        padding: '9px 10px',
+        background: colors.raised,
+        border: `1px solid ${colors.border}`,
+        borderRadius: '6px',
+        outline: 'none',
+        fontSize: '12px',
+        fontWeight: activeTab ? 600 : 500,
+        color: activeTab
+          ? (MY_TASK_VIEW_TABS.find(t => t.key === activeTab)?.accent ?? colors.primary)
+          : colors.primary,
+        cursor: 'pointer',
+      }}
+    >
+      <option value="">{`${ALL_ACTIVE_TASKS_LABEL} (${counts.all})`}</option>
+      {MY_TASK_VIEW_TABS.map(tab => (
+        <option key={tab.key} value={tab.key}>
+          {`${tab.label} (${counts[tab.key]})`}
+        </option>
+      ))}
+    </select>
   )
 }

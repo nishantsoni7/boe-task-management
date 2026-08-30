@@ -259,16 +259,19 @@ describe('34/35. no regression into suppressed territory', () => {
     }
   })
 
-  test('35. GROUPING added no migration — the one newer file is not its doing', () => {
+  test('35. GROUPING added no migration — the newer files are not its doing', () => {
     const files = readdirSync(join(ROOT, 'supabase/migrations')).filter(f => f.endsWith('.sql')).sort()
     const newer = files.filter(f => f.slice(0, 14) > '20261015000000')
     assert.deepEqual(newer, [
       '20261016000000_notifications_link_activity_log.sql',
-      // Customer Review Outreach, a separate module added later still. Named
-      // rather than tolerated by a loosened rule, so a third unexplained file
+      // Customer Review Outreach, the Top 3 Focus unpin and the Image Editor
+      // registration — three separate modules added later still. Named rather
+      // than tolerated by a loosened rule, so a further unexplained file
       // appearing here still fails.
       '20261017000000_customer_review_outreach.sql',
-    ], 'only the activity-link column and Customer Review Outreach, both added by later work')
+      '20261018000000_unpin_tasks_submitted_for_approval.sql',
+      '20261020000000_register_image_editor_module.sql',
+    ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
       const src = readFileSync(join(ROOT, f), 'utf8')

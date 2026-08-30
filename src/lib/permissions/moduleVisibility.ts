@@ -83,6 +83,7 @@ export const ENGINE_GATED_MODULE_KEYS = [
   'finance',
   'orders',
   'meetings',
+  'image_editor',
 ] as const
 
 export type EngineGatedModuleKey = (typeof ENGINE_GATED_MODULE_KEYS)[number]

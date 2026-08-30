@@ -80,11 +80,26 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   //
   // PREREQUISITE: this claim holds once 20261017000000 is APPLIED. The module
   // is unreachable until then — the resolver returns no rows for an
-  // unregistered module, so the guard denies everyone but an admin, and the
-  // admin lands on a screen whose tables do not exist.
+  // unregistered module, so nobody resolves either action and the guard denies
+  // everyone, administrators included.
   customer_review_requests: {
     state: 'enforced',
     detail: 'Every action is enforced — in the database and in the screen.',
+  },
+  // Both actions are enforced, and BOTH are checked server-side on every
+  // generation. The Image Editor stores nothing, so it has no tables and
+  // therefore no RESTRICTIVE parent gate from 20260905000000 to inherit; the
+  // gate lives in src/lib/permissions/imageEditor.ts and in the two API routes
+  // instead. That is why 'create' is never checked on its own here — the
+  // dormant-child state (view off, create on) must grant nothing.
+  //
+  // Entry: src/app/image-editor/page.tsx via ModuleGuard.
+  // Generation: POST /api/image-editor/studio, before the upload is read.
+  // Download re-encode: POST /api/image-editor/convert, 'view' only — it
+  // re-encodes an image the caller already holds and calls no provider.
+  image_editor: {
+    state: 'enforced',
+    detail: 'Both actions are enforced in the screen and in the API. Use requires View.',
   },
 
   // sample_dispatches RLS resolves the four lifecycle actions
