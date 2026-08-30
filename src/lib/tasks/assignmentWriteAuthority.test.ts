@@ -599,6 +599,7 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // policies. It creates its own surface and alters nothing that exists,
       // so it reaches neither task assignment nor anything above.
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

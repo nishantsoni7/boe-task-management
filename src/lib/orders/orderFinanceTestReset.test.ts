@@ -303,6 +303,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // private bucket and one table of its own, holds no order or payment
       // data for a reset to reach, and carries the highest number of all.
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
   })
 
