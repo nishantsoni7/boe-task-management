@@ -238,6 +238,73 @@ describe('the seed asserts what it did', () => {
 // safe is that it writes nothing — so that is asserted here rather than
 // promised in its header.
 
+/**
+ * The matchers used below, defined once and PROVED before they are trusted.
+ *
+ * Both of these were committed inert and both passed anyway:
+ *
+ *   `new RegExp(\`\\b${word}\\s\`)` was written `\`\b${word}\s\`` — inside a
+ *   template literal \b is BACKSPACE (U+0008) and \s is a plain "s", so the
+ *   pattern was <BS>updates and matched nothing.
+ *
+ *   `/\\quit/` was written `/\\\\quit/` — two literal backslashes — so it could
+ *   never match the single \quit psql actually uses.
+ *
+ * A negative assertion that cannot fail is worse than no assertion: it reads
+ * like a guarantee and provides none. The positive controls in
+ * "the matchers actually match" are what stop that happening again.
+ */
+const writeStatement = (word: string) => new RegExp(`\\b${word}\\s`, 'i')
+const PSQL_QUIT = /\\quit/
+
+describe('the matchers actually match', () => {
+  // Synthetic examples, deliberately not from any real file: if these ever stop
+  // matching, every negative assertion built on the same patterns has quietly
+  // stopped meaning anything.
+  const SAMPLES: [string, string][] = [
+    ['insert', 'insert into public.example values (1)'],
+    ['update', 'update public.example set value = 1'],
+    ['delete', 'delete from public.example where id = 1'],
+    ['truncate', 'truncate public.example'],
+    ['create', 'create temp table example(id integer)'],
+    ['alter', 'alter table public.example add column x integer'],
+    ['drop', 'drop table public.example'],
+    ['grant', 'grant select on public.example to authenticated'],
+    ['revoke', 'revoke select on public.example from anon'],
+  ]
+
+  for (const [word, sample] of SAMPLES) {
+    test(`it detects ${word.toUpperCase()} in "${sample.slice(0, 44)}…"`, () => {
+      assert.equal(writeStatement(word).test(sample), true,
+        `the ${word} matcher does not match its own example`)
+    })
+  }
+
+  test('the word boundary is real, so a longer word is NOT a false positive', () => {
+    // Without \b, "create" would match "createdb" and "update" would match
+    // "updated_at" — a column this schema actually has.
+    assert.equal(writeStatement('update').test('select updated_at from t'), false)
+    assert.equal(writeStatement('create').test('select created_at from t'), false)
+    assert.equal(writeStatement('insert').test('select inserted from t'), false)
+  })
+
+  test('IT DETECTS A SINGLE LITERAL BACKSLASH-QUIT', () => {
+    assert.equal(PSQL_QUIT.test('\\quit'), true)
+    assert.equal(PSQL_QUIT.test('  \\quit 1'), true)
+    assert.equal(PSQL_QUIT.test('\\echo quit'), false, 'the word alone must not match')
+    assert.equal(PSQL_QUIT.test('quit'), false)
+  })
+
+  test('and neither pattern is the inert shape that was committed', () => {
+    // Guards the exact regression: a pattern whose first character is a
+    // backspace, or a quit matcher wanting two backslashes.
+    assert.notEqual(writeStatement('update').source.charCodeAt(0), 8,
+      'the word matcher is a backspace literal again')
+    assert.equal(writeStatement('update').source, String.raw`\bupdate\s`)
+    assert.equal(PSQL_QUIT.source, String.raw`\\quit`)
+  })
+})
+
 describe('the remote-readiness script is read-only', () => {
   const READINESS = 'supabase/tests/customer_review_remote_readiness.sql'
   const readiness = read(READINESS)
@@ -247,7 +314,7 @@ describe('the remote-readiness script is read-only', () => {
     for (const word of ['insert', 'update', 'delete', 'truncate', 'create',
                         'alter', 'drop', 'grant', 'revoke', 'copy']) {
       assert.equal(
-        new RegExp(`\b${word}\s`, 'i').test(code), false,
+        writeStatement(word).test(code), false,
         `the readiness script contains a ${word.toUpperCase()} statement`,
       )
     }
@@ -268,7 +335,7 @@ describe('the remote-readiness script is read-only', () => {
     //
     // Checked against EXECUTABLE lines only: the script explains this trap in
     // its own header, and prose describing a forbidden thing is not one.
-    assert.equal(/\\\\quit/.test(code), false,
+    assert.equal(PSQL_QUIT.test(code), false,
       'a \\quit would exit 0 and report success')
     assert.ok(code.includes('raise exception'))
   })

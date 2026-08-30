@@ -2,11 +2,27 @@
 -- REMOTE READINESS — Review Workflow Test (Internal)
 -- ═════════════════════════════════════════════════════════════════════════════
 --
--- READ-ONLY. Every statement below is a SELECT. There is no INSERT, UPDATE,
--- DELETE, TRUNCATE, CREATE, ALTER, DROP, GRANT or REVOKE anywhere in this file,
--- and a source-contract test asserts their absence rather than trusting this
--- paragraph. It is safe to run against production, which is the entire point:
--- the checks that matter most are the ones nobody hesitates to run.
+-- IT PERFORMS NO PERSISTENT DATABASE WRITES, which is the accurate claim and
+-- the one that matters. An earlier version of this header said "every statement
+-- below is a SELECT", which was not true: the checks run inside DO blocks, and
+-- a DO block is a statement in its own right that executes PL/pgSQL — SELECTs
+-- into local variables, IF tests, and RAISE. What is true, and what makes this
+-- safe to point at production, is narrower and worth stating precisely:
+--
+--   * Every query is a READ of a catalogue (pg_proc, pg_policies, pg_indexes,
+--     information_schema, storage.buckets) or a COUNT over the module's own
+--     tables.
+--   * There is no INSERT, UPDATE, DELETE, TRUNCATE, CREATE, ALTER, DROP, GRANT,
+--     REVOKE or COPY anywhere in the file — not even a temp table to carry the
+--     expected count in, which is why that one value is compared at psql level
+--     instead.
+--   * Nothing outlives the session. The DO blocks declare local variables and
+--     RAISE; they leave no row, no object and no setting behind.
+--
+-- A source-contract test (seed.test.ts) asserts all of that rather than trusting
+-- this paragraph — and its matchers are themselves proved against synthetic
+-- examples first, because a negative assertion that cannot fail is worse than
+-- no assertion.
 --
 -- WHAT IT IS FOR
 -- --------------
