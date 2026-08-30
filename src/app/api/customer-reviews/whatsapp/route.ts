@@ -103,7 +103,9 @@ const fail = (status: number, message: string) =>
 const ok = (body: Record<string, unknown>) =>
   NextResponse.json(body, { status: 200, headers: { 'Cache-Control': 'no-store, private' } })
 
-type Caller = { userId: string; isAdmin: boolean }
+// NO isAdmin FIELD. The caller is an id and nothing else, because nothing
+// downstream is entitled to ask what role that id has — see authorize().
+type Caller = { userId: string }
 
 /**
  * Who is calling, and may they use this module.
@@ -117,26 +119,37 @@ async function authorize(): Promise<{ caller: Caller } | { response: NextRespons
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) return { response: fail(401, MESSAGES.unauthenticated) }
 
+  // ONLY is_active IS READ. The role column is no longer selected, which is
+  // the strongest form this check can take: a value that never arrives cannot
+  // be branched on by this function or by a later edit to it.
   const { data: profile } = await supabase
     .from('users')
-    .select('role, is_active')
+    .select('is_active')
     .eq('id', user.id)
     .single()
   // A failed profile read denies. An unidentified caller holding a stale
   // permission row is exactly the case that must not be admitted.
   if (!profile || profile.is_active !== true) return { response: fail(403, MESSAGES.forbidden) }
 
-  const isAdmin = profile.role === 'admin'
-  if (!isAdmin) {
-    const { data: allowed } = await supabase.rpc('resolve_permission', {
-      p_user_id: user.id,
-      p_module_key: 'customer_review_requests',
-      p_action_key: 'use',
-    })
-    if (allowed !== true) return { response: fail(403, MESSAGES.forbidden) }
-  }
+  // THE RESOLVED PERMISSION, FOR EVERY CALLER, WITH NO SHORTCUT.
+  //
+  // This used to read `if (!isAdmin) { …resolve… }`, so an administrator was
+  // admitted without the engine being asked at all. That made an explicit
+  // revocation in Control Center unenforceable here: the person was refused by
+  // the RPC further down (which resolves `use` and has no administrator
+  // branch) but only after the route had already accepted them, built the
+  // message and produced a link.
+  //
+  // An administrator is not locked out. The role_permissions seed grants them
+  // `use`, so resolve_permission answers true — they simply have to be asked.
+  const { data: allowed } = await supabase.rpc('resolve_permission', {
+    p_user_id: user.id,
+    p_module_key: 'customer_review_requests',
+    p_action_key: 'use',
+  })
+  if (allowed !== true) return { response: fail(403, MESSAGES.forbidden) }
 
-  return { caller: { userId: user.id, isAdmin } }
+  return { caller: { userId: user.id } }
 }
 
 /**

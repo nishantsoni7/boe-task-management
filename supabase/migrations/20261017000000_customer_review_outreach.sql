@@ -511,9 +511,19 @@ as $$
     from public.users u
     where u.id = auth.uid()
       and u.is_active
+      -- MODULE ENTRY IS THE RESOLVED PERMISSION, AND NOTHING ELSE.
+      --
+      -- `u.role = 'admin' or` used to lead this disjunction. Being first it
+      -- short-circuited, so an administrator whose grants had been revoked in
+      -- Control Center still passed the entry predicate — the row is read
+      -- through RLS that this function backs, so the revocation was not merely
+      -- cosmetic, it was unenforced.
+      --
+      -- An administrator is not locked out: the role_permissions seed grants
+      -- them both actions, so resolve_permission answers true. The difference
+      -- is that the engine is now asked.
       and (
-        u.role = 'admin'
-        or public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
+        public.resolve_permission(auth.uid(), 'customer_review_requests', 'use')
         or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
       )
   );
@@ -568,9 +578,12 @@ as $$
     from public.users u
     where u.id = auth.uid()
       and u.is_active
+      -- THE HOLDER, OR SOMEBODY WHO RESOLVES `verify`. The `u.role = 'admin'`
+      -- disjunct is gone for the reason above: an administrator whose `verify`
+      -- was revoked could still read every tester's rows, which is the one
+      -- thing revoking `verify` is supposed to stop.
       and (
         p_booked_by = auth.uid()
-        or u.role = 'admin'
         or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
       )
   );
@@ -599,9 +612,12 @@ as $$
     from public.customer_review_test_cards c
     join public.users u on u.id = auth.uid() and u.is_active
     where c.id = p_card_id
+      -- THREE WAYS IN, AND A ROLE IS NOT ONE OF THEM. Same correction as the
+      -- row predicate above: the `u.role = 'admin'` disjunct is gone, so a
+      -- revoked administrator reads what their permissions say they may read
+      -- and nothing more.
       and (
         c.booked_by = auth.uid()
-        or u.role = 'admin'
         or public.resolve_permission(auth.uid(), 'customer_review_requests', 'verify')
         or (
           -- An unbooked card is visible to anyone who may use the module. It

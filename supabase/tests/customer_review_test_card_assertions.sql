@@ -1243,6 +1243,148 @@ begin
   raise notice 'PASS  9c. the append-only trail records every step and is readable by both parties';
 end $$;
 
+-- ─── 9A. A REVOKED ADMINISTRATOR IS GENUINELY REVOKED ──────────────────────
+--
+-- Every visibility predicate used to carry `u.role = 'admin'` as a disjunct,
+-- and in two of the three it came FIRST — so it short-circuited and an
+-- administrator was admitted before the engine was asked anything at all. An
+-- explicit revocation in Control Center was therefore not merely cosmetic; it
+-- was unenforced at the database.
+--
+-- These assertions are run through each person's OWN RLS, because the claim is
+-- about what a browser session can actually read. Fixture Admin (...0001) is a
+-- real `role = 'admin'` row throughout; what changes between blocks is only
+-- their employee_permission_overrides.
+--
+-- THE ORDINARY ADMINISTRATOR IS CHECKED FIRST. Every other case here takes
+-- something away, and if the first one ever fails the correction has overshot.
+
+do $$
+declare v_module uuid; v_use uuid; v_verify uuid; v_n integer;
+begin
+  select id into v_module from public.permission_modules where module_key = 'customer_review_requests';
+  select a.id into v_use    from public.permission_actions a where a.action_key = 'use';
+  select a.id into v_verify from public.permission_actions a where a.action_key = 'verify';
+
+  -- ── 9A-a. THE SEED IS WHAT GIVES AN ADMIN ACCESS, and it still does. ──────
+  -- The whole argument for deleting the shortcuts rests on this being true.
+  if not public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                                   'customer_review_requests', 'use') then
+    raise exception 'the role seed no longer grants an administrator use';
+  end if;
+  if not public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                                   'customer_review_requests', 'verify') then
+    raise exception 'the role seed no longer grants an administrator verify';
+  end if;
+  raise notice 'PASS  9A-a. an ordinary administrator still resolves both actions from the seed';
+
+  -- ── 9A-b. AND THEY STILL SEE WHAT THEY SHOULD. ───────────────────────────
+  -- Section 4e already proved an admin can read a booked card; this is the
+  -- entry predicate, which is the one the module gate calls.
+  execute format('set local request.jwt.claims = %L',
+                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000001', 'role', 'authenticated')::text);
+  set local role authenticated;
+  if not public.can_use_customer_review_test_cards() then
+    raise exception 'an ordinary administrator can no longer enter the module';
+  end if;
+  reset role;
+  raise notice 'PASS  9A-b. an ordinary administrator still passes the entry predicate';
+
+  -- ── 9A-c. REVOKE `use` ONLY. ─────────────────────────────────────────────
+  -- An employee override is the highest level in the engine, so this is how a
+  -- single administrator is revoked in Control Center.
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  values ('ffffffff-0000-4000-8000-000000000001', v_module, v_use, false,
+          'ffffffff-0000-4000-8000-000000000001');
+
+  if public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                               'customer_review_requests', 'use') then
+    raise exception 'the override did not revoke use; the rest of this block proves nothing';
+  end if;
+
+  -- They keep `verify`, so they still enter and still read everything a
+  -- verifier reads. One authority was revoked, not the module.
+  execute format('set local request.jwt.claims = %L',
+                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000001', 'role', 'authenticated')::text);
+  set local role authenticated;
+  if not public.can_use_customer_review_test_cards() then
+    raise exception 'revoking use also closed the module to a verifier';
+  end if;
+  if not public.can_view_customer_review_test_card_row('ffffffff-0000-4000-8000-000000000002') then
+    raise exception 'a verifier can no longer read a tester''s row';
+  end if;
+  reset role;
+  raise notice 'PASS  9A-c. revoking `use` leaves verifier reading intact';
+
+  -- ...and the TESTER ACTIONS are refused, by the definer functions that
+  -- resolve `use` — the same refusal any non-holder gets.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    $q$select public.book_customer_review_test_card(
+      (select id from public.customer_review_test_cards
+        where status = 'available' and id::text like 'aaaaaaaa-0000-4000-8000-%' limit 1))$q$,
+    '42501',
+    '9A-d. an admin with `use` revoked booking a card');
+
+  -- ── 9A-e. REVOKE `verify` AS WELL. ──────────────────────────────────────
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  values ('ffffffff-0000-4000-8000-000000000001', v_module, v_verify, false,
+          'ffffffff-0000-4000-8000-000000000001');
+
+  if public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                               'customer_review_requests', 'verify') then
+    raise exception 'the override did not revoke verify';
+  end if;
+
+  -- NOW THE MODULE IS CLOSED. This is the assertion the old `u.role = 'admin'`
+  -- disjunct made impossible: with both permissions revoked there is no branch
+  -- left to match, in any of the three predicates.
+  execute format('set local request.jwt.claims = %L',
+                 json_build_object('sub', 'ffffffff-0000-4000-8000-000000000001', 'role', 'authenticated')::text);
+  set local role authenticated;
+
+  if public.can_use_customer_review_test_cards() then
+    raise exception 'AN ADMIN WITH BOTH PERMISSIONS REVOKED STILL ENTERS THE MODULE';
+  end if;
+
+  if public.can_view_customer_review_test_card_row('ffffffff-0000-4000-8000-000000000002') then
+    raise exception 'A FULLY REVOKED ADMIN STILL READS SOMEBODY ELSE''S ROW';
+  end if;
+
+  -- And no rows come back through RLS, which is what the predicates are for.
+  select count(*) into v_n from public.customer_review_test_cards
+   where id::text like 'aaaaaaaa-0000-4000-8000-%';
+  reset role;
+  if v_n <> 0 then
+    raise exception 'a fully revoked admin reads % card(s) through RLS', v_n;
+  end if;
+  raise notice 'PASS  9A-e. an admin with BOTH revoked enters nothing and reads nothing';
+
+  -- ── 9A-f. AND THE VERIFIER MOVES ARE REFUSED TOO. ───────────────────────
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    $q$select public.transition_customer_review_test_card(
+      'aaaaaaaa-0000-4000-8000-000000000002', 'verified', 'x')$q$,
+    '42501',
+    '9A-f. a fully revoked admin verifying a card');
+
+  -- ── RESTORE. Later sections and the fixture step assume an ordinary admin,
+  -- and a harness that leaves a revoked one behind would fail them for a
+  -- reason that has nothing to do with what they test.
+  delete from public.employee_permission_overrides
+   where user_id = 'ffffffff-0000-4000-8000-000000000001'
+     and module_id = v_module
+     and action_id in (v_use, v_verify);
+
+  if not public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                                   'customer_review_requests', 'use')
+     or not public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                                      'customer_review_requests', 'verify') then
+    raise exception 'the harness failed to restore the administrator';
+  end if;
+  raise notice 'PASS  9A-g. the administrator is restored to the seed defaults';
+end $$;
+
 -- ─── 10. A browser cannot ask a permission question ON SOMEBODY ELSE ───────
 --
 -- Every predicate here is granted to authenticated, so its arguments are chosen

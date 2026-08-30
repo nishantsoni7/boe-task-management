@@ -128,9 +128,14 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     startFetch()
   }, [load])
 
-  const isAdmin = profile?.role === 'admin'
-  // NO ROLE IS PASSED, because none is consulted. Holding a card is the whole
-  // of what authorises a tester action, for an administrator as much as anyone.
+  // THERE IS NO isAdmin HERE ANY MORE. It had two remaining uses and both were
+  // authorization alternatives — a screenshot-removal control and the verifier
+  // facts panel — so removing them left nothing for it to do. A role variable
+  // kept "in case" is a role variable somebody re-uses.
+  //
+  // NO ROLE IS PASSED to holdsThisCard either, because none is consulted.
+  // Holding a card is the whole of what authorises a tester action, for an
+  // administrator as much as anyone.
   const mine = card ? holdsThisCard(card, profile?.id, caps) : false
 
   const actions = useMemo(
@@ -342,7 +347,12 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               screenshots={screenshots}
               onChanged={load}
               canAttach={canWorkOnIt}
-              canRemove={canWorkOnIt || !!isAdmin}
+              // canWorkOnIt ALONE: the holder, while the card is still
+              // theirs. begin_customer_review_test_screenshot_removal() says
+              // exactly this and has no administrator branch, so the
+              // `|| isAdmin` that stood here drew a control the database
+              // refuses 42501.
+              canRemove={canWorkOnIt}
               emptyHint={
                 canWorkOnIt
                   ? 'Attach a screenshot of the internal test message you sent.'
@@ -443,7 +453,15 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         )}
 
         {/* ── What a verifier reads ── */}
-        {(caps.canVerify || isAdmin) && card.status !== 'available' && (
+        {/*
+          caps.canVerify ALONE. These are the facts a verifier reads to make a
+          decision, and `|| isAdmin` showed them to an administrator whose
+          `verify` had been revoked — somebody the transition function will not
+          let act on the card at all. caps.canVerify is now the resolved
+          permission (see deriveCustomerReviewCapabilities), so this follows the
+          engine like everything else.
+        */}
+        {caps.canVerify && card.status !== 'available' && (
           <Section title="Who did what">
             <dl style={{ margin: 0, display: 'grid', gap: '6px' }}>
               <Fact label="Booked" value={formatTestTimestamp(card.booked_at)} />

@@ -533,11 +533,13 @@ describe('who can read a card', () => {
   })
 
   test('an unauthorized caller matches no branch, so the policy yields no row', () => {
-    // The predicate is a closed list: holder, admin, verifier. There is no
-    // fallback and no `or true`.
+    // The predicate is a closed list: the HOLDER, or a RESOLVED verifier.
+    // There is no fallback, no `or true`, and — since this correction — no
+    // role branch between them.
     const branches = rowFn.slice(rowFn.indexOf('and ('), rowFn.indexOf('  );'))
     assert.equal(/\btrue\b/.test(branches), false)
-    assert.equal((branches.match(/\bor\b/g) ?? []).length, 2, 'exactly three branches')
+    assert.equal((branches.match(/\bor\b/g) ?? []).length, 1, 'exactly two branches')
+    assert.equal(/role/.test(branches), false, 'a role is back in the disjunction')
   })
 
   test('the card table asks the same question WITHOUT re-reading itself', () => {

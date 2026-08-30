@@ -136,24 +136,27 @@ export async function POST(req: NextRequest) {
   // ── 2. Are they active, and do they hold `use` ────────────────────────────
   const { data: profile } = await caller
     .from('users')
-    .select('role, is_active')
+    .select('is_active')
     .eq('id', user.id)
     .single()
   if (!profile || profile.is_active !== true) return fail(403, MESSAGES.forbidden)
 
-  const isAdmin = profile.role === 'admin'
-  if (!isAdmin) {
-    const { data: allowed } = await caller.rpc('resolve_permission', {
-      p_user_id: user.id,
-      p_module_key: 'customer_review_requests',
-      p_action_key: 'use',
-    })
-    if (allowed !== true) return fail(403, MESSAGES.forbidden)
-  }
-
-  // `isAdmin` is deliberately NOT consulted below. It is resolved above only
-  // to decide whether the permission RPC needs asking; it authorises nothing
-  // here, because nothing here is an administrator's to do.
+  // THE RESOLVED PERMISSION, FOR EVERY CALLER, WITH NO SHORTCUT.
+  //
+  // This used to read `if (!isAdmin) { …resolve… }`. Attaching a screenshot is
+  // a tester action, so it needs `use` — and an administrator whose `use` had
+  // been revoked was admitted here without the engine being asked, then
+  // stopped only by the ownership check below. Two different reasons to refuse,
+  // and the one that fired was the wrong one.
+  //
+  // The role is no longer read at all: the profile select above asks for
+  // is_active and nothing else.
+  const { data: allowed } = await caller.rpc('resolve_permission', {
+    p_user_id: user.id,
+    p_module_key: 'customer_review_requests',
+    p_action_key: 'use',
+  })
+  if (allowed !== true) return fail(403, MESSAGES.forbidden)
 
   // ── 3. What was sent ──────────────────────────────────────────────────────
   let cardId: string
@@ -395,7 +398,7 @@ export async function DELETE(req: NextRequest) {
 
   const { data: profile } = await caller
     .from('users')
-    .select('role, is_active')
+    .select('is_active')
     .eq('id', user.id)
     .single()
   if (!profile || profile.is_active !== true) return fail(403, MESSAGES.forbidden)
@@ -403,15 +406,17 @@ export async function DELETE(req: NextRequest) {
   // `use` is required even of an admin correcting somebody else's upload —
   // an administrator who does not hold the module has no business in it. The
   // role short-circuit that follows is about WHOSE photograph they may touch.
-  const isAdmin = profile.role === 'admin'
-  if (!isAdmin) {
-    const { data: allowed } = await caller.rpc('resolve_permission', {
-      p_user_id: user.id,
-      p_module_key: 'customer_review_requests',
-      p_action_key: 'use',
-    })
-    if (allowed !== true) return fail(403, MESSAGES.forbidden)
-  }
+  // THE RESOLVED PERMISSION, FOR EVERY CALLER — the DELETE half of the same
+  // correction. Withdrawing a screenshot is a tester action too, and
+  // begin_customer_review_test_screenshot_removal() resolves `use` with no
+  // administrator branch, so admitting one here was a promise the definer
+  // function was never going to keep.
+  const { data: allowed } = await caller.rpc('resolve_permission', {
+    p_user_id: user.id,
+    p_module_key: 'customer_review_requests',
+    p_action_key: 'use',
+  })
+  if (allowed !== true) return fail(403, MESSAGES.forbidden)
 
   let photoId: string
   try {

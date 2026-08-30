@@ -392,16 +392,38 @@ describe('row-level security', () => {
 })
 
 describe('the predicates', () => {
-  test('the row predicate still admits exactly holder, admin and verifier', () => {
+  test('the row predicate admits exactly the HOLDER and a RESOLVED verifier', () => {
     const fn = /create or replace function public\.can_view_customer_review_test_card_row[\s\S]*?\$\$;/
       .exec(code)?.[0] ?? ''
     assert.ok(fn, 'the row predicate is missing')
     assert.ok(fn.includes('p_booked_by = auth.uid()'), 'the holder branch is gone')
-    assert.ok(fn.includes("u.role = 'admin'"), 'the admin branch is gone')
     assert.ok(fn.includes("'verify'"), 'the verifier branch is gone')
     assert.ok(fn.includes('u.is_active'), 'an inactive user is no longer excluded')
+
+    // THE ADMIN BRANCH IS GONE. It used to sit between the two above, so an
+    // administrator whose `verify` had been revoked could still read every
+    // tester's rows — the one thing revoking `verify` is supposed to stop.
+    assert.equal(fn.includes("u.role = 'admin'"), false, 'the admin branch is back')
+
     // It must not go back to the table it is deciding about.
     assert.equal(/from public\.customer_review_test_cards/.test(fn), false)
+  })
+
+  test('NO VISIBILITY PREDICATE READS A ROLE AT ALL', () => {
+    // All three at once, so a branch reintroduced in any of them fails here
+    // even if its own test were relaxed.
+    for (const name of ['can_use_customer_review_test_cards',
+                        'can_view_customer_review_test_card_row',
+                        'can_view_customer_review_test_card']) {
+      const fn = new RegExp('create or replace function public\\.' + name + '\\([\\s\\S]*?\\$\\$;')
+        .exec(code)?.[0] ?? ''
+      assert.ok(fn, name + ' is missing')
+      assert.equal(/u\.role/.test(fn), false, name + ' still reads users.role')
+      assert.equal(/'admin'/.test(fn), false, name + ' still names the admin role')
+      // …and each still asks the engine, so this did not pass by deleting the
+      // authorization instead of correcting it.
+      assert.ok(fn.includes('public.resolve_permission(auth.uid()'), name + ' asks nothing')
+    }
   })
 
   test('the available-pool predicate takes no argument at all', () => {

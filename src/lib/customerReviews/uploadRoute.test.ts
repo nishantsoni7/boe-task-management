@@ -144,20 +144,34 @@ describe('who may call it', () => {
     assert.equal(/isAdmin\s*(\|\||&&)|(\|\||&&)\s*!?\s*isAdmin/.test(route), false,
       'isAdmin is still combined into an authorization decision')
 
-    // isAdmin is still COMPUTED — it decides whether the permission RPC needs
-    // asking at all — so its presence is not the defect. What must be true is
-    // that it never decides an ownership question. Its only permitted use is
-    // the permission-resolution branch near the top of each handler.
-    const uses = route.split('\n')
-      .map((line, i) => ({ line: line.trim(), i }))
-      .filter(u => /\bisAdmin\b/.test(u.line))
-    assert.ok(uses.length > 0, 'isAdmin vanished entirely — update this test')
-    for (const use of uses) {
-      assert.ok(
-        /^const isAdmin = profile\.role === 'admin'$/.test(use.line) || use.line === 'if (!isAdmin) {',
-        `isAdmin is used for something other than permission resolution: ${use.line}`,
-      )
-    }
+    // isAdmin USED TO BE COMPUTED HERE, to decide whether the permission RPC
+    // needed asking at all. That shortcut is gone too: the RPC is asked of
+    // every caller, so there is nothing left for the variable to do and it is
+    // not merely unused but absent — along with the `role` column, which
+    // neither handler selects any more.
+    //
+    // A value that never arrives cannot be branched on by a later edit, which
+    // is why this asserts the SELECT rather than only the variable.
+    assert.equal(/\bisAdmin\b/.test(route), false, 'isAdmin is back in this route')
+    assert.equal(/select\('role/.test(route), false, 'the route reads users.role again')
+    assert.ok(route.includes("select('is_active')"))
+  })
+
+  test('THE PERMISSION RPC IS ASKED OF EVERY CALLER, IN BOTH HANDLERS', () => {
+    // Two handlers, two independent copies of the check — POST attaches and
+    // DELETE withdraws, and both are tester actions needing `use`. A
+    // correction applied to one and forgotten in the other is exactly the
+    // defect worth catching, so this counts them.
+    const resolves = [...route.matchAll(/rpc\('resolve_permission'/g)]
+    assert.equal(resolves.length, 2, 'both handlers must resolve the permission')
+
+    // Both ask for `use`, and both are unconditional — each call sits at the
+    // top level of its handler rather than inside a branch that could exempt
+    // somebody from it.
+    assert.equal((route.match(/p_action_key: 'use'/g) ?? []).length, 2)
+    assert.equal(/if \(!isAdmin\) \{/.test(route), false,
+      'a resolve call is still wrapped in a role check')
+    assert.equal((route.match(/if \(allowed !== true\) return fail\(403/g) ?? []).length, 2)
   })
 
   test('A SCREENSHOT MAY ONLY BE ATTACHED WHILE THE CARD IS BOOKED', () => {

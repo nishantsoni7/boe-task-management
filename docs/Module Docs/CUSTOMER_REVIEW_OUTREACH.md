@@ -129,27 +129,45 @@ An administrator books a card the same way anybody does: by holding `use`,
 which the `role_permissions` seed grants them. That is deliberate — it means an
 explicit revocation in Control Center actually revokes.
 
-**And the screen agrees with the database about that.**
-`deriveCustomerReviewCapabilities` used to return all-capabilities for any
-`role === 'admin'`, so an administrator whose permission had been revoked was
-still drawn the controls — and the definer functions, which resolve their
-permission and have no administrator branch, refused them 42501.
+### The permission engine is the only source of authority here
 
-**Neither short-circuit remains.** Both capabilities are the resolved
-permission, for everybody:
+**Every layer.** Not one of them reads a role, and that took removing nine
+separate shortcuts — each of which looked locally harmless, and which together
+meant an explicit revocation in Control Center changed almost nothing:
 
-| Capability | Resolved from | Admin short-circuit? |
+| Layer | What it used to do | Now |
 | --- | --- | --- |
-| `canUse` | `customer_review_requests.use` | **No** — matches `book_customer_review_test_card()`, which has none either |
-| `canVerify` | `customer_review_requests.verify` | **No** — matches `transition_customer_review_test_card()`, which has none either |
-| `canAccessModule` | `canUse \|\| canVerify` | **No** |
+| `deriveCustomerReviewCapabilities` | returned all-capabilities for `role === 'admin'` | both capabilities are the resolved permission |
+| WhatsApp route `authorize()` | `if (!isAdmin) { …resolve… }` — an admin was never asked | resolves `use` for every caller; no longer selects `role` |
+| Screenshot route, **POST and DELETE** | the same, in both handlers | resolves `use` for every caller, in both |
+| `customer-reviews/layout.tsx` | `profile.role === 'admin' \|\|` **led** the entry disjunction, so it short-circuited | resolved `use` OR resolved `verify`, and nothing else |
+| Card screen, screenshot removal | `canWorkOnIt \|\| !!isAdmin` | `canWorkOnIt` alone |
+| Card screen, verifier facts panel | `caps.canVerify \|\| isAdmin` | `caps.canVerify` alone |
+| `can_use_customer_review_test_cards()` | `u.role = 'admin' or …` | resolved `use` OR resolved `verify` |
+| `can_view_customer_review_test_card_row()` | `… or u.role = 'admin' or …` | the holder, or resolved `verify` |
+| `can_view_customer_review_test_card()` | `… or u.role = 'admin' or …` | the holder, resolved `verify`, or an available card with resolved `use` |
 
-An administrator gets both the ordinary way: the `role_permissions` seed grants
-them `use` and `verify`, so the engine resolves both and nothing they should
-have is lost. What they no longer get is authority the engine has been told to
-withhold — revoke `verify` for one administrator in Control Center and **Verify
-test** and **Return to tester** stop being drawn, exactly as
-`transition_customer_review_test_card()` would refuse them.
+Two of those disjunctions had the role **first**, so it short-circuited before
+the engine was consulted at all. A revoked administrator still entered the
+module, still read every tester's rows, still saw the verifier facts panel, and
+only met a refusal when a definer function that had no administrator branch
+returned 42501 — from a control the interface should never have drawn.
+
+**An administrator loses nothing they should have.** The `role_permissions` seed
+grants `admin` every action this module has, so `resolve_permission` answers
+true for them and the ordinary administrator sees exactly what they saw before.
+The difference is that the engine is now asked. That is what makes a revocation
+in Control Center a real revocation:
+
+| What is revoked | What the administrator loses | What they keep |
+| --- | --- | --- |
+| `use` | Book, WhatsApp, screenshot upload and removal, Confirm sent, Submit | reading every card, Verify test, Return to tester |
+| `verify` | Verify test, Return to tester, the verifier facts panel, the To verify tab, and reading other testers' rows | booking and running their own tests |
+| both | the module — the entry predicate matches no branch, so RLS returns no rows and the route guard bounces them | nothing here |
+
+Two files no longer even **select** `users.role`: the routes and the layout ask
+for `is_active` and nothing else. A value that never arrives cannot be branched
+on by a later edit.
 
 > **The `role` parameter is still in the signature and is no longer read.** It
 > stays because both call sites pass `profile.role` positionally; the lint
@@ -157,7 +175,9 @@ test** and **Return to tester** stop being drawn, exactly as
 > so its presence is deliberate rather than an oversight. What guards it is a
 > behavioural test, not the shape: every role string — and no role at all —
 > must produce identical capabilities for identical permissions, so a future
-> edit cannot quietly start consulting it again.
+> edit cannot quietly start consulting it again. It is also the **only** place
+> a role is passed anywhere in the module, which
+> `adminBypass.test.ts` pins by name.
 
 > **What this costs, stated rather than hidden.** Once a card is submitted its
 > screenshot is frozen for everybody, so an image uploaded by mistake can only
@@ -169,7 +189,7 @@ Expected access:
 
 | Who | `use` | `verify` |
 | --- | --- | --- |
-| Admin | ✅ | ✅ |
+| Admin | ✅ **from the seed, not from the role name** | ✅ **from the seed, not from the role name** |
 | Explicitly authorized employee | ✅ | — |
 | Explicit verifier | — (grant separately if they should also test) | ✅ |
 | Unauthorized or inactive employee | — | — |

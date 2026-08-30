@@ -29,9 +29,11 @@ export default function CustomerReviewsGuard({ children }: { children: React.Rea
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
 
+      // ONLY is_active IS READ. The role column is not selected, so entry
+      // cannot be decided by it here or by a later edit to this file.
       const { data: profile } = await supabase
         .from('users')
-        .select('role, is_active')
+        .select('is_active')
         .eq('id', session.user.id)
         .single()
 
@@ -39,8 +41,17 @@ export default function CustomerReviewsGuard({ children }: { children: React.Rea
       // permission row is exactly the case that must not be admitted.
       if (!profile || profile.is_active !== true) { router.replace('/coming-soon'); return }
 
+      // ENTRY IS `use` OR `verify`, RESOLVED — and nothing else.
+      //
+      // `profile.role === 'admin' ||` used to lead this expression, and being
+      // first it short-circuited: an administrator with both permissions
+      // revoked was let into a module where every list is empty and every
+      // action refused. The engine decides now, so revoking both genuinely
+      // closes the door.
+      //
+      // Both catches deny rather than admit. A permission question that could
+      // not be answered is not a yes.
       const allowed =
-        profile.role === 'admin' ||
         (await hasPermission(supabase, session.user.id, 'customer_review_requests', 'use').catch(() => false)) ||
         (await hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify').catch(() => false))
 
