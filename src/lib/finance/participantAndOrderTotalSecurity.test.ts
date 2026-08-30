@@ -713,6 +713,13 @@ describe('the applied migrations are frozen', () => {
       // its absence from FROZEN is the statement that it has not been pushed.
       '20261020000000_register_image_editor_module.sql',
       '20261021000000_seed_customer_review_test_cards.sql',
+      // 122. NOT APPLIED. The Image Editor's private per-user result history:
+      // one private bucket, one table, five table policies and three storage
+      // policies, all its own. Like 117, 118 and 120 it only adds, and like
+      // them its absence from FROZEN is the statement that it has not been
+      // pushed. It is numbered 122 because 121 was taken by the seed above —
+      // the collision this list exists to catch, caught.
+      '20261022000000_image_editor_result_history.sql',
     ])
   })
 
@@ -741,6 +748,9 @@ describe('the applied migrations are frozen', () => {
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
       '20261021000000_seed_customer_review_test_cards.sql',
+      // 122 is pending too, and is now the last file in filename order, so it
+      // applies after every one of them whatever sequence the branches merge in.
+      '20261022000000_image_editor_result_history.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

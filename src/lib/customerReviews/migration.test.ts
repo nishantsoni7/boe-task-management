@@ -69,6 +69,9 @@ describe('the migration is one file, correctly sequenced', () => {
       // it inserts into tables this file creates — and the filename ordering
       // is what guarantees that whatever sequence the branches merge in.
       '20261021000000_seed_customer_review_test_cards.sql',
+      // The Image Editor's result history, from a separate branch. Higher
+      // still, unapplied, and it touches nothing this module creates.
+      '20261022000000_image_editor_result_history.sql',
     ])
   })
 

@@ -73,8 +73,29 @@ describe('the endpoint', () => {
     assert.ok(Number(declared) > 0 && Number(declared) <= 60, `maxDuration ${declared} exceeds the Hobby ceiling`)
   })
 
-  test('and there is no vercel.json whose settings it could contradict', () => {
-    assert.ok(!existsSync(join(ROOT, 'vercel.json')))
+  test('and no vercel.json setting can contradict that declaration', () => {
+    // This used to assert that vercel.json did not exist at all, which was a
+    // cheap stand-in for the thing it actually protects: nothing outside this
+    // file may override the route's own maxDuration. 20261022000000's Image
+    // Editor cleanup needs a `crons` entry, and a crons-only vercel.json
+    // overrides no function setting whatsoever — so the check is now the real
+    // one rather than the proxy.
+    const path = join(ROOT, 'vercel.json')
+    if (!existsSync(path)) return
+
+    const config = JSON.parse(readFileSync(path, 'utf8'))
+    assert.ok(
+      !('functions' in config),
+      'a `functions` block in vercel.json can override the maxDuration declared in the route',
+    )
+    assert.ok(
+      !('builds' in config),
+      'a `builds` block replaces the zero-config build and silently discards route-level settings',
+    )
+    assert.ok(
+      !JSON.stringify(config).includes('maxDuration'),
+      'maxDuration must be declared in the route, never in vercel.json',
+    )
   })
 
   test('exports nothing but POST — no GET that could become a second door', () => {

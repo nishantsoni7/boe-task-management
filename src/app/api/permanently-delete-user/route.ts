@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { purgeUserResults } from '@/lib/imageEditor/history'
+import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
 
 export async function POST(req: NextRequest) {
   const { userId } = await req.json()
@@ -47,19 +49,91 @@ export async function POST(req: NextRequest) {
 
   // ── Cascade cleanup in safe order ────────────────────────────────────────
 
-  // a. Notifications
+  // a. Image Editor history — BEFORE anything else is touched, and the only
+  //    step that can stop the deletion.
+  //
+  //    These rows are the only record of where their storage objects live, so
+  //    they cannot be allowed to go first: 20261022000000 makes the foreign key
+  //    ON DELETE RESTRICT precisely so a cascade cannot destroy them and orphan
+  //    the bytes. Emptying the history here — object then row, then anything
+  //    left under the employee's prefix — is what makes the RESTRICT pass.
+  //
+  //    A failure stops the deletion here, before the member or any of their
+  //    other records is touched. It is NOT atomic and cannot be: Storage and
+  //    Postgres are two systems, and the purge works through the history one
+  //    result at a time, so an item that fails may be preceded by items already
+  //    removed. Those removals stand — there is no rollback of a deleted object
+  //    and faking one would mean re-uploading bytes we no longer hold.
+  //
+  //    What IS guaranteed is that the operation is safe to repeat: the purge
+  //    re-lists what is actually left each time and carries on, and an object
+  //    already gone is not an error to remove again. So the honest report is
+  //    "the member is still here, some of their Image Editor history may
+  //    already be gone, press Delete again" — which is what the response says.
+  //    If the migration has not been applied the table is absent, there is
+  //    nothing stored, and this is a no-op.
+  const purge = await purgeUserResults(
+    {
+      storage: serviceClient.storage.from(HISTORY_BUCKET),
+      listRows: async (ownerId) => {
+        const { data, error } = await serviceClient
+          .from('image_editor_results')
+          .select('id, user_id, storage_path')
+          .eq('user_id', ownerId)
+        return {
+          data: data as { id: string; user_id: string; storage_path: string }[] | null,
+          error: error ? { message: error.message, code: error.code } : null,
+        }
+      },
+      deleteRow: async (rowId, ownerId) => {
+        const { error } = await serviceClient
+          .from('image_editor_results')
+          .delete()
+          .eq('id', rowId)
+          .eq('user_id', ownerId)
+        return { error: error ? { message: error.message } : null }
+      },
+    },
+    userId,
+  )
+
+  if (!purge.ok) {
+    console.error(
+      '[permanently-delete-user] image editor history not emptied after removing',
+      purge.rowsDeleted, 'result(s) and', purge.orphanObjects, 'object(s):',
+      purge.reasons.join('; '),
+    )
+    return NextResponse.json(
+      {
+        // Precise, because the imprecise version would be a lie. The member and
+        // everything else of theirs is untouched; part of their Image Editor
+        // history may already be gone and stays gone; pressing Delete again
+        // picks up exactly where this stopped.
+        error:
+          'Some of this member\'s Image Editor results could not be removed. The member and ' +
+          'their other records were NOT deleted, but part of their Image Editor history may ' +
+          'already have been removed and cannot be restored. Try again — it is safe to repeat ' +
+          'and will continue removing what is left.',
+        imageEditorResultsRemoved: purge.rowsDeleted,
+        imageEditorObjectsRemoved: purge.orphanObjects,
+      },
+      { status: 500 },
+    )
+  }
+
+  // b. Notifications
   const { count: notifCount } = await serviceClient
     .from('notifications')
     .delete({ count: 'exact' })
     .eq('user_id', userId)
 
-  // b. Password reset log
+  // c. Password reset log
   const { count: resetCount } = await serviceClient
     .from('password_reset_log')
     .delete({ count: 'exact' })
     .or(`target_id.eq.${userId},actor_id.eq.${userId}`)
 
-  // c. Activity log rows tied to tasks that reference this user
+  // d. Activity log rows tied to tasks that reference this user
   const { data: linkedTasks } = await serviceClient
     .from('tasks')
     .select('id')
@@ -76,25 +150,25 @@ export async function POST(req: NextRequest) {
     activityFromTasksCount = count ?? 0
   }
 
-  // d. Activity log rows where this user was the actor
+  // e. Activity log rows where this user was the actor
   const { count: activityByUserCount } = await serviceClient
     .from('task_activity_log')
     .delete({ count: 'exact' })
     .eq('actor_id', userId)
 
-  // e. Tasks referencing this user
+  // f. Tasks referencing this user
   const { count: taskCount } = await serviceClient
     .from('tasks')
     .delete({ count: 'exact' })
     .or(`assigned_to.eq.${userId},created_by.eq.${userId},delegated_by.eq.${userId},waiting_on_user_id.eq.${userId}`)
 
-  // f. Clear deleted_by pointers from other users that reference this user
+  // g. Clear deleted_by pointers from other users that reference this user
   await serviceClient
     .from('users')
     .update({ deleted_by: null })
     .eq('deleted_by', userId)
 
-  // g. Delete from public.users
+  // h. Delete from public.users
   const { error: deleteRowError } = await serviceClient
     .from('users')
     .delete()
@@ -104,7 +178,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: deleteRowError.message }, { status: 500 })
   }
 
-  // h. Delete from auth.users via Admin API
+  // i. Delete from auth.users via Admin API
   const { error: deleteAuthError } = await serviceClient.auth.admin.deleteUser(userId)
 
   if (deleteAuthError) {
@@ -114,6 +188,8 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     success: true,
     deleted: {
+      imageEditorResults: purge.rowsDeleted,
+      imageEditorOrphanObjects: purge.orphanObjects,
       notifications: notifCount ?? 0,
       passwordResetLogs: resetCount ?? 0,
       activityLogs: activityFromTasksCount + (activityByUserCount ?? 0),

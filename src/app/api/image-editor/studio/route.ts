@@ -6,8 +6,18 @@
 // AUTH / STORAGE
 // --------------
 // A bearer token resolved server-side and confirmed against the `users` table.
-// Nothing is stored: the upload is read into memory and the result comes back
-// in the response body.
+//
+// The UPLOAD is never stored: it is read into memory, sent to the provider, and
+// dropped. The GENERATED MASTER is stored, in the private per-user history added
+// by 20261022000000 — one PNG object plus one row, visible only to the employee
+// who made it, deleted after seven days unless they mark it Keep.
+//
+// That storage is BEST EFFORT and is the last thing this route does. By the time
+// it runs, two provider requests have been paid for and a finished image is in
+// hand; a storage failure must never turn that into a failed generation. So it
+// cannot throw, it cannot change a status code, and the response carries
+// `historySaved: false` so the page can warn the employee to download now. The
+// picture is delivered either way.
 //
 // HOW THE IMAGE IS MADE
 // ---------------------
@@ -84,6 +94,9 @@ import {
   MASTER_SIDE, PRODUCT_HEIGHT_SHARE,
   PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX, SIDE_MARGIN_SHARE, ABOVE_SHARE_OF_LEFTOVER,
 } from '@/lib/imageEditor/studioMaster'
+import { saveResult } from '@/lib/imageEditor/history'
+import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
+import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
 
 // sharp is a native module and the whole image is held in memory. Neither works
@@ -456,9 +469,48 @@ export async function POST(req: NextRequest) {
       `verification ${verification}`,
     )
 
+    // ── History, and only now ───────────────────────────────────────────────────
+    //
+    // The LAST thing, deliberately. Everything above has already happened and
+    // been paid for; this either adds a copy the employee can come back to, or
+    // it does not, and the difference must not cost them the image.
+    //
+    // saveResult never throws — every path returns an outcome — so there is no
+    // try/catch here and no way for a storage fault to become a 500 after two
+    // billable requests have succeeded. The verdict is carried across unchanged,
+    // so history can never claim a result was verified when the response did
+    // not.
+    const saved = await saveResult(
+      {
+        storage: svc.storage.from(HISTORY_BUCKET),
+        insertRow: async row => {
+          const { error } = await svc.from('image_editor_results').insert(row)
+          return { error: error ? { message: error.message } : null }
+        },
+        newId: randomUUID,
+      },
+      {
+        userId: user.id,
+        master,
+        sourceFileName: file.name,
+        verification,
+      },
+    )
+
+    if (!saved.ok) {
+      // A category and a reason, for whoever reads the log. The employee is told
+      // only that this one was not saved — a storage message is not something to
+      // put on a screen.
+      console.error('[image-editor/studio] history not saved:', saved.reason)
+    }
+
     // The header carries the verdict and nothing else. The body stays the image:
     // no bounds, no densities, no request ids, no model names — an employee is
     // preparing a catalogue photograph, not reading a provider's telemetry.
+    //
+    // `historySaved` is the one addition, and it is about THIS page's promise
+    // rather than the provider: false means "download it now, it will not be
+    // here later", which the card says in words.
     return NextResponse.json(
       {
         configured: true,
@@ -466,6 +518,8 @@ export async function POST(req: NextRequest) {
           dataUrl: `data:image/png;base64,${master.toString('base64')}`,
           mimeType: 'image/png',
         },
+        historySaved: saved.ok,
+        ...(saved.ok ? { historyId: saved.id } : {}),
       },
       { headers: { [VERIFICATION_HEADER]: verification } },
     )

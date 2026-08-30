@@ -365,8 +365,21 @@ describe('what the browser is told', () => {
     const res = await post(await chair({ cluttered: true }))
     const payload = await res.json()
 
-    // The body's shape is fixed: the image and whether the service is set up.
-    assert.deepEqual(Object.keys(payload).sort(), ['configured', 'image'])
+    // The body's shape is CLOSED: the image, whether the service is set up, and
+    // whether the result reached the seven-day history. `historyId` joins them
+    // only when there is one. Nothing else may appear — no bounds, no densities,
+    // no request ids, no model names.
+    const allowed = ['configured', 'historyId', 'historySaved', 'image']
+    const keys = Object.keys(payload).sort()
+    for (const key of keys) {
+      assert.ok(allowed.includes(key), `unexpected key "${key}" in the response body`)
+    }
+    for (const required of ['configured', 'historySaved', 'image']) {
+      assert.ok(keys.includes(required), `"${required}" is missing from the response body`)
+    }
+    // A boolean, never a reason: a storage error message is not something to put
+    // in front of an employee.
+    assert.equal(typeof payload.historySaved, 'boolean')
     assert.deepEqual(Object.keys(payload.image).sort(), ['dataUrl', 'mimeType'])
 
     const text = JSON.stringify({ ...payload, image: { ...payload.image, dataUrl: '' } })

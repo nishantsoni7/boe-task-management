@@ -299,6 +299,10 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // number still.
       '20261020000000_register_image_editor_module.sql',
       '20261021000000_seed_customer_review_test_cards.sql',
+      // 122. The Image Editor result history is unapplied too. It creates a
+      // private bucket and one table of its own, holds no order or payment
+      // data for a reset to reach, and carries the highest number of all.
+      '20261022000000_image_editor_result_history.sql',
     ])
   })
 

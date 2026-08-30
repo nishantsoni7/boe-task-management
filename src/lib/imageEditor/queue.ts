@@ -48,6 +48,20 @@ export type QueueItem = {
   noRetry?: boolean
   result?: { dataUrl: string; mimeType: string }
   /**
+   * Whether this result also reached the employee's seven-day history.
+   *
+   * False means the image is in this browser and NOWHERE ELSE — the card says
+   * so and asks them to download it now. Undefined on anything that has not
+   * finished, and on a failure, where there is nothing to have saved.
+   *
+   * A separate field from `result` on purpose: an unsaved image is a perfectly
+   * good image, exactly as an unverified one is, and neither may be allowed to
+   * look like a failure.
+   */
+  historySaved?: boolean
+  /** The history row's id, when there is one. */
+  historyId?: string
+  /**
    * What the route could establish about the delivered image.
    *
    * Absent on anything that has not finished. `manual_review_required` means

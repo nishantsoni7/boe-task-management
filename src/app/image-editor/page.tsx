@@ -24,8 +24,11 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import {
   deriveImageEditorCapabilities, IMAGE_EDITOR_MODULE_KEY,
 } from '@/lib/permissions/imageEditor'
+import type { HistoryResult } from '@/lib/imageEditor/history'
+import { RETENTION_DAYS } from '@/lib/imageEditor/retention'
 import { QueueList } from './QueueList'
 import { ResultCard } from './ResultCard'
+import { HistoryPanel } from './HistoryPanel'
 
 // Up to five photographs in, up to five catalogue images out.
 //
@@ -50,6 +53,17 @@ type Phase =
   | 'choosing'
   /** A run is in flight. */
   | 'running'
+
+/** Hand a URL to the browser as a download. Module scope so both the fresh
+ *  results and the stored ones save the same way. */
+function triggerSave(href: string, fileName: string) {
+  const a = document.createElement('a')
+  a.href = href
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+}
 
 export default function ImageEditorPage() {
   // Entry is already decided by ModuleGuard in layout.tsx; what this reads is
@@ -77,6 +91,16 @@ export default function ImageEditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const [downloading, setDownloading] = useState(false)
+
+  // ── Recent results ──────────────────────────────────────────────────────────
+  //
+  // The seven-day history, which is a SEPARATE thing from the queue above it:
+  // the queue is this session's work, and this is what survived earlier ones.
+  // They are deliberately not merged — a card that had two meanings would need
+  // to explain which one applied.
+  const [history, setHistory] = useState<HistoryResult[]>([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyBusyId, setHistoryBusyId] = useState<string | null>(null)
 
   const inputRef = useRef<HTMLInputElement>(null)
   // The runner reads the queue through a ref: it updates state as it goes, and
@@ -125,6 +149,167 @@ export default function ImageEditorPage() {
     await supabase.auth.signOut()
     router.push('/login')
   }, [supabase, router])
+
+  // ── Recent results ──────────────────────────────────────────────────────────
+  //
+  // Every call carries the bearer token and the server answers with the caller's
+  // OWN rows and nothing else. There is no user id in any of these URLs, and
+  // nothing here could ask for somebody else's history even if it wanted to.
+
+  /** Read the caller's own results. Returns them rather than storing them, so
+   *  the effect below and the post-run refresh share one request shape. */
+  const fetchHistory = useCallback(async (): Promise<HistoryResult[]> => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return []
+
+    try {
+      const res = await fetch('/api/image-editor/results', {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+      // A failed history read is not worth an error banner over the whole page:
+      // the thing an employee came here to do still works. The panel simply
+      // shows nothing.
+      if (!res.ok) return []
+      const payload = await res.json().catch(() => null)
+      return Array.isArray(payload?.results) ? payload.results : []
+    } catch {
+      return []
+    }
+  }, [supabase])
+
+  const loadHistory = useCallback(async () => {
+    setHistory(await fetchHistory())
+    setHistoryLoading(false)
+  }, [fetchHistory])
+
+  // Declared inside the effect, the same shape the auth effect above uses: the
+  // panel is filled from an external system after the profile is known, and
+  // nothing here runs synchronously during the render pass.
+  useEffect(() => {
+    if (authLoading) return
+    let active = true
+    const load = async () => {
+      const results = await fetchHistory()
+      if (!active) return
+      setHistory(results)
+      setHistoryLoading(false)
+    }
+    void load()
+    return () => { active = false }
+  }, [authLoading, fetchHistory])
+
+  const toggleKeep = useCallback(async (result: HistoryResult, kept: boolean) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+
+    setHistoryBusyId(result.id)
+    // Optimistic, then reconciled against what the server actually stored —
+    // `expires_at` is the database's to decide, never this page's.
+    setHistory(current => current.map(r => (r.id === result.id ? { ...r, kept } : r)))
+
+    try {
+      const res = await fetch(`/api/image-editor/results/${result.id}`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ kept }),
+      })
+
+      if (!res.ok) {
+        setError('That result could not be updated.')
+        await loadHistory()
+        return
+      }
+
+      const payload = await res.json().catch(() => null)
+      // Unkeeping something already past its window makes it due immediately.
+      // Dropping it from the list now is what the employee was warned about and
+      // agreed to, so the screen matches what they were told.
+      if (payload?.expired === true) {
+        setHistory(current => current.filter(r => r.id !== result.id))
+        return
+      }
+      setHistory(current => current.map(r => (
+        r.id === result.id
+          ? { ...r, kept: payload?.kept ?? kept, expiresAt: payload?.expiresAt ?? r.expiresAt }
+          : r
+      )))
+    } catch {
+      setError('That result could not be updated.')
+      await loadHistory()
+    } finally {
+      setHistoryBusyId(null)
+    }
+  }, [supabase, router, loadHistory])
+
+  const deleteHistoryResult = useCallback(async (result: HistoryResult) => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) { router.push('/login'); return }
+
+    setHistoryBusyId(result.id)
+    try {
+      const res = await fetch(`/api/image-editor/results/${result.id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      })
+
+      // 404 counts as gone: it is already not there, which is what was asked
+      // for. Anything else leaves the row in place rather than pretending.
+      if (res.ok || res.status === 404) {
+        setHistory(current => current.filter(r => r.id !== result.id))
+        return
+      }
+      setError('That result could not be deleted.')
+    } catch {
+      setError('That result could not be deleted.')
+    } finally {
+      setHistoryBusyId(null)
+    }
+  }, [supabase, router])
+
+  /** A stored result, in the format chosen above. The stored master is always
+   *  PNG, so anything else is the same server-side re-encode a fresh result
+   *  uses — and costs nothing with the provider. */
+  const downloadHistoryResult = useCallback(async (result: HistoryResult) => {
+    if (!result.url) return
+    setDownloading(true)
+    try {
+      const blob = await (await fetch(result.url)).blob()
+
+      if (format === 'png') {
+        const objectUrl = URL.createObjectURL(blob)
+        triggerSave(objectUrl, resultFileName(result.sourceFileName, 'png'))
+        URL.revokeObjectURL(objectUrl)
+        return
+      }
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+
+      const form = new FormData()
+      form.append('image', blob, 'studio.png')
+      form.append('format', format)
+
+      const res = await fetch('/api/image-editor/convert', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        body: form,
+      })
+      const payload = await res.json().catch(() => null)
+
+      if (!res.ok || !payload?.image?.dataUrl) {
+        setError(payload?.error ?? 'That image could not be converted for download.')
+        return
+      }
+      triggerSave(payload.image.dataUrl, resultFileName(result.sourceFileName, payload.image.extension))
+    } catch {
+      setError('That image could not be downloaded.')
+    } finally {
+      setDownloading(false)
+    }
+  }, [format, supabase, router])
 
   // ── Choosing ────────────────────────────────────────────────────────────────
 
@@ -219,6 +404,12 @@ export default function ImageEditorPage() {
       error: undefined,
       noRetry: undefined,
       result: { dataUrl, mimeType: payload?.image?.mimeType ?? 'image/png' },
+      // Whether the seven-day copy exists. `!== false` rather than `=== true`
+      // so an older server that does not send the field is not reported as a
+      // failure to save — the warning must fire on a KNOWN failure, never on
+      // an unknown.
+      historySaved: payload?.historySaved !== false,
+      historyId: typeof payload?.historyId === 'string' ? payload.historyId : undefined,
       // Whether anything actually verified this image. Unrecognised or missing
       // reads as undefined, and the card then says nothing either way — it
       // never invents a "verified".
@@ -261,8 +452,12 @@ export default function ImageEditorPage() {
     } finally {
       runningRef.current = false
       setPhase('choosing')
+      // Once, after the whole run rather than after each image: the panel is a
+      // record of what survived, and refreshing it five times during a queue
+      // would be five reads to show the same thing.
+      void loadHistory()
     }
-  }, [generateOne])
+  }, [generateOne, loadHistory])
 
   const retry = useCallback((id: string) => {
     if (runningRef.current) return
@@ -277,12 +472,7 @@ export default function ImageEditorPage() {
   // ── Downloading ─────────────────────────────────────────────────────────────
 
   const saveFile = useCallback((dataUrl: string, fileName: string) => {
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = fileName
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    triggerSave(dataUrl, fileName)
   }, [])
 
   /** The master is what the provider returned; anything else is a re-encode on
@@ -515,6 +705,38 @@ export default function ImageEditorPage() {
             </div>
           </>
         )}
+
+        {/* ── Recent results ──────────────────────────────────────────────── */}
+        {/* Always rendered, including when it is empty: an employee who has just
+            lost a tab needs to find this section, and a panel that only appears
+            once you already have history is invisible exactly when it is first
+            needed. It sits below the current run because that is what somebody
+            is looking at when they arrive. */}
+        <div style={{ marginTop: '28px' }}>
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap',
+            marginBottom: '10px',
+          }}>
+            <div style={{
+              fontSize: '11px', fontWeight: 600, color: colors.tertiary,
+              textTransform: 'uppercase', letterSpacing: '0.05em',
+            }}>
+              Recent results
+            </div>
+            <div style={{ fontSize: '11px', color: colors.tertiary }}>
+              Only you can see these. Kept for {RETENTION_DAYS} days unless you mark them Keep.
+            </div>
+          </div>
+
+          <HistoryPanel
+            results={history}
+            loading={historyLoading}
+            busyId={historyBusyId}
+            onToggleKeep={toggleKeep}
+            onDelete={deleteHistoryResult}
+            onDownload={downloadHistoryResult}
+          />
+        </div>
 
         <input
           ref={inputRef}
