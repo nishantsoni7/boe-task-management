@@ -187,7 +187,9 @@ describe('the pipeline', () => {
 
   test('the delivered image is the normalised one, not the raw upscale', () => {
     const body = postCode()
-    assert.match(body, /const master = normalised\.image/)
+    assert.match(body, /const normalisedMaster = normalised\.image/)
+    assert.match(body, /const master = enhanced\.image/,
+      'the delivered master is the corrected one')
     // The SUCCESS response, found by the field only it carries. Anchoring on
     // "the last return" broke the moment the pipeline gained a catch block
     // whose refusal is now the last one — the assertion was still true, it was
@@ -431,5 +433,73 @@ describe('runtime', () => {
     const body = postHandler()
     assert.ok(body.includes('shot.requestId'))
     assert.ok(body.includes('upscaled.requestId'))
+  })
+})
+
+describe('the dark-product correction', () => {
+  test('runs after normalisation and before anything is delivered or stored', () => {
+    const body = postCode()
+    const norm = body.indexOf('normaliseSquare(')
+    const lift = body.indexOf('enhanceShadows(')
+    const save = body.indexOf('saveResult(')
+    const resp = body.indexOf('configured: true')
+    assert.ok(lift > norm, 'the size is settled before the pixels are corrected')
+    assert.ok(lift < save, 'history must receive the corrected master')
+    assert.ok(lift < resp, 'and so must the response')
+  })
+
+  test('is applied exactly ONCE', () => {
+    const body = postCode()
+    assert.equal((body.match(/enhanceShadows\(/g) ?? []).length, 1,
+      'a second application would double the lift')
+  })
+
+  test('history and the response carry the SAME buffer', () => {
+    const body = postCode()
+    // One name, assigned once from the correction, used by both.
+    assert.match(body, /const master = enhanced\.image/)
+    assert.match(body, /master,\n\s+sourceFileName: file\.name/, 'history stores it')
+    assert.match(body, /master\.toString\('base64'\)/, 'and the response encodes it')
+  })
+
+  test('the preservation gate is NOT moved to the corrected bytes', () => {
+    // Deliberate, and measured: the correction changes structureUnderseat by
+    // -1.9% on a production master, so re-pointing the gate here would
+    // re-baseline the accepted pass / manual-review / refuse classifications.
+    const body = postCode()
+    assert.ok(body.indexOf('comparePreservation(originalProfile, finalProfile') < body.indexOf('enhanceShadows('),
+      'the gate still measures what the provider returned')
+    assert.match(body, /measureProfile\(upscaled\.image\)/)
+  })
+
+  test('a failed correction delivers the image anyway', () => {
+    const body = postCode()
+    // No throw, no status change: the only response to a failure is a log line.
+    assert.match(body, /if \(!enhanced\.applied\)/)
+    const at = body.indexOf('if (!enhanced.applied)')
+    const block = body.slice(at, at + 260)
+    assert.ok(!/return NextResponse/.test(block), 'a cosmetic failure must never end the request')
+    assert.ok(/console\.warn/.test(block), 'it is logged instead')
+  })
+
+  test('the correction spends nothing and knows no provider', () => {
+    const helper = readFileSync(join(process.cwd(), 'src/lib/imageEditor/shadowLift.ts'), 'utf8')
+    const code = helper.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    for (const leak of ['FAL_KEY', 'fal.ai', 'fetch(', 'process.env']) {
+      assert.ok(!code.includes(leak), `the correction must not reach for ${leak}`)
+    }
+  })
+
+  test('the two-call limit is untouched', () => {
+    const body = postCode()
+    assert.equal((body.match(/generateProductShot\(/g) ?? []).length, 1)
+    assert.equal((body.match(/upscaleImage\(/g) ?? []).length, 1)
+  })
+
+  test('a structural refusal still stops before the upscale is paid for', () => {
+    const body = postCode()
+    const gate = body.indexOf("comparePreservation(originalProfile, shotProfile, 'after product shot')")
+    const upscale = body.indexOf('upscaleImage(')
+    assert.ok(gate > 0 && gate < upscale, 'the first gate must precede the second paid call')
   })
 })
