@@ -20,7 +20,10 @@
 // Nothing is stored: the upload is read into memory, re-encoded, returned, and
 // gone when the request ends.
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { hasPermission } from '@/lib/permissions/resolver'
+import { isAdminRole } from '@/lib/permissions/moduleVisibility'
+import { IMAGE_EDITOR_MODULE_KEY } from '@/lib/permissions/imageEditor'
 import { NextRequest, NextResponse } from 'next/server'
 import { convertImage, isDownloadFormat } from '@/lib/imageEditor/imageFormats'
 
@@ -60,6 +63,17 @@ function rateLimited(userId: string): boolean {
   return false
 }
 
+/** Whether this caller may re-encode. Admins bypass, as everywhere else. */
+async function canConvert(
+  svc: SupabaseClient,
+  userId: string,
+  role: string | null | undefined,
+): Promise<boolean> {
+  if (isAdminRole(role)) return true
+  if (!role) return false
+  return hasPermission(svc, userId, IMAGE_EDITOR_MODULE_KEY, 'view')
+}
+
 export async function POST(req: NextRequest) {
   const token = (req.headers.get('authorization') ?? '').replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -72,8 +86,25 @@ export async function POST(req: NextRequest) {
   const { data: { user }, error: authErr } = await svc.auth.getUser(token)
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await svc.from('users').select('id').eq('id', user.id).single()
+  const { data: profile } = await svc.from('users').select('id, role').eq('id', user.id).single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // ── Permission ──────────────────────────────────────────────────────────────
+  //
+  // 'view' only, and deliberately so. This route re-encodes an image the caller
+  // is already holding in their browser — it calls no provider and costs
+  // nothing. Requiring 'create' would mean an employee whose Use access was
+  // revoked could no longer download work they had already generated, which is
+  // punishment rather than access control.
+  //
+  // 'view' is still the module's parent gate, so somebody who cannot open the
+  // Image Editor cannot use this route as a side door into sharp.
+  if (!(await canConvert(svc, user.id, profile.role))) {
+    return NextResponse.json(
+      { error: 'You do not have permission to use the Image Editor.' },
+      { status: 403 },
+    )
+  }
 
   if (rateLimited(user.id)) {
     return NextResponse.json(

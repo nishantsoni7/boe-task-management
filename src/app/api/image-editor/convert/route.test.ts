@@ -96,3 +96,39 @@ describe('what it accepts', () => {
     assert.match(SOURCE, /export const runtime = 'nodejs'/)
   })
 })
+
+// ═══ Permission ═══════════════════════════════════════════════════════════════
+
+describe('permission enforcement', () => {
+  const SOURCE = readFileSync(
+    join(process.cwd(), 'src/app/api/image-editor/convert/route.ts'), 'utf8')
+
+  test("it requires 'view', the module's parent gate", () => {
+    assert.ok(SOURCE.includes('canConvert('), 'the guard must exist')
+    assert.match(SOURCE, /hasPermission\(svc, userId, IMAGE_EDITOR_MODULE_KEY, 'view'\)/)
+  })
+
+  test("it does NOT require 'create'", () => {
+    // Re-encoding an image the caller already holds calls no provider and costs
+    // nothing. Requiring Use would stop somebody downloading work they had
+    // already generated, which is punishment rather than access control.
+    const guard = SOURCE.slice(SOURCE.indexOf('async function canConvert'), SOURCE.indexOf('export async function POST'))
+    assert.ok(!guard.includes("'create'"), 'download must not depend on Use')
+  })
+
+  test('the refusal precedes the upload read', () => {
+    const guard = SOURCE.indexOf('canConvert(svc')
+    const form = SOURCE.indexOf('req.formData()')
+    assert.ok(guard > -1 && form > -1 && guard < form)
+  })
+
+  test('an admin bypasses, matching every other module', () => {
+    assert.match(SOURCE, /isAdminRole\(role\)/)
+  })
+
+  test('it calls no provider at all', () => {
+    for (const banned of ['fal.run', 'generateProductShot', 'upscaleImage', 'FAL_KEY']) {
+      assert.ok(!SOURCE.includes(banned), `${banned} must not appear in the convert route`)
+    }
+  })
+})

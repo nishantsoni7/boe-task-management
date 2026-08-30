@@ -59,7 +59,10 @@
 // FAL_KEY, read here and passed to both adapters. Never in a response body,
 // never in a client bundle, never in a provider URL.
 
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { hasPermission } from '@/lib/permissions/resolver'
+import { isAdminRole } from '@/lib/permissions/moduleVisibility'
+import { IMAGE_EDITOR_MODULE_KEY } from '@/lib/permissions/imageEditor'
 import { NextRequest, NextResponse } from 'next/server'
 import {
   validateSourceImage,
@@ -170,6 +173,33 @@ function statusFor(reason: ProductShotFailure): number {
   }
 }
 
+// ─── Permission ───────────────────────────────────────────────────────────────
+
+/** Said to somebody who may open the module but not generate in it. */
+const GENERATION_FORBIDDEN =
+  'You do not have permission to generate studio images. Ask an administrator for access.'
+
+/**
+ * Whether this caller may spend two provider requests.
+ *
+ * Admins bypass the engine, matching every other cut-over module. Everyone else
+ * needs BOTH grants — see the note at the call site for why 'create' alone is
+ * not enough here.
+ */
+async function canGenerate(
+  svc: SupabaseClient,
+  userId: string,
+  role: string | null | undefined,
+): Promise<boolean> {
+  if (isAdminRole(role)) return true
+  if (!role) return false
+  const [view, create] = await Promise.all([
+    hasPermission(svc, userId, IMAGE_EDITOR_MODULE_KEY, 'view'),
+    hasPermission(svc, userId, IMAGE_EDITOR_MODULE_KEY, 'create'),
+  ])
+  return view && create
+}
+
 // ─── Route ────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
@@ -190,8 +220,25 @@ export async function POST(req: NextRequest) {
   const { data: { user }, error: authErr } = await svc.auth.getUser(token)
   if (authErr || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: profile } = await svc.from('users').select('id').eq('id', user.id).single()
+  const { data: profile } = await svc.from('users').select('id, role').eq('id', user.id).single()
   if (!profile) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // ── Permission, before anything that costs ──────────────────────────────────
+  //
+  // Generating costs TWO billable provider requests, so the grant is checked
+  // here — before the upload is read, before the studio reference is loaded,
+  // and before any provider call. A 403 from this route has spent nothing.
+  //
+  // BOTH actions, not just 'create'. Control Center lets an administrator leave
+  // 'create' stored while 'view' is off, and that dormant-child state must
+  // grant nothing. Every module before this one inherits that gate from
+  // RESTRICTIVE row-level security (module_entry_open, 20260905000000), but the
+  // Image Editor has no tables for a policy to attach to, and
+  // resolve_permission() returns the raw value for the action it is asked
+  // about. So the gate is applied here, explicitly.
+  if (!(await canGenerate(svc, user.id, profile.role))) {
+    return NextResponse.json({ error: GENERATION_FORBIDDEN, noRetry: true }, { status: 403 })
+  }
 
   const apiKey = process.env.FAL_KEY
   // Answered before the upload is read: with no key there is nothing this route
