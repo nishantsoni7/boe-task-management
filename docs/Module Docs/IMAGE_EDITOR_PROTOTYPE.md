@@ -439,7 +439,7 @@ object and nothing here holds a copy to restore. The route says exactly that:
 an object that is already gone is not an error, and a row whose object went
 first is simply retried — so a second press continues from wherever the first
 stopped. The rows that remain still carry their paths, which is what makes that
-possible. If `20261021000000` has not been applied the table is absent, there is
+possible. If `20261022000000` has not been applied the table is absent, there is
 nothing stored, and the step is a no-op rather than a blocker.
 
 ### When saving fails

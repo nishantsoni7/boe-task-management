@@ -2,7 +2,7 @@
 //
 // The signed-in employee's own generated masters, newest first. Nobody else's,
 // including an administrator's — see the NO ADMIN BACK DOOR note in
-// 20261021000000.
+// 20261022000000.
 //
 // MAKES NO PROVIDER CALL AND SPENDS NOTHING. This route reads a table and signs
 // some URLs; FAL_KEY is not imported, not read and not reachable from here.

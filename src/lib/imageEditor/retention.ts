@@ -59,7 +59,7 @@ export const HISTORY_PAGE_SIZE = 50
  * The object key for a result: '<user_id>/<result_id>.png'.
  *
  * The first segment IS the owner, and the storage policies in
- * 20261021000000 authorize by parsing it. Building this key anywhere else, or
+ * 20261022000000 authorize by parsing it. Building this key anywhere else, or
  * changing its shape here, silently breaks that authorization — which is why
  * every caller goes through this function.
  */

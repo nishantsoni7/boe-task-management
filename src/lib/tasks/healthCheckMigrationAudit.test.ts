@@ -483,6 +483,9 @@ describe('the migration is placed correctly', () => {
       '20261018000000_unpin_tasks_submitted_for_approval.sql',
       '20261020000000_register_image_editor_module.sql',
       '20261021000000_seed_customer_review_test_cards.sql',
+      // 122. The Image Editor result history, unapplied like the rest of the
+      // tail: one bucket, one table, its own policies, nothing replaced.
+      '20261022000000_image_editor_result_history.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

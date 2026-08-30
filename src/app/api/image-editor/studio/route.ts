@@ -9,7 +9,7 @@
 //
 // The UPLOAD is never stored: it is read into memory, sent to the provider, and
 // dropped. The GENERATED MASTER is stored, in the private per-user history added
-// by 20261021000000 — one PNG object plus one row, visible only to the employee
+// by 20261022000000 — one PNG object plus one row, visible only to the employee
 // who made it, deleted after seven days unless they mark it Keep.
 //
 // That storage is BEST EFFORT and is the last thing this route does. By the time

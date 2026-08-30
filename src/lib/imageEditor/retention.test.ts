@@ -41,7 +41,7 @@ describe('the window is seven days, and says so everywhere', () => {
   // long somebody has, so the migration is read and checked against it.
   test('the migration defaults expires_at to the same seven days', () => {
     const sql = readFileSync(
-      join(process.cwd(), 'supabase/migrations/20261021000000_image_editor_result_history.sql'),
+      join(process.cwd(), 'supabase/migrations/20261022000000_image_editor_result_history.sql'),
       'utf8',
     )
     assert.ok(
@@ -121,7 +121,7 @@ describe('the countdown an employee reads', () => {
 
 describe('the object key', () => {
   // The storage policies authorize by parsing the FIRST path segment. If this
-  // shape changes, every policy in 20261021000000 silently stops matching.
+  // shape changes, every policy in 20261022000000 silently stops matching.
   test('is <user_id>/<result_id>.png', () => {
     assert.equal(
       historyObjectPath('11111111-2222-3333-4444-555555555555', 'aaaa-bbbb'),

@@ -317,7 +317,7 @@ describe('the API key', () => {
 })
 
 describe('what is stored, and what still is not', () => {
-  // This block used to assert that NOTHING was stored. 20261021000000 gave the
+  // This block used to assert that NOTHING was stored. 20261022000000 gave the
   // module a seven-day per-user history, so the contract changed — but only in
   // one direction, and the parts that did not change are the ones worth
   // guarding now.

@@ -17,7 +17,7 @@
 // THE SERVICE ROLE, AND WHY OWNERSHIP IS STILL FILTERED IN CODE
 // -------------------------------------------------------------
 // These routes act with the service role, which BYPASSES row-level security
-// entirely. The `user_id = auth.uid()` policies in 20261021000000 therefore do
+// entirely. The `user_id = auth.uid()` policies in 20261022000000 therefore do
 // NOT protect these routes — they protect the bucket and the table from
 // everything else. Inside a route, the `.eq('user_id', userId)` on every query
 // is the only thing standing between one employee and another's pictures, and

@@ -1,4 +1,4 @@
--- What 20261021000000 actually does, asked of a running PostgreSQL.
+-- What 20261022000000 actually does, asked of a running PostgreSQL.
 --
 -- Every check below is a real query by a real role with a real JWT claim, under
 -- the migration's own policies. Nothing here reads the migration's text: the

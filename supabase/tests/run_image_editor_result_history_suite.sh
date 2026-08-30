@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build a Supabase-shaped PostgreSQL database, apply
-# 20261021000000_image_editor_result_history.sql verbatim, and prove what its
+# 20261022000000_image_editor_result_history.sql verbatim, and prove what its
 # policies actually do:
 #
 #   * the owner reads their unexpired results, and nobody else's
@@ -35,11 +35,11 @@ trap '"${Q[@]}" -d postgres -c "drop database if exists '"$DB"'" >/dev/null 2>&1
 echo "══ building the shaped schema ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/_image_editor_result_history_shaped_schema.sql" >/dev/null
 
-echo "══ applying 20261021000000 ══"
+echo "══ applying 20261022000000 ══"
 # --single-transaction: the migration's own assertion block must be able to fail
 # the whole apply, exactly as it would on a real project.
 "${Q[@]}" -d "$DB" --single-transaction \
-  -f "$REPO/supabase/migrations/20261021000000_image_editor_result_history.sql"
+  -f "$REPO/supabase/migrations/20261022000000_image_editor_result_history.sql"
 
 # The migration creates the table; Supabase grants the API roles their table
 # privileges automatically. Row-level security is what this suite tests, so the

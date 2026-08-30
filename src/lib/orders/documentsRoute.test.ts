@@ -76,7 +76,7 @@ describe('the endpoint', () => {
   test('and no vercel.json setting can contradict that declaration', () => {
     // This used to assert that vercel.json did not exist at all, which was a
     // cheap stand-in for the thing it actually protects: nothing outside this
-    // file may override the route's own maxDuration. 20261021000000's Image
+    // file may override the route's own maxDuration. 20261022000000's Image
     // Editor cleanup needs a `crons` entry, and a crons-only vercel.json
     // overrides no function setting whatsoever — so the check is now the real
     // one rather than the proxy.

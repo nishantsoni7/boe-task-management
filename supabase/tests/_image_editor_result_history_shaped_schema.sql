@@ -1,4 +1,4 @@
--- A Supabase-shaped database for 20261021000000_image_editor_result_history.sql.
+-- A Supabase-shaped database for 20261022000000_image_editor_result_history.sql.
 --
 -- WHAT THIS IS. Everything that migration touches or leans on, and nothing else:
 -- the three Supabase roles, `auth.uid()`, `storage.buckets` and

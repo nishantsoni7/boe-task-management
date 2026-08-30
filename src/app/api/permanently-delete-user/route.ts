@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   //    step that can stop the deletion.
   //
   //    These rows are the only record of where their storage objects live, so
-  //    they cannot be allowed to go first: 20261021000000 makes the foreign key
+  //    they cannot be allowed to go first: 20261022000000 makes the foreign key
   //    ON DELETE RESTRICT precisely so a cascade cannot destroy them and orphan
   //    the bytes. Emptying the history here — object then row, then anything
   //    left under the employee's prefix — is what makes the RESTRICT pass.

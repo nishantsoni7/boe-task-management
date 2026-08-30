@@ -33,7 +33,7 @@ const LIST = read('src/app/api/image-editor/results/route.ts')
 const ITEM = read('src/app/api/image-editor/results/[id]/route.ts')
 const CLEANUP = read('src/app/api/image-editor/cleanup/route.ts')
 const AUTH = read('src/lib/imageEditor/historyServer.ts')
-const MIGRATION = read('supabase/migrations/20261021000000_image_editor_result_history.sql')
+const MIGRATION = read('supabase/migrations/20261022000000_image_editor_result_history.sql')
 const VERCEL = read('vercel.json')
 const PURGE = read('src/app/api/permanently-delete-user/route.ts')
 
@@ -278,7 +278,7 @@ describe('an expired result cannot be read DIRECTLY either', () => {
     const runner = read('supabase/tests/run_image_editor_result_history_suite.sh')
     const assertions = read('supabase/tests/image_editor_result_history_assertions.sql')
     const fixture = read('supabase/tests/_image_editor_result_history_shaped_schema.sql')
-    assert.match(runner, /20261021000000_image_editor_result_history\.sql/,
+    assert.match(runner, /20261022000000_image_editor_result_history\.sql/,
       'the suite applies the real migration, not a copy of it')
     assert.match(fixture, /refusing to build a fixture in %/,
       'and refuses to build anywhere but its own disposable database')
