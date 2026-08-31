@@ -836,8 +836,15 @@ function RequestCard({
           </div>
         )}
 
-        {/* Verify received panel */}
-        {verifyOpen && r.status === 'dispatched' && (isAdmin || (canReceive && !isRequester)) && (
+        {/* Verify received panel — gated on canReceive ALONE, exactly like the
+            "Mark Received & Close" button above. It previously read
+            isAdmin || (canReceive && !isRequester), which opened the button for a
+            non-admin requester holding 'receive' but never the panel, leaving the
+            remarks box and Confirm Received unreachable. One permission governs the
+            whole action; being the requester does not cancel an explicit 'receive'
+            grant. This matches the sd_update_perm_receive RLS policy, which checks
+            'receive' and nothing else. */}
+        {verifyOpen && r.status === 'dispatched' && canReceive && (
           <div style={{ marginTop: '12px', padding: '12px', background: colors.greenTint, borderRadius: '8px', border: `1px solid ${colors.green}33` }}>
             <div style={{ fontSize: '11.5px', fontWeight: 700, color: colors.green, marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '5px' }}>
               <ShieldCheck size={13} strokeWidth={2} /> Verify Received & Close
