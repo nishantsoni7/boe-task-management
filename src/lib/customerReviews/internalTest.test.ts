@@ -30,6 +30,7 @@ import { join } from 'node:path'
 import {
   DRAFT_STATUS,
   RETIRED_TEST_WARNING,
+  containsTelephoneNumber,
   buildReviewMessage,
   buildWaMeUrl,
   isSendableReviewMessage,
@@ -163,6 +164,92 @@ describe('isSendableReviewMessage', () => {
       'Great chairs, call +44 20 7946 0000',
     ]) {
       assert.equal(isSendableReviewMessage(leak), false, leak)
+    }
+  })
+})
+
+
+// ══ THE TELEPHONE DETECTOR ══════════════════════════════════════════════════
+//
+// The matcher this replaces was /\+\d[\d\s()-]{7,}/, which only fired on a
+// LEADING PLUS. "+44 20 7946 0000" was caught; "202-555-0100",
+// "(202) 555-0100" and "9876543210" were not — three of the four ways a number
+// is actually written — so they passed both validateDrafts() and
+// isSendableReviewMessage().
+//
+// The four cases named in that report lead the list below, and the negative
+// controls matter just as much: a guard that rejects "120 chairs" would make
+// the module unusable for the furniture reviews it exists to draft.
+
+/** Must be caught. The first four are the reported misses. */
+const PHONE_NUMBERS = [
+  '+44 20 7946 0000',
+  '202-555-0100',
+  '(202) 555-0100',
+  '9876543210',
+  // and the same shapes inside a sentence, which is how one would actually arrive
+  'Great chairs, call +44 20 7946 0000 to order the same.',
+  'Great chairs — ring 202-555-0100 and ask for the workshop.',
+  'Great chairs, the showroom is (202) 555-0100 on weekdays.',
+  'Great chairs, my number is 9876543210 if you want the spec.',
+  // other everyday formats
+  '+1 (202) 555-0100',
+  '020 7946 0000',
+  '+91 98765 43210',
+  '555.123.4567',
+]
+
+/** Must NOT be caught. Quantities and durations a furniture review is full of. */
+const NOT_PHONE_NUMBERS = [
+  '120 chairs',
+  '60 rooms',
+  '18 months',
+  'three weeks',
+  'We ordered 120 chairs for a room that seats 60.',
+  'Eighty covers delivered over 18 months, in three phases.',
+  'A hundred and twenty covers, delivered in three phases.',
+  'Two years of full service later the frames have not moved.',
+  'We refitted 60 rooms in 2 lifts across 3 mornings.',
+  'The 40 stools arrived first, then the 12 tables.',
+  'Forty stacking chairs, six high on the pallet.',
+]
+
+describe('containsTelephoneNumber', () => {
+  for (const text of PHONE_NUMBERS) {
+    test(`catches ${JSON.stringify(text)}`, () => {
+      assert.equal(containsTelephoneNumber(text), true)
+    })
+  }
+
+  for (const text of NOT_PHONE_NUMBERS) {
+    test(`leaves ${JSON.stringify(text)} alone`, () => {
+      assert.equal(containsTelephoneNumber(text), false)
+    })
+  }
+
+  test('it counts digits rather than matching formats', () => {
+    // Six digits in a run is not a phone number; seven is. That boundary is the
+    // whole rule, and it is the reason no format list needs maintaining.
+    assert.equal(containsTelephoneNumber('12 34 56'), false)
+    assert.equal(containsTelephoneNumber('12 34 567'), true)
+  })
+})
+
+describe('and the SEND GUARD refuses every one of them', () => {
+  // The point of the shared function: a number cannot be rejected by the
+  // validator at one end of the module and accepted by the message builder at
+  // the other.
+  for (const number of PHONE_NUMBERS) {
+    test(`will not send a message carrying ${JSON.stringify(number)}`, () => {
+      const message = `The seating was excellent and it arrived when they said. ${number}`
+      assert.equal(isSendableReviewMessage(message), false)
+    })
+  }
+
+  test('but an ordinary review full of quantities still sends', () => {
+    for (const text of NOT_PHONE_NUMBERS) {
+      const message = `The seating was excellent and it arrived when they said it would. ${text}`
+      assert.equal(isSendableReviewMessage(message), true, text)
     }
   })
 })

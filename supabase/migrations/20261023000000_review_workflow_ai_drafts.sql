@@ -282,6 +282,47 @@ begin
 end;
 $$;
 
+-- ── 3B. A TELEPHONE NUMBER, IN ANY OF THE WAYS PEOPLE WRITE ONE ─────────
+--
+-- The SQL twin of containsTelephoneNumber in src/lib/customerReviews/
+-- internalTest.ts, and it has to stay a twin: the route validates a batch with
+-- the TypeScript one and this function refuses the same batch again inside the
+-- transaction, so the two disagreeing means the route accepts what the database
+-- then rejects.
+--
+-- THE CHECK THIS REPLACES ONLY CAUGHT A LEADING '+'. It read
+-- `test_body ~ '\+[0-9][0-9 ()-]{7,}'`, so "+44 20 7946 0000" was caught while
+-- "202-555-0100", "(202) 555-0100" and "9876543210" were not -- three of the
+-- four ways a number is actually written.
+--
+-- Same rule as the TypeScript: find every run of digits joined by the
+-- characters that appear inside phone numbers, and count the DIGITS. Seven or
+-- more is a phone number. Quantities survive because a letter or a comma ends a
+-- run -- "120 chairs", "60 rooms", "18 months" never reach seven.
+create or replace function public.customer_review_contains_phone(p_text text)
+returns boolean
+language sql
+immutable
+set search_path = public, pg_temp
+as $fn$
+  select exists (
+    select 1
+      from regexp_matches(coalesce(p_text, ''), '\+?[0-9][0-9 ().-]{5,}[0-9]', 'g') as m
+     where length(regexp_replace(m[1], '[^0-9]', '', 'g')) >= 7
+  );
+$fn$;
+
+comment on function public.customer_review_contains_phone(text) is
+  'True when the text holds a run of digits and phone punctuation carrying seven or more digits. The SQL twin of containsTelephoneNumber in src/lib/customerReviews/internalTest.ts; the two must agree, because the route validates with one and the batch function refuses with the other.';
+
+-- NOT browser-callable. The batch function is SECURITY DEFINER and runs as the
+-- owner, so it reaches this regardless; nothing a browser does needs it, and the
+-- screen has the TypeScript twin. Keeping it off the authenticated list also
+-- keeps section 10b of the assertions meaningful — that list is short on purpose.
+revoke execute on function public.customer_review_contains_phone(text)
+  from public, anon, authenticated;
+grant  execute on function public.customer_review_contains_phone(text) to service_role;
+
 -- ── 4. THE BATCH INSERT ─────────────────────────────────────────────────────
 create or replace function public.create_customer_review_draft_batch(
   p_guidance text,
@@ -371,6 +412,14 @@ begin
         using errcode = '23514';
     end if;
 
+    -- THE DATABASE REFUSES A CONTACT DETAIL TOO, rather than trusting that the
+    -- route checked. Title as well as body: a title is displayed on the card.
+    if public.customer_review_contains_phone(v_title)
+    or public.customer_review_contains_phone(v_body) then
+      raise exception 'CUSTOMER_REVIEW_TEST_BAD_BATCH: a draft contains a telephone number'
+        using errcode = '23514';
+    end if;
+
     v_next := v_next + 1;
 
     -- Every column constraint the table already carries still applies: the
@@ -427,7 +476,9 @@ begin
   -- No draft carries the retired warning, a link, an address or a number.
   select string_agg(card_ref, ', ') into v_bad
     from public.customer_review_test_cards
-   where test_body ~* '(INTERNAL TEST ONLY|https?://|www\.|@[a-z0-9.-]+\.[a-z]{2,}|\+[0-9]{8,})';
+   where test_body ~* '(INTERNAL TEST ONLY|https?://|www\.|@[a-z0-9.-]+\.[a-z]{2,})'
+      or public.customer_review_contains_phone(test_body)
+      or public.customer_review_contains_phone(test_title);
   if v_bad is not null then
     raise exception 'card(s) carry a warning, link, address or number: %', v_bad;
   end if;

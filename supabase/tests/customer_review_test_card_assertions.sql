@@ -1924,7 +1924,8 @@ begin
    where batch_id is not null
      and (test_body ~* '(https?://|www\.|wa\.me)'
        or test_body ~* '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}'
-       or test_body ~ '\+[0-9][0-9 ()-]{7,}'
+       or public.customer_review_contains_phone(test_body)
+       or public.customer_review_contains_phone(test_title)
        or position(public.customer_review_internal_test_warning() in upper(test_body)) > 0
        or test_body ~* '(leave a review|post this|publish this|rate us)');
   if v_bad > 0 then
@@ -1956,6 +1957,129 @@ begin
     raise exception 'authenticated can write customer_review_draft_batches directly';
   end if;
   raise notice 'PASS  13i. service_role only, and no direct client write to the batch table';
+end $$;
+
+-- ── 13k. THE TELEPHONE DETECTOR, ON THE SAME CORPUS AS THE TYPESCRIPT ───
+--
+-- customer_review_contains_phone is the SQL twin of containsTelephoneNumber in
+-- src/lib/customerReviews/internalTest.ts. The route validates a batch with the
+-- TypeScript one and the batch function refuses it again with this one, so the
+-- two disagreeing means the route accepts what the database then rejects.
+--
+-- The corpus below is the same list the TypeScript tests use. The first four
+-- rejections are the formats the previous matcher missed: it required a leading
+-- '+', so only the first of them was ever caught.
+do $$
+declare
+  v_text text;
+  v_bad  integer := 0;
+begin
+  foreach v_text in array array[
+    '+44 20 7946 0000',
+    '202-555-0100',
+    '(202) 555-0100',
+    '9876543210',
+    'Great chairs, call +44 20 7946 0000 to order the same.',
+    'Great chairs — ring 202-555-0100 and ask for the workshop.',
+    'Great chairs, the showroom is (202) 555-0100 on weekdays.',
+    'Great chairs, my number is 9876543210 if you want the spec.',
+    '+1 (202) 555-0100',
+    '020 7946 0000',
+    '+91 98765 43210',
+    '555.123.4567'
+  ] loop
+    if not public.customer_review_contains_phone(v_text) then
+      raise warning 'MISSED a telephone number: %', v_text;
+      v_bad := v_bad + 1;
+    end if;
+  end loop;
+  if v_bad > 0 then
+    raise exception '% telephone number(s) passed the database check', v_bad;
+  end if;
+  raise notice 'PASS  13k1. all 12 telephone formats are refused, with or without a leading +';
+
+  foreach v_text in array array[
+    '120 chairs',
+    '60 rooms',
+    '18 months',
+    'three weeks',
+    'We ordered 120 chairs for a room that seats 60.',
+    'Eighty covers delivered over 18 months, in three phases.',
+    'A hundred and twenty covers, delivered in three phases.',
+    'Two years of full service later the frames have not moved.',
+    'We refitted 60 rooms in 2 lifts across 3 mornings.',
+    'The 40 stools arrived first, then the 12 tables.',
+    'Forty stacking chairs, six high on the pallet.'
+  ] loop
+    if public.customer_review_contains_phone(v_text) then
+      raise warning 'FALSE POSITIVE on an ordinary quantity: %', v_text;
+      v_bad := v_bad + 1;
+    end if;
+  end loop;
+  if v_bad > 0 then
+    raise exception '% ordinary quantity phrase(s) were treated as telephone numbers', v_bad;
+  end if;
+  raise notice 'PASS  13k2. quantities and durations are left alone (120 chairs, 60 rooms, 18 months, three weeks)';
+
+  -- The boundary itself: six digits in a run is not a number, seven is.
+  if public.customer_review_contains_phone('12 34 56')
+  or not public.customer_review_contains_phone('12 34 567') then
+    raise exception 'the seven-digit boundary is wrong';
+  end if;
+  raise notice 'PASS  13k3. the rule is a digit count, and the boundary is seven';
+end $$;
+
+-- ── 13l. AND THE BATCH FUNCTION REFUSES A DRAFT CARRYING ONE ───────────
+--
+-- Not just asserted at apply time: refused inside the transaction, so a route
+-- that ever stopped validating still could not write a contact detail.
+do $$
+begin
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+end $$;
+
+do $$
+declare v_r text; v_batches integer; v_cards integer; v_payload jsonb; v_number text;
+begin
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  select count(*) into v_cards   from public.customer_review_test_cards;
+
+  foreach v_number in array array[
+    '+44 20 7946 0000', '202-555-0100', '(202) 555-0100', '9876543210'
+  ] loop
+    v_payload := jsonb_set(pg_temp.batch_payload(20), '{11,body}',
+      to_jsonb('We were very happy with the seating and the delivery, and the number to call is '
+               || v_number || ' on weekdays.'));
+    v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload);
+    if v_r not like '23514:%' or v_r not like '%telephone number%' then
+      raise exception 'a batch carrying % was not refused by the database: %', v_number, v_r;
+    end if;
+
+    -- The same number in a TITLE, which is displayed on the card.
+    v_payload := jsonb_set(pg_temp.batch_payload(20), '{4,title}', to_jsonb('Call ' || v_number));
+    v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload);
+    if v_r not like '23514:%' or v_r not like '%telephone number%' then
+      raise exception 'a batch whose TITLE carried % was not refused: %', v_number, v_r;
+    end if;
+  end loop;
+  raise notice 'PASS  13l1. all four formats are refused by the batch function, in a body and in a title';
+
+  if (select count(*) from public.customer_review_draft_batches) <> v_batches
+  or (select count(*) from public.customer_review_test_cards) <> v_cards then
+    raise exception 'a refused batch left rows behind';
+  end if;
+  raise notice 'PASS  13l2. and not one row survived any of the eight refusals';
+
+  -- A batch full of ordinary quantities still lands, or the guard is useless.
+  v_payload := jsonb_set(pg_temp.batch_payload(20), '{3,body}',
+    to_jsonb('We ordered 120 chairs for a room that seats 60, delivered over 18 months in three phases.'::text));
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload, 'Quantities batch.');
+  if v_r <> 'OK' then
+    raise exception 'an ordinary quantity was treated as a contact detail: %', v_r;
+  end if;
+  raise notice 'PASS  13l3. a draft saying "120 chairs ... seats 60 ... over 18 months" was accepted';
 end $$;
 
 -- ── 13j. Put the parked cards back, and prove the parked set came back whole

@@ -18,7 +18,7 @@
 // inside length limits, no links, no addresses, no numbers, no retired warning.
 // Anything else and the batch is refused whole.
 
-import { RETIRED_TEST_WARNING } from './internalTest'
+import { RETIRED_TEST_WARNING, containsTelephoneNumber } from './internalTest'
 import { TEST_CATEGORIES, type TestCategory } from './types'
 
 /** What one generated draft has to look like by the time it reaches SQL. */
@@ -119,7 +119,6 @@ const FORBIDDEN: readonly [RegExp, string][] = [
   [/https?:\/\//i,                                   'a link'],
   [/\bwww\./i,                                       'a web address'],
   [/[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}/i,           'an email address'],
-  [/\+\d[\d\s()-]{7,}/,                              'a telephone number'],
   [/\b(google|trustpilot|tripadvisor|yelp)\b/i,      'a review site'],
   [/\b(post|publish|share|leave)\s+(this|a|your)\s+(review|rating|feedback)\b/i, 'an instruction to post'],
 ]
@@ -178,6 +177,14 @@ export function validateDrafts(raw: unknown): DraftValidation {
       if (pattern.test(body) || pattern.test(title)) {
         return { ok: false, error: `Draft ${i + 1} contains ${what}.` }
       }
+    }
+
+    // Not in the table above because it is not a pattern. It is the same
+    // function isSendableReviewMessage uses on the outgoing message, so a
+    // number cannot be rejected at one end of this module and accepted at the
+    // other. Title and body both, because a title is displayed too.
+    if (containsTelephoneNumber(body) || containsTelephoneNumber(title)) {
+      return { ok: false, error: `Draft ${i + 1} contains a telephone number.` }
     }
 
     const category = typeof item.category === 'string' ? item.category : ''

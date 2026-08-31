@@ -116,6 +116,46 @@ export function buildReviewMessage(input: InternalTestMessageInput): string {
 }
 
 /**
+ * Whether a run of text contains something shaped like a telephone number.
+ *
+ * THE MATCHER THIS REPLACES ONLY FIRED ON A LEADING '+'. It read
+ *
+ *     /\+\d[\d\s()-]{7,}/
+ *
+ * so "+44 20 7946 0000" was caught and "202-555-0100", "(202) 555-0100" and
+ * "9876543210" all went straight through — three of the four ways a number is
+ * actually written. A guard that only catches the international form is not a
+ * contact-detail guard.
+ *
+ * WHAT THIS DOES INSTEAD. It finds every run of digits joined by the characters
+ * people put inside phone numbers — spaces, hyphens, brackets, dots and a
+ * leading plus — and asks how many DIGITS the run holds. Seven or more and it
+ * is a phone number, whatever punctuation it was dressed in. The shortest
+ * national subscriber numbers are seven digits, so that is the floor.
+ *
+ * WHY COUNTING DIGITS RATHER THAN MATCHING FORMATS. There is no list of phone
+ * formats that is both short and complete, and a review has no legitimate
+ * reason to contain seven digits in one unbroken run. Counting is the property
+ * that actually matters and it does not need maintaining.
+ *
+ * WHAT IT LEAVES ALONE. Quantities and durations, because a word or a comma
+ * ends a run: "120 chairs", "60 rooms", "18 months", "a hundred and twenty
+ * covers", "three weeks". Each carries two or three digits and the next
+ * character is a letter, so no run ever reaches seven.
+ *
+ * IT ERRS TOWARD REFUSING. A false positive rejects one draft batch, which
+ * costs a regeneration. A false negative puts somebody's phone number in a
+ * message BOE hands to WhatsApp.
+ */
+export function containsTelephoneNumber(text: string): boolean {
+  // A digit, then at least five more phone-ish characters, then a digit — so a
+  // bare two- or three-digit quantity cannot start a run at all.
+  const runs = text.match(/\+?\d[\d\s().-]{5,}\d/g)
+  if (!runs) return false
+  return runs.some(run => run.replace(/\D/g, '').length >= 7)
+}
+
+/**
  * Whether a message is safe to hand to WhatsApp.
  *
  * The old guard asserted the mandatory label was PRESENT. This one asserts the
@@ -136,7 +176,8 @@ export function isSendableReviewMessage(message: string): boolean {
   if (!text) return false
   if (text.includes(RETIRED_TEST_WARNING)) return false
   if (text.includes(DRAFT_STATUS)) return false
-  if (/https?:\/\/|www\.|[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}|\+\d[\d\s()-]{7,}/i.test(text)) return false
+  if (/https?:\/\/|www\.|[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text)) return false
+  if (containsTelephoneNumber(text)) return false
   return true
 }
 

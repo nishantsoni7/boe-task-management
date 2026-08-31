@@ -354,6 +354,39 @@ describe('a generated draft carries no warning, contact detail or posting instru
     rejects('Good service throughout the project; reach the showroom on +44 20 7946 0000 any weekday.')
   })
 
+  // THE FOUR REPORTED MISSES, as bodies and as titles. Only the first was
+  // caught before: the matcher required a leading '+'.
+  for (const number of [
+    '+44 20 7946 0000',
+    '202-555-0100',
+    '(202) 555-0100',
+    '9876543210',
+  ]) {
+    test(`a telephone number written as ${JSON.stringify(number)}`, () => {
+      rejects(`Good service throughout the whole project, and the number to call is ${number} on weekdays.`)
+    })
+
+    test(`the same number in a TITLE — ${JSON.stringify(number)}`, () => {
+      // A title is displayed on the card, so it is checked too.
+      const drafts = goodDrafts()
+      drafts[2].title = `Call ${number}`
+      assert.equal(validateDrafts(drafts).ok, false)
+    })
+  }
+
+  test('ORDINARY QUANTITIES AND DURATIONS ARE NOT CONTACT DETAILS', () => {
+    // The negative control, and the reason the detector counts digits in a run
+    // rather than looking for digits at all. A furniture review is made of
+    // numbers; rejecting them would make the feature useless.
+    for (const phrase of ['120 chairs', '60 rooms', '18 months', 'three weeks']) {
+      const drafts = goodDrafts()
+      drafts[4].body = `We ordered ${phrase} and the fit was right first time, which is not something I take for granted after the last supplier.`
+      drafts[4].title = `A room of ${phrase}`
+      const result = validateDrafts(drafts)
+      assert.equal(result.ok, true, `rejected: ${phrase} — ${result.ok ? '' : result.error}`)
+    }
+  })
+
   test('a review site, or an instruction to post', () => {
     rejects('Excellent furniture and we were very happy, so please leave a review on Google as well.')
     rejects('Excellent furniture and we were very happy — post this review wherever you found us.')
@@ -369,6 +402,38 @@ describe('a generated draft carries no warning, contact detail or posting instru
 })
 
 // ══ THE CREDENTIAL ══════════════════════════════════════════════════════════
+
+describe('ONE detector, used at both ends of the module', () => {
+  test('the validator and the message builder call the same function', () => {
+    // Not two regexes that have to be kept in step. The generated draft and the
+    // outgoing WhatsApp message are checked by the same containsTelephoneNumber.
+    const lib = read('src/lib/customerReviews/draftGeneration.ts')
+    const internal = read('src/lib/customerReviews/internalTest.ts')
+    assert.ok(lib.includes("import { RETIRED_TEST_WARNING, containsTelephoneNumber } from './internalTest'"))
+    assert.ok(lib.includes('if (containsTelephoneNumber(body) || containsTelephoneNumber(title)) {'))
+    assert.ok(internal.includes('export function containsTelephoneNumber(text: string): boolean {'))
+    assert.ok(internal.includes('if (containsTelephoneNumber(text)) return false'))
+
+    // The old plus-only matcher is gone from both.
+    for (const [name, source] of [['draftGeneration', lib], ['internalTest', internal]] as const) {
+      assert.equal(source.includes("[/\\+\\d[\\d\\s()-]{7,}/,"), false, `${name} still has the old row`)
+      assert.equal(/\|\\\+\\d\[\\d\\s\(\)-\]\{7,\}\//.test(source), false, `${name} still has the old alternation`)
+    }
+  })
+
+  test('AND THE DATABASE HAS A TWIN OF IT, not the old plus-only check', () => {
+    assert.ok(MIGRATION.includes('create or replace function public.customer_review_contains_phone(p_text text)'))
+    // Enforced inside the batch transaction, on title and body.
+    assert.ok(MIGRATION.includes('if public.customer_review_contains_phone(v_title)'))
+    assert.ok(MIGRATION.includes('or public.customer_review_contains_phone(v_body) then'))
+    // And the apply-time assertion uses it rather than a '+' pattern. Executable
+    // lines only: the comment above the helper quotes the retired pattern so a
+    // reader can see what changed, and a quotation is not a check.
+    const sql = executable(MIGRATION)
+    assert.equal(sql.includes("\\+[0-9]{8,}"), false, 'the apply-time check is still plus-only')
+    assert.equal(sql.includes("\\+[0-9][0-9 ()-]"), false, 'a plus-only pattern survives in executable SQL')
+  })
+})
 
 describe('the provider credential', () => {
   test('it is read server-side only, and never returned', () => {
