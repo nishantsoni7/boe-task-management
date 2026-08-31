@@ -168,8 +168,11 @@ export async function createAssignmentNotification(
   // reach `notifications` down this path either. The store is adapted to the
   // guard's client shape rather than the other way round: the operation owns a
   // named port, not a Supabase builder.
+  // The actor is the CREATOR, not `callerId`: an admin may be triggering this
+  // on somebody else's behalf, and a task somebody else assigned to you is
+  // still a notification you should get. Same reasoning as `actorId` above.
   const { error } = await insertUserNotifications(
-    { from: () => ({ insert: store.insert }) }, row)
+    { from: () => ({ insert: store.insert }) }, row, { actorId: task.created_by })
   if (error) return { status: 'error', message: error.message }
   return { status: 'created' }
 }

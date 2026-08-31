@@ -118,7 +118,7 @@ export async function POST(req: NextRequest) {
       body:         task.title,
       is_push_sent: true,
       activity_log_id: restoreLog?.id ?? null,
-    })
+    }, { actorId: user.id })
   }
 
   return NextResponse.json({ success: true, restoredStatus: restoreStatus })

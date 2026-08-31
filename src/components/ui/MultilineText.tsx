@@ -19,9 +19,21 @@ import type { CSSProperties, ReactNode } from 'react'
 // `style` is for the caller's typography (size, colour, margin, flex). The two
 // whitespace rules are applied last so a caller cannot accidentally undo them.
 
+/**
+ * The two rules that make stored plain text render the way it was typed.
+ *
+ * Exported so a component that must build its own <p> — ExpandableText, which
+ * needs a ref and a line clamp — applies the SAME contract instead of a copy
+ * that can drift. Spread it LAST, for the reason in the header.
+ */
+export const MULTILINE_TEXT_RULES: CSSProperties = {
+  whiteSpace: 'pre-wrap',
+  overflowWrap: 'anywhere',
+}
+
 export function MultilineText({ children, style }: { children: ReactNode; style?: CSSProperties }) {
   return (
-    <p style={{ ...style, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+    <p style={{ ...style, ...MULTILINE_TEXT_RULES }}>
       {children}
     </p>
   )
