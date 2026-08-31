@@ -487,6 +487,14 @@ describe('the migration is placed correctly', () => {
       // tail: one bucket, one table, its own policies, nothing replaced.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // The batch-approval pair, in the order they must apply. The deletion
+      // migration runs FIRST so the schema one lands on an empty card table
+      // and can enforce its approval invariants without a legacy exemption.
+      '20261025000000_review_workflow_remove_legacy_test_data.sql',
+      '20261026000000_review_workflow_batch_approval.sql',
+      // Provider-call idempotency: a request key is CLAIMED before the model
+      // is called, so two simultaneous requests cannot both be billed for.
+      '20261027000000_review_workflow_generation_claims.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

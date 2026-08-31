@@ -721,6 +721,14 @@ describe('the applied migrations are frozen', () => {
       // the collision this list exists to catch, caught.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // The batch-approval pair, in the order they must apply. The deletion
+      // migration runs FIRST so the schema one lands on an empty card table
+      // and can enforce its approval invariants without a legacy exemption.
+      '20261025000000_review_workflow_remove_legacy_test_data.sql',
+      '20261026000000_review_workflow_batch_approval.sql',
+      // Provider-call idempotency: a request key is CLAIMED before the model
+      // is called, so two simultaneous requests cannot both be billed for.
+      '20261027000000_review_workflow_generation_claims.sql',
     ])
   })
 
@@ -753,6 +761,14 @@ describe('the applied migrations are frozen', () => {
       // applies after every one of them whatever sequence the branches merge in.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // The batch-approval pair, in the order they must apply. The deletion
+      // migration runs FIRST so the schema one lands on an empty card table
+      // and can enforce its approval invariants without a legacy exemption.
+      '20261025000000_review_workflow_remove_legacy_test_data.sql',
+      '20261026000000_review_workflow_batch_approval.sql',
+      // Provider-call idempotency: a request key is CLAIMED before the model
+      // is called, so two simultaneous requests cannot both be billed for.
+      '20261027000000_review_workflow_generation_claims.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

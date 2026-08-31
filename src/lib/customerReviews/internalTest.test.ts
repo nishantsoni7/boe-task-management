@@ -359,8 +359,16 @@ describe('the module no longer calls itself a test', () => {
     assert.ok(list.includes('<InternalTestWarning compact />'), 'the per-card status is gone too')
   })
 
-  test('and the booking control says "Book"', () => {
+  test('and the booking control lives in the full view, not on the card', () => {
+    // A tile shows a truncated preview, so booking from a tile meant taking a
+    // review on the strength of its first line and a half. The card offers
+    // `View`; `Book this review` exists only inside the complete-review sheet,
+    // which is how the UI path is made to require reading it.
     const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
-    assert.ok(list.includes("{booking ? 'Booking…' : 'Book'}"))
+    const full = read('src/components/customerReviews/ReviewFullView.tsx')
+    assert.ok(list.includes("{showView ? 'View' : 'Open'}"))
+    assert.equal(/'Book'|Book this review/.test(list.slice(list.indexOf('function TestCardTile'))), false,
+      'the card tile still offers a booking control')
+    assert.ok(full.includes("{booking ? 'Booking…' : 'Book this review'}"))
   })
 })
