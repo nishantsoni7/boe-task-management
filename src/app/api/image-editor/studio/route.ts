@@ -95,6 +95,7 @@ import {
   PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX, SIDE_MARGIN_SHARE, ABOVE_SHARE_OF_LEFTOVER,
 } from '@/lib/imageEditor/studioMaster'
 import { saveResult } from '@/lib/imageEditor/history'
+import { enhanceShadows } from '@/lib/imageEditor/shadowLift'
 import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
 import { randomUUID } from 'node:crypto'
 import sharp from 'sharp'
@@ -452,7 +453,37 @@ export async function POST(req: NextRequest) {
         `request ${upscaled.requestId || '-'}`)
       return NextResponse.json({ error: normalised.error }, { status: 422 })
     }
-    const master = normalised.image
+    const normalisedMaster = normalised.image
+
+    // ── Local: the dark-product correction ──────────────────────────────────────
+    //
+    // The LAST pixel operation, after the size is settled and after the
+    // preservation gate above has already passed on the upscaled image. It is
+    // cosmetic and it is optional: `enhanceShadows` never throws, validates its
+    // own output, and returns the UNMODIFIED master on any doubt — a shadow
+    // curve must never turn two paid provider requests into a lost result.
+    //
+    // The gate is deliberately NOT moved down here. A point operation fixes
+    // GEOMETRY but not the answer a THRESHOLD gives: measured on a production
+    // master, the correction moves `structureUnderseat` 17.06 -> 16.81 and
+    // pushes 0.13% of pixels across the gate's Sobel threshold. Re-pointing the
+    // gate at these bytes would therefore silently re-baseline the accepted
+    // pass / manual-review / refuse classifications.
+    //
+    // What covers the delivered pixels instead is enhanceShadows' own
+    // validation: per pixel during the pass — nothing at or above the knee
+    // touched, pure black held, no unclipped channel driven to 255, no channel
+    // moved past a derived bound — and after the encode, a byte-for-byte
+    // comparison of the decoded PNG against what was computed, with its width,
+    // height and channel count. That is a check on THIS step, not a re-run of a
+    // check about the provider.
+    const enhanced = await enhanceShadows(normalisedMaster)
+    if (!enhanced.applied) {
+      console.warn('[image-editor/studio] shadow lift not applied:', enhanced.reason ?? 'unknown')
+    }
+    // Everything downstream — history and the response — uses this one buffer,
+    // so what an employee downloads and what their history holds cannot differ.
+    const master = enhanced.image
 
     console.info(
       '[image-editor/studio] ok:',
@@ -464,6 +495,9 @@ export async function POST(req: NextRequest) {
       `seedvr returned ${normalised.returned.width}x${normalised.returned.height}`,
       `delivered ${normalised.delivered.width}x${normalised.delivered.height}`,
       normalised.resized ? 'normalised locally' : 'exact from the model',
+      enhanced.applied
+        ? `shadow lift on ${enhanced.changedPixels} px, max ${enhanced.maxChange}, ${enhanced.durationMs} ms`
+        : `shadow lift skipped (${enhanced.reason ?? 'unknown'})`,
       plan.widthLimited ? 'width-limited' : '',
       plan.clamped ? 'crop clamped to canvas' : '',
       `verification ${verification}`,
