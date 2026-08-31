@@ -137,6 +137,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       '20261020000000_register_image_editor_module.sql',
       '20261021000000_seed_customer_review_test_cards.sql',
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
   })
 

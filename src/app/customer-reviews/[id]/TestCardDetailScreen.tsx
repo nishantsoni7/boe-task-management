@@ -214,12 +214,12 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     return (
       <CustomerReviewsLayout
         profile={profile}
-        title="Test card"
+        title="Review"
         canVerify={caps.canVerify}
         onSignOut={signOut}
       >
         <p style={{ fontSize: '13px', color: colors.secondary }}>
-          That test card is not available.{' '}
+          That review is not available.{' '}
           <button
             type="button"
             onClick={() => router.push('/customer-reviews')}
@@ -272,7 +272,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
         )}
 
-        {/* A returned card says why, at the top, where the tester will see it. */}
+        {/* A returned card says why, at the top, where the candidate will see it. */}
         {card.return_reason && card.status === 'booked' && (
           <div style={{
             padding: '10px 12px', borderRadius: '8px',
@@ -284,7 +284,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         )}
 
         {/* ── The card's own text ── */}
-        <Section title="Test content">
+        <Section title="Review draft">
           <p style={{
             margin: 0, fontSize: '13px', color: colors.primary,
             lineHeight: 1.65, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
@@ -292,15 +292,15 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             {card.test_body}
           </p>
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
-            This text is fictional filler loaded from a test fixture. It describes nothing that
-            happened, is not attributed to anybody, and cannot be edited — not by you, not by an
-            administrator, and not through any screen in BOE.
+            This draft was written by AI for a customer to use, adapt or discard. It is not a
+            record of anything that happened, is not attributed to anybody, and cannot be edited —
+            not by you, not by an administrator, and not through any screen in BOE.
           </p>
         </Section>
 
         {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
-          <Section title="Send the internal test">
+          <Section title="Send the review">
             {canWorkOnIt ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <WhatsAppTestPanel
@@ -325,20 +325,20 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                   and no revealable prop, because there is nothing to reveal:
                   the card stores four digits and nothing else,
                   and the number itself was never persisted. A verifier sees
-                  exactly what a tester sees.
+                  exactly what the candidate sees.
                 */}
                 <Fact
                   label="Addressed to"
                   value={maskFromLastFour(card.whatsapp_target_last_four)}
                 />
-                <Fact label="Tester confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
+                <Fact label="Candidate confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
               </dl>
             )}
           </Section>
         )}
 
         {/* ── Step 3: the screenshot ── */}
-        <Section title="Test screenshot">
+        <Section title="Screenshot">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <ScreenshotIsNotProofNote />
             <ScreenshotManager
@@ -355,8 +355,8 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               canRemove={canWorkOnIt}
               emptyHint={
                 canWorkOnIt
-                  ? 'Attach a screenshot of the internal test message you sent.'
-                  : 'No screenshot is attached to this test card.'
+                  ? 'Attach a screenshot of the message you sent.'
+                  : 'No screenshot is attached to this review.'
               }
             />
           </div>
@@ -466,7 +466,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             <dl style={{ margin: 0, display: 'grid', gap: '6px' }}>
               <Fact label="Booked" value={formatTestTimestamp(card.booked_at)} />
               <Fact label="WhatsApp opened" value={formatTestTimestamp(card.whatsapp_opened_at)} />
-              <Fact label="Tester confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
+              <Fact label="Candidate confirmed sent" value={formatTestTimestamp(card.sent_confirmed_at)} />
               <Fact label="Submitted" value={formatTestTimestamp(card.submitted_at)} />
               <Fact label="Verified" value={formatTestTimestamp(card.verified_at)} />
               {card.verification_note && <Fact label="Verifier's note" value={card.verification_note} />}
@@ -501,10 +501,10 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 const EVENT_LABELS: Record<string, string> = {
   booked:             'Booked',
   whatsapp_opened:    'WhatsApp opened',
-  sent_confirmed:     'Tester confirmed sent',
+  sent_confirmed:     'Candidate confirmed sent',
   submitted:          'Submitted for verification',
   verified:           'Verified',
-  returned:           'Returned to tester',
+  returned:           'Returned to candidate',
   screenshot_removed: 'Screenshot removed',
 }
 

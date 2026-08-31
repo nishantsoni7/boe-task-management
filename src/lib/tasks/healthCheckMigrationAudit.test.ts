@@ -486,6 +486,7 @@ describe('the migration is placed correctly', () => {
       // 122. The Image Editor result history, unapplied like the rest of the
       // tail: one bucket, one table, its own policies, nothing replaced.
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

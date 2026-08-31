@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import { normalizeWhatsAppNumber } from '@/lib/customerReviews/contact'
-import { buildInternalTestMessage, buildWaMeUrl, hasInternalTestWarning } from '@/lib/customerReviews/internalTest'
+import { buildReviewMessage, buildWaMeUrl, isSendableReviewMessage } from '@/lib/customerReviews/internalTest'
 import { testCategoryLabel } from '@/lib/customerReviews/types'
 
 // THE ONLY PLACE A wa.me LINK IS BUILT.
@@ -72,13 +72,13 @@ const MAX_INPUT_LENGTH = 40
  */
 const MESSAGES = {
   unauthenticated: 'Sign in to continue.',
-  forbidden:       'You do not have permission to run internal tests.',
-  not_found:       'That test card is not available.',
+  forbidden:       'You do not have permission to prepare reviews.',
+  not_found:       'That review is not available.',
   wrong_status:    'You can only open WhatsApp for a card you currently hold.',
   bad_request:     'That request could not be processed.',
   not_confirmed:   'Tick the confirmation before preparing the message.',
-  unavailable:     'Internal testing is not configured on this deployment.',
-  build_failed:    'The test message could not be prepared. Try again.',
+  unavailable:     'Review sending is not configured on this deployment.',
+  build_failed:    'The message could not be prepared. Try again.',
   record_failed:   'That could not be recorded. Try again.',
 } as const
 
@@ -90,7 +90,7 @@ const MESSAGES = {
  * line rather than to two that might drift.
  */
 export const RECIPIENT_CONFIRMATION =
-  'I confirm this number may receive an internal BOE test message and the content will not be published as a customer review.'
+  'I confirm this number may receive a draft review from BOE, and that BOE will not publish it anywhere.'
 
 const fail = (status: number, message: string) =>
   NextResponse.json({ error: message }, {
@@ -237,19 +237,20 @@ export async function POST(req: NextRequest) {
   // Every ingredient comes from the card row or from a constant. Nothing the
   // caller sent contributes a character of the text — the number reaches the
   // URL's path, never its body.
-  const message = buildInternalTestMessage({
+  const message = buildReviewMessage({
     title: card.test_title,
     body: card.test_body,
     categoryLabel: testCategoryLabel(card.test_category),
     reference: card.card_ref,
   })
 
-  // THE LABEL, RE-CHECKED ON THE WAY OUT. buildInternalTestMessage always adds
-  // it, so this can only fire if that function is refactored into something
-  // that does not — at which point the right behaviour is to produce no link at
-  // all rather than a link to an unlabelled message.
-  if (!hasInternalTestWarning(message)) {
-    console.error('[customer-reviews:whatsapp] refusing to build an unlabelled test message')
+  // CHECKED ON THE WAY OUT. buildReviewMessage returns the draft and nothing
+  // else, so this can only fire if it is ever refactored into leaking our own
+  // metadata — the retired test warning, the on-screen provenance status, or a
+  // link, address or number a drafted review has no reason to carry. At that
+  // point the right behaviour is to produce no link at all.
+  if (!isSendableReviewMessage(message)) {
+    console.error('[customer-reviews:whatsapp] refusing to build a message that leaked metadata')
     return fail(500, MESSAGES.build_failed)
   }
 

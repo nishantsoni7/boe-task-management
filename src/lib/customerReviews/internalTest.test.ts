@@ -1,23 +1,26 @@
 /**
- * THE MANDATORY LABEL, and the message that carries it.
+ * THE DRAFT STATUS, AND WHAT THE MESSAGE MAY CARRY.
  *
- * This is the file that proves the module's central non-negotiable: every test
- * message begins with
+ * This file used to be about the opposite property. It asserted that
+ * "INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH" appeared on
+ * every card, at the top and bottom of every message, and in SQL — and that no
+ * caller could suppress it.
  *
- *     INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH
+ * The cards are no longer internal filler, so that sentence would now be a
+ * false statement printed in red on every screen. What replaced it is a small
+ * neutral status, "AI-generated draft", and the interesting assertions inverted
+ * with it:
  *
- * and an employee cannot remove it. "Cannot" is asserted three ways here —
- * behaviourally (the builder always puts it first), structurally (there is no
- * parameter that suppresses it), and against the database (the SQL constant is
- * the same string) — because a promise about a label is only as good as the
- * thing that makes it impossible to break.
+ *   BEFORE: the label must be PRESENT, everywhere, including in the message.
+ *   NOW:    the status is present ON SCREEN, and the message carries NOTHING
+ *           but the draft — no status, no reference, no retired warning, no
+ *           link, address or number.
  *
- * NOTHING IN THIS FILE OPENS WHATSAPP. The wa.me assertions decode the URL and
- * compare it to the message; no test navigates to it, and no test issues a
- * network request of any kind.
- *
- * Run:
- *   npx tsx --test src/lib/customerReviews/internalTest.test.ts
+ * The retired sentence still has one job. It is kept as a constant nothing
+ * renders, so that generated drafts, seeded cards and outgoing messages can all
+ * be checked against the exact string rather than an approximation of it — and
+ * the CHECK constraint in migration 20261017000000 still refuses a body that
+ * contains it.
  */
 
 import { test, describe } from 'node:test'
@@ -25,275 +28,339 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  INTERNAL_TEST_EXPLANATION,
-  INTERNAL_TEST_WARNING,
-  buildInternalTestMessage,
+  DRAFT_STATUS,
+  RETIRED_TEST_WARNING,
+  containsTelephoneNumber,
+  buildReviewMessage,
   buildWaMeUrl,
-  hasInternalTestWarning,
-  messageFromWaMeUrl,
-  phoneFromWaMeUrl,
+  isSendableReviewMessage,
 } from './internalTest'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
-const CARD = {
-  title: 'Restaurant layout test, short',
-  body: 'Short restaurant-test filler. It describes nothing real.',
-  categoryLabel: 'Restaurant test',
-  reference: 'TEST-001',
+const DRAFT = {
+  title: 'Booth seating that finally fits the room',
+  body: 'We had an awkward L-shaped dining room and every supplier wanted to sell us standard booths. This team measured and built the run to match. Two years on the frames are still solid.',
+  categoryLabel: 'Restaurant',
+  reference: 'RW-000001',
 }
 
-describe('the label itself', () => {
-  test('it says exactly what it must say', () => {
-    // Written out rather than referenced, so a change to the constant is a
-    // visible change to this line too.
-    assert.equal(INTERNAL_TEST_WARNING, 'INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH')
+// ══ 1. THE STATUS ═══════════════════════════════════════════════════════════
+
+describe('the draft status', () => {
+  test('it is the neutral wording, and says nothing about a test', () => {
+    assert.equal(DRAFT_STATUS, 'AI-generated draft')
+    assert.equal(/test/i.test(DRAFT_STATUS), false)
+    assert.equal(/do not publish|internal/i.test(DRAFT_STATUS), false)
   })
 
-  test('it names all three things: what it is, what it is not, and what not to do', () => {
-    assert.ok(INTERNAL_TEST_WARNING.includes('INTERNAL TEST ONLY'))
-    assert.ok(INTERNAL_TEST_WARNING.includes('NOT A CUSTOMER REVIEW'))
-    assert.ok(INTERNAL_TEST_WARNING.includes('DO NOT PUBLISH'))
+  test('it does not claim the draft is a real customer’s words', () => {
+    // The status exists to say the opposite: a model wrote this and nobody has
+    // verified it as anybody's statement.
+    assert.equal(/verified|genuine|real customer|actual/i.test(DRAFT_STATUS), false)
   })
 
-  test('THE SQL CONSTANT IS THE SAME STRING', () => {
-    // The database holds its own copy so the fixture's CHECK can refuse a card
-    // body carrying one. Two copies of a string is how they drift, so they are
-    // pinned to each other here.
-    //
-    // Compared on the NORMALIZED form: the application constant uses en dashes
-    // for display and the SQL one uses ASCII hyphens, because a migration file
-    // is read in terminals and diffs where an en dash is a liability. The WORDS
-    // must be identical; the dash is a rendering choice.
-    const sql = read('supabase/migrations/20261017000000_customer_review_outreach.sql')
-    const inSql = /select '([^']+)'::text;/.exec(
-      sql.slice(sql.indexOf('create or replace function public.customer_review_internal_test_warning()')),
-    )?.[1]
-    assert.ok(inSql, 'the SQL constant is missing')
-    const normalize = (s: string) => s.replace(/[–—]/g, '-').replace(/\s+/g, ' ').trim()
-    assert.equal(normalize(inSql!), normalize(INTERNAL_TEST_WARNING))
-  })
-})
-
-describe('the message always carries it', () => {
-  const message = buildInternalTestMessage(CARD)
-
-  test('IT IS THE FIRST THING IN THE MESSAGE', () => {
-    // Not merely present. A notification preview shows the first line, so a
-    // label anywhere else could be pushed below the fold on a colleague's lock
-    // screen.
-    assert.ok(message.startsWith(INTERNAL_TEST_WARNING))
-  })
-
-  test('and the last, so a truncated forward still carries it', () => {
-    assert.ok(message.trimEnd().endsWith(INTERNAL_TEST_WARNING))
-  })
-
-  test('hasInternalTestWarning agrees, and refuses a message without it', () => {
-    assert.equal(hasInternalTestWarning(message), true)
-    assert.equal(hasInternalTestWarning('Hello, please leave us a review.'), false)
-    // Present but not first: still refused.
-    assert.equal(hasInternalTestWarning(`Hello. ${INTERNAL_TEST_WARNING}`), false)
-  })
-
-  test('THE LABEL IS NOT A PARAMETER, so no caller can decline it', () => {
-    // The structural half of "impossible to remove". buildInternalTestMessage
-    // takes four fields and none of them is the label, a prefix, a flag or an
-    // override — so there is no argument a caller could pass to suppress it.
-    const source = read('src/lib/customerReviews/internalTest.ts')
-    const signature = source.slice(
-      source.indexOf('export type InternalTestMessageInput'),
-      source.indexOf('const collapse'),
-    )
-    assert.deepEqual(
-      [...signature.matchAll(/^  (\w+):/gm)].map(m => m[1]),
-      ['title', 'body', 'categoryLabel', 'reference'],
-    )
-    for (const escape of ['warning', 'prefix', 'suppress', 'skipLabel', 'omit']) {
-      assert.equal(signature.toLowerCase().includes(escape.toLowerCase()), false,
-        `the input type has a ${escape} field`)
-    }
-  })
-
-  test('...and the builder has no branch that leaves it out', () => {
-    const source = read('src/lib/customerReviews/internalTest.ts')
-    const builder = source.slice(
-      source.indexOf('export function buildInternalTestMessage'),
-      source.indexOf('export function hasInternalTestWarning'),
-    )
-    // Exactly two occurrences — the opening and the closing — and no `if`.
-    assert.equal((builder.match(/INTERNAL_TEST_WARNING/g) ?? []).length, 2)
-    assert.equal(/\bif\s*\(/.test(builder), false, 'the builder branches')
-  })
-
-  test('it explains what the recipient should do with it', () => {
-    assert.ok(message.includes(INTERNAL_TEST_EXPLANATION))
-    assert.ok(INTERNAL_TEST_EXPLANATION.includes('must not be'))
-    assert.ok(INTERNAL_TEST_EXPLANATION.includes('not from a customer'))
-  })
-
-  test('IT MAKES NO CLAIM ABOUT WHO THE RECIPIENT IS', () => {
-    // The defect a walkthrough surfaced: the message told a recipient it had
-    // been "sent to a BOE internal team number", which was true under the
-    // allowlist and false the moment any number could be typed. A message that
-    // tells its reader something untrue about themselves is the exact thing
-    // this module refuses to produce.
-    //
-    // What it may say is where it came from. What it may not say is who
-    // received it.
-    for (const claim of [
-      'internal team number',
-      'team number',
-      'approved number',
-      'your BOE',
-      'colleague',
-    ]) {
-      assert.equal(
-        INTERNAL_TEST_EXPLANATION.toLowerCase().includes(claim.toLowerCase()), false,
-        `the explanation claims something about the recipient: "${claim}"`,
-      )
-    }
-    // ...and it still says where it DID come from, which BOE can vouch for.
-    assert.ok(INTERNAL_TEST_EXPLANATION.includes('BOE'))
-    assert.ok(INTERNAL_TEST_EXPLANATION.includes('internal test system'))
-  })
-
-  test('it carries the card’s reference, so a screenshot can be matched back', () => {
-    assert.ok(message.includes('TEST-001'))
-    assert.ok(message.includes('Restaurant test'))
-  })
-
-  test('THE MESSAGE ASKS FOR NOTHING', () => {
-    // No rating, no review, no verdict, no link, no call to action. It is a
-    // system test that happens to arrive by WhatsApp.
-    const lower = message.toLowerCase()
-    for (const phrase of [
-      'review', 'rating', 'rate us', 'stars', 'feedback', 'please',
-      'http', 'www.', 'google', 'link',
-    ]) {
-      // 'review' appears in the label — as a NEGATION — so the label is removed
-      // before the body is searched.
-      const withoutLabel = lower.split(INTERNAL_TEST_WARNING.toLowerCase()).join(' ')
-      const withoutExplanation = withoutLabel.split(INTERNAL_TEST_EXPLANATION.toLowerCase()).join(' ')
-      assert.equal(withoutExplanation.includes(phrase), false, `the message says "${phrase}"`)
-    }
-  })
-})
-
-describe('the wa.me address, INSPECTED and never opened', () => {
-  const message = buildInternalTestMessage(CARD)
-  const url = buildWaMeUrl('919999900001', message)
-
-  test('it is an https wa.me address and nothing else', () => {
-    const parsed = new URL(url)
-    assert.equal(parsed.protocol, 'https:')
-    assert.equal(parsed.hostname, 'wa.me')
-    assert.equal(parsed.pathname, '/919999900001')
-    // One parameter. Anything else would be something nobody put there on
-    // purpose.
-    assert.deepEqual([...parsed.searchParams.keys()], ['text'])
-  })
-
-  test('THE TEXT DECODES BACK TO EXACTLY THE PREVIEWED MESSAGE', () => {
-    // The parity assertion. What a tester reads before clicking is what
-    // WhatsApp is handed — proved by decoding the URL rather than by trusting
-    // that two code paths built the same string.
-    assert.equal(messageFromWaMeUrl(url), message)
-  })
-
-  test('and it is correctly encoded — newlines, spaces and punctuation survive', () => {
-    const tricky = buildInternalTestMessage({
-      ...CARD,
-      body: 'Filler with "quotes", an ampersand &, a plus +, a hash # and a percent 100%.',
-    })
-    const round = messageFromWaMeUrl(buildWaMeUrl('919999900001', tricky))
-    assert.equal(round, tricky)
-    // The raw URL must not contain a bare & or # inside the parameter, which
-    // would truncate it.
-    const raw = buildWaMeUrl('919999900001', tricky)
-    const afterText = raw.slice(raw.indexOf('?text=') + 6)
-    assert.equal(afterText.includes('&'), false)
-    assert.equal(afterText.includes('#'), false)
-  })
-
-  test('the label survives the round trip, first and last', () => {
-    const decoded = messageFromWaMeUrl(url)!
-    assert.ok(hasInternalTestWarning(decoded))
-  })
-
-  test('phoneFromWaMeUrl reads the recipient back, for inspection', () => {
-    assert.equal(phoneFromWaMeUrl(url), '919999900001')
-  })
-
-  test('a URL that is not wa.me is refused rather than parsed', () => {
-    for (const bad of [
-      'https://example.test/?text=hi',
-      'http://wa.me/91?text=hi',
-      'javascript:alert(1)',
-      'not a url',
-    ]) {
-      assert.equal(messageFromWaMeUrl(bad), null, bad)
-      assert.equal(phoneFromWaMeUrl(bad), null, bad)
-    }
-  })
-
-  test('NOTHING IN THIS MODULE SENDS, FETCHES OR OPENS ANYTHING', () => {
-    // buildWaMeUrl returns a string. There is no WhatsApp API client in this
-    // repository, no token, and no outbound call in this file — so a test that
-    // exercises it cannot contact anybody.
-    const source = read('src/lib/customerReviews/internalTest.ts')
-    for (const forbidden of ['fetch(', 'XMLHttpRequest', 'window.open', 'location.href',
-                             'axios', 'graph.facebook.com', 'api.whatsapp.com']) {
-      assert.equal(source.includes(forbidden), false, `internalTest.ts uses ${forbidden}`)
-    }
-  })
-
-  test('and this test file has nothing to navigate WITH', () => {
-    // Asserted by what it IMPORTS rather than by searching its own text for
-    // "fetch(" — a search that matches the search term itself, which is how the
-    // first version of this assertion failed on its own list of forbidden
-    // words.
-    //
-    // Four node built-ins and the module under test. No HTTP client, no
-    // browser, no supabase client: there is nothing in scope here that could
-    // reach WhatsApp even if somebody wrote the call.
-    const self = read('src/lib/customerReviews/internalTest.test.ts')
-    const imports = [...self.matchAll(/^import [\s\S]*?from '([^']+)'/gm)].map(m => m[1]).sort()
-    assert.deepEqual(imports, [
-      './internalTest',
-      'node:assert/strict',
-      'node:fs',
-      'node:path',
-      'node:test',
-    ])
-  })
-})
-
-describe('the label reaches the screen as well as the message', () => {
   test('the component renders the constant and accepts no text', () => {
     const pieces = read('src/components/customerReviews/ReviewPieces.tsx')
-    const component = pieces.slice(
-      pieces.indexOf('export function InternalTestWarning'),
-      pieces.indexOf('export function ReviewBadge'),
-    )
-    assert.ok(component.includes('{INTERNAL_TEST_WARNING}'))
-    // The whole design: a caller decides WHERE it appears, never WHAT it says.
-    assert.equal(/children/.test(component), false, 'the warning component accepts children')
-    assert.equal(/\btext\s*[?:]/.test(component), false, 'the warning component accepts text')
-    // Its only prop.
-    assert.ok(component.includes('{ compact = false }: { compact?: boolean }'))
+    assert.ok(pieces.includes('export function InternalTestWarning({ compact = false }: { compact?: boolean }) {'))
+    assert.ok(pieces.includes('<span>{DRAFT_STATUS}</span>'))
+    // No `text` prop, no children: a caller decides WHERE it appears, never
+    // WHAT it says.
+    assert.equal(/InternalTestWarning\(\{[^}]*text/.test(pieces), false)
+    assert.equal(/InternalTestWarning\(\{[^}]*children/.test(pieces), false)
+  })
+})
+
+// ══ 2. THE RETIRED WARNING ══════════════════════════════════════════════════
+
+describe('the retired internal-test warning', () => {
+  test('nothing renders it', () => {
+    for (const file of [
+      'src/components/customerReviews/ReviewPieces.tsx',
+      'src/components/customerReviews/WhatsAppLaunch.tsx',
+      'src/components/customerReviews/ScreenshotManager.tsx',
+      'src/app/customer-reviews/TestCardListScreen.tsx',
+      'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx',
+    ]) {
+      const executable = read(file).split('\n')
+        .filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*'))
+        .join('\n')
+      assert.equal(executable.includes(RETIRED_TEST_WARNING), false,
+        `${file} still renders the retired warning`)
+    }
   })
 
-  test('the server refuses to return an unlabelled message', () => {
-    const route = read('src/app/api/customer-reviews/whatsapp/route.ts')
-    assert.ok(route.includes('if (!hasInternalTestWarning(message))'))
-    assert.ok(route.includes('refusing to build an unlabelled test message'))
+  test('but it is still kept as a constant, because the guards need it exactly', () => {
+    assert.equal(RETIRED_TEST_WARNING, 'INTERNAL TEST ONLY – NOT A CUSTOMER REVIEW – DO NOT PUBLISH')
   })
 
-  test('and the browser refuses to open one', () => {
-    const launch = read('src/components/customerReviews/WhatsAppLaunch.tsx')
-    assert.ok(launch.includes('!hasInternalTestWarning(built.message'))
-    assert.ok(launch.includes('missing its internal-test label and was not opened'))
+  test('and the database still refuses a body that carries it', () => {
+    // The CHECK that once stopped a card duplicating the mandatory label now
+    // does a second job for free: no generated draft may contain the retired
+    // sentence either.
+    const schema = read('supabase/migrations/20261017000000_customer_review_outreach.sql')
+    assert.ok(schema.includes(
+      'position(public.customer_review_internal_test_warning() in upper(test_body)) = 0'))
+  })
+})
+
+// ══ 3. THE MESSAGE ══════════════════════════════════════════════════════════
+
+describe('what WhatsApp is handed', () => {
+  const message = buildReviewMessage(DRAFT)
+
+  test('IT IS THE DRAFT, AND NOTHING ELSE', () => {
+    assert.equal(message, DRAFT.body)
+  })
+
+  test('the status is NOT in it — it is UI metadata', () => {
+    assert.equal(message.includes(DRAFT_STATUS), false)
+  })
+
+  test('neither is the retired warning', () => {
+    assert.equal(message.includes(RETIRED_TEST_WARNING), false)
+  })
+
+  test('neither is the reference, the title or the category', () => {
+    // Everything the module knows ABOUT a draft stays on our screen. A person
+    // receiving a suggested review receives a suggested review.
+    assert.equal(message.includes(DRAFT.reference), false)
+    assert.equal(message.includes(DRAFT.categoryLabel), false)
+    assert.equal(message.includes(DRAFT.title), false)
+  })
+
+  test('whitespace is collapsed, so a stored newline cannot fake a heading', () => {
+    const noisy = buildReviewMessage({ ...DRAFT, body: 'One.\n\n\nTwo.   Three.' })
+    assert.equal(noisy, 'One. Two. Three.')
+  })
+})
+
+// ══ 4. THE SEND GUARD ═══════════════════════════════════════════════════════
+
+describe('isSendableReviewMessage', () => {
+  test('an ordinary draft passes', () => {
+    assert.equal(isSendableReviewMessage(DRAFT.body), true)
+  })
+
+  test('an empty message does not', () => {
+    assert.equal(isSendableReviewMessage(''), false)
+    assert.equal(isSendableReviewMessage('   '), false)
+  })
+
+  test('a message carrying the retired warning does not', () => {
+    assert.equal(isSendableReviewMessage(`${RETIRED_TEST_WARNING}\n${DRAFT.body}`), false)
+  })
+
+  test('a message carrying our own status does not', () => {
+    assert.equal(isSendableReviewMessage(`${DRAFT_STATUS}: ${DRAFT.body}`), false)
+  })
+
+  test('and neither does one carrying a link, an address or a number', () => {
+    for (const leak of [
+      'Great chairs, see https://example.test for more',
+      'Great chairs, visit www.example.test',
+      'Great chairs — write to sales@example.test',
+      'Great chairs, call +44 20 7946 0000',
+    ]) {
+      assert.equal(isSendableReviewMessage(leak), false, leak)
+    }
+  })
+})
+
+
+// ══ THE TELEPHONE DETECTOR ══════════════════════════════════════════════════
+//
+// The matcher this replaces was /\+\d[\d\s()-]{7,}/, which only fired on a
+// LEADING PLUS. "+44 20 7946 0000" was caught; "202-555-0100",
+// "(202) 555-0100" and "9876543210" were not — three of the four ways a number
+// is actually written — so they passed both validateDrafts() and
+// isSendableReviewMessage().
+//
+// The four cases named in that report lead the list below, and the negative
+// controls matter just as much: a guard that rejects "120 chairs" would make
+// the module unusable for the furniture reviews it exists to draft.
+
+/** Must be caught. The first four are the reported misses. */
+const PHONE_NUMBERS = [
+  '+44 20 7946 0000',
+  '202-555-0100',
+  '(202) 555-0100',
+  '9876543210',
+  // and the same shapes inside a sentence, which is how one would actually arrive
+  'Great chairs, call +44 20 7946 0000 to order the same.',
+  'Great chairs — ring 202-555-0100 and ask for the workshop.',
+  'Great chairs, the showroom is (202) 555-0100 on weekdays.',
+  'Great chairs, my number is 9876543210 if you want the spec.',
+  // other everyday formats
+  '+1 (202) 555-0100',
+  '020 7946 0000',
+  '+91 98765 43210',
+  '555.123.4567',
+]
+
+/** Must NOT be caught. Quantities and durations a furniture review is full of. */
+const NOT_PHONE_NUMBERS = [
+  '120 chairs',
+  '60 rooms',
+  '18 months',
+  'three weeks',
+  'We ordered 120 chairs for a room that seats 60.',
+  'Eighty covers delivered over 18 months, in three phases.',
+  'A hundred and twenty covers, delivered in three phases.',
+  'Two years of full service later the frames have not moved.',
+  'We refitted 60 rooms in 2 lifts across 3 mornings.',
+  'The 40 stools arrived first, then the 12 tables.',
+  'Forty stacking chairs, six high on the pallet.',
+]
+
+describe('containsTelephoneNumber', () => {
+  for (const text of PHONE_NUMBERS) {
+    test(`catches ${JSON.stringify(text)}`, () => {
+      assert.equal(containsTelephoneNumber(text), true)
+    })
+  }
+
+  for (const text of NOT_PHONE_NUMBERS) {
+    test(`leaves ${JSON.stringify(text)} alone`, () => {
+      assert.equal(containsTelephoneNumber(text), false)
+    })
+  }
+
+  test('it counts digits rather than matching formats', () => {
+    // Six digits in a run is not a phone number; seven is. That boundary is the
+    // whole rule, and it is the reason no format list needs maintaining.
+    assert.equal(containsTelephoneNumber('12 34 56'), false)
+    assert.equal(containsTelephoneNumber('12 34 567'), true)
+  })
+})
+
+describe('and the SEND GUARD refuses every one of them', () => {
+  // The point of the shared function: a number cannot be rejected by the
+  // validator at one end of the module and accepted by the message builder at
+  // the other.
+  for (const number of PHONE_NUMBERS) {
+    test(`will not send a message carrying ${JSON.stringify(number)}`, () => {
+      const message = `The seating was excellent and it arrived when they said. ${number}`
+      assert.equal(isSendableReviewMessage(message), false)
+    })
+  }
+
+  test('but an ordinary review full of quantities still sends', () => {
+    for (const text of NOT_PHONE_NUMBERS) {
+      const message = `The seating was excellent and it arrived when they said it would. ${text}`
+      assert.equal(isSendableReviewMessage(message), true, text)
+    }
+  })
+})
+
+// ══ 5. THE URL ══════════════════════════════════════════════════════════════
+
+describe('the wa.me link', () => {
+  test('it decodes back to exactly the message that was built', () => {
+    const message = buildReviewMessage(DRAFT)
+    const url = new URL(buildWaMeUrl('12025550100', message))
+    assert.equal(url.protocol, 'https:')
+    assert.equal(url.host, 'wa.me')
+    assert.equal(url.pathname, '/12025550100')
+    assert.equal(decodeURIComponent(url.searchParams.get('text') ?? ''), message)
+  })
+
+  test('the number reaches the PATH, never the text', () => {
+    const url = new URL(buildWaMeUrl('12025550100', buildReviewMessage(DRAFT)))
+    assert.equal((url.searchParams.get('text') ?? '').includes('12025550100'), false)
+  })
+})
+
+// ══ 6. NO USER-FACING TEST WORDING SURVIVES ═════════════════════════════════
+
+describe('the module no longer calls itself a test', () => {
+  const SCREENS = [
+    'src/app/customer-reviews/TestCardListScreen.tsx',
+    'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx',
+    'src/components/customerReviews/WhatsAppLaunch.tsx',
+    'src/components/customerReviews/ScreenshotManager.tsx',
+    'src/components/customerReviews/ReviewPieces.tsx',
+    'src/components/customerReviews/GenerateDrafts.tsx',
+    'src/components/layout/CustomerReviewsLayout.tsx',
+    'src/lib/customerReviews/status.ts',
+    'src/lib/customerReviews/types.ts',
+    'src/lib/permissions/modules.ts',
+    'src/app/modules/page.tsx',
+    'src/app/api/customer-reviews/whatsapp/route.ts',
+    'src/app/api/customer-reviews/photos/route.ts',
+    'src/app/api/customer-reviews/generate/route.ts',
+  ]
+
+  /** Executable lines only: a comment explaining what was removed is not it. */
+  const executable = (source: string) =>
+    source.split('\n')
+      .filter(l => {
+        const t = l.trimStart()
+        return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*')
+      })
+      .join('\n')
+
+  test('no screen says "Review Workflow Test", "Book this test" or "My tests"', () => {
+    const offenders: string[] = []
+    for (const file of SCREENS) {
+      const body = executable(read(file))
+      for (const phrase of ['Review Workflow Test', 'Book this test', 'My tests']) {
+        if (body.includes(phrase)) offenders.push(`${file}: ${phrase}`)
+      }
+    }
+    assert.deepEqual(offenders, [])
+  })
+
+  test('and none describes a card as an internal test', () => {
+    const offenders: string[] = []
+    for (const file of SCREENS) {
+      const body = executable(read(file))
+      if (/internal test|internal-test|test card|test message|booked test|test workflow/i.test(body)) {
+        offenders.push(file)
+      }
+    }
+    assert.deepEqual(offenders, [])
+  })
+
+  test('the module displays "Review Workflow"', () => {
+    assert.ok(read('src/lib/permissions/modules.ts').includes("displayName: 'Review Workflow'"))
+    assert.ok(read('src/app/modules/page.tsx').includes("title: 'Review Workflow'"))
+    assert.ok(read('src/app/customer-reviews/TestCardListScreen.tsx').includes('title="Review Workflow"'))
+  })
+
+  test('including the sidebar, which said "Workflow Test" longer than anything else', () => {
+    // The last one found, and only by looking at the running page: the module
+    // shell has its own brand sub-label, which no scan of the SCREENS list
+    // reached because it lives in the layout.
+    const shell = read('src/components/layout/CustomerReviewsLayout.tsx')
+    assert.ok(shell.includes('<div className="boe-sidebar-brand-sub">Review Workflow</div>'))
+    assert.equal(/Workflow Test/.test(executable(shell)), false)
+  })
+
+  test('and no label on the detail screen still calls anybody a tester', () => {
+    // Two more found only by walking a card through: the activity-trail label
+    // map and the fact list. status.ts already said "Return to candidate" while
+    // these two still said "tester", which is the inconsistency a reader
+    // notices first.
+    const detail = executable(read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx'))
+    assert.equal(/tester/i.test(detail), false)
+    assert.ok(detail.includes("sent_confirmed:     'Candidate confirmed sent'"))
+    assert.ok(detail.includes("returned:           'Returned to candidate'"))
+  })
+
+  test('and the list page carries no page-level provenance pill', () => {
+    // The status describes ONE draft. Above a list of twenty it labels nothing,
+    // and it read as a banner about the module rather than about a draft.
+    const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+    // Executable lines only — the comment above the card renderer still names
+    // the component, and a comment is not a render.
+    assert.equal(executable(list).includes('<InternalTestWarning />'), false)
+    assert.ok(list.includes('<InternalTestWarning compact />'), 'the per-card status is gone too')
+  })
+
+  test('and the booking control says "Book"', () => {
+    const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+    assert.ok(list.includes("{booking ? 'Booking…' : 'Book'}"))
   })
 })

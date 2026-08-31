@@ -65,7 +65,9 @@ describe('what the module registers', () => {
     // The KEY is unchanged — every existing Control Center grant is written
     // against it — and the display name is not, because that is the part a
     // human reads and this module is no longer customer outreach.
-    assert.equal(mod!.displayName, 'Review Workflow Test (Internal)')
+    assert.equal(mod!.displayName, 'Review Workflow')
+    // No user-facing name may still say Test — the module is not a test any more.
+    assert.equal(/test/i.test(mod!.displayName), false)
   })
 
   test('`use` is the module’s entry action', () => {
@@ -214,7 +216,7 @@ describe('deriving capabilities', () => {
   // flag, because "sees Verify and Return" is the claim being made. Both are
   // verifier-only transitions off a SUBMITTED card, and the viewer never holds
   // it — a verifier acting on somebody else's evidence is the whole point.
-  describe('who is offered Verify test and Return to tester', () => {
+  describe('who is offered Verify review and Return to candidate', () => {
     const SUBMITTED = { status: 'submitted' as const, booked_by: 'user-holder' }
     const VIEWER = 'user-viewer'
 
@@ -228,7 +230,7 @@ describe('deriving capabilities', () => {
       // the engine resolves them and nothing they had is lost.
       const caps = deriveCustomerReviewCapabilities('admin', allow('use', 'verify'))
       assert.equal(caps.canVerify, true)
-      assert.deepEqual(offered(caps), ['Return to tester', 'Verify test'])
+      assert.deepEqual(offered(caps), ['Return to candidate', 'Verify review'])
     })
 
     test('2. an ADMIN whose verify is REVOKED sees NEITHER', () => {
@@ -255,7 +257,7 @@ describe('deriving capabilities', () => {
       const caps = deriveCustomerReviewCapabilities('member', allow('verify'))
       assert.equal(caps.canVerify, true)
       assert.equal(caps.canUse, false)
-      assert.deepEqual(offered(caps), ['Return to tester', 'Verify test'])
+      assert.deepEqual(offered(caps), ['Return to candidate', 'Verify review'])
     })
 
     test('4. NO TESTER OWNERSHIP OR DATABASE RULE MOVED', () => {
@@ -601,7 +603,7 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.equal(/history/i.test(executable), false, 'the sidebar still links to history')
     // Three entries, and the two that remain verifier-only are unchanged.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['Available', 'My tests', 'To Verify'])
+    assert.deepEqual(items, ['Available', 'My reviews', 'To Verify'])
   })
 
   test('THE DETAIL SCREEN DECLINES A VERIFIED CARD TOO', () => {
@@ -758,10 +760,13 @@ describe('the module never claims a message was sent', () => {
     }
   })
 
-  test('a screenshot is described as proof of the WORKFLOW, never of a review', () => {
+  test('a screenshot is described as proof the MESSAGE was sent, never of a review', () => {
     const pieces = read('src/components/customerReviews/ReviewPieces.tsx').replace(/\s+/g, ' ')
-    assert.ok(pieces.includes('evidence that the workflow was exercised'))
-    assert.ok(pieces.includes('not a customer review, not proof that one exists'))
+    assert.ok(pieces.includes('evidence that the message was sent'))
+    assert.ok(pieces.includes('not proof that a review was published'))
+    // And it still refuses the stronger claim: a screenshot is not evidence a
+    // review exists anywhere.
+    assert.equal(/proof that (a|one) review (exists|was left)/i.test(pieces), false)
     assert.ok(detail.includes('<ScreenshotIsNotProofNote />'))
   })
 
@@ -769,7 +774,7 @@ describe('the module never claims a message was sent', () => {
     for (const label of [
       'Booked',
       'WhatsApp opened',
-      'Tester confirmed sent',
+      'Candidate confirmed sent',
       'Submitted',
       'Verified',
     ]) {

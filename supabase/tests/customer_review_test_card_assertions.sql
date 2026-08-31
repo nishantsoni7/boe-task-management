@@ -47,6 +47,89 @@
 -- see what depends on it; an assertion failing in the middle must not leave the
 -- database that way.
 
+-- ─── 0A. THE REWRITE TOUCHED ONLY WHAT WAS STILL AVAILABLE ─────────────────
+--
+-- _review_workflow_drafts_before.sql put three cards down before
+-- 20261023000000 ran: one available, one booked, one verified. The migration
+-- was allowed to rewrite exactly one of them.
+--
+-- This runs first, because it is the only claim in this file that is about
+-- something that has ALREADY happened, and because it clears its own rows out
+-- of the pool before section 2 counts it.
+
+do $$
+declare
+  v_probe   record;
+  v_now     record;
+  v_changed integer := 0;
+begin
+  if to_regclass('public.zz_review_workflow_rewrite_probe') is null then
+    raise exception '0A has no probe table; _review_workflow_drafts_before.sql did not run';
+  end if;
+
+  for v_probe in select * from public.zz_review_workflow_rewrite_probe order by card_ref loop
+    select * into v_now from public.customer_review_test_cards where id = v_probe.id;
+    if v_now.id is null then
+      raise exception 'the migration DELETED probe card %', v_probe.card_ref;
+    end if;
+
+    if v_probe.status = 'available' then
+      -- The one it was allowed to touch. It must actually have been rewritten,
+      -- or the migration silently did nothing and every other assertion here
+      -- would pass vacuously.
+      if v_now.test_body = v_probe.test_body then
+        raise exception 'the AVAILABLE card % was not rewritten at all', v_probe.card_ref;
+      end if;
+      if v_now.card_ref !~ '^RW-[0-9]{6}$' then
+        raise exception 'the rewritten card kept reference %', v_now.card_ref;
+      end if;
+      if v_now.status <> 'available' then
+        raise exception 'the rewrite moved card % to status %', v_probe.card_ref, v_now.status;
+      end if;
+      if length(v_now.test_body) < 100 then
+        raise exception 'the replacement body is % characters, which is not a review',
+          length(v_now.test_body);
+      end if;
+      v_changed := v_changed + 1;
+      raise notice 'PASS  0A1. the available card was rewritten: % → %, % characters',
+        v_probe.card_ref, v_now.card_ref, length(v_now.test_body);
+    else
+      -- Everything else is somebody's record, and every field of it has to be
+      -- exactly what it was.
+      if v_now.card_ref  <> v_probe.card_ref
+      or v_now.test_body <> v_probe.test_body
+      or v_now.test_title<> v_probe.test_title
+      or v_now.test_category <> v_probe.test_category
+      or v_now.status    <> v_probe.status then
+        raise exception 'THE MIGRATION REWROTE A % CARD (%): ref %→%, title %→%',
+          v_probe.status, v_probe.card_ref, v_probe.card_ref, v_now.card_ref,
+          v_probe.test_title, v_now.test_title;
+      end if;
+      raise notice 'PASS  0A2. the % card % was left exactly as it was', v_probe.status, v_probe.card_ref;
+    end if;
+  end loop;
+
+  if v_changed <> 1 then
+    raise exception '0A expected exactly one rewritten card, saw %', v_changed;
+  end if;
+
+  -- And no generated card can claim a reference the rewrite already used.
+  if (select count(*) from public.customer_review_test_cards where card_ref = 'RW-000001') > 1 then
+    raise exception 'RW-000001 is not unique';
+  end if;
+end $$;
+
+-- Clear the probe out, so the pool section that follows counts only its own.
+do $$
+begin
+  delete from public.customer_review_test_cards
+   where id::text like 'eeeeeeee-0000-4000-8000-%';
+  delete from public.users
+   where id::text like 'eeeeeeee-0000-4000-8000-%';
+  drop table if exists public.zz_review_workflow_rewrite_probe;
+  raise notice 'PASS  0A3. probe rows removed; the pool is back to what this file owns';
+end $$;
+
 -- ─── 0. Fictional fixtures ─────────────────────────────────────────────────
 --
 -- Seven people, because the workflow has more edges than it looks. Two ordinary
@@ -1545,6 +1628,488 @@ begin
   end if;
   raise notice 'PASS  11e. users restored, and everything reads as it did before';
 end $$;
+
+-- ─── 13. GENERATION: WHO MAY, WHEN, AND WHAT LANDS ─────────────────────────
+--
+-- Everything below is about create_customer_review_draft_batch, which is the
+-- only way a generated card reaches the table. The route validates and the
+-- screen hides the button, but neither of those is a rule — this is.
+--
+-- FIVE CLAIMS:
+--   a. it is refused while ANY card is still available
+--   b. a booked or submitted card does not block it
+--   c. exactly twenty, or nothing at all
+--   d. repeating the same call cannot produce a second batch
+--   e. the caller must resolve `verify`, and an administrator is no exception
+--
+-- The sixth claim — that two verifiers racing produce ONE batch — needs two
+-- connections and committed rows, which cannot happen inside this file. It is
+-- proved by supabase/tests/run_customer_review_draft_batch_race.sh.
+--
+-- THE POOL IS GLOBAL, so this section has to own it for the length of the
+-- section: it parks every card that is currently available, does its work, and
+-- puts them back at 13j. Nothing here touches a booked, submitted or verified
+-- card, and 13j asserts the parked set came back whole.
+
+-- A payload builder, so twenty valid drafts are not twenty lines of literal.
+create or replace function pg_temp.batch_payload(p_n integer, p_tag text default 'probe')
+returns jsonb language sql as $fn$
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'title',    'Draft ' || i || ' ' || p_tag,
+    'category', 'restaurant_test',
+    'body',     'We ordered seating for a small dining room and the fit was right '
+                || 'first time. This is draft ' || i || ' of the ' || p_tag || ' batch, '
+                || 'written long enough to clear the minimum body length.'
+  )), '[]'::jsonb)
+  from generate_series(1, greatest(p_n, 0)) i;
+$fn$;
+
+-- Calling it and reporting only the SQLSTATE, so a refusal is an assertion
+-- rather than an abort.
+create or replace function pg_temp.try_batch(
+  p_actor uuid, p_payload jsonb, p_guidance text default 'Hospitality furniture reviews.')
+returns text language plpgsql as $fn$
+begin
+  perform public.create_customer_review_draft_batch(
+    p_guidance, 'claude-opus-5', p_payload, p_actor);
+  return 'OK';
+exception when others then
+  return sqlstate || ':' || left(sqlerrm, 70);
+end $fn$;
+
+-- ── 13a. The pool is not empty, so nobody may generate — not even a verifier
+do $$
+declare v_available integer; v_r text; v_batches integer;
+begin
+  select count(*) into v_available
+    from public.customer_review_test_cards where status = 'available';
+  if v_available = 0 then
+    raise exception '13a needs at least one available card to be a test; found none';
+  end if;
+
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', pg_temp.batch_payload(20));
+  if v_r not like '23514:%' or v_r not like '%POOL_NOT_EMPTY%' then
+    raise exception 'a verifier generated while % card(s) were available: %', v_available, v_r;
+  end if;
+
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  if v_batches <> 0 then
+    raise exception 'a refused call still wrote % batch row(s)', v_batches;
+  end if;
+  raise notice 'PASS  13a. refused while % card(s) were still available, and wrote nothing', v_available;
+end $$;
+
+-- ── Park the pool, so the remaining claims can be tested at all ────────────
+create temporary table parked_cards as
+  select id from public.customer_review_test_cards where status = 'available';
+
+do $$
+declare v_n integer;
+begin
+  update public.customer_review_test_cards
+     set status = 'booked',
+         booked_by = 'ffffffff-0000-4000-8000-000000000002',
+         booked_at = now()
+   where id in (select id from parked_cards);
+  get diagnostics v_n = row_count;
+  raise notice '      (parked % available card(s) as booked; restored at 13j)', v_n;
+end $$;
+
+-- ── 13b. A BOOKED CARD DOES NOT BLOCK THE NEXT BATCH ───────────────────────
+do $$
+declare v_r text; v_busy integer;
+begin
+  select count(*) into v_busy
+    from public.customer_review_test_cards where status <> 'available';
+  if v_busy = 0 then
+    raise exception '13b needs at least one non-available card';
+  end if;
+
+  -- The pool is empty and everything else is somebody's work in progress. That
+  -- is precisely the state in which the next batch is allowed.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', pg_temp.batch_payload(20), 'First batch.');
+  if v_r <> 'OK' then
+    raise exception '% non-available card(s) blocked generation: %', v_busy, v_r;
+  end if;
+  raise notice 'PASS  13b. % booked/submitted/verified card(s) did NOT block the batch', v_busy;
+end $$;
+
+-- ── 13c. Exactly twenty landed, all available, all in one batch ────────────
+do $$
+declare v_cards integer; v_batches integer; v_bad integer;
+        v_guidance text; v_model text; v_count integer; v_refs integer;
+begin
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  if v_batches <> 1 then raise exception 'expected 1 batch row, found %', v_batches; end if;
+
+  select guidance, model, card_count into v_guidance, v_model, v_count
+    from public.customer_review_draft_batches;
+  if v_guidance <> 'First batch.' then raise exception 'the batch stored guidance %', v_guidance; end if;
+  if v_model <> 'claude-opus-5' then raise exception 'the batch stored model %', v_model; end if;
+  if v_count <> 20 then raise exception 'the batch claims % cards', v_count; end if;
+
+  select count(*) into v_cards from public.customer_review_test_cards
+   where batch_id = (select id from public.customer_review_draft_batches);
+  if v_cards <> 20 then raise exception 'the batch inserted % cards, expected 20', v_cards; end if;
+
+  select count(*) into v_bad from public.customer_review_test_cards
+   where batch_id is not null
+     and (status <> 'available' or booked_by is not null or card_ref !~ '^RW-[0-9]{6}$');
+  if v_bad > 0 then raise exception '% generated card(s) did not land clean', v_bad; end if;
+
+  select count(distinct card_ref) into v_refs
+    from public.customer_review_test_cards where batch_id is not null;
+  if v_refs <> 20 then raise exception 'the batch produced % distinct references', v_refs; end if;
+
+  raise notice 'PASS  13c. exactly 20 available cards, 20 distinct RW references, one audited batch row';
+end $$;
+
+-- ── 13d. REPEATING CANNOT DUPLICATE ────────────────────────────────────────
+do $$
+declare v_r text; v_batches integer; v_cards integer;
+begin
+  -- Same caller, same guidance, same payload, straight away. The pool is now
+  -- full of the batch that just landed, so the pool rule refuses it — which is
+  -- also what stops a double-submitted request creating forty cards.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', pg_temp.batch_payload(20), 'First batch.');
+  if v_r not like '23514:%' or v_r not like '%POOL_NOT_EMPTY%' then
+    raise exception 'the same call ran twice: %', v_r;
+  end if;
+
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  select count(*) into v_cards from public.customer_review_test_cards where batch_id is not null;
+  if v_batches <> 1 or v_cards <> 20 then
+    raise exception 'the repeat left % batch(es) and % card(s)', v_batches, v_cards;
+  end if;
+  raise notice 'PASS  13d. the repeat was refused; still 1 batch and 20 cards';
+end $$;
+
+-- ── 13e. WHO MAY ASK ───────────────────────────────────────────────────────
+do $$
+declare v_r text;
+begin
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+
+  -- A tester holds `use`, not `verify`.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000002', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then raise exception 'a tester generated a batch: %', v_r; end if;
+  raise notice 'PASS  13e1. a candidate holding `use` but not `verify` is refused 42501';
+
+  -- Nobody holds anything.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000005', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then raise exception 'an unpermitted user generated a batch: %', v_r; end if;
+  raise notice 'PASS  13e2. a user with no grant is refused 42501';
+
+  -- An inactive account, even holding `verify` by override.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000007', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then raise exception 'an inactive verifier generated a batch: %', v_r; end if;
+  raise notice 'PASS  13e3. an INACTIVE account holding verify is refused 42501';
+
+  -- An inactive ADMINISTRATOR. Being an administrator is not a way in.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000006', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then raise exception 'an inactive administrator generated a batch: %', v_r; end if;
+  raise notice 'PASS  13e4. an INACTIVE administrator is refused 42501';
+
+  -- A user id that does not exist at all.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-0000000000ff', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then raise exception 'a non-existent actor generated a batch: %', v_r; end if;
+  raise notice 'PASS  13e5. an unknown actor is refused 42501';
+end $$;
+
+-- ── 13f. AN ADMINISTRATOR GETS IN THROUGH THE ENGINE, OR NOT AT ALL ────────
+do $$
+declare v_r text; v_resolved boolean; v_module uuid; v_verify uuid;
+begin
+  v_resolved := public.resolve_permission(
+    'ffffffff-0000-4000-8000-000000000001', 'customer_review_requests', 'verify');
+
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000001', pg_temp.batch_payload(20), 'Admin batch.');
+
+  -- Whatever the seed says, the OUTCOME must match the RESOLVED permission
+  -- exactly. If the administrator resolves verify they generate; if they do
+  -- not, they are refused like anybody else. There is no third answer, and
+  -- that is the whole claim.
+  if v_resolved and v_r <> 'OK' then
+    raise exception 'an administrator who RESOLVES verify was refused: %', v_r;
+  end if;
+  if (not v_resolved) and v_r not like '42501:%' then
+    raise exception 'an administrator who does NOT resolve verify got in anyway: %', v_r;
+  end if;
+  raise notice 'PASS  13f1. administrator resolve_permission = %, and the function agreed (%)',
+    v_resolved, case when v_r = 'OK' then 'generated' else 'refused 42501' end;
+
+  -- Now REVOKE it, and prove the door closes for the same administrator.
+  select id into v_module from public.permission_modules
+   where module_key = 'customer_review_requests';
+  select id into v_verify from public.permission_actions where action_key = 'verify';
+
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  values ('ffffffff-0000-4000-8000-000000000001', v_module, v_verify, false,
+          'ffffffff-0000-4000-8000-000000000001');
+
+  if public.resolve_permission('ffffffff-0000-4000-8000-000000000001',
+                               'customer_review_requests', 'verify') then
+    raise exception 'the revocation did not take';
+  end if;
+
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000001', pg_temp.batch_payload(20));
+  if v_r not like '42501:%' then
+    raise exception 'A REVOKED ADMINISTRATOR STILL GENERATED A BATCH: %', v_r;
+  end if;
+  raise notice 'PASS  13f2. THE SAME ADMINISTRATOR, verify REVOKED, IS REFUSED 42501';
+
+  delete from public.employee_permission_overrides
+   where user_id = 'ffffffff-0000-4000-8000-000000000001';
+end $$;
+
+-- ── 13g. TWENTY, OR NOTHING ────────────────────────────────────────────────
+do $$
+declare v_r text; v_batches integer; v_cards integer; v_payload jsonb;
+begin
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  select count(*) into v_cards   from public.customer_review_test_cards;
+
+  foreach v_payload in array array[
+    pg_temp.batch_payload(0), pg_temp.batch_payload(1),
+    pg_temp.batch_payload(19), pg_temp.batch_payload(21)
+  ] loop
+    v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload);
+    if v_r not like '23514:%' or v_r not like '%BAD_BATCH%' then
+      raise exception 'a payload of % drafts was accepted: %', jsonb_array_length(v_payload), v_r;
+    end if;
+  end loop;
+  raise notice 'PASS  13g1. 0, 1, 19 and 21 drafts were each refused 23514';
+
+  -- A partial batch: nineteen good and one the COLUMN refuses. The function
+  -- does not stop this one — the CHECK does, part-way through the insert — and
+  -- the whole transaction has to disappear with it.
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004',
+    jsonb_set(pg_temp.batch_payload(20), '{7,body}', '"short"'::jsonb));
+  if v_r = 'OK' then raise exception 'a batch with an invalid body was accepted'; end if;
+  raise notice 'PASS  13g2. a batch failing mid-insert was refused (%)', left(v_r, 40);
+
+  if (select count(*) from public.customer_review_draft_batches) <> v_batches then
+    raise exception 'a refused batch left a batch row behind';
+  end if;
+  if (select count(*) from public.customer_review_test_cards) <> v_cards then
+    raise exception 'A REFUSED BATCH LEFT CARDS BEHIND: % now, % before',
+      (select count(*) from public.customer_review_test_cards), v_cards;
+  end if;
+  raise notice 'PASS  13g3. NOT ONE ROW SURVIVED ANY REFUSED CALL (still % batch(es), % card(s))',
+    v_batches, v_cards;
+end $$;
+
+-- ── 13h. NOTHING GENERATED CARRIES A WARNING, A LINK OR A NUMBER ───────────
+do $$
+declare v_bad integer; v_seen integer;
+begin
+  select count(*) into v_seen from public.customer_review_test_cards where batch_id is not null;
+  if v_seen = 0 then raise exception '13h has no generated cards to inspect'; end if;
+
+  select count(*) into v_bad from public.customer_review_test_cards
+   where batch_id is not null
+     and (test_body ~* '(https?://|www\.|wa\.me)'
+       or test_body ~* '[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}'
+       or public.customer_review_contains_phone(test_body)
+       or public.customer_review_contains_phone(test_title)
+       or position(public.customer_review_internal_test_warning() in upper(test_body)) > 0
+       or test_body ~* '(leave a review|post this|publish this|rate us)');
+  if v_bad > 0 then
+    raise exception '% of % generated card(s) carry a link, contact detail or posting instruction',
+      v_bad, v_seen;
+  end if;
+  raise notice 'PASS  13h. none of % generated card(s) carries a warning, link, address, number or posting instruction',
+    v_seen;
+end $$;
+
+-- ── 13i. THE FUNCTION IS NOT REACHABLE FROM A BROWSER ──────────────────────
+do $$
+begin
+  if has_function_privilege('authenticated',
+       'public.create_customer_review_draft_batch(text, text, jsonb, uuid)', 'execute')
+   or has_function_privilege('anon',
+       'public.create_customer_review_draft_batch(text, text, jsonb, uuid)', 'execute') then
+    raise exception 'a browser role can execute the batch function';
+  end if;
+  if not has_function_privilege('service_role',
+       'public.create_customer_review_draft_batch(text, text, jsonb, uuid)', 'execute') then
+    raise exception 'the server role cannot execute the batch function';
+  end if;
+
+  -- And no client role can write the batch table directly either.
+  if has_table_privilege('authenticated', 'public.customer_review_draft_batches', 'insert')
+   or has_table_privilege('authenticated', 'public.customer_review_draft_batches', 'update')
+   or has_table_privilege('authenticated', 'public.customer_review_draft_batches', 'delete') then
+    raise exception 'authenticated can write customer_review_draft_batches directly';
+  end if;
+  raise notice 'PASS  13i. service_role only, and no direct client write to the batch table';
+end $$;
+
+-- ── 13k. THE TELEPHONE DETECTOR, ON THE SAME CORPUS AS THE TYPESCRIPT ───
+--
+-- customer_review_contains_phone is the SQL twin of containsTelephoneNumber in
+-- src/lib/customerReviews/internalTest.ts. The route validates a batch with the
+-- TypeScript one and the batch function refuses it again with this one, so the
+-- two disagreeing means the route accepts what the database then rejects.
+--
+-- The corpus below is the same list the TypeScript tests use. The first four
+-- rejections are the formats the previous matcher missed: it required a leading
+-- '+', so only the first of them was ever caught.
+do $$
+declare
+  v_text text;
+  v_bad  integer := 0;
+begin
+  foreach v_text in array array[
+    '+44 20 7946 0000',
+    '202-555-0100',
+    '(202) 555-0100',
+    '9876543210',
+    'Great chairs, call +44 20 7946 0000 to order the same.',
+    'Great chairs — ring 202-555-0100 and ask for the workshop.',
+    'Great chairs, the showroom is (202) 555-0100 on weekdays.',
+    'Great chairs, my number is 9876543210 if you want the spec.',
+    '+1 (202) 555-0100',
+    '020 7946 0000',
+    '+91 98765 43210',
+    '555.123.4567'
+  ] loop
+    if not public.customer_review_contains_phone(v_text) then
+      raise warning 'MISSED a telephone number: %', v_text;
+      v_bad := v_bad + 1;
+    end if;
+  end loop;
+  if v_bad > 0 then
+    raise exception '% telephone number(s) passed the database check', v_bad;
+  end if;
+  raise notice 'PASS  13k1. all 12 telephone formats are refused, with or without a leading +';
+
+  foreach v_text in array array[
+    '120 chairs',
+    '60 rooms',
+    '18 months',
+    'three weeks',
+    'We ordered 120 chairs for a room that seats 60.',
+    'Eighty covers delivered over 18 months, in three phases.',
+    'A hundred and twenty covers, delivered in three phases.',
+    'Two years of full service later the frames have not moved.',
+    'We refitted 60 rooms in 2 lifts across 3 mornings.',
+    'The 40 stools arrived first, then the 12 tables.',
+    'Forty stacking chairs, six high on the pallet.'
+  ] loop
+    if public.customer_review_contains_phone(v_text) then
+      raise warning 'FALSE POSITIVE on an ordinary quantity: %', v_text;
+      v_bad := v_bad + 1;
+    end if;
+  end loop;
+  if v_bad > 0 then
+    raise exception '% ordinary quantity phrase(s) were treated as telephone numbers', v_bad;
+  end if;
+  raise notice 'PASS  13k2. quantities and durations are left alone (120 chairs, 60 rooms, 18 months, three weeks)';
+
+  -- The boundary itself: six digits in a run is not a number, seven is.
+  if public.customer_review_contains_phone('12 34 56')
+  or not public.customer_review_contains_phone('12 34 567') then
+    raise exception 'the seven-digit boundary is wrong';
+  end if;
+  raise notice 'PASS  13k3. the rule is a digit count, and the boundary is seven';
+end $$;
+
+-- ── 13l. AND THE BATCH FUNCTION REFUSES A DRAFT CARRYING ONE ───────────
+--
+-- Not just asserted at apply time: refused inside the transaction, so a route
+-- that ever stopped validating still could not write a contact detail.
+do $$
+begin
+  update public.customer_review_test_cards
+     set status = 'booked', booked_by = 'ffffffff-0000-4000-8000-000000000002', booked_at = now()
+   where status = 'available';
+end $$;
+
+do $$
+declare v_r text; v_batches integer; v_cards integer; v_payload jsonb; v_number text;
+begin
+  select count(*) into v_batches from public.customer_review_draft_batches;
+  select count(*) into v_cards   from public.customer_review_test_cards;
+
+  foreach v_number in array array[
+    '+44 20 7946 0000', '202-555-0100', '(202) 555-0100', '9876543210'
+  ] loop
+    v_payload := jsonb_set(pg_temp.batch_payload(20), '{11,body}',
+      to_jsonb('We were very happy with the seating and the delivery, and the number to call is '
+               || v_number || ' on weekdays.'));
+    v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload);
+    if v_r not like '23514:%' or v_r not like '%telephone number%' then
+      raise exception 'a batch carrying % was not refused by the database: %', v_number, v_r;
+    end if;
+
+    -- The same number in a TITLE, which is displayed on the card.
+    v_payload := jsonb_set(pg_temp.batch_payload(20), '{4,title}', to_jsonb('Call ' || v_number));
+    v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload);
+    if v_r not like '23514:%' or v_r not like '%telephone number%' then
+      raise exception 'a batch whose TITLE carried % was not refused: %', v_number, v_r;
+    end if;
+  end loop;
+  raise notice 'PASS  13l1. all four formats are refused by the batch function, in a body and in a title';
+
+  if (select count(*) from public.customer_review_draft_batches) <> v_batches
+  or (select count(*) from public.customer_review_test_cards) <> v_cards then
+    raise exception 'a refused batch left rows behind';
+  end if;
+  raise notice 'PASS  13l2. and not one row survived any of the eight refusals';
+
+  -- A batch full of ordinary quantities still lands, or the guard is useless.
+  v_payload := jsonb_set(pg_temp.batch_payload(20), '{3,body}',
+    to_jsonb('We ordered 120 chairs for a room that seats 60, delivered over 18 months in three phases.'::text));
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004', v_payload, 'Quantities batch.');
+  if v_r <> 'OK' then
+    raise exception 'an ordinary quantity was treated as a contact detail: %', v_r;
+  end if;
+  raise notice 'PASS  13l3. a draft saying "120 chairs ... seats 60 ... over 18 months" was accepted';
+end $$;
+
+-- ── 13j. Put the parked cards back, and prove the parked set came back whole
+do $$
+declare v_generated integer; v_restored integer; v_expected integer;
+begin
+  select count(*) into v_generated
+    from public.customer_review_test_cards where batch_id is not null;
+  delete from public.customer_review_test_cards where batch_id is not null;
+  delete from public.customer_review_draft_batches;
+
+  update public.customer_review_test_cards
+     set status = 'available', booked_by = null, booked_at = null
+   where id in (select id from parked_cards);
+  get diagnostics v_restored = row_count;
+
+  select count(*) into v_expected from parked_cards;
+  if v_restored <> v_expected then
+    raise exception 'restored % of % parked cards', v_restored, v_expected;
+  end if;
+  if (select count(*) from public.customer_review_test_cards where status = 'available')
+     <> v_expected then
+    raise exception 'the available pool is % after restoring, expected %',
+      (select count(*) from public.customer_review_test_cards where status = 'available'), v_expected;
+  end if;
+  raise notice 'PASS  13j. % generated card(s) removed, % parked card(s) restored to available',
+    v_generated, v_restored;
+end $$;
+
+drop table parked_cards;
 
 -- ─── 12. Clean up ──────────────────────────────────────────────────────────
 

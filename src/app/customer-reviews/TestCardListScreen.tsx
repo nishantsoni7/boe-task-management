@@ -8,6 +8,7 @@ import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@
 import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { InternalTestWarning, ReviewBadge } from '@/components/customerReviews/ReviewPieces'
+import { GenerateDrafts } from '@/components/customerReviews/GenerateDrafts'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, textParam } from '@/lib/listState'
@@ -116,6 +117,11 @@ export function TestCardListScreen() {
     }
   }, [authLoading, tab, caps.canVerify, setState])
 
+  // HOW MANY REVIEWS ARE STILL AVAILABLE, whatever tab is open and whatever the
+  // search box says. The generation rule is about the pool, so a filtered count
+  // would let a search term make the button look available when it is not.
+  const [availableTotal, setAvailableTotal] = useState(0)
+
   const load = useCallback(async () => {
     if (!profile) return
 
@@ -148,13 +154,21 @@ export function TestCardListScreen() {
     )
 
     if (!result.ok) {
-      setLoadError('Those test cards could not be loaded. Refresh to try again.')
+      setLoadError('Those reviews could not be loaded. Refresh to try again.')
       setCards([])
     } else {
       setLoadError(null)
       setCards(result.rows)
     }
     setLoadedTab(tab)
+
+    // Asked separately and by count only, so it is right on every tab. head:true
+    // fetches no rows.
+    const { count } = await supabase
+      .from('customer_review_test_cards')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'available')
+    setAvailableTotal(count ?? 0)
   }, [supabase, profile, tab])
 
   // True until the rows in state are the ones this tab asked for.
@@ -189,13 +203,13 @@ export function TestCardListScreen() {
       if (error) {
         // The database's own sentence, stripped of its machine prefix. None of
         // them names who took the card.
-        setBookError(error.message.replace(/^[A-Z_]+:\s*/, '') || 'That card could not be booked.')
+        setBookError(error.message.replace(/^[A-Z_]+:\s*/, '') || 'That review could not be booked.')
         await load()
         return
       }
       router.push(`/customer-reviews/${cardId}`)
     } catch {
-      setBookError('That card could not be booked. Check your connection and try again.')
+      setBookError('That review could not be booked. Check your connection and try again.')
     } finally {
       booking.current = false
       setBookingId(null)
@@ -219,7 +233,7 @@ export function TestCardListScreen() {
     // renders null as a dash, which reads as "not known" rather than "none".
     const base: StatusTab<TabKey>[] = [
       { key: 'available', label: 'Available', Icon: Layers,             count: tab === 'available' ? filtered.length : null, accent: BRAND_TAB_ACCENT },
-      { key: 'mine',      label: 'My tests',  Icon: MessageSquareHeart, count: tab === 'mine'      ? filtered.length : null, accent: accentFromBadge(TEST_CARD_STATUS_META.booked) },
+      { key: 'mine',      label: 'My reviews',  Icon: MessageSquareHeart, count: tab === 'mine'      ? filtered.length : null, accent: accentFromBadge(TEST_CARD_STATUS_META.booked) },
     ]
     if (caps.canVerify) {
       base.push(
@@ -232,35 +246,49 @@ export function TestCardListScreen() {
   if (authLoading) return <LoadingScreen />
 
   const emptyMessage =
-    tab === 'available' ? 'No test cards are available right now. Every one has been booked.'
-      : tab === 'mine'   ? 'You are not holding any test cards. Book one from Available to start.'
+    tab === 'available' ? 'No reviews are available right now. Every one has been booked.'
+      : tab === 'mine'   ? 'You are not holding any reviews. Book one from Available to start.'
       : 'Nothing is waiting for verification.'
 
   return (
     <CustomerReviewsLayout
       profile={profile}
-      title="Review Workflow Test"
-      subtitle="Internal test workflow — you choose who each test goes to"
+      title="Review Workflow"
+      subtitle="Draft reviews for customers — you choose who each one goes to"
       canVerify={caps.canVerify}
       onSignOut={signOut}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
-        {/* The label leads the page, before any card is read. */}
-        <InternalTestWarning />
+        {/*
+          GENERATION IS VERIFIER-ONLY, and `caps.canVerify` is the RESOLVED
+          permission — never a role. This is the weakest of the three checks
+          (a screen can be lied to); the route resolves it again before spending
+          a credential, and the database function resolves it a third time and
+          is what actually decides.
+
+          It is given the number of AVAILABLE reviews rather than the filtered
+          count, because the rule is about the pool and not about what the
+          current search happens to show.
+        */}
+        {caps.canVerify && (
+          <GenerateDrafts
+            availableCount={availableTotal}
+            onGenerated={() => { setState({ tab: 'available' }); void load() }}
+          />
+        )}
 
 {/*
           WHAT THIS SAYS IS WHAT BOE CAN VOUCH FOR, and no more.
-          Earlier wording promised that messages reached only approved internal
-          numbers and that nobody outside BOE could be contacted. Neither is
-          enforced: the tester chooses the recipient. So the tester is told that
-          plainly rather than reassured with a guarantee the system does not
-          make.
+          It does not promise who receives a message — the candidate chooses the
+          recipient — and it does not describe a draft as anybody's words. What
+          is true and enforced: the text is a draft, nothing is posted anywhere,
+          and BOE never sends.
         */}
         <p style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.6, margin: 0 }}>
-          Every card here is fictional filler used to rehearse the workflow. You choose which
-          number each test goes to, nothing is published anywhere, and BOE never sends a message
-          for you — you press send yourself in WhatsApp.
+          Every review here is a draft written by AI for a customer to use, adapt or
+          discard. Nothing is published anywhere, and BOE never sends a message for you —
+          you choose the number and press send yourself in WhatsApp.
         </p>
 
         <StatusTabs
@@ -274,7 +302,7 @@ export function TestCardListScreen() {
           value={searchInput}
           onChange={e => setSearchInput(e.target.value)}
           placeholder="Search by reference, title or category"
-          aria-label="Search test cards"
+          aria-label="Search reviews"
           className="boe-input"
           style={{ maxWidth: '340px' }}
         />
@@ -427,7 +455,7 @@ function TestCardTile({
             className="boe-btn boe-btn-primary"
             style={{ fontSize: '12px', padding: '7px 14px', minHeight: '36px' }}
           >
-            {booking ? 'Booking…' : 'Book this test'}
+            {booking ? 'Booking…' : 'Book'}
           </button>
         ) : (
           <button

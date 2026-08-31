@@ -1,51 +1,54 @@
 'use client'
 
-import { AlertTriangle } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import type { BadgeMeta } from '@/lib/customerReviews/types'
-import { INTERNAL_TEST_WARNING } from '@/lib/customerReviews/internalTest'
+import { DRAFT_STATUS } from '@/lib/customerReviews/internalTest'
 
-// Small pieces shared by the internal-test screens. Same visual language as
+// Small pieces shared by the Review Workflow screens. Same visual language as
 // MeetingBadge — a status wears one colour in the tab strip, the row and the
 // detail header.
 
 /**
- * THE MANDATORY LABEL, AS A COMPONENT.
+ * THE PROVENANCE STATUS, AS A COMPONENT.
  *
- * It renders INTERNAL_TEST_WARNING and NOTHING ELSE from the caller: there is
- * no `text` prop, no `children`, and no way to dim, shorten or suppress it. A
- * caller can decide WHERE it appears; it cannot decide WHAT it says.
+ * It renders DRAFT_STATUS and NOTHING ELSE from the caller: no `text` prop, no
+ * `children`, no way to reword it. A caller decides WHERE it appears; it cannot
+ * decide WHAT it says. That much is unchanged from the label this replaced, and
+ * for the same reason — provenance a screen can reword is provenance that
+ * eventually says something else.
  *
- * That is the whole design. The label has to survive an employee in a hurry, a
- * screenshot, and a future edit by somebody who does not know why it is there,
- * so it is a constant rendered by a component with no content parameter rather
- * than a string each screen remembers to include.
+ * WHAT CHANGED, AND WHY IT MATTERS. This used to be a red INTERNAL TEST ONLY
+ * warning that also travelled INSIDE the WhatsApp message. The cards are no
+ * longer internal filler, so that wording would now be false. What is still
+ * true, and worth a reader knowing, is that the text was drafted by a model and
+ * nobody has verified it as a real customer's words — which is what this says.
  *
- * It appears on every card in every list, at the top of every detail screen,
- * and above every message preview — and the message itself carries its own copy
- * (buildInternalTestMessage), because the message travels somewhere this
- * component cannot follow.
+ * IT IS UI METADATA AND STAYS THERE. It is deliberately NOT in the message
+ * body: the recipient receives a draft, not a draft annotated with our internal
+ * note about it. buildReviewMessage carries no label at all, and a test asserts
+ * that.
  */
 export function InternalTestWarning({ compact = false }: { compact?: boolean }) {
   return (
     <div
       role="note"
-      aria-label="Internal test only"
+      aria-label="AI-generated draft"
       style={{
         display: 'flex', gap: compact ? '6px' : '8px', alignItems: 'center',
         padding: compact ? '5px 8px' : '9px 12px',
         borderRadius: compact ? '6px' : '8px',
-        background: '#FEF2F2',
-        border: '1px solid #FECACA',
-        color: '#991B1B',
+        background: '#F5F3FF',
+        border: '1px solid #DDD6FE',
+        color: '#5B21B6',
         fontSize: compact ? '10px' : '12px',
         fontWeight: 700,
         letterSpacing: '0.01em',
         lineHeight: 1.4,
       }}
     >
-      <AlertTriangle size={compact ? 12 : 14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-      <span>{INTERNAL_TEST_WARNING}</span>
+      <Sparkles size={compact ? 12 : 14} strokeWidth={2.2} style={{ flexShrink: 0 }} />
+      <span>{DRAFT_STATUS}</span>
     </div>
   )
 }
@@ -108,8 +111,8 @@ export function ScreenshotIsNotProofNote() {
       }}
     >
       <span>
-        A screenshot here is evidence that the workflow was exercised — nothing more.
-        It is not a customer review, not proof that one exists, and not proof of delivery.
+        A screenshot here is evidence that the message was sent — nothing more.
+        It is not proof that a review was published, and not proof of delivery.
       </span>
     </div>
   )

@@ -720,6 +720,7 @@ describe('the applied migrations are frozen', () => {
       // pushed. It is numbered 122 because 121 was taken by the seed above —
       // the collision this list exists to catch, caught.
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
   })
 
@@ -751,6 +752,7 @@ describe('the applied migrations are frozen', () => {
       // 122 is pending too, and is now the last file in filename order, so it
       // applies after every one of them whatever sequence the branches merge in.
       '20261022000000_image_editor_result_history.sql',
+      '20261023000000_review_workflow_ai_drafts.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

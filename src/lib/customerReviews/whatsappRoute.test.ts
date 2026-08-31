@@ -192,7 +192,7 @@ describe('THE CONFIRMATION IS REQUIRED BY THE REQUEST', () => {
     // because a Client Component must not pull in a module that reads
     // server-only configuration.
     const expected =
-      'I confirm this number may receive an internal BOE test message and the content will not be published as a customer review.'
+      'I confirm this number may receive a draft review from BOE, and that BOE will not publish it anywhere.'
     assert.ok(route.includes(`export const RECIPIENT_CONFIRMATION =\n  '${expected}'`))
     assert.ok(launch.includes(`export const RECIPIENT_CONFIRMATION =\n  '${expected}'`))
   })
@@ -246,7 +246,7 @@ describe('authorization stays on the server', () => {
 
 describe('the message, and the label it must carry', () => {
   test('it is composed from the CARD ROW and constants, never from the request', () => {
-    assert.ok(route.includes('const message = buildInternalTestMessage({'))
+    assert.ok(route.includes('const message = buildReviewMessage({'))
     assert.ok(route.includes('title: card.test_title'))
     assert.ok(route.includes('body: card.test_body'))
     assert.ok(route.includes('reference: card.card_ref'))
@@ -265,10 +265,10 @@ describe('the message, and the label it must carry', () => {
   })
 
   test('and it is re-checked on the way out', () => {
-    assert.ok(route.includes('if (!hasInternalTestWarning(message))'))
-    assert.ok(route.includes('refusing to build an unlabelled test message'))
+    assert.ok(route.includes('if (!isSendableReviewMessage(message))'))
+    assert.ok(route.includes('refusing to build a message that leaked metadata'))
     // The browser refuses too.
-    assert.ok(launch.includes('!hasInternalTestWarning(built.message'))
+    assert.ok(launch.includes('!isSendableReviewMessage(built.message'))
   })
 })
 
@@ -367,7 +367,7 @@ describe('the screen says what it now does', () => {
   })
 
   test('the field is a free-text tel input, not a picker', () => {
-    assert.ok(launch.includes('id="internal-test-number"'))
+    assert.ok(launch.includes('id="review-recipient-number"'))
     assert.ok(launch.includes('type="tel"'))
     assert.equal(/<select/.test(launch), false, 'the recipient is still chosen from a list')
   })

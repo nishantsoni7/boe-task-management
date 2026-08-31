@@ -81,14 +81,17 @@ describe('the endpoint', () => {
       }
       return out
     }
-    // TWO routes, and naming both is the point: a third appearing without
+    // THREE routes, and naming each is the point: a fourth appearing without
     // anybody noticing is what this assertion exists to catch. The upload route
     // is the only writer of an image; the whatsapp route is the only builder of
     // a wa.me link. Neither is a general service.
     const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
-    assert.equal(routes.length, 2, `unexpected routes: ${routes.join(', ')}`)
+    assert.equal(routes.length, 3, `unexpected routes: ${routes.join(', ')}`)
     assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
+    // The generation route: the only caller of a model, and the only one that
+    // needs the resolved verify permission rather than use.
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/generate/route.ts')))
   })
 
   test('and it is the only place the client posts a file', () => {

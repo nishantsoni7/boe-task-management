@@ -251,16 +251,16 @@ export const TEST_CARD_STATUS_META: Record<TestCardStatus, BadgeMeta> = {
 }
 
 export const TEST_CATEGORY_META: Record<TestCategory, { label: string }> = {
-  restaurant_test:       { label: 'Restaurant test' },
-  cafe_test:             { label: 'Café test' },
-  hotel_test:            { label: 'Hotel test' },
-  resort_test:           { label: 'Resort test' },
-  bulk_order_test:       { label: 'Bulk-order test' },
-  customisation_test:    { label: 'Customisation test' },
-  delivery_test:         { label: 'Delivery test' },
-  product_quality_test:  { label: 'Product-quality test' },
-  service_test:          { label: 'Service test' },
-  issue_resolution_test: { label: 'Issue-resolution test' },
+  restaurant_test:       { label: 'Restaurant' },
+  cafe_test:             { label: 'Café' },
+  hotel_test:            { label: 'Hotel' },
+  resort_test:           { label: 'Resort' },
+  bulk_order_test:       { label: 'Bulk order' },
+  customisation_test:    { label: 'Customisation' },
+  delivery_test:         { label: 'Delivery' },
+  product_quality_test:  { label: 'Product quality' },
+  service_test:          { label: 'Service' },
+  issue_resolution_test: { label: 'Issue resolution' },
 }
 
 export function testCategoryLabel(value: string | null | undefined): string {

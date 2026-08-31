@@ -7,7 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 
-// The Review Workflow Test (Internal) module shell.
+// The Review Workflow module shell.
 //
 // Complies with the BOE Module Layout Standard, same as MeetingsLayout: two
 // columns, a module header with a Home button back to /modules, module-only
@@ -49,7 +49,7 @@ type NavItem = {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Available', path: '/customer-reviews', query: 'tab=available', icon: <Layers size={15} strokeWidth={1.8} /> },
-  { label: 'My tests',  path: '/customer-reviews', query: 'tab=mine',      icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
+  { label: 'My reviews', path: '/customer-reviews', query: 'tab=mine',     icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
   {
     label: 'To Verify',
     path: '/customer-reviews',
@@ -110,7 +110,7 @@ export function CustomerReviewsLayout({
             <BoeBrandIcon />
             <div>
               <div className="boe-sidebar-brand-name">BOE</div>
-              <div className="boe-sidebar-brand-sub">Workflow Test</div>
+              <div className="boe-sidebar-brand-sub">Review Workflow</div>
             </div>
           </div>
           <button
