@@ -19,7 +19,7 @@ import assert from 'node:assert/strict'
 import sharp from 'sharp'
 import {
   buildShadowLut, liftRaw, enhanceShadows, lumaOf, isShadowPixel,
-  SHADOW_KNEE, SHADOW_MAX_GAIN, SHADOW_MAX_ABS_CHANGE,
+  SHADOW_KNEE, SHADOW_MAX_GAIN, SHADOW_MAX_ABS_CHANGE, SHADOW_OFFSET, SHADOW_PLATEAU_TO,
 } from './shadowLift'
 import { decodeGrey, edgeMap, locateProduct, EDGE_THRESHOLD } from './generatedProduct'
 
@@ -50,8 +50,19 @@ describe('the curve', () => {
     }
   })
 
-  test('preserves the black point', () => {
-    assert.equal(lut[0], 0, 'pure black must stay pure black')
+  test('preserves the black point — at the OPERATOR, not in the table', () => {
+    // The plateau means lut[0] is the offset, not zero, and that is correct:
+    // the table describes a luma target, while the lift is applied as a GAIN.
+    // A pure black pixel has no luma to multiply, so the loop skips it and it
+    // stays exactly black. Asserting lut[0] === 0 would be asserting the wrong
+    // object, so this asserts the pixel.
+    const black = Buffer.from([0, 0, 0])
+    liftRaw(black, 3)
+    assert.deepEqual([...black], [0, 0, 0], 'pure black must stay pure black')
+    // And the deepest non-black pixels stay bounded rather than exploding.
+    const nearBlack = Buffer.from([1, 0, 0])
+    liftRaw(nearBlack, 3)
+    assert.ok(nearBlack[0] <= Math.ceil(1 * SHADOW_MAX_GAIN), 'the gain ceiling holds at the floor')
   })
 
   test('lifts, and only lifts, below the knee', () => {
@@ -61,7 +72,37 @@ describe('the curve', () => {
     // And it actually does something where the defect lives: a seat front
     // measured at luma 12 and a rail at 16 must separate visibly.
     assert.ok(lut[12] >= 17, `luma 12 lifted only to ${lut[12]} — too little to read`)
-    assert.ok(lut[16] >= 20, `luma 16 lifted only to ${lut[16]}`)
+    assert.ok(lut[16] >= 21, `luma 16 lifted only to ${lut[16]}`)
+  })
+
+  test('holds a FLAT offset across the plateau — this is what keeps texture', () => {
+    // The whole reason for this curve shape. Across the plateau the lift is a
+    // constant, so the slope is exactly 1 and local contrast — wood grain,
+    // leather weave — passes through untouched. A bending curve here cost the
+    // measured wood rail 22% of its standard deviation.
+    for (let y = 1; y <= SHADOW_PLATEAU_TO; y++) {
+      assert.equal(lut[y] - y, SHADOW_OFFSET, `the plateau breaks at luma ${y}`)
+    }
+    for (let y = 2; y <= SHADOW_PLATEAU_TO - 1; y++) {
+      const slope = (lut[y + 1] - lut[y - 1]) / 2
+      assert.equal(slope, 1, `slope ${slope} at luma ${y} — texture would not survive`)
+    }
+  })
+
+  test('the taper reaches the identity smoothly, with no step at either end', () => {
+    // Continuous at the plateau edge and at the knee: a jump would show as a
+    // banding line across a smooth dark surface.
+    assert.equal(lut[SHADOW_PLATEAU_TO] - SHADOW_PLATEAU_TO, SHADOW_OFFSET)
+    assert.ok(lut[SHADOW_PLATEAU_TO + 1] - (SHADOW_PLATEAU_TO + 1) >= SHADOW_OFFSET - 1,
+      'the taper must start gently, not fall off a cliff')
+    assert.equal(lut[SHADOW_KNEE - 1] - (SHADOW_KNEE - 1), 0, 'the lift must be spent by the knee')
+    // Monotone decreasing lift through the taper.
+    let previous = SHADOW_OFFSET
+    for (let y = SHADOW_PLATEAU_TO; y < SHADOW_KNEE; y++) {
+      const lift = lut[y] - y
+      assert.ok(lift <= previous, `the taper rises again at luma ${y}`)
+      previous = lift
+    }
   })
 
   test('never exceeds the gain ceiling or the derived change bound', () => {
@@ -151,7 +192,7 @@ describe('a dark product improves', () => {
     assert.ok(seatAfter > lumaOf(...seat) + 4, `seat lifted only to ${seatAfter.toFixed(1)}`)
     assert.ok(woodAfter > lumaOf(...wood) + 4, `wood lifted only to ${woodAfter.toFixed(1)}`)
     // Both leave the zone where the eye cannot read hue, which is the point.
-    assert.ok(seatAfter >= 17 && woodAfter >= 20)
+    assert.ok(seatAfter >= 17 && woodAfter >= 21)
     assert.ok(before > 0)
   })
 })
@@ -191,13 +232,14 @@ describe('the delivered bytes', () => {
   })
 
   test('settings that would break the bounds are refused, not delivered', async () => {
-    // The shipped settings cannot breach SHADOW_MAX_ABS_CHANGE — the taper sees
-    // to that, and the curve tests above prove it. This exercises the guard
-    // itself, with a reckless curve no caller should ever pass: knee up in the
-    // midtones, no taper, a gain ceiling of 40. A midtone pixel then moves ~108
-    // levels, the validation catches it, and the ORIGINAL master is returned.
+    // The shipped settings cannot breach SHADOW_MAX_ABS_CHANGE — the channel
+    // guard and the gain ceiling see to that, and the exhaustive test below
+    // proves it. This exercises the guard itself, with a reckless curve no
+    // caller should ever pass: a knee up in the midtones, a 120-level offset
+    // and a gain ceiling of 40. A midtone pixel then moves far past the bound,
+    // the validation catches it, and the ORIGINAL master is returned.
     const png = await patch(100, 100, 100)
-    const out = await enhanceShadows(png, { knee: 250, strength: 0.2, taper: 0, maxGain: 40 })
+    const out = await enhanceShadows(png, { knee: 250, offset: 120, plateauTo: 200, maxGain: 40 })
     assert.equal(out.applied, false, 'a breach must not be delivered')
     assert.match(out.reason ?? '', /bounds/)
     assert.ok(out.image.equals(png), 'and the untouched master is what comes back')

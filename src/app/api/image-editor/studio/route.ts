@@ -465,8 +465,8 @@ export async function POST(req: NextRequest) {
     //
     // The gate is deliberately NOT moved down here. A point operation fixes
     // GEOMETRY but not the answer a THRESHOLD gives: measured on a production
-    // master, the correction moves `structureUnderseat` 17.06 -> 16.89 and
-    // pushes 0.11% of pixels across the gate's Sobel threshold. Re-pointing the
+    // master, the correction moves `structureUnderseat` 17.06 -> 16.81 and
+    // pushes 0.13% of pixels across the gate's Sobel threshold. Re-pointing the
     // gate at these bytes would therefore silently re-baseline the accepted
     // pass / manual-review / refuse classifications.
     //
