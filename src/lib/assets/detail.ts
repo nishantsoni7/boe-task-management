@@ -46,9 +46,25 @@ export const ASSET_DOCUMENT_COLUMNS = [
   'uploaded_by', 'created_at', 'removed_at', 'removed_by', 'removal_note',
 ].join(', ')
 
-/** One custody period. Same list the inventory already used, unchanged. */
-export const EMPLOYEE_ASSET_COLUMNS =
-  'id, asset_id, employee_id, assigned_by, assigned_at, accepted_at, returned_at, lost_at, status'
+/**
+ * One custody period, including its handover record (20261029000000).
+ *
+ * The six handover columns are read by BOTH screens for the same reason the
+ * asset master block is: the employee's Accept dialog shows the condition,
+ * accessories and existing issues, and the asset detail page prints the same
+ * facts onto the Handover Sheet. A list that fetched them on one screen and not
+ * the other is how a printout ends up saying "Not recorded" about something
+ * that was.
+ *
+ * `accepted_terms` is the stored snapshot, not a secret — it is the text the
+ * employee was shown, and the sheet has to reproduce it verbatim.
+ */
+export const EMPLOYEE_ASSET_COLUMNS = [
+  'id', 'asset_id', 'employee_id', 'assigned_by',
+  'assigned_at', 'accepted_at', 'returned_at', 'lost_at', 'status',
+  'handover_condition', 'handover_accessories', 'handover_existing_issues',
+  'accepted_by', 'acceptance_version', 'accepted_terms',
+].join(', ')
 
 /** One activity row. */
 export const ASSET_ACTIVITY_COLUMNS =

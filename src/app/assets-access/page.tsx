@@ -50,7 +50,6 @@ import {
   type AssetFilters,
 } from '@/lib/assets/assetFilters'
 import { WARRANTY_STATUS_LABEL, WARRANTY_STATUS_OPTIONS } from '@/lib/assets/warranty'
-import { resolveInitialView } from '@/lib/assets/viewRouting'
 import { notifyAssetEvent, sweepWarrantyExpiries } from '@/lib/assets/notifyClient'
 // Create / edit / request modals are shared components: the inventory and the
 // asset detail page both offer them, and one copy is what stops the two forms
@@ -58,22 +57,45 @@ import { notifyAssetEvent, sweepWarrantyExpiries } from '@/lib/assets/notifyClie
 import { CreateAssetModal, RequestEditModal } from '@/components/assets/AssetChangeModals'
 import { AssignAssetModal } from './[id]/AssetActionModals'
 import { AssetModal, AssetField, AssetModalActions } from '@/components/assets/AssetModal'
+// The handover acknowledgement and its printed sheet. Both are shared with the
+// asset detail page, so the employee and the person who issued the asset are
+// always looking at the same document.
+import { AcceptHandoverModal, HandoverSheetOverlay } from '@/components/assets/AssetHandover'
+// The module's top-level Assets ⇄ Access Records switch.
+import { AssetsAreaTabs } from '@/components/assets/AssetsAreaTabs'
+import {
+  areaForView, defaultViewForArea, resolveInitialView, type AssetsArea,
+} from '@/lib/assets/viewRouting'
 
 // ─── DB Types ─────────────────────────────────────────────────────────────────
 
 type Employee = { id: string; full_name: string; role: string; team: string }
 
+// One access record, AS THE BROWSER SEES IT.
+//
+// `secret_value` is deliberately absent, and so is every query below —
+// ACCESS_RECORD_COLUMNS names the columns and that column is not one of them.
+//
+// The register has never DISPLAYED a stored secret; it used to SELECT one and
+// throw it away, which was harmless while only administrators could read the
+// table and is not something to carry forward now that 20261028000000 lets an
+// administrator delegate that read. A plaintext password that never leaves the
+// database cannot leak from a browser, a screenshot or a devtools panel.
+// Writing one is unaffected: the Add and Update forms still send a new secret,
+// and Update still leaves it alone when the field is blank.
 type AccessRecord = {
   id: string
   employee_id: string
   access_type: string
   username: string
-  secret_value: string | null
   status: string // active | disabled
   assigned_at: string
   updated_at: string
   updated_by: string | null
 }
+
+const ACCESS_RECORD_COLUMNS =
+  'id, employee_id, access_type, username, status, assigned_at, updated_at, updated_by'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -81,6 +103,19 @@ function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '—'
   try {
     return new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+  } catch {
+    return '—'
+  }
+}
+
+/** Date AND time — an acceptance is a moment, and the sheet has to say which. */
+function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  try {
+    return new Date(iso).toLocaleString('en-GB', {
+      day: '2-digit', month: 'short', year: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    })
   } catch {
     return '—'
   }
@@ -160,10 +195,20 @@ const ACCESS_TYPE_OPTIONS = ['gmail', 'clickup', 'system_login', 'other']
 
 // ─── Employee: My Assets ─────────────────────────────────────────────────────
 
-function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
+function MyAssets({ userId, acceptedByName, employees, supabase, isMobile, canRequest }: {
   userId: string
   /** Display name of whoever is accepting, for the acknowledgement notice. */
   acceptedByName?: string | null
+  /**
+   * Active employees, for naming the person who handed the asset over.
+   *
+   * The handover sheet has an "Issued By" line and a signature caption, and a
+   * document that says "Issued By: —" is not evidence of a handover. The list
+   * is already loaded by the screen; resolving assigned_by from it costs no
+   * query. An id the list cannot resolve still prints "Not recorded" rather
+   * than a raw uuid.
+   */
+  employees: Employee[]
   supabase: SupabaseClient
   isMobile?: boolean
   /**
@@ -177,9 +222,12 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
   const [rows, setRows] = useState<EmployeeAsset[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [acceptingId, setAcceptingId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [requesting, setRequesting] = useState<Asset | null>(null)
+  /** The assignment whose handover the employee is reading before accepting. */
+  const [accepting, setAccepting] = useState<EmployeeAsset | null>(null)
+  /** The assignment whose Handover Sheet is open for printing. */
+  const [printing, setPrinting] = useState<EmployeeAsset | null>(null)
 
   const load = async () => {
     setLoading(true)
@@ -200,15 +248,23 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId])
 
+  const assignerNames = useMemo(
+    () => Object.fromEntries(employees.map(e => [e.id, e.full_name])) as Record<string, string | undefined>,
+    [employees],
+  )
+
   // Acceptance goes through accept_employee_asset (20260722000000), never a
   // direct UPDATE: the timestamp is the database's to set, not the client's,
   // and employees no longer hold UPDATE on employee_assets at all.
-  const handleAccept = async (row: EmployeeAsset) => {
-    setAcceptingId(row.id)
-    setError(null)
-    const { error: rpcError } = await supabase.rpc('accept_employee_asset', { p_assignment_id: row.id })
-    setAcceptingId(null)
-    if (rpcError) { logAssetFailure('accept', rpcError); setError(assetErrorMessage('accept', rpcError)); return }
+  //
+  // Since 20261029000000 the RPC additionally refuses an acceptance that does
+  // not carry the acknowledgement, so the button no longer writes — it opens
+  // the handover, and AcceptHandoverModal makes the call once the employee has
+  // read the terms and ticked the box. This is the SAME acceptance, with the
+  // reading step in front of it; there is no second acceptance path.
+  const handleAccepted = (row: EmployeeAsset) => {
+    setAccepting(null)
+    setNotice('Handover accepted. You can print the Handover Sheet from this list.')
     // The person who handed the asset over is the one waiting to hear this.
     const asset = singleAsset(row.assets)
     if (asset) {
@@ -265,9 +321,14 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
                           Request Modification
                         </button>
                       )}
+                      {row.accepted_at && (
+                        <button className="boe-btn boe-btn-ghost" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => setPrinting(row)}>
+                          Print Handover Sheet
+                        </button>
+                      )}
                       {row.status === 'pending_acceptance' && (
-                        <button className="boe-btn boe-btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
-                          {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                        <button className="boe-btn boe-btn-primary" style={{ padding: '6px 14px', fontSize: '12px' }} onClick={() => setAccepting(row)}>
+                          Accept Handover
                         </button>
                       )}
                     </div>
@@ -304,8 +365,13 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
                         <td style={{ padding: '12px 16px' }}>
                           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                             {row.status === 'pending_acceptance' && (
-                              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} disabled={acceptingId === row.id} onClick={() => handleAccept(row)}>
-                                {acceptingId === row.id ? 'Accepting…' : 'Accept Asset'}
+                              <button className="boe-btn boe-btn-primary" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setAccepting(row)}>
+                                Accept Handover
+                              </button>
+                            )}
+                            {row.accepted_at && (
+                              <button className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '11px' }} onClick={() => setPrinting(row)}>
+                                Print Handover Sheet
                               </button>
                             )}
                             {canRequest && asset && (
@@ -336,6 +402,31 @@ function MyAssets({ userId, acceptedByName, supabase, isMobile, canRequest }: {
           onSubmitted={() => { setRequesting(null); setNotice('Your request has been submitted for review.') }}
         />
       )}
+
+      {/* The handover, read before it is acknowledged. The tick-box gates the
+          button here and p_accept_terms gates the write in the database. */}
+      {accepting && (
+        <AcceptHandoverModal
+          assignment={accepting}
+          asset={singleAsset(accepting.assets)}
+          supabase={supabase}
+          employeeName={acceptedByName}
+          issuedByName={assignerNames[accepting.assigned_by] ?? null}
+          onClose={() => setAccepting(null)}
+          onAccepted={() => handleAccepted(accepting)}
+        />
+      )}
+
+      {printing && (
+        <HandoverSheetOverlay
+          assignment={printing}
+          asset={singleAsset(printing.assets)}
+          employeeName={acceptedByName}
+          issuedByName={assignerNames[printing.assigned_by] ?? null}
+          formatDateTime={fmtDateTime}
+          onClose={() => setPrinting(null)}
+        />
+      )}
     </div>
   )
 }
@@ -351,7 +442,7 @@ function MyAccess({ userId, supabase, isMobile }: { userId: string; supabase: Su
     const load = async () => {
       const { data, error: dbError } = await supabase
         .from('access_records')
-        .select('id, employee_id, access_type, username, secret_value, status, assigned_at, updated_at, updated_by')
+        .select(ACCESS_RECORD_COLUMNS)
         .eq('employee_id', userId)
         .order('assigned_at', { ascending: false })
       if (dbError) setError(dbError.message)
@@ -449,11 +540,21 @@ const WARRANTY_BADGE_MAP: Record<string, string> = {
   not_available: 'boe-badge-pending',
 }
 
-function AssetInventory({ employees, supabase, isMobile, caps }: {
+function AssetInventory({ employees, supabase, isMobile, caps, openAssign, onAssignHandled }: {
   employees: Employee[]
   supabase: SupabaseClient
   isMobile?: boolean
   caps: AssetsAccessCapabilities
+  /**
+   * Whether the header's Assign Asset dialog is open. CONTROLLED from the
+   * screen, like AccessRegister's openCreate and for the same reason: the
+   * button sits in the header row above this component, but the list of
+   * assignable assets lives here. It opens with NO asset preselected, so the
+   * reader picks one inside the dialog.
+   */
+  openAssign?: boolean
+  /** Close it. Called on cancel, on a successful assignment, and on Escape. */
+  onAssignHandled?: () => void
 }) {
   const router = useRouter()
   const [assets, setAssets] = useState<Asset[]>([])
@@ -732,6 +833,20 @@ function AssetInventory({ employees, supabase, isMobile, caps }: {
           onDone={(message) => { setAssigningAsset(null); setNotice(message); load() }}
         />
       )}
+      {/* Same dialog, entered without an asset. The candidate list is filtered
+          to 'available' here rather than inside the dialog, because that is
+          exactly the set assign_asset() will accept — offering an option the
+          RPC would refuse is the shape of bug this module keeps closing. */}
+      {openAssign && (
+        <AssignAssetModal
+          asset={null}
+          assetOptions={assets.filter(a => a.status === 'available')}
+          employees={employees}
+          supabase={supabase}
+          onClose={() => onAssignHandled?.()}
+          onDone={(message) => { onAssignHandled?.(); setNotice(message); load() }}
+        />
+      )}
     </div>
   )
 }
@@ -957,18 +1072,28 @@ function accessLabel(row: { access_type: string }): string {
 }
 
 function AccessRegister({
-  employees, supabase, isMobile, actorName,
+  employees, supabase, isMobile, actorName, openCreate, onCreateHandled,
 }: {
   employees: Employee[]
   supabase: SupabaseClient
   isMobile?: boolean
   /** Signed-in user's display name, for "revoked by …". */
   actorName?: string | null
+  /**
+   * Whether the Add Access Record dialog is open.
+   *
+   * "Add Access Record" lives in the top-level action slot beside the Assets ⇄
+   * Access Records switch, which is ABOVE this component. So the dialog is
+   * CONTROLLED from there rather than mirrored into local state here — one
+   * source of truth, and no effect that would have to sync two.
+   */
+  openCreate?: boolean
+  /** Close it. Called on cancel, on a successful save, and on Escape. */
+  onCreateHandled?: () => void
 }) {
   const [rows, setRows] = useState<AccessRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showCreate, setShowCreate] = useState(false)
   const [editingRow, setEditingRow] = useState<AccessRecord | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
@@ -977,7 +1102,7 @@ function AccessRegister({
     setError(null)
     const { data, error: dbError } = await supabase
       .from('access_records')
-      .select('id, employee_id, access_type, username, secret_value, status, assigned_at, updated_at, updated_by')
+      .select(ACCESS_RECORD_COLUMNS)
       .order('assigned_at', { ascending: false })
     if (dbError) setError(dbError.message)
     setRows((data ?? []) as AccessRecord[])
@@ -1021,11 +1146,6 @@ function AccessRegister({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
       {error && <ErrorBanner message={error} />}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }} onClick={() => setShowCreate(true)}>
-          + Add Access Record
-        </button>
-      </div>
 
       {loading ? (
         <div style={{ fontSize: '12px', color: colors.muted, padding: '8px 0' }}>Loading…</div>
@@ -1081,8 +1201,13 @@ function AccessRegister({
         </div>
       )}
 
-      {showCreate && (
-        <CreateAccessModal employees={employees} supabase={supabase} onClose={() => setShowCreate(false)} onSaved={() => { setShowCreate(false); load() }} />
+      {openCreate && (
+        <CreateAccessModal
+          employees={employees}
+          supabase={supabase}
+          onClose={() => onCreateHandled?.()}
+          onSaved={() => { onCreateHandled?.(); load() }}
+        />
       )}
       {editingRow && (
         <EditAccessModal row={editingRow} supabase={supabase} onClose={() => setEditingRow(null)} onSaved={() => { setEditingRow(null); load() }} />
@@ -1248,6 +1373,16 @@ function AssetsAccessScreen() {
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState<AssetsView | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  /**
+   * A press of the area's primary action, waiting for the view that owns the
+   * dialog to pick it up.
+   *
+   * The button is in the header, the dialog belongs to the list below it, and
+   * pressing it may also CHANGE the view (Add Access Record from My Access
+   * moves to the Access Register first). So the press is recorded here and the
+   * child consumes it on its next render.
+   */
+  const [primaryRequest, setPrimaryRequest] = useState<'assign' | 'add-access' | null>(null)
 
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -1338,6 +1473,57 @@ function AssetsAccessScreen() {
 
   const meta = VIEW_META[view]
   const effectiveUserId = viewAsUserId ?? profile.id
+  const area = areaForView(view)
+
+  // Switching area lands on the strongest screen the SIGNED-IN person may open
+  // there — never on a screen resolveInitialView would have refused, because
+  // defaultViewForArea only ever returns their own records or something they
+  // hold a grant for.
+  const handleAreaChange = (next: AssetsArea) => {
+    if (next === area) return
+    setPrimaryRequest(null)
+    setView(defaultViewForArea(next, caps, inViewMode))
+  }
+
+  // ONE action per area, and only when the reader actually holds it. A button
+  // that opens a dialog the database will refuse is worse than no button.
+  //
+  // Neither is offered while impersonating: a write made in View As is made by
+  // the SIGNED-IN user against somebody else's screen, which is precisely the
+  // confusion the mode must not create.
+  const primaryAction = (() => {
+    if (inViewMode) return null
+    if (area === 'assets') {
+      if (!caps.canAssignAsset) return null
+      return (
+        <button
+          className="boe-btn boe-btn-primary"
+          style={{ padding: '8px 18px', fontSize: '13px', width: isMobile ? '100%' : undefined }}
+          onClick={() => {
+            // The dialog belongs to the inventory, so go there first if the
+            // reader is on another Assets screen.
+            if (view !== 'asset-inventory') setView('asset-inventory')
+            setPrimaryRequest('assign')
+          }}
+        >
+          Assign Asset
+        </button>
+      )
+    }
+    if (!caps.canManageAccess) return null
+    return (
+      <button
+        className="boe-btn boe-btn-primary"
+        style={{ padding: '8px 18px', fontSize: '13px', width: isMobile ? '100%' : undefined }}
+        onClick={() => {
+          if (view !== 'access-register') setView('access-register')
+          setPrimaryRequest('add-access')
+        }}
+      >
+        Add Access Record
+      </button>
+    )
+  })()
 
   const renderView = () => {
     switch (view) {
@@ -1346,6 +1532,7 @@ function AssetsAccessScreen() {
           <MyAssets
             userId={effectiveUserId}
             acceptedByName={profile.full_name}
+            employees={employees}
             supabase={supabase}
             isMobile={isMobile}
             canRequest={caps.canRequestAssetChanges && !inViewMode}
@@ -1354,9 +1541,27 @@ function AssetsAccessScreen() {
       case 'my-access':
         return <MyAccess userId={effectiveUserId} supabase={supabase} isMobile={isMobile} />
       case 'asset-inventory':
-        return <AssetInventory employees={employees} supabase={supabase} isMobile={isMobile} caps={caps} />
+        return (
+          <AssetInventory
+            employees={employees}
+            supabase={supabase}
+            isMobile={isMobile}
+            caps={caps}
+            openAssign={primaryRequest === 'assign'}
+            onAssignHandled={() => setPrimaryRequest(null)}
+          />
+        )
       case 'access-register':
-        return <AccessRegister employees={employees} supabase={supabase} isMobile={isMobile} actorName={profile.full_name} />
+        return (
+          <AccessRegister
+            employees={employees}
+            supabase={supabase}
+            isMobile={isMobile}
+            actorName={profile.full_name}
+            openCreate={primaryRequest === 'add-access'}
+            onCreateHandled={() => setPrimaryRequest(null)}
+          />
+        )
       case 'asset-requests':
         return (
           <AssetRequests
@@ -1383,6 +1588,15 @@ function AssetsAccessScreen() {
       canSeeAssetRequests={caps.canReviewAssetRequests || caps.canRequestAssetChanges}
       canReviewAssetRequests={caps.canReviewAssetRequests}
     >
+      {/* The module's subject switch, above everything. The sidebar still
+          navigates within an area; this says WHICH area you are in, which is
+          the question five sibling sidebar entries never answered. */}
+      <AssetsAreaTabs
+        active={area}
+        onSelect={handleAreaChange}
+        action={primaryAction}
+        isMobile={isMobile}
+      />
       {renderView()}
     </AssetsLayout>
   )

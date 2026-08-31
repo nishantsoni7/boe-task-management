@@ -16,6 +16,9 @@ import type { EffectivePermission } from './types'
 //   manage  → return an asset, mark one lost, transfer, repair, retire
 //             (return_asset, mark_asset_lost, …), and review other people's
 //             change requests
+//   manage_access_records
+//           → the ACCESS REGISTER: read, add and edit the login records of
+//             every employee. Governs access_records and nothing else.
 //
 // THE RULE THIS FILE EXISTS TO STATE: 'view' is NOT inventory access.
 //
@@ -38,9 +41,23 @@ import type { EffectivePermission } from './types'
 // Admins bypass the engine entirely, matching the app-wide convention used by
 // every other cut-over module (see src/app/orders/layout.tsx).
 //
-// Access Register is deliberately NOT part of this: access_records still holds
-// plaintext secret_value, so its policies remain admin-only until that column
-// is dealt with. canManageAccess is a role check on purpose, not an oversight.
+// THE ACCESS REGISTER IS NOW DELEGABLE, AND ONLY BY ITS OWN KEY.
+//
+// It used to be a role check here — canManageAccess was `role === 'admin'` —
+// because access_records still holds plaintext secret_value and 20260721000000
+// and 20260810000000 both chose to leave the table admin-only until that column
+// is dealt with. 20261028000000 delegates the SCREEN without touching that
+// reservation: the three administrative policies now read
+// can_manage_access_records(), which is admin OR an explicit
+// `manage_access_records` grant, and nothing else changed about the table —
+// same commands, same rows, still no DELETE policy for anybody, and the
+// register still never displays a stored secret.
+//
+// The key is its own, and that is the whole point. NO amount of asset authority
+// reaches it: create, assign, edit, delete and manage together do not add up to
+// it, and it does not add up to any of them. That is asserted in
+// assetsAccess.test.ts in both directions, because a capability derivation that
+// quietly widened would be indistinguishable from one that did not.
 
 export type AssetsAccessCapabilities = {
   /**
@@ -66,7 +83,12 @@ export type AssetsAccessCapabilities = {
   canDeleteAsset: boolean
   /** Return an assigned asset, or mark one lost. NOT assigning. */
   canManageAssetCustody: boolean
-  /** Show the Access Register screen. Admin-only while secrets are plaintext. */
+  /**
+   * Show the Access Register, and read / add / edit the access records of every
+   * employee. Admin, or an explicit `manage_access_records` grant — never any
+   * combination of the asset actions. Mirrors can_manage_access_records()
+   * (20261028000000).
+   */
   canManageAccess: boolean
   /**
    * Ask a reviewer to change or remove an asset. Available to every non-admin
@@ -127,6 +149,9 @@ export function deriveAssetsAccessCapabilities(
   const canEditAsset          = allowed('edit')
   const canDeleteAsset        = allowed('delete')
   const canManageAssetCustody = allowed('manage')
+  // Deliberately absent from every asset boolean below. Administering employee
+  // credentials is not an asset operation and must not imply one.
+  const canManageAccess       = allowed('manage_access_records')
 
   // Every one of these five is an operation performed FROM the inventory
   // screen, so holding one without being able to open it would be a
@@ -138,8 +163,9 @@ export function deriveAssetsAccessCapabilities(
 
   // Entry is the weakest thing this module grants. A management capability
   // implies it, so a grant can never leave someone authorized to act on a
-  // module they cannot open.
-  const canAccessAssetsModule = allowed('view') || canViewAssetInventory
+  // module they cannot open. `manage_access_records` is included for that same
+  // reason and no other: it opens the module, not the inventory.
+  const canAccessAssetsModule = allowed('view') || canViewAssetInventory || canManageAccess
 
   return {
     canAccessAssetsModule,
@@ -150,7 +176,7 @@ export function deriveAssetsAccessCapabilities(
     canEditAsset,
     canDeleteAsset,
     canManageAssetCustody,
-    canManageAccess: false,
+    canManageAccess,
     // Anyone in the module can ask for a change. Deliberately not conditioned
     // on lacking edit/delete — the request path stays available either way,
     // and the direct buttons appear alongside it only for whoever actually

@@ -600,6 +600,11 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // so it reaches neither task assignment nor anything above.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // this work's tables, policies or functions.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

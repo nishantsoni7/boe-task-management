@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ChevronLeft, MoreHorizontal } from 'lucide-react'
+import { ChevronLeft, MoreHorizontal, Printer } from 'lucide-react'
 import { AssetsLayout } from '@/components/layout/AssetsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -72,6 +72,8 @@ import {
   EditAssetModal, RequestEditModal, RequestRemovalModal,
 } from '@/components/assets/AssetChangeModals'
 import { assetDeleteBlockReason } from '@/lib/assets/lifecycle'
+// The printable handover document, shared with the employee's My Assets list.
+import { HandoverSheetOverlay } from '@/components/assets/AssetHandover'
 import type { AssetDocumentType } from '@/lib/assets/types'
 
 // The single source of truth for one asset: what it is, who holds it, and
@@ -509,6 +511,8 @@ export default function AssetDetailPage() {
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [isMobile, setIsMobile] = useState(false)
+  /** The Handover Sheet overlay, for the live custody period. */
+  const [printingHandover, setPrintingHandover] = useState(false)
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
@@ -947,6 +951,7 @@ export default function AssetDetailPage() {
               custody={custody}
               openAssignment={openAssignment}
               names={names}
+              employeeName={employeeName}
               serviceSummary={serviceSummary}
               documents={liveDocuments}
               activity={orderedActivity}
@@ -954,6 +959,7 @@ export default function AssetDetailPage() {
               onAction={runAction}
               onOpenDocument={openDocument}
               onShowTab={setTab}
+              onPrintHandover={() => setPrintingHandover(true)}
             />
           )}
           {tab === 'assignments' && <AssignmentsTab transfers={transfers} assignments={assignments} employeeName={employeeName} isMobile={isMobile} />}
@@ -1124,6 +1130,21 @@ export default function AssetDetailPage() {
           onDone={() => backToInventory()}
         />
       )}
+
+      {/* The printable Handover Sheet, for the LIVE custody period. Rendered
+          from rows this page already holds — the same component the employee
+          prints from My Assets, so both sides print one document. */}
+      {asset && printingHandover && openAssignment && (
+        <HandoverSheetOverlay
+          assignment={openAssignment}
+          asset={asset}
+          employeeName={employeeName(openAssignment.employee_id)}
+          issuedByName={names[openAssignment.assigned_by] ?? null}
+          acceptedByName={openAssignment.accepted_by ? employeeName(openAssignment.accepted_by) : null}
+          formatDateTime={fmtDateTime}
+          onClose={() => setPrintingHandover(false)}
+        />
+      )}
     </AssetsLayout>
   )
 }
@@ -1140,13 +1161,15 @@ export default function AssetDetailPage() {
  * which is also the order a reader wants on a phone: custody first.
  */
 function OverviewTab({
-  asset, custody, openAssignment, names, serviceSummary, documents, activity,
-  can, onAction, onOpenDocument, onShowTab,
+  asset, custody, openAssignment, names, employeeName, serviceSummary, documents, activity,
+  can, onAction, onOpenDocument, onShowTab, onPrintHandover,
 }: {
   asset: Asset
   custody: ReturnType<typeof describeCustody>
   openAssignment: EmployeeAsset | null
   names: Record<string, string | undefined>
+  /** Resolves a user id to a display name; already used by the other tabs. */
+  employeeName: (id: string) => string | null
   serviceSummary: ReturnType<typeof summarizeService>
   documents: AssetDocument[]
   activity: AssetActivityEntry[]
@@ -1154,6 +1177,7 @@ function OverviewTab({
   onAction: (key: AssetActionKey) => void
   onOpenDocument: (doc: AssetDocument) => void
   onShowTab: (tab: TabKey) => void
+  onPrintHandover: () => void
 }) {
   const warranty = warrantyStatus(asset.warranty_expiry_date)
   const warrantyDetail = warrantyDetailLine(asset.warranty_expiry_date)
@@ -1217,6 +1241,65 @@ function OverviewTab({
                 <DetailField label="Condition" value={asset.condition ? assetConditionLabel(asset.condition) : null} />
               )}
             </div>
+
+            {/* ── The handover ──
+                What was handed over, in what state, and whether the employee
+                has acknowledged it. Shown only for a live custody period: a
+                closed one is history and belongs in the Assignments tab.
+
+                An assignment opened before 20261029000000 has none of these
+                facts recorded, so the block renders as "Not recorded" rather
+                than claiming a handover that was never documented. */}
+            {openAssignment && (
+              <div style={{
+                borderTop: `1px solid ${colors.border}`, paddingTop: '12px',
+                display: 'flex', flexDirection: 'column', gap: '12px',
+              }}>
+                {openAssignment.accepted_at ? (
+                  <div style={{
+                    display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '8px',
+                    padding: '8px 10px', borderRadius: '7px',
+                    background: 'rgba(69,168,112,0.10)',
+                  }}>
+                    <span className="boe-badge boe-badge-completed" style={{ fontSize: '10px' }}>Accepted</span>
+                    <span style={{ fontSize: '12px', color: colors.primary }}>
+                      {employeeName(openAssignment.accepted_by ?? openAssignment.employee_id) ?? 'The custodian'}
+                      {' · '}
+                      {fmtDateTime(openAssignment.accepted_at)}
+                    </span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: colors.tertiary }}>
+                    Waiting for {employeeName(openAssignment.employee_id) ?? 'the custodian'} to read the
+                    handover terms and accept.
+                  </div>
+                )}
+
+                <div style={{ display: 'grid', gap: '12px 20px', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+                  <DetailField
+                    label="Issued Condition"
+                    value={openAssignment.handover_condition ? assetConditionLabel(openAssignment.handover_condition) : null}
+                  />
+                  <DetailField label="Accessories Issued" value={openAssignment.handover_accessories ?? null} />
+                  <DetailField label="Existing Issues"    value={openAssignment.handover_existing_issues ?? null} />
+                </div>
+
+                {/* Offered whether or not the handover has been accepted: an
+                    unaccepted sheet is the one the two people sign in the room,
+                    and it prints the online acceptance as outstanding. */}
+                <div>
+                  <button
+                    type="button"
+                    className="boe-btn boe-btn-ghost"
+                    style={{ display: 'inline-flex', alignItems: 'center', gap: '7px', padding: '6px 14px', fontSize: '12px' }}
+                    onClick={onPrintHandover}
+                  >
+                    <Printer size={14} strokeWidth={1.9} />
+                    Print Handover Sheet
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </Card>
 
