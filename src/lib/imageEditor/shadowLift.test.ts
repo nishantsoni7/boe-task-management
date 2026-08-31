@@ -79,8 +79,8 @@ describe('the curve', () => {
 
 describe('what it does to a pixel', () => {
   test('holds hue and saturation: one gain, three channels', async () => {
-    // Dark walnut, at the level measured on the production rail.
-    const before: [number, number, number] = [25, 15, 9]
+    // Dark walnut, at the median measured on the lossless production rail.
+    const before: [number, number, number] = [26, 15, 9]
     const buf = Buffer.from(before)
     liftRaw(buf, 3)
     const after = [buf[0], buf[1], buf[2]]
@@ -110,7 +110,8 @@ describe('what it does to a pixel', () => {
 
 describe('the studio background', () => {
   test('a sweep at production levels comes back byte-identical', async () => {
-    // 179 is the darkest background pixel measured on a production master.
+    // The darkest pixel outside the product on the lossless master is 124.5;
+    // this sweep starts far below that and must still come back untouched.
     const side = 64
     const raw = Buffer.alloc(side * side * 3)
     for (let i = 0; i < side * side; i++) {
@@ -136,10 +137,10 @@ describe('a light product pays nothing', () => {
 
 describe('a dark product improves', () => {
   test('two dark materials measured on a production master separate further', async () => {
-    // Seat front and wood rail, at their measured means. Before: 4.3 luma
-    // apart and visually merged.
-    const seat: [number, number, number] = [10, 13, 10]
-    const wood: [number, number, number] = [25, 15, 9]
+    // Seat front and wood rail, at their medians on the lossless master. Before:
+    // 4.4 luma apart, CIEDE2000 6.61, and visually merged.
+    const seat: [number, number, number] = [11, 13, 10]
+    const wood: [number, number, number] = [26, 15, 9]
     const before = Math.abs(lumaOf(...wood) - lumaOf(...seat))
 
     const sb = Buffer.from(seat), wb = Buffer.from(wood)

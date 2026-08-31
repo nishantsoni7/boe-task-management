@@ -7,8 +7,8 @@
 // --------------
 // BOE photographs dark furniture. On the accepted pipeline a dark upholstered
 // seat and the dark wooden frame below it come back at almost the same
-// LIGHTNESS — measured on a production master, L* 3.35 against L* 4.99, a gap
-// of 1.64 — while differing mostly in HUE. Below about L* 10 the eye reads hue
+// LIGHTNESS — measured on the lossless production master, L* 3.30 against
+// L* 5.00, a gap of 1.70 — while differing mostly in HUE (CIEDE2000 6.61). Below about L* 10 the eye reads hue
 // poorly, so two materials that a colorimeter can separate look to a customer
 // like one black mass. That is a product-visibility defect, not a taste
 // question, and it is what this corrects.
@@ -27,19 +27,20 @@
 // It does NOT leave a thresholded edge detector's answer unchanged. Geometry is
 // fixed — every edge stays exactly where it was — but a gradient near a
 // threshold can cross it. Measured on a production master against the gate's
-// own Sobel at EDGE_THRESHOLD 18: 2,437 pixels stopped counting as edges and
-// 208 started, 0.13% of the frame, and `structureUnderseat` moved 16.79 -> 16.43.
+// own Sobel at EDGE_THRESHOLD 18: 2,369 pixels stopped counting as edges and
+// 327 started, 0.13% of the frame, and `structureUnderseat` moved 17.06 -> 16.89.
 // Monotonicity does not prevent that and nothing here claims it does. It is the
 // reason the preservation gate is left measuring what the provider returned
 // rather than these bytes — see the call site in the studio route.
 //
 // THE SHAPE OF THE CURVE, AND WHY THE BACKGROUND IS SAFE
 // ------------------------------------------------------
-// Above SHADOW_KNEE the map is the identity, exactly: `lut[y] === y`. The
-// studio sweep on the measured master sits at luma 179-206 and its darkest
-// sampled pixel is 179, so the entire background is 115 levels clear of the
-// knee and comes back BYTE-IDENTICAL. That is a property of the construction,
-// not of tuning, and the tests assert it.
+// Above SHADOW_KNEE the map is the identity, exactly: `lut[y] === y`. Measured
+// on the lossless production master, EVERY ONE of the 1,530,246 pixels outside
+// the located product box has a luma of at least 124.5, none is eligible, and
+// none changes: the background, the contact shadow and the cast shadow come
+// back byte-identical. That is a property of the construction, not of tuning,
+// and the tests assert it.
 //
 // One gain per pixel, derived from luma and applied to all three channels, so
 // R:G:B ratios — hue and saturation — ride through untouched and only lightness
@@ -56,13 +57,15 @@
 import sharp from 'sharp'
 
 /** Luma at and above which nothing is touched. Chosen from the measured master:
- *  the background floor is 179 and the lit cane 145, so 64 leaves both far
- *  clear while covering the dark materials, which sit at luma 12-16. */
+ *  the darkest pixel anywhere outside the product is 124.5 and the lit cane is
+ *  145, so 64 leaves both far clear while covering the dark materials, which sit
+ *  at luma 11.9 and 16.3. */
 export const SHADOW_KNEE = 64
 
 /** How hard the bottom lifts. 1.0 is no lift; lower lifts more. 0.60 raises a
- *  seat front measured at luma 12.06 to 19.2 and the wood rail below it from
- *  16.34 to 22.9 — enough to separate them, not enough to grey the blacks. */
+ *  seat front measured at luma 11.92 to 19.18 and the wood rail below it from
+ *  16.34 to 22.90, taking their separation from CIEDE2000 6.61 to 11.57 —
+ *  enough to read them apart, not enough to grey the blacks. */
 export const SHADOW_STRENGTH = 0.60
 
 /** How the lift fades out as luma approaches the knee. Squared, so the curve
@@ -70,7 +73,7 @@ export const SHADOW_STRENGTH = 0.60
 export const SHADOW_TAPER = 2
 
 /** Ceiling on the per-pixel multiplier. Bites only below luma ~6, which is
- *  0.06% of the measured master, and keeps near-black noise from being
+ *  0.09% of the measured master, and keeps near-black noise from being
  *  multiplied out of the floor. */
 export const SHADOW_MAX_GAIN = 2.2
 
@@ -99,8 +102,8 @@ export const SHADOW_MAX_ABS_CHANGE = Math.ceil((SHADOW_KNEE - 1) * (SHADOW_MAX_G
  * saturated colour is not a shadow and is left alone, the derived change bound
  * becomes true again — at most `(knee - 1) * (maxGain - 1)` — and the burned-in
  * watermark's dark red edge pixels stop being touched at all. On the measured
- * master the dark materials are unaffected: the seat's brightest channel is 13
- * and the rail's is 25, against a knee of 64.
+ * master the dark materials are unaffected: the seat's median brightest channel
+ * is 13 and the rail's is 26, against a knee of 64.
  */
 export function isShadowPixel(r: number, g: number, b: number, knee: number): boolean {
   return r < knee && g < knee && b < knee
