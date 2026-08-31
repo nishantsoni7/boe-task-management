@@ -67,6 +67,21 @@ export type EmployeeAsset = {
   returned_at: string | null
   lost_at: string | null
   status: string
+  // ── Handover record (20261029000000) ──
+  //
+  // All nullable, and null is a real answer: a custody period opened before
+  // that migration genuinely has no recorded condition and no acknowledgement.
+  // The screens read null as "Not recorded" and never as a value.
+  /** Condition AS ISSUED, recorded by the assigning user. Not the asset's current condition. */
+  handover_condition?: string | null
+  handover_accessories?: string | null
+  handover_existing_issues?: string | null
+  /** Who acknowledged. Always the allocated employee — the RPC refuses anyone else. */
+  accepted_by?: string | null
+  /** asset_handover_terms.version in force at acceptance. */
+  acceptance_version?: string | null
+  /** The exact terms body shown at acceptance. Snapshotted by the database. */
+  accepted_terms?: string | null
   assets?: Asset | Asset[] | null
 }
 

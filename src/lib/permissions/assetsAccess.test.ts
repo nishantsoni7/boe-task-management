@@ -24,8 +24,12 @@ import type { EffectivePermission } from './types'
 
 // Shapes what resolve_effective_permissions() returns: a row per supported
 // action, allowed true or false, plus the level that decided it.
+const ASSETS_ACTIONS = [
+  'view', 'create', 'assign', 'edit', 'delete', 'manage', 'manage_access_records',
+] as const
+
 function perms(allowedActions: string[]): EffectivePermission[] {
-  return ['view', 'create', 'assign', 'edit', 'delete', 'manage'].map(actionKey => ({
+  return ASSETS_ACTIONS.map(actionKey => ({
     actionKey,
     allowed: allowedActions.includes(actionKey),
     source: allowedActions.includes(actionKey) ? 'role' : 'system_default',
@@ -305,13 +309,104 @@ describe('requesting and reviewing', () => {
   })
 })
 
-describe('Access Register stays admin-only', () => {
-  test('no combination of module grants reaches plaintext secrets', () => {
+// ── The Access Register, and the boundary around it (20261028000000) ────────
+//
+// Four claims, and each is asserted in BOTH directions, because a capability
+// derivation that quietly widened would look identical to one that did not.
+//
+//   a) an admin manages every access record;
+//   b) so does a holder of `manage_access_records`;
+//   c) nobody else does — no asset grant, and no combination of them, reaches it;
+//   d) the grant confers no asset authority and no Control Center authority.
+
+describe('a) an active admin manages all access records, automatically', () => {
+  test('with no permission rows at all', () => {
+    assert.equal(deriveAssetsAccessCapabilities('admin', []).canManageAccess, true)
+  })
+
+  test('even when the engine denies the action outright', () => {
+    // The admin bypass must not depend on a seeded row surviving.
+    const denied = ASSETS_ACTIONS.map(actionKey => ({
+      actionKey, allowed: false, source: 'employee_override' as const,
+    }))
+    assert.equal(deriveAssetsAccessCapabilities('admin', denied).canManageAccess, true)
+  })
+})
+
+describe('b) the Manage Access Records grant manages all access records', () => {
+  test('the grant alone is enough, whatever the role name', () => {
+    for (const role of ['member', 'manager', 'employee', null, undefined]) {
+      const caps = deriveAssetsAccessCapabilities(role, perms(['view', 'manage_access_records']))
+      assert.equal(caps.canManageAccess, true, `role ${String(role)}`)
+    }
+  })
+
+  test('it opens the module, so the grant is never left with nowhere to act', () => {
+    // Mirrors ACTION_DEPENDENCIES (manage_access_records → view) and the
+    // RESTRICTIVE access_records_module_entry_gate.
+    const caps = deriveAssetsAccessCapabilities('member', perms(['manage_access_records']))
+    assert.equal(caps.canAccessAssetsModule, true)
+    assert.equal(caps.canManageAccess, true)
+  })
+})
+
+describe('c) nobody else reaches another employee’s access records', () => {
+  test('the manager ROLE grants nothing', () => {
+    assert.equal(deriveAssetsAccessCapabilities('manager', perms(['view'])).canManageAccess, false)
+    assert.equal(deriveAssetsAccessCapabilities('manager', []).canManageAccess, false)
+  })
+
+  test('no single asset action reaches it', () => {
+    for (const action of MANAGEMENT_ACTIONS) {
+      const caps = deriveAssetsAccessCapabilities('manager', perms(['view', action]))
+      assert.equal(caps.canManageAccess, false, `'${action}' must not reach the Access Register`)
+    }
+  })
+
+  test('nor do all of them together', () => {
     const everything = deriveAssetsAccessCapabilities(
       'manager', perms(['view', 'create', 'assign', 'edit', 'delete', 'manage']),
     )
     assert.equal(everything.canManageAccess, false)
-    assert.equal(deriveAssetsAccessCapabilities('member', perms(['manage'])).canManageAccess, false)
-    assert.equal(deriveAssetsAccessCapabilities('admin', []).canManageAccess, true)
+  })
+
+  test('an employee with nothing at all reaches nothing', () => {
+    assert.equal(NO_ASSETS_ACCESS_CAPABILITIES.canManageAccess, false)
+    assert.equal(deriveAssetsAccessCapabilities('member', perms([])).canManageAccess, false)
+  })
+})
+
+describe('d) Manage Access Records grants no asset authority', () => {
+  test('every asset capability stays false', () => {
+    const caps = deriveAssetsAccessCapabilities('member', perms(['view', 'manage_access_records']))
+    assert.equal(caps.canManageAccess, true)
+    // Creation, assignment, edit, deletion, custody (return / lost) and review.
+    assert.equal(caps.canCreateAsset, false)
+    assert.equal(caps.canAssignAsset, false)
+    assert.equal(caps.canEditAsset, false)
+    assert.equal(caps.canDeleteAsset, false)
+    assert.equal(caps.canManageAssetCustody, false)
+    assert.equal(caps.canReviewAssetRequests, false)
+    // And no organisation-wide sight of who holds what.
+    assert.equal(caps.canViewAssetInventory, false)
+  })
+
+  test('it does not turn into inventory visibility by way of module entry', () => {
+    // canAccessAssetsModule is the weakest thing the module grants and this
+    // action implies it. That must not leak into the inventory boolean — which
+    // is the exact defect 20260810000000 exists to remember.
+    const caps = deriveAssetsAccessCapabilities('member', perms(['manage_access_records']))
+    assert.equal(caps.canAccessAssetsModule, true)
+    assert.equal(caps.canViewAssetInventory, false)
+  })
+
+  test('the capability set exposes no Control Center or member-management door', () => {
+    // Control Center permission editing and member management are decided by
+    // users.role in admin routes and are not actions this module registers.
+    // The strongest statement this file can make is that the whole capability
+    // surface is the eleven asset booleans and nothing else — so a future
+    // action key cannot arrive here unnoticed.
+    const caps = deriveAssetsAccessCapabilities('member', perms(['view', 'manage_access_records']))
+    assert.deepEqual(Object.keys(caps).sort(), Object.keys(NO_ASSETS_ACCESS_CAPABILITIES).sort())
   })
 })

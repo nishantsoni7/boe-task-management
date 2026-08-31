@@ -721,6 +721,11 @@ describe('the applied migrations are frozen', () => {
       // the collision this list exists to catch, caught.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // this work's tables, policies or functions.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
   })
 
@@ -753,6 +758,11 @@ describe('the applied migrations are frozen', () => {
       // applies after every one of them whatever sequence the branches merge in.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // this work's tables, policies or functions.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore
