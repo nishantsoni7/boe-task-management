@@ -487,6 +487,14 @@ describe('the migration is placed correctly', () => {
       // tail: one bucket, one table, its own policies, nothing replaced.
       '20261022000000_image_editor_result_history.sql',
       '20261023000000_review_workflow_ai_drafts.sql',
+      // The batch-approval pair, in the order they must apply. The deletion
+      // migration runs FIRST so the schema one lands on an empty card table
+      // and can enforce its approval invariants without a legacy exemption.
+      '20261025000000_review_workflow_remove_legacy_test_data.sql',
+      '20261026000000_review_workflow_batch_approval.sql',
+      // Provider-call idempotency: a request key is CLAIMED before the model
+      // is called, so two simultaneous requests cannot both be billed for.
+      '20261027000000_review_workflow_generation_claims.sql',
       // Assets & Access, from a separate branch: the delegated Access Register
       // permission and the asset handover acknowledgement. Neither touches
       // this work's tables, policies or functions.

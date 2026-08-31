@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Home, Layers, MessageSquareHeart, ShieldCheck } from 'lucide-react'
+import { BookOpen, Home, Layers, MessageSquareHeart, ShieldCheck, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -14,13 +14,19 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// THREE entries, and all three are about work that is still live:
+// FIVE entries, and all five are about work that is still live:
 //
-//   Available   the unbooked pool. Anyone who may use the module sees it.
-//   My tests    the cards this person is holding or has submitted.
-//   To Verify   what is waiting for somebody to check it. Verifier only,
-//               because for anybody else it would be an empty screen with a
-//               promising name.
+//   Pending approval  drafts a verifier has not released yet. Verifier only,
+//                     and it leads because it is the one queue with somebody's
+//                     name on it — a candidate cannot see a pending draft at
+//                     all, by RLS rather than by this list.
+//   Available         the approved, unbooked pool. Anyone who may use the
+//                     module sees it.
+//   My reviews        the reviews this person is holding or has submitted.
+//   Booked            who is holding what right now. Verifier only.
+//   To Verify         what is waiting for somebody to check it. Verifier only,
+//                     because for anybody else it would be an empty screen with
+//                     a promising name.
 //
 // THERE IS NO HISTORY ENTRY, AND THAT IS DELIBERATE. A verified card is
 // finished, and the product owner's rule is that a finished card appears in no
@@ -48,8 +54,22 @@ type NavItem = {
 }
 
 const NAV_ITEMS: NavItem[] = [
+  {
+    label: 'Pending approval',
+    path: '/customer-reviews',
+    query: 'tab=pending',
+    icon: <Sparkles size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
   { label: 'Available', path: '/customer-reviews', query: 'tab=available', icon: <Layers size={15} strokeWidth={1.8} /> },
   { label: 'My reviews', path: '/customer-reviews', query: 'tab=mine',     icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
+  {
+    label: 'Booked',
+    path: '/customer-reviews',
+    query: 'tab=booked',
+    icon: <BookOpen size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
   {
     label: 'To Verify',
     path: '/customer-reviews',

@@ -544,8 +544,61 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
   })
 
   test('the Book button is drawn from canBookCard, and from nothing else', () => {
-    assert.ok(list.includes('canBookCard(card, {'))
-    assert.ok(list.includes('canUse: caps.canUse,'))
+    // It moved off the card and into the full-review sheet — a candidate reads
+    // the whole thing before taking it — but the predicate behind it did not
+    // change, and it is still the resolved `use` permission and the card's own
+    // status rather than anything a screen decided.
+    assert.ok(list.includes('canBookCard(reading, { userId: profile?.id ?? null, canUse: caps.canUse })'))
+    assert.equal(/canVerify/.test(
+      list.slice(list.indexOf('canBookCard'), list.indexOf('canBookCard') + 120),
+    ), false, 'booking consults the verify permission')
+  })
+
+  test('and UNBOOKING is drawn from canUnbookCard, on the detail screen', () => {
+    assert.ok(detail.includes('canUnbookCard('))
+    assert.ok(detail.includes('{ userId: profile?.id ?? null, canUse: caps.canUse },'))
+    // The screenshot count is passed in, because it lives in another table and
+    // the database refuses an unbooking while one is attached.
+    assert.ok(detail.includes('screenshots.length > 0,'))
+    // A refusal is explained rather than left as a grey rectangle.
+    assert.ok(detail.includes('unbookBlocker('))
+  })
+
+  test('THE WORD IS "UNBOOK", EVERYWHERE A CANDIDATE READS IT', () => {
+    // One verb for one action. The control, the confirmation, the busy state
+    // and the failure sentence all say it, and "Release" — the word an earlier
+    // draft used — survives nowhere a candidate can see, because two words for
+    // one action is two things to learn.
+    assert.ok(detail.includes('Unbook this review'))
+    assert.ok(detail.includes('title="Unbook this review?"'))
+    assert.ok(detail.includes("{busy ? 'Unbooking…' : 'Yes, unbook it'}"))
+    assert.ok(detail.includes("'That review could not be unbooked.'"))
+
+    const executable = detail.split('\n')
+      .filter(l => !l.trimStart().startsWith('//') && !l.trimStart().startsWith('*'))
+      .join('\n')
+    assert.equal(/\bRelease\b|\breleased\b|\bReleasing\b/.test(executable), false,
+      'the retired "Release" wording survives on the detail screen')
+
+    // ...and the confirmation says what actually happens to the review.
+    assert.ok(detail.includes('returns to the\n            available pool'))
+    assert.ok(detail.includes('It stays approved; you are giving up the booking, not the review.'))
+  })
+
+  test('and the trail entry a candidate reads says the same word', () => {
+    assert.ok(detail.includes("unbooked:           'Unbooked — back to Available',"))
+  })
+
+  test('APPROVAL IS DRAWN FROM THE RESOLVED verify PERMISSION, and from nothing else', () => {
+    // The verifier workspace is rendered only for caps.canVerify, which is the
+    // resolved permission — never a role. An administrator whose `verify` was
+    // revoked in Control Center is offered nothing, exactly as the definer
+    // function would refuse them.
+    assert.ok(list.includes('if (caps.canVerify) {'))
+    const panel = read('src/components/customerReviews/PendingBatches.tsx')
+    const executable = panel.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
+    assert.equal(/role\s*===\s*'admin'|isAdmin/.test(executable), false,
+      'the approval workspace consults a role')
   })
 
   test('the Submit button is disabled until every prerequisite clears', () => {
@@ -587,7 +640,10 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.ok(tabs, 'the tab list is missing')
     assert.deepEqual(
       tabs.split(',').map(t => t.trim().replace(/'/g, '')).filter(Boolean),
-      ['available', 'mine', 'to_verify'],
+      // `pending` and `booked` are the two the approval workflow added, and
+      // both are verifier-only. There is still no key a candidate could type
+      // that reaches a finished record.
+      ['pending', 'available', 'mine', 'booked', 'to_verify'],
     )
 
     // Nothing draws one, nothing routes to one, and the icon it used is no
@@ -601,9 +657,30 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     const shell = read('src/components/layout/CustomerReviewsLayout.tsx')
     const executable = shell.split('\n').filter(l => !l.trimStart().startsWith('//')).join('\n')
     assert.equal(/history/i.test(executable), false, 'the sidebar still links to history')
-    // Three entries, and the two that remain verifier-only are unchanged.
+    // Five entries now, and three of the five are verifier-only. The two a
+    // candidate sees are the two they always saw.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['Available', 'My reviews', 'To Verify'])
+    assert.deepEqual(items, ['Pending approval', 'Available', 'My reviews', 'Booked', 'To Verify'])
+
+    const verifierOnly = [...executable.matchAll(/label: '([^']+)'[\s\S]*?(?=\{\s*$|\},)/g)]
+    assert.ok(verifierOnly.length >= 0)   // structural read below is the assertion
+    // Everything but Available and My reviews carries verifierOnly, so a
+    // candidate's sidebar is unchanged by this work.
+    const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf(']\n\nexport function'))
+    for (const label of ['Pending approval', 'Booked', 'To Verify']) {
+      const at = entries.indexOf(`label: '${label}'`)
+      assert.ok(at !== -1, `${label} is missing`)
+      assert.ok(entries.slice(at, at + 260).includes('verifierOnly: true'),
+        `${label} is shown to candidates`)
+    }
+    for (const label of ['Available', 'My reviews']) {
+      const at = entries.indexOf(`label: '${label}'`)
+      assert.ok(at !== -1, `${label} is missing`)
+      // Each of these is one line, so the next 160 characters cannot reach into
+      // the following entry's flag.
+      assert.equal(entries.slice(at, at + 160).includes('verifierOnly'), false,
+        `${label} became verifier-only`)
+    }
   })
 
   test('THE DETAIL SCREEN DECLINES A VERIFIED CARD TOO', () => {
@@ -658,9 +735,106 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
   test('EVERY CARD CARRIES THE MANDATORY LABEL', () => {
     // Rendered by a component that takes no content parameter, so no caller can
     // give it different words or leave it out of one branch.
-    assert.ok(list.includes('<InternalTestWarning />'), 'the list page has no label')
+    //
+    // WHERE IT APPEARS is one label per DRAFT, never one per page: a banner
+    // above a list of eight labels nothing, and internalTest.test.ts asserts
+    // that the page-level one is gone. This asserts the other half — that every
+    // surface which shows a draft shows it.
     assert.ok(list.includes('<InternalTestWarning compact />'), 'a card tile has no label')
     assert.ok(detail.includes('<InternalTestWarning />'), 'the detail screen has no label')
+
+    const full = read('src/components/customerReviews/ReviewFullView.tsx')
+    assert.ok(full.includes('<InternalTestWarning />'),
+      'the complete-review view has no label')
+
+    const pending = read('src/components/customerReviews/PendingBatches.tsx')
+    assert.ok(pending.includes('<InternalTestWarning compact />'),
+      'a pending draft awaiting approval has no label')
+  })
+
+  test('AND IT NEVER TRAVELS IN THE MESSAGE', () => {
+    // It is UI metadata about a draft, and it stays on our screen: a recipient
+    // receives a suggested review, not a suggested review annotated with our
+    // internal note about where it came from. The full-review sheet shows the
+    // label beside the message and NOT inside it, and the message it shows is
+    // built by the same single builder the server uses for the wa.me link.
+    const full = read('src/components/customerReviews/ReviewFullView.tsx')
+    assert.ok(full.includes('const message = useMemo(() => buildReviewMessage({'))
+    const pre = full.slice(full.indexOf('data-testid="review-outgoing-message"'))
+    assert.equal(pre.slice(0, 400).includes('InternalTestWarning'), false,
+      'the label was rendered inside the outgoing message')
+  })
+
+  test('THE FULL VIEW PRINTS THE REVIEW ONCE WHEN ONCE IS HONEST', () => {
+    // buildReviewMessage carries the draft and nothing else, so the outgoing
+    // message is usually the body character for character — and the first
+    // version of this view printed the same six hundred characters twice under
+    // two headings, which on a phone was an entire extra screen of scrolling
+    // that told the reader nothing. Found by rendering it at 390px, not by
+    // reading it.
+    //
+    // It can still differ, because the builder collapses runs of whitespace, so
+    // a body holding a line break produces a message that is not identical to
+    // it. The two cases are DECIDED BY COMPARISON rather than by assumption,
+    // and both branches render the outgoing text — so a candidate always sees
+    // what will actually be sent.
+    const full = read('src/components/customerReviews/ReviewFullView.tsx')
+    assert.ok(full.includes('const identical = message === card.test_body.trim()'))
+    assert.ok(full.includes("label={identical ? 'The full review, and the exact message' : 'The full review'}"))
+    assert.ok(full.includes('{!identical && ('), 'the differing case has no second block')
+
+    // The outgoing text is rendered in BOTH branches, so neither hides it.
+    assert.equal(
+      (full.match(/data-testid="review-outgoing-message"/g) ?? []).length, 2,
+      'one of the two branches does not render the outgoing message',
+    )
+    // ...and Copy always copies the BUILT message, never the stored body, so a
+    // candidate cannot copy something other than what would be sent.
+    assert.ok(full.includes('<CopyMessageButton message={message} />'))
+    assert.equal(full.includes('CopyMessageButton message={card.test_body'), false)
+  })
+
+  test('THE RENDERING RULES, PINNED', () => {
+    const full = read('src/components/customerReviews/ReviewFullView.tsx')
+
+    // 1. IDENTICAL AFTER NORMALISATION → ONE BLOCK, ONE HEADING. The heading
+    //    says both things rather than the page saying one thing twice.
+    assert.ok(full.includes("label={identical ? 'The full review, and the exact message' : 'The full review'}"))
+
+    // 2. NOT IDENTICAL → TWO BLOCKS, the review and the exact outgoing message
+    //    separately, because the candidate is entitled to see the text that
+    //    will actually be sent.
+    assert.ok(full.includes('{!identical && ('))
+    assert.ok(full.includes("<Block label=\"What WhatsApp will be handed\">"))
+
+    // 3. NORMALISATION IS THE APPLICATION'S OWN, not a second opinion about it:
+    //    the comparison is against buildReviewMessage's output, which is the
+    //    single builder the server uses for the wa.me link.
+    assert.ok(full.includes('const identical = message === card.test_body.trim()'))
+    assert.ok(full.includes('const message = useMemo(() => buildReviewMessage({'))
+
+    // 4. COPY IS ALWAYS THE OUTGOING MESSAGE, in both branches — never
+    //    "whichever block happens to be visible".
+    assert.equal((full.match(/<CopyMessageButton message=\{message\} \/>/g) ?? []).length, 1,
+      'there is more than one copy control, so they could disagree')
+    const copyAt = full.indexOf('<CopyMessageButton message={message} />')
+    const secondBlockAt = full.indexOf('{!identical && (')
+    assert.ok(copyAt < secondBlockAt,
+      'the copy control sits inside the conditional block instead of always rendering')
+
+    // 5. BOOK LIVES IN THE FOOTER OF THIS VIEW AND NOWHERE ELSE.
+    assert.ok(full.includes("{booking ? 'Booking…' : 'Book this review'}"))
+    const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+    assert.equal(/'Book'|Book this review/.test(list.slice(list.indexOf('function TestCardTile'))), false,
+      'the card tile offers a booking control')
+
+    // 6. THE ACTIONS ARE PINNED, so a long title or a long body cannot push
+    //    them off the bottom of a phone: they are the sheet's footer, which
+    //    does not scroll with the content.
+    const sheet = read('src/components/customerReviews/ReviewSheet.tsx')
+    assert.ok(sheet.includes("<div className=\"boe-modal-body\" style={{ overflowY: 'auto', flex: 1, minHeight: 0 }}>"))
+    assert.ok(sheet.includes('borderTop: `1px solid ${colors.border}`'))
+    assert.ok(sheet.includes("paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 0px))'"))
   })
 })
 

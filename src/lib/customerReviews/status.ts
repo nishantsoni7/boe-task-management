@@ -23,6 +23,14 @@ import type { TestCard, TestCardStatus } from './types'
 export const TEST_CARD_TRANSITIONS: Readonly<
   Record<TestCardStatus, readonly TestCardStatus[]>
 > = {
+  // APPROVAL IS NOT IN THIS TABLE EITHER, and for the same reason booking is
+  // not: it moves a card through its own RPC, which locks every selected row
+  // and rechecks it before writing. transition_customer_review_test_card()
+  // reads one row, then locks it, then decides — one lock too late for a move
+  // that must be atomic across a set. Listing pending_approval -> available
+  // here would invite a future caller to route it through the generic function
+  // and quietly lose the atomicity.
+  pending_approval: [],
   // Booking is NOT in this table. It happens through its own RPC, which claims
   // the row with a conditional UPDATE so two testers cannot both take one card.
   // Listing it here as an ordinary transition would invite a future caller to
@@ -114,6 +122,11 @@ export type TestCardAction = {
 }
 
 const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
+  // Neither of these is ever offered — no status in the table above lists them
+  // as a destination — and they are here because the record is exhaustive over
+  // TestCardStatus, which is how a new status added later shows up as a
+  // compile error rather than as a missing button.
+  pending_approval: { to: 'pending_approval', label: 'Return to drafting' },
   available: { to: 'available', label: 'Release' },
   // The wording carries the point: the tester is handing over what THEY did.
   submitted: { to: 'submitted', label: 'Submit for verification' },
@@ -171,6 +184,105 @@ export function canBookCard(
   viewer: { userId: string | null; canUse: boolean },
 ): boolean {
   if (!viewer.userId) return false
+  // A PENDING DRAFT IS NOT BOOKABLE, and `status !== 'available'` already says
+  // so — pending is a different status, so no extra clause is needed and none
+  // was added. A candidate cannot see a pending row at all; this is the case
+  // where a verifier is looking at one.
   if (card.status !== 'available') return false
   return viewer.canUse
+}
+
+/**
+ * May this person release the booking they are holding?
+ *
+ * THE BROWSER-SIDE MIRROR OF unbook_customer_review_test_card(), one clause per
+ * clause, and it decides what button to draw and nothing else. The database
+ * re-checks every line of it under a row lock and is what actually refuses.
+ *
+ * FOUR CONDITIONS, and the third is the one the whole action turns on:
+ *
+ *   1. THE HOLDER, and nobody else. Not a colleague, not a verifier, not an
+ *      administrator. A verifier's authority over somebody else's card is the
+ *      RETURN path, which needs a reason and leaves the card with its holder.
+ *   2. `use`, because releasing a booking is a candidate action like taking one.
+ *   3. NOT YET CONFIRMED SENT. Once a person has stated that a message left
+ *      their phone, that claim exists and cannot be withdrawn — and releasing
+ *      the review would let somebody else book one that has already reached a
+ *      real recipient.
+ *   4. Still `booked`. A submitted card is out of the holder's hands.
+ *
+ * `hasLiveScreenshot` is a fifth condition the DATABASE also enforces, and it
+ * is passed in rather than read from the card because it lives in another
+ * table. Releasing a card with somebody's WhatsApp screen still attached would
+ * show that image to every `use` holder, because an available card's
+ * screenshots are readable by the whole pool.
+ */
+export function canUnbookCard(
+  card: Pick<TestCard, 'status' | 'booked_by' | 'sent_confirmed_at'>,
+  viewer: { userId: string | null; canUse: boolean },
+  hasLiveScreenshot: boolean = false,
+): boolean {
+  // A RETURNED REVIEW IS NOT AN ORDINARY BOOKING, and it is refused by the
+  // send-confirmation clause below rather than by a rule of its own — because
+  // it CANNOT reach the returned state without one. Submitting requires
+  // sent_confirmed_at (assert_customer_review_test_card_submittable), a return
+  // is submitted -> booked, and sent_confirmed_at is never cleared while a card
+  // is held. So `returned` always implies `sent`, and a review that has been
+  // sent to a real recipient must never go back into the pool for somebody else
+  // to send again. unbookBlocker() names the returned case separately, because
+  // "you confirmed you sent it" is true but is not what the holder is looking at.
+  if (!viewer.userId) return false
+  if (!viewer.canUse) return false
+  if (card.booked_by !== viewer.userId) return false
+  if (card.status !== 'booked') return false
+  if (card.sent_confirmed_at) return false
+  if (hasLiveScreenshot) return false
+  return true
+}
+
+/**
+ * Why the Release control is not offered, as a sentence the holder can act on.
+ *
+ * Returns null when it IS offered. Separate from canUnbookCard() because a
+ * disabled control that does not say why is a control people click twice: the
+ * two answers a holder actually gets are "you already said you sent it" and
+ * "take the screenshot off first", and both are things they can understand.
+ */
+export function unbookBlocker(
+  card: Pick<TestCard, 'status' | 'booked_by' | 'sent_confirmed_at' | 'returned_at'>,
+  viewer: { userId: string | null; canUse: boolean },
+  hasLiveScreenshot: boolean = false,
+): string | null {
+  if (!viewer.userId || !viewer.canUse) return null
+  if (card.booked_by !== viewer.userId || card.status !== 'booked') return null
+
+  // THE RETURNED CASE IS NAMED FIRST, and it is a wording distinction rather
+  // than a behavioural one. A returned review is refused for the same reason as
+  // any sent one — it reached a real recipient — but a holder looking at a card
+  // a verifier just handed back is not thinking about the send they made
+  // yesterday. Telling them "you confirmed you sent it" is true and unhelpful;
+  // telling them the card is theirs to finish is what they can act on.
+  if (card.returned_at && card.sent_confirmed_at) {
+    return 'A verifier sent this review back to you to finish, so it cannot be unbooked. Attach the evidence and submit it again.'
+  }
+  if (card.sent_confirmed_at) {
+    return 'You confirmed you sent this review, so it can no longer be unbooked.'
+  }
+  if (hasLiveScreenshot) {
+    return 'Remove the screenshot you attached before unbooking this review.'
+  }
+  return null
+}
+
+/**
+ * May this person approve pending drafts?
+ *
+ * `verify`, resolved, and nothing else — the browser-side mirror of
+ * approve_customer_review_drafts(). There is no administrator branch here for
+ * the same reason there is none in the function: an administrator whose
+ * `verify` was revoked in Control Center would otherwise be drawn a button the
+ * database answers 42501.
+ */
+export function canApproveDrafts(viewer: { userId: string | null; canVerify: boolean }): boolean {
+  return !!viewer.userId && viewer.canVerify
 }
