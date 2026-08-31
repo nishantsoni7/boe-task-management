@@ -403,7 +403,7 @@ describe('15. the query count is unchanged and bounded', () => {
     assert.equal(calls, 0)
   })
 
-  test('15b. four queries per page, whatever the number of cards', async () => {
+  test('15b. five queries per page, whatever the number of cards', async () => {
     const tables: string[] = []
     const counting = {
       from: (t: string) => {
@@ -414,8 +414,8 @@ describe('15. the query count is unchanged and bounded', () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
       n({ id: `bulk${i}`, activity_log_id: ACT }))
     await serverPage(rows, counting as ReturnType<typeof client>)
-    // notifications itself is the fourth, issued by the route.
-    assert.deepEqual(tables, ['tasks', 'task_activity_log', 'users'])
+    // notifications itself is the fifth, issued by the route.
+    assert.deepEqual(tables, ['tasks', 'task_activity_log', 'task_attachments', 'users'])
   })
 
   test('15c. the card component issues no request of its own', () => {

@@ -372,13 +372,17 @@ describe('16-17. this is presentation only', () => {
       assert.equal(SRC.includes(forbidden), false,
         `the card must not ${forbidden} — a header is not a data source`)
     }
-    // The page-level enrichment is still THREE lookups. The task select gained
-    // created_by so the header can name the other side of the task; that is a
-    // column on a table already being read, not a fourth query.
+    // The page-level enrichment is FOUR lookups, all page-scoped `in()` batches
+    // — never one per card. The task select gained created_by so the header can
+    // name the other side of the task; that is a column on a table already
+    // being read. The fourth query is the attachment lookup, which is what lets
+    // an update that carried a file say so instead of "Comment added"; it is
+    // keyed by the SAME activity ids the third query uses.
     const enrich = read('src/lib/notifications/pageEnrichment.ts')
-    assert.equal((enrich.match(/\.select\(/g) ?? []).length, 3, 'still three lookups')
+    assert.equal((enrich.match(/\.select\(/g) ?? []).length, 4, 'four batched lookups')
     assert.ok(enrich.includes("select('id, title, assigned_to, created_by')"))
     assert.ok(enrich.includes("select('id, actor_id, action, note, from_status, to_status')"))
+    assert.ok(enrich.includes("select('activity_log_id, file_name, file_type')"))
     assert.ok(enrich.includes("select('id, full_name')"))
   })
 
