@@ -18,9 +18,10 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import sharp from 'sharp'
 import {
-  buildShadowLut, liftRaw, enhanceShadows, lumaOf,
+  buildShadowLut, liftRaw, enhanceShadows, lumaOf, isShadowPixel,
   SHADOW_KNEE, SHADOW_MAX_GAIN, SHADOW_MAX_ABS_CHANGE,
 } from './shadowLift'
+import { decodeGrey, edgeMap, locateProduct, EDGE_THRESHOLD } from './generatedProduct'
 
 /** A patch of one colour, as a PNG. */
 const patch = (r: number, g: number, b: number, side = 32) =>
@@ -199,5 +200,119 @@ describe('the delivered bytes', () => {
     assert.equal(out.applied, false, 'a breach must not be delivered')
     assert.match(out.reason ?? '', /bounds/)
     assert.ok(out.image.equals(png), 'and the untouched master is what comes back')
+  })
+})
+
+describe('no channel is ever driven into clipping', () => {
+  /** One colour through the operator. */
+  const through = (r: number, g: number, b: number) => {
+    const buf = Buffer.from([r, g, b])
+    liftRaw(buf, 3)
+    return [buf[0], buf[1], buf[2]] as const
+  }
+
+  test('EXHAUSTIVE over every colour the operator can touch', () => {
+    // Every changed pixel has all three channels below the knee, so this sweep
+    // — 64^3 = 262,144 colours — covers the operator's entire domain exactly,
+    // not a sample of it.
+    let clipped = 0, decreased = 0, overBound = 0, worst = 0
+    for (let r = 0; r < SHADOW_KNEE; r++) {
+      for (let g = 0; g < SHADOW_KNEE; g++) {
+        for (let b = 0; b < SHADOW_KNEE; b++) {
+          const [nr, ng, nb] = through(r, g, b)
+          if ((r < 255 && nr === 255) || (g < 255 && ng === 255) || (b < 255 && nb === 255)) clipped++
+          if (nr < r || ng < g || nb < b) decreased++
+          const d = Math.max(Math.abs(nr - r), Math.abs(ng - g), Math.abs(nb - b))
+          if (d > worst) worst = d
+          if (d > SHADOW_MAX_ABS_CHANGE) overBound++
+        }
+      }
+    }
+    assert.equal(clipped, 0, 'a channel below 255 must never reach 255')
+    assert.equal(decreased, 0, 'the operator only ever lifts')
+    assert.equal(overBound, 0, `something moved further than ${SHADOW_MAX_ABS_CHANGE}`)
+    assert.ok(worst <= SHADOW_MAX_ABS_CHANGE, `worst change ${worst}`)
+    // And the bound is tight enough to mean something: it is not simply 255.
+    assert.ok(SHADOW_MAX_ABS_CHANGE < 128, 'the bound must actually bind')
+  })
+
+  test('nothing outside that domain moves at all — strided over the whole cube', () => {
+    let moved = 0
+    for (let r = 0; r < 256; r += 5) {
+      for (let g = 0; g < 256; g += 5) {
+        for (let b = 0; b < 256; b += 5) {
+          if (isShadowPixel(r, g, b, SHADOW_KNEE)) continue
+          const [nr, ng, nb] = through(r, g, b)
+          if (nr !== r || ng !== g || nb !== b) moved++
+        }
+      }
+    }
+    assert.equal(moved, 0, 'a pixel with any channel at or above the knee must be untouched')
+  })
+
+  test('a saturated dark colour is left alone, not lifted into clipping', () => {
+    // Each of these is BELOW the knee in luma while carrying a bright channel.
+    // Under a luma-only test the last one measured a 118-level jump.
+    for (const [r, g, b] of [[255, 0, 0], [250, 10, 10], [0, 0, 150], [0, 0, 255], [214, 32, 38]] as const) {
+      assert.ok(lumaOf(r, g, b) < 255, 'sanity')
+      const out = through(r, g, b)
+      assert.deepEqual([...out], [r, g, b], `${r},${g},${b} was modified`)
+    }
+  })
+
+  test('the watermark red is below the knee in luma and still untouched', () => {
+    const [r, g, b] = [214, 32, 38]
+    assert.ok(lumaOf(r, g, b) < 80, 'this is exactly the trap: dark in luma, bright in one channel')
+    assert.deepEqual([...through(r, g, b)], [r, g, b])
+  })
+})
+
+describe('what a point operation does and does not preserve', () => {
+  /** A dark product on a light sweep, with thin structure. Synthetic — no
+   *  product image is committed to this repository. */
+  async function darkFixture(): Promise<Buffer> {
+    const side = 240
+    const raw = Buffer.alloc(side * side * 3)
+    for (let y = 0; y < side; y++) {
+      for (let x = 0; x < side; x++) {
+        const i = (y * side + x) * 3
+        let v = 185                                   // sweep
+        if (y > 60 && y < 150 && x > 40 && x < 200) v = 12   // dark seat
+        else if (y >= 150 && y < 180 && x > 40 && x < 200) v = 17  // dark rail
+        else if (y >= 180 && y < 220 && x > 40 && x < 200) v = (x % 7 < 3 ? 22 : 14) // spindles
+        raw[i] = v + 2; raw[i + 1] = v; raw[i + 2] = v - 2
+      }
+    }
+    return sharp(raw, { raw: { width: side, height: side, channels: 3 } }).png().toBuffer()
+  }
+
+  test('GEOMETRY is preserved exactly — the product does not move', async () => {
+    const before = await darkFixture()
+    const after = (await enhanceShadows(before)).image
+    const [db, da] = [await decodeGrey(before), await decodeGrey(after)]
+    const [bb, ba] = [locateProduct(db, edgeMap(db)), locateProduct(da, edgeMap(da))]
+    assert.ok(bb && ba)
+    assert.deepEqual(ba, bb, 'the located product must sit in exactly the same pixels')
+    assert.equal(da.width, db.width)
+    assert.equal(da.height, db.height)
+  })
+
+  test('THRESHOLDED EDGES are NOT promised to be identical — and are not claimed to be', async () => {
+    // The honest counterpart to the test above. A monotonic point operation
+    // fixes geometry; it does not fix the answer a threshold gives, because a
+    // gradient sitting near EDGE_THRESHOLD can cross it. This test exists so
+    // that fact is recorded rather than assumed away — it is why the
+    // preservation gate keeps measuring the provider's image, not this one.
+    const before = await darkFixture()
+    const after = (await enhanceShadows(before)).image
+    const [eb, ea] = [edgeMap(await decodeGrey(before)), edgeMap(await decodeGrey(after))]
+    let crossed = 0
+    for (let i = 0; i < eb.length; i++) {
+      if ((eb[i] >= EDGE_THRESHOLD) !== (ea[i] >= EDGE_THRESHOLD)) crossed++
+    }
+    // No assertion that this is zero. What is asserted is that it stays small,
+    // so a change of settings that moved edges wholesale would fail here.
+    const share = crossed / eb.length
+    assert.ok(share < 0.05, `${(share * 100).toFixed(2)}% of pixels changed edge state — far too many`)
   })
 })

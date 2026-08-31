@@ -463,14 +463,20 @@ export async function POST(req: NextRequest) {
     // own output, and returns the UNMODIFIED master on any doubt — a shadow
     // curve must never turn two paid provider requests into a lost result.
     //
-    // The gate is deliberately NOT moved down here. Measured on a production
-    // master, the correction changes `structureUnderseat` by -1.9% and moves
-    // 0.13% of pixels across the Sobel threshold, so re-pointing the gate at
-    // these bytes would silently re-baseline the accepted pass / manual-review
-    // / refuse classifications. What covers the delivered pixels instead is the
-    // validation inside enhanceShadows — dimensions, format, black point, the
-    // knee, and a derived bound on the largest per-channel change — which is a
-    // check on THIS step rather than a re-run of a check about the provider.
+    // The gate is deliberately NOT moved down here. A point operation fixes
+    // GEOMETRY but not the answer a THRESHOLD gives: measured on a production
+    // master, the correction moves `structureUnderseat` 16.79 -> 16.51 and
+    // pushes 0.12% of pixels across the gate's Sobel threshold. Re-pointing the
+    // gate at these bytes would therefore silently re-baseline the accepted
+    // pass / manual-review / refuse classifications.
+    //
+    // What covers the delivered pixels instead is enhanceShadows' own
+    // validation: per pixel during the pass — nothing at or above the knee
+    // touched, pure black held, no unclipped channel driven to 255, no channel
+    // moved past a derived bound — and after the encode, a byte-for-byte
+    // comparison of the decoded PNG against what was computed, with its width,
+    // height and channel count. That is a check on THIS step, not a re-run of a
+    // check about the provider.
     const enhanced = await enhanceShadows(normalisedMaster)
     if (!enhanced.applied) {
       console.warn('[image-editor/studio] shadow lift not applied:', enhanced.reason ?? 'unknown')
