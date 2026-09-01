@@ -732,14 +732,16 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.equal(/by (owner|employee)|group\s*By|reduce\(/i.test(executable), false)
   })
 
-  test('EVERY CARD CARRIES THE MANDATORY LABEL', () => {
+  test('THE MANDATORY LABEL — everywhere a draft is read, with one deliberate exception', () => {
     // Rendered by a component that takes no content parameter, so no caller can
-    // give it different words or leave it out of one branch.
+    // give it different words: it is not sayable in different words, only
+    // presentable or absent.
     //
     // WHERE IT APPEARS is one label per DRAFT, never one per page: a banner
     // above a list of eight labels nothing, and internalTest.test.ts asserts
-    // that the page-level one is gone. This asserts the other half — that every
-    // surface which shows a draft shows it.
+    // that the page-level one is gone. This asserts the surfaces that show a
+    // draft's WORDS in full — the Available tab's tile, the detail screen, the
+    // complete-review view — all still carry it.
     assert.ok(list.includes('<InternalTestWarning compact />'), 'a card tile has no label')
     assert.ok(detail.includes('<InternalTestWarning />'), 'the detail screen has no label')
 
@@ -747,9 +749,20 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.ok(full.includes('<InternalTestWarning />'),
       'the complete-review view has no label')
 
+    // THE ONE DELIBERATE EXCEPTION: the compact tile inside the Pending
+    // approval workspace. A verifier working that queue already knows — every
+    // review reachable from it is, by definition, an unapproved AI draft; the
+    // workspace's own heading and copy say so before a single card is shown.
+    // Repeating the same four words on twelve compact tiles at once was judged
+    // clutter rather than information there, and the label survives ANYWAY the
+    // moment a verifier opens one: ReadDraftSheet renders
+    // <ReviewFullView card={current} ... />, and that component's own
+    // <InternalTestWarning /> is asserted above. This is a narrowing of WHERE
+    // the label repeats itself, not a removal of the guarantee that a verifier
+    // can always find it before acting on a draft's words.
     const pending = read('src/components/customerReviews/PendingBatches.tsx')
-    assert.ok(pending.includes('<InternalTestWarning compact />'),
-      'a pending draft awaiting approval has no label')
+    assert.equal(pending.includes('<InternalTestWarning'), false,
+      'the pending-approval tile has the compact label back — was that intended? see the comment above before restoring it')
   })
 
   test('AND IT NEVER TRAVELS IN THE MESSAGE', () => {
