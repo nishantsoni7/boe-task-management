@@ -18,7 +18,14 @@
 // ─── Status ───────────────────────────────────────────────────────────────────
 
 /**
- * Four states, and no fifth.
+ * Five states, and the fifth comes first.
+ *
+ *   pending_approval  a batch generated this draft and no verifier has released
+ *                     it. A CANDIDATE CANNOT SEE IT AT ALL — not on a screen,
+ *                     not through the API, not by typing its id. The SELECT
+ *                     policy offers a card two ways in, the available pool or a
+ *                     row you hold, and a pending draft is neither. Only
+ *                     approve_customer_review_drafts moves it.
  *
  *   available   nobody has taken this card. Any authorized tester may book it.
  *   booked      one tester holds it. They open WhatsApp, confirm by hand that
@@ -34,10 +41,36 @@
  * and the reason is recorded on the row (return_reason, returned_at,
  * returned_by) and in the append-only trail. That gives the verifier the return
  * action the workflow needs without adding a state, which is the smallest thing
- * that answers the requirement. The four statuses above are the four the
- * product asked for and no more.
+ * that answers the requirement.
+ *
+ * ─── THE STATE MAP, IN FULL ─────────────────────────────────────────────────
+ *
+ * The module expresses sub-states as a status PLUS a column, and always has:
+ * "sent" and "returned" are both status 'booked' with a timestamp set. Approval
+ * follows the same idiom rather than inventing a second vocabulary, and nothing
+ * is renamed.
+ *
+ *   conceptual state        status              discriminator
+ *   ─────────────────────── ─────────────────── ───────────────────────────────
+ *   pending approval        pending_approval    approved_at is null (enforced)
+ *   approved and available  available           approved_at is not null
+ *   booked but not sent     booked              sent_confirmed_at is null
+ *   sent                    booked              sent_confirmed_at is not null
+ *   submitted               submitted           —
+ *   returned                booked              returned_at is not null
+ *   verified                verified            —
+ *
+ * APPROVAL STATE AND CANDIDATE STATE ARE NOT THE SAME AXIS. approved_at records
+ * a verifier's decision about the TEXT and is never cleared; status records
+ * where the card is in a candidate's workflow and moves back and forth.
+ * Releasing a booking returns a card to 'available' and leaves the approval
+ * exactly where it was, because the approval was never about the booking.
+ *
+ * Mirrors the CHECK on customer_review_test_cards.status in
+ * supabase/migrations/20261026000000.
  */
 export const TEST_CARD_STATUSES = [
+  'pending_approval',
   'available',
   'booked',
   'submitted',
@@ -45,6 +78,69 @@ export const TEST_CARD_STATUSES = [
 ] as const
 
 export type TestCardStatus = (typeof TEST_CARD_STATUSES)[number]
+
+/**
+ * WHICH ACTION DELETED A REVIEW — the scope, recorded as a value.
+ *
+ * There is no free-text reason column beside this on purpose: a structured
+ * source and a typed sentence would be two answers to one question, and the
+ * sentence a person reads already lives on the append-only event row.
+ *
+ *   single       one review, deleted from its own row
+ *   selected     part of a selection the verifier ticked
+ *   all          the whole module, from Delete all reviews
+ *   replacement  displaced by a newly approved batch, not chosen individually
+ *
+ * Mirrors customer_review_test_cards_deleted_source_check in
+ * supabase/migrations/20261030000000.
+ */
+export const TEST_CARD_DELETION_SOURCES = [
+  'single',
+  'selected',
+  'all',
+  'replacement',
+] as const
+
+export type TestCardDeletionSource = (typeof TEST_CARD_DELETION_SOURCES)[number]
+
+/**
+ * What a deletion actually did, as the database counted it.
+ *
+ * RETURNED BY THE RPC, NOT COMPUTED BY THE BROWSER. The set is chosen and
+ * locked inside the transaction, so these are the rows that were really
+ * deleted rather than the rows a stale list thought would be — which is the
+ * whole reason the functions return a shape instead of a bare integer.
+ */
+export type DeletionCounts = {
+  deleted: number
+  pending_approval: number
+  available: number
+  /** Booked, and the holder has NOT confirmed a send. */
+  booked: number
+  /** Booked, and the holder HAS confirmed a send. Counted apart because it is
+   *  the stage a verifier most needs to see before pressing a delete. */
+  sent: number
+  submitted: number
+  verified: number
+}
+
+/**
+ * The live population, by stage, for the Delete all confirmation.
+ *
+ * Read from the database immediately before the confirmation is drawn, because
+ * no tab on the list screen reads `verified` rows — a count assembled in the
+ * browser would silently omit them, and "delete everything" must not be
+ * confirmed against a number that leaves some of everything out.
+ */
+export type DeletionSummary = Omit<DeletionCounts, 'deleted'> & { total: number }
+
+/**
+ * What an approval did: how many drafts were released, and how many reviews
+ * the release displaced.
+ *
+ * `replaced` is 0 for an Add, and for a Replace that found an empty pool.
+ */
+export type ApprovalResult = { approved: number; replaced: number }
 
 /** The statuses a tester's "My booked tests" list shows. Verified is not one. */
 export const ACTIVE_TESTER_STATUSES: ReadonlySet<TestCardStatus> =
@@ -97,6 +193,19 @@ export type TestCard = {
   /** The fictional filler. Fixture-supplied; no client can write it. */
   test_body: string
 
+  /** Which generated batch this draft came from. Null for anything older. */
+  batch_id: string | null
+
+  /**
+   * When a verifier released this draft into the candidate pool, and who did.
+   *
+   * Null exactly while the card is `pending_approval`, and never null again
+   * once it is not — releasing a booking does not clear it. A generated card in
+   * any state but pending carries an approver, and a CHECK enforces it.
+   */
+  approved_at: string | null
+  approved_by: string | null
+
   booked_by: string | null
   booked_at: string | null
 
@@ -127,6 +236,31 @@ export type TestCard = {
   returned_by: string | null
   return_reason: string | null
 
+  /**
+   * THE TOMBSTONE. Non-null means a verifier deleted this review.
+   *
+   * IT IS NOT A STATUS, and that is deliberate. Deletion is orthogonal to how
+   * far the review had got: `status` still reads 'booked' on one that was
+   * deleted while somebody held it, which is what lets the trail answer "what
+   * was thrown away, and from where". A deleted review leaves every
+   * operational list, its direct URL stops resolving for a candidate, and
+   * every workflow action refuses it.
+   *
+   * A CANDIDATE NEVER SEES ONE. Both candidate branches of the SELECT policy
+   * require `deleted_at is null`; the third branch is verify-only and exists
+   * so the tombstone stays readable to the people accountable for it.
+   *
+   * THERE IS NO RESTORE. A trigger refuses any UPDATE of a row whose
+   * deleted_at is already set, so un-deleting is unexpressible rather than
+   * merely unimplemented.
+   */
+  deleted_at: string | null
+  deleted_by: string | null
+  /** Which action deleted it — the scope, not a free-text reason. */
+  deleted_source: TestCardDeletionSource | null
+  /** The batch that displaced it. Set on a replacement and nowhere else. */
+  replaced_by_batch_id: string | null
+
   created_at: string
   updated_at: string
 
@@ -150,7 +284,15 @@ export type TestCardPhoto = {
 }
 
 export type TestCardEventType =
+  /** A batch created this draft. Its first line, written at generation. */
+  | 'generated'
+  /** Its title and body were regenerated from new guidance, while pending. */
+  | 'revised'
+  /** A verifier released it into the candidate pool. */
+  | 'approved'
   | 'booked'
+  /** The holder released it before confirming a send. */
+  | 'unbooked'
   | 'whatsapp_opened'
   | 'sent_confirmed'
   | 'submitted'
@@ -158,6 +300,14 @@ export type TestCardEventType =
   | 'returned'
   /** An administrator withdrew an attached screenshot. Written by a trigger. */
   | 'screenshot_removed'
+  /**
+   * A verifier deleted this review. `previous_status` names where it was, and
+   * that is the point of the row: it is the only record of what was thrown
+   * away and how far somebody had got with it.
+   */
+  | 'deleted'
+  /** A newly approved batch displaced this review out of the available pool. */
+  | 'replaced'
 
 export type TestCardEvent = {
   id: string
@@ -185,6 +335,9 @@ export const TEST_CARD_COLUMNS = [
   'test_category',
   'test_title',
   'test_body',
+  'batch_id',
+  'approved_at',
+  'approved_by',
   'booked_by',
   'booked_at',
   'whatsapp_opened_at',
@@ -200,6 +353,14 @@ export const TEST_CARD_COLUMNS = [
   'returned_at',
   'returned_by',
   'return_reason',
+  // THE TOMBSTONE TRAVELS WITH THE ROW. The screens filter deleted reviews out
+  // in the query; selecting the columns anyway is what lets the detail page
+  // tell a verifier they are looking at a deleted review rather than render it
+  // silently as though it were live.
+  'deleted_at',
+  'deleted_by',
+  'deleted_source',
+  'replaced_by_batch_id',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -221,8 +382,74 @@ export const TEST_CARD_AVAILABLE_COLUMNS = [
   'test_category',
   'test_title',
   'test_body',
+  // Selected so the list can ASSERT what its filter did, not to display it.
+  'deleted_at',
   'created_at',
 ].join(', ')
+
+/**
+ * THE PENDING-APPROVAL LIST'S COLUMNS, for the verifier workspace.
+ *
+ * Narrower than the detail set for the same reason the available set is: a
+ * pending draft has no holder, no evidence and no timestamps, so those columns
+ * would be nulls. It carries `batch_id` and nothing the available set does not,
+ * because approval is decided per batch.
+ *
+ * IT IS NOT A SECURITY BOUNDARY. RLS is what stops a candidate reading a
+ * pending row at all; naming columns is what stops a field joining a query
+ * somebody adds later without thinking about it.
+ */
+export const TEST_CARD_PENDING_COLUMNS = [
+  'id',
+  'status',
+  'card_ref',
+  'test_category',
+  'test_title',
+  'test_body',
+  'batch_id',
+  'deleted_at',
+  'created_at',
+].join(', ')
+
+// ─── Generated batches ────────────────────────────────────────────────────────
+
+/**
+ * One generated batch: who asked, when, with what guidance, and which model.
+ *
+ * `expected_count` and `card_count` are always equal, and holding both is what
+ * makes that checkable rather than merely asserted — the insert is one
+ * transaction, so a batch that produced the wrong number of drafts produces no
+ * row at all. A FAILED GENERATION HAS NO ROW HERE BY DESIGN; there is no
+ * half-batch to mark failed, and the reason a batch failed is in the route's
+ * server log, which is the only place a rolled-back transaction can record
+ * anything.
+ */
+export type DraftBatch = {
+  id: string
+  generated_by: string
+  generated_at: string
+  guidance: string
+  model: string
+  card_count: number
+  expected_count: number
+}
+
+export const DRAFT_BATCH_COLUMNS =
+  'id, generated_by, generated_at, guidance, model, card_count, expected_count'
+
+/** One append-only record of a batch's pending drafts being regenerated. */
+export type DraftBatchRevision = {
+  id: string
+  batch_id: string
+  revised_by: string
+  revised_at: string
+  guidance: string
+  model: string
+  revised_count: number
+}
+
+export const DRAFT_BATCH_REVISION_COLUMNS =
+  'id, batch_id, revised_by, revised_at, guidance, model, revised_count'
 
 export const TEST_CARD_PHOTO_COLUMNS =
   'id, card_id, kind, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at, removal_started_at'
@@ -244,6 +471,11 @@ export type BadgeMeta = { label: string; bg: string; color: string; border: stri
  * green.
  */
 export const TEST_CARD_STATUS_META: Record<TestCardStatus, BadgeMeta> = {
+  // Violet, matching the AI-generated-draft note: both say "this text has not
+  // been through a person yet". It is deliberately NOT grey like Available —
+  // the one distinction a verifier must never misread on a crowded screen is
+  // "waiting for me" against "already released".
+  pending_approval: { label: 'Pending approval', bg: '#F5F3FF', color: '#5B21B6', border: '#DDD6FE' },
   available: { label: 'Available', bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' },
   booked:    { label: 'Booked',    bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' },
   submitted: { label: 'Submitted', bg: '#EFF6FF', color: '#1E40AF', border: '#BFDBFE' },

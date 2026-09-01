@@ -75,11 +75,21 @@ describe('the migration is one file, correctly sequenced', () => {
       // The drafts migration: it rewrites the still-available cards and adds
       // the batch table, so it applies after both the schema and the seed.
       '20261023000000_review_workflow_ai_drafts.sql',
+      // The batch-approval pair, in the order they must apply. The deletion
+      // migration runs FIRST so the schema one lands on an empty card table
+      // and can enforce its approval invariants without a legacy exemption.
+      '20261025000000_review_workflow_remove_legacy_test_data.sql',
+      '20261026000000_review_workflow_batch_approval.sql',
+      // Provider-call idempotency: a request key is CLAIMED before the model
+      // is called, so two simultaneous requests cannot both be billed for.
+      '20261027000000_review_workflow_generation_claims.sql',
       // Assets & Access, from a separate branch: the delegated Access Register
       // permission and the asset handover acknowledgement. Neither touches
       // this work's tables, policies or functions.
       '20261028000000_assets_access_manage_access_records.sql',
       '20261029000000_asset_handover_acknowledgement.sql',
+      // Verifier deletion, and the Add-versus-Replace choice at approval.
+      '20261030000000_review_workflow_deletion_and_replacement.sql',
     ])
   })
 
@@ -148,14 +158,31 @@ describe('the file is structurally intact', () => {
 })
 
 describe('the product this module is, and the product it is not', () => {
-  test('THE FOUR STATUSES ARE THE FOUR IN THE CHECK', () => {
-    // The whole product correction in one assertion. Seven statuses described a
-    // customer-outreach lifecycle; four describe an internal rehearsal.
-    const check = /status text not null default 'available' check \(status in \(([\s\S]*?)\)\)/.exec(code)
-    assert.ok(check, 'the status CHECK is missing')
-    const inSql = [...check![1].matchAll(/'([a-z_]+)'/g)].map(m => m[1])
-    assert.deepEqual(inSql.sort(), [...TEST_CARD_STATUSES].sort())
-    assert.equal(inSql.length, 4)
+  test('THE STATUSES IN THE CHECK ARE THE STATUSES IN THE TYPE', () => {
+    // 20261017000000 shipped four. 20261026000000 widened the CHECK to five by
+    // adding `pending_approval` and renamed none of them, so the live constraint
+    // is the one to read — this file's `code` is the original, which no longer
+    // carries the whole answer on its own.
+    const original = /status text not null default 'available' check \(status in \(([\s\S]*?)\)\)/.exec(code)
+    assert.ok(original, 'the status CHECK is missing')
+    const four = [...original![1].matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+    assert.deepEqual(four.sort(), ['available', 'booked', 'submitted', 'verified'])
+
+    const approval = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20261026000000_review_workflow_batch_approval.sql'),
+      'utf8',
+    ).replace(/\r\n/g, '\n')
+    const widened = /add constraint customer_review_test_cards_status_check\n  check \(status in \(([\s\S]*?)\)\);/.exec(approval)
+    assert.ok(widened, 'the widened status CHECK is missing')
+    const five = [...widened![1].matchAll(/'([a-z_]+)'/g)].map(m => m[1])
+
+    // THE TYPE AND THE LIVE CONSTRAINT AGREE, which is the claim that matters:
+    // a status the browser can hold and the database refuses, or the other way
+    // round, is how a screen starts offering a move nothing will accept.
+    assert.deepEqual(five.sort(), [...TEST_CARD_STATUSES].sort())
+    assert.equal(five.length, 5)
+    // Nothing was renamed on the way.
+    for (const status of four) assert.ok(five.includes(status), `${status} was dropped`)
   })
 
   test('THE TEN TEST CATEGORIES ARE THE TEN IN THE CHECK', () => {

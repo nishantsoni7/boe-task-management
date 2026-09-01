@@ -111,10 +111,39 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASELINE="supabase/tests/bootstrap/000_customer_review_module_baseline.sql"
 ASSERTIONS="supabase/tests/customer_review_test_card_assertions.sql"
 FIXTURE="supabase/fixtures/customer_review_test_cards.sql"
-PENDING="20261023000000_review_workflow_ai_drafts.sql"
-# Test-only, applied BETWEEN the two: three cards in three states, so the
-# rewrite guard in 20261023000000 can be checked against something.
+# THE FILES UNDER REVIEW. All four are allowed to differ from HEAD; every other
+# migration in the list must match it, because a run proves nothing if the
+# ground under the pending files has shifted.
+PENDING_FILES=(
+  "20261023000000_review_workflow_ai_drafts.sql"
+  "20261025000000_review_workflow_remove_legacy_test_data.sql"
+  "20261026000000_review_workflow_batch_approval.sql"
+  "20261027000000_review_workflow_generation_claims.sql"
+  "20261030000000_review_workflow_deletion_and_replacement.sql"
+)
+
+# ── Test-only files, and where each one has to be applied ───────────────────
+#
+# Three of them, and the ORDER is the point rather than an accident:
+#
+#   BEFORE 20261023000000  three cards in three states, so its "only rewrite an
+#                          available card" guard has something to be checked
+#                          against.
+#   AFTER  20261023000000  the check itself, which also clears those three rows
+#                          — it has to run here rather than with the rest of the
+#                          assertions, because the deletion migration two steps
+#                          later refuses any card table that is not exactly the
+#                          legacy sixteen.
+#   BEFORE 20261025000000  the legacy sixteen, reproduced. The deletion
+#                          migration's guard can only be exercised against a
+#                          database that actually holds the shape it expects.
 REWRITE_PROBE="supabase/tests/_review_workflow_drafts_before.sql"
+REWRITE_CHECK="supabase/tests/_review_workflow_drafts_rewrite_check.sql"
+LEGACY_STATE="supabase/tests/_review_workflow_legacy_state_before.sql"
+# The builder that puts the legacy dataset into every shape the guard has to
+# judge — the two it must ACCEPT as much as the ten it must refuse.
+LEGACY_CASES="supabase/tests/_review_workflow_legacy_guard_cases.sql"
+
 MIGRATIONS=(
   "20260609_create_attendance_records.sql"
   "20260645_create_control_center_v1.sql"
@@ -123,7 +152,17 @@ MIGRATIONS=(
   "20260662_fix_permission_resolver_team_cast.sql"
   "20261017000000_customer_review_outreach.sql"
   "20261023000000_review_workflow_ai_drafts.sql"
+  "20261025000000_review_workflow_remove_legacy_test_data.sql"
+  "20261026000000_review_workflow_batch_approval.sql"
+  "20261027000000_review_workflow_generation_claims.sql"
+  "20261030000000_review_workflow_deletion_and_replacement.sql"
 )
+
+is_pending() {
+  local m="$1" p
+  for p in "${PENDING_FILES[@]}"; do [ "$m" = "$p" ] && return 0; done
+  return 1
+}
 
 MARKER="boe-disposable-customer-review-test"
 
@@ -180,49 +219,190 @@ require_disposable_stack || exit 1
 echo "══ marker present; public, auth, storage and the ledger are all empty — safe to build"
 echo
 
-echo "══ 1/12 baseline (TEST-ONLY, not a migration)"
+step=0
+next_step() { step=$((step + 1)); echo; echo "══ step $step  $1"; }
+
+next_step "baseline (TEST-ONLY, not a migration)"
 echo "──      $BASELINE"
 psql_file "$REPO/$BASELINE"
 echo "        ✓ applied"
 
-step=2
 for m in "${MIGRATIONS[@]}"; do
-  echo
-  echo "══ $step/12 $m"
-  if [ "$m" = "$PENDING" ]; then
-    # The file under review. It is allowed to differ from HEAD — but the
+  if is_pending "$m"; then
+    # A file under review. It is allowed to differ from HEAD — but the
     # difference is printed rather than assumed, so a run can never quietly
     # test something other than what is on disk.
+    PENDING_NOTE=1
+  elif ! git -C "$REPO" diff --quiet HEAD -- "supabase/migrations/$m"; then
+    echo "FATAL: prerequisite supabase/migrations/$m differs from HEAD. Refusing to run." >&2
+    exit 1
+  else
+    PENDING_NOTE=0
+  fi
+
+  # ── Whatever has to be true BEFORE this migration ────────────────────────
+  case "$m" in
+    20261023000000_*)
+      next_step "$REWRITE_PROBE (TEST-ONLY)"
+      psql_file "$REPO/$REWRITE_PROBE"
+      echo "        ✓ three cards, one available, one booked, one verified"
+      ;;
+    20261025000000_*)
+      next_step "$LEGACY_STATE (TEST-ONLY)"
+      psql_file "$REPO/$LEGACY_STATE"
+      LEGACY_N="$(_psql_raw "select cards || '/' || available || '/' || booked from public.zz_review_workflow_legacy_probe")"
+      [ "$LEGACY_N" = "16/15/1" ] \
+        || { echo "FATAL: the legacy state is $LEGACY_N, expected 16/15/1. Nothing further was applied." >&2; exit 1; }
+      echo "        ✓ sixteen legacy cards: fifteen available, one booked, with a trail and a screenshot"
+
+      # ── THE REFUSAL, BEFORE THE SUCCESS ─────────────────────────────────
+      #
+      # A screenshot is attached, and SQL cannot delete the stored object it
+      # names (storage.protect_delete). The migration must refuse rather than
+      # strand the image, and it must refuse having deleted nothing.
+      next_step "$m must REFUSE while a screenshot is attached"
+      if psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_refusal.out 2>&1; then
+        echo "FATAL: the deletion migration ran with a screenshot attached. It must refuse." >&2
+        exit 1
+      fi
+      grep -q 'REVIEW_WORKFLOW_LEGACY_SCREENSHOT' /tmp/legacy_refusal.out \
+        || { echo "FATAL: it failed for the wrong reason:" >&2; sed 's/^/         /' /tmp/legacy_refusal.out >&2; exit 1; }
+      STILL="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+      [ "$STILL" = "16" ] \
+        || { echo "FATAL: the refusal deleted rows — $STILL card(s) remain, expected 16." >&2; exit 1; }
+      echo "        ✓ refused by name, and all sixteen cards are untouched"
+
+      next_step "remove the screenshot (TEST-ONLY), the way the product would"
+      _psql_raw "delete from public.customer_review_test_card_screenshots
+                  where card_id = 'bbbbbbbb-0000-4000-8000-100000000002'" >/dev/null
+      echo "        ✓ the image reference is gone; the cards are not"
+      ;;
+  esac
+
+  next_step "$m"
+  if [ "$PENDING_NOTE" = "1" ]; then
     if git -C "$REPO" diff --quiet HEAD -- "supabase/migrations/$m"; then
       echo "        (unchanged from HEAD)"
     else
       echo "        MODIFIED vs HEAD — this run tests the working-tree version:"
       git -C "$REPO" diff --stat HEAD -- "supabase/migrations/$m" | sed 's/^/          /'
     fi
-  elif ! git -C "$REPO" diff --quiet HEAD -- "supabase/migrations/$m"; then
-    echo "FATAL: prerequisite supabase/migrations/$m differs from HEAD. Refusing to run." >&2
-    exit 1
-  fi
-  if [ "$m" = "$PENDING" ]; then
-    echo "        laying down the rewrite probe first:"
-    echo "        $REWRITE_PROBE"
-    psql_file "$REPO/$REWRITE_PROBE"
-    echo "        ✓ three cards, one available, one booked, one verified"
-    step=$((step + 1))
-    echo
-    echo "══ $step/12 $m"
   fi
   psql_file "$REPO/supabase/migrations/$m"
   echo "        ✓ applied"
-  step=$((step + 1))
+
+  # ── Whatever has to be true AFTER it ─────────────────────────────────────
+  case "$m" in
+    20261023000000_*)
+      next_step "$REWRITE_CHECK (TEST-ONLY)"
+      psql_file "$REPO/$REWRITE_CHECK"
+      REMAINING="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+      [ "$REMAINING" = "0" ] \
+        || { echo "FATAL: $REMAINING probe card(s) survived the rewrite check. Nothing further was applied." >&2; exit 1; }
+      echo "        ✓ the rewrite guard held, and the probe rows are gone"
+      ;;
+    20261025000000_*)
+      # THE CLAIM: the legacy sixteen are gone, and their children went with
+      # them. Read from the database rather than from the migration's notice.
+      LEFT="$(_psql_raw "select (select count(*) from public.customer_review_test_cards)
+                             || '|' || (select count(*) from public.customer_review_test_card_events)
+                             || '|' || (select count(*) from public.customer_review_test_card_screenshots)")"
+      [ "$LEFT" = "0|0|0" ] \
+        || { echo "FATAL: after the deletion migration cards|events|screenshots = $LEFT, expected 0|0|0." >&2; exit 1; }
+      _psql_raw 'drop table if exists public.zz_review_workflow_legacy_probe' >/dev/null
+      echo "        ✓ sixteen cards and their audit trail removed by cascade"
+
+      # ── AND IT IS SAFE TO RUN AGAIN ─────────────────────────────────────
+      #
+      # Zero cards and zero batches is nothing-to-do, not something-unexpected.
+      # Without this branch the file would break the migration chain forever on
+      # every new project, which is a landmine rather than a safeguard.
+      next_step "$m again — an empty table is a no-op, not an abort"
+      psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_again.out 2>&1 \
+        || { echo "FATAL: the deletion migration aborted on an already-empty table:" >&2; sed 's/^/         /' /tmp/legacy_again.out >&2; exit 1; }
+      grep -q 'SKIP  review-workflow legacy data' /tmp/legacy_again.out \
+        || { echo "FATAL: it did not report the skip:" >&2; sed 's/^/         /' /tmp/legacy_again.out >&2; exit 1; }
+      echo "        ✓ re-applying it on an empty table skips cleanly"
+
+      # ── EVERY OTHER SHAPE THE GUARD HAS TO JUDGE ───────────────────────
+      #
+      # The steps above prove one accept (15/1) and one refusal (a screenshot).
+      # A migration that permanently deletes production rows deserves both
+      # halves proved properly: the shapes that ARE the legacy dataset must be
+      # ACCEPTED — production had already drifted from 15/1 to 13/3 by the time
+      # the rollout was attempted — and everything else must be refused BY NAME,
+      # with nothing deleted.
+      next_step "$LEGACY_CASES (TEST-ONLY)"
+      psql_file "$REPO/$LEGACY_CASES"
+      echo "        ✓ the case builder is available"
+
+      # case:expectation — ACCEPT, or the marker the refusal has to carry.
+      LEGACY_GUARD_CASES=(
+        "split_15_1:ACCEPT"
+        "split_13_3:ACCEPT"
+        "whatsapp_only:ACCEPT"
+        "sent_confirmed:REVIEW_WORKFLOW_LEGACY_SEND_CONFIRMED"
+        "returned:REVIEW_WORKFLOW_LEGACY_SEND_CONFIRMED"
+        "submitted:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "verified:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "screenshot:REVIEW_WORKFLOW_LEGACY_SCREENSHOT"
+        "storage_object:REVIEW_WORKFLOW_LEGACY_STORAGE"
+        "extra_card:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "missing_card:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "wrong_ref:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "with_batch:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+      )
+
+      next_step "$m judges every legacy shape"
+      for CASE_SPEC in "${LEGACY_GUARD_CASES[@]}"; do
+        CASE_NAME="${CASE_SPEC%%:*}"
+        CASE_WANT="${CASE_SPEC#*:}"
+
+        _psql_raw "select public.zz_build_legacy('$CASE_NAME')" >/dev/null \
+          || { echo "FATAL: could not build the '$CASE_NAME' case." >&2; exit 1; }
+        BEFORE="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+
+        if [ "$CASE_WANT" = "ACCEPT" ]; then
+          psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_case.out 2>&1 \
+            || { echo "FATAL: the guard REFUSED '$CASE_NAME', which IS the legacy dataset:" >&2
+                 sed 's/^/         /' /tmp/legacy_case.out >&2; exit 1; }
+          AFTER="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+          [ "$AFTER" = "0" ] \
+            || { echo "FATAL: '$CASE_NAME' was accepted but left $AFTER card(s)." >&2; exit 1; }
+          echo "        ✓ $CASE_NAME — accepted, all $BEFORE card(s) removed"
+        else
+          if psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_case.out 2>&1; then
+            echo "FATAL: the guard ACCEPTED '$CASE_NAME'. It must refuse." >&2
+            exit 1
+          fi
+          grep -q "$CASE_WANT" /tmp/legacy_case.out \
+            || { echo "FATAL: '$CASE_NAME' was refused for the wrong reason (wanted $CASE_WANT):" >&2
+                 sed 's/^/         /' /tmp/legacy_case.out >&2; exit 1; }
+          AFTER="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+          [ "$AFTER" = "$BEFORE" ] \
+            || { echo "FATAL: refusing '$CASE_NAME' still deleted rows: $BEFORE -> $AFTER." >&2; exit 1; }
+          echo "        ✓ $CASE_NAME — refused $CASE_WANT, all $BEFORE card(s) untouched"
+        fi
+
+        _psql_raw 'select public.zz_clear_legacy()' >/dev/null
+      done
+
+      _psql_raw 'drop function if exists public.zz_build_legacy(text)' >/dev/null
+      _psql_raw 'drop function if exists public.zz_clear_legacy()' >/dev/null
+      LEFT="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+      [ "$LEFT" = "0" ] \
+        || { echo "FATAL: $LEFT card(s) survived the guard cases." >&2; exit 1; }
+      echo "        ✓ thirteen shapes judged; the table is empty again"
+
+      ;;
+  esac
 done
 
-echo
-echo "══ 10/12 $ASSERTIONS"
+next_step "$ASSERTIONS"
 psql_file "$REPO/$ASSERTIONS"
 
 echo
-echo "══ 11/12 $FIXTURE (TEST-ONLY, not a migration)"
+next_step "$FIXTURE (TEST-ONLY, not a migration)"
 psql_file "$REPO/$FIXTURE"
 LOADED="$(_psql_raw "select count(*) from public.customer_review_test_cards where card_ref like 'TEST-0%'")"
 if [ "$LOADED" != "16" ]; then
@@ -236,7 +416,7 @@ echo "            -f - < supabase/fixtures/customer_review_test_cards_clear.sql"
 
 
 echo
-echo "══ 12/12 the one-live-screenshot guarantee, at the DATABASE boundary"
+next_step "the one-live-screenshot guarantee, at the DATABASE boundary"
 echo "──      Two psql PROCESSES, two connections, two transactions, two DIFFERENT"
 echo "──      images, one card. Neither can see the other's uncommitted row, which"
 echo "──      is exactly the situation the route's count-then-insert could not"
@@ -332,8 +512,10 @@ _psql_raw "
   select 1" >/dev/null || true
 echo "        ✓ probe rows removed"
 echo
-echo "══ all twelve steps passed"
-echo "══ step 9 ran the migration's own do \$\$ … \$\$ assertion block, step 10 ran"
-echo "══ the workflow assertions, step 11 loaded the fixture, and step 12 raced two"
-echo "══ real sessions at the screenshot index; any of the four would have aborted"
-echo "══ this script."
+echo "══ all $step steps passed"
+echo "══ Every migration ran its own do \$\$ … \$\$ assertion block; the rewrite check"
+echo "══ proved 20261023000000 touched only an available card; the legacy sixteen"
+echo "══ were built and then removed by 20261025000000 together with their audit"
+echo "══ trail and screenshot; the workflow assertions ran; the fixture loaded; and"
+echo "══ two real sessions raced at the screenshot index. Any one of them would"
+echo "══ have aborted this script."

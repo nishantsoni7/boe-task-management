@@ -1,0 +1,568 @@
+'use client'
+
+import { useCallback, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { colors } from '@/lib/tokens'
+import { ReviewSheet } from './ReviewSheet'
+import { ReviewFullView } from './ReviewFullView'
+import { ReviseDrafts } from './ReviseDrafts'
+import { InternalTestWarning } from './ReviewPieces'
+import { ApprovalChoiceCards } from './ApprovalChoice'
+import { DeleteReviewButton } from './DeleteReviews'
+import type { ApprovalMode } from '@/lib/customerReviews/status'
+import {
+  formatTestTimestamp,
+  testCategoryLabel,
+  type DraftBatch,
+  type TestCard,
+} from '@/lib/customerReviews/types'
+
+// ── The verifier's Pending approval workspace ────────────────────────────────
+//
+// Drafts are grouped by the batch that produced them, because approval is a
+// judgement about a batch's guidance as much as about eight separate reviews:
+// "these all sound the same" is a thing you can only see when they are together.
+//
+// THREE WAYS TO APPROVE, and they are the three the workflow asks for:
+//   * one review, from its own row;
+//   * a selection, from the batch's toolbar;
+//   * everything still pending in the batch, from the same toolbar.
+//
+// SELECTION IS SCOPED TO ONE BATCH, deliberately. approve_customer_review_drafts
+// takes at most a batch's worth of ids, the bulk actions read "in this batch",
+// and a selection that silently spanned two batches would make "Approve all
+// pending" ambiguous about which "all" it meant.
+//
+// THE BULK ACTIONS ARE NOT EASY TO HIT BY ACCIDENT. Both go through a
+// confirmation sheet naming the exact count, and neither is the first control
+// in the batch header. Approving one review is a single press because it
+// affects one review.
+//
+// A DISABLED CONTROL SAYS WHY. "Approve selected" with nothing chosen is
+// disabled AND carries the sentence explaining it, rather than being a grey
+// rectangle somebody presses three times.
+//
+// EVERY CHECK HERE IS THE WEAKEST OF THREE. The screen renders this only for
+// caps.canVerify; approve_customer_review_drafts() resolves `verify` again from
+// the permission engine and is what actually decides. A verifier whose
+// permission is revoked while this page is open gets a refusal, not a silent
+// success.
+
+type Props = {
+  /** Pending drafts only. The caller's query is what makes that true. */
+  cards: TestCard[]
+  /** The batches those drafts came from, by id. A missing one still renders. */
+  batches: Map<string, DraftBatch>
+  /** Display names for the people who generated them, by user id. */
+  actorNames: Map<string, string>
+  /**
+   * How many reviews are available to candidates right now.
+   *
+   * Read by the screen, not derived here — this workspace only ever holds
+   * PENDING drafts, so it has no way to count the pool it is being asked about.
+   * It is what makes "Replace" able to say how many reviews it would displace.
+   */
+  availableCount: number | null
+  busy: boolean
+  onApprove: (ids: string[], mode: ApprovalMode) => Promise<void>
+  onApproveBatch: (batchId: string, mode: ApprovalMode) => Promise<void>
+  /** Opens the deletion confirmation the screen owns. */
+  onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
+  onRevised: () => void
+}
+
+export function PendingBatches({
+  cards, batches, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised,
+}: Props) {
+  // Grouped by batch, batches newest first, drafts by reference within one.
+  const groups = useMemo(() => {
+    const byBatch = new Map<string, TestCard[]>()
+    for (const card of cards) {
+      const key = card.batch_id ?? 'unbatched'
+      const list = byBatch.get(key)
+      if (list) list.push(card)
+      else byBatch.set(key, [card])
+    }
+    return Array.from(byBatch.entries())
+      .map(([batchId, list]) => ({
+        batchId,
+        batch: batches.get(batchId) ?? null,
+        cards: [...list].sort((a, b) => a.card_ref.localeCompare(b.card_ref)),
+      }))
+      .sort((a, b) => {
+        const at = a.batch?.generated_at ?? ''
+        const bt = b.batch?.generated_at ?? ''
+        return bt.localeCompare(at)
+      })
+  }, [cards, batches])
+
+  if (cards.length === 0) return null
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {groups.map(group => (
+        <BatchGroup
+          key={group.batchId}
+          batchId={group.batchId}
+          batch={group.batch}
+          cards={group.cards}
+          actorNames={actorNames}
+          availableCount={availableCount}
+          busy={busy}
+          onApprove={onApprove}
+          onApproveBatch={onApproveBatch}
+          onDelete={onDelete}
+          onRevised={onRevised}
+        />
+      ))}
+    </div>
+  )
+}
+
+function BatchGroup({
+  batchId, batch, cards, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised,
+}: {
+  batchId: string
+  batch: DraftBatch | null
+  cards: TestCard[]
+  actorNames: Map<string, string>
+  availableCount: number | null
+  busy: boolean
+  onApprove: (ids: string[], mode: ApprovalMode) => Promise<void>
+  onApproveBatch: (batchId: string, mode: ApprovalMode) => Promise<void>
+  onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
+  onRevised: () => void
+}) {
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [showGuidance, setShowGuidance] = useState(false)
+  const [reading, setReading] = useState<TestCard | null>(null)
+  const [confirm, setConfirm] = useState<
+    null | { kind: 'selected' | 'all' | 'one'; count: number; ids: string[] }
+  >(null)
+  /**
+   * ADD IS THE DEFAULT, AND IT RESETS WITH EVERY CONFIRMATION.
+   *
+   * The state lives beside `confirm` rather than outside it so that closing a
+   * sheet and opening another cannot carry a Replace forward into an approval
+   * the verifier meant to add. `setConfirm` and `setMode('add')` always move
+   * together for that reason.
+   */
+  const [mode, setMode] = useState<ApprovalMode>('add')
+
+  const openConfirm = useCallback(
+    (next: { kind: 'selected' | 'all' | 'one'; count: number; ids: string[] }) => {
+      setMode('add')
+      setConfirm(next)
+    },
+    [],
+  )
+
+  const pendingCount = cards.length
+  const allSelected = selected.size === pendingCount && pendingCount > 0
+
+  const toggle = useCallback((id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  const toggleAll = useCallback(() => {
+    setSelected(prev => (prev.size === cards.length ? new Set() : new Set(cards.map(c => c.id))))
+  }, [cards])
+
+  const runConfirmed = useCallback(async () => {
+    if (!confirm) return
+    if (confirm.kind === 'all') await onApproveBatch(batchId, mode)
+    else await onApprove(confirm.ids, mode)
+    setSelected(new Set())
+    setConfirm(null)
+    setMode('add')
+  }, [confirm, mode, onApprove, onApproveBatch, batchId])
+
+  const generatedBy = batch ? (actorNames.get(batch.generated_by) ?? 'a verifier') : null
+
+  return (
+    <section
+      aria-label={batch ? `Batch generated ${formatTestTimestamp(batch.generated_at)}` : 'Ungrouped drafts'}
+      style={{
+        border: `1px solid ${colors.border}`, borderRadius: '10px',
+        background: '#FFFFFF', overflow: 'hidden',
+      }}
+    >
+      {/* ── Batch header: the facts, without dominating the drafts ── */}
+      <header style={{
+        padding: '12px 14px', borderBottom: `1px solid ${colors.border}`,
+        background: colors.raised, display: 'flex', flexDirection: 'column', gap: '9px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: '13px', color: colors.primary }}>
+            {pendingCount} awaiting approval
+          </strong>
+          {batch && (
+            <span style={{ fontSize: '11px', color: colors.tertiary }}>
+              of {batch.card_count} · generated {formatTestTimestamp(batch.generated_at)} by {generatedBy} · {batch.model}
+            </span>
+          )}
+        </div>
+
+        {batch && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowGuidance(v => !v)}
+              aria-expanded={showGuidance}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                background: 'transparent', border: 'none', padding: '4px 0',
+                minHeight: '44px', cursor: 'pointer',
+                fontSize: '12px', color: colors.blue, fontFamily: 'inherit',
+              }}
+            >
+              {showGuidance ? <ChevronDown size={13} strokeWidth={2} /> : <ChevronRight size={13} strokeWidth={2} />}
+              {showGuidance ? 'Hide the guidance' : 'Show the guidance these came from'}
+            </button>
+            {showGuidance && (
+              <p style={{
+                margin: '4px 0 0', padding: '9px 11px', borderRadius: '8px',
+                background: '#FFFFFF', border: `1px solid ${colors.border}`,
+                fontSize: '12px', color: colors.secondary, lineHeight: 1.55,
+                whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+              }}>
+                {batch.guidance}
+              </p>
+            )}
+          </div>
+        )}
+      </header>
+
+      {/* ── Selection toolbar ── */}
+      <div style={{
+        padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
+        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+      }}>
+        {/* The label is the hit area here too, and it is already 44px tall. */}
+        <label style={{
+          display: 'inline-flex', alignItems: 'center', gap: '10px',
+          minHeight: '44px', paddingRight: '6px',
+          cursor: 'pointer', fontSize: '12px', color: colors.secondary,
+        }}>
+          <input
+            type="checkbox"
+            checked={allSelected}
+            onChange={toggleAll}
+            style={{ width: '18px', height: '18px', flexShrink: 0 }}
+          />
+          Select all {pendingCount} in this batch
+        </label>
+
+        <span style={{ fontSize: '12px', color: colors.tertiary }}>
+          {selected.size} selected
+        </span>
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginLeft: 'auto' }}>
+          <button
+            type="button"
+            onClick={() => openConfirm({
+              kind: 'selected', count: selected.size, ids: Array.from(selected),
+            })}
+            disabled={selected.size === 0 || busy}
+            className="boe-btn boe-btn-primary"
+            style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
+          >
+            Approve selected
+          </button>
+          <button
+            type="button"
+            onClick={() => openConfirm({ kind: 'all', count: pendingCount, ids: [] })}
+            disabled={busy}
+            className="boe-btn boe-btn-ghost"
+            style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
+          >
+            Approve all {pendingCount}
+          </button>
+          {batch && (
+            <ReviseDrafts batchId={batchId} pendingCount={pendingCount} onRevised={onRevised} />
+          )}
+          {/*
+            DELETING A SELECTION SITS LAST IN THE ROW, after Approve and Revise.
+            It is the same selection the approve action uses, so a verifier who
+            has ticked four drafts can discard them without ticking again — and
+            it is a ghost button in danger colour rather than a primary one,
+            because the control that throws work away should not be where the
+            thumb lands by habit.
+          */}
+          <DeleteReviewButton
+            compact
+            label={selected.size > 0 ? `Delete ${selected.size}` : 'Delete selected'}
+            disabled={selected.size === 0 || busy}
+            onClick={() => onDelete(cards.filter(c => selected.has(c.id)), 'selected')}
+          />
+        </div>
+
+        {/*
+          THE DISABLED REASON, IN WORDS. A grey button with no explanation is a
+          button people press repeatedly; this is the one sentence that stops
+          that, and it is only rendered when the button is actually off.
+        */}
+        {selected.size === 0 && (
+          <p style={{ margin: 0, flexBasis: '100%', fontSize: '11px', color: colors.muted, lineHeight: 1.4 }}>
+            Tick one or more reviews to use “Approve selected”, or approve the whole batch.
+          </p>
+        )}
+      </div>
+
+      {/* ── The drafts ── */}
+      <ul style={{
+        listStyle: 'none', margin: 0, padding: '12px',
+        display: 'grid', gap: '10px',
+        // Two per row where there is room, one where there is not. The minimum
+        // is what decides it, so no media query and no resize listener.
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))',
+      }}>
+        {cards.map(card => (
+          <PendingDraftRow
+            key={card.id}
+            card={card}
+            checked={selected.has(card.id)}
+            busy={busy}
+            onToggle={() => toggle(card.id)}
+            onRead={() => setReading(card)}
+            onApproveOne={() => openConfirm({ kind: 'one', count: 1, ids: [card.id] })}
+            onDeleteOne={() => onDelete([card], 'single')}
+          />
+        ))}
+      </ul>
+
+      {/* ── Reading one draft in full ── */}
+      {reading && (
+        <ReviewSheet
+          title={reading.test_title}
+          subtitle={`${reading.card_ref} · ${testCategoryLabel(reading.test_category)} · awaiting your approval`}
+          maxWidth="560px"
+          onClose={() => setReading(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  const c = reading
+                  setReading(null)
+                  openConfirm({ kind: 'one', count: 1, ids: [c.id] })
+                }}
+                disabled={busy}
+                className="boe-btn boe-btn-primary"
+                style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                Approve this review
+              </button>
+              {/*
+                DELETING FROM THE FULL VIEW is where a verifier who has just
+                read a bad draft actually is, so the action is offered there —
+                still secondary, still behind its own confirmation.
+              */}
+              <DeleteReviewButton
+                disabled={busy}
+                onClick={() => { const c = reading; setReading(null); onDelete([c], 'single') }}
+              />
+              <button
+                type="button"
+                onClick={() => setReading(null)}
+                className="boe-btn boe-btn-ghost"
+                style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                Close
+              </button>
+            </>
+          }
+        >
+          <ReviewFullView card={reading} canBook={false} bookError={null} />
+        </ReviewSheet>
+      )}
+
+      {/*
+        ── The approval confirmation, and the Add/Replace choice ──
+
+        ONE SHEET FOR ALL THREE APPROVAL SCOPES. Approving a single draft used
+        to be a bare tap; it now goes through here too, because every approval
+        has to answer the same question about the list that is already there.
+        The sheet is the only place that question is asked.
+      */}
+      {confirm && (
+        <ReviewSheet
+          title={confirm.kind === 'all'
+            ? `Approve all ${confirm.count} pending reviews?`
+            : confirm.count === 1
+              ? 'Approve this review?'
+              : `Approve ${confirm.count} selected reviews?`}
+          subtitle={
+            availableCount === null
+              ? undefined
+              : availableCount === 0
+                ? 'Nothing is available to candidates right now'
+                : `${availableCount} review${availableCount === 1 ? ' is' : 's are'} available to candidates right now`
+          }
+          maxWidth="520px"
+          onClose={() => { if (!busy) { setConfirm(null); setMode('add') } }}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={runConfirmed}
+                disabled={busy}
+                className="boe-btn boe-btn-primary"
+                style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                {busy && <Loader2 size={14} strokeWidth={2.4} style={{ animation: 'boe-spin 0.8s linear infinite' }} />}
+                {busy
+                  ? 'Approving…'
+                  // THE PRIMARY ACTION NAMES THE CHOICE, not just the count.
+                  // "Yes, approve 8" reads the same whichever card is ticked,
+                  // and the two outcomes are not the same.
+                  : mode === 'replace'
+                    ? `Approve ${confirm.count} and replace the list`
+                    : `Approve ${confirm.count} and keep the list`}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setConfirm(null); setMode('add') }}
+                disabled={busy}
+                className="boe-btn boe-btn-ghost"
+                style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                Cancel
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
+            {confirm.count === 1 ? 'This review becomes' : `These ${confirm.count} reviews become`} available
+            for any candidate to book and send. Approval cannot be undone from this screen.
+          </p>
+
+          <ApprovalChoiceCards
+            mode={mode}
+            onChange={setMode}
+            approveCount={confirm.count}
+            availableCount={availableCount ?? 0}
+            disabled={busy}
+          />
+
+          <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
+            {confirm.kind === 'all'
+              ? 'Everything still awaiting approval in this batch is released together, or nothing is.'
+              : confirm.count === 1
+                ? 'If it has already been approved by somebody else, nothing changes and you can try again.'
+                : 'The whole selection is approved together, or none of it is — if one of them has already been approved by somebody else, nothing changes and you can try again.'}
+            {mode === 'replace' && ' The replacement happens in the same step, so either both parts happen or neither does.'}
+          </p>
+        </ReviewSheet>
+      )}
+    </section>
+  )
+}
+
+function PendingDraftRow({
+  card, checked, busy, onToggle, onRead, onApproveOne, onDeleteOne,
+}: {
+  card: TestCard
+  checked: boolean
+  busy: boolean
+  onToggle: () => void
+  onRead: () => void
+  onApproveOne: () => void
+  onDeleteOne: () => void
+}) {
+  const preview = card.test_body.length > 130
+    ? `${card.test_body.slice(0, 130).trimEnd()}…`
+    : card.test_body
+
+  return (
+    <li style={{
+      display: 'flex', flexDirection: 'column', gap: '8px',
+      padding: '11px', borderRadius: '9px', minWidth: 0,
+      border: `1px solid ${checked ? '#DDD6FE' : colors.border}`,
+      background: checked ? '#FAF9FF' : colors.raised,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '2px' }}>
+        {/*
+          THE BOX IS 18px; THE THING YOU PRESS IS 44px.
+          A bare checkbox is a 5mm target, which is a target people miss and
+          then press twice. The padded label around it is the hit area, so the
+          control a thumb has to find is comfortable without the tick itself
+          becoming an oversized graphic. `htmlFor` is not needed — the input is
+          inside the label — and the accessible name stays on the input so a
+          screen reader announces which review is being selected.
+        */}
+        <label style={{
+          display: 'inline-flex', alignItems: 'flex-start', justifyContent: 'center',
+          minWidth: '44px', minHeight: '44px', paddingTop: '13px',
+          flexShrink: 0, cursor: 'pointer', marginLeft: '-11px',
+        }}>
+          <input
+            type="checkbox"
+            checked={checked}
+            onChange={onToggle}
+            aria-label={`Select ${card.card_ref}, ${card.test_title}`}
+            style={{ width: '18px', height: '18px' }}
+          />
+        </label>
+        <div style={{ flex: 1, minWidth: 0, paddingTop: '11px' }}>
+          <div style={{ display: 'flex', gap: '7px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', color: colors.tertiary }}>
+              {card.card_ref}
+            </span>
+            <span style={{ fontSize: '10px', color: colors.muted }}>
+              {testCategoryLabel(card.test_category)}
+            </span>
+          </div>
+          <div style={{
+            fontSize: '13px', fontWeight: 600, color: colors.primary,
+            lineHeight: 1.4, overflowWrap: 'anywhere', marginTop: '2px',
+          }}>
+            {card.test_title}
+          </div>
+        </div>
+      </div>
+
+      <InternalTestWarning compact />
+
+      <p style={{
+        margin: 0, fontSize: '12px', color: colors.secondary,
+        lineHeight: 1.55, overflowWrap: 'anywhere',
+      }}>
+        {preview}
+      </p>
+
+      <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '2px', flexWrap: 'wrap' }}>
+        <button
+          type="button"
+          onClick={onRead}
+          className="boe-btn boe-btn-ghost"
+          style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
+        >
+          Read in full
+        </button>
+        <button
+          type="button"
+          onClick={onApproveOne}
+          disabled={busy}
+          className="boe-btn boe-btn-primary"
+          style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
+        >
+          Approve
+        </button>
+        {/*
+          LAST IN THE ROW, AND VISUALLY LIGHTEST. Read in full and Approve are
+          what a verifier presses; Delete is available on every draft without
+          competing with them for the same tap.
+        */}
+        <DeleteReviewButton compact disabled={busy} onClick={onDeleteOne} />
+      </div>
+    </li>
+  )
+}

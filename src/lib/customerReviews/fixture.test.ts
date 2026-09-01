@@ -108,7 +108,27 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
       // available cards — but its batch function carries an INSERT, which is
       // the statement this sweep matches. Named rather than excluded.
       '20261023000000_review_workflow_ai_drafts.sql',
+      // Same again for the replacement generator, and for the reviser — both
+      // carry an INSERT inside a definer function rather than executing one.
+      //
+      // TWO MIGRATIONS ARE DELIBERATELY ABSENT, and their absence is the check
+      // rather than an oversight: 20261025000000 only DELETES, and
+      // 20261027000000 writes only to its own claim table. A data migration
+      // that inserted a card would be exactly the unexplained second inserter
+      // this sweep exists to catch.
+      '20261026000000_review_workflow_batch_approval.sql',
     ])
+  })
+
+  test('and the deletion migration only deletes', () => {
+    const removal = read('supabase/migrations/20261025000000_review_workflow_remove_legacy_test_data.sql')
+    const code = removal.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+    assert.equal(/insert\s+into/i.test(code), false, 'the deletion migration inserts')
+    assert.equal(/\bupdate\s+public\./i.test(code), false, 'the deletion migration updates')
+    assert.equal(/truncate/i.test(code), false, 'the deletion migration truncates')
+    // ONE TABLE, and its children by cascade. Nothing outside this module.
+    const deletes = [...code.matchAll(/delete\s+from\s+([\w.]+)/gi)].map(m => m[1])
+    assert.deepEqual(deletes, ['public.customer_review_test_cards'])
   })
 
   test('and the seed carries no marker guard, because it is a production file', () => {
@@ -167,35 +187,60 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
     const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
     assert.ok(runner.includes(`FIXTURE="${FIXTURE}"`))
 
-    // The step number is derived rather than hard-coded, so adding a step to
-    // the runner is not a test failure — but MISNUMBERING one still is. The
-    // fixture must be the SECOND-TO-LAST step of however many the runner
-    // declares, because the concurrency probe that follows it deliberately runs
+    // ── THE NUMBERING IS NOW COUNTED, NOT WRITTEN ───────────────────────────
+    //
+    // Every step used to carry a hard-coded "n/12" and this test checked that
+    // all of them agreed. The runner gained conditional steps — a legacy state
+    // to build, a refusal to provoke, a screenshot to remove, a second apply to
+    // prove idempotence — so a fixed total became a number that had to be
+    // rewritten by hand on every edit, which is a number that eventually lies.
+    //
+    // What is asserted instead is what the numbering was FOR: that every step
+    // announces itself through the one counter, and that the fixture and the
+    // concurrency probe are the last two, in that order, because the probe runs
     // against a database the fixture has already populated.
-    const total = /══ all (\w+) steps passed/.exec(runner)?.[1]
-    assert.ok(total, 'the runner no longer says how many steps it has')
-    const totals = [...runner.matchAll(/══ \$?\w*\/(\d+)/g)].map(m => m[1])
-    assert.ok(totals.length > 0, 'the runner has no numbered steps at all')
-    assert.equal(new Set(totals).size, 1,
-      `the runner's steps disagree about the total: ${[...new Set(totals)].join(', ')}`)
-    const last = Number(totals[0])
-    assert.ok(runner.includes(`${last - 1}/${last}`),
-      `the fixture is not step ${last - 1} of ${last}`)
+    assert.ok(runner.includes('next_step() { step=$((step + 1));'),
+      'the runner no longer counts its steps')
+    assert.ok(runner.includes('echo "══ all $step steps passed"'),
+      'the runner no longer reports how many steps it ran')
+    assert.equal(/══ \$?\w*\/\d+/.test(runner), false,
+      'a hard-coded step total survives beside the counter')
+
+    const steps = [...runner.matchAll(/^next_step "(.*)"$/gm)].map(m => m[1])
+    assert.ok(steps.length >= 3, `the runner declares only ${steps.length} step(s)`)
+    assert.ok(steps[steps.length - 2].startsWith('$FIXTURE'),
+      `the fixture is not the second-to-last step (it is "${steps[steps.length - 2]}")`)
+    assert.ok(steps[steps.length - 1].startsWith('the one-live-screenshot guarantee'),
+      `the concurrency probe is not the last step (it is "${steps[steps.length - 1]}")`)
 
     // ...and checks that all sixteen landed, rather than assuming.
     assert.ok(runner.includes('the fixture loaded $LOADED card(s), expected 16'))
   })
 
+  test('and the runner exercises the deletion migration both ways', () => {
+    // 20261025000000 is a destructive file whose whole value is its guard, and
+    // a guard nothing ever trips is a guard nobody has tested. The runner
+    // builds the legacy state, watches the migration REFUSE while a screenshot
+    // is attached, removes it, watches the migration succeed, and then applies
+    // it a second time to prove an empty table is a no-op rather than an abort.
+    const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
+    assert.ok(runner.includes('LEGACY_STATE="supabase/tests/_review_workflow_legacy_state_before.sql"'))
+    assert.ok(runner.includes('must REFUSE while a screenshot is attached'))
+    assert.ok(runner.includes("grep -q 'REVIEW_WORKFLOW_LEGACY_SCREENSHOT'"))
+    assert.ok(runner.includes('the refusal deleted rows'))
+    assert.ok(runner.includes('an empty table is a no-op, not an abort'))
+    assert.ok(runner.includes("grep -q 'SKIP  review-workflow legacy data'"))
+    // And the outcome is read from the database rather than from the notice
+    // the migration printed about itself.
+    assert.ok(runner.includes('expected 0|0|0'))
+  })
+
   test('and the step after it proves the screenshot index under real concurrency', () => {
     // The fixture step is followed by a probe that runs two psql PROCESSES at
-    // one card. It is in this file's care because it depends on the runner's
-    // step numbering staying coherent — and because a probe that silently
-    // stopped racing would still print a pass.
+    // one card. That it is LAST is asserted in the test above, where the step
+    // list is read; what is asserted here is that it is still a race — a probe
+    // that silently stopped racing would print a pass either way.
     const runner = read('supabase/tests/run_customer_review_outreach_local.sh')
-    const total = /══ \$?\w*\/(\d+)/.exec(runner)?.[1]
-    assert.ok(total, 'the runner has no numbered steps at all')
-    assert.ok(runner.includes(`${total}/${total}`),
-      `the concurrency probe is not the last (${total}th) step`)
 
     // Two background processes, waited on separately.
     assert.equal((runner.match(/race_insert .*&$/gm) ?? []).length, 2,

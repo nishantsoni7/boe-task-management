@@ -16,7 +16,16 @@ import { ScreenshotManager } from '@/components/customerReviews/ScreenshotManage
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
-import { availableActions, submissionBlockers, type TestCardAction } from '@/lib/customerReviews/status'
+import {
+  availableActions,
+  canDeleteCard,
+  canUnbookCard,
+  submissionBlockers,
+  unbookBlocker,
+  type TestCardAction,
+} from '@/lib/customerReviews/status'
+import { DeleteReviewButton, DeleteReviewsSheet } from '@/components/customerReviews/DeleteReviews'
+import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import {
   TEST_CARD_COLUMNS,
   TEST_CARD_EVENT_COLUMNS,
@@ -60,6 +69,11 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [prompt, setPrompt] = useState<{ action: TestCardAction; text: string } | null>(null)
+  /** Open while the holder is confirming they mean to unbook this review. */
+  const [unbooking, setUnbooking] = useState(false)
+  /** Open while a verifier is confirming they mean to delete this review. */
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const acting = useRef(false)
 
   const load = useCallback(async () => {
@@ -105,6 +119,21 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     // in the database, still readable by anything that queries the database
     // directly. Nothing about who may READ the row has changed.
     if ((cardRow as unknown as TestCard).status === 'verified') {
+      setNotFound(true); setLoading(false); return
+    }
+
+    // A DELETED REVIEW'S URL IS UNAVAILABLE TO EVERYBODY, the verifier who
+    // deleted it included. Same treatment as `verified` above and for the same
+    // reason: the lists cannot reach it, but this route is addressed by id, so
+    // a bookmark or the Back button would otherwise still render the whole
+    // record — which is hiding it rather than removing it.
+    //
+    // A CANDIDATE NEVER GETS THIS FAR. RLS returns them no row at all for a
+    // deleted review, so `!cardRow` has already answered them; this branch is
+    // the verifier case, where the tombstone IS readable. It stays readable to
+    // a direct query, which is what makes it an audit record. What it stops
+    // being is a page in the workflow.
+    if ((cardRow as unknown as TestCard).deleted_at) {
       setNotFound(true); setLoading(false); return
     }
 
@@ -173,6 +202,90 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     }
   }, [supabase, cardId, load])
 
+  /**
+   * Put this review back, before saying it was sent.
+   *
+   * WHAT THE SERVER DOES WITH IT, and why none of it is decided here:
+   * unbook_customer_review_test_card() locks the row, re-checks that the caller
+   * is the holder, that the review is still booked, that no send has been
+   * confirmed and that no screenshot is attached, then clears every booking
+   * field — including the four retained digits of the last recipient — and
+   * appends an `unbooked` entry to the trail. The approval survives, because a
+   * released review is still an approved review.
+   *
+   * A FAILURE LEAVES THE READER HERE. The message is shown on the card they
+   * were already looking at, and the card is reloaded so what is on screen is
+   * what is actually true — which for the common refusal ("you already
+   * confirmed you sent it") is exactly what they need to see.
+   */
+  /**
+   * Take this review out of the workflow.
+   *
+   * A VERIFIER'S ACTION AND NOBODY ELSE'S. delete_customer_review_test_cards()
+   * resolves `verify` from the permission engine, locks the row, refuses a
+   * review that has already been deleted, writes the `deleted` event naming the
+   * stage it was in, and stamps the tombstone. Nothing is physically removed:
+   * the trail and any attached screenshot stay exactly where they are.
+   *
+   * AFTERWARDS THIS PAGE IS GONE. The review's URL becomes unavailable the
+   * moment it is deleted, so there is nothing to return to and the reader is
+   * sent back to the list rather than left on a screen that would immediately
+   * render "not available".
+   */
+  const remove = useCallback(async () => {
+    if (acting.current) return
+    acting.current = true
+    setBusy(true)
+    setDeleteError(null)
+    try {
+      const { error: rpcError } = await supabase.rpc('delete_customer_review_test_cards', {
+        p_card_ids: [cardId],
+        p_source: 'single',
+      })
+      if (rpcError) {
+        // THE SHEET STAYS OPEN. The usual refusal is staleness — somebody
+        // deleted it first — and the sentence explaining that belongs where the
+        // person is looking.
+        setDeleteError(rpcError.message.replace(/^[A-Z_]+:\s*/, '') || 'That review could not be deleted.')
+        return
+      }
+      setDeleting(false)
+      router.push('/customer-reviews')
+    } catch {
+      setDeleteError('That review could not be deleted. Check your connection and try again.')
+    } finally {
+      acting.current = false
+      setBusy(false)
+    }
+  }, [supabase, cardId, router])
+
+  const unbook = useCallback(async () => {
+    if (acting.current) return
+    acting.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      const { error: rpcError } = await supabase.rpc('unbook_customer_review_test_card', {
+        p_card_id: cardId,
+      })
+      if (rpcError) {
+        setError(rpcError.message.replace(/^[A-Z_]+:\s*/, '') || 'That review could not be unbooked.')
+        await load()
+        return
+      }
+      setUnbooking(false)
+      // BACK TO THE LIST, because this card is no longer this person's. Staying
+      // on a page for a review somebody else may already have booked would
+      // leave them looking at controls that have all just disappeared.
+      router.push('/customer-reviews?tab=available')
+    } catch {
+      setError('That review could not be unbooked. Check your connection and try again.')
+    } finally {
+      acting.current = false
+      setBusy(false)
+    }
+  }, [supabase, cardId, load, router])
+
   const runAction = useCallback(async (action: TestCardAction, detail: string | null) => {
     if (acting.current) return
     acting.current = true
@@ -236,6 +349,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   }
 
   const canWorkOnIt = mine && card.status === 'booked'
+  const mayDelete = canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })
 
   return (
     <CustomerReviewsLayout
@@ -245,15 +359,26 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       canVerify={caps.canVerify}
       onSignOut={signOut}
       actions={
-        <button
-          type="button"
-          onClick={() => router.push('/customer-reviews')}
-          className="boe-btn boe-btn-ghost"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Back
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => router.push('/customer-reviews')}
+            className="boe-btn boe-btn-ghost"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            Back
+          </button>
+          {/*
+            THE SECONDARY ACTION AREA IS WHERE THIS BELONGS — beside Back, not
+            among the workflow controls a candidate uses further down. It is
+            rendered only for a resolved `verify` holder, so a candidate never
+            sees it on a review they are holding.
+          */}
+          {mayDelete && (
+            <DeleteReviewButton compact disabled={busy} onClick={() => setDeleting(true)} />
+          )}
+        </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '760px' }}>
@@ -362,6 +487,56 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           </div>
         </Section>
 
+        {/* ── Changed your mind? ──
+          Offered only while the review is genuinely still releasable, and
+          explained rather than hidden when it is not. canUnbookCard() is the
+          browser-side mirror of the definer function, clause for clause; the
+          function re-checks every one of them under a row lock and is what
+          actually refuses.
+
+          IT IS NOT A PRIMARY ACTION. It sits below the work, in ghost styling,
+          because unbooking a review is the exception and sending it is the
+          point — but it is a real control with a text label rather than an
+          unexplained icon, because somebody who booked the wrong review needs
+          to find it.
+        */}
+        {mine && card.status === 'booked' && (
+          <Section title="Not this review?">
+            {canUnbookCard(
+              card,
+              { userId: profile?.id ?? null, canUse: caps.canUse },
+              screenshots.length > 0,
+            ) ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setUnbooking(true)}
+                  disabled={busy}
+                  className="boe-btn boe-btn-ghost"
+                  style={{
+                    fontSize: '13px', padding: '11px 18px', minHeight: '44px',
+                    opacity: busy ? 0.5 : 1, cursor: busy ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Unbook this review
+                </button>
+                <p style={{ fontSize: '11px', color: colors.muted, margin: '7px 0 0', lineHeight: 1.5 }}>
+                  It goes back to Available for somebody else to book. You can do this until
+                  you confirm you sent it — after that it stays yours.
+                </p>
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
+                {unbookBlocker(
+                  card,
+                  { userId: profile?.id ?? null, canUse: caps.canUse },
+                  screenshots.length > 0,
+                ) ?? 'This review can no longer be unbooked.'}
+              </p>
+            )}
+          </Section>
+        )}
+
         {/* ── Step 4 and 5: submit, then somebody verifies ── */}
         {actions.length > 0 && (
           <Section title="Next step">
@@ -391,7 +566,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                     }}
                     className={`boe-btn ${action.destructive ? 'boe-btn-ghost' : 'boe-btn-primary'}`}
                     style={{
-                      fontSize: '13px', padding: '9px 18px', minHeight: '40px',
+                      fontSize: '13px', padding: '9px 18px', minHeight: '44px',
                       color: action.destructive ? colors.red : undefined,
                       opacity: busy || blocked ? 0.5 : 1,
                       cursor: busy || blocked ? 'not-allowed' : 'pointer',
@@ -434,7 +609,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                     }
                     onClick={() => runAction(prompt.action, prompt.text.trim() || null)}
                     className="boe-btn boe-btn-primary"
-                    style={{ fontSize: '13px', padding: '8px 16px', minHeight: '38px' }}
+                    style={{ fontSize: '13px', padding: '8px 16px', minHeight: '44px' }}
                   >
                     {busy ? 'Working…' : prompt.action.label}
                   </button>
@@ -442,7 +617,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
                     type="button"
                     onClick={() => setPrompt(null)}
                     className="boe-btn boe-btn-ghost"
-                    style={{ fontSize: '13px', padding: '8px 16px', minHeight: '38px' }}
+                    style={{ fontSize: '13px', padding: '8px 16px', minHeight: '44px' }}
                   >
                     Cancel
                   </button>
@@ -494,18 +669,85 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           )}
         </Section>
       </div>
+
+      {/*
+        A LIGHTWEIGHT CONFIRMATION, so an accidental tap does not release a
+        booking. It is one sentence and two buttons, not a form: the action is
+        reversible in the sense that the review can be booked again — by
+        anybody, which is the part worth saying out loud.
+      */}
+      {unbooking && (
+        <ReviewSheet
+          title="Unbook this review?"
+          onClose={() => { if (!busy) setUnbooking(false) }}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={unbook}
+                disabled={busy}
+                className="boe-btn boe-btn-primary"
+                style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                {busy ? 'Unbooking…' : 'Yes, unbook it'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnbooking(false)}
+                disabled={busy}
+                className="boe-btn boe-btn-ghost"
+                style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+              >
+                Keep it
+              </button>
+            </>
+          }
+        >
+          <p style={{ margin: 0, fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
+            <strong style={{ color: colors.primary }}>{card.card_ref}</strong> returns to the
+            available pool, and any candidate can book it — including somebody else, straight
+            away. It stays approved; you are giving up the booking, not the review.
+          </p>
+          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
+            The number you last opened WhatsApp for is cleared. What already happened stays on
+            the activity trail below; unbooking a review adds a line to it rather than removing
+            one.
+          </p>
+        </ReviewSheet>
+      )}
+
+      {/*
+        THE SAME SHEET THE LIST USES, so the wording a verifier reads before
+        deleting is identical wherever they started from — and the stage warning
+        for a booked or sent review is written once.
+      */}
+      {deleting && (
+        <DeleteReviewsSheet
+          cards={[card]}
+          busy={busy}
+          error={deleteError}
+          onConfirm={() => { void remove() }}
+          onCancel={() => { setDeleting(false); setDeleteError(null) }}
+        />
+      )}
     </CustomerReviewsLayout>
   )
 }
 
 const EVENT_LABELS: Record<string, string> = {
+  generated:          'Drafted',
+  revised:            'Draft rewritten',
+  approved:           'Approved',
   booked:             'Booked',
+  unbooked:           'Unbooked — back to Available',
   whatsapp_opened:    'WhatsApp opened',
   sent_confirmed:     'Candidate confirmed sent',
   submitted:          'Submitted for verification',
   verified:           'Verified',
   returned:           'Returned to candidate',
   screenshot_removed: 'Screenshot removed',
+  deleted:            'Deleted by a verifier',
+  replaced:           'Replaced by a newer batch',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

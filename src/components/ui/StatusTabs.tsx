@@ -56,18 +56,37 @@ export type StatusTab<K extends string> = {
   count: number | null
 }
 
+/**
+ * How tall a tab is, and it is a per-caller choice rather than a global one.
+ *
+ * `compact` (the default) is the strip Payment Requests, Received Payments and
+ * Order Requests have always had — those are desk tools, and changing their
+ * density is not this module's business.
+ *
+ * `touch` raises every tab to a 44px target for a screen whose PRIMARY audience
+ * is a thumb. Review Workflow is used mainly from a phone, where its tab strip
+ * is the whole navigation: at 35px it was under the comfortable minimum the
+ * module holds every one of its own controls to. Adding a prop was the smallest
+ * change that fixes it without moving Finance and Orders — the default is
+ * byte-identical to what they render today.
+ */
+export type StatusTabSize = 'compact' | 'touch'
+
 export function StatusTabs<K extends string>({
   tabs,
   active,
   onSelect,
   summary,
+  size = 'compact',
 }: {
   tabs: StatusTab<K>[]
   active: K
   onSelect: (key: K) => void
   /** Small muted result count, right-aligned and outside the scroll area. */
   summary?: string
+  size?: StatusTabSize
 }) {
+  const touch = size === 'touch'
   return (
     <div style={{
       display: 'flex', alignItems: 'stretch', gap: '12px',
@@ -87,7 +106,10 @@ export function StatusTabs<K extends string>({
               aria-pressed={isActive}
               style={{
                 display: 'flex', alignItems: 'center', gap: '5px',
-                padding: '8px 8px 7px', border: 'none',
+                // The touch size raises the HIT AREA and leaves the type alone:
+                // a taller tab is easier to press, a bigger one is just louder.
+                minHeight: touch ? '44px' : undefined,
+                padding: touch ? '10px 11px 9px' : '8px 8px 7px', border: 'none',
                 background: isActive ? accent.tint : 'transparent',
                 borderRadius: '6px 6px 0 0',
                 borderBottom: `2px solid ${isActive ? accent.color : 'transparent'}`,

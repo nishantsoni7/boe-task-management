@@ -81,17 +81,39 @@ describe('the endpoint', () => {
       }
       return out
     }
-    // THREE routes, and naming each is the point: a fourth appearing without
+    // FOUR routes, and naming each is the point: a fifth appearing without
     // anybody noticing is what this assertion exists to catch. The upload route
     // is the only writer of an image; the whatsapp route is the only builder of
     // a wa.me link. Neither is a general service.
     const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
-    assert.equal(routes.length, 3, `unexpected routes: ${routes.join(', ')}`)
+    assert.equal(routes.length, 4, `unexpected routes: ${routes.join(', ')}`)
     assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
-    // The generation route: the only caller of a model, and the only one that
-    // needs the resolved verify permission rather than use.
+    // The two that call a model, and the only two that need the resolved verify
+    // permission rather than use. They exist as routes for one reason:
+    // ANTHROPIC_API_KEY, which a browser must never hold.
     assert.ok(routes.some(r => r.endsWith('customer-reviews/generate/route.ts')))
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/revise/route.ts')))
+  })
+
+  test('and APPROVING adds no route at all', () => {
+    // Approving and releasing take their actor from auth.uid() and name no
+    // user, so there is nothing for a server to establish that the database
+    // cannot establish for itself. They are RPCs the browser calls directly,
+    // through RLS and a definer function — the same shape as booking. A route
+    // in front of them would be a layer with no question to answer.
+    const list = readFileSync(
+      join(ROOT, 'src/app/customer-reviews/TestCardListScreen.tsx'), 'utf8',
+    ).replace(/\r\n/g, '\n')
+    assert.ok(list.includes("'approve_customer_review_drafts'"))
+    assert.ok(list.includes("'approve_customer_review_draft_batch'"))
+    assert.equal(/fetch\('\/api\/customer-reviews\/approve/.test(list), false)
+
+    const detail = readFileSync(
+      join(ROOT, 'src/app/customer-reviews/[id]/TestCardDetailScreen.tsx'), 'utf8',
+    ).replace(/\r\n/g, '\n')
+    assert.ok(detail.includes("supabase.rpc('unbook_customer_review_test_card'"))
+    assert.equal(/fetch\('\/api\/customer-reviews\/unbook/.test(detail), false)
   })
 
   test('and it is the only place the client posts a file', () => {

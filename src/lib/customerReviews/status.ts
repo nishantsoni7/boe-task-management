@@ -23,6 +23,14 @@ import type { TestCard, TestCardStatus } from './types'
 export const TEST_CARD_TRANSITIONS: Readonly<
   Record<TestCardStatus, readonly TestCardStatus[]>
 > = {
+  // APPROVAL IS NOT IN THIS TABLE EITHER, and for the same reason booking is
+  // not: it moves a card through its own RPC, which locks every selected row
+  // and rechecks it before writing. transition_customer_review_test_card()
+  // reads one row, then locks it, then decides — one lock too late for a move
+  // that must be atomic across a set. Listing pending_approval -> available
+  // here would invite a future caller to route it through the generic function
+  // and quietly lose the atomicity.
+  pending_approval: [],
   // Booking is NOT in this table. It happens through its own RPC, which claims
   // the row with a conditional UPDATE so two testers cannot both take one card.
   // Listing it here as an ordinary transition would invite a future caller to
@@ -114,6 +122,11 @@ export type TestCardAction = {
 }
 
 const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
+  // Neither of these is ever offered — no status in the table above lists them
+  // as a destination — and they are here because the record is exhaustive over
+  // TestCardStatus, which is how a new status added later shows up as a
+  // compile error rather than as a missing button.
+  pending_approval: { to: 'pending_approval', label: 'Return to drafting' },
   available: { to: 'available', label: 'Release' },
   // The wording carries the point: the tester is handing over what THEY did.
   submitted: { to: 'submitted', label: 'Submit for verification' },
@@ -139,10 +152,15 @@ const ACTION_LABELS: Record<TestCardStatus, TestCardAction> = {
  * is what actually refuses.
  */
 export function availableActions(
-  card: Pick<TestCard, 'status' | 'booked_by'>,
+  card: Pick<TestCard, 'status' | 'booked_by' | 'deleted_at'>,
   viewer: { userId: string | null; canUse: boolean; canVerify: boolean },
 ): TestCardAction[] {
   if (!viewer.userId) return []
+  // A DELETED REVIEW HAS LEFT THE WORKFLOW, so it offers no move to anybody —
+  // not to its holder, and not to the verifier who can still read the
+  // tombstone. transition_customer_review_test_card() refuses all three moves
+  // outright; this is the mirror that stops a button being drawn for them.
+  if (card.deleted_at) return []
 
   const holdsCard = card.booked_by === viewer.userId
 
@@ -167,10 +185,223 @@ export function availableActions(
  * UPDATE in the database, and by nothing in this file.
  */
 export function canBookCard(
-  card: Pick<TestCard, 'status'>,
+  card: Pick<TestCard, 'status' | 'deleted_at'>,
   viewer: { userId: string | null; canUse: boolean },
 ): boolean {
   if (!viewer.userId) return false
+  // A PENDING DRAFT IS NOT BOOKABLE, and `status !== 'available'` already says
+  // so — pending is a different status, so no extra clause is needed and none
+  // was added. A candidate cannot see a pending row at all; this is the case
+  // where a verifier is looking at one.
   if (card.status !== 'available') return false
+  // A DELETED REVIEW NEEDS ITS OWN CLAUSE, and this is the one place in the
+  // module where that is true rather than tidy. Soft deletion does NOT move the
+  // status: a deleted review that was available still reads 'available', so the
+  // check above passes it. The database says the same thing twice for the same
+  // reason — `and deleted_at is null` sits in the conditional UPDATE that claims
+  // the row, because `where status = 'available'` would otherwise match it.
+  if (card.deleted_at) return false
   return viewer.canUse
+}
+
+/**
+ * May this person release the booking they are holding?
+ *
+ * THE BROWSER-SIDE MIRROR OF unbook_customer_review_test_card(), one clause per
+ * clause, and it decides what button to draw and nothing else. The database
+ * re-checks every line of it under a row lock and is what actually refuses.
+ *
+ * FOUR CONDITIONS, and the third is the one the whole action turns on:
+ *
+ *   1. THE HOLDER, and nobody else. Not a colleague, not a verifier, not an
+ *      administrator. A verifier's authority over somebody else's card is the
+ *      RETURN path, which needs a reason and leaves the card with its holder.
+ *   2. `use`, because releasing a booking is a candidate action like taking one.
+ *   3. NOT YET CONFIRMED SENT. Once a person has stated that a message left
+ *      their phone, that claim exists and cannot be withdrawn — and releasing
+ *      the review would let somebody else book one that has already reached a
+ *      real recipient.
+ *   4. Still `booked`. A submitted card is out of the holder's hands.
+ *
+ * `hasLiveScreenshot` is a fifth condition the DATABASE also enforces, and it
+ * is passed in rather than read from the card because it lives in another
+ * table. Releasing a card with somebody's WhatsApp screen still attached would
+ * show that image to every `use` holder, because an available card's
+ * screenshots are readable by the whole pool.
+ */
+export function canUnbookCard(
+  card: Pick<TestCard, 'status' | 'booked_by' | 'sent_confirmed_at' | 'deleted_at'>,
+  viewer: { userId: string | null; canUse: boolean },
+  hasLiveScreenshot: boolean = false,
+): boolean {
+  // A DELETED REVIEW CANNOT GO BACK INTO A POOL IT HAS LEFT. Unbooking returns
+  // a card to 'available', which is exactly the state a deleted review must
+  // never re-enter, so this is refused before anything else is considered.
+  if (card.deleted_at) return false
+  // A RETURNED REVIEW IS NOT AN ORDINARY BOOKING, and it is refused by the
+  // send-confirmation clause below rather than by a rule of its own — because
+  // it CANNOT reach the returned state without one. Submitting requires
+  // sent_confirmed_at (assert_customer_review_test_card_submittable), a return
+  // is submitted -> booked, and sent_confirmed_at is never cleared while a card
+  // is held. So `returned` always implies `sent`, and a review that has been
+  // sent to a real recipient must never go back into the pool for somebody else
+  // to send again. unbookBlocker() names the returned case separately, because
+  // "you confirmed you sent it" is true but is not what the holder is looking at.
+  if (!viewer.userId) return false
+  if (!viewer.canUse) return false
+  if (card.booked_by !== viewer.userId) return false
+  if (card.status !== 'booked') return false
+  if (card.sent_confirmed_at) return false
+  if (hasLiveScreenshot) return false
+  return true
+}
+
+/**
+ * Why the Release control is not offered, as a sentence the holder can act on.
+ *
+ * Returns null when it IS offered. Separate from canUnbookCard() because a
+ * disabled control that does not say why is a control people click twice: the
+ * two answers a holder actually gets are "you already said you sent it" and
+ * "take the screenshot off first", and both are things they can understand.
+ */
+export function unbookBlocker(
+  card: Pick<TestCard, 'status' | 'booked_by' | 'sent_confirmed_at' | 'returned_at'>,
+  viewer: { userId: string | null; canUse: boolean },
+  hasLiveScreenshot: boolean = false,
+): string | null {
+  if (!viewer.userId || !viewer.canUse) return null
+  if (card.booked_by !== viewer.userId || card.status !== 'booked') return null
+
+  // THE RETURNED CASE IS NAMED FIRST, and it is a wording distinction rather
+  // than a behavioural one. A returned review is refused for the same reason as
+  // any sent one — it reached a real recipient — but a holder looking at a card
+  // a verifier just handed back is not thinking about the send they made
+  // yesterday. Telling them "you confirmed you sent it" is true and unhelpful;
+  // telling them the card is theirs to finish is what they can act on.
+  if (card.returned_at && card.sent_confirmed_at) {
+    return 'A verifier sent this review back to you to finish, so it cannot be unbooked. Attach the evidence and submit it again.'
+  }
+  if (card.sent_confirmed_at) {
+    return 'You confirmed you sent this review, so it can no longer be unbooked.'
+  }
+  if (hasLiveScreenshot) {
+    return 'Remove the screenshot you attached before unbooking this review.'
+  }
+  return null
+}
+
+/**
+ * May this person approve pending drafts?
+ *
+ * `verify`, resolved, and nothing else — the browser-side mirror of
+ * approve_customer_review_drafts(). There is no administrator branch here for
+ * the same reason there is none in the function: an administrator whose
+ * `verify` was revoked in Control Center would otherwise be drawn a button the
+ * database answers 42501.
+ */
+export function canApproveDrafts(viewer: { userId: string | null; canVerify: boolean }): boolean {
+  return !!viewer.userId && viewer.canVerify
+}
+
+// ─── Deletion ─────────────────────────────────────────────────────────────────
+
+/**
+ * May this person delete reviews?
+ *
+ * `verify`, resolved, and nothing else — the browser-side mirror of
+ * delete_customer_review_test_cards(). A CANDIDATE NEVER CAN, at any stage,
+ * including a review they are holding: releasing one is unbooking, which is
+ * theirs; removing one from the workflow is a verifier's judgement about the
+ * text, which is not.
+ *
+ * There is no administrator branch, for the same reason there is none in the
+ * function: an administrator whose `verify` was revoked in Control Center would
+ * otherwise be drawn a button the database answers 42501.
+ */
+export function canDeleteCard(viewer: { userId: string | null; canVerify: boolean }): boolean {
+  return !!viewer.userId && viewer.canVerify
+}
+
+/**
+ * How far into somebody else's work this deletion reaches.
+ *
+ *   'unstarted'  nobody has taken it. Deleting costs nothing but the draft.
+ *   'held'       a candidate is holding it right now.
+ *   'sent'       a candidate has stated they SENT it to a real person, or the
+ *                evidence is already in front of a verifier.
+ *
+ * This is what decides how hard the confirmation should be to get past. It is a
+ * presentation decision and nothing more: the database allows the deletion at
+ * every stage, because the requirement is that a verifier can delete a review
+ * in any stage. Making the wording heavier is how the interface refuses to let
+ * that happen absent-mindedly.
+ */
+export type DeletionSeverity = 'unstarted' | 'held' | 'sent'
+
+export function deletionSeverity(
+  card: Pick<TestCard, 'status' | 'sent_confirmed_at'>,
+): DeletionSeverity {
+  if (card.status === 'submitted' || card.status === 'verified') return 'sent'
+  if (card.sent_confirmed_at) return 'sent'
+  if (card.status === 'booked') return 'held'
+  return 'unstarted'
+}
+
+/**
+ * What deleting THIS review actually costs somebody, as a sentence.
+ *
+ * Returns null when there is nothing beyond the draft to lose. Every non-null
+ * answer names a PERSON'S WORK rather than a state name, because "this is
+ * booked" does not tell a verifier what they are about to do to a colleague.
+ */
+export function deletionWarning(
+  card: Pick<TestCard, 'status' | 'sent_confirmed_at'>,
+): string | null {
+  switch (deletionSeverity(card)) {
+    case 'sent':
+      return card.status === 'submitted'
+        ? 'A candidate has already sent this review and submitted their evidence for verification. Deleting it removes it from their workflow and from the verification queue.'
+        : card.status === 'verified'
+          ? 'This review was sent and verified. Deleting it removes the finished record from the module; the audit trail and the screenshot are kept.'
+          : 'A candidate has confirmed they SENT this review to a real recipient. Deleting it cannot unsend that message — it only removes the review from the module.'
+    case 'held':
+      return 'A candidate is holding this review right now. It will disappear from their workflow without warning, and they will not be able to finish it.'
+    default:
+      return null
+  }
+}
+
+/**
+ * The two ways newly approved drafts can meet the list that is already there.
+ *
+ *   'add'      the approvals join the current available reviews.
+ *   'replace'  the current available reviews are soft-deleted in the same
+ *              transaction, and only the new ones remain bookable.
+ *
+ * ASKED AT APPROVAL, NOT AT GENERATION. The verifier has to have read the
+ * drafts — and possibly revised them — before choosing what to do with the
+ * list; asking when the model returns would make them commit before reading a
+ * word of what it wrote.
+ *
+ * ASKED EVERY TIME. A second approval from the same batch asks again, against
+ * the state that exists then. Nothing remembers the previous answer, because a
+ * remembered Replace is a Replace nobody is looking at.
+ */
+export type ApprovalMode = 'add' | 'replace'
+
+/**
+ * What a Replace would displace, given what is currently available.
+ *
+ * The count is a live read rather than a stored one, and the modal says so:
+ * between the confirmation and the write it can move, and the database returns
+ * what it actually deleted. This number is what the verifier is looking at, not
+ * a promise about what will happen.
+ */
+export function replacementSummary(availableCount: number): string {
+  if (availableCount === 0) {
+    return 'Nothing is available right now, so there is nothing to replace — this behaves exactly like adding.'
+  }
+  return availableCount === 1
+    ? 'The 1 review that is currently available is deleted in the same step.'
+    : `The ${availableCount} reviews that are currently available are deleted in the same step.`
 }
