@@ -228,8 +228,8 @@ export function TestCardListScreen() {
     //
     // TWO MORE REQUESTS, NOT ONE PER CARD. The batch ids are collected from the
     // rows already in hand and asked for with a single `in`, and the people who
-    // generated them with a second — so eight drafts from one batch cost the
-    // same two requests as eight drafts from eight batches would.
+    // generated them with a second — so twelve drafts from one batch cost the
+    // same two requests as twelve drafts from twelve batches would.
     if (tab === 'pending' && result.rows.length > 0) {
       const batchIds = Array.from(new Set(
         result.rows.map(r => r.batch_id).filter((id): id is string => !!id),
@@ -682,6 +682,7 @@ export function TestCardListScreen() {
           </div>
         ) : tab === 'pending' ? (
           <PendingBatches
+            supabase={supabase}
             cards={filtered}
             batches={batches}
             actorNames={actorNames}
@@ -691,6 +692,7 @@ export function TestCardListScreen() {
             onApproveBatch={approveBatch}
             onDelete={openDelete}
             onRevised={() => { void load(); void loadPendingCount() }}
+            onCardChanged={() => { void load(); void loadPendingCount() }}
           />
         ) : (
           <div

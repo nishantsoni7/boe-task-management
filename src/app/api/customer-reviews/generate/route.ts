@@ -1,4 +1,4 @@
-// POST /api/customer-reviews/generate — one batch of eight review drafts.
+// POST /api/customer-reviews/generate — one batch of twelve review drafts.
 //
 // THE ONLY PLACE A MODEL IS CALLED FOR THIS MODULE, together with its revision
 // twin, and both are server routes for one reason: ANTHROPIC_API_KEY. The
@@ -68,8 +68,17 @@ const fail = (status: number, error: string) =>
 const ok = (body: Record<string, unknown>) =>
   NextResponse.json(body, { status: 200, headers: { 'Cache-Control': 'no-store, private' } })
 
-/** Eight reviews plus JSON scaffolding, with room to spare. */
-const MAX_TOKENS = 4000
+/**
+ * Twelve reviews plus JSON scaffolding, with room to spare.
+ *
+ * SIZED PER DRAFT, NOT PICKED. Five hundred tokens each is what eight drafts
+ * were given, and twelve get the same, because the failure this number guards
+ * against is not a dull batch — it is a reply cut off mid-array. A truncated
+ * reply is invalid JSON, validateDrafts refuses the whole batch, and the
+ * provider call has already been paid for. Raising the count without raising
+ * this would have made that the ordinary outcome rather than a rare one.
+ */
+const MAX_TOKENS = 6000
 
 /**
  * How long a claim is held before another caller may take it over.

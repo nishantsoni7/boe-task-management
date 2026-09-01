@@ -13,6 +13,10 @@ import {
 } from '@/components/customerReviews/ReviewPieces'
 import { maskFromLastFour } from '@/lib/customerReviews/contact'
 import { ScreenshotManager } from '@/components/customerReviews/ScreenshotManager'
+import { ReviewImageManager } from '@/components/customerReviews/ReviewImageManager'
+import { ShareReviewButton } from '@/components/customerReviews/ShareReview'
+import { DraftEditedNote } from '@/components/customerReviews/EditDraft'
+import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
@@ -63,6 +67,16 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
   const [card, setCard] = useState<TestCard | null>(null)
   const [screenshots, setScreenshots] = useState<TestCardPhoto[]>([])
+  /**
+   * The review's own images, kept apart from the test screenshot.
+   *
+   * ONE QUERY, TWO LISTS, and the split matters. Both kinds live in one table,
+   * so the query returns both — and the screenshot count is what
+   * submissionBlockers() reads to decide whether a card may be handed to a
+   * verifier. Letting a review image count towards that would let a candidate
+   * submit a test they never took a screenshot of.
+   */
+  const [reviewImages, setReviewImages] = useState<TestCardPhoto[]>([])
   const [events, setEvents] = useState<TestCardEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
@@ -139,7 +153,16 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
     setError(null)
     setCard(cardRow as unknown as TestCard)
-    setScreenshots((shots ?? []) as unknown as TestCardPhoto[])
+    const photos = (shots ?? []) as unknown as TestCardPhoto[]
+    // A row marked for removal is already gone as far as every reader is
+    // concerned, which is the filter the rest of the module applies too.
+    const live = photos.filter(photo => photo.removal_started_at === null)
+    setScreenshots(live.filter(photo => photo.kind !== REVIEW_IMAGE_KIND))
+    setReviewImages(
+      live
+        .filter(photo => photo.kind === REVIEW_IMAGE_KIND)
+        .sort((a, b) => (a.image_slot ?? 0) - (b.image_slot ?? 0)),
+    )
     setEvents((trail ?? []) as unknown as TestCardEvent[])
     setLoading(false)
   }, [supabase, profile, cardId])
@@ -416,12 +439,66 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           }}>
             {card.test_body}
           </p>
+          {/*
+            THE PROVENANCE SENTENCE, CORRECTED.
+            It used to end "and cannot be edited — not by you, not by an
+            administrator, and not through any screen in BOE." That stopped
+            being true when a verifier gained the ability to correct a draft
+            before approving it, and a sentence that promises immutability on a
+            screen where the text may have been rewritten is worse than no
+            sentence. What IS still true is the narrow thing: the window closes
+            at approval, so the text on this page — which is approved or later —
+            is final.
+          */}
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
             This draft was written by AI for a customer to use, adapt or discard. It is not a
-            record of anything that happened, is not attributed to anybody, and cannot be edited —
-            not by you, not by an administrator, and not through any screen in BOE.
+            record of anything that happened and is not attributed to anybody.
+            {card.draft_edited_at
+              ? ' A verifier edited it before approving it.'
+              : ' It is exactly as it was generated.'}
+            {' '}Now that it is approved its text is final and cannot be edited — not by you,
+            not by an administrator, and not through any screen in BOE.
           </p>
+          {card.draft_edited_at && (
+            <div style={{ marginTop: '8px' }}><DraftEditedNote card={card} /></div>
+          )}
         </Section>
+
+      {/*
+        ── The review's own images, and sharing them ──
+
+        NOT THE SCREENSHOT SECTION, and deliberately far from it. A screenshot
+        is evidence a candidate produced about their own screen; these are
+        photographs of furniture that go OUT with the review. Putting them in
+        one section would invite somebody to share the evidence by mistake.
+
+        THE IMAGES ARE READ-ONLY HERE. Every card this page can render is
+        approved or later — a pending draft is edited from the verifier's
+        workspace, and the server refuses an attach or a removal once a review
+        is approved. `canEdit={false}` says so on screen instead of drawing a
+        control the database would answer 409.
+
+        SHARING IS OFFERED ONLY FOR AN APPROVED REVIEW. ShareReviewButton asks
+        isShareableReview() and renders nothing at all when the answer is no —
+        not a disabled button, which is a thing somebody would try to enable.
+        It hands the text and the files to the operating system's share sheet;
+        the person picks WhatsApp, picks a recipient and presses send. Nothing
+        here sends anything, and no copy on this screen says it does.
+      */}
+      {(reviewImages.length > 0 || card.approved_at) && (
+        <Section title="Review images">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <ReviewImageManager
+              supabase={supabase}
+              cardId={card.id}
+              images={reviewImages}
+              onChanged={load}
+              canEdit={false}
+            />
+            <ShareReviewButton supabase={supabase} card={card} images={reviewImages} />
+          </div>
+        </Section>
+      )}
 
         {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
@@ -737,6 +814,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 const EVENT_LABELS: Record<string, string> = {
   generated:          'Drafted',
   revised:            'Draft rewritten',
+  draft_edited:       'Draft edited by a verifier',
   approved:           'Approved',
   booked:             'Booked',
   unbooked:           'Unbooked — back to Available',
@@ -746,6 +824,7 @@ const EVENT_LABELS: Record<string, string> = {
   verified:           'Verified',
   returned:           'Returned to candidate',
   screenshot_removed: 'Screenshot removed',
+  image_removed:      'Review image removed',
   deleted:            'Deleted by a verifier',
   replaced:           'Replaced by a newer batch',
 }

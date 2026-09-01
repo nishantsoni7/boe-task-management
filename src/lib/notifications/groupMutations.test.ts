@@ -289,6 +289,9 @@ describe('34/35. no regression into suppressed territory', () => {
       '20261029000000_asset_handover_acknowledgement.sql',
       // Verifier deletion, and the Add-versus-Replace choice at approval.
       '20261030000000_review_workflow_deletion_and_replacement.sql',
+      // Twelve drafts a batch, editing a pending draft before approval, and up
+      // to four review images. It touches only this module's own tables.
+      '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

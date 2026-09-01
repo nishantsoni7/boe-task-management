@@ -85,6 +85,8 @@ const card = (over: Partial<TestCard> = {}): TestCard => ({
   batch_id: 'batch-1',
   approved_at: null,
   approved_by: null,
+  draft_edited_at: null,
+  draft_edited_by: null,
   booked_by: null,
   booked_at: null,
   whatsapp_opened_at: null,

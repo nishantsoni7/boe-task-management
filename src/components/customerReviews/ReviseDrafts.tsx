@@ -18,7 +18,7 @@ import { MAX_GUIDANCE } from '@/lib/customerReviews/draftGeneration'
 // the count has moved since this screen read it.
 //
 // WHY THE COUNT IS ON THE BUTTON. "Revise pending reviews" on a batch where six
-// of eight are already approved would read as though it rewrites eight. It says
+// of twelve are already approved would read as though it rewrites twelve. It says
 // two, and the confirmation says two again, because the number is the entire
 // difference between what a verifier expects and what happens.
 //

@@ -81,14 +81,23 @@ describe('the endpoint', () => {
       }
       return out
     }
-    // FOUR routes, and naming each is the point: a fifth appearing without
-    // anybody noticing is what this assertion exists to catch. The upload route
-    // is the only writer of an image; the whatsapp route is the only builder of
-    // a wa.me link. Neither is a general service.
+    // SIX routes, and naming each is the point: a seventh appearing without
+    // anybody noticing is what this assertion exists to catch. The photos route
+    // is the only writer of a test screenshot; the images route is the only
+    // writer of a review image; the whatsapp route is the only builder of a
+    // wa.me link. None of them is a general service.
     const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
-    assert.equal(routes.length, 4, `unexpected routes: ${routes.join(', ')}`)
+    assert.equal(routes.length, 6, `unexpected routes: ${routes.join(', ')}`)
     assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
+    // Review images: the same byte pipeline as photos, a different
+    // authorisation entirely — `verify` on a draft that is still pending,
+    // rather than `use` on a card the caller holds.
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/images/route.ts')))
+    // Editing a pending draft. It calls no model and holds no credential; it is
+    // a route because the write goes through a definer function that must not
+    // be reachable from a browser.
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/draft/route.ts')))
     // The two that call a model, and the only two that need the resolved verify
     // permission rather than use. They exist as routes for one reason:
     // ANTHROPIC_API_KEY, which a browser must never hold.

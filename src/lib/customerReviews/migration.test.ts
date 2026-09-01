@@ -90,6 +90,10 @@ describe('the migration is one file, correctly sequenced', () => {
       '20261029000000_asset_handover_acknowledgement.sql',
       // Verifier deletion, and the Add-versus-Replace choice at approval.
       '20261030000000_review_workflow_deletion_and_replacement.sql',
+      // Twelve drafts a batch, editing a pending draft, and up to four review
+      // images. It widens this file's kind check and rebuilds two of its
+      // indexes; it creates none of the tables asserted below.
+      '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
     ])
   })
 

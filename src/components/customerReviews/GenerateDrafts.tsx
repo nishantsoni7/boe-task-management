@@ -23,7 +23,7 @@ import { DRAFTS_PER_BATCH, MAX_GUIDANCE } from '@/lib/customerReviews/draftGener
 // THE POOL RULE IS GONE. The button used to be disabled until every available
 // review had been booked, because a generated draft went straight to
 // candidates and scarcity was the only brake. Approval is the brake now:
-// eight drafts land in Pending approval, where no candidate can see them.
+// twelve drafts land in Pending approval, where no candidate can see them.
 //
 // WHAT IT STILL DOES NOT DO. No editing of a draft, no regeneration of a single
 // one, no scheduling, no history, no filters. One button, one batch, one

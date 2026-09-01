@@ -178,7 +178,21 @@ export type TestCategory = (typeof TEST_CATEGORIES)[number]
  * WORKFLOW was exercised. IT IS NOT EVIDENCE OF A REVIEW, and nothing in this
  * module treats it as such — there is no review to be evidence of.
  */
-export type TestPhotoKind = 'test_screenshot'
+/**
+ * TWO KINDS NOW, and they are genuinely different things sharing one table.
+ *
+ *   test_screenshot  a picture of BOE's own WhatsApp screen, attached by the
+ *                    tester holding a booked card. Evidence that the workflow
+ *                    was exercised. It goes nowhere.
+ *   review_image     a picture of the furniture a review is about, attached by
+ *                    a VERIFIER while the draft is still pending, kept after
+ *                    approval, and offered to whoever shares the review.
+ *
+ * They share a table and a private bucket because the storage question — may
+ * this person see this card — has one answer for both. They share nothing else:
+ * different permission, different window, different route.
+ */
+export type TestPhotoKind = 'test_screenshot' | 'review_image'
 
 // ─── Rows ─────────────────────────────────────────────────────────────────────
 
@@ -205,6 +219,19 @@ export type TestCard = {
    */
   approved_at: string | null
   approved_by: string | null
+  /**
+   * When a verifier last edited this draft's words by hand, and who did.
+   *
+   * BOTH OR NEITHER — a CHECK enforces it, because a timestamp with no actor is
+   * an edit nobody is answerable for. Null on a draft that is still exactly
+   * what the model produced.
+   *
+   * IT IS SHOWN, NOT MERELY STORED. A draft that has been edited is no longer
+   * untouched AI text, and the screens say so rather than letting the
+   * AI-generated label stand alone and imply otherwise.
+   */
+  draft_edited_at: string | null
+  draft_edited_by: string | null
 
   booked_by: string | null
   booked_at: string | null
@@ -273,6 +300,15 @@ export type TestCardPhoto = {
   id: string
   card_id: string
   kind: TestPhotoKind
+  /**
+   * Which of the four places a review image occupies, 0 to 3.
+   *
+   * Null for a test screenshot, which has no slot because there is only ever
+   * one. For a review image it is what makes "at most four" a unique index over
+   * (card_id, image_slot) rather than a count somebody has to remember to take
+   * before every insert — see customer_review_image_one_live_per_slot.
+   */
+  image_slot: number | null
   storage_path: string
   file_name: string
   mime_type: string
@@ -288,6 +324,14 @@ export type TestCardEventType =
   | 'generated'
   /** Its title and body were regenerated from new guidance, while pending. */
   | 'revised'
+  /**
+   * A verifier typed over this draft's title and body before approving it.
+   *
+   * Distinct from 'revised', which is a model rewriting a whole batch from new
+   * guidance. This one is a person changing one review's words, and the two are
+   * separate types because "who wrote this sentence" has different answers.
+   */
+  | 'draft_edited'
   /** A verifier released it into the candidate pool. */
   | 'approved'
   | 'booked'
@@ -300,6 +344,8 @@ export type TestCardEventType =
   | 'returned'
   /** An administrator withdrew an attached screenshot. Written by a trigger. */
   | 'screenshot_removed'
+  /** A verifier withdrew an attached review image. Written by the same trigger. */
+  | 'image_removed'
   /**
    * A verifier deleted this review. `previous_status` names where it was, and
    * that is the point of the row: it is the only record of what was thrown
@@ -338,6 +384,8 @@ export const TEST_CARD_COLUMNS = [
   'batch_id',
   'approved_at',
   'approved_by',
+  'draft_edited_at',
+  'draft_edited_by',
   'booked_by',
   'booked_at',
   'whatsapp_opened_at',
@@ -452,7 +500,7 @@ export const DRAFT_BATCH_REVISION_COLUMNS =
   'id, batch_id, revised_by, revised_at, guidance, model, revised_count'
 
 export const TEST_CARD_PHOTO_COLUMNS =
-  'id, card_id, kind, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at, removal_started_at'
+  'id, card_id, kind, image_slot, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at, removal_started_at'
 
 export const TEST_CARD_EVENT_COLUMNS =
   'id, card_id, event_type, previous_status, new_status, detail, actor_id, created_at'
