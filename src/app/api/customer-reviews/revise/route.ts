@@ -7,7 +7,7 @@
 //
 // WHAT A REVISION IS, AND WHAT IT IS CAREFULLY NOT
 //
-// A verifier reads eight drafts, decides the set is not right, and asks again
+// A verifier reads twelve drafts, decides the set is not right, and asks again
 // with different feedback. It replaces the TITLE AND BODY of every draft in
 // that batch THAT IS STILL PENDING APPROVAL, and touches nothing else:
 //
@@ -238,7 +238,7 @@ export async function POST(req: Request) {
         const rows = pending ?? []
         if (rows.length === 0) return { ok: false as const, reason: 'nothing_pending' as const }
         if (rows.length > DRAFTS_PER_BATCH) {
-          // Not reachable through the product — a batch holds eight — but a
+          // Not reachable through the product — a batch holds twelve — but a
           // bounded prompt is a bounded prompt whatever put the rows there.
           console.error('[customer-reviews:revise] batch holds', rows.length, 'pending drafts')
           return { ok: false as const, reason: 'unavailable' as const }

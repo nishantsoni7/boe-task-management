@@ -53,3 +53,9 @@ test-results/
 
 # the approved studio reference — a licensed provider asset, never in git
 assets/image-editor/studio-reference.png
+
+# Local Supabase stack config. Deliberately not committed: its ports are
+# per-machine, and supabase/tests/run_*_local.sh tell you to create it with
+# `npx supabase init` and to disable [db.migrations] before starting.
+supabase/config.toml
+supabase/.branches

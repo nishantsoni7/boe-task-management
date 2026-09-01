@@ -319,6 +319,9 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       '20261029000000_asset_handover_acknowledgement.sql',
       // Verifier deletion, and the Add-versus-Replace choice at approval.
       '20261030000000_review_workflow_deletion_and_replacement.sql',
+      // Twelve drafts a batch, editing a pending draft before approval, and up
+      // to four review images. Touches only the Review Workflow's own tables.
+      '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
     ])
   })
 

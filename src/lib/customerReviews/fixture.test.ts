@@ -117,6 +117,10 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
       // that inserted a card would be exactly the unexplained second inserter
       // this sweep exists to catch.
       '20261026000000_review_workflow_batch_approval.sql',
+      // The twelve-draft generator. Same shape as the two above: the INSERT is
+      // inside create_customer_review_draft_batch(), not executed by the
+      // migration, which inserts no card of its own.
+      '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
     ])
   })
 

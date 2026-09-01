@@ -34,16 +34,26 @@ export type GeneratedDraft = {
 }
 
 /**
- * EIGHT, and it used to be twenty.
+ * TWELVE. It was twenty, then eight.
  *
  * Twenty was sized for a workflow where a generated draft went straight into
  * the candidate pool: nobody was going to read them, so the number only had to
- * last until the pool emptied. A verifier now reads every draft before any of
- * them is bookable, and eight is a set a person will actually finish reading.
+ * last until the pool emptied. Eight was that judgement made again for a
+ * workflow where a verifier reads every draft before any of them is bookable.
+ * Twelve is the same judgement a third time, with the reading screen in front
+ * of us: a verifier who has accepted the cost of reading a set reads twelve
+ * about as readily as eight, and a batch that fills the candidate pool in one
+ * pass is one generation request rather than two.
+ *
  * The number is pinned by the CHECK on customer_review_draft_batches.card_count
  * as well as by this constant, so the two cannot drift.
+ *
+ * BATCHES ALREADY IN THE DATABASE ARE NOT TOUCHED. The CHECK that says twelve
+ * is added NOT VALID in 20261031000000 precisely so that an eight-draft batch
+ * generated before this change stays exactly as it was, and stays legal.
+ * Twelve is a rule about what may be WRITTEN, not a claim about history.
  */
-export const DRAFTS_PER_BATCH = 8
+export const DRAFTS_PER_BATCH = 12
 
 /** Practical limits. Long enough for a real review, short enough to bound a row. */
 export const MAX_GUIDANCE = 2000
@@ -208,6 +218,62 @@ const FORBIDDEN: readonly [RegExp, string][] = [
   [/\b(post|publish|share|leave)\s+(this|a|your)\s+(review|rating|feedback)\b/i, 'an instruction to post'],
 ]
 
+/**
+ * One draft's title and body, held to exactly the rules a generated one is.
+ *
+ * WHY THIS IS SHARED RATHER THAN A SECOND COPY. A verifier may now edit a draft
+ * by hand before approving it. If hand-typed text were validated by its own
+ * list, the two lists would drift, and the one that drifted would be the one a
+ * person types into — which is the one an attacker can reach. So the forbidden
+ * patterns, the length bounds and the telephone check below are the SAME
+ * constants and the SAME functions validateDrafts() applies to a model's reply.
+ *
+ * It returns the trimmed pair on success, because trimming is part of the
+ * validation: a body that is only whitespace is an empty body.
+ *
+ * IT IS NOT THE ONLY GATE. edit_customer_review_draft() re-runs the telephone
+ * check in SQL and the column CHECKs enforce the lengths, for the same reason
+ * create_customer_review_draft_batch() does: a route that forgot would
+ * otherwise be the only thing standing between a model, or a person, and the
+ * row.
+ */
+export type DraftTextCheck =
+  | { ok: true; title: string; body: string }
+  | { ok: false; error: string }
+
+export function validateDraftText(rawTitle: unknown, rawBody: unknown): DraftTextCheck {
+  const title = typeof rawTitle === 'string' ? rawTitle.trim() : ''
+  const body = typeof rawBody === 'string' ? rawBody.trim() : ''
+
+  if (!title) return { ok: false, error: 'A review needs a title.' }
+  if (!body) return { ok: false, error: 'A review needs a body.' }
+  if (title.length > MAX_TITLE) {
+    return { ok: false, error: `The title is limited to ${MAX_TITLE} characters.` }
+  }
+  if (body.length > MAX_BODY) {
+    return { ok: false, error: `The review is limited to ${MAX_BODY} characters.` }
+  }
+  if (body.length < MIN_BODY) {
+    return { ok: false, error: `The review must be at least ${MIN_BODY} characters.` }
+  }
+
+  if (body.includes(RETIRED_TEST_WARNING) || title.includes(RETIRED_TEST_WARNING)) {
+    return { ok: false, error: 'That text carries the retired internal-test warning.' }
+  }
+
+  for (const [pattern, what] of FORBIDDEN) {
+    if (pattern.test(body) || pattern.test(title)) {
+      return { ok: false, error: `A review may not contain ${what}.` }
+    }
+  }
+
+  if (containsTelephoneNumber(body) || containsTelephoneNumber(title)) {
+    return { ok: false, error: 'A review may not contain a telephone number.' }
+  }
+
+  return { ok: true, title, body }
+}
+
 export type DraftValidation =
   | { ok: true; drafts: GeneratedDraft[] }
   | { ok: false; error: string }
@@ -215,14 +281,14 @@ export type DraftValidation =
 /**
  * Validate the model's reply into exactly `expected` drafts, or refuse it whole.
  *
- * There is no partial success. Seven good drafts and one carrying a phone
- * number is a rejected batch, because the database inserts all eight or none
+ * There is no partial success. Eleven good drafts and one carrying a phone
+ * number is a rejected batch, because the database inserts all twelve or none
  * and a route that sent seven would be told so after the model call had already
  * been paid for.
  *
  * `expected` is a parameter rather than the constant because a REVISION
  * rewrites only the drafts in a batch that are still pending — between one and
- * eight of them — and the same validation has to hold for every one of those
+ * twelve of them — and the same validation has to hold for every one of those
  * sizes. Generation passes DRAFTS_PER_BATCH and gets the old behaviour exactly.
  */
 export function validateDrafts(

@@ -233,29 +233,32 @@ describe('a full pool does not block the next batch', () => {
   })
 })
 
-// ══ 10 + 11. EXACTLY EIGHT, OR NONE ═════════════════════════════════════════
+// ══ 10 + 11. EXACTLY TWELVE, OR NONE ════════════════════════════════════════
 
-describe('the batch is eight valid drafts or it is nothing', () => {
-  test('EIGHT, and the constant says so', () => {
+describe('the batch is twelve valid drafts or it is nothing', () => {
+  test('TWELVE, and the constant says so', () => {
     // Twenty was sized for a workflow where nobody was going to read them.
-    assert.equal(DRAFTS_PER_BATCH, 8)
+    // Eight was the first number chosen for one where a verifier reads them
+    // all. Twelve is that judgement made again, and it is pinned in three
+    // places — here, the CHECK on card_count, and the generator function.
+    assert.equal(DRAFTS_PER_BATCH, 12)
   })
 
-  test('eight good drafts validate', () => {
+  test('twelve good drafts validate', () => {
     const result = validateDrafts(goodDrafts())
     assert.equal(result.ok, true)
     if (result.ok) assert.equal(result.drafts.length, DRAFTS_PER_BATCH)
   })
 
-  test('seven do not, and neither do nine — nor the retired twenty', () => {
-    for (const n of [0, 1, 7, 9, 20]) {
+  test('eleven do not, and neither do thirteen — nor the retired eight or twenty', () => {
+    for (const n of [0, 1, 8, 11, 13, 20]) {
       const result = validateDrafts(goodDrafts(n))
       assert.equal(result.ok, false, `${n} drafts were accepted`)
     }
   })
 
   test('a partial batch is refused whole, not trimmed', () => {
-    // Seven good and one bad is a rejected batch. Half-inserting would put
+    // Eleven good and one bad is a rejected batch. Half-inserting would put
     // unvalidated text in front of a verifier and leave somebody working out
     // which rows to remove.
     const drafts = goodDrafts()

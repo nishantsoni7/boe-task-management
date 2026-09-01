@@ -1,7 +1,8 @@
 'use client'
 
-import { useCallback, useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Loader2, Pencil } from 'lucide-react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
 import { ReviewSheet } from './ReviewSheet'
 import { ReviewFullView } from './ReviewFullView'
@@ -9,19 +10,37 @@ import { ReviseDrafts } from './ReviseDrafts'
 import { InternalTestWarning } from './ReviewPieces'
 import { ApprovalChoiceCards } from './ApprovalChoice'
 import { DeleteReviewButton } from './DeleteReviews'
+import { DraftEditedNote, EditDraftActions, EditDraftFields, useDraftEditor } from './EditDraft'
+import { ReviewImageManager } from './ReviewImageManager'
 import type { ApprovalMode } from '@/lib/customerReviews/status'
 import {
+  TEST_CARD_PHOTO_COLUMNS,
   formatTestTimestamp,
   testCategoryLabel,
   type DraftBatch,
   type TestCard,
+  type TestCardPhoto,
 } from '@/lib/customerReviews/types'
+import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
 
 // ── The verifier's Pending approval workspace ────────────────────────────────
 //
 // Drafts are grouped by the batch that produced them, because approval is a
-// judgement about a batch's guidance as much as about eight separate reviews:
+// judgement about a batch's guidance as much as about twelve separate reviews:
 // "these all sound the same" is a thing you can only see when they are together.
+//
+// TWO THINGS A VERIFIER MAY DO TO A DRAFT BEFORE APPROVING IT, and both live
+// inside the full-view sheet rather than on the tile, for the reason booking
+// lives at the end of a read: a correction made from a 130-character preview is
+// a correction made without the text in front of you.
+//
+//   EDIT     replace the title and the body. Saving does not approve — the
+//            draft comes back to this list still awaiting approval.
+//   IMAGES   attach up to four photographs of the furniture. They stay with the
+//            review after approval and are what the share sheet carries.
+//
+// Both are refused by the server once a review is approved, and neither is
+// offered here for anything that is not pending.
 //
 // THREE WAYS TO APPROVE, and they are the three the workflow asks for:
 //   * one review, from its own row;
@@ -49,6 +68,8 @@ import {
 // success.
 
 type Props = {
+  /** For the short-lived signed URLs the image thumbnails are drawn from. */
+  supabase: SupabaseClient
   /** Pending drafts only. The caller's query is what makes that true. */
   cards: TestCard[]
   /** The batches those drafts came from, by id. A missing one still renders. */
@@ -69,11 +90,19 @@ type Props = {
   /** Opens the deletion confirmation the screen owns. */
   onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
   onRevised: () => void
+  /**
+   * Reload after an edit or an image change.
+   *
+   * Separate from onRevised even though the caller passes the same reload, so
+   * neither name has to lie: a revision is a model rewriting a batch, and this
+   * is a person changing one draft.
+   */
+  onCardChanged: () => void
 }
 
 export function PendingBatches({
-  cards, batches, actorNames, availableCount, busy,
-  onApprove, onApproveBatch, onDelete, onRevised,
+  supabase, cards, batches, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised, onCardChanged,
 }: Props) {
   // Grouped by batch, batches newest first, drafts by reference within one.
   const groups = useMemo(() => {
@@ -104,6 +133,7 @@ export function PendingBatches({
       {groups.map(group => (
         <BatchGroup
           key={group.batchId}
+          supabase={supabase}
           batchId={group.batchId}
           batch={group.batch}
           cards={group.cards}
@@ -114,6 +144,7 @@ export function PendingBatches({
           onApproveBatch={onApproveBatch}
           onDelete={onDelete}
           onRevised={onRevised}
+          onCardChanged={onCardChanged}
         />
       ))}
     </div>
@@ -121,9 +152,10 @@ export function PendingBatches({
 }
 
 function BatchGroup({
-  batchId, batch, cards, actorNames, availableCount, busy,
-  onApprove, onApproveBatch, onDelete, onRevised,
+  supabase, batchId, batch, cards, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised, onCardChanged,
 }: {
+  supabase: SupabaseClient
   batchId: string
   batch: DraftBatch | null
   cards: TestCard[]
@@ -134,6 +166,7 @@ function BatchGroup({
   onApproveBatch: (batchId: string, mode: ApprovalMode) => Promise<void>
   onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
   onRevised: () => void
+  onCardChanged: () => void
 }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [showGuidance, setShowGuidance] = useState(false)
@@ -338,50 +371,21 @@ function BatchGroup({
         ))}
       </ul>
 
-      {/* ── Reading one draft in full ── */}
+      {/* ── Reading one draft in full, and correcting it ── */}
       {reading && (
-        <ReviewSheet
-          title={reading.test_title}
-          subtitle={`${reading.card_ref} · ${testCategoryLabel(reading.test_category)} · awaiting your approval`}
-          maxWidth="560px"
+        <ReadDraftSheet
+          supabase={supabase}
+          card={reading}
+          busy={busy}
           onClose={() => setReading(null)}
-          footer={
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  const c = reading
-                  setReading(null)
-                  openConfirm({ kind: 'one', count: 1, ids: [c.id] })
-                }}
-                disabled={busy}
-                className="boe-btn boe-btn-primary"
-                style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
-              >
-                Approve this review
-              </button>
-              {/*
-                DELETING FROM THE FULL VIEW is where a verifier who has just
-                read a bad draft actually is, so the action is offered there —
-                still secondary, still behind its own confirmation.
-              */}
-              <DeleteReviewButton
-                disabled={busy}
-                onClick={() => { const c = reading; setReading(null); onDelete([c], 'single') }}
-              />
-              <button
-                type="button"
-                onClick={() => setReading(null)}
-                className="boe-btn boe-btn-ghost"
-                style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
-              >
-                Close
-              </button>
-            </>
-          }
-        >
-          <ReviewFullView card={reading} canBook={false} bookError={null} />
-        </ReviewSheet>
+          onApproveOne={() => {
+            const c = reading
+            setReading(null)
+            openConfirm({ kind: 'one', count: 1, ids: [c.id] })
+          }}
+          onDeleteOne={() => { const c = reading; setReading(null); onDelete([c], 'single') }}
+          onChanged={onCardChanged}
+        />
       )}
 
       {/*
@@ -421,7 +425,7 @@ function BatchGroup({
                 {busy
                   ? 'Approving…'
                   // THE PRIMARY ACTION NAMES THE CHOICE, not just the count.
-                  // "Yes, approve 8" reads the same whichever card is ticked,
+                  // "Yes, approve 12" reads the same whichever card is ticked,
                   // and the two outcomes are not the same.
                   : mode === 'replace'
                     ? `Approve ${confirm.count} and replace the list`
@@ -463,6 +467,167 @@ function BatchGroup({
         </ReviewSheet>
       )}
     </section>
+  )
+}
+
+/**
+ * One pending draft, read in full — and, when the verifier asks, edited.
+ *
+ * TWO MODES IN ONE SHEET, not two sheets. A verifier who presses Edit is
+ * looking at the same review they were reading a moment ago; throwing the sheet
+ * away and opening another loses their scroll position and their place in the
+ * batch for no gain.
+ *
+ * THE FOOTER CHANGES WITH THE MODE, and that is the point of ReviewSheet's
+ * pinned footer: while editing, the only actions are Save and Cancel. Approve
+ * is not one of them. A verifier cannot approve a draft in the same press that
+ * saves it, because those are two decisions and conflating them is how unread
+ * text gets released.
+ *
+ * IMAGES ARE LOADED HERE, NOT WITH THE LIST. A batch is twelve drafts; querying
+ * every draft's images to render twelve tiles would be twelve queries for
+ * thumbnails nobody has asked to see. They are fetched when a draft is opened.
+ */
+function ReadDraftSheet({
+  supabase, card, busy, onClose, onApproveOne, onDeleteOne, onChanged,
+}: {
+  supabase: SupabaseClient
+  card: TestCard
+  busy: boolean
+  onClose: () => void
+  onApproveOne: () => void
+  onDeleteOne: () => void
+  onChanged: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [images, setImages] = useState<TestCardPhoto[]>([])
+  /**
+   * The row as it is on screen right now.
+   *
+   * A save updates this immediately from what the server returned, so the full
+   * view behind the editor shows the new text without waiting for the list
+   * query to come back. `onChanged` still fires, so the list catches up too.
+   */
+  const [current, setCurrent] = useState<TestCard>(card)
+
+  const loadImages = useCallback(async () => {
+    const { data } = await supabase
+      .from('customer_review_test_card_screenshots')
+      .select(TEST_CARD_PHOTO_COLUMNS)
+      .eq('card_id', card.id)
+      .eq('kind', REVIEW_IMAGE_KIND)
+      // A row marked for removal is already gone as far as every reader is
+      // concerned — the same filter the rest of the module applies.
+      .is('removal_started_at', null)
+      .order('image_slot', { ascending: true })
+    setImages((data ?? []) as unknown as TestCardPhoto[])
+  }, [supabase, card.id])
+
+  // A FETCH IS STARTED HERE; NO STATE IS SET HERE. Every setState inside
+  // loadImages runs after its first await, so this effect performs no
+  // synchronous state update and there is no cascading render to worry about.
+  // The named function is the shape TestCardDetailScreen already uses for the
+  // same reason — it is what makes that true to the linter as well as to a
+  // reader.
+  useEffect(() => {
+    const startFetch = () => { void loadImages() }
+    startFetch()
+  }, [loadImages])
+
+  const editor = useDraftEditor(current, async updated => {
+    setCurrent(prev => ({
+      ...prev,
+      test_title: updated.test_title,
+      test_body: updated.test_body,
+      // Stamped locally so the "Edited by a verifier" note appears at once. The
+      // authoritative value arrives with the next list load.
+      draft_edited_at: prev.draft_edited_at ?? new Date().toISOString(),
+    }))
+    setEditing(false)
+    onChanged()
+  })
+
+  return (
+    <ReviewSheet
+      title={editing ? 'Edit this draft' : current.test_title}
+      subtitle={`${current.card_ref} · ${testCategoryLabel(current.test_category)} · awaiting your approval`}
+      maxWidth="560px"
+      // Not dismissable by backdrop while editing: a stray tap outside the
+      // sheet should not discard something somebody has typed.
+      dismissOnBackdrop={!editing && !editor.saving}
+      onClose={() => { if (!editor.saving) onClose() }}
+      footer={
+        editing ? (
+          <EditDraftActions editor={editor} onCancel={() => setEditing(false)} />
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={onApproveOne}
+              disabled={busy}
+              className="boe-btn boe-btn-primary"
+              style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+            >
+              Approve this review
+            </button>
+            {/*
+              EDIT SITS BESIDE APPROVE, not inside a menu. A verifier reading a
+              draft that is nearly right should not have to hunt for the way to
+              fix it — that is the moment the whole feature exists for.
+            */}
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              disabled={busy}
+              className="boe-btn boe-btn-ghost"
+              style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+            >
+              <Pencil size={13} strokeWidth={2} />
+              Edit
+            </button>
+            {/*
+              DELETING FROM THE FULL VIEW is where a verifier who has just read
+              a bad draft actually is, so the action is offered there — still
+              secondary, still behind its own confirmation.
+            */}
+            <DeleteReviewButton disabled={busy} onClick={onDeleteOne} />
+            <button
+              type="button"
+              onClick={onClose}
+              className="boe-btn boe-btn-ghost"
+              style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
+            >
+              Close
+            </button>
+          </>
+        )
+      }
+    >
+      {editing ? (
+        <EditDraftFields editor={editor} />
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/*
+            THE PROVENANCE, KEPT HONEST. The AI-generated warning inside
+            ReviewFullView still says where the draft came from; this says a
+            person has since changed it. Both, because both are true.
+          */}
+          {current.draft_edited_at && (
+            <div><DraftEditedNote card={current} /></div>
+          )}
+          <ReviewFullView card={current} canBook={false} bookError={null} />
+          <ReviewImageManager
+            supabase={supabase}
+            cardId={current.id}
+            images={images}
+            onChanged={async () => { await loadImages(); onChanged() }}
+            // Pending, always — this sheet is only rendered from the pending
+            // workspace. The server refuses anything else regardless.
+            canEdit={current.status === 'pending_approval'}
+          />
+        </div>
+      )}
+    </ReviewSheet>
   )
 }
 
@@ -519,6 +684,12 @@ function PendingDraftRow({
             <span style={{ fontSize: '10px', color: colors.muted }}>
               {testCategoryLabel(card.test_category)}
             </span>
+            {/*
+              ON THE TILE TOO, not only inside the sheet. A verifier scanning
+              twelve drafts should be able to see which ones somebody has
+              already been through without opening each one.
+            */}
+            <DraftEditedNote card={card} compact />
           </div>
           <div style={{
             fontSize: '13px', fontWeight: 600, color: colors.primary,

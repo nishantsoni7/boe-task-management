@@ -12,6 +12,7 @@ import {
   MAX_TEST_SCREENSHOTS,
   TEST_SCREENSHOT_BUCKET,
   TEST_SCREENSHOT_MAX_BYTES,
+  sanitizeDisplayName,
 } from '@/lib/customerReviews/photos'
 import {
   isMissingObjectError,
@@ -517,27 +518,9 @@ function respondTo(outcome: RemovalOutcome, photoId: string) {
         : fail(500, MESSAGES.remove_failed)
   }
 }
-/**
- * A filename fit to store and show, and nothing more.
- *
- * Path separators, traversal dots and control characters are removed rather than
- * escaped, because this value is display-only: it is never used to build the
- * object key (that is generated from a uuid), so there is nothing to preserve.
- * A name that sanitises to nothing becomes a constant.
- */
-export function sanitizeDisplayName(name: string): string {
-  let out = ''
-  for (const ch of name ?? '') {
-    const code = ch.codePointAt(0) ?? 0
-    // Control characters go entirely; a NUL or an ESC in a stored name is
-    // never anything but trouble downstream.
-    if (code < 0x20 || code === 0x7f) continue
-    // Path separators become spaces. The object key is generated from a uuid
-    // and never from this value, so nothing is lost by flattening them — and
-    // a name that cannot express a path cannot suggest one to a reader.
-    if (ch === '/' || ch === String.fromCharCode(92)) { out += ' '; continue }
-    out += ch
-  }
-  const cleaned = out.split('..').join(' ').trim().slice(0, 120)
-  return cleaned === '' ? 'photo' : cleaned
-}
+// MOVED TO src/lib/customerReviews/photos.ts, and re-exported here so the
+// import path uploadRoute.test.ts already uses keeps working. It moved because
+// /api/customer-reviews/images needs the identical function, and a route
+// importing another route to get a pure string helper is a dependency nothing
+// gains from.
+export { sanitizeDisplayName }
