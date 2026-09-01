@@ -6,7 +6,12 @@
 //
 //   1. tasks             id, title, assigned_to      — one in()
 //   2. task_activity_log id, actor_id, action, note,
-//                        from_status, to_status      — one in()
+//                        from_status, to_status,
+//                        attachment_url              — one in(). The last is
+//                                                      the LEGACY single-file
+//                                                      column, consumed server
+//                                                      -side; see
+//                                                      legacyAttachment
 //   3. task_attachments  activity_log_id, file_name,
 //                        file_type                   — one in(), so an update
 //                                                      that carried a file can
@@ -43,6 +48,7 @@
 
 import type { Notification } from '@/lib/types'
 import type { ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
+import { getFileTypeLabel } from '@/lib/attachment-utils'
 
 /**
  * What the header needs about one task.
@@ -205,6 +211,38 @@ type Res = { data: Record<string, unknown>[] | null; error: { message: string } 
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
 
+/**
+ * The ONE file a historical update carried, as an attachment-shaped item.
+ *
+ * WHY IT EXISTS. Before `task_attachments`, an update's single file lived in
+ * `task_activity_log.attachment_url`. Task Detail has always counted that
+ * column, so it says "ABC attached a document" for those rows — while the
+ * notification card, which knew only about `task_attachments`, said "Comment
+ * added" for the very same event. Two descriptions of one thing is the defect
+ * the shared heading logic exists to remove.
+ *
+ * THE URL DOES NOT TRAVEL. `attachment_url` is read on the server and consumed
+ * HERE: what goes into the item is the classification word `getFileTypeLabel`
+ * derives from it ("PDF", "Image", …), never the value itself. `name` is left
+ * null deliberately — `attachmentPhrase` only consults a name when the type is
+ * unknown, and `getFileTypeLabel` always answers with a known label, so the
+ * wording is identical to Task Detail's without shipping a storage reference to
+ * a browser. A notification card must never carry a link to a file whose
+ * permissions it has not checked; see safeCommentPreview, which strips storage
+ * URLs out of comment text for exactly the same reason.
+ *
+ * ONLY WHEN THERE ARE NO `task_attachments` ROWS. Task Detail de-duplicates the
+ * two sources by comparing storage PATHS; this cannot, because it deliberately
+ * does not select `storage_path`. Presence of any linked row therefore wins
+ * outright — which is correct for every row that exists: the legacy column and
+ * the table were never written together by any build.
+ */
+function legacyAttachment(value: unknown): ActivityAttachmentInfo[] {
+  const url = str(value)
+  if (!url) return []
+  return [{ fileType: getFileTypeLabel(url), name: null }]
+}
+
 export async function enrichNotificationPage(
   client: PageClient,
   rows: readonly (Pick<Notification, 'task_id'> & { activity_log_id?: string | null })[],
@@ -220,9 +258,14 @@ export async function enrichNotificationPage(
     taskIds.length
       ? client.from('tasks').select('id, title, assigned_to, created_by').in('id', taskIds)
       : Promise.resolve({ data: [], error: null }),
+    // `attachment_url` is the LEGACY single-file column, read here so a
+    // historical update that carried a file is not described as a bare comment.
+    // It is a column on a table this query already reads — NOT a fifth query —
+    // and it never leaves this function: only the word it classifies to does.
+    // See `legacyAttachment` below.
     activityIds.length
       ? client.from('task_activity_log')
-          .select('id, actor_id, action, note, from_status, to_status')
+          .select('id, actor_id, action, note, from_status, to_status, attachment_url')
           .in('id', activityIds)
       : Promise.resolve({ data: [], error: null }),
     // Scoped by the SAME activity ids as the query above, which came from the
@@ -287,7 +330,7 @@ export async function enrichNotificationPage(
       fromStatus: str(a.from_status),
       toStatus: str(a.to_status),
       actorName: null,
-      attachments: filesOf.get(id) ?? [],
+      attachments: filesOf.get(id) ?? legacyAttachment(a.attachment_url),
     }
     const actor = str(a.actor_id)
     if (actor) { actorOf.set(id, actor); peopleIds.add(actor) }

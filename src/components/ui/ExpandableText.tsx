@@ -94,6 +94,10 @@ export function ExpandableText({
       {overflowing && (
         <button
           type="button"
+          // The control's STATE, not just its label. A screen reader otherwise
+          // announces "Read more…, button" and says nothing about what changed
+          // when it is activated.
+          aria-expanded={expanded}
           onClick={() => setExpanded(v => !v)}
           style={{
             display: 'block', marginTop: '4px', padding: 0,

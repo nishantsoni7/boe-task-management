@@ -381,7 +381,10 @@ describe('16-17. this is presentation only', () => {
     const enrich = read('src/lib/notifications/pageEnrichment.ts')
     assert.equal((enrich.match(/\.select\(/g) ?? []).length, 4, 'four batched lookups')
     assert.ok(enrich.includes("select('id, title, assigned_to, created_by')"))
-    assert.ok(enrich.includes("select('id, actor_id, action, note, from_status, to_status')"))
+    // attachment_url joined the activity select so a HISTORICAL single-file
+    // update is described as one; that is a column on a table already being
+    // read, not a fifth query.
+    assert.ok(enrich.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url')"))
     assert.ok(enrich.includes("select('activity_log_id, file_name, file_type')"))
     assert.ok(enrich.includes("select('id, full_name')"))
   })
