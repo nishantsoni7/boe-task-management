@@ -433,11 +433,21 @@ describe('provenance stays honest', () => {
     assert.ok(panel.includes('You can edit a draft'))
   })
 
-  test('THE AI LABEL IS NOT REMOVED — both facts are shown', () => {
+  test('THE AI LABEL IS NOT REMOVED FROM THE FULL VIEW — both facts are shown there', () => {
     // The draft came from a model AND a person has since changed it. Dropping
     // either would be a different kind of untrue.
-    assert.ok(executable(PENDING).includes('<InternalTestWarning'))
+    //
+    // NOT ON THE PENDING-LIST TILE ITSELF. That badge was removed from
+    // PendingBatches.tsx's compact card — a deliberate product decision, not an
+    // oversight — so this file no longer asserts its presence there. What it
+    // still asserts is the thing the removal did not touch: opening a draft
+    // (Read in full -> ReviewFullView) still shows the AI-generated label, and
+    // DraftEditedNote still shows beside it when the draft was edited. Both
+    // facts remain reachable; only the tile stopped repeating one of them.
+    assert.equal(executable(PENDING).includes('<InternalTestWarning'), false,
+      'the tile-level AI badge is back — was it meant to be restored?')
     assert.ok(executable(read('src/components/customerReviews/ReviewFullView.tsx')).includes('<InternalTestWarning />'))
+    assert.ok(executable(PENDING).includes('<DraftEditedNote card={current} />'))
   })
 
   test('the detail screen no longer promises the text can never be edited', () => {

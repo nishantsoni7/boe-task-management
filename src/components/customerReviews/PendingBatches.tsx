@@ -7,7 +7,6 @@ import { colors } from '@/lib/tokens'
 import { ReviewSheet } from './ReviewSheet'
 import { ReviewFullView } from './ReviewFullView'
 import { ReviseDrafts } from './ReviseDrafts'
-import { InternalTestWarning } from './ReviewPieces'
 import { ApprovalChoiceCards } from './ApprovalChoice'
 import { DeleteReviewButton } from './DeleteReviews'
 import { DraftEditedNote, EditDraftActions, EditDraftFields, useDraftEditor } from './EditDraft'
@@ -699,8 +698,6 @@ function PendingDraftRow({
           </div>
         </div>
       </div>
-
-      <InternalTestWarning compact />
 
       <p style={{
         margin: 0, fontSize: '12px', color: colors.secondary,
