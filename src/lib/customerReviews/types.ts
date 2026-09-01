@@ -79,6 +79,69 @@ export const TEST_CARD_STATUSES = [
 
 export type TestCardStatus = (typeof TEST_CARD_STATUSES)[number]
 
+/**
+ * WHICH ACTION DELETED A REVIEW — the scope, recorded as a value.
+ *
+ * There is no free-text reason column beside this on purpose: a structured
+ * source and a typed sentence would be two answers to one question, and the
+ * sentence a person reads already lives on the append-only event row.
+ *
+ *   single       one review, deleted from its own row
+ *   selected     part of a selection the verifier ticked
+ *   all          the whole module, from Delete all reviews
+ *   replacement  displaced by a newly approved batch, not chosen individually
+ *
+ * Mirrors customer_review_test_cards_deleted_source_check in
+ * supabase/migrations/20261030000000.
+ */
+export const TEST_CARD_DELETION_SOURCES = [
+  'single',
+  'selected',
+  'all',
+  'replacement',
+] as const
+
+export type TestCardDeletionSource = (typeof TEST_CARD_DELETION_SOURCES)[number]
+
+/**
+ * What a deletion actually did, as the database counted it.
+ *
+ * RETURNED BY THE RPC, NOT COMPUTED BY THE BROWSER. The set is chosen and
+ * locked inside the transaction, so these are the rows that were really
+ * deleted rather than the rows a stale list thought would be — which is the
+ * whole reason the functions return a shape instead of a bare integer.
+ */
+export type DeletionCounts = {
+  deleted: number
+  pending_approval: number
+  available: number
+  /** Booked, and the holder has NOT confirmed a send. */
+  booked: number
+  /** Booked, and the holder HAS confirmed a send. Counted apart because it is
+   *  the stage a verifier most needs to see before pressing a delete. */
+  sent: number
+  submitted: number
+  verified: number
+}
+
+/**
+ * The live population, by stage, for the Delete all confirmation.
+ *
+ * Read from the database immediately before the confirmation is drawn, because
+ * no tab on the list screen reads `verified` rows — a count assembled in the
+ * browser would silently omit them, and "delete everything" must not be
+ * confirmed against a number that leaves some of everything out.
+ */
+export type DeletionSummary = Omit<DeletionCounts, 'deleted'> & { total: number }
+
+/**
+ * What an approval did: how many drafts were released, and how many reviews
+ * the release displaced.
+ *
+ * `replaced` is 0 for an Add, and for a Replace that found an empty pool.
+ */
+export type ApprovalResult = { approved: number; replaced: number }
+
 /** The statuses a tester's "My booked tests" list shows. Verified is not one. */
 export const ACTIVE_TESTER_STATUSES: ReadonlySet<TestCardStatus> =
   new Set<TestCardStatus>(['booked', 'submitted'])
@@ -173,6 +236,31 @@ export type TestCard = {
   returned_by: string | null
   return_reason: string | null
 
+  /**
+   * THE TOMBSTONE. Non-null means a verifier deleted this review.
+   *
+   * IT IS NOT A STATUS, and that is deliberate. Deletion is orthogonal to how
+   * far the review had got: `status` still reads 'booked' on one that was
+   * deleted while somebody held it, which is what lets the trail answer "what
+   * was thrown away, and from where". A deleted review leaves every
+   * operational list, its direct URL stops resolving for a candidate, and
+   * every workflow action refuses it.
+   *
+   * A CANDIDATE NEVER SEES ONE. Both candidate branches of the SELECT policy
+   * require `deleted_at is null`; the third branch is verify-only and exists
+   * so the tombstone stays readable to the people accountable for it.
+   *
+   * THERE IS NO RESTORE. A trigger refuses any UPDATE of a row whose
+   * deleted_at is already set, so un-deleting is unexpressible rather than
+   * merely unimplemented.
+   */
+  deleted_at: string | null
+  deleted_by: string | null
+  /** Which action deleted it — the scope, not a free-text reason. */
+  deleted_source: TestCardDeletionSource | null
+  /** The batch that displaced it. Set on a replacement and nowhere else. */
+  replaced_by_batch_id: string | null
+
   created_at: string
   updated_at: string
 
@@ -212,6 +300,14 @@ export type TestCardEventType =
   | 'returned'
   /** An administrator withdrew an attached screenshot. Written by a trigger. */
   | 'screenshot_removed'
+  /**
+   * A verifier deleted this review. `previous_status` names where it was, and
+   * that is the point of the row: it is the only record of what was thrown
+   * away and how far somebody had got with it.
+   */
+  | 'deleted'
+  /** A newly approved batch displaced this review out of the available pool. */
+  | 'replaced'
 
 export type TestCardEvent = {
   id: string
@@ -257,6 +353,14 @@ export const TEST_CARD_COLUMNS = [
   'returned_at',
   'returned_by',
   'return_reason',
+  // THE TOMBSTONE TRAVELS WITH THE ROW. The screens filter deleted reviews out
+  // in the query; selecting the columns anyway is what lets the detail page
+  // tell a verifier they are looking at a deleted review rather than render it
+  // silently as though it were live.
+  'deleted_at',
+  'deleted_by',
+  'deleted_source',
+  'replaced_by_batch_id',
   'created_at',
   'updated_at',
 ].join(', ')
@@ -278,6 +382,8 @@ export const TEST_CARD_AVAILABLE_COLUMNS = [
   'test_category',
   'test_title',
   'test_body',
+  // Selected so the list can ASSERT what its filter did, not to display it.
+  'deleted_at',
   'created_at',
 ].join(', ')
 
@@ -301,6 +407,7 @@ export const TEST_CARD_PENDING_COLUMNS = [
   'test_title',
   'test_body',
   'batch_id',
+  'deleted_at',
   'created_at',
 ].join(', ')
 

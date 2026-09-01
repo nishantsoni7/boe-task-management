@@ -217,7 +217,7 @@ describe('deriving capabilities', () => {
   // verifier-only transitions off a SUBMITTED card, and the viewer never holds
   // it — a verifier acting on somebody else's evidence is the whole point.
   describe('who is offered Verify review and Return to candidate', () => {
-    const SUBMITTED = { status: 'submitted' as const, booked_by: 'user-holder' }
+    const SUBMITTED = { status: 'submitted' as const, booked_by: 'user-holder', deleted_at: null }
     const VIEWER = 'user-viewer'
 
     const offered = (caps: ReturnType<typeof deriveCustomerReviewCapabilities>) =>
@@ -274,12 +274,12 @@ describe('deriving capabilities', () => {
       // verify authority has never implied tester authority and still does not.
       const verifierOnly = deriveCustomerReviewCapabilities('member', allow('verify'))
       assert.deepEqual(
-        availableActions({ status: 'booked', booked_by: VIEWER },
+        availableActions({ status: 'booked', booked_by: VIEWER, deleted_at: null },
           { userId: VIEWER, canUse: verifierOnly.canUse, canVerify: verifierOnly.canVerify }),
         [],
         'a verifier can submit a card they hold',
       )
-      assert.equal(canBookCard({ status: 'available' }, { userId: VIEWER, canUse: verifierOnly.canUse }), false)
+      assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: VIEWER, canUse: verifierOnly.canUse }), false)
 
       // (c) THE DATABASE IS UNTOUCHED. Read off the migration: the two definer
       // functions that gate these moves still resolve their permission and
@@ -394,7 +394,7 @@ describe('who holds one test card', () => {
     assert.equal(bare.canVerify, true, 'precondition: their verify is intact')
 
     // BOOK — the list's button, on an unbooked card.
-    assert.equal(canBookCard({ status: 'available' }, { userId: OTHER, canUse: bare.canUse }), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: OTHER, canUse: bare.canUse }), false)
 
     // WHATSAPP, SCREENSHOT UPLOAD, SCREENSHOT REMOVAL and CONFIRM SENT are all
     // drawn from `mine` on the detail screen, which is holdsThisCard(). False
@@ -405,7 +405,7 @@ describe('who holds one test card', () => {
 
     // SUBMIT — the only candidate transition.
     assert.deepEqual(
-      availableActions({ status: 'booked', booked_by: OTHER },
+      availableActions({ status: 'booked', booked_by: OTHER, deleted_at: null },
         { userId: OTHER, canUse: bare.canUse, canVerify: bare.canVerify }),
       [],
       'Submit is offered to an admin who is not a candidate',
@@ -414,7 +414,7 @@ describe('who holds one test card', () => {
     // …and the verifier moves they SHOULD still be offered are untouched, so
     // this test cannot pass by refusing everybody.
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: OTHER, canUse: bare.canUse, canVerify: bare.canVerify })
         .map(a => a.to).sort(),
       ['booked', 'verified'],

@@ -287,6 +287,8 @@ describe('34/35. no regression into suppressed territory', () => {
       // this work's tables, policies or functions.
       '20261028000000_assets_access_manage_access_records.sql',
       '20261029000000_asset_handover_acknowledgement.sql',
+      // Verifier deletion, and the Add-versus-Replace choice at approval.
+      '20261030000000_review_workflow_deletion_and_replacement.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

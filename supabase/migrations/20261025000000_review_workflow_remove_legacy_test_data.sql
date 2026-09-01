@@ -25,18 +25,40 @@
 -- this file being written and being applied would be deleted along with the
 -- rehearsal rows, silently, with no way to tell afterwards.
 --
--- So this refuses to run unless the database still looks EXACTLY like the state
--- that was read on 2026-08-31:
+-- So this refuses to run unless the database still holds EXACTLY the legacy
+-- dataset, and every one of those cards is still early enough in the workflow
+-- that deleting it throws away nothing a person did:
 --
 --   * exactly 16 cards, and not one more or fewer;
---   * every card_ref is a legacy reference — TEST-nnn, or RW-nnnnnn inside
---     RW-000001..RW-000016, the only range 20261023000000 could produce by
---     renaming the seed;
+--   * the reference set is EXACTLY {TEST-002, RW-000001, RW-000003..RW-000016}
+--     — an identity, not a pattern; see §4;
 --   * no card belongs to a batch (batch_id is null on all sixteen);
 --   * zero rows in customer_review_draft_batches;
---   * exactly 15 available and exactly 1 booked, and nothing submitted or
---     verified;
---   * no screenshot is attached to any of them — see below.
+--   * every card is `available`, or `booked` without a send confirmation;
+--     nothing submitted, verified or returned;
+--   * no card has sent_confirmed_at set;
+--   * no screenshot is attached to any of them, and the bucket holds no object
+--     — see below.
+--
+-- ═══ WHAT THIS FILE DELIBERATELY DOES NOT PIN ════════════════════════════════
+--
+-- THE AVAILABLE/BOOKED SPLIT. It first required 15 available and 1 booked,
+-- which was true on 2026-08-31 and was 13 and 3 by 2026-09-01 — two colleagues
+-- booked reviews in between, which is the module working. A guard that pins a
+-- number the product legitimately moves is not a safeguard, it is a race
+-- against your own users, and it would have to be re-derived and re-approved
+-- every time somebody pressed Book.
+--
+-- What it pins instead is the pair of things that CANNOT drift under ordinary
+-- use: the reference set, which nothing rewrites after 20261023000000, and the
+-- workflow depth, which only moves in one direction and is exactly the axis the
+-- approval was about. Booking is reversible and carries no claim about a real
+-- person; confirming a send is neither.
+--
+-- whatsapp_opened_at IS NOT A BLOCKER, and that is a decision rather than an
+-- oversight. Opening a wa.me link builds text and hands it to WhatsApp — the
+-- module has always refused to read it as evidence that anything was sent, and
+-- reading it as one here would contradict the rest of the design.
 --
 -- Any deviation raises and the transaction rolls back with nothing deleted,
 -- which is what "fail loudly" has to mean for a destructive file: the operator
@@ -93,19 +115,33 @@
 --
 -- 2. READ-ONLY: does the legacy dataset still match this file's fingerprint?
 --
---      select count(*)                                        as cards,
---             count(*) filter (where status = 'available')     as available,
---             count(*) filter (where status = 'booked')        as booked,
---             count(*) filter (where status not in ('available','booked')) as other,
---             count(*) filter (where batch_id is not null)     as batched,
---             count(*) filter (where card_ref !~ '^(TEST-[0-9]{3}|RW-[0-9]{6})$') as odd_refs
+--      select count(*)                                    as cards,
+--             count(*) filter (where batch_id is not null) as batched,
+--             count(*) filter (where status not in ('available','booked')) as past_booked,
+--             count(*) filter (where sent_confirmed_at is not null) as send_confirmed,
+--             count(*) filter (where returned_at is not null)       as returned,
+--             count(*) filter (where status = 'available') as available,
+--             count(*) filter (where status = 'booked')    as booked
 --        from public.customer_review_test_cards;
 --
 --      select count(*) as batches from public.customer_review_draft_batches;
 --
---    Expected: cards 16, available 15, booked 1, other 0, batched 0,
---    odd_refs 0, batches 0. Anything else and this file will abort anyway —
---    reading first means finding out before a deploy rather than during one.
+--      -- the reference set, which is the actual fingerprint
+--      select string_agg(card_ref, ', ' order by card_ref) as refs
+--        from public.customer_review_test_cards;
+--
+--    Expected: cards 16, batched 0, past_booked 0, send_confirmed 0,
+--    returned 0, batches 0, and refs exactly
+--      RW-000001, RW-000003 … RW-000016, TEST-002
+--
+--    AVAILABLE AND BOOKED ARE REPORTED, NOT ASSERTED. Any split of the sixteen
+--    between those two states is fine and this file accepts it — 15/1 on
+--    2026-08-31 and 13/3 on 2026-09-01 are both the same dataset with people
+--    using it. Read them so you know what you are deleting; do not treat a
+--    change in them as a deviation.
+--
+--    Anything else and this file will abort anyway — reading first means
+--    finding out before a deploy rather than during one.
 --
 -- 3. IF STEP 1 IS ZERO AND STEP 2 MATCHES: the migration may be applied, after
 --    explicit approval from Nishant for that specific application.
@@ -140,6 +176,17 @@ declare
   v_bad_refs   text;
   v_deleted    integer;
   v_shots      integer;
+  v_sent       integer;
+  v_objects    integer;
+  -- THE LEGACY DATASET, WRITTEN OUT. TEST-002 kept its seed reference because
+  -- it was booked when 20261023000000 renamed the available cards; every other
+  -- seed became RW-00000n with the same n. Hence no RW-000002.
+  v_expected_refs text[] := array[
+    'TEST-002',
+    'RW-000001', 'RW-000003', 'RW-000004', 'RW-000005', 'RW-000006',
+    'RW-000007', 'RW-000008', 'RW-000009', 'RW-000010', 'RW-000011',
+    'RW-000012', 'RW-000013', 'RW-000014', 'RW-000015', 'RW-000016'
+  ];
 begin
   -- ── 1. Count what is there ───────────────────────────────────────────────
   select count(*) into v_cards   from public.customer_review_test_cards;
@@ -189,41 +236,99 @@ begin
       detail  = 'Every legacy card predates batch generation and must have a null batch_id. Nothing was deleted.';
   end if;
 
-  -- ── 4. Every reference is a recognised legacy one ────────────────────────
+  -- ── 4. The reference set is EXACTLY the legacy one ───────────────────────
   --
-  -- 20261023000000 renamed the available seed cards TEST-00n -> RW-00000n, so
-  -- the only RW- values a legacy database can hold are RW-000001..RW-000016.
-  -- Anything outside that window came from create_customer_review_draft_batch,
-  -- which starts numbering above the highest reference already in use.
-  select string_agg(card_ref, ', ' order by card_ref) into v_bad_refs
-    from public.customer_review_test_cards
-   where not (
-     card_ref ~ '^TEST-[0-9]{3}$'
-     or (card_ref ~ '^RW-[0-9]{6}$'
-         and substring(card_ref from 4)::integer between 1 and 16)
-   );
+  -- THIS IS THE FINGERPRINT, and it is an identity rather than a pattern.
+  --
+  -- 20261021000000 seeded TEST-001..TEST-016. 20261023000000 then rewrote and
+  -- renamed every card that was still AVAILABLE at that moment, TEST-00n ->
+  -- RW-00000n; TEST-002 was booked and so kept its name. That leaves exactly
+  -- one possible reference set for a legacy database:
+  --
+  --   TEST-002, RW-000001, RW-000003, RW-000004, ... RW-000016
+  --
+  -- RW-000002 CANNOT EXIST — the card that would have carried it is TEST-002.
+  --
+  -- A SYMMETRIC DIFFERENCE, NOT A PATTERN MATCH. The pattern this replaced
+  -- accepted any TEST-nnn and any RW-000001..016, so it would have passed a
+  -- database holding fifteen legacy cards plus a new RW-000009 that had taken a
+  -- deleted one's place. Comparing the SET catches a missing legacy card and an
+  -- extra card of any kind, in one query.
+  --
+  -- References are immutable after 20261023000000 — nothing in the module
+  -- rewrites card_ref — which is what makes this the right thing to pin while
+  -- the workflow states legitimately move underneath it.
+  select string_agg(ref, ', ' order by ref) into v_bad_refs
+    from (
+      select card_ref as ref from public.customer_review_test_cards
+      except
+      select unnest(v_expected_refs)
+        union all
+      select unnest(v_expected_refs)
+      except
+      select card_ref from public.customer_review_test_cards
+    ) d;
+
   if v_bad_refs is not null then
     raise exception using
       errcode = '23514',
       message = format(
-        'REVIEW_WORKFLOW_LEGACY_STATE_CHANGED: unrecognised reference(s): %s.', v_bad_refs),
-      detail  = 'A legacy card carries TEST-nnn or RW-000001..RW-000016. Nothing was deleted.';
+        'REVIEW_WORKFLOW_LEGACY_STATE_CHANGED: the reference set is not the legacy dataset; difference: %s.', v_bad_refs),
+      detail  = 'The legacy dataset is exactly TEST-002 and RW-000001, RW-000003..RW-000016. A reference here and not there, or the reverse, means this is not that dataset. Nothing was deleted.';
   end if;
 
-  -- ── 5. The states are the states that were read ──────────────────────────
+  -- ── 5. Every card is still EARLY in the workflow ─────────────────────────
+  --
+  -- The available/booked SPLIT is deliberately not pinned; see the header. What
+  -- is checked is how far each card has got, because that is the axis the
+  -- approval was actually about:
+  --
+  --   allowed   available                   nobody has taken it
+  --   allowed   booked, not send-confirmed  somebody holds it and has not yet
+  --                                         claimed to have sent anything
+  --   REFUSED   submitted / verified        evidence exists, and may have been
+  --                                         accepted
+  --
+  -- Booking is reversible and says nothing about a real person. It is not a
+  -- reason to refuse, and the three current holders are covered by the
+  -- approval.
   select count(*) filter (where status = 'available'),
          count(*) filter (where status = 'booked'),
          count(*) filter (where status not in ('available', 'booked'))
     into v_available, v_booked, v_other
     from public.customer_review_test_cards;
 
-  if v_available <> 15 or v_booked <> 1 or v_other <> 0 then
+  if v_other <> 0 then
     raise exception using
       errcode = '23514',
       message = format(
-        'REVIEW_WORKFLOW_LEGACY_STATE_CHANGED: expected 15 available and 1 booked, found %s available, %s booked, %s in another state.',
-        v_available, v_booked, v_other),
-      detail  = 'Work has happened on these cards since the state this file was written against. Nothing was deleted.';
+        'REVIEW_WORKFLOW_LEGACY_STATE_CHANGED: %s card(s) have reached submitted or verified.', v_other),
+      detail  = 'A submitted or verified card carries evidence somebody produced and a verifier may already have accepted. Nothing was deleted.',
+      hint    = 'Return those cards to their holders and have the screenshots removed, or re-derive and re-approve this file against the state that now exists.';
+  end if;
+
+  -- ── 5A. NOBODY HAS CLAIMED TO HAVE SENT ONE ──────────────────────────────
+  --
+  -- THE ONE FACT THAT MAKES A REVIEW UNDELETABLE HERE. sent_confirmed_at is a
+  -- person stating by hand that a message left their phone and reached a real
+  -- recipient. Deleting the record of that is not covered by an approval to
+  -- remove rehearsal data, and the module treats the claim as irreversible
+  -- everywhere else — unbooking is refused after it for the same reason.
+  --
+  -- returned_at is included because a returned card has necessarily been
+  -- submitted, which has necessarily been send-confirmed. It is checked
+  -- explicitly rather than left implied.
+  select count(*) into v_sent
+    from public.customer_review_test_cards
+   where sent_confirmed_at is not null
+      or returned_at is not null;
+
+  if v_sent <> 0 then
+    raise exception using
+      errcode = '23514',
+      message = format(
+        'REVIEW_WORKFLOW_LEGACY_SEND_CONFIRMED: %s card(s) have been confirmed as sent.', v_sent),
+      detail  = 'A candidate stated by hand that they sent that message to a real recipient. This file will not delete the record of it. Nothing was deleted.';
   end if;
 
   -- ── 6. No screenshot may be attached ─────────────────────────────────────
@@ -245,6 +350,30 @@ begin
         'REVIEW_WORKFLOW_LEGACY_SCREENSHOT: %s screenshot(s) are still attached to the legacy cards.', v_shots),
       detail  = 'Deleting the cards would leave those images in the private bucket with nothing pointing at them, and SQL cannot remove a stored object. Nothing was deleted.',
       hint    = 'Remove each screenshot through the module first — the holder can while they hold the card; a verifier returns a submitted card to its holder — then apply this migration again.';
+  end if;
+
+  -- ── 6A. AND THE BUCKET IS EMPTY ──────────────────────────────────────────
+  --
+  -- THE SCREENSHOT ROW AND THE STORED OBJECT ARE TWO THINGS, AND ONLY ONE OF
+  -- THEM CASCADES. §6 proves no card points at an image. This proves no image
+  -- exists that nothing points at — an object whose row was already removed, or
+  -- one left behind by a removal that failed between the Storage call and the
+  -- row delete. Deleting the cards would leave it unreachable forever: nothing
+  -- would name its key, and SQL cannot remove it.
+  --
+  -- Either count being non-zero on its own is itself the finding. They are
+  -- checked separately so the message says which one it was.
+  select count(*) into v_objects
+    from storage.objects
+   where bucket_id = 'customer-review-test-screenshots';
+
+  if v_objects > 0 then
+    raise exception using
+      errcode = '23514',
+      message = format(
+        'REVIEW_WORKFLOW_LEGACY_STORAGE: %s object(s) remain in the customer-review-test-screenshots bucket.', v_objects),
+      detail  = 'No card points at them, so deleting the cards would strand them permanently — SQL cannot remove a stored object. Nothing was deleted.',
+      hint    = 'Remove the objects through the Storage API, then apply this migration again.';
   end if;
 
   -- ── 7. Delete the cards ──────────────────────────────────────────────────

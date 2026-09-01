@@ -1431,9 +1431,20 @@ begin
     -- nothing to ask for on somebody else's behalf. The two writers that DO
     -- take an actor id — the generator and the reviser — are service-role only
     -- and would fail 10a above if they ever appeared here.
-    'approve_customer_review_drafts(p_card_ids uuid[])',
-    'approve_customer_review_draft_batch(p_batch_id uuid)',
-    'unbook_customer_review_test_card(p_card_id uuid)'
+    'approve_customer_review_drafts(p_card_ids uuid[], p_replace boolean)',
+    'approve_customer_review_draft_batch(p_batch_id uuid, p_replace boolean)',
+    'unbook_customer_review_test_card(p_card_id uuid)',
+    -- Added by 20261030000000, and each qualifies for the same reason: it takes
+    -- its actor from auth.uid() and names no user, so there is nothing to ask
+    -- for on somebody else's behalf.
+    --
+    -- customer_review_replace_available IS DELIBERATELY NOT HERE. It is an
+    -- internal step of the two approval functions, granted to nobody; its
+    -- appearance on this list would itself be the defect.
+    'can_verify_customer_review_test_cards()',
+    'customer_review_deletion_summary()',
+    'delete_customer_review_test_cards(p_card_ids uuid[], p_source text)',
+    'delete_all_customer_review_test_cards()'
   );
   if v_bad is not null then
     raise exception 'off the approved browser-callable list: %', v_bad;
@@ -2135,22 +2146,22 @@ begin
   -- A candidate holds `use`. Approval is not theirs.
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000002',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one),
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one),
     '42501', '14a1. a candidate holding `use` approving a draft');
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000005',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one),
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one),
     '42501', '14a2. an employee with no grant approving a draft');
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000007',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one),
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one),
     '42501', '14a3. an INACTIVE verifier approving a draft');
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000006',
-    format('select public.approve_customer_review_draft_batch(%L)',
+    format('select public.approve_customer_review_draft_batch(%L, false)',
            (select id from probe_batch where kind = 'first')),
     '42501', '14a4. an INACTIVE administrator approving a whole batch');
 
@@ -2179,7 +2190,7 @@ begin
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000001',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one),
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one),
     '42501', '14b. an ADMINISTRATOR with `verify` revoked approving a draft');
 
   delete from public.employee_permission_overrides
@@ -2200,8 +2211,9 @@ begin
   end if;
 
   v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
-           format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one));
-  if v_r <> '1' then raise exception 'approving one draft returned %', v_r; end if;
+           format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one));
+  if (v_r::jsonb->>'approved') <> '1' then raise exception 'approving one draft returned %', v_r; end if;
+  if (v_r::jsonb->>'replaced') <> '0' then raise exception 'an Add replaced % review(s)', v_r; end if;
 
   select status, approved_at, approved_by into v_status, v_at, v_by
     from public.customer_review_test_cards where id = v_one;
@@ -2234,7 +2246,7 @@ begin
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000004',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_one),
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_one),
     '23514', '14d1. approving an already-approved review');
 
   if (select approved_at from public.customer_review_test_cards where id = v_one) <> v_before then
@@ -2262,7 +2274,7 @@ begin
   v_mixed := array[v_ids[1], v_approved, v_ids[2]];
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000004',
-    format('select public.approve_customer_review_drafts(%L::uuid[])', v_mixed),
+    format('select public.approve_customer_review_drafts(%L::uuid[], false)', v_mixed),
     '23514', '14e1. a selection containing one already-approved review');
 
   if (select count(*) from public.customer_review_test_cards
@@ -2274,21 +2286,22 @@ begin
   -- A selection naming a review that no longer exists.
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000004',
-    format('select public.approve_customer_review_drafts(array[%L, %L]::uuid[])',
+    format('select public.approve_customer_review_drafts(array[%L, %L]::uuid[], false)',
            v_ids[1], '00000000-0000-4000-8000-0000000000ff'),
     'P0002', '14e3. a selection naming a review that does not exist');
 
   -- An empty selection is a mistake, not a no-op.
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000004',
-    'select public.approve_customer_review_drafts(array[]::uuid[])',
+    'select public.approve_customer_review_drafts(array[]::uuid[], false)',
     '23514', '14e4. an empty selection');
 
   -- Now the real thing: three at once.
   v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
-           format('select public.approve_customer_review_drafts(array[%L, %L, %L]::uuid[])',
+           format('select public.approve_customer_review_drafts(array[%L, %L, %L]::uuid[], false)',
                   v_ids[1], v_ids[2], v_ids[3]));
-  if v_r <> '3' then raise exception 'approving three returned %', v_r; end if;
+  if (v_r::jsonb->>'approved') <> '3' then raise exception 'approving three returned %', v_r; end if;
+  if (v_r::jsonb->>'replaced') <> '0' then raise exception 'an Add replaced % review(s)', v_r; end if;
   if (select count(*) from public.customer_review_test_cards
        where id in (v_ids[1], v_ids[2], v_ids[3]) and status = 'available'
          and approved_by = 'ffffffff-0000-4000-8000-000000000004') <> 3 then
@@ -2309,8 +2322,9 @@ begin
   if v_other <> 8 then raise exception '14f needs the second batch untouched, found % pending', v_other; end if;
 
   v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
-           format('select public.approve_customer_review_draft_batch(%L)', v_batch));
-  if v_r <> '4' then raise exception 'approve-all released % of the 4 remaining', v_r; end if;
+           format('select public.approve_customer_review_draft_batch(%L, false)', v_batch));
+  if (v_r::jsonb->>'approved') <> '4' then raise exception 'approve-all released % of the 4 remaining', v_r; end if;
+  if (v_r::jsonb->>'replaced') <> '0' then raise exception 'an Add replaced % review(s)', v_r; end if;
 
   select count(*) into v_left from public.customer_review_test_cards
    where batch_id = v_batch and status <> 'available';
@@ -2327,7 +2341,7 @@ begin
 
   perform pg_temp.refused_with(
     'ffffffff-0000-4000-8000-000000000004',
-    format('select public.approve_customer_review_draft_batch(%L)', v_batch),
+    format('select public.approve_customer_review_draft_batch(%L, false)', v_batch),
     '23514', '14f2. approve-all on a batch with nothing left pending');
 end $$;
 
@@ -2590,7 +2604,7 @@ begin
   v_kept := v_ids[1];
 
   perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
-    format('select public.approve_customer_review_drafts(array[%L]::uuid[])', v_kept));
+    format('select public.approve_customer_review_drafts(array[%L]::uuid[], false)', v_kept));
 
   select test_title, test_body into v_kept_title, v_kept_body
     from public.customer_review_test_cards where id = v_kept;
@@ -2752,6 +2766,738 @@ begin
 end $$;
 
 drop table probe_batch;
+
+-- ─── 15. DELETION, AND ADD-VERSUS-REPLACE AT APPROVAL ──────────────────────
+--
+-- 20261030000000 lets a verifier take a review out of the workflow at any
+-- stage, and lets a newly approved batch displace the list that was already
+-- there. Both are soft: a row is never removed, a screenshot is never removed,
+-- and no storage object is ever touched.
+--
+-- deletion.test.ts reads the SQL and proves the CONTRACT. This proves the
+-- BEHAVIOUR, which is the half a text audit cannot reach: that a deleted review
+-- is actually refused by every action, actually invisible to a candidate,
+-- actually still visible to a verifier, and that a Replace actually leaves
+-- somebody's in-flight booking alone.
+--
+-- IT BUILDS ITS OWN WORLD. Section 14z removed the generated cards, so this
+-- section generates two fresh batches and inserts four standalone cards in the
+-- stages that would otherwise need a screenshot upload to reach.
+
+create temporary table del_batch (id uuid, kind text);
+
+-- ── 15 setup. Every stage, present at once ─────────────────────────────────
+do $$
+declare v_r text; v_a uuid; v_b uuid;
+begin
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004',
+                           pg_temp.batch_payload(8), 'Deletion batch A.');
+  if v_r <> 'OK' then raise exception '15 setup: batch A was refused: %', v_r; end if;
+  select id into v_a from public.customer_review_draft_batches
+   where guidance = 'Deletion batch A.';
+
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004',
+                           pg_temp.batch_payload(8), 'Deletion batch B.');
+  if v_r <> 'OK' then raise exception '15 setup: batch B was refused: %', v_r; end if;
+  select id into v_b from public.customer_review_draft_batches
+   where guidance = 'Deletion batch B.';
+
+  insert into del_batch values (v_a, 'A'), (v_b, 'B');
+
+  -- Four standalone cards in the later stages. Reaching `submitted` through the
+  -- real path needs a screenshot upload, which section 9 already proves; what
+  -- this section needs is a row in that state to delete, and inserting one as
+  -- the owner is the smaller, clearer way to get it.
+  insert into public.customer_review_test_cards
+    (id, card_ref, test_category, test_title, test_body,
+     status, booked_by, booked_at,
+     whatsapp_opened_at, whatsapp_opened_count, whatsapp_target_last_four,
+     sent_confirmed_at, sent_confirmed_by,
+     submitted_at, submitted_by, verified_at, verified_by)
+  values
+    ('aaaaaaaa-0000-4000-8000-000000000901', 'TEST-951', 'restaurant_test',
+     'Held by a candidate',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'booked', 'ffffffff-0000-4000-8000-000000000002', now(),
+     null, 0, null, null, null, null, null, null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000902', 'TEST-952', 'cafe_test',
+     'Sent to a recipient',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'booked', 'ffffffff-0000-4000-8000-000000000002', now(),
+     now(), 1, '4321', now(), 'ffffffff-0000-4000-8000-000000000002', null, null, null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000903', 'TEST-953', 'hotel_test',
+     'Awaiting verification',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'submitted', 'ffffffff-0000-4000-8000-000000000002', now(),
+     now(), 1, '4321', now(), 'ffffffff-0000-4000-8000-000000000002',
+     now(), 'ffffffff-0000-4000-8000-000000000002', null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000904', 'TEST-954', 'delivery_test',
+     'Finished and checked',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'verified', 'ffffffff-0000-4000-8000-000000000002', now(),
+     now(), 1, '4321', now(), 'ffffffff-0000-4000-8000-000000000002',
+     now(), 'ffffffff-0000-4000-8000-000000000002',
+     now(), 'ffffffff-0000-4000-8000-000000000004');
+
+  raise notice 'PASS  15setup. two batches of 8 pending drafts, and one card in each later stage';
+end $$;
+
+-- ── 15a. DELETING NEEDS `verify`, RESOLVED ─────────────────────────────────
+do $$
+declare v_one uuid; v_module uuid; v_verify uuid;
+begin
+  select id into v_one from public.customer_review_test_cards
+   where batch_id = (select id from del_batch where kind = 'A')
+   order by card_ref limit 1;
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_one),
+    '42501', '15a1. a candidate holding `use` deleting a review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000005',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_one),
+    '42501', '15a2. an employee with no grant deleting a review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000007',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_one),
+    '42501', '15a3. an INACTIVE verifier deleting a review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    'select public.delete_all_customer_review_test_cards()',
+    '42501', '15a4. a candidate deleting every review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    'select public.customer_review_deletion_summary()',
+    '42501', '15a5. a candidate reading the deletion summary');
+
+  -- THE CASE THE ROLE CORRECTION EXISTS FOR. An administrator holds `verify`
+  -- through role_permissions; revoking it in Control Center must actually
+  -- revoke, which is only true if the engine is asked rather than the role.
+  select id into v_module from public.permission_modules where module_key = 'customer_review_requests';
+  select id into v_verify from public.permission_actions where action_key = 'verify';
+  insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+  values ('ffffffff-0000-4000-8000-000000000001', v_module, v_verify, false,
+          'ffffffff-0000-4000-8000-000000000001');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_one),
+    '42501', '15a6. an ADMINISTRATOR with `verify` revoked deleting a review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000001',
+    'select public.delete_all_customer_review_test_cards()',
+    '42501', '15a7. an ADMINISTRATOR with `verify` revoked deleting every review');
+
+  delete from public.employee_permission_overrides
+   where user_id = 'ffffffff-0000-4000-8000-000000000001';
+
+  if exists (select 1 from public.customer_review_test_cards where deleted_at is not null) then
+    raise exception 'a refused deletion still wrote a tombstone';
+  end if;
+  raise notice 'PASS  15a8. after seven refusals nothing is deleted';
+end $$;
+
+-- ── 15b. A VERIFIER DELETES ONE, AT EVERY STAGE ────────────────────────────
+--
+-- The requirement is that a verifier may delete a review in ANY stage, so every
+-- stage is exercised — including the two that carry somebody's finished work.
+do $$
+declare
+  v_id uuid; v_r text; v_stage text; v_prev text; v_src text;
+  v_deleted timestamptz; v_by uuid; v_events integer;
+begin
+  for v_stage, v_id in
+    select 'pending_approval',
+           (select id from public.customer_review_test_cards
+             where batch_id = (select id from del_batch where kind = 'A')
+             order by card_ref limit 1)
+    union all select 'booked',    'aaaaaaaa-0000-4000-8000-000000000901'::uuid
+    union all select 'sent',      'aaaaaaaa-0000-4000-8000-000000000902'::uuid
+    union all select 'submitted', 'aaaaaaaa-0000-4000-8000-000000000903'::uuid
+    union all select 'verified',  'aaaaaaaa-0000-4000-8000-000000000904'::uuid
+  loop
+    v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+             format('select (public.delete_customer_review_test_cards(array[%L]::uuid[], ''single''))->>''deleted''', v_id));
+    if v_r <> '1' then
+      raise exception '15b: deleting a % review returned %', v_stage, v_r;
+    end if;
+
+    select deleted_at, deleted_by, deleted_source
+      into v_deleted, v_by, v_src
+      from public.customer_review_test_cards where id = v_id;
+    if v_deleted is null then raise exception '15b: the % review has no tombstone', v_stage; end if;
+    if v_by <> 'ffffffff-0000-4000-8000-000000000004' then
+      raise exception '15b: the % deletion was attributed to %', v_stage, v_by;
+    end if;
+    if v_src <> 'single' then raise exception '15b: the % deletion recorded source %', v_stage, v_src; end if;
+
+    -- THE EVENT NAMES WHERE IT WAS. That is the whole point of the row: it is
+    -- the only record of what was thrown away and how far somebody had got.
+    select previous_status into v_prev
+      from public.customer_review_test_card_events
+     where card_id = v_id and event_type = 'deleted';
+    if v_prev is null then raise exception '15b: no deleted event for the % review', v_stage; end if;
+
+    raise notice 'PASS  15b. a % review was deleted, tombstoned and audited from %', v_stage, v_prev;
+  end loop;
+
+  -- THE ROWS ARE STILL THERE. Soft means soft.
+  select count(*) into v_events from public.customer_review_test_cards where deleted_at is not null;
+  if v_events <> 5 then raise exception '15b: expected 5 tombstones, found %', v_events; end if;
+  raise notice 'PASS  15b6. five reviews deleted, five rows still present';
+end $$;
+
+-- ── 15c. IT LEAVES THE CANDIDATE'S WORLD, AND STAYS IN THE VERIFIER'S ───────
+do $$
+declare v_id uuid := 'aaaaaaaa-0000-4000-8000-000000000901';  -- was theirs, booked
+begin
+  -- The candidate HELD this review. Now they cannot see it at all.
+  if pg_temp.cards_visible_to('ffffffff-0000-4000-8000-000000000002', v_id) <> 0 then
+    raise exception '15c: the candidate can still see a review deleted from under them';
+  end if;
+  raise notice 'PASS  15c1. a deleted review is invisible to the candidate who was holding it';
+
+  -- And it is not in the available pool for anybody else either, even though
+  -- another deleted card's STATUS still reads available further down.
+  if pg_temp.cards_visible_to('ffffffff-0000-4000-8000-000000000003', v_id) <> 0 then
+    raise exception '15c: a colleague can see a deleted review';
+  end if;
+  raise notice 'PASS  15c2. and to a colleague';
+
+  -- THE TOMBSTONE IS READABLE BY A VERIFIER, which is what makes it an audit
+  -- record rather than a row nobody can ever look at again.
+  if pg_temp.cards_visible_to('ffffffff-0000-4000-8000-000000000004', v_id) <> 1 then
+    raise exception '15c: a verifier cannot read the tombstone they created';
+  end if;
+  raise notice 'PASS  15c3. a verifier can still read it';
+
+  -- The detail-screen gate agrees with the policy, for both people.
+  if pg_temp.as_user('ffffffff-0000-4000-8000-000000000002',
+       format('select public.can_view_customer_review_test_card(%L)', v_id)) <> 'false' then
+    raise exception '15c: the detail gate still opens for the candidate';
+  end if;
+  if pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+       format('select public.can_view_customer_review_test_card(%L)', v_id)) <> 'true' then
+    raise exception '15c: the detail gate closed for the verifier';
+  end if;
+  raise notice 'PASS  15c4. can_view agrees with the policy for both people';
+end $$;
+
+-- ── 15d. EVERY EXISTING ACTION REFUSES IT ──────────────────────────────────
+do $$
+declare v_avail uuid; v_r text;
+begin
+  -- A deleted review whose STATUS IS STILL 'available' — the case the booking
+  -- claim had to grow a clause for, because soft deletion does not move status.
+  v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+           format('select (public.approve_customer_review_drafts(array[%L]::uuid[], false))->>''approved''',
+                  (select id from public.customer_review_test_cards
+                    where batch_id = (select id from del_batch where kind = 'A')
+                      and status = 'pending_approval' and deleted_at is null
+                    order by card_ref limit 1)));
+  if v_r <> '1' then raise exception '15d setup: approving one returned %', v_r; end if;
+
+  select id into v_avail from public.customer_review_test_cards
+   where status = 'available' and deleted_at is null
+     and batch_id = (select id from del_batch where kind = 'A')
+   order by card_ref limit 1;
+
+  perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+    format('select (public.delete_customer_review_test_cards(array[%L]::uuid[], ''single''))->>''deleted''', v_avail));
+
+  if (select status from public.customer_review_test_cards where id = v_avail) <> 'available' then
+    raise exception '15d: deletion moved the status, so the next assertion tests nothing';
+  end if;
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.book_customer_review_test_card(%L)', v_avail),
+    '23514', '15d1. BOOKING a deleted review whose status still reads available');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.unbook_customer_review_test_card(%L)', 'aaaaaaaa-0000-4000-8000-000000000901'),
+    '42501', '15d2. UNBOOKING a deleted booking');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.confirm_customer_review_test_card_sent(%L)', 'aaaaaaaa-0000-4000-8000-000000000901'),
+    '42501', '15d3. CONFIRMING A SEND on a deleted review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.transition_customer_review_test_card(%L, ''submitted'')', 'aaaaaaaa-0000-4000-8000-000000000901'),
+    '42501', '15d4. SUBMITTING a deleted review');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.transition_customer_review_test_card(%L, ''verified'', ''ok'')', 'aaaaaaaa-0000-4000-8000-000000000903'),
+    '42501', '15d5. VERIFYING a deleted submission');
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.transition_customer_review_test_card(%L, ''booked'', ''unreadable'')', 'aaaaaaaa-0000-4000-8000-000000000903'),
+    '42501', '15d6. RETURNING a deleted submission');
+
+  -- And the freeze trigger catches anything that reaches an UPDATE anyway.
+  begin
+    update public.customer_review_test_cards
+       set test_title = 'rewritten' where id = v_avail;
+    raise exception 'EXPECTED REFUSAL, GOT SUCCESS — 15d7. updating a deleted review directly';
+  exception
+    when others then
+      if sqlerrm like 'EXPECTED REFUSAL%' then raise; end if;
+      raise notice 'PASS      15d7. the freeze trigger refused a direct UPDATE of a tombstone (%)', sqlstate;
+  end;
+
+  -- INCLUDING AN UN-DELETE. There is no restore, and this is what makes that a
+  -- property of the table rather than a thing nobody happened to build.
+  begin
+    update public.customer_review_test_cards set deleted_at = null where id = v_avail;
+    raise exception 'EXPECTED REFUSAL, GOT SUCCESS — 15d8. clearing deleted_at';
+  exception
+    when others then
+      if sqlerrm like 'EXPECTED REFUSAL%' then raise; end if;
+      raise notice 'PASS      15d8. a deleted review CANNOT be restored, by anybody (%)', sqlstate;
+  end;
+end $$;
+
+-- ── 15e. A SELECTION IS ALL OF IT, OR NONE OF IT ───────────────────────────
+do $$
+declare v_ids uuid[]; v_dead uuid; v_r text; v_n integer;
+begin
+  select array_agg(id order by card_ref) into v_ids
+    from public.customer_review_test_cards
+   where batch_id = (select id from del_batch where kind = 'A')
+     and status = 'pending_approval' and deleted_at is null;
+  if coalesce(array_length(v_ids, 1), 0) < 3 then
+    raise exception '15e needs at least three live pending drafts, found %', array_length(v_ids, 1);
+  end if;
+
+  -- Three at once.
+  v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+           format('select (public.delete_customer_review_test_cards(%L::uuid[], ''selected''))->>''deleted''',
+                  array[v_ids[1], v_ids[2], v_ids[3]]));
+  if v_r <> '3' then raise exception '15e1: deleting three returned %', v_r; end if;
+  if exists (select 1 from public.customer_review_test_cards
+              where id = any(array[v_ids[1], v_ids[2], v_ids[3]])
+                and (deleted_at is null or deleted_source <> 'selected')) then
+    raise exception '15e1: not all three carry a selected tombstone';
+  end if;
+  raise notice 'PASS  15e1. three reviews deleted together, each recorded as a selection';
+
+  -- A SELECTION CONTAINING AN ALREADY-DELETED REVIEW REFUSES THE WHOLE CALL.
+  v_dead := v_ids[1];
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(%L::uuid[], ''selected'')',
+           array[v_ids[4], v_dead]),
+    '23514', '15e2. a selection containing an already-deleted review');
+
+  -- AND NOTHING IN IT MOVED. A partial group deletion is not expressible.
+  if (select deleted_at from public.customer_review_test_cards where id = v_ids[4]) is not null then
+    raise exception '15e2: the refused selection still deleted its live member';
+  end if;
+  raise notice 'PASS  15e3. the live member of the refused selection is untouched';
+
+  -- A MISSING MEMBER REFUSES IT TOO.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(%L::uuid[], ''selected'')',
+           array[v_ids[4], '00000000-0000-4000-8000-000000000000'::uuid]),
+    'P0002', '15e4. a selection naming a review that does not exist');
+  if (select deleted_at from public.customer_review_test_cards where id = v_ids[4]) is not null then
+    raise exception '15e4: the refused selection still deleted its live member';
+  end if;
+
+  -- REPEATED TAPS ARE ONE DELETION. The second is refused and the first
+  -- tombstone keeps its original actor and time.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_dead),
+    '23514', '15e5. deleting the same review twice');
+
+  select count(*) into v_n from public.customer_review_test_card_events
+   where card_id = v_dead and event_type = 'deleted';
+  if v_n <> 1 then raise exception '15e5: % deleted events on one review', v_n; end if;
+  raise notice 'PASS  15e6. a repeated tap leaves exactly one deletion on the trail';
+
+  -- An empty selection is a mistake, not a no-op.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    'select public.delete_customer_review_test_cards(array[]::uuid[], ''selected'')',
+    '23514', '15e7. deleting nothing at all');
+
+  -- `single` means one review, and the function says so rather than trusting it.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(%L::uuid[], ''single'')',
+           array[v_ids[4], v_ids[5]]),
+    '23514', '15e8. a two-review request calling itself a single deletion');
+
+  -- And an unknown source is refused rather than stored.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''whatever'')', v_ids[4]),
+    '23514', '15e9. a deletion with an unrecognised source');
+end $$;
+
+-- ── 15f. THE SCREENSHOT AND ITS OBJECT SURVIVE ─────────────────────────────
+--
+-- Ordinary deletion must not remove evidence. It could not remove the storage
+-- object even if it wanted to (storage.protect_objects_delete), which is
+-- precisely why removing the ROW would be the harmful half: the file would
+-- survive with nothing naming its key.
+do $$
+declare v_card uuid := 'aaaaaaaa-0000-4000-8000-000000000905'; v_shots integer; v_objs integer;
+begin
+  insert into public.customer_review_test_cards
+    (id, card_ref, test_category, test_title, test_body, status, booked_by, booked_at,
+     whatsapp_opened_at, whatsapp_opened_count, whatsapp_target_last_four,
+     sent_confirmed_at, sent_confirmed_by)
+  values (v_card, 'TEST-955', 'service_test', 'Carries evidence',
+          'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+          'booked', 'ffffffff-0000-4000-8000-000000000002', now(),
+          now(), 1, '4321', now(), 'ffffffff-0000-4000-8000-000000000002');
+
+  insert into storage.objects (bucket_id, name, owner)
+  values ('customer-review-test-screenshots', v_card || '/evidence.png', null);
+
+  insert into public.customer_review_test_card_screenshots
+    (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+  values (v_card, 'test_screenshot', v_card || '/evidence.png', 'evidence.png',
+          'image/png', 1024,
+          '2222222222222222222222222222222222222222222222222222222222222222',
+          'ffffffff-0000-4000-8000-000000000002');
+
+  perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_card));
+
+  select count(*) into v_shots from public.customer_review_test_card_screenshots where card_id = v_card;
+  if v_shots <> 1 then raise exception '15f: the screenshot row was removed by an ordinary deletion'; end if;
+
+  select count(*) into v_objs from storage.objects
+   where bucket_id = 'customer-review-test-screenshots' and name = v_card || '/evidence.png';
+  if v_objs <> 1 then raise exception '15f: the storage object was removed by an ordinary deletion'; end if;
+  raise notice 'PASS  15f1. deleting a review kept its screenshot row and its stored object';
+
+  -- The evidence is frozen rather than removable: withdrawing it afterwards
+  -- would be a separate decision with a separate authorisation.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000002',
+    format('select public.begin_customer_review_test_screenshot_removal(%L, %L)',
+           (select id from public.customer_review_test_card_screenshots where card_id = v_card),
+           'ffffffff-0000-4000-8000-000000000002'),
+    '42501', '15f2. removing the screenshot of a deleted review');
+
+  -- And nothing new can be attached to it.
+  begin
+    insert into public.customer_review_test_card_screenshots
+      (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
+    values (v_card, 'test_screenshot', v_card || '/second.png', 'second.png',
+            'image/png', 512,
+            '3333333333333333333333333333333333333333333333333333333333333333',
+            'ffffffff-0000-4000-8000-000000000002');
+    raise exception 'EXPECTED REFUSAL, GOT SUCCESS — 15f3. attaching a screenshot to a deleted review';
+  exception
+    when others then
+      if sqlerrm like 'EXPECTED REFUSAL%' then raise; end if;
+      raise notice 'PASS      15f3. a deleted review cannot take a new screenshot (%)', sqlstate;
+  end;
+end $$;
+
+-- ── 15g. GENERATION STILL WORKS WITH A FULL, MIXED POOL ────────────────────
+--
+-- 13a proved the retired pool rule is gone against available cards. This proves
+-- it against the pool the product actually has: available, booked, sent,
+-- submitted, verified and deleted rows all present at once.
+do $$
+declare v_r text; v_batch uuid; v_pending integer; v_shape text;
+begin
+  select string_agg(distinct status, ',' order by status) into v_shape
+    from public.customer_review_test_cards;
+  raise notice 'NOTE  15g. the pool contains: %', v_shape;
+
+  if (select count(*) from public.customer_review_test_cards
+       where status = 'available' and deleted_at is null) = 0 then
+    raise exception '15g is only a test of the retired pool rule if reviews ARE available';
+  end if;
+
+  v_r := pg_temp.try_batch('ffffffff-0000-4000-8000-000000000004',
+                           pg_temp.batch_payload(8), 'Deletion batch C.');
+  if v_r <> 'OK' then raise exception '15g: generation was refused against a full pool: %', v_r; end if;
+
+  select id into v_batch from public.customer_review_draft_batches where guidance = 'Deletion batch C.';
+  select count(*) into v_pending from public.customer_review_test_cards
+   where batch_id = v_batch and status = 'pending_approval' and deleted_at is null;
+  if v_pending <> 8 then raise exception '15g: % drafts landed pending, expected 8', v_pending; end if;
+  raise notice 'PASS  15g. eight drafts generated into a pool holding every other stage';
+end $$;
+
+-- ── 15h. REPLACE DISPLACES THE AVAILABLE LIST, AND NOTHING ELSE ────────────
+do $$
+declare
+  v_batch_b uuid; v_batch_c uuid;
+  v_before_available uuid[]; v_ids uuid[]; v_r text;
+  v_approved integer; v_replaced integer;
+  v_survivors integer; v_n integer;
+begin
+  select id into v_batch_b from del_batch where kind = 'B';
+  select id into v_batch_c from public.customer_review_draft_batches where guidance = 'Deletion batch C.';
+
+  -- Make sure every protected stage is present and live before the replacement,
+  -- or this proves nothing about what survives.
+  insert into public.customer_review_test_cards
+    (id, card_ref, test_category, test_title, test_body, status, booked_by, booked_at,
+     whatsapp_opened_at, whatsapp_opened_count, whatsapp_target_last_four,
+     sent_confirmed_at, sent_confirmed_by, submitted_at, submitted_by, verified_at, verified_by)
+  values
+    ('aaaaaaaa-0000-4000-8000-000000000911', 'TEST-961', 'cafe_test', 'Held during a replacement',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'booked', 'ffffffff-0000-4000-8000-000000000003', now(), null, 0, null, null, null, null, null, null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000912', 'TEST-962', 'hotel_test', 'Sent during a replacement',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'booked', 'ffffffff-0000-4000-8000-000000000003', now(), now(), 1, '4321',
+     now(), 'ffffffff-0000-4000-8000-000000000003', null, null, null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000913', 'TEST-963', 'resort_test', 'Submitted during a replacement',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'submitted', 'ffffffff-0000-4000-8000-000000000003', now(), now(), 1, '4321',
+     now(), 'ffffffff-0000-4000-8000-000000000003', now(), 'ffffffff-0000-4000-8000-000000000003', null, null),
+    ('aaaaaaaa-0000-4000-8000-000000000914', 'TEST-964', 'service_test', 'Verified during a replacement',
+     'Harness filler for the deletion assertions. It describes nothing and is attributed to nobody.',
+     'verified', 'ffffffff-0000-4000-8000-000000000003', now(), now(), 1, '4321',
+     now(), 'ffffffff-0000-4000-8000-000000000003', now(), 'ffffffff-0000-4000-8000-000000000003',
+     now(), 'ffffffff-0000-4000-8000-000000000004');
+
+  -- Approve four of batch B with ADD, so there is a list to replace.
+  select array_agg(id order by card_ref) into v_ids
+    from (select id, card_ref from public.customer_review_test_cards
+           where batch_id = v_batch_b and status = 'pending_approval' and deleted_at is null
+           order by card_ref limit 4) x;
+
+  v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+           format('select public.approve_customer_review_drafts(%L::uuid[], false)::text', v_ids));
+  if (v_r::jsonb->>'approved') <> '4' then raise exception '15h setup: Add approved %', v_r; end if;
+  if (v_r::jsonb->>'replaced') <> '0' then raise exception '15h setup: an Add replaced %', v_r; end if;
+  raise notice 'PASS  15h1. ADD approved 4 and replaced 0';
+
+  select array_agg(id order by card_ref) into v_before_available
+    from public.customer_review_test_cards where status = 'available' and deleted_at is null;
+  if coalesce(array_length(v_before_available, 1), 0) = 0 then
+    raise exception '15h needs a non-empty available list to replace';
+  end if;
+  raise notice 'NOTE  15h. % review(s) are available before the replacement',
+    array_length(v_before_available, 1);
+
+  -- ── THE REPLACEMENT ──
+  v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+           format('select public.approve_customer_review_draft_batch(%L, true)::text', v_batch_c));
+  v_approved := (v_r::jsonb->>'approved')::integer;
+  v_replaced := (v_r::jsonb->>'replaced')::integer;
+  if v_approved <> 8 then raise exception '15h2: the replacement approved %, expected 8', v_approved; end if;
+  if v_replaced <> array_length(v_before_available, 1) then
+    raise exception '15h2: it replaced %, expected %', v_replaced, array_length(v_before_available, 1);
+  end if;
+  raise notice 'PASS  15h2. REPLACE approved 8 and displaced % — exact counts, from the database', v_replaced;
+
+  -- Every previously-available review is now a replacement tombstone naming the
+  -- batch that displaced it and the person who did it.
+  if exists (select 1 from public.customer_review_test_cards
+              where id = any(v_before_available)
+                and (deleted_at is null
+                     or deleted_source <> 'replacement'
+                     or replaced_by_batch_id <> v_batch_c
+                     or deleted_by <> 'ffffffff-0000-4000-8000-000000000004')) then
+    raise exception '15h3: a displaced review is missing its replacement tombstone';
+  end if;
+  select count(*) into v_n from public.customer_review_test_card_events
+   where card_id = any(v_before_available) and event_type = 'replaced';
+  if v_n <> array_length(v_before_available, 1) then
+    raise exception '15h3: % replaced events for % displaced reviews', v_n, array_length(v_before_available, 1);
+  end if;
+  raise notice 'PASS  15h3. every displaced review names the batch and the actor that displaced it';
+
+  -- THE NEW ONES ARE THE ONLY THING AVAILABLE NOW.
+  select count(*) into v_n from public.customer_review_test_cards
+   where status = 'available' and deleted_at is null;
+  if v_n <> 8 then raise exception '15h4: % reviews are available after the replacement, expected 8', v_n; end if;
+  if exists (select 1 from public.customer_review_test_cards
+              where status = 'available' and deleted_at is null and batch_id <> v_batch_c) then
+    raise exception '15h4: something other than the new batch is available';
+  end if;
+  raise notice 'PASS  15h4. exactly the eight newly approved reviews are available';
+
+  -- AND THE TEXT IS THE TEXT THAT WAS APPROVED. A replacement publishes what the
+  -- verifier read; rewriting it here would be approving something else.
+  if exists (select 1 from public.customer_review_test_cards
+              where batch_id = v_batch_c and status = 'available'
+                and (test_title not like 'Draft % probe' or test_body not like '%probe batch%')) then
+    raise exception '15h5: the approved text is not the generated text';
+  end if;
+  raise notice 'PASS  15h5. the approved reviews still carry the text that was generated';
+
+  -- ── WHAT SURVIVED ──
+  select count(*) into v_survivors from public.customer_review_test_cards
+   where id in ('aaaaaaaa-0000-4000-8000-000000000911',
+                'aaaaaaaa-0000-4000-8000-000000000912',
+                'aaaaaaaa-0000-4000-8000-000000000913',
+                'aaaaaaaa-0000-4000-8000-000000000914')
+     and deleted_at is null;
+  if v_survivors <> 4 then
+    raise exception '15h6: only % of the 4 booked/sent/submitted/verified reviews survived', v_survivors;
+  end if;
+  raise notice 'PASS  15h6. booked, sent, submitted and verified reviews are untouched by a replacement';
+
+  -- PENDING DRAFTS IN ANOTHER BATCH ARE UNTOUCHED, including the four left in B.
+  select count(*) into v_n from public.customer_review_test_cards
+   where batch_id = v_batch_b and status = 'pending_approval' and deleted_at is null;
+  if v_n <> 4 then raise exception '15h7: % pending drafts left in batch B, expected 4', v_n; end if;
+  raise notice 'PASS  15h7. the other batch''s pending drafts are untouched';
+
+  -- AND A REPLACEMENT WITH AN EMPTY POOL IS SIMPLY AN ADD.
+  v_r := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+           format('select public.approve_customer_review_drafts(array[%L]::uuid[], true)::text',
+                  (select id from public.customer_review_test_cards
+                    where batch_id = v_batch_b and status = 'pending_approval' and deleted_at is null
+                    order by card_ref limit 1)));
+  if (v_r::jsonb->>'replaced')::integer <> 8 then
+    raise exception '15h8: replacing a pool of 8 displaced %', v_r;
+  end if;
+  raise notice 'PASS  15h8. a second replacement displaces the list the first one created';
+end $$;
+
+-- ── 15i. A STALE SELECTION REFUSES THE WHOLE TRANSACTION ───────────────────
+--
+-- The half that matters: a refusal must not leave the available list deleted
+-- with nothing approved in its place.
+do $$
+declare v_batch_b uuid; v_live uuid; v_dead uuid; v_before integer; v_after integer;
+begin
+  select id into v_batch_b from del_batch where kind = 'B';
+
+  select id into v_live from public.customer_review_test_cards
+   where batch_id = v_batch_b and status = 'pending_approval' and deleted_at is null
+   order by card_ref limit 1;
+  select id into v_dead from public.customer_review_test_cards
+   where batch_id = v_batch_b and status = 'pending_approval' and deleted_at is null
+   order by card_ref offset 1 limit 1;
+
+  -- Make one of them stale by deleting it.
+  perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+    format('select public.delete_customer_review_test_cards(array[%L]::uuid[], ''single'')', v_dead));
+
+  select count(*) into v_before from public.customer_review_test_cards
+   where status = 'available' and deleted_at is null;
+
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    format('select public.approve_customer_review_drafts(%L::uuid[], true)', array[v_live, v_dead]),
+    '23514', '15i1. a REPLACE whose selection contains a deleted draft');
+
+  select count(*) into v_after from public.customer_review_test_cards
+   where status = 'available' and deleted_at is null;
+  if v_after <> v_before then
+    raise exception '15i2: the refused replacement still changed the available list: % -> %', v_before, v_after;
+  end if;
+  if (select status from public.customer_review_test_cards where id = v_live) <> 'pending_approval' then
+    raise exception '15i2: the refused replacement still approved its live member';
+  end if;
+  raise notice 'PASS  15i2. a refused replacement approves nothing and displaces nothing';
+end $$;
+
+-- ── 15j. THE SUMMARY, AND DELETING EVERYTHING ──────────────────────────────
+do $$
+declare
+  v_sum jsonb; v_res jsonb; v_live integer; v_total integer;
+  v_still integer; v_events integer; v_shots integer; v_objs integer;
+begin
+  select count(*) into v_live from public.customer_review_test_cards where deleted_at is null;
+
+  v_sum := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+             'select public.customer_review_deletion_summary()::text')::jsonb;
+  if (v_sum->>'total')::integer <> v_live then
+    raise exception '15j1: the summary says % but % reviews are live', v_sum->>'total', v_live;
+  end if;
+  -- The stages add up to the total, which is what makes the confirmation honest.
+  if (v_sum->>'pending_approval')::integer + (v_sum->>'available')::integer
+   + (v_sum->>'booked')::integer + (v_sum->>'sent')::integer
+   + (v_sum->>'submitted')::integer + (v_sum->>'verified')::integer <> v_live then
+    raise exception '15j1: the per-stage counts do not add up to the total: %', v_sum;
+  end if;
+  raise notice 'PASS  15j1. the summary counts every live review, by stage: %', v_sum;
+
+  select count(*) into v_shots from public.customer_review_test_card_screenshots;
+  select count(*) into v_objs from storage.objects
+   where bucket_id = 'customer-review-test-screenshots';
+  select count(*) into v_events from public.customer_review_test_card_events;
+
+  v_res := pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
+             'select public.delete_all_customer_review_test_cards()::text')::jsonb;
+  if (v_res->>'deleted')::integer <> v_live then
+    raise exception '15j2: delete-all reported % but % were live', v_res->>'deleted', v_live;
+  end if;
+  raise notice 'PASS  15j2. delete-all removed every live review across every stage: %', v_res;
+
+  select count(*) into v_still from public.customer_review_test_cards where deleted_at is null;
+  if v_still <> 0 then raise exception '15j3: % reviews survived delete-all', v_still; end if;
+
+  -- NOTHING WAS PHYSICALLY REMOVED, which is the whole distinction.
+  select count(*) into v_total from public.customer_review_test_cards;
+  if v_total = 0 then raise exception '15j3: delete-all physically removed the rows'; end if;
+  if (select count(*) from public.customer_review_test_card_screenshots) <> v_shots then
+    raise exception '15j3: delete-all removed a screenshot row';
+  end if;
+  if (select count(*) from storage.objects
+       where bucket_id = 'customer-review-test-screenshots') <> v_objs then
+    raise exception '15j3: delete-all removed a storage object';
+  end if;
+  if (select count(*) from public.customer_review_test_card_events) < v_events then
+    raise exception '15j3: delete-all removed audit history';
+  end if;
+  raise notice 'PASS  15j3. % rows, % screenshot(s) and % object(s) are all still there',
+    v_total, v_shots, v_objs;
+
+  -- A second press has nothing to do, and says so rather than pretending.
+  perform pg_temp.refused_with(
+    'ffffffff-0000-4000-8000-000000000004',
+    'select public.delete_all_customer_review_test_cards()',
+    '23514', '15j4. pressing Delete all twice');
+
+  -- AND THE CANDIDATE'S WORLD IS EMPTY, not partially emptied.
+  if pg_temp.available_count_for('ffffffff-0000-4000-8000-000000000002') <> 0 then
+    raise exception '15j5: a candidate can still see available reviews after delete-all';
+  end if;
+  raise notice 'PASS  15j5. the candidate sees nothing at all';
+end $$;
+
+-- ── 15z. Clean up what this section generated ──────────────────────────────
+do $$
+declare v_cards integer; v_batches integer;
+begin
+  -- The batch children first: card_id cascades, but neither batch_id NOR
+  -- replaced_by_batch_id does. A harness card displaced by a replacement holds
+  -- a reference to the batch that displaced it, so it has to go before the
+  -- batch — and it cannot simply be nulled, because the freeze trigger refuses
+  -- any UPDATE of a deleted row, which every displaced card now is.
+  delete from public.customer_review_test_card_events
+   where card_id in (select id from public.customer_review_test_cards
+                      where batch_id is not null or replaced_by_batch_id is not null);
+  delete from public.customer_review_test_cards
+   where batch_id is not null or replaced_by_batch_id is not null;
+  get diagnostics v_cards = row_count;
+  delete from public.customer_review_draft_batch_revisions;
+  delete from public.customer_review_draft_batches;
+  get diagnostics v_batches = row_count;
+  raise notice 'PASS  15z. % generated card(s) and % batch(es) removed', v_cards, v_batches;
+end $$;
+
+drop table del_batch;
 
 -- ─── 12. Clean up ──────────────────────────────────────────────────────────
 

@@ -119,6 +119,7 @@ PENDING_FILES=(
   "20261025000000_review_workflow_remove_legacy_test_data.sql"
   "20261026000000_review_workflow_batch_approval.sql"
   "20261027000000_review_workflow_generation_claims.sql"
+  "20261030000000_review_workflow_deletion_and_replacement.sql"
 )
 
 # ── Test-only files, and where each one has to be applied ───────────────────
@@ -139,6 +140,9 @@ PENDING_FILES=(
 REWRITE_PROBE="supabase/tests/_review_workflow_drafts_before.sql"
 REWRITE_CHECK="supabase/tests/_review_workflow_drafts_rewrite_check.sql"
 LEGACY_STATE="supabase/tests/_review_workflow_legacy_state_before.sql"
+# The builder that puts the legacy dataset into every shape the guard has to
+# judge — the two it must ACCEPT as much as the ten it must refuse.
+LEGACY_CASES="supabase/tests/_review_workflow_legacy_guard_cases.sql"
 
 MIGRATIONS=(
   "20260609_create_attendance_records.sql"
@@ -151,6 +155,7 @@ MIGRATIONS=(
   "20261025000000_review_workflow_remove_legacy_test_data.sql"
   "20261026000000_review_workflow_batch_approval.sql"
   "20261027000000_review_workflow_generation_claims.sql"
+  "20261030000000_review_workflow_deletion_and_replacement.sql"
 )
 
 is_pending() {
@@ -318,6 +323,77 @@ for m in "${MIGRATIONS[@]}"; do
       grep -q 'SKIP  review-workflow legacy data' /tmp/legacy_again.out \
         || { echo "FATAL: it did not report the skip:" >&2; sed 's/^/         /' /tmp/legacy_again.out >&2; exit 1; }
       echo "        ✓ re-applying it on an empty table skips cleanly"
+
+      # ── EVERY OTHER SHAPE THE GUARD HAS TO JUDGE ───────────────────────
+      #
+      # The steps above prove one accept (15/1) and one refusal (a screenshot).
+      # A migration that permanently deletes production rows deserves both
+      # halves proved properly: the shapes that ARE the legacy dataset must be
+      # ACCEPTED — production had already drifted from 15/1 to 13/3 by the time
+      # the rollout was attempted — and everything else must be refused BY NAME,
+      # with nothing deleted.
+      next_step "$LEGACY_CASES (TEST-ONLY)"
+      psql_file "$REPO/$LEGACY_CASES"
+      echo "        ✓ the case builder is available"
+
+      # case:expectation — ACCEPT, or the marker the refusal has to carry.
+      LEGACY_GUARD_CASES=(
+        "split_15_1:ACCEPT"
+        "split_13_3:ACCEPT"
+        "whatsapp_only:ACCEPT"
+        "sent_confirmed:REVIEW_WORKFLOW_LEGACY_SEND_CONFIRMED"
+        "returned:REVIEW_WORKFLOW_LEGACY_SEND_CONFIRMED"
+        "submitted:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "verified:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "screenshot:REVIEW_WORKFLOW_LEGACY_SCREENSHOT"
+        "storage_object:REVIEW_WORKFLOW_LEGACY_STORAGE"
+        "extra_card:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "missing_card:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "wrong_ref:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+        "with_batch:REVIEW_WORKFLOW_LEGACY_STATE_CHANGED"
+      )
+
+      next_step "$m judges every legacy shape"
+      for CASE_SPEC in "${LEGACY_GUARD_CASES[@]}"; do
+        CASE_NAME="${CASE_SPEC%%:*}"
+        CASE_WANT="${CASE_SPEC#*:}"
+
+        _psql_raw "select public.zz_build_legacy('$CASE_NAME')" >/dev/null \
+          || { echo "FATAL: could not build the '$CASE_NAME' case." >&2; exit 1; }
+        BEFORE="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+
+        if [ "$CASE_WANT" = "ACCEPT" ]; then
+          psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_case.out 2>&1 \
+            || { echo "FATAL: the guard REFUSED '$CASE_NAME', which IS the legacy dataset:" >&2
+                 sed 's/^/         /' /tmp/legacy_case.out >&2; exit 1; }
+          AFTER="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+          [ "$AFTER" = "0" ] \
+            || { echo "FATAL: '$CASE_NAME' was accepted but left $AFTER card(s)." >&2; exit 1; }
+          echo "        ✓ $CASE_NAME — accepted, all $BEFORE card(s) removed"
+        else
+          if psql_file "$REPO/supabase/migrations/$m" >/tmp/legacy_case.out 2>&1; then
+            echo "FATAL: the guard ACCEPTED '$CASE_NAME'. It must refuse." >&2
+            exit 1
+          fi
+          grep -q "$CASE_WANT" /tmp/legacy_case.out \
+            || { echo "FATAL: '$CASE_NAME' was refused for the wrong reason (wanted $CASE_WANT):" >&2
+                 sed 's/^/         /' /tmp/legacy_case.out >&2; exit 1; }
+          AFTER="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+          [ "$AFTER" = "$BEFORE" ] \
+            || { echo "FATAL: refusing '$CASE_NAME' still deleted rows: $BEFORE -> $AFTER." >&2; exit 1; }
+          echo "        ✓ $CASE_NAME — refused $CASE_WANT, all $BEFORE card(s) untouched"
+        fi
+
+        _psql_raw 'select public.zz_clear_legacy()' >/dev/null
+      done
+
+      _psql_raw 'drop function if exists public.zz_build_legacy(text)' >/dev/null
+      _psql_raw 'drop function if exists public.zz_clear_legacy()' >/dev/null
+      LEFT="$(_psql_raw 'select count(*) from public.customer_review_test_cards')"
+      [ "$LEFT" = "0" ] \
+        || { echo "FATAL: $LEFT card(s) survived the guard cases." >&2; exit 1; }
+      echo "        ✓ thirteen shapes judged; the table is empty again"
+
       ;;
   esac
 done

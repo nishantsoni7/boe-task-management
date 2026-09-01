@@ -44,7 +44,8 @@ const admin    = { userId: OTHER,  canUse: true,  canVerify: true }
 const nobody   = { userId: OTHER,  canUse: false, canVerify: false }
 const adminHoldingIt = { userId: HOLDER, canUse: true, canVerify: true }
 
-const card = (status: TestCardStatus, booked_by: string | null = HOLDER) => ({ status, booked_by })
+const card = (status: TestCardStatus, booked_by: string | null = HOLDER) =>
+  ({ status, booked_by, deleted_at: null as string | null })
 
 describe('the shape of the lifecycle', () => {
   test('there are five statuses and no sixth', () => {
@@ -76,10 +77,10 @@ describe('the shape of the lifecycle', () => {
       { userId: 'u1', canUse: true,  canVerify: true },
     ]) {
       assert.deepEqual(
-        availableActions({ status: 'pending_approval', booked_by: null }, viewer), [])
+        availableActions({ status: 'pending_approval', booked_by: null, deleted_at: null }, viewer), [])
     }
     assert.equal(
-      canBookCard({ status: 'pending_approval' }, { userId: 'u1', canUse: true }), false)
+      canBookCard({ status: 'pending_approval', deleted_at: null }, { userId: 'u1', canUse: true }), false)
   })
 
   test('THERE IS NO `returned` STATUS — a return goes back to `booked`', () => {
@@ -239,24 +240,24 @@ describe('who may make which move', () => {
 
 describe('booking', () => {
   test('only an available card, and only somebody who may use the module', () => {
-    assert.equal(canBookCard({ status: 'available' }, tester), true)
-    assert.equal(canBookCard({ status: 'available' }, admin), true)
-    assert.equal(canBookCard({ status: 'available' }, nobody), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, tester), true)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, admin), true)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, nobody), false)
   })
 
   test('A VERIFIER WHO DOES NOT HOLD `use` CANNOT BOOK', () => {
     // The checker does not become the tester.
-    assert.equal(canBookCard({ status: 'available' }, verifier), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, verifier), false)
   })
 
   test('a card that is already taken cannot be booked again', () => {
     for (const status of ['booked', 'submitted', 'verified'] as const) {
-      assert.equal(canBookCard({ status }, tester), false, status)
+      assert.equal(canBookCard({ status, deleted_at: null }, tester), false, status)
     }
   })
 
   test('a signed-out caller books nothing', () => {
-    assert.equal(canBookCard({ status: 'available' }, { userId: null, canUse: true }), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: null, canUse: true }), false)
   })
 })
 
@@ -331,6 +332,7 @@ const booked = (over: Partial<{
   status: 'booked' as TestCardStatus,
   booked_by: HOLDER as string | null,
   sent_confirmed_at: null as string | null,
+  deleted_at: null as string | null,
   // An ordinary booking has never been returned. The returned shape gets its
   // own builder below, because returned implies sent and the two travel together.
   returned_at: null as string | null,
@@ -439,6 +441,7 @@ const returned = (over: Partial<{ sent_confirmed_at: string | null; returned_at:
   // Both non-null is the ONLY shape a returned review can have.
   sent_confirmed_at: '2026-08-30T09:00:00Z' as string | null,
   returned_at: '2026-08-31T09:00:00Z' as string | null,
+  deleted_at: null as string | null,
   ...over,
 })
 

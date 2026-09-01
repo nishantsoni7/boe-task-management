@@ -102,13 +102,13 @@ describe('an admin with the seed’s normal grants keeps the full intended acces
   })
 
   test('they may book an available card', () => {
-    assert.equal(canBookCard({ status: 'available' }, { userId: ADMIN, canUse: caps.canUse }), true)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: ADMIN, canUse: caps.canUse }), true)
   })
 
   test('they may run a card they booked themselves, end to end', () => {
     assert.equal(holdsThisCard({ booked_by: ADMIN }, ADMIN, caps), true)
     assert.deepEqual(
-      availableActions({ status: 'booked', booked_by: ADMIN },
+      availableActions({ status: 'booked', booked_by: ADMIN, deleted_at: null },
         { userId: ADMIN, canUse: caps.canUse, canVerify: caps.canVerify }).map(a => a.to),
       ['submitted'],
     )
@@ -116,7 +116,7 @@ describe('an admin with the seed’s normal grants keeps the full intended acces
 
   test('and they may verify and return somebody else’s submitted card', () => {
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: ADMIN, canUse: caps.canUse, canVerify: caps.canVerify }).map(a => a.to).sort(),
       ['booked', 'verified'],
     )
@@ -147,7 +147,7 @@ describe('an admin whose `use` is revoked cannot act as a candidate', () => {
   })
 
   test('they cannot BOOK', () => {
-    assert.equal(canBookCard({ status: 'available' }, { userId: ADMIN, canUse: caps.canUse }), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: ADMIN, canUse: caps.canUse }), false)
   })
 
   test('they cannot PREPARE WHATSAPP, UPLOAD, REMOVE or CONFIRM — all four are `mine`', () => {
@@ -159,7 +159,7 @@ describe('an admin whose `use` is revoked cannot act as a candidate', () => {
 
   test('they cannot SUBMIT', () => {
     assert.deepEqual(
-      availableActions({ status: 'booked', booked_by: ADMIN },
+      availableActions({ status: 'booked', booked_by: ADMIN, deleted_at: null },
         { userId: ADMIN, canUse: caps.canUse, canVerify: caps.canVerify }),
       [],
     )
@@ -167,7 +167,7 @@ describe('an admin whose `use` is revoked cannot act as a candidate', () => {
 
   test('but they keep verification, because only ONE authority was revoked', () => {
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: ADMIN, canUse: caps.canUse, canVerify: caps.canVerify }).map(a => a.to).sort(),
       ['booked', 'verified'],
     )
@@ -190,7 +190,7 @@ describe('an admin whose `verify` is revoked sees no verifier control or row', (
 
   test('neither Verify test nor Return to tester is offered', () => {
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: ADMIN, canUse: caps.canUse, canVerify: caps.canVerify }),
       [],
     )
@@ -276,11 +276,11 @@ describe('a tester and a verifier with valid permissions still work', () => {
 
   test('THE TESTER: book → prepare → confirm → submit', () => {
     assert.equal(tester.canAccessModule, true)
-    assert.equal(canBookCard({ status: 'available' }, { userId: HOLDER, canUse: tester.canUse }), true)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: HOLDER, canUse: tester.canUse }), true)
     // Everything between booking and submitting is drawn from `mine`.
     assert.equal(holdsThisCard({ booked_by: HOLDER }, HOLDER, tester), true)
     assert.deepEqual(
-      availableActions({ status: 'booked', booked_by: HOLDER },
+      availableActions({ status: 'booked', booked_by: HOLDER, deleted_at: null },
         { userId: HOLDER, canUse: tester.canUse, canVerify: tester.canVerify }).map(a => a.to),
       ['submitted'],
     )
@@ -288,7 +288,7 @@ describe('a tester and a verifier with valid permissions still work', () => {
 
   test('…and cannot verify their own test, which is the separation', () => {
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: HOLDER, canUse: tester.canUse, canVerify: tester.canVerify }),
       [],
     )
@@ -297,7 +297,7 @@ describe('a tester and a verifier with valid permissions still work', () => {
   test('THE VERIFIER: reads every card, verifies and returns', () => {
     assert.equal(verifier.canAccessModule, true)
     assert.deepEqual(
-      availableActions({ status: 'submitted', booked_by: HOLDER },
+      availableActions({ status: 'submitted', booked_by: HOLDER, deleted_at: null },
         { userId: 'user-verifier', canUse: verifier.canUse, canVerify: verifier.canVerify })
         .map(a => a.to).sort(),
       ['booked', 'verified'],
@@ -305,7 +305,7 @@ describe('a tester and a verifier with valid permissions still work', () => {
   })
 
   test('…and cannot book or act as a tester, which is the other half', () => {
-    assert.equal(canBookCard({ status: 'available' }, { userId: 'user-verifier', canUse: verifier.canUse }), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: 'user-verifier', canUse: verifier.canUse }), false)
     assert.equal(holdsThisCard({ booked_by: 'user-verifier' }, 'user-verifier', verifier), false)
   })
 })

@@ -12,11 +12,17 @@ import { GenerateDrafts } from '@/components/customerReviews/GenerateDrafts'
 import { PendingBatches } from '@/components/customerReviews/PendingBatches'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewFullView, ReviewFullViewActions } from '@/components/customerReviews/ReviewFullView'
+import {
+  DeleteAllReviewsBar,
+  DeleteAllReviewsSheet,
+  DeleteReviewButton,
+  DeleteReviewsSheet,
+} from '@/components/customerReviews/DeleteReviews'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, textParam } from '@/lib/listState'
 import { fetchAllRows } from '@/lib/supabasePaging'
-import { canBookCard } from '@/lib/customerReviews/status'
+import { canBookCard, canDeleteCard, type ApprovalMode } from '@/lib/customerReviews/status'
 import {
   DRAFT_BATCH_COLUMNS,
   TEST_CARD_AVAILABLE_COLUMNS,
@@ -24,6 +30,9 @@ import {
   TEST_CARD_PENDING_COLUMNS,
   TEST_CARD_STATUS_META,
   testCategoryLabel,
+  type ApprovalResult,
+  type DeletionCounts,
+  type DeletionSummary,
   type DraftBatch,
   type TestCard,
   type TestCardStatus,
@@ -96,6 +105,8 @@ export function TestCardListScreen() {
   const [batches, setBatches] = useState<Map<string, DraftBatch>>(new Map())
   const [actorNames, setActorNames] = useState<Map<string, string>>(new Map())
   const [pendingTotal, setPendingTotal] = useState<number | null>(null)
+  /** How many reviews a Replace would displace. Verifier-only, like the tab. */
+  const [availableTotal, setAvailableTotal] = useState<number | null>(null)
   /**
    * WHICH TAB THE ROWS IN STATE BELONG TO, or null before the first load.
    *
@@ -117,6 +128,15 @@ export function TestCardListScreen() {
   const [approving, setApproving] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [approved, setApproved] = useState<string | null>(null)
+  /** What the delete confirmation is about, or null when it is closed. */
+  const [deleting, setDeleting] = useState<
+    null | { cards: TestCard[]; source: 'single' | 'selected' }
+  >(null)
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false)
+  const [deleteSummary, setDeleteSummary] = useState<DeletionSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(false)
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const booking = useRef(false)
   const acting = useRef(false)
   /**
@@ -171,6 +191,14 @@ export function TestCardListScreen() {
           .from('customer_review_test_cards')
           .select(columns)
           .in('status', TAB_STATUSES[tab])
+          // EVERY OPERATIONAL LIST IS LIVE ROWS ONLY, and this filter is in the
+          // query for the verifier's sake rather than the candidate's. RLS
+          // already makes a tombstone unreadable to a candidate; it
+          // deliberately does NOT hide one from a verifier, because they are
+          // the people the audit record exists for. So the SCREEN is what keeps
+          // deleted reviews out of the working lists, and it says so here once
+          // rather than filtering in five places downstream.
+          .is('deleted_at', null)
 
         // MY REVIEWS IS SCOPED IN THE QUERY AS WELL AS BY RLS. The policy
         // already narrows a `use` holder to their own cards, but a VERIFIER sees
@@ -246,12 +274,31 @@ export function TestCardListScreen() {
    * answer is always zero is a request not worth making.
    */
   const loadPendingCount = useCallback(async () => {
-    if (!caps.canVerify) { setPendingTotal(null); return }
-    const { count } = await supabase
-      .from('customer_review_test_cards')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'pending_approval')
-    setPendingTotal(count ?? 0)
+    if (!caps.canVerify) { setPendingTotal(null); setAvailableTotal(null); return }
+    const [pending, available] = await Promise.all([
+      supabase
+        .from('customer_review_test_cards')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'pending_approval')
+        .is('deleted_at', null),
+      // HOW MANY REVIEWS A REPLACE WOULD DISPLACE.
+      //
+      // Counted here rather than inside the approval sheet because the sheet
+      // opens from the Pending tab, whose rows are pending drafts — it has no
+      // way to see the available pool it is being asked about. `head: true`
+      // fetches no rows.
+      //
+      // IT IS A DISPLAY NUMBER, NOT A DECISION. Between this and the write
+      // somebody can book a review; the database chooses and locks the set
+      // inside the transaction and returns what it actually replaced.
+      supabase
+        .from('customer_review_test_cards')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', 'available')
+        .is('deleted_at', null),
+    ])
+    setPendingTotal(pending.count ?? 0)
+    setAvailableTotal(available.count ?? 0)
   }, [supabase, caps.canVerify])
 
   // True until the rows in state are the ones this tab asked for.
@@ -327,8 +374,18 @@ export function TestCardListScreen() {
         await loadPendingCount()
         return
       }
-      const n = typeof data === 'number' ? data : 0
-      setApproved(`${n} review${n === 1 ? '' : 's'} approved and available to candidates.`)
+      // THE COUNTS ARE THE DATABASE'S, NOT THE BROWSER'S. Both functions choose
+      // and lock their sets inside the transaction, so what comes back is what
+      // actually happened — which is the only honest thing to report after a
+      // Replace, where the pool can move between the confirmation and the write.
+      const result = (data ?? {}) as Partial<ApprovalResult>
+      const n = result.approved ?? 0
+      const replaced = result.replaced ?? 0
+      setApproved(
+        replaced > 0
+          ? `${n} review${n === 1 ? '' : 's'} approved, replacing ${replaced} that ${replaced === 1 ? 'was' : 'were'} available.`
+          : `${n} review${n === 1 ? '' : 's'} approved and available to candidates.`,
+      )
       await load()
       await loadPendingCount()
     } catch {
@@ -339,14 +396,123 @@ export function TestCardListScreen() {
     }
   }, [supabase, load, loadPendingCount])
 
+  // `p_replace` HAS NO DEFAULT ON EITHER FUNCTION, so every call states the
+  // choice. Two PostgREST overloads differing only by a defaulted argument is
+  // PGRST203 — it cannot pick one — which is why the old single-argument
+  // signatures were dropped rather than kept alongside.
   const approve = useCallback(
-    (ids: string[]) => runApproval('approve_customer_review_drafts', { p_card_ids: ids }),
+    (ids: string[], mode: ApprovalMode) => runApproval('approve_customer_review_drafts', {
+      p_card_ids: ids, p_replace: mode === 'replace',
+    }),
     [runApproval],
   )
   const approveBatch = useCallback(
-    (batchId: string) => runApproval('approve_customer_review_draft_batch', { p_batch_id: batchId }),
+    (batchId: string, mode: ApprovalMode) => runApproval('approve_customer_review_draft_batch', {
+      p_batch_id: batchId, p_replace: mode === 'replace',
+    }),
     [runApproval],
   )
+
+  // ── Deletion ──────────────────────────────────────────────────────────────
+  //
+  // THE SCREEN OWNS THE RPC AND THE COMPONENTS OWN THE WORDS, which is the
+  // arrangement the approval flow already uses: PendingBatches and the tiles
+  // raise an intent, the confirmation sheets render it, and exactly one place
+  // here talks to the database.
+
+  const openDelete = useCallback((targets: TestCard[], source: 'single' | 'selected') => {
+    if (targets.length === 0) return
+    setDeleteError(null)
+    setDeleting({ cards: targets, source })
+  }, [])
+
+  const runDelete = useCallback(async () => {
+    if (!deleting || acting.current) return
+    acting.current = true
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const { data, error } = await supabase.rpc('delete_customer_review_test_cards', {
+        p_card_ids: deleting.cards.map(c => c.id),
+        p_source: deleting.source,
+      })
+      if (error) {
+        // THE SHEET STAYS OPEN ON A REFUSAL. Almost every refusal here is
+        // staleness — somebody deleted one of them first — and closing the
+        // sheet would hide the sentence explaining why nothing happened.
+        setDeleteError(error.message.replace(/^[A-Z_]+:\s*/, '') || 'Those reviews could not be deleted.')
+        await load()
+        await loadPendingCount()
+        return
+      }
+      const counts = (data ?? {}) as Partial<DeletionCounts>
+      const n = counts.deleted ?? 0
+      setDeleting(null)
+      setApproved(`${n} review${n === 1 ? '' : 's'} deleted.`)
+      await load()
+      await loadPendingCount()
+    } catch {
+      setDeleteError('Those reviews could not be deleted. Check your connection and try again.')
+    } finally {
+      acting.current = false
+      setDeleteBusy(false)
+    }
+  }, [supabase, deleting, load, loadPendingCount])
+
+  /**
+   * Opening Delete all RE-READS THE POPULATION rather than counting the tab.
+   *
+   * No tab on this screen reads `verified` rows — that is deliberate, and it
+   * means a total assembled in the browser would leave part of "everything"
+   * out. The summary function counts every live review by stage, so the
+   * confirmation states the real consequence.
+   */
+  const openDeleteAll = useCallback(async () => {
+    setDeleteError(null)
+    setDeleteSummary(null)
+    setDeleteAllOpen(true)
+    setSummaryLoading(true)
+    try {
+      const { data, error } = await supabase.rpc('customer_review_deletion_summary')
+      if (error) {
+        setDeleteError(error.message.replace(/^[A-Z_]+:\s*/, '') || 'That count could not be read.')
+        return
+      }
+      setDeleteSummary((data ?? null) as DeletionSummary | null)
+    } catch {
+      setDeleteError('That count could not be read. Check your connection and try again.')
+    } finally {
+      setSummaryLoading(false)
+    }
+  }, [supabase])
+
+  const runDeleteAll = useCallback(async () => {
+    if (acting.current) return
+    acting.current = true
+    setDeleteBusy(true)
+    setDeleteError(null)
+    try {
+      const { data, error } = await supabase.rpc('delete_all_customer_review_test_cards')
+      if (error) {
+        setDeleteError(error.message.replace(/^[A-Z_]+:\s*/, '') || 'The reviews could not be deleted.')
+        await load()
+        await loadPendingCount()
+        return
+      }
+      const counts = (data ?? {}) as Partial<DeletionCounts>
+      const n = counts.deleted ?? 0
+      setDeleteAllOpen(false)
+      setDeleteSummary(null)
+      setApproved(`${n} review${n === 1 ? '' : 's'} deleted. The module is empty.`)
+      await load()
+      await loadPendingCount()
+    } catch {
+      setDeleteError('The reviews could not be deleted. Check your connection and try again.')
+    } finally {
+      acting.current = false
+      setDeleteBusy(false)
+    }
+  }, [supabase, load, loadPendingCount])
 
   const filtered = useMemo(() => {
     const needle = state.q.trim().toLowerCase()
@@ -519,9 +685,11 @@ export function TestCardListScreen() {
             cards={filtered}
             batches={batches}
             actorNames={actorNames}
+            availableCount={availableTotal}
             busy={approving}
             onApprove={approve}
             onApproveBatch={approveBatch}
+            onDelete={openDelete}
             onRevised={() => { void load(); void loadPendingCount() }}
           />
         ) : (
@@ -547,11 +715,28 @@ export function TestCardListScreen() {
                 key={card.id}
                 card={card}
                 showView={tab === 'available'}
+                /*
+                  DELETION IS A VERIFIER'S CONTROL AND CANDIDATES NEVER SEE ONE.
+                  `caps.canVerify` is the resolved permission, never a role, and
+                  it is the weakest of the three checks — the RPC resolves it
+                  again and the database function resolves it a third time.
+                */
+                canDelete={canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })}
+                onDelete={() => openDelete([card], 'single')}
                 onView={() => { setBookError(null); setReading(card) }}
                 onOpen={() => router.push(`/customer-reviews/${card.id}`)}
               />
             ))}
           </div>
+        )}
+
+        {/*
+          DELETE ALL SITS BELOW THE LIST, BEHIND ITS OWN RULE, and nowhere near
+          Generate or the approval controls at the top. It is the last thing on
+          the page rather than a neighbour of anything used routinely.
+        */}
+        {caps.canVerify && !listLoading && (
+          <DeleteAllReviewsBar onOpen={() => { void openDeleteAll() }} disabled={deleteBusy} />
         )}
       </div>
 
@@ -582,6 +767,31 @@ export function TestCardListScreen() {
           />
         </ReviewSheet>
       )}
+
+      {deleting && (
+        <DeleteReviewsSheet
+          cards={deleting.cards}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={() => { void runDelete() }}
+          onCancel={() => { setDeleting(null); setDeleteError(null) }}
+        />
+      )}
+
+      {deleteAllOpen && (
+        <DeleteAllReviewsSheet
+          summary={deleteSummary}
+          loadingSummary={summaryLoading}
+          busy={deleteBusy}
+          error={deleteError}
+          onConfirm={() => { void runDeleteAll() }}
+          onCancel={() => {
+            setDeleteAllOpen(false)
+            setDeleteSummary(null)
+            setDeleteError(null)
+          }}
+        />
+      )}
     </CustomerReviewsLayout>
   )
 }
@@ -602,12 +812,17 @@ export function TestCardListScreen() {
 function TestCardTile({
   card,
   showView,
+  canDelete,
+  onDelete,
   onView,
   onOpen,
 }: {
   card: TestCard
   /** Available reviews open the full view; everything else opens its own page. */
   showView: boolean
+  /** Verifier only. A candidate is never passed true. */
+  canDelete: boolean
+  onDelete: () => void
   onView: () => void
   onOpen: () => void
 }) {
@@ -655,7 +870,10 @@ function TestCardTile({
         {preview}
       </p>
 
-      <div style={{ display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '4px' }}>
+      <div style={{
+        display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '4px',
+        alignItems: 'center', flexWrap: 'wrap',
+      }}>
         <button
           type="button"
           onClick={showView ? onView : onOpen}
@@ -664,6 +882,16 @@ function TestCardTile({
         >
           {showView ? 'View' : 'Open'}
         </button>
+        {/*
+          PUSHED TO THE FAR EDGE, away from the action a person came to the
+          tile for. On a phone the two controls end up at opposite ends of the
+          row, which is the most separation a 360px card can offer.
+        */}
+        {canDelete && (
+          <span style={{ marginLeft: 'auto' }}>
+            <DeleteReviewButton compact onClick={onDelete} />
+          </span>
+        )}
       </div>
     </div>
   )

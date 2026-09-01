@@ -7,6 +7,9 @@ import { ReviewSheet } from './ReviewSheet'
 import { ReviewFullView } from './ReviewFullView'
 import { ReviseDrafts } from './ReviseDrafts'
 import { InternalTestWarning } from './ReviewPieces'
+import { ApprovalChoiceCards } from './ApprovalChoice'
+import { DeleteReviewButton } from './DeleteReviews'
+import type { ApprovalMode } from '@/lib/customerReviews/status'
 import {
   formatTestTimestamp,
   testCategoryLabel,
@@ -52,14 +55,25 @@ type Props = {
   batches: Map<string, DraftBatch>
   /** Display names for the people who generated them, by user id. */
   actorNames: Map<string, string>
+  /**
+   * How many reviews are available to candidates right now.
+   *
+   * Read by the screen, not derived here — this workspace only ever holds
+   * PENDING drafts, so it has no way to count the pool it is being asked about.
+   * It is what makes "Replace" able to say how many reviews it would displace.
+   */
+  availableCount: number | null
   busy: boolean
-  onApprove: (ids: string[]) => Promise<void>
-  onApproveBatch: (batchId: string) => Promise<void>
+  onApprove: (ids: string[], mode: ApprovalMode) => Promise<void>
+  onApproveBatch: (batchId: string, mode: ApprovalMode) => Promise<void>
+  /** Opens the deletion confirmation the screen owns. */
+  onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
   onRevised: () => void
 }
 
 export function PendingBatches({
-  cards, batches, actorNames, busy, onApprove, onApproveBatch, onRevised,
+  cards, batches, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised,
 }: Props) {
   // Grouped by batch, batches newest first, drafts by reference within one.
   const groups = useMemo(() => {
@@ -94,9 +108,11 @@ export function PendingBatches({
           batch={group.batch}
           cards={group.cards}
           actorNames={actorNames}
+          availableCount={availableCount}
           busy={busy}
           onApprove={onApprove}
           onApproveBatch={onApproveBatch}
+          onDelete={onDelete}
           onRevised={onRevised}
         />
       ))}
@@ -105,21 +121,43 @@ export function PendingBatches({
 }
 
 function BatchGroup({
-  batchId, batch, cards, actorNames, busy, onApprove, onApproveBatch, onRevised,
+  batchId, batch, cards, actorNames, availableCount, busy,
+  onApprove, onApproveBatch, onDelete, onRevised,
 }: {
   batchId: string
   batch: DraftBatch | null
   cards: TestCard[]
   actorNames: Map<string, string>
+  availableCount: number | null
   busy: boolean
-  onApprove: (ids: string[]) => Promise<void>
-  onApproveBatch: (batchId: string) => Promise<void>
+  onApprove: (ids: string[], mode: ApprovalMode) => Promise<void>
+  onApproveBatch: (batchId: string, mode: ApprovalMode) => Promise<void>
+  onDelete: (cards: TestCard[], source: 'single' | 'selected') => void
   onRevised: () => void
 }) {
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [showGuidance, setShowGuidance] = useState(false)
   const [reading, setReading] = useState<TestCard | null>(null)
-  const [confirm, setConfirm] = useState<null | { kind: 'selected' | 'all'; count: number }>(null)
+  const [confirm, setConfirm] = useState<
+    null | { kind: 'selected' | 'all' | 'one'; count: number; ids: string[] }
+  >(null)
+  /**
+   * ADD IS THE DEFAULT, AND IT RESETS WITH EVERY CONFIRMATION.
+   *
+   * The state lives beside `confirm` rather than outside it so that closing a
+   * sheet and opening another cannot carry a Replace forward into an approval
+   * the verifier meant to add. `setConfirm` and `setMode('add')` always move
+   * together for that reason.
+   */
+  const [mode, setMode] = useState<ApprovalMode>('add')
+
+  const openConfirm = useCallback(
+    (next: { kind: 'selected' | 'all' | 'one'; count: number; ids: string[] }) => {
+      setMode('add')
+      setConfirm(next)
+    },
+    [],
+  )
 
   const pendingCount = cards.length
   const allSelected = selected.size === pendingCount && pendingCount > 0
@@ -137,17 +175,14 @@ function BatchGroup({
     setSelected(prev => (prev.size === cards.length ? new Set() : new Set(cards.map(c => c.id))))
   }, [cards])
 
-  const runSelected = useCallback(async () => {
-    await onApprove(Array.from(selected))
+  const runConfirmed = useCallback(async () => {
+    if (!confirm) return
+    if (confirm.kind === 'all') await onApproveBatch(batchId, mode)
+    else await onApprove(confirm.ids, mode)
     setSelected(new Set())
     setConfirm(null)
-  }, [onApprove, selected])
-
-  const runAll = useCallback(async () => {
-    await onApproveBatch(batchId)
-    setSelected(new Set())
-    setConfirm(null)
-  }, [onApproveBatch, batchId])
+    setMode('add')
+  }, [confirm, mode, onApprove, onApproveBatch, batchId])
 
   const generatedBy = batch ? (actorNames.get(batch.generated_by) ?? 'a verifier') : null
 
@@ -232,7 +267,9 @@ function BatchGroup({
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginLeft: 'auto' }}>
           <button
             type="button"
-            onClick={() => setConfirm({ kind: 'selected', count: selected.size })}
+            onClick={() => openConfirm({
+              kind: 'selected', count: selected.size, ids: Array.from(selected),
+            })}
             disabled={selected.size === 0 || busy}
             className="boe-btn boe-btn-primary"
             style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
@@ -241,7 +278,7 @@ function BatchGroup({
           </button>
           <button
             type="button"
-            onClick={() => setConfirm({ kind: 'all', count: pendingCount })}
+            onClick={() => openConfirm({ kind: 'all', count: pendingCount, ids: [] })}
             disabled={busy}
             className="boe-btn boe-btn-ghost"
             style={{ fontSize: '12px', padding: '9px 14px', minHeight: '44px' }}
@@ -251,6 +288,20 @@ function BatchGroup({
           {batch && (
             <ReviseDrafts batchId={batchId} pendingCount={pendingCount} onRevised={onRevised} />
           )}
+          {/*
+            DELETING A SELECTION SITS LAST IN THE ROW, after Approve and Revise.
+            It is the same selection the approve action uses, so a verifier who
+            has ticked four drafts can discard them without ticking again — and
+            it is a ghost button in danger colour rather than a primary one,
+            because the control that throws work away should not be where the
+            thumb lands by habit.
+          */}
+          <DeleteReviewButton
+            compact
+            label={selected.size > 0 ? `Delete ${selected.size}` : 'Delete selected'}
+            disabled={selected.size === 0 || busy}
+            onClick={() => onDelete(cards.filter(c => selected.has(c.id)), 'selected')}
+          />
         </div>
 
         {/*
@@ -281,7 +332,8 @@ function BatchGroup({
             busy={busy}
             onToggle={() => toggle(card.id)}
             onRead={() => setReading(card)}
-            onApproveOne={() => onApprove([card.id])}
+            onApproveOne={() => openConfirm({ kind: 'one', count: 1, ids: [card.id] })}
+            onDeleteOne={() => onDelete([card], 'single')}
           />
         ))}
       </ul>
@@ -297,13 +349,26 @@ function BatchGroup({
             <>
               <button
                 type="button"
-                onClick={async () => { const c = reading; setReading(null); await onApprove([c.id]) }}
+                onClick={() => {
+                  const c = reading
+                  setReading(null)
+                  openConfirm({ kind: 'one', count: 1, ids: [c.id] })
+                }}
                 disabled={busy}
                 className="boe-btn boe-btn-primary"
                 style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
               >
                 Approve this review
               </button>
+              {/*
+                DELETING FROM THE FULL VIEW is where a verifier who has just
+                read a bad draft actually is, so the action is offered there —
+                still secondary, still behind its own confirmation.
+              */}
+              <DeleteReviewButton
+                disabled={busy}
+                onClick={() => { const c = reading; setReading(null); onDelete([c], 'single') }}
+              />
               <button
                 type="button"
                 onClick={() => setReading(null)}
@@ -319,28 +384,52 @@ function BatchGroup({
         </ReviewSheet>
       )}
 
-      {/* ── The bulk confirmation ── */}
+      {/*
+        ── The approval confirmation, and the Add/Replace choice ──
+
+        ONE SHEET FOR ALL THREE APPROVAL SCOPES. Approving a single draft used
+        to be a bare tap; it now goes through here too, because every approval
+        has to answer the same question about the list that is already there.
+        The sheet is the only place that question is asked.
+      */}
       {confirm && (
         <ReviewSheet
           title={confirm.kind === 'all'
             ? `Approve all ${confirm.count} pending reviews?`
-            : `Approve ${confirm.count} selected review${confirm.count === 1 ? '' : 's'}?`}
-          onClose={() => { if (!busy) setConfirm(null) }}
+            : confirm.count === 1
+              ? 'Approve this review?'
+              : `Approve ${confirm.count} selected reviews?`}
+          subtitle={
+            availableCount === null
+              ? undefined
+              : availableCount === 0
+                ? 'Nothing is available to candidates right now'
+                : `${availableCount} review${availableCount === 1 ? ' is' : 's are'} available to candidates right now`
+          }
+          maxWidth="520px"
+          onClose={() => { if (!busy) { setConfirm(null); setMode('add') } }}
           footer={
             <>
               <button
                 type="button"
-                onClick={confirm.kind === 'all' ? runAll : runSelected}
+                onClick={runConfirmed}
                 disabled={busy}
                 className="boe-btn boe-btn-primary"
                 style={{ flex: '1 1 auto', justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
               >
                 {busy && <Loader2 size={14} strokeWidth={2.4} style={{ animation: 'boe-spin 0.8s linear infinite' }} />}
-                {busy ? 'Approving…' : `Yes, approve ${confirm.count}`}
+                {busy
+                  ? 'Approving…'
+                  // THE PRIMARY ACTION NAMES THE CHOICE, not just the count.
+                  // "Yes, approve 8" reads the same whichever card is ticked,
+                  // and the two outcomes are not the same.
+                  : mode === 'replace'
+                    ? `Approve ${confirm.count} and replace the list`
+                    : `Approve ${confirm.count} and keep the list`}
               </button>
               <button
                 type="button"
-                onClick={() => setConfirm(null)}
+                onClick={() => { setConfirm(null); setMode('add') }}
                 disabled={busy}
                 className="boe-btn boe-btn-ghost"
                 style={{ justifyContent: 'center', fontSize: '13px', padding: '11px 16px', minHeight: '44px' }}
@@ -354,10 +443,22 @@ function BatchGroup({
             {confirm.count === 1 ? 'This review becomes' : `These ${confirm.count} reviews become`} available
             for any candidate to book and send. Approval cannot be undone from this screen.
           </p>
-          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
+
+          <ApprovalChoiceCards
+            mode={mode}
+            onChange={setMode}
+            approveCount={confirm.count}
+            availableCount={availableCount ?? 0}
+            disabled={busy}
+          />
+
+          <p style={{ margin: 0, fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.55 }}>
             {confirm.kind === 'all'
               ? 'Everything still awaiting approval in this batch is released together, or nothing is.'
-              : 'The whole selection is approved together, or none of it is — if one of them has already been approved by somebody else, nothing changes and you can try again.'}
+              : confirm.count === 1
+                ? 'If it has already been approved by somebody else, nothing changes and you can try again.'
+                : 'The whole selection is approved together, or none of it is — if one of them has already been approved by somebody else, nothing changes and you can try again.'}
+            {mode === 'replace' && ' The replacement happens in the same step, so either both parts happen or neither does.'}
           </p>
         </ReviewSheet>
       )}
@@ -366,7 +467,7 @@ function BatchGroup({
 }
 
 function PendingDraftRow({
-  card, checked, busy, onToggle, onRead, onApproveOne,
+  card, checked, busy, onToggle, onRead, onApproveOne, onDeleteOne,
 }: {
   card: TestCard
   checked: boolean
@@ -374,6 +475,7 @@ function PendingDraftRow({
   onToggle: () => void
   onRead: () => void
   onApproveOne: () => void
+  onDeleteOne: () => void
 }) {
   const preview = card.test_body.length > 130
     ? `${card.test_body.slice(0, 130).trimEnd()}…`
@@ -454,6 +556,12 @@ function PendingDraftRow({
         >
           Approve
         </button>
+        {/*
+          LAST IN THE ROW, AND VISUALLY LIGHTEST. Read in full and Approve are
+          what a verifier presses; Delete is available on every draft without
+          competing with them for the same tap.
+        */}
+        <DeleteReviewButton compact disabled={busy} onClick={onDeleteOne} />
       </div>
     </li>
   )

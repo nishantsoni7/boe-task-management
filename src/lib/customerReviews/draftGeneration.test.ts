@@ -186,11 +186,40 @@ describe('a full pool does not block the next batch', () => {
       'the route still counts the available pool')
   })
 
-  test('and from the panel, which no longer needs to know the pool size', () => {
+  test('and from the panel, which never needs to know the pool size', () => {
     assert.equal(/availableCount|poolEmpty/.test(PANEL), false,
       'the panel still reads a pool count')
-    // The list no longer fetches one either — one fewer request on every load.
-    assert.equal(LIST.includes('availableTotal'), false)
+  })
+
+  // THE LIST DOES COUNT THE AVAILABLE POOL AGAIN, FOR A DIFFERENT REASON.
+  //
+  // 20261030000000 added the Add-versus-Replace choice, and Replace has to be
+  // able to say how many reviews it would displace. That count is A SENTENCE IN
+  // A CONFIRMATION; the retired rule was A PRECONDITION ON GENERATING. Asserting
+  // that no count exists anywhere would now assert the wrong thing, so these two
+  // tests assert what actually matters — the number exists, and it is never
+  // allowed to decide whether a verifier may generate.
+  test('the list counts the available pool only to describe a Replace', () => {
+    assert.ok(LIST.includes('availableTotal'),
+      'the list no longer counts the pool, so Replace cannot say what it displaces')
+    assert.ok(LIST.includes('availableCount={availableTotal}'),
+      'the count is not handed to the approval workspace')
+  })
+
+  test('AND GENERATION IS NOT CONDITIONED ON IT', () => {
+    const code = executable(LIST)
+    const at = code.indexOf('<GenerateDrafts')
+    assert.ok(at > 0, 'the generator is no longer rendered by the list')
+
+    // WHATEVER GUARDS THE GENERATOR, A POOL COUNT IS NOT PART OF IT. Read the
+    // condition immediately preceding the element rather than the whole file:
+    // the counts legitimately appear elsewhere on this screen, and the question
+    // is only ever whether one has crept into THIS decision.
+    const guard = code.slice(Math.max(0, at - 200), at)
+    assert.ok(guard.includes('caps.canVerify'),
+      'the generator is no longer gated on the resolved verify permission')
+    assert.equal(/availableTotal|poolEmpty|available\.count/.test(guard), false,
+      'a pool count has crept into the condition that decides whether Generate is offered')
   })
 
   test('WHAT REPLACED IT: a generated draft is not visible to a candidate', () => {

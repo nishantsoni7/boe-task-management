@@ -18,11 +18,13 @@ import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
 import {
   availableActions,
+  canDeleteCard,
   canUnbookCard,
   submissionBlockers,
   unbookBlocker,
   type TestCardAction,
 } from '@/lib/customerReviews/status'
+import { DeleteReviewButton, DeleteReviewsSheet } from '@/components/customerReviews/DeleteReviews'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import {
   TEST_CARD_COLUMNS,
@@ -69,6 +71,9 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   const [prompt, setPrompt] = useState<{ action: TestCardAction; text: string } | null>(null)
   /** Open while the holder is confirming they mean to unbook this review. */
   const [unbooking, setUnbooking] = useState(false)
+  /** Open while a verifier is confirming they mean to delete this review. */
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const acting = useRef(false)
 
   const load = useCallback(async () => {
@@ -114,6 +119,21 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     // in the database, still readable by anything that queries the database
     // directly. Nothing about who may READ the row has changed.
     if ((cardRow as unknown as TestCard).status === 'verified') {
+      setNotFound(true); setLoading(false); return
+    }
+
+    // A DELETED REVIEW'S URL IS UNAVAILABLE TO EVERYBODY, the verifier who
+    // deleted it included. Same treatment as `verified` above and for the same
+    // reason: the lists cannot reach it, but this route is addressed by id, so
+    // a bookmark or the Back button would otherwise still render the whole
+    // record — which is hiding it rather than removing it.
+    //
+    // A CANDIDATE NEVER GETS THIS FAR. RLS returns them no row at all for a
+    // deleted review, so `!cardRow` has already answered them; this branch is
+    // the verifier case, where the tombstone IS readable. It stays readable to
+    // a direct query, which is what makes it an audit record. What it stops
+    // being is a page in the workflow.
+    if ((cardRow as unknown as TestCard).deleted_at) {
       setNotFound(true); setLoading(false); return
     }
 
@@ -198,6 +218,47 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
    * what is actually true — which for the common refusal ("you already
    * confirmed you sent it") is exactly what they need to see.
    */
+  /**
+   * Take this review out of the workflow.
+   *
+   * A VERIFIER'S ACTION AND NOBODY ELSE'S. delete_customer_review_test_cards()
+   * resolves `verify` from the permission engine, locks the row, refuses a
+   * review that has already been deleted, writes the `deleted` event naming the
+   * stage it was in, and stamps the tombstone. Nothing is physically removed:
+   * the trail and any attached screenshot stay exactly where they are.
+   *
+   * AFTERWARDS THIS PAGE IS GONE. The review's URL becomes unavailable the
+   * moment it is deleted, so there is nothing to return to and the reader is
+   * sent back to the list rather than left on a screen that would immediately
+   * render "not available".
+   */
+  const remove = useCallback(async () => {
+    if (acting.current) return
+    acting.current = true
+    setBusy(true)
+    setDeleteError(null)
+    try {
+      const { error: rpcError } = await supabase.rpc('delete_customer_review_test_cards', {
+        p_card_ids: [cardId],
+        p_source: 'single',
+      })
+      if (rpcError) {
+        // THE SHEET STAYS OPEN. The usual refusal is staleness — somebody
+        // deleted it first — and the sentence explaining that belongs where the
+        // person is looking.
+        setDeleteError(rpcError.message.replace(/^[A-Z_]+:\s*/, '') || 'That review could not be deleted.')
+        return
+      }
+      setDeleting(false)
+      router.push('/customer-reviews')
+    } catch {
+      setDeleteError('That review could not be deleted. Check your connection and try again.')
+    } finally {
+      acting.current = false
+      setBusy(false)
+    }
+  }, [supabase, cardId, router])
+
   const unbook = useCallback(async () => {
     if (acting.current) return
     acting.current = true
@@ -288,6 +349,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   }
 
   const canWorkOnIt = mine && card.status === 'booked'
+  const mayDelete = canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })
 
   return (
     <CustomerReviewsLayout
@@ -297,15 +359,26 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       canVerify={caps.canVerify}
       onSignOut={signOut}
       actions={
-        <button
-          type="button"
-          onClick={() => router.push('/customer-reviews')}
-          className="boe-btn boe-btn-ghost"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Back
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={() => router.push('/customer-reviews')}
+            className="boe-btn boe-btn-ghost"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
+          >
+            <ArrowLeft size={14} strokeWidth={2} />
+            Back
+          </button>
+          {/*
+            THE SECONDARY ACTION AREA IS WHERE THIS BELONGS — beside Back, not
+            among the workflow controls a candidate uses further down. It is
+            rendered only for a resolved `verify` holder, so a candidate never
+            sees it on a review they are holding.
+          */}
+          {mayDelete && (
+            <DeleteReviewButton compact disabled={busy} onClick={() => setDeleting(true)} />
+          )}
+        </>
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxWidth: '760px' }}>
@@ -642,6 +715,21 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           </p>
         </ReviewSheet>
       )}
+
+      {/*
+        THE SAME SHEET THE LIST USES, so the wording a verifier reads before
+        deleting is identical wherever they started from — and the stage warning
+        for a booked or sent review is written once.
+      */}
+      {deleting && (
+        <DeleteReviewsSheet
+          cards={[card]}
+          busy={busy}
+          error={deleteError}
+          onConfirm={() => { void remove() }}
+          onCancel={() => { setDeleting(false); setDeleteError(null) }}
+        />
+      )}
     </CustomerReviewsLayout>
   )
 }
@@ -658,6 +746,8 @@ const EVENT_LABELS: Record<string, string> = {
   verified:           'Verified',
   returned:           'Returned to candidate',
   screenshot_removed: 'Screenshot removed',
+  deleted:            'Deleted by a verifier',
+  replaced:           'Replaced by a newer batch',
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

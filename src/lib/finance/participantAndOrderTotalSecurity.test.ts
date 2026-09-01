@@ -734,6 +734,8 @@ describe('the applied migrations are frozen', () => {
       // this work's tables, policies or functions.
       '20261028000000_assets_access_manage_access_records.sql',
       '20261029000000_asset_handover_acknowledgement.sql',
+      // Verifier deletion, and the Add-versus-Replace choice at approval.
+      '20261030000000_review_workflow_deletion_and_replacement.sql',
     ])
   })
 
@@ -779,6 +781,8 @@ describe('the applied migrations are frozen', () => {
       // this work's tables, policies or functions.
       '20261028000000_assets_access_manage_access_records.sql',
       '20261029000000_asset_handover_acknowledgement.sql',
+      // Verifier deletion, and the Add-versus-Replace choice at approval.
+      '20261030000000_review_workflow_deletion_and_replacement.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

@@ -80,6 +80,12 @@ HAVE_FN="$(echo "select count(*) from pg_proc
 [ "$HAVE_FN" = "3" ] \
   || fail "20261026000000 is not applied here; run run_customer_review_outreach_local.sh first."
 
+HAVE_DEL="$(echo "select count(*) from pg_proc
+                  where proname in ('delete_customer_review_test_cards',
+                                    'customer_review_replace_available')" | q1)"
+[ "$HAVE_DEL" = "2" ] \
+  || fail "20261030000000 is not applied here; run run_customer_review_outreach_local.sh first."
+
 CARDS="$(echo 'select count(*) from public.customer_review_test_cards' | q1)"
 [ "$CARDS" = "0" ] || fail "the card table holds $CARDS row(s). This test needs it empty — clear the
        fixture with supabase/fixtures/customer_review_test_cards_clear.sql. Nothing was written."
@@ -219,7 +225,7 @@ CARD="$(echo "select id from public.customer_review_test_cards order by card_ref
 q >/dev/null <<SETUP
 select set_config('request.jwt.claims',
   json_build_object('sub','dddddddd-0000-4000-8000-000000000001','role','authenticated')::text, false);
-select public.approve_customer_review_drafts(array['$CARD']::uuid[]);
+select public.approve_customer_review_drafts(array['$CARD']::uuid[], false);
 select set_config('request.jwt.claims', '', false);
 update public.customer_review_test_cards
    set status = 'booked', booked_by = 'dddddddd-0000-4000-8000-000000000003', booked_at = now(),
@@ -308,7 +314,7 @@ approve_as() {
 begin;
 select set_config('request.jwt.claims',
   json_build_object('sub','dddddddd-0000-4000-8000-00000000000$1','role','authenticated')::text, true);
-select public.approve_customer_review_drafts(array[$2]::uuid[]);
+select public.approve_customer_review_drafts(array[$2]::uuid[], false);
 select pg_sleep($3);
 commit;
 SQL
@@ -460,5 +466,133 @@ echo "$DENIED" | grep -q 'CUSTOMER_REVIEW_TEST_UNAUTHORIZED' \
   || fail "a candidate holding only \`use\` was able to claim a provider call: $DENIED"
 echo "        ✓ a candidate holding only \`use\` cannot claim a provider call"
 
+
+# ═══ RACE E. A REPLACEMENT AGAINST A BOOKING ════════════════════════════════
+#
+# THE ONE THE ADD/REPLACE CHOICE MADE POSSIBLE, and the only race in this file
+# where the two contenders want opposite things with the same row.
+#
+# A verifier approves a new batch and chooses REPLACE, which soft-deletes every
+# review currently available. At the same moment a candidate books one of those
+# very reviews. Both cannot be true: a review cannot be handed to somebody and
+# withdrawn from the pool in the same instant.
+#
+# EITHER OUTCOME IS CORRECT; A MIXTURE IS NOT.
+#
+#   the booking commits first   the card is 'booked', so it is no longer in the
+#                               set the replacement selects — it SURVIVES, which
+#                               is exactly the promise that booked work is never
+#                               displaced.
+#   the replacement commits     the booking blocks on the row lock, re-evaluates
+#   first                       "status = available and deleted_at is null",
+#                               matches nothing, and is refused BY NAME.
+#
+# What must never happen is a review that is booked and deleted at once, or a
+# candidate told they hold a review that has been withdrawn.
 echo
-echo "══ all four races complete; every row they wrote has been removed"
+echo "══ RACE E: replacing the available list while a candidate books one of it"
+
+# Approve four drafts with ADD, so there is a list to fight over.
+read -r ADD1 ADD2 ADD3 ADD4 <<<"$(echo "select string_agg(id::text, ' ' order by card_ref)
+  from (select id, card_ref from public.customer_review_test_cards
+         where status = 'pending_approval' and deleted_at is null
+         order by card_ref limit 4) t" | q1)"
+[ -n "$ADD4" ] || fail "race E needs four pending drafts"
+
+echo "select set_config('request.jwt.claims',
+  json_build_object('sub','dddddddd-0000-4000-8000-000000000001','role','authenticated')::text, false);
+  select public.approve_customer_review_drafts(
+    array['$ADD1','$ADD2','$ADD3','$ADD4']::uuid[], false)" | q >/dev/null
+
+TARGET="$ADD1"
+AVAIL="$(echo "select count(*) from public.customer_review_test_cards
+                where status = 'available' and deleted_at is null" | q1)"
+# Earlier races leave approved reviews behind, so this counts what is actually
+# there rather than assuming the four it just added are the only ones. What
+# matters is that a list EXISTS to be replaced and that the contested review is
+# in it — not how long the list is.
+[ "$AVAIL" -ge 4 ] || fail "race E needs an available list to replace, found $AVAIL"
+echo "──   $AVAIL review(s) are available, and the candidate will go for one of them"
+
+# A fresh batch for the replacement to publish.
+KEY_E="$(echo "select gen_random_uuid()" | q1)"
+echo "select public.create_customer_review_draft_batch('Race E guidance.', 'claude-opus-5',
+        ($PAYLOAD), 'dddddddd-0000-4000-8000-000000000001', '$KEY_E')" | q >/dev/null
+BATCH_E="$(echo "select id from public.customer_review_draft_batches
+                  where guidance = 'Race E guidance.'" | q1)"
+[ -n "$BATCH_E" ] || fail "race E could not create the replacing batch"
+
+replace_as() {
+  docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -t -A -d "$DB" 2>&1 <<SQL
+begin;
+select set_config('request.jwt.claims',
+  json_build_object('sub','dddddddd-0000-4000-8000-000000000001','role','authenticated')::text, true);
+select public.approve_customer_review_draft_batch('$BATCH_E', true);
+select pg_sleep($1);
+commit;
+SQL
+}
+
+book_as() {
+  docker exec -i "$BOE_DB_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -t -A -d "$DB" 2>&1 <<SQL
+begin;
+select set_config('request.jwt.claims',
+  json_build_object('sub','dddddddd-0000-4000-8000-000000000003','role','authenticated')::text, true);
+select public.book_customer_review_test_card('$TARGET');
+commit;
+SQL
+}
+
+set +e
+replace_as 2 >/tmp/race_a.out 2>&1 &
+PID_R=$!
+sleep 0.4
+book_as >/tmp/race_b.out 2>&1
+STATUS_BOOK=$?
+wait "$PID_R"
+STATUS_REPL=$?
+set -e
+
+echo "──   replacement exit $STATUS_REPL, booking exit $STATUS_BOOK"
+[ $STATUS_REPL -eq 0 ] || fail "the replacement itself failed: $(cat /tmp/race_a.out)"
+
+read -r FINAL_STATUS FINAL_DELETED FINAL_HOLDER <<<"$(echo "select status || ' ' ||
+    case when deleted_at is null then 'live' else 'deleted' end || ' ' ||
+    coalesce(booked_by::text, 'nobody')
+  from public.customer_review_test_cards where id = '$TARGET'" | q1)"
+echo "──   the contested review ended: $FINAL_STATUS / $FINAL_DELETED / held by $FINAL_HOLDER"
+
+if [ $STATUS_BOOK -eq 0 ]; then
+  # The booking won. It must have survived the replacement intact.
+  [ "$FINAL_STATUS" = "booked" ] \
+    || fail "the booking reported success but the review is $FINAL_STATUS"
+  [ "$FINAL_DELETED" = "live" ] \
+    || fail "A REVIEW WAS BOOKED AND DELETED AT ONCE — the candidate holds a withdrawn review"
+  [ "$FINAL_HOLDER" = "dddddddd-0000-4000-8000-000000000003" ] \
+    || fail "the booking succeeded but the holder is $FINAL_HOLDER"
+  echo "        ✓ the booking committed first, and the replacement left it alone"
+else
+  # The replacement won. The booking must have been refused BY NAME, and the
+  # review must be a clean tombstone with no holder.
+  grep -qE 'CUSTOMER_REVIEW_TEST_DELETED|CUSTOMER_REVIEW_TEST_ALREADY_BOOKED' /tmp/race_b.out \
+    || fail "the booking failed for the wrong reason: $(cat /tmp/race_b.out)"
+  [ "$FINAL_DELETED" = "deleted" ] \
+    || fail "the booking was refused but the review is still live"
+  [ "$FINAL_HOLDER" = "nobody" ] \
+    || fail "A REFUSED BOOKING STILL CLAIMED THE REVIEW (held by $FINAL_HOLDER)"
+  echo "        ✓ the replacement committed first, and the booking was refused by name"
+fi
+
+# WHICHEVER WAY IT WENT, THE INVARIANT HOLDS FOR EVERY ROW.
+BOTH="$(echo "select count(*) from public.customer_review_test_cards
+               where deleted_at is not null and booked_by is not null
+                 and deleted_source = 'replacement'" | q1)"
+[ "$BOTH" = "0" ] || fail "$BOTH review(s) were displaced by a replacement while somebody held them"
+
+NEW_AVAIL="$(echo "select count(*) from public.customer_review_test_cards
+                    where status = 'available' and deleted_at is null and batch_id = '$BATCH_E'" | q1)"
+[ "$NEW_AVAIL" = "8" ] || fail "the replacing batch left $NEW_AVAIL available, expected 8"
+echo "        ✓ no displaced review has a holder, and the new batch of 8 is available"
+
+echo
+echo "══ all five races complete; every row they wrote has been removed"

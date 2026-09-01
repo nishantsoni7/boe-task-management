@@ -88,6 +88,8 @@ describe('the migration is one file, correctly sequenced', () => {
       // this work's tables, policies or functions.
       '20261028000000_assets_access_manage_access_records.sql',
       '20261029000000_asset_handover_acknowledgement.sql',
+      // Verifier deletion, and the Add-versus-Replace choice at approval.
+      '20261030000000_review_workflow_deletion_and_replacement.sql',
     ])
   })
 
