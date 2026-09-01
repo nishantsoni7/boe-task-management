@@ -550,11 +550,101 @@ $$;
 revoke execute on function public.finish_customer_review_image_removal(uuid) from public, anon, authenticated;
 grant  execute on function public.finish_customer_review_image_removal(uuid) to service_role;
 
+-- ── AND THE INSERT WINDOW MUST MATCH THE REMOVAL WINDOW ────────────────────
+--
+-- A DEFECT FOUND BY EXECUTING THIS FILE, not by reading it.
+--
+-- begin_customer_review_image_removal() refuses once a review is approved, so
+-- an image cannot be TAKEN OFF an approved review. Nothing refused PUTTING ONE
+-- ON. The two halves disagreed, and the missing half is the one that matters
+-- more: an approved review is the thing a candidate shares, so an image
+-- appearing on it after approval means the thing shared is not the thing that
+-- was approved.
+--
+-- The route already checks. That is not enough and never was — this module's
+-- own rule is that three layers ask the same question and all three have to
+-- agree, and the database was not asking. A route is the easiest of the three
+-- to bypass and the only one a future caller can forget to write.
+--
+-- SCOPED TO review_image ON PURPOSE. A test_screenshot is attached while a card
+-- is `booked`, which is a different window enforced by a different function; a
+-- trigger that demanded pending_approval of both kinds would break the
+-- screenshot workflow outright.
+--
+-- Shaped after customer_review_screenshot_rejects_deleted() in 20261030000000,
+-- which is the same idea for a different condition — and which already refuses
+-- both kinds on a deleted review, so that case is not repeated here.
+create or replace function public.customer_review_image_requires_pending()
+returns trigger
+language plpgsql
+set search_path = public, pg_temp
+as $$
+declare
+  v_status text;
+begin
+  if new.kind <> 'review_image' then
+    return new;
+  end if;
+
+  select c.status into v_status
+    from public.customer_review_test_cards c
+   where c.id = new.card_id;
+
+  if v_status is null then
+    raise exception 'CUSTOMER_REVIEW_TEST_NOT_FOUND: that review no longer exists'
+      using errcode = 'P0002';
+  end if;
+
+  if v_status <> 'pending_approval' then
+    raise exception 'CUSTOMER_REVIEW_TEST_LOCKED: this review has been approved; its images can no longer be changed'
+      using errcode = '42501';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function public.customer_review_image_requires_pending()
+  from public, anon, authenticated;
+
+drop trigger if exists customer_review_image_requires_pending
+  on public.customer_review_test_card_screenshots;
+
+create trigger customer_review_image_requires_pending
+  before insert on public.customer_review_test_card_screenshots
+  for each row
+  execute function public.customer_review_image_requires_pending();
+
 -- ── The trail, written by the delete trigger ────────────────────────────────
 --
 -- The existing trigger wrote 'screenshot_removed' for every deleted row. Now
 -- that there are two kinds it writes the one that is true, so a reader looking
 -- for withdrawn customer-facing images does not have to filter a wording.
+--
+-- ── TWO THINGS CARRIED FORWARD VERBATIM, AND WHY THIS COMMENT EXISTS ───────
+--
+-- The first draft of this redefinition changed the event type and QUIETLY
+-- DROPPED the other two things the 20261017000000 original did. Both were
+-- caught by executing the file, and neither by reading it:
+--
+--   THE CASCADE GUARD. Deleting a card cascades to its images. Without the
+--   "is the parent still there" check, the trigger tries to write a trail entry
+--   for a card that is being deleted in the same statement — so
+--   delete_customer_review_test_cards(), a shipped feature, would fail on any
+--   review that had ever carried an image. That is a far worse regression than
+--   the wording improvement this redefinition exists for.
+--
+--   THE ACTOR FALLBACK. `removal_by` is stamped by the begin half; it is NULL
+--   on a row that was deleted without being marked first. actor_id is NOT NULL,
+--   so a bare `old.removal_by` turns any such delete into a constraint
+--   violation. The coalesce order is the original's and is deliberate:
+--   removal_by first because the delete itself arrives through the service role
+--   where auth.uid() is null, and the uploader last because crediting a removal
+--   to whoever added the file is the least wrong answer, not a good one.
+--
+-- REDEFINING A FUNCTION MEANS RESTATING ALL OF IT. That is the lesson, and it
+-- is written here because the next person to improve this wording will be one
+-- careless paste away from the same two bugs.
 create or replace function public.customer_review_test_screenshots_log_removal()
 returns trigger
 language plpgsql
@@ -562,6 +652,12 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  -- Skip when the parent card is itself going away. The trail cascades with it,
+  -- so the row would be written and immediately deleted.
+  if not exists (select 1 from public.customer_review_test_cards where id = old.card_id) then
+    return old;
+  end if;
+
   insert into public.customer_review_test_card_events
     (card_id, event_type, previous_status, new_status, detail, actor_id)
   values (
@@ -572,7 +668,7 @@ begin
       then format('Review image removed: %s', left(coalesce(old.file_name, 'unnamed'), 120))
       else format('Test screenshot removed: %s', left(coalesce(old.file_name, 'unnamed'), 120))
     end,
-    old.removal_by
+    coalesce(old.removal_by, auth.uid(), old.uploaded_by)
   );
   return old;
 end;

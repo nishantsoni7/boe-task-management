@@ -318,6 +318,69 @@ describe('removal', () => {
     assert.ok(SQL.includes("case when old.kind = 'review_image' then 'image_removed' else 'screenshot_removed' end"))
   })
 
+  test('AND THE REDEFINED TRIGGER KEPT THE TWO THINGS THE ORIGINAL DID', () => {
+    // Two regressions the disposable-stack run caught, and this text audit did
+    // not. Redefining a plpgsql function means restating all of it, and the
+    // first attempt at the wording change dropped both.
+    const body = fn('customer_review_test_screenshots_log_removal')
+
+    // THE CASCADE GUARD. Deleting a card cascades to its images; without this,
+    // the trigger writes a trail entry for a card being deleted in the same
+    // statement and delete_customer_review_test_cards() fails on any review
+    // that ever carried one.
+    assert.ok(
+      body.includes('if not exists (select 1 from public.customer_review_test_cards where id = old.card_id) then'),
+      'the cascade guard was dropped from the redefined trigger',
+    )
+
+    // THE ACTOR FALLBACK. removal_by is null on a row deleted without being
+    // marked first, and actor_id is NOT NULL.
+    assert.ok(
+      body.includes('coalesce(old.removal_by, auth.uid(), old.uploaded_by)'),
+      'the actor fallback was dropped from the redefined trigger',
+    )
+    assert.equal(
+      /actor_id\s*\)[\s\S]*?\bold\.removal_by\s*\)/.test(body) && !body.includes('coalesce(old.removal_by'),
+      false,
+      'the trigger credits a bare old.removal_by',
+    )
+  })
+})
+
+// ══ 5b. THE INSERT WINDOW MATCHES THE REMOVAL WINDOW ════════════════════════
+
+describe('an approved review cannot gain an image', () => {
+  test('a trigger refuses an insert once the review is no longer pending', () => {
+    // THE DEFECT THE DISPOSABLE-STACK RUN FOUND. Removal was refused on an
+    // approved review; addition was not. An image appearing after approval
+    // means the thing shared is not the thing that was approved.
+    const body = fn('customer_review_image_requires_pending')
+    assert.ok(body.includes("if new.kind <> 'review_image' then"))
+    assert.ok(body.includes("if v_status <> 'pending_approval' then"))
+    assert.ok(body.includes('CUSTOMER_REVIEW_TEST_LOCKED'))
+  })
+
+  test('and it is wired as a BEFORE INSERT trigger on the image table', () => {
+    assert.ok(SQL.includes('create trigger customer_review_image_requires_pending'))
+    assert.ok(SQL.includes('before insert on public.customer_review_test_card_screenshots'))
+    assert.ok(SQL.includes('execute function public.customer_review_image_requires_pending()'))
+  })
+
+  test('IT IS SCOPED TO review_image, so the screenshot workflow is untouched', () => {
+    // A test screenshot is attached while a card is `booked`. A trigger that
+    // demanded pending_approval of both kinds would break that outright, which
+    // is why the first line of the function is the kind check.
+    const body = fn('customer_review_image_requires_pending')
+    const kindGuard = body.indexOf("if new.kind <> 'review_image' then")
+    const statusCheck = body.indexOf("if v_status <> 'pending_approval' then")
+    assert.ok(kindGuard >= 0 && statusCheck > kindGuard,
+      'the status check is not guarded by the kind check')
+  })
+
+  test('no client role can execute it', () => {
+    assert.ok(SQL.includes('revoke execute on function public.customer_review_image_requires_pending()'))
+  })
+
   test('the route removes the object and the row as one operation', () => {
     const code = executable(ROUTE)
     assert.ok(code.includes("'begin_customer_review_image_removal'"))
