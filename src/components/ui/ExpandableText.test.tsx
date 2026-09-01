@@ -16,6 +16,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ExpandableText, ACTIVITY_TEXT_CLAMP_LINES } from './ExpandableText'
 
@@ -56,6 +58,16 @@ describe('ExpandableText', () => {
     const html = render(LONG, { style: { fontSize: '12.5px', color: '#596273' } })
     assert.match(html, /font-size:12\.5px/)
     assert.match(html, /color:#596273/)
+  })
+
+  test('the toggle is a real button carrying its own state', () => {
+    // A static render draws no toggle (nothing has been measured), so the
+    // contract is asserted at the source: a native button — focusable and
+    // Enter/Space-activatable for free — that announces expanded or collapsed
+    // rather than only its label.
+    const src = readFileSync(join(process.cwd(), 'src/components/ui/ExpandableText.tsx'), 'utf8')
+    assert.match(src, /type="button"/)
+    assert.match(src, /aria-expanded=\{expanded\}/)
   })
 
   test('no toggle is drawn before anything has been measured', () => {
