@@ -37,6 +37,22 @@ import { MAX_BODY, MAX_TITLE, MIN_BODY, validateDraftText } from './draftGenerat
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
+/**
+ * Every comment removed, BLOCK COMMENTS INCLUDED.
+ *
+ * `executable` below drops comment LINES, which is enough for SQL and for most
+ * source claims. It is not enough when the claim is "this sentence is no longer
+ * on screen": a component may legitimately carry a JSX comment explaining what
+ * a retired sentence used to say, and that comment quotes it. What a person
+ * reads is what is left after every comment is gone.
+ */
+const stripComments = (source: string) =>
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .split('\n')
+    .filter(l => !l.trimStart().startsWith('//'))
+    .join('\n')
+
 /** Comments stripped, so no claim below can be satisfied by prose. */
 const executable = (source: string) =>
   source
@@ -385,6 +401,36 @@ describe('provenance stays honest', () => {
 
   test('the note appears only when there is an edit to report', () => {
     assert.ok(executable(EDITOR).includes('if (!card.draft_edited_at) return null'))
+  })
+
+  test('AND THE PENDING LIST ACTUALLY SELECTS THE COLUMN THE BADGE READS', () => {
+    // Local acceptance testing caught this, and it failed quietly: the tile
+    // rendered, the draft really had been edited, and the badge simply never
+    // appeared — because TEST_CARD_PENDING_COLUMNS did not carry
+    // draft_edited_at, so `card.draft_edited_at` was undefined on every row.
+    //
+    // A badge is only as real as the query behind it, which is why this asserts
+    // the COLUMN LIST rather than the component.
+    const types = read('src/lib/customerReviews/types.ts')
+    const start = types.indexOf('export const TEST_CARD_PENDING_COLUMNS')
+    assert.ok(start >= 0, 'the pending column list is gone')
+    const list = types.slice(start, types.indexOf('].join', start))
+    assert.ok(list.includes("'draft_edited_at'"), 'the pending list does not select draft_edited_at')
+    assert.ok(list.includes("'draft_edited_by'"), 'the pending list does not select draft_edited_by')
+  })
+
+  test('and the generate confirmation no longer promises drafts cannot be edited', () => {
+    // It used to open "They cannot be edited by hand", which this feature makes
+    // false on the very next screen.
+    //
+    // Checked against the RENDERED copy rather than the raw file: the component
+    // now carries a comment explaining what the sentence used to say and why it
+    // changed, and that comment quotes the retired wording. Stripping block
+    // comments is what keeps this assertion about what a person reads.
+    const panel = stripComments(read('src/components/customerReviews/GenerateDrafts.tsx'))
+    assert.equal(panel.includes('They cannot be edited by hand'), false,
+      'the retired immutability promise is still in the generate confirmation')
+    assert.ok(panel.includes('You can edit a draft'))
   })
 
   test('THE AI LABEL IS NOT REMOVED — both facts are shown', () => {

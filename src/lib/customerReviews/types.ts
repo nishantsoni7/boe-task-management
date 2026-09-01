@@ -455,6 +455,15 @@ export const TEST_CARD_PENDING_COLUMNS = [
   'test_title',
   'test_body',
   'batch_id',
+  // THE EDIT STAMP IS DISPLAYED HERE, so it is selected here.
+  //
+  // It was missed when editing was added, and the consequence was quiet rather
+  // than loud: the tile rendered, the draft was genuinely edited, and the
+  // "Edited by a verifier" badge simply never appeared — because the column it
+  // reads was not in the query. A verifier scanning twelve drafts had no way to
+  // see which ones somebody had already been through.
+  'draft_edited_at',
+  'draft_edited_by',
   'deleted_at',
   'created_at',
 ].join(', ')

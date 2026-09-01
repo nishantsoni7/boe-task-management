@@ -67,8 +67,33 @@ export function ReviewImageManager({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const errorRef = useRef<HTMLParagraphElement | null>(null)
   const uploading = useRef(false)
   const removing = useRef(false)
+
+  // AN ERROR NOBODY CAN SEE IS AN ERROR THAT DID NOT HAPPEN, as far as the
+  // person is concerned.
+  //
+  // This section sits inside a scrolling sheet, and the message renders BELOW
+  // the Add control — which on a phone, and on a desktop sheet holding four
+  // thumbnails, is past the fold. Local acceptance testing caught exactly that:
+  // a refused upload showed "A review can carry 4 images…" eighteen pixels
+  // below the visible area, so the press looked like it had done nothing.
+  //
+  // `block: 'nearest'` scrolls the minimum needed rather than yanking the sheet
+  // to the bottom, so the thumbnails the person was looking at stay in view.
+  //
+  // AND NO `behavior: 'smooth'`. The first version asked for it and the message
+  // stayed exactly where it was: smooth scrolling is silently a no-op in some
+  // engines and embedded views, so the animation was not merely skipped — the
+  // scroll never happened at all. An error is the last thing that should depend
+  // on an optional nicety working, and instant is the better answer regardless:
+  // somebody who has just been refused wants the reason now, not after 300ms of
+  // easing.
+  useEffect(() => {
+    if (!error) return
+    errorRef.current?.scrollIntoView({ block: 'nearest' })
+  }, [error])
 
   // Signed URLs are minted per render pass and never stored anywhere. They
   // expire on their own, and a viewer who has lost access simply gets no URL —
@@ -249,11 +274,18 @@ export function ReviewImageManager({
                   disabled={busy}
                   aria-label={`Remove ${image.file_name}`}
                   style={{
-                    position: 'absolute', top: '4px', right: '4px',
+                    position: 'absolute', top: '2px', right: '2px',
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                    width: '32px', height: '32px', borderRadius: '6px',
+                    // 44px, LIKE EVERY OTHER CONTROL IN THIS MODULE. It was 32,
+                    // which made the one destructive control on the thumbnail
+                    // the only sub-44 target on the screen — and the one where
+                    // a mis-tap costs somebody an image they have to re-upload.
+                    // The icon stays small; the thing you press does not.
+                    width: '44px', height: '44px', borderRadius: '8px',
                     border: 'none', cursor: busy ? 'default' : 'pointer',
-                    background: 'rgba(17,19,24,0.72)', color: '#FFFFFF',
+                    // Slightly less opaque than the old 0.72 so a 44px square
+                    // does not black out the corner of a 107px thumbnail.
+                    background: 'rgba(17,19,24,0.62)', color: '#FFFFFF',
                   }}
                 >
                   <Trash2 size={14} strokeWidth={2} />
@@ -314,7 +346,7 @@ export function ReviewImageManager({
       )}
 
       {error && (
-        <p role="alert" style={{ margin: 0, fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
+        <p ref={errorRef} role="alert" style={{ margin: 0, fontSize: '12px', color: colors.red, lineHeight: 1.5 }}>
           {error}
         </p>
       )}

@@ -472,4 +472,34 @@ describe('the image screen', () => {
   test('an error is announced, not only shown', () => {
     assert.ok(manager.includes('role="alert"'))
   })
+
+  test('AND IT IS SCROLLED INTO VIEW, because it renders below the fold', () => {
+    // Local acceptance testing measured this: inside the full-view sheet the
+    // alert sat 18px past the bottom of the scrolling area, so a refused upload
+    // looked like a press that did nothing. It affects every upload error, not
+    // only the fifth-image one — an over-sized photo and an unsupported format
+    // both land in the same element.
+    assert.ok(manager.includes('errorRef.current?.scrollIntoView'))
+    assert.ok(manager.includes("block: 'nearest'"), 'it yanks the sheet instead of scrolling the minimum')
+    assert.ok(manager.includes('ref={errorRef}'))
+
+    // AND IT DOES NOT ASK FOR SMOOTH SCROLLING. The first version did, and the
+    // message did not move at all: smooth behaviour is silently a no-op in some
+    // engines and embedded views, so the scroll never happened rather than
+    // merely happening without animation. Measured in the browser, not guessed.
+    assert.equal(/behavior:s*'smooth'/.test(manager), false,
+      'the error scroll depends on smooth behaviour, which silently no-ops in some engines')
+  })
+
+  test('the remove control is a 44px target, like everything else here', () => {
+    // It was 32, which made the ONE destructive control on a thumbnail the only
+    // sub-44 target on the screen — and the one where a mis-tap costs an image.
+    const removeBlock = manager.slice(
+      manager.indexOf('aria-label={`Remove'),
+      manager.indexOf('<Trash2'),
+    )
+    assert.ok(removeBlock.includes("width: '44px', height: '44px'"),
+      'the remove button is not a 44px target')
+    assert.equal(/width: '32px'/.test(removeBlock), false)
+  })
 })

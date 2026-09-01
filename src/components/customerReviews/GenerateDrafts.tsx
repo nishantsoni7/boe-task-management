@@ -227,9 +227,17 @@ export function GenerateDrafts({ onGenerated }: Props) {
               <strong style={{ fontSize: '12px', color: '#4C1D95' }}>
                 This creates exactly {DRAFTS_PER_BATCH} drafts, pending your approval.
               </strong>
+              {/*
+                THIS SENTENCE USED TO OPEN "They cannot be edited by hand".
+                That stopped being true the moment a verifier could correct a
+                draft before approving it, and a promise the very next screen
+                breaks is worse than no promise at all. What replaces it is the
+                thing that IS still true and is the thing the reader needs:
+                nobody outside BOE sees any of this until they approve.
+              */}
               <p style={{ margin: 0, fontSize: '12px', color: '#4C1D95', lineHeight: 1.55 }}>
-                They cannot be edited by hand, and no candidate can see any of them until you
-                approve. You can regenerate the whole set from new feedback, or approve them
+                No candidate can see any of them until you approve. You can edit a draft&rsquo;s
+                words yourself, regenerate the whole set from new feedback, or approve them
                 one at a time.
               </p>
             </div>
