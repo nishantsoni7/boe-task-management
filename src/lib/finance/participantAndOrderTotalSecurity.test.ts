@@ -739,6 +739,10 @@ describe('the applied migrations are frozen', () => {
       // Twelve drafts a batch, editing a pending draft before approval, and up
       // to four review images. Touches only the Review Workflow's own tables.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // BOE Credits Phase 1A: the append-only credit ledger, its derived balance
+      // view, the settings table and the service-role posting functions. Two new
+      // tables of its own; it touches nothing any other module creates.
+      '20261101000000_boe_credits_foundation.sql',
     ])
   })
 
@@ -789,6 +793,10 @@ describe('the applied migrations are frozen', () => {
       // Twelve drafts a batch, editing a pending draft before approval, and up
       // to four review images. Touches only the Review Workflow's own tables.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // BOE Credits Phase 1A: the append-only credit ledger, its derived balance
+      // view, the settings table and the service-role posting functions. Two new
+      // tables of its own; it touches nothing any other module creates.
+      '20261101000000_boe_credits_foundation.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

@@ -94,6 +94,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // images. It widens this file's kind check and rebuilds two of its
       // indexes; it creates none of the tables asserted below.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // BOE Credits Phase 1A: the append-only credit ledger, its derived balance
+      // view, the settings table and the service-role posting functions. Two new
+      // tables of its own; it touches nothing any other module creates.
+      '20261101000000_boe_credits_foundation.sql',
     ])
   })
 

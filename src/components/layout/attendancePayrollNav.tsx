@@ -23,7 +23,7 @@
 
 import {
   Banknote, BookOpen, CalendarDays, CalendarX, ClipboardList, FileBarChart,
-  LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Upload, Users,
+  LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Upload, Users, Coins,
 } from 'lucide-react'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 
@@ -91,6 +91,7 @@ export const ATTENDANCE_PAYROLL_ADMIN_NAV: AttendancePayrollNavItem[] = [
   { label: 'Payroll Monthly Preview',   path: '/payroll/monthly-review',    icon: <FileBarChart size={15} strokeWidth={1.8} /> },
   { label: 'How Payroll Works',         path: PAYROLL_GUIDE_PATH,           icon: <BookOpen size={15} strokeWidth={1.8} /> },
   { label: 'Payroll Settings',          path: '/payroll/settings',          icon: <SlidersHorizontal size={15} strokeWidth={1.8} /> },
+  { label: 'BOE Credits',               path: '/payroll/credits',           icon: <Coins size={15} strokeWidth={1.8} /> },
   { label: 'Holiday Management',        path: '/attendance/holidays',       icon: <CalendarX size={15} strokeWidth={1.8} /> },
 ]
 
