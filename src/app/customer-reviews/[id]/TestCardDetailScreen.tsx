@@ -20,6 +20,7 @@ import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
+import { nextStepFor, stageIndex, REVIEW_STAGES } from '@/lib/customerReviews/nextStep'
 import {
   availableActions,
   canDeleteCard,
@@ -420,6 +421,19 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
           </span>
         </div>
 
+        {/*
+          WHERE THIS REVIEW IS, AND WHAT COMES NEXT — said once, at the top,
+          before the reader scrolls through the text, the images and the
+          evidence to find the one control they came for. The sentence comes
+          from nextStepFor(); the controls it points at are unchanged and
+          still decide nothing — the database does.
+        */}
+        <NextStepStrip
+          card={card}
+          step={nextStepFor(card, { userId: profile?.id ?? null, canUse: caps.canUse, canVerify: caps.canVerify }, screenshots.length > 0)}
+          hasAction={actions.length > 0 || (canWorkOnIt && !card.sent_confirmed_at)}
+        />
+
         {error && (
           <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
         )}
@@ -506,7 +520,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
         {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
-          <Section title="Send the review">
+          <Section title="Send the review" id="review-send">
             {canWorkOnIt ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <WhatsAppTestPanel
@@ -620,7 +634,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
         {/* ── Step 4 and 5: submit, then somebody verifies ── */}
         {actions.length > 0 && (
-          <Section title="Next step">
+          <Section title="Next step" id="review-next-step">
             {blockers.length > 0 && card.status === 'booked' && (
               <ul style={{
                 margin: '0 0 10px', paddingLeft: '18px',
@@ -846,16 +860,24 @@ const EVENT_LABELS: Record<string, string> = {
  *  (an older function, say). The list shows the amount and trusts the flag for
  *  nothing else — every row it renders still comes from its own queries. */
 export function verifiedQuery(data: unknown): string {
-  const reward = (data as { reward?: { credits?: unknown } | null } | null)?.reward
+  const reward = (data as {
+    reward?: { credits?: unknown; qualifying_review_count?: unknown; minimum_reviews?: unknown; month_status?: unknown } | null
+  } | null)?.reward
   const credits = typeof reward?.credits === 'number' && Number.isFinite(reward.credits) && reward.credits > 0
     ? Math.trunc(reward.credits)
     : 0
-  return `&verified=${credits}`
+  // Phase 1D: the month's standing, as the database reported it, so the list
+  // can say "2 of 3 this month". Absent when an older function answered.
+  const done = typeof reward?.qualifying_review_count === 'number' ? Math.trunc(reward.qualifying_review_count) : null
+  const need = typeof reward?.minimum_reviews === 'number' ? Math.trunc(reward.minimum_reviews) : null
+  const status = reward?.month_status === 'qualified' ? 'qualified' : reward?.month_status === 'open' ? 'open' : null
+  if (done === null || need === null || status === null) return `&verified=${credits}`
+  return `&verified=${credits}&reviews=${done}&target=${need}&month=${status}`
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <section style={{
+    <section id={id} style={{
       padding: '14px', borderRadius: '10px',
       border: `1px solid ${colors.border}`, background: colors.raised,
     }}>
@@ -867,6 +889,83 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       </h2>
       {children}
     </section>
+  )
+}
+
+/**
+ * The four stages and the next-step sentence, in one strip.
+ *
+ * "Go to it" scrolls to the control the sentence points at: the send panel
+ * while the review is unsent, the Next step section once it can be submitted,
+ * verified or returned. Nothing here performs an action.
+ */
+function NextStepStrip({
+  card, step, hasAction,
+}: {
+  card: TestCard
+  step: ReturnType<typeof nextStepFor>
+  hasAction: boolean
+}) {
+  const at = stageIndex(card)
+  const toneColor =
+    step.tone === 'attention' ? '#9A3412'
+    : step.tone === 'act' ? '#1E40AF'
+    : step.tone === 'done' ? '#166534'
+    : colors.tertiary
+  const toneBg =
+    step.tone === 'attention' ? '#FFF7ED'
+    : step.tone === 'act' ? '#EFF6FF'
+    : step.tone === 'done' ? '#F0FDF4'
+    : colors.raised
+  const target = card.status === 'booked' && !card.sent_confirmed_at ? 'review-send' : 'review-next-step'
+
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: '10px',
+      background: toneBg, border: `1px solid ${colors.border}`,
+      display: 'flex', flexDirection: 'column', gap: '10px',
+    }}>
+      <ol aria-label="Progress" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {REVIEW_STAGES.map((name, i) => {
+          const done = i < at
+          const current = i === at
+          return (
+            <li key={name} style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '11px', fontWeight: 600,
+              color: done ? '#166534' : current ? colors.primary : colors.muted,
+            }}>
+              <span aria-hidden="true" style={{
+                width: 16, height: 16, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 10, fontWeight: 700,
+                background: done ? '#BBF7D0' : current ? colors.primary : 'rgba(0,0,0,0.08)',
+                color: done ? '#166534' : current ? '#fff' : colors.muted,
+              }}>
+                {done ? '✓' : i + 1}
+              </span>
+              {name}
+              {i < REVIEW_STAGES.length - 1 && <span aria-hidden="true" style={{ color: '#C4C9D4', margin: '0 2px' }}>›</span>}
+            </li>
+          )
+        })}
+      </ol>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontSize: '14px', fontWeight: 700, color: toneColor }}>{step.headline}</div>
+          {step.hint && <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5, marginTop: '2px' }}>{step.hint}</div>}
+        </div>
+        {hasAction && step.tone !== 'wait' && step.tone !== 'done' && (
+          <button
+            type="button"
+            onClick={() => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="boe-btn boe-btn-ghost"
+            style={{ fontSize: '12px', padding: '8px 14px', minHeight: '40px', whiteSpace: 'nowrap' }}
+          >
+            Go to it
+          </button>
+        )}
+      </div>
+    </div>
   )
 }
 

@@ -24,6 +24,7 @@ import { enumParam, textParam } from '@/lib/listState'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import { canBookCard, canDeleteCard, type ApprovalMode } from '@/lib/customerReviews/status'
+import { nextStepFor, type NextStepViewer } from '@/lib/customerReviews/nextStep'
 import {
   DRAFT_BATCH_COLUMNS,
   TEST_CARD_AVAILABLE_COLUMNS,
@@ -115,11 +116,33 @@ export function verifiedNoticeFrom(flag: string | null): string | null {
     : 'Review verified.'
 }
 
+/**
+ * The second sentence (Phase 1D): which month the credit counts for and how
+ * that month stands against its target — `reviews`, `target` and `month`
+ * (open | qualified) as the RPC reported them. Nothing is computed here
+ * beyond the difference the database's own two numbers make; a flag that is
+ * missing or malformed says nothing.
+ */
+export function verifiedMonthNoteFrom(params: { get(name: string): string | null }): string | null {
+  const reviews = params.get('reviews')
+  const target  = params.get('target')
+  const month   = params.get('month')
+  if (reviews === null || target === null || !/^\d+$/.test(reviews) || !/^\d+$/.test(target)) return null
+  const done = Number(reviews)
+  const need = Number(target)
+  if (month === 'qualified') {
+    return `That makes ${done} of ${need} this month — the month’s credits are available to spend.`
+  }
+  const left = Math.max(need - done, 0)
+  return `That makes ${done} of ${need} this month — ${left} more and the month’s credits become spendable.`
+}
+
 export function TestCardListScreen() {
   const { supabase, profile, caps, loading: authLoading, signOut } = useCustomerReviews()
   const router = useRouter()
   const searchParams = useSearchParams()
   const verifiedNotice = verifiedNoticeFrom(searchParams.get('verified'))
+  const verifiedMonthNote = verifiedNotice ? verifiedMonthNoteFrom(searchParams) : null
 
   const [cards, setCards] = useState<TestCard[]>([])
   const [batches, setBatches] = useState<Map<string, DraftBatch>>(new Map())
@@ -673,6 +696,7 @@ export function TestCardListScreen() {
         {verifiedNotice && (
           <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
             {verifiedNotice}
+            {verifiedMonthNote && <span style={{ fontWeight: 400, color: '#3D4455' }}> {verifiedMonthNote}</span>}
           </p>
         )}
         {loadError && (
@@ -749,6 +773,7 @@ export function TestCardListScreen() {
                   again and the database function resolves it a third time.
                 */
                 canDelete={canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })}
+                viewer={{ userId: profile?.id ?? null, canUse: caps.canUse, canVerify: caps.canVerify }}
                 onDelete={() => openDelete([card], 'single')}
                 onView={() => { setBookError(null); setReading(card) }}
                 onOpen={() => router.push(`/customer-reviews/${card.id}`)}
@@ -840,6 +865,7 @@ function TestCardTile({
   card,
   showView,
   canDelete,
+  viewer,
   onDelete,
   onView,
   onOpen,
@@ -849,6 +875,8 @@ function TestCardTile({
   showView: boolean
   /** Verifier only. A candidate is never passed true. */
   canDelete: boolean
+  /** Who is looking — decides the next-step sentence, and nothing else. */
+  viewer: NextStepViewer
   onDelete: () => void
   onView: () => void
   onOpen: () => void
@@ -856,6 +884,13 @@ function TestCardTile({
   const preview = card.test_body.length > 130
     ? `${card.test_body.slice(0, 130).trimEnd()}…`
     : card.test_body
+
+  // THE NEXT STEP, SAID ON THE TILE. A booked or submitted review carries the
+  // one sentence that follows from its state for this viewer; an available
+  // one does not need it — View is the step. The sentence decides nothing:
+  // the detail page and the database still decide what can happen.
+  const step = card.status === 'booked' || card.status === 'submitted' ? nextStepFor(card, viewer) : null
+  const returned = card.status === 'booked' && !!card.returned_at && !!card.sent_confirmed_at
 
   return (
     <div
@@ -875,7 +910,18 @@ function TestCardTile({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.tertiary }}>
           {card.card_ref}
         </span>
-        <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
+        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+          {returned && (
+            <span style={{
+              display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+              background: '#FFF7ED', color: '#9A3412', border: '1px solid #FED7AA',
+              fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+            }}>
+              Returned
+            </span>
+          )}
+          <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
+        </span>
       </div>
 
       <div>
@@ -896,6 +942,17 @@ function TestCardTile({
       }}>
         {preview}
       </p>
+
+      {step && (
+        <div style={{
+          display: 'flex', gap: '6px', alignItems: 'baseline',
+          fontSize: '12px', lineHeight: 1.45,
+          color: step.tone === 'attention' ? '#9A3412' : step.tone === 'act' ? '#1E40AF' : colors.tertiary,
+        }}>
+          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{step.tone === 'wait' ? 'Status:' : 'Next:'}</span>
+          <span style={{ fontWeight: 600 }}>{step.headline}</span>
+        </div>
+      )}
 
       <div style={{
         display: 'flex', gap: '8px', marginTop: 'auto', paddingTop: '4px',
