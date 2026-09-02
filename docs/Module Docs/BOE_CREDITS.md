@@ -1,289 +1,227 @@
 # BOE Credits
 
-**Status:** Phase 1A shipped 2026-09-02 (PR #85, `4ae3caa`, migration
-`20261101000000` applied). Phase 1B — review reward — shipped 2026-09-02
-(PR #86, `623ad7a`, migration `20261102000000` applied). Phase 1C —
-attendance redemption — built 2026-09-02, local only, migration
-`20261103000000` **not applied** to production.
+**Status:** Phases 1A–1C shipped 2026-09-02 (PRs #85, #86, #87; migrations
+`20261101000000`–`20261103000000` applied). **Phase 1D — configurable settings,
+monthly review qualification with provisional credits, settings-priced
+attendance redemption, and the payroll salary addition — built 2026-09-03;
+migration `20261104000000_boe_credits_phase_1d.sql` NOT yet applied to
+production.**
 
-## Phase 1C — an employee covers an attendance deduction with credits
+This document is the technical and business reference after Phase 1D. Where
+an earlier phase's rule changed, the current rule is stated and the old one is
+noted; nothing already recorded was re-valued.
 
-| deduction | cost |
+---
+
+## 1. The rules, in one place
+
+| Setting (global, admin-managed, newest row active) | Production value |
 |---|---|
-| Half Day | **1 credit** |
-| Absent (full day) | **2 credits** |
+| `review_reward_credits` — credits ONE verified review earns | **1** |
+| `credit_value` — rupees ONE credit adds to salary | **₹100** |
+| `half_day_redemption_credits` — cost of covering a chargeable Half Day | **8** |
+| `full_day_redemption_credits` — cost of covering a chargeable Absent day (independent; never derived from the half day) | **15** |
+| `minimum_monthly_reviews` — verified reviews a review month needs | **3** |
 
-Whole credits, fixed, and **not** linked to salary, rupees or
-`credit_value`. The two literals live in `redeem_boe_credits_for_attendance()`
-and in `ATTENDANCE_REDEMPTION_COST` (`src/lib/boeCredits/attendanceRedemption.ts`);
-`attendanceRedemption.test.ts` pins them against each other. There is no
-settings row for the cost, by design.
+Every change **applies to future actions only**. Rewards, redemptions and
+payroll applications already recorded keep the numbers written on them.
 
-**Where.** `/my-payroll/[periodId]`, the employee's own payslip. A deduction
-row whose day credits could cover carries a "Use 1 credit" / "Use 2 credits"
-action; it opens a small confirmation (`RedeemCreditsModal`: the date, the
-deduction removed, the credits used, the credits left) and posts
-`{ payroll_period_id, attendance_date }` to `POST /api/boe-credits/redemptions`.
-Afterwards the row reads **"Covered with 1 BOE Credit"** at ₹0. The admin's
-Payroll Result Detail shows the same row the same way; the admin has no
-redeem action.
+1. **Earning.** `submitted → verified` in the Review Workflow posts exactly one
+   `review_reward` row of `review_reward_credits` for the review's holder
+   (`booked_by`), in the same transaction as the verification.
+2. **Attribution.** The reward counts for the **Asia/Kolkata calendar month of
+   `submitted_at`** — the successful submission the verifier is confirming —
+   never `booked_at` or `verified_at`. Submitted 30 Sep 23:59 IST, verified
+   2 Oct → September. A returned and resubmitted review carries the later
+   submission's instant (the transition overwrites `submitted_at`).
+3. **Provisional.** Until the employee's month reaches its minimum, that
+   month's reward credits are **recorded but not spendable**. Older credits are
+   untouched. Displayed as *Pending monthly target*.
+4. **Qualification.** The review that reaches the minimum flips the month to
+   `qualified`: all its still-valid rewards become spendable; further rewards
+   in that month are spendable immediately. The minimum that applies is the
+   one **snapshotted when the month row was created** (first reward of the
+   month).
+5. **Finalization** (admin, explicit, after the month has ended IST):
+   a qualified month is stamped finalized; a month below the minimum
+   **lapses** with ONE `review_month_lapse` ledger row removing exactly that
+   month's still-valid reward credits. Idempotent: a finalized month is
+   returned unchanged and never posts a second lapse. No scheduler.
+6. **Individual reversal.** An invalid review's reward is reversed by an
+   admin (History → *Reverse this entry*, or `POST /api/boe-credits/reversals`).
+   Before finalization it drops out of the month's count; after a qualified
+   month closed it does not reopen the month; a reward whose month **lapsed**
+   cannot be reversed (its credit is already gone); a lapse row itself cannot
+   be reversed (post an adjustment).
+7. **Attendance.** A chargeable Half Day costs `half_day_redemption_credits`,
+   a chargeable Absent day `full_day_redemption_credits`, read from the newest
+   settings row at the moment of redemption and written on the record. A
+   record priced at 1 credit under Phase 1C stays 1 credit.
+8. **Payroll.** The employee applies N **spendable** credits to an unlocked,
+   generated payroll month as a salary addition of N × `credit_value`, both
+   snapshotted. Settlement adds it to Salary Payable; nothing in the payroll
+   engine, gross salary, attendance or `net_salary` changes; it is not capped
+   by gross or by any deduction. At most one active application per
+   employee-period; changing it is a reversal + a new redemption (atomic); the
+   same N twice is a no-op; a locked period freezes it; regeneration never
+   re-prices it.
+9. **Carry forward.** Available credits never expire.
+10. **Balances.** `recorded = SUM(ledger)`, `provisional = un-reversed rewards
+    of open months`, `spendable = recorded − provisional`. A redemption is
+    checked against **spendable**, under the per-employee advisory lock.
 
-**What qualifies.** Eligibility is asked of the payroll **engine's settled
-deduction line**, never of the raw attendance status: an `absent` or
-`half_day` line at more than ₹0 on a date up to today (IST), in an unlocked,
-generated month. Refused, each with a sentence: late arrivals, early
-departures, missing punches, short hours; a company-paid (paid-leave) day; a
-day already covered; a future date; a locked month; a month with no
-generated result for the employee. The route runs the engine over the
-caller's live attendance, corrections, settings snapshot and existing
-coverage and refuses before the database is asked; the browser's offer is
-not trusted.
+---
 
-**How it is recorded — the foundation's vocabulary, unchanged.** One ledger
-row of the existing kind `redemption` (negative), `source_type`
-`attendance_redemption`, `source_id` = the id of the redemption record,
-`payroll_period_id` set, `created_by` the actor, description
-`Attendance redemption · 12 Aug 2026 · Half Day` — and, in the same
-transaction, one row in **`boe_credit_attendance_redemptions`** (date, kind,
-credits, `transaction_id`, period). No transaction kind is added or renamed:
-the applied CHECK admits exactly `review_reward | redemption | reversal |
-admin_adjustment`. The record exists because a ledger row cannot say which
-day it covered or whether it was a half day.
+## 2. Objects — the four migrations
 
-**Active, closed, never edited.** A record is **active** while
-`reversal_transaction_id IS NULL`. It is closed exactly once — by an `AFTER
-INSERT` trigger on the ledger, the moment its ledger row is reversed by any
-path — with the reversal's id and instant; a guard trigger refuses every
-other UPDATE, every DELETE, and a hand-close with a foreign reversal, for
-every role. `UNIQUE (employee_id, attendance_date) WHERE
-reversal_transaction_id IS NULL` is the table-level guarantee of **at most
-one active coverage per day**; the function pre-checks the same under the
-per-employee advisory lock (taken first, before the period row, in both
-functions). History is complete: redemption, reversal and any later
-redemption of the same day are separate rows.
+### 2.1 Foundation (`20261101000000`)
 
-**Re-redemption after a reversal.** A reversed day drops out of the active
-index, so once it carries an eligible deduction again it may be covered
-again — a new record, a new ledger row. `redeem → reverse → redeem again`
-is proven at the database (§12) and two active coverages can never coexist.
+* `boe_credit_transactions` — the append-only ledger. `employee_id`,
+  `transaction_type`, signed integer `credits` (never 0), `source_type` +
+  `source_id`, nullable `payroll_period_id`, `description`, `created_by`,
+  `created_at`. `BEFORE UPDATE OR DELETE` refuses everybody, the service role
+  included.
+* `boe_credit_settings` — append-only; newest row active.
+* `can_manage_boe_credits()` — an active, non-deleted admin.
+* `post_boe_credit_transaction(...)` / `reverse_boe_credit_transaction(...)`
+  — service role only; the only write paths.
+* **The uniqueness rule:** `UNIQUE (employee_id, transaction_type, source_type,
+  source_id) WHERE source_id IS NOT NULL` — one source event → at most one row
+  of a kind per employee. One reward per review, one reversal per row, one
+  lapse per month.
 
-**Lifecycle — credits stay spent only while the deduction exists.** Both
-write-intent engine paths (the attendance-correction route and payroll
-generation) call `reconcileAttendanceCoverage`
-(`src/lib/payroll/creditCoverage.ts`) before writing a result: for every
-active redemption it compares the engine's settled line for that date and
-   * reverses the redemption when the day is no longer a chargeable Absent /
-     Half Day (corrected to Present, absorbed by paid leave, ₹0, or a
-     half-day coverage on a day that became a full absence) — credits
-     restored through `reverse_boe_credit_attendance_redemption()` by the
-     admin, with the reason on the reversal row;
-   * re-prices a day bought as Absent that became a Half Day — the 2-credit
-     row is reversed and a fresh 1-credit redemption is posted by the admin
-     on the employee's behalf (`redeem_boe_credits_for_attendance` admits an
-     active admin actor for exactly this).
-No ledger amount is edited and no balance is adjusted by hand. The
-read-only previews and the day view never reconcile.
+### 2.2 Review reward (`20261102000000`) and attendance redemption (`20261103000000`)
 
-**Payroll effect.** The engine takes the coverage as its last argument
-(`generatePayrollForEmployee(…, settings, redemptions)`), applies it **after**
-paid-leave absorption and only to a line still chargeable, and settles that
-line at ₹0 with `waived_by: 'boe_credits'` and `credits_redeemed`. The
-classification, `days_absent`, `half_day_count`, the punches and the
-attendance tables are untouched. Every engine caller passes the coverage —
-generation, attendance correction, the monthly preview (both routes), the day
-view — so a regenerated month carries each redemption exactly once. An
-absent-day redemption still covers a day that later became a half day; a
-half-day one does not stretch to a full absence.
+* The verify transition posts the reward in its own transaction (1B).
+* `boe_credit_attendance_redemptions` — one row per covered day; closed once
+  by the reversal of its ledger row (`AFTER INSERT` trigger on the ledger);
+  `UNIQUE (employee_id, attendance_date) WHERE reversal_transaction_id IS NULL`.
+  The lifecycle (`src/lib/payroll/creditCoverage.ts`) reverses coverage when
+  the deduction stops existing and **re-prices only when the KIND of day
+  changes** (Absent → Half Day), never because the price setting changed.
 
-**Generated and locked months.** The route requires a generated result and
-refuses a locked period (`BOE_CREDITS_PERIOD_LOCKED`, and the period row is
-read `FOR SHARE` so a concurrent lock waits). After the redemption commits it
-regenerates the caller's result through the ordinary generation path
-(`createGenerationRow` → `writeEngineResult` → `markAdjustmentsApplied`); if
-that fails the redemption stands and the day view's existing staleness check
-reports the stored money as out of date until the period is regenerated. An
-unlocked month (status back to `generated`) admits redemption again; there is
-no separate bypass.
-
-**Security.** Both functions are service-role only; the redemption actor
-must be the employee or an active admin; the route takes the employee from
-the bearer token and accepts no employee id, cost, kind or balance from the
-body. RLS on the record table: own rows or `can_manage_boe_credits()`; no
-client writes.
-
-**Old-code compatibility.** Migration `20261103000000` creates new objects,
-adds one reversal-scoped `AFTER INSERT` trigger on the ledger and restates
-two column comments; the runner diffs the foundation's function definitions,
-constraints, indexes, columns, policies and view before and after and
-requires them identical, so Phase 1B code keeps running while it is applied.
-
-Proof: `src/lib/boeCredits/attendanceRedemption.test.ts`,
-`src/lib/payroll/engine.creditRedemption.test.ts`,
-`src/lib/payroll/creditCoverage.test.ts`,
-`src/lib/payroll/resultDetailPayload.stale.test.ts` (the real stale helper),
-the Phase 1C blocks in `service.test.ts` and `routesAuthority.test.ts`,
-`supabase/tests/boe_credits_attendance_redemption_assertions.sql` executed
-twice by `supabase/tests/run_boe_credits_attendance_redemption_local.sh` on a
-bare PostgreSQL container, and the two-session races in
-`supabase/tests/boe_credits_attendance_redemption_concurrency.sh`.
-
-**Not built (by design):** admin/manual redemption, cash-out, partial
-credits, advance redemption for future dates, a reversal UI (the service-layer
-`reverseCreditTransaction` remains, admin-only), a separate admin management
-page.
-
-## Phase 1B — a verified review earns its reward
-
-When a verifier moves a review `submitted → verified` through
-`transition_customer_review_test_card()`, the same transaction posts exactly
-one ledger row:
-
-| field | value |
-|---|---|
-| `employee_id` | the review's **holder**, `customer_review_test_cards.booked_by` — never the verifier |
-| `transaction_type` | `review_reward` |
-| `credits` | the newest `boe_credit_settings.review_reward_credits` at that instant (no literal anywhere) |
-| `source_type` / `source_id` | `customer_review` / the review's immutable `id` |
-| `created_by` | the verifier (the actor whose decision it was) |
-| `description` | `Review verified · <card_ref>` |
-
-The function now returns `{ card, reward }` (jsonb). The detail screen goes
-back to the To verify list exactly as it did before, carrying
-`verified=<credits>` in the query string (the same one-shot flag pattern as
-`?saved=1` on an order draft), and the list says "Review verified · +100
-credits awarded to the tester." — credits, never rupees, and the number is the
-one the database returned, never one the browser computed. The employee's own
-`/my-payroll` card and history reflect the row with no further work.
-
-**Why it cannot reward twice.** `verified` is terminal and the row is locked
-before its status is read, so any retry, double click or concurrent request
-is refused with `CUSTOMER_REVIEW_TEST_BAD_TRANSITION` before a reward is
-attempted; the posting function's per-employee pre-check and the partial
-unique index stand behind that.
-
-**Not rewarded:** a return, a submit, a refused or unauthorized verify, a
-pending or deleted review. **No backfill:** reviews verified before
-`20261102000000` earn nothing from it; the migration's post-condition proves
-it wrote zero ledger rows.
-
-**Reversal is not wired.** The workflow has no unverify, reopen or
-reject-after-verify; deleting a verified review is a tombstone (singly, in
-bulk, or by replacement) and must not debit anyone. A wrong reward is
-corrected by an administrator through the service layer's reversal or an
-adjustment.
-
-Proof: `src/lib/boeCredits/reviewReward.test.ts` (text) and
-`supabase/tests/boe_credits_review_reward_assertions.sql` executed by
-`supabase/tests/run_boe_credits_review_reward_local.sh` on a local Supabase
-stack carrying the full Review Workflow chain.
-
-Employees earn *credits*, never rupees. Phase 1A builds the ledger, the derived
-balance, the settings, the permissions and the smallest read/adjust surface
-that lets the foundation be verified. It deliberately does **not** connect
-credits to the Review Workflow (1B), to Attendance deductions (1C) or to
-Payroll (1D).
-
-## The one rule
-
-```
-available credits = SUM(credits) over public.boe_credit_transactions
-```
-
-There is no stored balance. `public.boe_credit_balances` (a `security_invoker`
-view) and `public.boe_credit_balance(uuid)` both sum the ledger on every read.
-Corrections are new rows — a **reversal** (the original negated) or an
-**admin adjustment** (any signed amount, with a mandatory reason). Nothing is
-ever edited or deleted: a `BEFORE UPDATE OR DELETE` trigger refuses both for
-every role, the service role included.
-
-## Objects — `supabase/migrations/20261101000000_boe_credits_foundation.sql`
+### 2.3 Phase 1D (`20261104000000`)
 
 | Object | What it is |
 |---|---|
-| `boe_credit_transactions` | The append-only ledger. `employee_id`, `transaction_type`, signed integer `credits` (never 0), `source_type` + `source_id`, nullable `payroll_period_id`, `description`, `created_by` (null = system), `created_at`. |
-| `boe_credit_balances` | View: `available_credits`, `transaction_count`, `last_transaction_at` per employee. Absent = zero. |
-| `boe_credit_settings` | Append-only; newest row active. `review_reward_credits` (credits per verified review, default **100**) and `credit_value` (₹ per credit, default **1.00**). Two different things. |
-| `can_manage_boe_credits()` | Management authority = an **active, non-deleted admin**. The one place to widen. |
-| `post_boe_credit_transaction(...)` | **Service role only.** The only write path. |
-| `reverse_boe_credit_transaction(...)` | **Service role only.** Posts the compensating row. |
+| `boe_credit_settings` + 3 columns | `half_day_redemption_credits` (8), `full_day_redemption_credits` (15), `minimum_monthly_reviews` (3); `credit_value > 0`; one new active row `(1, 100.00, 8, 15, 3)` inserted idempotently; the Phase 1A row `(100, 1.00)` is kept as history |
+| ledger kind `review_month_lapse` | negative; `source_type 'boe_credit_review_month'`, `source_id` = the month row → the uniqueness index makes a second lapse impossible; admin actor; never checked against the balance |
+| `boe_credit_review_months` | one row per employee + `review_month` (first day, IST): `minimum_reviews_snapshot`, `qualifying_review_count`, `earned_review_credits` (still-valid), `status open/qualified/lapsed`, `qualified_at`, `finalized_at/by`, `lapse_transaction_id`. Guard trigger: identity and minimum never move, lapsed is final, qualified never un-qualifies, finalized never re-finalized |
+| `boe_credit_review_rewards` | one row per reward ledger row: `card_id`, `card_ref`, `submitted_at`, `review_month`, `review_month_id`. Append-only. Attribution is decided once, here |
+| `boe_credit_payroll_applications` | `credits_used`, `credit_value_snapshot`, `credit_amount_snapshot` (= credits × rate, CHECKed), `redemption_transaction_id`, `reversal_transaction_id/reversed_at`; partial unique active per employee-period; close-once guard |
+| `boe_credit_provisional_credits(uuid)`, `boe_credit_spendable_balance(uuid)` | SECURITY INVOKER reads |
+| `boe_credit_balances` (view) | `available_credits` (recorded), `provisional_credits`, `spendable_credits`, counts |
+| `post_boe_credit_transaction(...)` re-created | five kinds; redemption checked against **spendable**; the ONE non-admin reversal: an employee reversing their own `payroll_redemption` |
+| `boe_credit_reversal_guard()` (BEFORE INSERT) | refuses reversing a lapsed month's reward, a lapse row, and any redemption (attendance or payroll) inside a **locked** payroll month |
+| `boe_credit_reversal_effects()` (AFTER INSERT) | a reversed reward refreshes its month; a reversed payroll redemption closes its application |
+| `post_boe_credit_review_reward(employee, card, ref, submitted_at, actor)` | service role only (the transition calls it as owner): reward + record + month upsert + refresh, under the employee lock |
+| `refresh_boe_credit_review_month(employee, month)` | recount un-reversed rewards; `open → qualified` only |
+| `finalize_boe_credit_review_month(employee, month, actor)` | admin; month ended (IST); recount; qualified → finalized; below minimum → lapse; idempotent |
+| `transition_customer_review_test_card()` re-created | byte-identical to 1B before the reward branch; the branch calls `post_boe_credit_review_reward` with `c.submitted_at`; returns `{card, reward: {transaction_id, credits, review_month, month_status, qualifying_review_count, minimum_reviews, provisional, employee_id, employee_name}}` |
+| `redeem_boe_credits_for_attendance(...)` re-created | price from the settings; returns `available_credits` = the **spendable** balance afterwards |
+| `apply_boe_credits_to_payroll(employee, period, credits, actor)` | employee-only actor; FOR SHARE on the period; refuses locked / ungenerated; idempotent for the same N; replace = reversal + new |
+| `remove_boe_credit_payroll_application(employee, period, actor)` | employee-only; refuses locked; nothing-to-remove is not an error |
 
-### Transaction kinds
+**Indexes.** `boe_credit_review_months (employee_id, review_month)` unique,
+`(review_month, status)`; `boe_credit_review_rewards (review_month_id)` + PK on
+`transaction_id`; `boe_credit_payroll_applications` partial unique
+`(employee_id, payroll_period_id) WHERE reversal_transaction_id IS NULL` and
+`(payroll_period_id, employee_id)`. The ledger keeps its foundation indexes.
 
-| `transaction_type` | Sign | `source_type` | Created by |
-|---|---|---|---|
-| `review_reward` | > 0 | `customer_review` | Phase 1B |
-| `redemption` | < 0 | `payroll_period` | Phase 1C/1D |
-| `reversal` | −original | `boe_credit_transaction` (the reversed row) | Phase 1A (service) |
-| `admin_adjustment` | any | `manual`, no `source_id`; reason mandatory | Phase 1A (UI) |
+**RLS.** Every Phase 1D table: RLS on, ONE `SELECT` policy (`employee_id =
+auth.uid() OR can_manage_boe_credits()`), all client writes revoked, anon
+blind. Every write function is service-role only with `search_path = public,
+pg_temp`; the transition stays `authenticated`-callable on its signature.
 
-### The uniqueness rule, exactly
+### Ledger source vocabulary
 
-```sql
-UNIQUE (employee_id, transaction_type, source_type, source_id) WHERE source_id IS NOT NULL
+| `transaction_type` | sign | `source_type` / `source_id` |
+|---|---|---|
+| `review_reward` | + | `customer_review` / card id |
+| `redemption` | − | `attendance_redemption` / record id **or** `payroll_redemption` / application id |
+| `reversal` | −original | `boe_credit_transaction` / the reversed row |
+| `admin_adjustment` | any | `manual` / none (reason mandatory) |
+| `review_month_lapse` | − | `boe_credit_review_month` / month row |
+
+---
+
+## 3. Settlement (Payroll)
+
+```
+salary_after_attendance = gross − attendance deductions      (floored at 0 when days_present = 0)
+net_adjustments         = carry_forward + other_adjustments
+boe_credit_addition     = active application's credit_amount_snapshot, or 0
+salary_payable          = salary_after_attendance + net_adjustments + boe_credit_addition
+closing_balance         = salary_payable − amount_paid
 ```
 
-One source event → at most one row of a given kind per employee. A verified
-review is rewarded once; that reward can be reversed once; adjustments are
-`manual` with no `source_id`, so the index never sees them and an employee can
-be corrected any number of times. Re-awarding the same review after a reversal
-is deliberately impossible through `review_reward`; the correction is an
-adjustment, which records why. The rule is checked twice: a pre-check inside
-the posting function under a per-employee advisory lock, and the index itself.
-A redemption that would overdraw is refused under the same lock.
+`computeSettlement(result, settlement, credits)` (`src/lib/payroll/settlement.ts`)
+takes the application as its third input. Every surface that states the final
+payable reads it: the payslip's settlement block (`buildSettlementBlock`), the
+PATCH settlement route's confirmed figures, the salary report and its WhatsApp
+text (a `BOE Credits: +₹500` line and *Amount Payable*), and the next month's
+proposed carry-forward (`previousClosingBalance`). `payroll_results.net_salary`
+is unchanged in meaning and is not the final figure.
 
-### Negative balances
+Example: normal payable ₹30,000, 5 credits × ₹100 → Salary Payable ₹30,500.
 
-Only a **redemption** is checked against the balance: it is refused if it
-would take the balance below zero, and while the balance is negative no
-redemption is accepted. A **reversal** is not checked — a reward invalidated
-after its credits were spent is still reversed, and the balance goes negative
-until later credits recover it. An **admin adjustment** is not checked either.
-Proven by §11 of `supabase/tests/boe_credits_assertions.sql`.
+---
 
-## Authorization
+## 4. Code
 
-| Who | Ledger | Balances | Settings | Adjust |
-|---|---|---|---|---|
-| Employee | own rows (RLS) | own (via `/api/boe-credits/ledger`) | read | no |
-| Admin | all (RLS + route) | all (`/api/boe-credits/balances`) | read + write (`PUT /api/boe-credits/settings`) | `POST /api/boe-credits/adjustments` |
-| anon | nothing | nothing | nothing | nothing |
+* `src/lib/boeCredits/` — `types.ts`, `settings.ts` (defaults + parser, five
+  fields), `ledger.ts` (pure: sums, running balance, **human descriptions**),
+  `service.ts` (all reads and the RPC wrappers), `attendanceRedemption.ts`
+  (settings-driven eligibility), `paths.ts`.
+* Routes (`src/app/api/boe-credits/`): `settings` (GET any employee / PUT admin),
+  `ledger` (self-or-admin; three balances, explained rows with running balance,
+  review months), `balances` (admin), `adjustments` (admin),
+  `redemptions` (employee; attendance), **`payroll-applications`** (POST/DELETE,
+  employee from the token, only `{payroll_period_id, credits}`),
+  **`review-months`** (GET month status + unresolved-review warning, POST
+  finalize; admin), **`reversals`** (admin).
+* Employee: `/my-credits` (balance, uses, this month's target, activity),
+  `/my-credits/how-it-works` (the knowledge page, driven by the live settings),
+  `CreditsSummaryCard` on `/my-payroll`, `PayrollCreditsPanel` on
+  `/my-payroll/[periodId]`, the *Use N credits* offer on deduction rows.
+* Admin: `/payroll/credits` — settings form (five fields, future-only note),
+  month close (warning for reviews still awaiting verification; one explicit
+  close; idempotent), employee balances (spendable / pending / recorded,
+  search), History with *Reverse this entry*, Adjust, settings history.
+* Review Workflow: tiles say the next step; the detail carries a progress
+  strip and "Go to it"; the To-verify notice says the credits and the month's
+  standing ("2 of 3 this month").
 
-* No client role holds INSERT/UPDATE/DELETE on either table; EXECUTE on the
-  posting functions is revoked from `public`, `anon`, `authenticated`.
-* The `/api/boe-credits/*` routes run on the service role behind `requireAdmin`
-  / `requireSelfOrAdmin` (`src/lib/security/attendancePayrollApiAuth.ts`), so
-  the route is the boundary and the database refuses everyone who did not come
-  through it. For an adjustment or reversal the function re-verifies the actor
-  is an active admin.
-* **No new permission key.** Credits are read beside Attendance and spent in
-  Payroll, both admin-only by product decision (`SELF_SERVICE_MODULE_KEYS`).
-  Delegation later means widening `can_manage_boe_credits()` and nothing else.
+## 5. Invariants
 
-## Code
+* Balance never goes below zero through a redemption; provisional credits are
+  never spendable by any path (the check is inside the one write path, under
+  the employee lock).
+* Nothing on the ledger, the reward records, the month rows (past their
+  status), or the applications is ever edited or deleted; corrections are new
+  rows.
+* One reward per review, one reversal per row, one lapse per month, one active
+  application per employee-period, one active coverage per employee-day — all
+  at the table.
+* A locked payroll month freezes its coverage and its application, including
+  against a direct admin reversal.
+* Historical values are snapshots: attendance cost on the record, rate and
+  rupees on the application, minimum on the month row.
 
-* `src/lib/boeCredits/` — `types.ts`, `settings.ts` (defaults + parser),
-  `ledger.ts` (pure: `sumCredits`, `formatCredits`, validation),
-  `service.ts` (`getCreditBalance`, `getCreditTransactions`,
-  `getAllCreditBalances`, `postCreditTransaction`, `postAdminAdjustment`,
-  `reverseCreditTransaction`, settings read/save).
-* `src/app/api/boe-credits/{ledger,balances,adjustments,settings}/route.ts`.
-* Employee: `CreditsSummaryCard` on `/my-payroll` (“BOE Credits — N available”,
-  History opens `CreditHistoryModal`).
-* Management: `/payroll/credits` (nav entry “BOE Credits”): settings + history,
-  every employee's balance, per-employee History, Adjust.
+## 6. Tests
 
-## Tests
-
-* `src/lib/boeCredits/{ledger,settings,service,migration}.test.ts`
+* `src/lib/boeCredits/{settings,ledger,service,migration,reviewReward,attendanceRedemption,phase1d}.test.ts`
 * `src/app/api/boe-credits/routesAuthority.test.ts`
-* `supabase/tests/boe_credits_assertions.sql` — executes the migration on a
-  disposable database: ledger math, isolation, self-award refusal, duplicate
-  source, reversal, admin adjustment, settings defaults, zero credits.
-  Runner: `supabase/tests/run_boe_credits_local.sh`.
+* `src/lib/payroll/{settlement,salaryReport,creditCoverage,engine.creditRedemption,resultDetailPayload.stale}.test.ts`
+* `src/lib/customerReviews/nextStep.test.ts`
+* Database: `supabase/tests/boe_credits_phase_1d_assertions.sql` via
+  `run_boe_credits_phase_1d_local.sh` (bare container; applies the chain twice,
+  runs the 1D suite twice, then the 1C behavioural suite at the 1C prices).
+  The transition itself is exercised on a full local stack (see the report).
 
-## Not built (by design)
+## 7. Not built (by design)
 
-Review → credits, attendance redemption, payroll calculation, cash-out, expiry,
-badges, levels, leaderboards, transfers, gifts, targets, department rules,
-charts, notifications, monthly reset. Credits carry forward because they are
-ledger rows.
+Campaigns, per-employee rates, credit expiry, cash-out, transfers, a
+scheduler for month close, charts/leaderboards, a Half Day = Full Day / 2
+rule, automatic reversal on review deletion (deleting a verified review stays
+a tombstone; an admin reverses the reward explicitly).
