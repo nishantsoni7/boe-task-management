@@ -173,6 +173,8 @@ export type SettlementPayload = {
     carry_forward: number
     other_adjustments: number
     net_adjustments: number
+    /** The BOE Credits salary addition (Phase 1D), from the stored snapshot. 0 when none. */
+    boe_credit_addition: number
     salary_payable: number
     amount_paid: number | null
     /** Null when no payment has been recorded — there is no balance yet. */
@@ -195,6 +197,12 @@ export type SettlementPayload = {
     remark: string | null
     recorded_at: string | null
   } | null
+  /** The active BOE Credits application behind the addition (Phase 1D). Null when none. */
+  credits?: {
+    credits_used: number
+    credit_value: number
+    amount: number
+  } | null
 }
 
 export type DetailPayload = {
@@ -208,6 +216,18 @@ export type DetailPayload = {
   considered_days: ConsideredDay[]
   corrections: CorrectionRow[]
   correctable_dates: string[]
+  /**
+   * The employee's BOE Credits standing for this month (Phase 1D): what they
+   * can spend, the rate, and the active application. Null on the admin view.
+   */
+  credits?: {
+    spendable_credits: number
+    provisional_credits: number
+    credit_value: number
+    can_apply: boolean
+    locked: boolean
+    application: { id: string; credits_used: number; credit_value: number; amount: number; created_at: string } | null
+  } | null
   /**
    * BOE Credits (Phase 1C). `can_redeem` is true only for the employee's own
    * view of an unlocked month; `redeemable_dates` lists the dates whose
@@ -632,7 +652,7 @@ function RedeemButton({ offer, onClick }: { offer: RedeemableDate; onClick: () =
   return (
     <button
       onClick={onClick}
-      title={`Cover this deduction with BOE Credits — ${redemptionOfferLabel(offer.deduction_type)}`}
+      title={`Cover this deduction with BOE Credits — ${redemptionOfferLabel(offer.deduction_type, offer.credits)}`}
       style={{
         fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 6,
         minHeight: 30, border: '1px solid rgba(79,111,208,0.35)', background: 'rgba(79,111,208,0.06)',
@@ -706,6 +726,13 @@ function PayrollSummaryCard({
               value={fmtSignedAmount(settlement.figures.net_adjustments)}
               tone={signTone(settlement.figures.net_adjustments)}
             />
+            {settlement.figures.boe_credit_addition > 0 && (
+              <SummaryLine
+                label="BOE Credit Addition"
+                value={fmtSignedAmount(settlement.figures.boe_credit_addition)}
+                tone={signTone(settlement.figures.boe_credit_addition)}
+              />
+            )}
           </>
         )}
 
@@ -954,6 +981,18 @@ export function AdjustmentsAndSettlement({
               strong
             />
 
+            {/* The BOE Credits addition (Phase 1D): a Settlement line of its own,
+                outside net adjustments and outside the engine. Shown only when
+                one applies, with the credits and the rate it was made at. */}
+            {f.boe_credit_addition > 0 && (
+              <SettlementRow
+                label="BOE Credit Addition"
+                value={fmtSignedAmount(f.boe_credit_addition)}
+                tone={signTone(f.boe_credit_addition)}
+                remark={creditAdditionNote(settlement)}
+              />
+            )}
+
             {/* The action sits with the value it changes, not in a toolbar. */}
             {canEdit && onEditCarryForward && (
               <div style={{ marginTop: 10 }}>
@@ -994,6 +1033,13 @@ export function AdjustmentsAndSettlement({
                   value={fmtSignedAmount(f.net_adjustments)}
                   tone={signTone(f.net_adjustments)}
                 />
+                {f.boe_credit_addition > 0 && (
+                  <SettlementRow
+                    label="BOE Credit Addition"
+                    value={fmtSignedAmount(f.boe_credit_addition)}
+                    tone={signTone(f.boe_credit_addition)}
+                  />
+                )}
 
                 {/* Salary Payable is the whole point of the section, so it is
                     the one figure given size, weight and a tint of its own. */}
@@ -1113,6 +1159,13 @@ function carryForwardNote(settlement: SettlementPayload): string | null {
     return cf.remark ? `Adjusted manually — ${cf.remark}` : 'Adjusted manually'
   }
   return cf.source_period_id ? 'Carried from the previous payroll period' : null
+}
+
+/** "5 credits at ₹100" — the credits behind the addition, as snapshotted. */
+function creditAdditionNote(settlement: SettlementPayload): string | null {
+  const c = settlement.credits
+  if (!c) return null
+  return `${c.credits_used} ${c.credits_used === 1 ? 'credit' : 'credits'} at ${formatRupees(c.credit_value)} each`
 }
 
 function paymentNote(settlement: SettlementPayload): string | null {
@@ -1397,7 +1450,7 @@ const card: React.CSSProperties = {
  */
 export function PayrollDetailWorkspace({
   result, data, tab, onSelectTab, corrections, correctableDates,
-  canEdit, onEdit, onExplain, onEditCarryForward, onEditPayment, onRedeem, notices, issuePanel,
+  canEdit, onEdit, onExplain, onEditCarryForward, onEditPayment, onRedeem, notices, issuePanel, creditsPanel,
 }: {
   result: DetailResult
   data: DetailPayload
@@ -1421,6 +1474,8 @@ export function PayrollDetailWorkspace({
   notices?: React.ReactNode
   /** The raised-issue panel, which differs between the two readers. */
   issuePanel?: React.ReactNode
+  /** The employee's BOE Credits panel (Phase 1D). Absent for the admin, like onRedeem. */
+  creditsPanel?: React.ReactNode
 }) {
   const redeemable = new Map<string, RedeemableDate>(
     data.can_redeem ? (data.redeemable_dates ?? []).map(r => [r.date, r]) : [],
@@ -1568,6 +1623,11 @@ export function PayrollDetailWorkspace({
           it: what was added, recovered, owed and paid is a different question
           from which day cost what, and merging the two is how an advance
           recovery gets mistaken for an attendance deduction. */}
+      {/* The employee's credits, between the ledger and the settlement that
+          shows their effect: what can be applied sits directly above the
+          figure it changes. */}
+      {creditsPanel}
+
       {data.settlement && (
         <AdjustmentsAndSettlement
           settlement={data.settlement}

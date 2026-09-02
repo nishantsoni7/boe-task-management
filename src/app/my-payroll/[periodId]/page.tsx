@@ -36,6 +36,8 @@ import {
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
 import { RedeemCreditsModal } from '@/components/boeCredits/RedeemCreditsModal'
+import { PayrollCreditsPanel, type PayrollCreditsPanelData } from '@/components/boeCredits/PayrollCreditsPanel'
+import { CREDITS_GUIDE_PATH } from '@/lib/boeCredits/paths'
 import { coveredLabel, type RedeemableDate } from '@/lib/boeCredits/attendanceRedemption'
 
 export default function MyPayrollDetailPage() {
@@ -62,16 +64,19 @@ export default function MyPayrollDetailPage() {
   const [redeemingDate,    setRedeemingDate]    = useState<string | null>(null)
   const [availableCredits, setAvailableCredits] = useState<number | null>(null)
   const [redeemNotice,     setRedeemNotice]     = useState<string | null>(null)
+  // The payroll credit application (Phase 1D): one request in flight at a time.
+  const [creditsBusy,      setCreditsBusy]      = useState(false)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
   const load = useCallback(async (accessToken: string) => {
     const auth = { authorization: `Bearer ${accessToken}` }
-    const [detailRes, objRes, creditsRes] = await Promise.all([
+    // The payslip payload already carries the employee's spendable balance in
+    // its credits block (Phase 1D), so no separate ledger read is needed here.
+    const [detailRes, objRes] = await Promise.all([
       fetch(`/api/payroll/my-result?period_id=${periodId}`, { headers: auth }),
       fetch('/api/objections', { headers: auth }),
-      fetch('/api/boe-credits/ledger?limit=1', { headers: auth }).catch(() => null),
     ])
 
     const json = await detailRes.json()
@@ -86,10 +91,8 @@ export default function MyPayrollDetailPage() {
       setObjection(mine ?? null)
     }
 
-    if (creditsRes && creditsRes.ok) {
-      const ledger = await creditsRes.json().catch(() => null)
-      setAvailableCredits(typeof ledger?.available_credits === 'number' ? ledger.available_credits : null)
-    }
+    const spendable = json?.credits?.spendable_credits
+    setAvailableCredits(typeof spendable === 'number' ? spendable : null)
   }, [periodId])
 
   useEffect(() => {
@@ -196,6 +199,72 @@ export default function MyPayrollDetailPage() {
     return null
   }
 
+  /**
+   * Apply, change or remove the month's credit application. The body names
+   * the period and the number of credits and nothing else — the route takes
+   * the employee from the token and the rate, the rupees, the balance and the
+   * lock from the database. The response carries the confirmed settlement
+   * block and the credits block, so the page updates from what the server
+   * wrote rather than from a guess.
+   */
+  const applyCredits = async (credits: number): Promise<string | null> => {
+    setCreditsBusy(true)
+    try {
+      const res = await fetch('/api/boe-credits/payroll-applications', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payroll_period_id: periodId, credits }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) return json.error ?? 'Could not apply your credits.'
+      applyCreditsResponse(json)
+      return null
+    } finally {
+      setCreditsBusy(false)
+    }
+  }
+
+  const removeCredits = async (): Promise<string | null> => {
+    setCreditsBusy(true)
+    try {
+      const res = await fetch('/api/boe-credits/payroll-applications', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ payroll_period_id: periodId }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) return json.error ?? 'Could not remove your credits.'
+      applyCreditsResponse({ ...json, application: null })
+      return null
+    } finally {
+      setCreditsBusy(false)
+    }
+  }
+
+  /** Merge the server's confirmed figures into the payload; reload if it sent none. */
+  const applyCreditsResponse = (json: {
+    application?: PayrollCreditsPanelData['application']
+    spendable_credits?: number
+    provisional_credits?: number
+    settlement?: unknown
+  }) => {
+    if (!json.settlement) { void load(token); return }
+    setData(prev => {
+      if (!prev) return prev
+      const settlement = { ...(json.settlement as object), adjustments_balance: prev.settlement?.adjustments_balance ?? true } as DetailPayload['settlement']
+      const credits = prev.credits
+        ? {
+            ...prev.credits,
+            application: json.application ?? null,
+            spendable_credits: typeof json.spendable_credits === 'number' ? json.spendable_credits : prev.credits.spendable_credits,
+            provisional_credits: typeof json.provisional_credits === 'number' ? json.provisional_credits : prev.credits.provisional_credits,
+          }
+        : prev.credits
+      return { ...prev, settlement, credits }
+    })
+    if (typeof json.spendable_credits === 'number') setAvailableCredits(json.spendable_credits)
+  }
+
   const submitIssue = async (reason: string): Promise<string | null> => {
     if (!result) return 'Payroll not loaded.'
     const res = await fetch('/api/objections', {
@@ -270,6 +339,16 @@ export default function MyPayrollDetailPage() {
               {redeemNotice}
             </div>
           )}
+          creditsPanel={data.credits ? (
+            <PayrollCreditsPanel
+              key={data.credits.application?.id ?? 'none'}
+              credits={data.credits}
+              busy={creditsBusy}
+              onApply={applyCredits}
+              onRemove={removeCredits}
+              guideHref={CREDITS_GUIDE_PATH}
+            />
+          ) : undefined}
           // No onEditCarryForward and no onEditPayment. Same statement as the
           // missing onEdit above: the employee has no settlement controls to
           // disable, because there is no edit path here to reach. The real
