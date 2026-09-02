@@ -2544,12 +2544,15 @@ begin
     (card_id, kind, storage_path, file_name, mime_type, byte_size, content_sha256, uploaded_by)
   values (v_card, 'test_screenshot', v_card || '/test_screenshot/returned.png', 'returned.png',
           'image/png', 2048, repeat('e', 64), 'ffffffff-0000-4000-8000-000000000002');
+  -- No `.status` projection on the transition's result: since 20261102000000
+  -- (BOE Credits Phase 1B) the function returns jsonb, not the row, and as_user
+  -- discards the value anyway. The status is read back from the table below.
   perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000002',
-    format('select (public.transition_customer_review_test_card(%L, %L, null)).status', v_card, 'submitted'));
+    format('select public.transition_customer_review_test_card(%L, %L, null)', v_card, 'submitted'));
 
   -- A verifier hands it back, with a reason.
   perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000004',
-    format('select (public.transition_customer_review_test_card(%L, %L, %L)).status',
+    format('select public.transition_customer_review_test_card(%L, %L, %L)',
            v_card, 'booked', 'The screenshot does not show the recipient.'));
 
   select status, sent_confirmed_at, returned_at, return_reason into v_ret
@@ -2579,7 +2582,7 @@ begin
 
   -- ...and it is still the holder's to finish: submitting again is offered.
   perform pg_temp.as_user('ffffffff-0000-4000-8000-000000000002',
-    format('select (public.transition_customer_review_test_card(%L, %L, null)).status', v_card, 'submitted'));
+    format('select public.transition_customer_review_test_card(%L, %L, null)', v_card, 'submitted'));
   if (select status from public.customer_review_test_cards where id = v_card) <> 'submitted' then
     raise exception 'a returned review could not be re-submitted by its holder';
   end if;

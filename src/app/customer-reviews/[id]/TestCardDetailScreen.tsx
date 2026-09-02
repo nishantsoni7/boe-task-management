@@ -315,7 +315,7 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const { error: rpcError } = await supabase.rpc('transition_customer_review_test_card', {
+      const { data, error: rpcError } = await supabase.rpc('transition_customer_review_test_card', {
         p_card_id: cardId,
         p_next_status: action.to,
         p_detail: detail,
@@ -329,9 +329,13 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       // VERIFYING IS THE END OF THE CARD'S LIFE IN THIS UI. Reloading would
       // fetch a row this screen now declines to display and land the verifier
       // on "that test card is not available", which reads like an error rather
-      // than like success. Going back to the list is the honest ending.
+      // than like success. Going back to the list is the honest ending. The
+      // list is told what the database just did — the BOE Credits reward it
+      // posted in the same transaction as the verification — through the same
+      // kind of one-shot query flag the order drafts use for ?saved=1: it
+      // decides only what the list SAYS, never what it shows.
       if (action.to === 'verified') {
-        router.push('/customer-reviews?tab=to_verify')
+        router.push(`/customer-reviews?tab=to_verify${verifiedQuery(data)}`)
         return
       }
 
@@ -827,6 +831,26 @@ const EVENT_LABELS: Record<string, string> = {
   image_removed:      'Review image removed',
   deleted:            'Deleted by a verifier',
   replaced:           'Replaced by a newer batch',
+}
+
+// ─── BOE Credits: the reward a verification posted ───────────────────────────
+//
+// transition_customer_review_test_card() returns { card, reward } since
+// 20261102000000. `reward.credits` is what the database actually wrote, in the
+// same transaction as the verification — the active setting at that instant,
+// for the card's holder. Nothing here computes a number: it carries the one the
+// database returned to the To verify list, which says it.
+
+/** The query-string tail for the To verify list after a verification:
+ *  `&verified=<credits>`, or `&verified=0` when the result carries no reward
+ *  (an older function, say). The list shows the amount and trusts the flag for
+ *  nothing else — every row it renders still comes from its own queries. */
+export function verifiedQuery(data: unknown): string {
+  const reward = (data as { reward?: { credits?: unknown } | null } | null)?.reward
+  const credits = typeof reward?.credits === 'number' && Number.isFinite(reward.credits) && reward.credits > 0
+    ? Math.trunc(reward.credits)
+    : 0
+  return `&verified=${credits}`
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {

@@ -509,6 +509,10 @@ describe('the migration is placed correctly', () => {
       // view, the settings table and the service-role posting functions. Two new
       // tables of its own; it touches nothing any other module creates.
       '20261101000000_boe_credits_foundation.sql',
+      // BOE Credits Phase 1B: re-creates transition_customer_review_test_card() so a
+      // verified review posts its review_reward in the same transaction. One
+      // function, no table, no data.
+      '20261102000000_boe_credits_review_reward.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

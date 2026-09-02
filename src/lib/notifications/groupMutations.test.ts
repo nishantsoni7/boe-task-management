@@ -296,6 +296,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // view, the settings table and the service-role posting functions. Two new
       // tables of its own; it touches nothing any other module creates.
       '20261101000000_boe_credits_foundation.sql',
+      // BOE Credits Phase 1B: re-creates transition_customer_review_test_card() so a
+      // verified review posts its review_reward in the same transaction. One
+      // function, no table, no data.
+      '20261102000000_boe_credits_review_reward.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
