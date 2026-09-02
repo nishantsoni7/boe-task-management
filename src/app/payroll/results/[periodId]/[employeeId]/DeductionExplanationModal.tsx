@@ -17,7 +17,6 @@ import { istClockOf } from '@/lib/istDate'
 import {
   explainDay,
   money,
-  COMPANY_PAID_NOTE,
   type ExplainableLine,
 } from '@/lib/payroll/deductionExplanation'
 
@@ -103,7 +102,7 @@ export function DeductionExplanationModal({
         <div
           key={item.key}
           style={{
-            border: `1px solid ${item.companyPaid ? 'rgba(5,150,105,0.3)' : colors.border}`,
+            border: `1px solid ${item.coverageNote ? 'rgba(5,150,105,0.3)' : colors.border}`,
             borderRadius: 10, overflow: 'hidden',
             // The dialog is a column flex box that scrolls. Without this, a date
             // with more than one reason makes these cards shrink instead, and
@@ -114,12 +113,13 @@ export function DeductionExplanationModal({
           <div style={{
             display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10,
             padding: '10px 14px', borderBottom: `1px solid ${colors.border}`,
-            background: item.companyPaid ? 'rgba(5,150,105,0.05)' : 'transparent',
+            background: item.coverageNote ? 'rgba(5,150,105,0.05)' : 'transparent',
           }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318' }}>{item.title}</div>
-              {item.companyPaid && (
-                <div style={{ fontSize: 11.5, color: '#047857', marginTop: 2 }}>{COMPANY_PAID_NOTE}</div>
+              {/* Company paid, or covered with BOE Credits — the same green note. */}
+              {item.coverageNote && (
+                <div style={{ fontSize: 11.5, color: '#047857', marginTop: 2 }}>{item.coverageNote}</div>
               )}
             </div>
             <div style={{

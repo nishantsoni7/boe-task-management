@@ -1,8 +1,9 @@
 // BOE Credits — the shapes shared by the service, the routes and the screens.
 //
 // Employees see CREDITS, never rupees. A credit is a whole number; the rupee
-// value of one lives in the settings and is Payroll's concern (Phase 1D), not
-// the ledger's.
+// value of one lives in the settings and is a later Payroll phase's concern,
+// not the ledger's — and NOT attendance redemption's either: a half day costs
+// 1 credit and an absent day 2, fixed (see ./attendanceRedemption.ts).
 
 /** The four kinds a ledger row can be. Mirrors the CHECK on the table. */
 export const CREDIT_TRANSACTION_TYPES = [
@@ -25,6 +26,8 @@ export function isCreditTransactionType(value: unknown): value is CreditTransact
  */
 export type CreditSourceType =
   | 'customer_review'
+  /** A Phase 1C attendance redemption; source_id = boe_credit_attendance_redemptions.id. */
+  | 'attendance_redemption'
   | 'payroll_period'
   | 'boe_credit_transaction'
   | 'manual'
@@ -63,6 +66,9 @@ export type EmployeeCreditBalance = CreditBalance & {
 export type BoeCreditSettings = {
   /** How many credits a verified review earns (Phase 1B reads this). */
   review_reward_credits: number
-  /** The rupee value of one credit (Phase 1D reads this). */
+  /**
+   * The rupee value of one credit, reserved for a later Payroll phase.
+   * Attendance redemption (Phase 1C) never reads it — its cost is fixed.
+   */
   credit_value: number
 }

@@ -35,6 +35,8 @@ import {
 } from '@/app/payroll/results/[periodId]/[employeeId]/DeductionExplanationModal'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { employeeStatusLabel, statusTone as objectionTone, type ObjectionRow } from '@/lib/objections'
+import { RedeemCreditsModal } from '@/components/boeCredits/RedeemCreditsModal'
+import { coveredLabel, type RedeemableDate } from '@/lib/boeCredits/attendanceRedemption'
 
 export default function MyPayrollDetailPage() {
   const params   = useParams()
@@ -54,14 +56,22 @@ export default function MyPayrollDetailPage() {
   const [objection,  setObjection]  = useState<ObjectionRow | null>(null)
   const [issueOpen,  setIssueOpen]  = useState(false)
 
+  // BOE Credits (Phase 1C): the day being covered, the balance the confirmation
+  // shows, and the one-line notice after it succeeds. The balance comes from
+  // the ledger route, which pins a non-admin to their own ledger.
+  const [redeemingDate,    setRedeemingDate]    = useState<string | null>(null)
+  const [availableCredits, setAvailableCredits] = useState<number | null>(null)
+  const [redeemNotice,     setRedeemNotice]     = useState<string | null>(null)
+
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
   const load = useCallback(async (accessToken: string) => {
     const auth = { authorization: `Bearer ${accessToken}` }
-    const [detailRes, objRes] = await Promise.all([
+    const [detailRes, objRes, creditsRes] = await Promise.all([
       fetch(`/api/payroll/my-result?period_id=${periodId}`, { headers: auth }),
       fetch('/api/objections', { headers: auth }),
+      fetch('/api/boe-credits/ledger?limit=1', { headers: auth }).catch(() => null),
     ])
 
     const json = await detailRes.json()
@@ -74,6 +84,11 @@ export default function MyPayrollDetailPage() {
         (o: ObjectionRow) => o.payroll_result_id && o.payroll_result_id === json?.result?.id,
       )
       setObjection(mine ?? null)
+    }
+
+    if (creditsRes && creditsRes.ok) {
+      const ledger = await creditsRes.json().catch(() => null)
+      setAvailableCredits(typeof ledger?.available_credits === 'number' ? ledger.available_credits : null)
     }
   }, [periodId])
 
@@ -147,6 +162,40 @@ export default function MyPayrollDetailPage() {
     }
   }
 
+  const redeemOffer: RedeemableDate | null = useMemo(
+    () => (redeemingDate && data?.can_redeem
+      ? (data.redeemable_dates ?? []).find(r => r.date === redeemingDate) ?? null
+      : null),
+    [redeemingDate, data],
+  )
+
+  /**
+   * Cover the chosen day. The body names the period and the date and nothing
+   * else — not the cost, not the kind, not the balance, not who: the route
+   * takes the employee from the token and decides the rest from the engine.
+   * On success the whole payslip is reloaded, so the covered row, the totals
+   * and the stale banner (if recalculation did not happen) all come from the
+   * server rather than from an optimistic guess.
+   */
+  const confirmRedeem = async (): Promise<string | null> => {
+    if (!redeemOffer) return 'That day can no longer be covered. Reload and try again.'
+    const res = await fetch('/api/boe-credits/redemptions', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify({ payroll_period_id: periodId, attendance_date: redeemOffer.date }),
+    })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) return json.error ?? 'Could not apply your credits.'
+
+    const credits = typeof json.credits === 'number' ? json.credits : redeemOffer.credits
+    setRedeemNotice(
+      `${fmtDayDate(redeemOffer.date)} — ${coveredLabel(credits)}.`
+      + (json.recalculated === false ? ' Your salary figures will update when payroll is next recalculated.' : ''),
+    )
+    await load(token)
+    return null
+  }
+
   const submitIssue = async (reason: string): Promise<string | null> => {
     if (!result) return 'Payroll not loaded.'
     const res = await fetch('/api/objections', {
@@ -208,6 +257,19 @@ export default function MyPayrollDetailPage() {
           correctableDates={new Set()}
           canEdit={false}
           onExplain={setExplainingDate}
+          // The one action this reader has on a deduction row: cover it with
+          // BOE Credits. Offered only on the dates the payload listed, and the
+          // route decides again before it writes.
+          onRedeem={setRedeemingDate}
+          notices={redeemNotice && (
+            <div role="status" style={{
+              marginBottom: 16, padding: '11px 16px', borderRadius: 9,
+              background: 'rgba(5,150,105,0.09)', color: '#047857',
+              border: '1px solid rgba(5,150,105,0.3)', fontSize: 13,
+            }}>
+              {redeemNotice}
+            </div>
+          )}
           // No onEditCarryForward and no onEditPayment. Same statement as the
           // missing onEdit above: the employee has no settlement controls to
           // disable, because there is no edit path here to reach. The real
@@ -265,6 +327,16 @@ export default function MyPayrollDetailPage() {
           employeeName={result.employee_name}
           day={explainingContext}
           onClose={() => setExplainingDate(null)}
+        />
+      )}
+
+      {redeemOffer && (
+        <RedeemCreditsModal
+          offer={redeemOffer}
+          dateLabel={fmtDayDate(redeemOffer.date)}
+          availableCredits={availableCredits}
+          onClose={() => setRedeemingDate(null)}
+          onConfirm={confirmRedeem}
         />
       )}
 

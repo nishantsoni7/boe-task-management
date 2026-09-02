@@ -25,8 +25,11 @@ import {
   fetchAttendanceForPeriod,
   fetchHolidaysForPeriod,
   fetchCurrentCorrections,
+  fetchActiveAttendanceRedemptions,
 } from '@/lib/payroll/store'
 import { toDeductionDays, toConsideredDays, isCorrectableDay } from '@/lib/payroll/resultTabs'
+import { attendanceRedemptionEligibility, type RedeemableDate } from '@/lib/boeCredits/attendanceRedemption'
+import { istToday } from '@/lib/istDate'
 import { toSignedAdjustment, type StoredAdjustment } from '@/lib/payroll/adjustments'
 import { computeSettlement, adjustmentsReconcile, closingBalanceSentence } from '@/lib/payroll/settlement'
 import { fetchSettlement, type SettlementRow } from '@/lib/payroll/settlementStore'
@@ -108,6 +111,7 @@ export async function buildResultDetailPayload(
     employeeId,
     canEdit,
     editBlocked,
+    canRedeem = false,
   }: {
     periodId: string
     employeeId: string
@@ -115,6 +119,12 @@ export async function buildResultDetailPayload(
     canEdit: boolean
     /** Why not, when they may not. Shown to admins; employees are not told. */
     editBlocked: string | null
+    /**
+     * Whether this reader is the EMPLOYEE, who may cover a day with BOE
+     * Credits (Phase 1C). Display only, like canEdit: the redemption route
+     * re-runs the engine and decides eligibility for itself.
+     */
+    canRedeem?: boolean
   },
 ): Promise<ResultDetailOutcome> {
   const { data: period, error: periodErr } = await svc
@@ -225,6 +235,7 @@ export async function buildResultDetailPayload(
     year:  period.payroll_year,
     storedTotalDeductions: result.total_deductions,
     period: { status: period.status, settings_snapshot: period.settings_snapshot },
+    canRedeem,
   })
 
   return {
@@ -239,6 +250,7 @@ export async function buildResultDetailPayload(
       },
       can_edit:     canEdit,
       edit_blocked: editBlocked,
+      can_redeem:   canRedeem && period.status !== 'locked',
       result: {
         id:                       result.id,
         employee_id:              result.employee_id,
@@ -281,17 +293,20 @@ type DayViewInput = {
   storedTotalDeductions: number | null
   /** Decides which settings the day rows are computed under. */
   period: PeriodSettingsContext
+  /** Whether to list the dates this reader could cover with BOE Credits. */
+  canRedeem: boolean
 }
 
 async function buildDayView(
   svc: Svc,
-  { employeeId, month, year, storedTotalDeductions, period }: DayViewInput,
+  { employeeId, month, year, storedTotalDeductions, period, canRedeem }: DayViewInput,
 ) {
   const empty = {
     deduction_days:  [],
     considered_days: [],
     corrections:     [],
     correctable_dates: [],
+    redeemable_dates: [] as RedeemableDate[],
     stale: false,
     day_view_error: null as string | null,
   }
@@ -305,10 +320,11 @@ async function buildDayView(
   if (!emp) return { ...empty, day_view_error: 'Employee not found.' }
 
   try {
-    const [attendance, holidays, corrections] = await Promise.all([
+    const [attendance, holidays, corrections, redemptions] = await Promise.all([
       fetchAttendanceForPeriod(svc, employeeId, month, year),
       fetchHolidaysForPeriod(svc, month, year),
       fetchCurrentCorrections(svc, employeeId, month, year),
+      fetchActiveAttendanceRedemptions(svc, employeeId, month, year),
     ])
 
     // The SAME settings the stored money was produced under.
@@ -336,16 +352,36 @@ async function buildDayView(
       [],
       corrections,
       settings,
+      // The BOE Credits coverage layer: a covered day renders at ₹0 with the
+      // credits spent, and the staleness test below sees a redemption the
+      // stored money predates exactly as it sees an attendance change.
+      redemptions,
     )
 
     if (isSkip(outcome)) return { ...empty, day_view_error: `Payroll skipped: ${outcome.reason}` }
 
     const rawByDate = new Map(attendance.map(a => [a.attendance_date, a]))
 
+    // Which dates the EMPLOYEE could cover with credits, by the same rule the
+    // redemption route applies before it writes. Listed only for the employee
+    // reader on an unlocked month; an empty list is the answer otherwise.
+    const today = istToday()
+    const redeemableDates: RedeemableDate[] = canRedeem && period.status !== 'locked'
+      ? outcome.day_results.flatMap(day => {
+          const e = attendanceRedemptionEligibility(day, {
+            periodStatus: period.status, today, periodMonth: month, periodYear: year,
+          })
+          return e.eligible
+            ? [{ date: day.date, deduction_type: e.deduction_type, credits: e.credits, amount: e.amount }]
+            : []
+        })
+      : []
+
     return {
       deduction_days:  toDeductionDays(outcome.day_results),
       considered_days: toConsideredDays(outcome.day_results),
       correctable_dates: outcome.day_results.filter(isCorrectableDay).map(d => d.date),
+      redeemable_dates: redeemableDates,
       corrections: corrections.map(c => ({
         attendance_date: c.attendance_date,
         remark:          c.remark,

@@ -102,6 +102,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // verified review posts its review_reward in the same transaction. One
       // function, no table, no data.
       '20261102000000_boe_credits_review_reward.sql',
+      // BOE Credits Phase 1C: the attendance redemption record table and the
+      // service-role function that covers one attendance day with credits. One
+      // new table of its own; it touches nothing any other module creates.
+      '20261103000000_boe_credits_attendance_redemption.sql',
     ])
   })
 

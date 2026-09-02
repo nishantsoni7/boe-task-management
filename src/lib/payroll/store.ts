@@ -12,6 +12,7 @@ import type {
   EngineResult,
 } from './types'
 import type { AttendanceDayCorrection } from '../attendance/corrections'
+import { isRedeemableDeductionType, type AttendanceCreditRedemption } from '../boeCredits/attendanceRedemption'
 import { parseStoredDirectionSource } from '../attendance/punchDirection'
 import { toSignedAdjustments, type StoredAdjustment } from './adjustments'
 import { onlyParticipating, partitionByParticipation } from './participation'
@@ -218,6 +219,111 @@ export async function fetchCurrentCorrectionsByEmployee(
     const list = byEmployee.get(row.user_id)
     if (list) list.push(row)
     else byEmployee.set(row.user_id, [row])
+  }
+  return byEmployee
+}
+
+// ─── BOE Credits coverage (Phase 1C) ──────────────────────────────────────────
+
+/**
+ * One ACTIVE redemption record, as boe_credit_attendance_redemptions stores
+ * it. Extends the engine's input with the identity the lifecycle needs to
+ * reverse or re-price it (src/lib/payroll/creditCoverage.ts).
+ */
+export type StoredAttendanceRedemption = AttendanceCreditRedemption & {
+  id: string
+  employee_id: string
+  transaction_id: string
+  payroll_period_id: string
+  created_at: string
+}
+
+const REDEMPTION_COLUMNS =
+  'id, employee_id, attendance_date, deduction_type, credits, transaction_id, payroll_period_id, created_at'
+
+function monthWindow(month: number, year: number): { start: string; end: string } {
+  const mm        = String(month).padStart(2, '0')
+  const nextMonth = month === 12 ? 1 : month + 1
+  const nextYear  = month === 12 ? year + 1 : year
+  return {
+    start: `${year}-${mm}-01`,
+    end:   `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`,
+  }
+}
+
+function toStoredRedemption(row: Record<string, unknown>): StoredAttendanceRedemption | null {
+  // The CHECK on the table holds it to the two kinds; parsed rather than
+  // asserted, so an unrecognised value is dropped instead of covering a day.
+  if (!isRedeemableDeductionType(row.deduction_type)) return null
+  return {
+    id:                String(row.id),
+    employee_id:       String(row.employee_id),
+    attendance_date:   String(row.attendance_date),
+    deduction_type:    row.deduction_type,
+    credits:           Number(row.credits),
+    transaction_id:    String(row.transaction_id),
+    payroll_period_id: String(row.payroll_period_id),
+    created_at:        String(row.created_at),
+  }
+}
+
+/**
+ * The days one employee has covered with BOE Credits in one month.
+ *
+ * ACTIVE means reversal_transaction_id IS NULL — the record is closed by a
+ * trigger on the ledger the moment its ledger row is reversed, whichever
+ * path posted the reversal, so this one column is the whole truth and the
+ * partial unique index behind it is what makes two active coverages for one
+ * day impossible. Generation, correction, preview and the day view all read
+ * this, so every run of the engine sees the same coverage and a regenerated
+ * month carries it exactly once.
+ */
+export async function fetchActiveAttendanceRedemptions(
+  svc: Svc,
+  employeeId: string,
+  month: number,
+  year: number,
+): Promise<StoredAttendanceRedemption[]> {
+  const { start, end } = monthWindow(month, year)
+  const { data, error } = await svc
+    .from('boe_credit_attendance_redemptions')
+    .select(REDEMPTION_COLUMNS)
+    .eq('employee_id', employeeId)
+    .is('reversal_transaction_id', null)
+    .gte('attendance_date', start)
+    .lt('attendance_date', end)
+  if (error) throw new Error(`fetchActiveAttendanceRedemptions: ${error.message}`)
+  return ((data ?? []) as Record<string, unknown>[])
+    .map(toStoredRedemption)
+    .filter((r): r is StoredAttendanceRedemption => r != null)
+}
+
+/**
+ * The same, for EVERY employee in one month, grouped — the whole-company
+ * preview reads it once rather than per employee, exactly like
+ * fetchCurrentCorrectionsByEmployee above.
+ */
+export async function fetchActiveAttendanceRedemptionsByEmployee(
+  svc: Svc,
+  month: number,
+  year: number,
+): Promise<Map<string, StoredAttendanceRedemption[]>> {
+  const { start, end } = monthWindow(month, year)
+  const { data, error } = await svc
+    .from('boe_credit_attendance_redemptions')
+    .select(REDEMPTION_COLUMNS)
+    .is('reversal_transaction_id', null)
+    .gte('attendance_date', start)
+    .lt('attendance_date', end)
+  if (error) throw new Error(`fetchActiveAttendanceRedemptionsByEmployee: ${error.message}`)
+
+  const byEmployee = new Map<string, StoredAttendanceRedemption[]>()
+  for (const raw of (data ?? []) as Record<string, unknown>[]) {
+    const r = toStoredRedemption(raw)
+    if (!r) continue
+    const list = byEmployee.get(r.employee_id)
+    if (list) list.push(r)
+    else byEmployee.set(r.employee_id, [r])
   }
   return byEmployee
 }

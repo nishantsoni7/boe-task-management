@@ -186,3 +186,105 @@ describe('the employee surface', () => {
     assert.ok(adminStart < entry && entry < employeeStart, 'the entry is in the ADMIN nav, not the employee one')
   })
 })
+
+// ─── Attendance redemption (Phase 1C) ────────────────────────────────────────
+
+describe('the redemption is the caller\'s own, decided by the engine, written through the service', () => {
+  const REDEMPTIONS = read('src/app/api/boe-credits/redemptions/route.ts')
+  const c = code(REDEMPTIONS)
+
+  test('the caller is resolved from the token first; the body is not parsed for the anonymous', () => {
+    assert.match(c, /const caller = await resolveCaller\(req\)/)
+    assert.match(c, /if \(!caller\) return UNAUTHORIZED\(\)/)
+    assert.ok(c.indexOf('return UNAUTHORIZED()') < c.indexOf('await req.json()'))
+  })
+
+  test('the employee is caller.id; nothing in the body can name one, a cost, a kind or a balance', () => {
+    assert.match(c, /const employeeId = caller\.id/)
+    assert.equal(/payload\.(employee_id|employeeId|credits|deduction_type|amount|available)/.test(c), false)
+    assert.match(c, /employeeId,\s*\n\s*payrollPeriodId: periodId,\s*\n\s*attendanceDate:\s+date,\s*\n\s*deductionType:\s+eligibility\.deduction_type,\s*\n\s*actorId:\s+caller\.id/)
+  })
+
+  test('eligibility comes from the engine, before the write, with the period\'s pinned settings', () => {
+    assert.match(c, /generatePayrollForEmployee\(/)
+    assert.match(c, /settingsForPeriod\(/)
+    assert.match(c, /fetchActiveAttendanceRedemptions\(svc, employeeId/)
+    const eligibility = c.indexOf('attendanceRedemptionEligibility(')
+    const write       = c.indexOf('redeemAttendanceDay(')
+    assert.ok(eligibility > 0 && eligibility < write)
+    assert.match(c, /if \(!eligibility\.eligible\) \{/)
+  })
+
+  test('it writes through redeemAttendanceDay and nothing else — no direct insert, no rpc, one verb', () => {
+    assert.equal(/\.insert\(|\.rpc\(|\.delete\(/.test(c), false)
+    assert.equal(/export async function (GET|PUT|PATCH|DELETE)/.test(REDEMPTIONS), false)
+    // The one update-shaped write is the ordinary regeneration path, through the store.
+    assert.match(c, /createGenerationRow\(svc, periodId, caller\.id\)/)
+    assert.match(c, /writeEngineResult\(svc, generationId, after\)/)
+    assert.match(c, /markAdjustmentsApplied\(svc, after\.applied_adjustment_ids, resultId, periodId\)/)
+  })
+
+  test('a locked month is refused before any input is read', () => {
+    const lock = c.indexOf("period.status === 'locked'")
+    const inputs = c.indexOf('fetchAttendanceForPeriod(')
+    assert.ok(lock > 0 && lock < inputs)
+  })
+
+  test('the two redemption RPCs are called from the service only, and nothing in src/ writes the redemption table', () => {
+    const offenders: string[] = []
+    for (const file of walk(join(ROOT, 'src'))) {
+      if (file.endsWith('.test.ts')) continue
+      const src = code(read(file.slice(ROOT.length + 1).replace(/\\/g, '/')))
+      if (/rpc\('(redeem_boe_credits_for_attendance|reverse_boe_credit_attendance_redemption)'/.test(src)
+          && !file.endsWith(join('boeCredits', 'service.ts'))) offenders.push(file)
+      const idx = src.indexOf("from('boe_credit_attendance_redemptions')")
+      if (idx !== -1 && /\.(insert|update|delete|upsert)\(/.test(src.slice(idx, idx + 400))) offenders.push(file)
+    }
+    assert.deepEqual(offenders, [])
+    assert.match(code(SERVICE), /rpc\('redeem_boe_credits_for_attendance'/)
+    assert.match(code(SERVICE), /rpc\('reverse_boe_credit_attendance_redemption'/)
+    assert.match(code(SERVICE), /p_actor_id:\s+input\.actorId/, 'the actor is whoever the caller resolved from the token')
+  })
+
+  test('the lifecycle: every write-intent engine run reconciles the coverage first, through the shared module', () => {
+    const correction = code(read('src/app/api/payroll/attendance-correction/route.ts'))
+    const generate   = code(read('src/app/api/payroll/generate/route.ts'))
+    for (const [name, src] of [['attendance-correction', correction], ['generate', generate]] as const) {
+      assert.match(src, /reconcileAttendanceCoverage\(svc, \{/, `${name} reconciles`)
+      assert.match(src, /actorId:\s+caller\.id/, `${name}: the admin from the token is the actor on every reversal`)
+      assert.ok(src.indexOf('reconcileAttendanceCoverage(') < src.indexOf('writeEngineResult('), `${name}: reconciled BEFORE the result is written`)
+    }
+    // The read-only previews and the day view never reconcile: nothing there
+    // may write, and the engine already ignores coverage it cannot apply.
+    for (const p of [
+      'src/app/api/payroll/monthly-review/route.ts',
+      'src/app/api/payroll/monthly-review/detail/route.ts',
+      'src/lib/payroll/resultDetailPayload.ts',
+    ]) {
+      assert.equal(/reconcileAttendanceCoverage|reverseAttendanceRedemption/.test(code(read(p))), false, p)
+    }
+    const coverage = code(read('src/lib/payroll/creditCoverage.ts'))
+    assert.match(coverage, /await reverseAttendanceRedemption\(svc, \{ redemptionId: a\.redemption\.id, actorId, reason: a\.reason \}\)/)
+    assert.match(coverage, /if \(a\.action === 'reprice'\) \{\s*\n\s*await redeemAttendanceDay\(/, 'a re-price is reverse THEN redeem')
+    assert.equal(/postAdminAdjustment|admin_adjustment/.test(coverage), false, 'no hidden balance adjustment — only reversals and redemptions')
+  })
+
+  test('the employee page posts the period and the date only, and takes the offer from the payload', () => {
+    const page = code(read('src/app/my-payroll/[periodId]/page.tsx'))
+    assert.match(page, /fetch\('\/api\/boe-credits\/redemptions'/)
+    assert.match(page, /JSON\.stringify\(\{ payroll_period_id: periodId, attendance_date: redeemOffer\.date \}\)/)
+    assert.equal(/employee_id|credits:|deduction_type:/.test(page.slice(page.indexOf("fetch('/api/boe-credits/redemptions'"), page.indexOf("fetch('/api/boe-credits/redemptions'") + 400)), false)
+    assert.match(page, /onRedeem=\{setRedeemingDate\}/)
+    assert.match(page, /data\?\.can_redeem/)
+  })
+
+  test('the admin reader gets no redeem action and no redeemable list', () => {
+    const detail = code(read('src/app/api/payroll/results/detail/route.ts'))
+    assert.equal(/canRedeem:\s*true/.test(detail), false)
+    const myResult = code(read('src/app/api/payroll/my-result/route.ts'))
+    assert.match(myResult, /canRedeem:\s+true/)
+    assert.match(myResult, /employeeId:\s+caller\.id/)
+    const admin = code(read('src/app/payroll/results/[periodId]/[employeeId]/page.tsx'))
+    assert.equal(/onRedeem=/.test(admin), false)
+  })
+})

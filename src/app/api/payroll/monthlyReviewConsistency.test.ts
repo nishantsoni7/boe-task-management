@@ -192,20 +192,23 @@ describe('23. Monthly Review and generation agree when a correction exists', () 
     assert.match(storeSrc,  /export function toEngineAttendanceRecord/, 'one shared narrowing function')
   })
 
-  test('the route passes corrections AND settings into the engine', async () => {
-    // Updated when Central Payroll Settings added a seventh engine argument.
-    // The rule this test enforces is unchanged and is the reason it exists: the
-    // preview must hand the engine everything generation hands it. Omitting an
-    // argument here does not fail — it silently previews a DIFFERENT
-    // calculation, which is exactly how the corrections divergence happened.
+  test('the route passes corrections, settings AND credit coverage into the engine', async () => {
+    // Updated when Central Payroll Settings added a seventh engine argument,
+    // and again when BOE Credits Phase 1C added the eighth (the days covered
+    // with credits). The rule this test enforces is unchanged and is the
+    // reason it exists: the preview must hand the engine everything generation
+    // hands it. Omitting an argument here does not fail — it silently previews
+    // a DIFFERENT calculation, which is exactly how the corrections divergence
+    // happened.
     const src = await readFile('src/app/api/payroll/monthly-review/route.ts', 'utf8')
 
     assert.match(src, /fetchCurrentCorrectionsByEmployee/, 'the route must load the correction layer')
+    assert.match(src, /fetchActiveAttendanceRedemptionsByEmployee/, 'the route must load the credit coverage layer')
     assert.match(src, /settingsForPeriod/, 'the route must resolve which settings the month is previewed under')
     assert.match(
       src,
-      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections,\s*settings\s*\)/,
-      'the engine call must pass all seven arguments, corrections and settings included',
+      /generatePayrollForEmployee\(\s*emp,\s*previewPeriod,\s*attendance,\s*holidays,\s*adjustments,\s*corrections,\s*settings,\s*redemptions\s*\)/,
+      'the engine call must pass all eight arguments, corrections, settings and redemptions included',
     )
   })
 

@@ -12,6 +12,7 @@ import { generatePayrollForEmployee } from '@/lib/payroll/engine'
 import {
   fetchHolidaysForPeriod,
   fetchCurrentCorrectionsByEmployee,
+  fetchActiveAttendanceRedemptionsByEmployee,
   toEngineAttendanceRecord,
 } from '@/lib/payroll/store'
 import { onlyParticipating } from '@/lib/payroll/participation'
@@ -129,11 +130,15 @@ export async function GET(req: NextRequest) {
   // the preview was the wrong one.
   let holidays: Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
   let correctionsByEmployee: Awaited<ReturnType<typeof fetchCurrentCorrectionsByEmployee>>
+  let redemptionsByEmployee: Awaited<ReturnType<typeof fetchActiveAttendanceRedemptionsByEmployee>>
   let allAdjustments: { employee_id: string; adjustment_type: string; amount: number; id: string; description: string }[] = []
   try {
-    const [hols, corrs, adjResult] = await Promise.all([
+    const [hols, corrs, redemptions, adjResult] = await Promise.all([
       fetchHolidaysForPeriod(svc, month, year),
       fetchCurrentCorrectionsByEmployee(svc, month, year),
+      // BOE Credits coverage, for the same reason as the corrections: the
+      // preview must show the money generation will produce.
+      fetchActiveAttendanceRedemptionsByEmployee(svc, month, year),
       svc
         .from('payroll_pending_adjustments')
         .select('id, employee_id, adjustment_type, amount, description')
@@ -143,6 +148,7 @@ export async function GET(req: NextRequest) {
     ])
     holidays              = hols
     correctionsByEmployee = corrs
+    redemptionsByEmployee = redemptions
     allAdjustments        = adjResult.data ?? []
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
@@ -209,10 +215,11 @@ export async function GET(req: NextRequest) {
     const attendance   = byEmployee.get(emp.id)   ?? []
     const adjustments  = adjByEmployee.get(emp.id) ?? []
     const corrections  = correctionsByEmployee.get(emp.id) ?? []
-    // Same seven arguments generation passes. The corrections argument used to
+    const redemptions  = redemptionsByEmployee.get(emp.id) ?? []
+    // Same eight arguments generation passes. The corrections argument used to
     // be omitted, which silently made this a preview of a different calculation;
-    // the settings argument is the same rule for the same reason.
-    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections, settings)
+    // the settings and redemptions arguments are the same rule for the same reason.
+    const outcome = generatePayrollForEmployee(emp, previewPeriod, attendance, holidays, adjustments, corrections, settings, redemptions)
 
     if (isSkip(outcome)) {
       return {

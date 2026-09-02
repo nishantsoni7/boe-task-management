@@ -35,12 +35,17 @@ export async function GET(req: NextRequest) {
   // employee_id parameter on this route to tamper with, and canEdit is hard-false:
   // reading your own payslip is not permission to correct attendance, which stays
   // admin-only in its own route.
+  //
+  // canRedeem is true because this reader IS the employee: the payload lists
+  // the dates they could cover with BOE Credits. Display only — the redemption
+  // route re-runs the engine and decides for itself.
   if (periodId) {
     const outcome = await buildResultDetailPayload(svc, {
       periodId,
       employeeId:  caller.id,
       canEdit:     false,
       editBlocked: null,
+      canRedeem:   true,
     })
 
     if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })

@@ -30,6 +30,7 @@ import {
 } from '../attendance/corrections'
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from './settings'
 import { roundRupees, sumRupees } from './money'
+import { redemptionCovers, type AttendanceCreditRedemption } from '../boeCredits/attendanceRedemption'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -53,6 +54,14 @@ import { roundRupees, sumRupees } from './money'
  * to the period (payroll_periods.settings_snapshot), so regenerating a month
  * reproduces the figures it was originally run with rather than silently
  * adopting whatever an admin has changed since. See ./settingsSnapshot.
+ *
+ * `redemptions` is the BOE Credits coverage layer (Phase 1C): days the employee
+ * has paid for with credits. A covered absent or half-day line is settled at
+ * ₹0 and marked `waived_by: 'boe_credits'` with the credits spent; the day's
+ * classification and every attendance count are untouched, so the payslip
+ * still shows what happened and that credits paid for it. Omitting the
+ * argument runs payroll with no coverage, which is what every caller did
+ * before credits existed.
  */
 export function generatePayrollForEmployee(
   employee: EngineEmployee,
@@ -62,6 +71,7 @@ export function generatePayrollForEmployee(
   pendingAdjustments: EnginePendingAdjustment[],
   corrections: AttendanceDayCorrection[] = [],
   settings: PayrollSettings = DEFAULT_PAYROLL_SETTINGS,
+  redemptions: AttendanceCreditRedemption[] = [],
 ): EngineOutcome {
   // Step 1 — Guard checks
   const skip = runGuards(employee, period)
@@ -91,7 +101,7 @@ export function generatePayrollForEmployee(
   // rounded to a rupee as it is built, and every total below is a sum over those
   // rounded lines. Computing a total any other way produces a payslip whose
   // printed figures do not add up to its printed total.
-  const deductionLines = buildFinalDeductionLines({ dayResults, leaveState, rates, settings })
+  const deductionLines = buildFinalDeductionLines({ dayResults, leaveState, rates, settings, redemptions })
   const totalDeductions = computeTotalDeductions(deductionLines)
 
   // Step 10 — Compute gross salary
@@ -220,6 +230,15 @@ function dayLine(
  */
 function waivedByPaidLeave(line: PendingDeductionLine): PendingDeductionLine {
   return { ...line, amount_deducted: 0, waived_by: 'paid_leave' }
+}
+
+/**
+ * The same line, paid for by the employee's BOE Credits instead of their
+ * salary (Phase 1C). `explain.gross_amount` keeps what the rule charged, and
+ * `credits_redeemed` says what it cost in credits, so the popup can show both.
+ */
+function coveredByCredits(line: PendingDeductionLine, credits: number): PendingDeductionLine {
+  return { ...line, amount_deducted: 0, waived_by: 'boe_credits', credits_redeemed: credits }
 }
 
 // ─── Step 3: Working-day calendar ────────────────────────────────────────────
@@ -604,8 +623,9 @@ function applyLeaveAbsorption(
  * to whole rupees the two would disagree — the total is the one figure an
  * employee can check by adding up the column above it, so it has to BE that sum.
  *
- * Waived lines contribute their zero, which is correct: paid leave makes the day
- * cost nothing, and the line stays visible saying so.
+ * Waived lines contribute their zero, which is correct: paid leave (or the
+ * employee's BOE Credits) makes the day cost nothing, and the line stays
+ * visible saying so.
  */
 function computeTotalDeductions(lines: PendingDeductionLine[]): TotalDeductions {
   const amountsOfType = (types: readonly string[]) =>
@@ -737,7 +757,20 @@ function buildFinalDeductionLines(p: {
   leaveState: LeaveState
   rates: PayrollRates
   settings: PayrollSettings
+  redemptions: AttendanceCreditRedemption[]
 }): PendingDeductionLine[] {
+  // BOE Credits coverage, by date. Applied AFTER paid-leave absorption and
+  // only to a line that is still chargeable: the company's allowance keeps its
+  // existing "earliest day" rule untouched, and credits never cover a day that
+  // already costs nothing. A redemption bought as 'absent' still covers a day
+  // that has since become a half day; a half-day redemption does not stretch to
+  // a full absence (redemptionCovers).
+  const redemptionByDate = new Map(p.redemptions.map(r => [r.attendance_date, r]))
+  const settleDayLine = (line: PendingDeductionLine, type: 'absent' | 'half_day'): PendingDeductionLine => {
+    const r = redemptionByDate.get(line.line_date)
+    return r && redemptionCovers(r.deduction_type, type) ? coveredByCredits(line, r.credits) : line
+  }
+
   // Hourly deduction lines (missing punch, late arrival, short hours).
   // Stage 3 of leave absorption zeroes every one of them at once.
   const hourlyLines: PendingDeductionLine[] = p.dayResults.flatMap(day =>
@@ -767,7 +800,7 @@ function buildFinalDeductionLines(p: {
   const absorbedAbsentDays = absentDays.length - p.leaveState.remaining_absent_days
   const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => {
     const line = dayLine(day.date, 'absent', p.rates, p.settings)
-    return i < absorbedAbsentDays ? waivedByPaidLeave(line) : line
+    return i < absorbedAbsentDays ? waivedByPaidLeave(line) : settleDayLine(line, 'absent')
   })
 
   // Half-day deduction lines — one per half_day, same rule, same direction.
@@ -775,7 +808,7 @@ function buildFinalDeductionLines(p: {
   const absorbedHalfDays = halfDays.length - p.leaveState.remaining_half_days
   const halfDayLines: PendingDeductionLine[] = halfDays.map((day, i) => {
     const line = dayLine(day.date, 'half_day', p.rates, p.settings)
-    return i < absorbedHalfDays ? waivedByPaidLeave(line) : line
+    return i < absorbedHalfDays ? waivedByPaidLeave(line) : settleDayLine(line, 'half_day')
   })
 
   return [...absentLines, ...halfDayLines, ...hourlyLines]

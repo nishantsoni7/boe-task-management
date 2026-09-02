@@ -5,8 +5,11 @@
 //
 //   review_reward_credits   how many credits ONE verified review earns. Phase 1B
 //                           will read it when it posts a review_reward row.
-//   credit_value            how many rupees ONE credit is worth. Phase 1D will
-//                           read it when Payroll turns a redemption into money.
+//   credit_value            how many rupees ONE credit is worth. Reserved for
+//                           a later Payroll phase. It is NOT what an attendance
+//                           redemption costs: Phase 1C charges a fixed 1 credit
+//                           for a half day and 2 for an absent day, whatever
+//                           this number says (see ./attendanceRedemption.ts).
 //
 // They are stored side by side because an administrator changes them on the
 // same screen, not because they are related: doubling the reward does not
