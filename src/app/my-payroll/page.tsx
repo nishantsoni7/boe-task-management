@@ -10,6 +10,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
+import { CreditsSummaryCard } from '@/components/boeCredits/CreditsSummaryCard'
 import {
   employeeStatusLabel,
   statusTone as objectionTone,
@@ -81,6 +82,7 @@ export default function MyPayrollPage() {
   const [objections,  setObjections]  = useState<ObjectionRow[]>([])
   const [issueResult, setIssueResult] = useState<MyResultRow | null>(null)
   const [historyResultId, setHistoryResultId] = useState<string | null>(null)
+  const [token, setToken] = useState('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -89,6 +91,7 @@ export default function MyPayrollPage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
+      setToken(session.access_token)
 
       const { data: prof } = await supabase
         .from('users')
@@ -179,6 +182,10 @@ export default function MyPayrollPage() {
           {error}
         </div>
       )}
+
+      {/* BOE Credits: a compact read-only item. Employees see credits, never
+          rupees, and the route pins them to their own ledger. */}
+      <CreditsSummaryCard token={token} />
 
       <div style={{
         background: '#fff', borderRadius: 12,

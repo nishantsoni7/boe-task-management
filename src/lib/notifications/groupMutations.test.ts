@@ -292,6 +292,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // Twelve drafts a batch, editing a pending draft before approval, and up
       // to four review images. It touches only this module's own tables.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // BOE Credits Phase 1A: the append-only credit ledger, its derived balance
+      // view, the settings table and the service-role posting functions. Two new
+      // tables of its own; it touches nothing any other module creates.
+      '20261101000000_boe_credits_foundation.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

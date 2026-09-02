@@ -618,6 +618,10 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // Twelve drafts a batch, editing a pending draft before approval, and up
       // to four review images. Touches only the Review Workflow's own tables.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // BOE Credits Phase 1A: the append-only credit ledger, its derived balance
+      // view, the settings table and the service-role posting functions. Two new
+      // tables of its own; it touches nothing any other module creates.
+      '20261101000000_boe_credits_foundation.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
