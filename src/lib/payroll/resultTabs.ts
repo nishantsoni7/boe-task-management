@@ -61,12 +61,22 @@ export function isCompanyPaidLine(line: PendingDeductionLine): boolean {
   return line.waived_by === 'paid_leave'
 }
 
+/** True when a line on this date was covered with BOE Credits (Phase 1C). */
+export function isCreditCoveredLine(line: PendingDeductionLine): boolean {
+  return line.waived_by === 'boe_credits'
+}
+
+/** True when a rule charged for the line and something cancelled the charge. */
+export function isWaivedLine(line: PendingDeductionLine): boolean {
+  return isCompanyPaidLine(line) || isCreditCoveredLine(line)
+}
+
 /**
  * True when a payroll rule fired on this date — whether the employee paid for
- * it or the company did.
+ * it, the company did, or the employee's credits did.
  */
 export function isDeductionDay(day: EngineDay): boolean {
-  return day.total_deduction_amount > 0 || day.deduction_lines.some(isCompanyPaidLine)
+  return day.total_deduction_amount > 0 || day.deduction_lines.some(isWaivedLine)
 }
 
 /**
@@ -103,9 +113,10 @@ export function toDeductionDays(days: EngineDay[]): DeductionDay[] {
   return days.filter(isDeductionDay).map(day => ({
     date: day.date,
     classification: day.classification,
-    // A ₹0 line survives only when paid leave is the reason it is ₹0. Any other
-    // zero-amount line is noise on an audit table.
-    lines: day.deduction_lines.filter(l => l.amount_deducted > 0 || isCompanyPaidLine(l)),
+    // A ₹0 line survives only when a stated waiver is the reason it is ₹0 —
+    // paid leave or BOE Credits. Any other zero-amount line is noise on an
+    // audit table.
+    lines: day.deduction_lines.filter(l => l.amount_deducted > 0 || isWaivedLine(l)),
     total_amount: day.total_deduction_amount,
     is_corrected: day.is_corrected,
     check_in_at: day.check_in_at,

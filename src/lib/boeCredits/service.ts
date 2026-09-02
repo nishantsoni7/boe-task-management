@@ -24,6 +24,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { creditAmountIssue, creditReasonIssue } from './ledger'
 import { parseBoeCreditSettings, DEFAULT_BOE_CREDIT_SETTINGS } from './settings'
+import { isRedeemableDeductionType, type RedeemableDeductionType } from './attendanceRedemption'
 import {
   isCreditTransactionType,
   type BoeCreditSettings,
@@ -47,7 +48,10 @@ const LEDGER_COLUMNS =
  *   BOE_CREDITS_ZERO, BOE_CREDITS_TYPE, BOE_CREDITS_REASON, BOE_CREDITS_SOURCE,
  *   BOE_CREDITS_SIGN, BOE_CREDITS_EMPLOYEE, BOE_CREDITS_ACTOR, BOE_CREDITS_DENIED,
  *   BOE_CREDITS_REVERSAL, BOE_CREDITS_DUPLICATE_SOURCE, BOE_CREDITS_INSUFFICIENT,
- *   BOE_CREDITS_APPEND_ONLY.
+ *   BOE_CREDITS_APPEND_ONLY; and from Phase 1C: BOE_CREDITS_REDEMPTION_TYPE,
+ *   BOE_CREDITS_PERIOD, BOE_CREDITS_PERIOD_LOCKED, BOE_CREDITS_NOT_GENERATED,
+ *   BOE_CREDITS_DATE, BOE_CREDITS_ALREADY_COVERED, BOE_CREDITS_REDEMPTION,
+ *   BOE_CREDITS_ALREADY_REVERSED.
  * The sentence after the colon is written for the person, and is what a route
  * shows. Anything without a marker is an unexpected failure.
  */
@@ -81,8 +85,13 @@ export function creditErrorStatus(e: CreditServiceError): number {
     case 'BOE_CREDITS_APPEND_ONLY':      return 403
     case 'BOE_CREDITS_EMPLOYEE':         return 404
     case 'BOE_CREDITS_ACTOR':            return 404
+    case 'BOE_CREDITS_PERIOD':           return 404
+    case 'BOE_CREDITS_REDEMPTION':       return 404
     case 'BOE_CREDITS_DUPLICATE_SOURCE': return 409
     case 'BOE_CREDITS_INSUFFICIENT':     return 409
+    case 'BOE_CREDITS_ALREADY_COVERED':  return 409
+    case 'BOE_CREDITS_ALREADY_REVERSED': return 409
+    case 'BOE_CREDITS_PERIOD_LOCKED':    return 409
     case null:                           return 500
     default:                             return 422
   }
@@ -257,6 +266,107 @@ export async function reverseCreditTransaction(
   })
   if (error) throw creditErrorFrom(error, 'Could not reverse the credit transaction.')
   return { id: String(data) }
+}
+
+// ─── Attendance redemption (Phase 1C) ─────────────────────────────────────────
+
+export type RedeemAttendanceDayInput = {
+  /** The employee whose day is covered. From the token, never from a body. */
+  employeeId: string
+  payrollPeriodId: string
+  /** YYYY-MM-DD */
+  attendanceDate: string
+  /** What the route found on the day after running the engine. */
+  deductionType: RedeemableDeductionType
+  /**
+   * Who is acting: the employee themselves (the redemption route), or the
+   * administrator whose attendance correction re-prices an existing coverage
+   * (src/lib/payroll/creditCoverage.ts). The database admits nobody else.
+   */
+  actorId: string
+}
+
+export type RedeemAttendanceDayResult = {
+  redemption_id: string
+  transaction_id: string
+  deduction_type: RedeemableDeductionType
+  attendance_date: string
+  credits: number
+  available_credits: number
+}
+
+/**
+ * Cover one attendance day with credits, through
+ * redeem_boe_credits_for_attendance(). The database decides the cost, the
+ * period lock, the date window, the balance and the one-active-per-day rule
+ * under its own locks; the caller has already decided the day carries a
+ * chargeable deduction.
+ */
+export async function redeemAttendanceDay(svc: Svc, input: RedeemAttendanceDayInput): Promise<RedeemAttendanceDayResult> {
+  if (!isRedeemableDeductionType(input.deductionType)) {
+    throw new CreditServiceError(`credits cover a half day or an absent day, not ${String(input.deductionType)}`, 'BOE_CREDITS_REDEMPTION_TYPE', '22023')
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.attendanceDate)) {
+    throw new CreditServiceError('a valid attendance date is required', 'BOE_CREDITS_DATE', '22023')
+  }
+
+  const { data, error } = await svc.rpc('redeem_boe_credits_for_attendance', {
+    p_employee_id:       input.employeeId,
+    p_payroll_period_id: input.payrollPeriodId,
+    p_attendance_date:   input.attendanceDate,
+    p_deduction_type:    input.deductionType,
+    p_actor_id:          input.actorId,
+  })
+  if (error) throw creditErrorFrom(error, 'Could not apply the credits.')
+
+  const out = (data ?? {}) as Partial<RedeemAttendanceDayResult>
+  return {
+    redemption_id:     String(out.redemption_id),
+    transaction_id:    String(out.transaction_id),
+    deduction_type:    input.deductionType,
+    attendance_date:   input.attendanceDate,
+    credits:           Number(out.credits),
+    available_credits: Number(out.available_credits),
+  }
+}
+
+export type ReverseAttendanceRedemptionResult = {
+  redemption_id: string
+  reversal_transaction_id: string
+  /** The credits restored. */
+  credits: number
+  available_credits: number
+}
+
+/**
+ * Withdraw one active coverage, through
+ * reverse_boe_credit_attendance_redemption(): the compensating ledger row is
+ * posted by reverse_boe_credit_transaction() — an active admin actor and a
+ * reason, as every reversal needs — and the ledger trigger closes the record.
+ * The original redemption row and its ledger row are untouched; both stay in
+ * the employee's history beside the reversal.
+ */
+export async function reverseAttendanceRedemption(
+  svc: Svc,
+  input: { redemptionId: string; actorId: string; reason: string },
+): Promise<ReverseAttendanceRedemptionResult> {
+  const reasonIssue = creditReasonIssue(input.reason)
+  if (reasonIssue) throw new CreditServiceError(reasonIssue, 'BOE_CREDITS_REASON', '22023')
+
+  const { data, error } = await svc.rpc('reverse_boe_credit_attendance_redemption', {
+    p_redemption_id: input.redemptionId,
+    p_actor_id:      input.actorId,
+    p_reason:        input.reason.trim(),
+  })
+  if (error) throw creditErrorFrom(error, 'Could not restore the credits.')
+
+  const out = (data ?? {}) as Partial<ReverseAttendanceRedemptionResult>
+  return {
+    redemption_id:           String(out.redemption_id),
+    reversal_transaction_id: String(out.reversal_transaction_id),
+    credits:                 Number(out.credits),
+    available_credits:       Number(out.available_credits),
+  }
 }
 
 // ─── Settings ─────────────────────────────────────────────────────────────────

@@ -44,6 +44,11 @@ export type EngineHoliday = {
 // where attendance owns them.
 export type { AttendanceDayCorrection, DayTreatment } from '../attendance/corrections'
 
+// The BOE Credits coverage layer (Phase 1C): days the employee paid for with
+// credits. Re-exported for the same reason; the cost and the eligibility rules
+// stay where credits own them.
+export type { AttendanceCreditRedemption } from '../boeCredits/attendanceRedemption'
+
 // ─── Per-day classification ───────────────────────────────────────────────────
 
 export type DayClassification =
@@ -92,12 +97,15 @@ export type EngineDay = DayResult & {
 /**
  * Why a line that a rule charged for ends up costing nothing.
  *
- * Only one reason exists today: the month's paid-leave allowance covered it.
+ *   paid_leave   the month's paid-leave allowance covered it (the company paid)
+ *   boe_credits  the employee covered it with BOE Credits (Phase 1C); the line
+ *                then also carries `credits_redeemed`
+ *
  * The field is what keeps a ₹0 line VISIBLE — before it existed, an absorbed
  * day was indistinguishable from a day with no deduction and fell out of both
  * Payroll Result Detail tabs entirely.
  */
-export type DeductionWaiver = 'paid_leave'
+export type DeductionWaiver = 'paid_leave' | 'boe_credits'
 
 /**
  * How a deduction line reached its amount, in the engine's own numbers.
@@ -137,8 +145,10 @@ export type PendingDeductionLine = {
   line_date: string
   deduction_type: DeductionType
   hours_deducted: number
-  amount_deducted: number   // monetary; set to 0 if absorbed by leave
+  amount_deducted: number   // monetary; set to 0 if absorbed by leave or covered by credits
   waived_by?: DeductionWaiver
+  /** Present only when waived_by is 'boe_credits': the whole credits spent. */
+  credits_redeemed?: number
   explain?: DeductionExplanation
 }
 

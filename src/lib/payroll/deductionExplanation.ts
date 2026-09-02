@@ -17,6 +17,7 @@
 // is deliberate and is preserved — see the Deductions tab.
 
 import { formatMinutesOfDay } from '../istDate'
+import { coveredLabel } from '../boeCredits/attendanceRedemption'
 import type { DeductionExplanation } from './types'
 import {
   SCHEDULED_IN_MINUTES,
@@ -39,6 +40,8 @@ export type ExplainableLine = {
   hours_deducted: number
   amount_deducted: number
   waived_by?: string
+  /** Present when waived_by is 'boe_credits': the credits the employee spent. */
+  credits_redeemed?: number
   explain?: DeductionExplanation
 }
 
@@ -62,7 +65,11 @@ export type ExplainedDeduction = {
   amount: number
   /** True when the month's paid leave cancelled the charge. */
   companyPaid: boolean
-  /** Present only when companyPaid — what the rule would have cost. */
+  /** True when the employee's BOE Credits cancelled the charge (Phase 1C). */
+  creditCovered: boolean
+  /** The one-line note under a covered row, whichever way it was covered. */
+  coverageNote?: string
+  /** Present only when covered — what the rule would have cost. */
   grossAmount?: number
 }
 
@@ -104,7 +111,7 @@ export const DEDUCTION_TITLES: Record<string, string> = {
   short_hours:       'Short Hours',
 }
 
-/** The row heading. A covered item is named for the rule that covered it. */
+/** The row heading. A company-paid item is named for the rule that covered it. */
 export function deductionTitle(line: ExplainableLine): string {
   if (line.waived_by === 'paid_leave') return 'Paid Leave · Company Paid'
   return DEDUCTION_TITLES[line.deduction_type] ?? line.deduction_type
@@ -173,21 +180,34 @@ function calculationRows(line: ExplainableLine, e: DeductionExplanation | undefi
   if (line.waived_by === 'paid_leave') {
     rows.push({ label: 'Company-paid allowance', value: `− ${money(e.gross_amount)}` })
   }
+  if (line.waived_by === 'boe_credits') {
+    rows.push({ label: `BOE Credits (${creditsLabel(line.credits_redeemed)})`, value: `− ${money(e.gross_amount)}` })
+  }
 
   rows.push({ label: 'Deduction', value: money(line.amount_deducted), strong: true })
   return rows
+}
+
+function creditsLabel(n: number | undefined): string {
+  const c = n ?? 0
+  return `${c} ${c === 1 ? 'credit' : 'credits'}`
 }
 
 // ─── Entry points ─────────────────────────────────────────────────────────────
 
 export function explainLine(line: ExplainableLine, index = 0): ExplainedDeduction {
   const e = line.explain
-  const companyPaid = line.waived_by === 'paid_leave'
+  const companyPaid   = line.waived_by === 'paid_leave'
+  const creditCovered = line.waived_by === 'boe_credits'
 
   const rule = companyPaid
     ? 'The first paid leave of the month — the earliest one by date — is covered by BOE. '
       + `${ruleSentence(line, e)} That cost is charged to the company, not to this salary.`
-    : ruleSentence(line, e)
+    // Read by both the employee and the admin, so it names neither.
+    : creditCovered
+      ? `${ruleSentence(line, e)} It was covered with ${creditsLabel(line.credits_redeemed)} from the employee's BOE Credits, `
+        + 'so nothing is deducted from this salary. The day still counts as it happened.'
+      : ruleSentence(line, e)
 
   return {
     key: `${line.deduction_type}-${index}`,
@@ -196,7 +216,9 @@ export function explainLine(line: ExplainableLine, index = 0): ExplainedDeductio
     calculation: calculationRows(line, e),
     amount: line.amount_deducted,
     companyPaid,
-    grossAmount: companyPaid ? e?.gross_amount : undefined,
+    creditCovered,
+    coverageNote: companyPaid ? COMPANY_PAID_NOTE : creditCovered ? coveredLabel(line.credits_redeemed ?? 0) : undefined,
+    grossAmount: companyPaid || creditCovered ? e?.gross_amount : undefined,
   }
 }
 

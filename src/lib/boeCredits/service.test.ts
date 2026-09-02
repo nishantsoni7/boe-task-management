@@ -27,6 +27,8 @@ import {
   getCreditTransactions,
   postAdminAdjustment,
   postCreditTransaction,
+  redeemAttendanceDay,
+  reverseAttendanceRedemption,
   reverseCreditTransaction,
   saveCreditSettings,
   type Svc,
@@ -322,6 +324,110 @@ describe('settings', () => {
     await assert.rejects(
       () => saveCreditSettings(svc, { review_reward_credits: 0, credit_value: 1 }, ADMIN),
       (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_SETTINGS',
+    )
+  })
+})
+
+// ─── Attendance redemption (Phase 1C) ────────────────────────────────────────
+
+describe('redeemAttendanceDay', () => {
+  const PERIOD = '91000000-0000-4000-8000-000000000091'
+
+  test('calls redeem_boe_credits_for_attendance with the employee and the actor it was given, and never an INSERT', async () => {
+    const { svc, calls, rpcCalls } = fakeClient({
+      rpc: () => ({ data: { redemption_id: 'r-1', transaction_id: TX, credits: 1, available_credits: 4 }, error: null }),
+    })
+    const out = await redeemAttendanceDay(svc, {
+      employeeId: EMP, payrollPeriodId: PERIOD, attendanceDate: '2026-08-12', deductionType: 'half_day', actorId: EMP,
+    })
+    assert.equal(rpcCalls.length, 1)
+    assert.equal(rpcCalls[0].name, 'redeem_boe_credits_for_attendance')
+    assert.deepEqual(rpcCalls[0].args, {
+      p_employee_id:       EMP,
+      p_payroll_period_id: PERIOD,
+      p_attendance_date:   '2026-08-12',
+      p_deduction_type:    'half_day',
+      p_actor_id:          EMP,
+    })
+    assert.deepEqual(out, {
+      redemption_id: 'r-1', transaction_id: TX, deduction_type: 'half_day',
+      attendance_date: '2026-08-12', credits: 1, available_credits: 4,
+    })
+    assert.equal(calls.filter(c => c.op === 'insert').length, 0)
+    // The cost is never sent: the database fixes it from the kind.
+    assert.equal('p_credits' in rpcCalls[0].args, false)
+  })
+
+  test('refuses a kind that is not a half day or an absence before the round trip', async () => {
+    const { svc, rpcCalls } = fakeClient()
+    await assert.rejects(
+      () => redeemAttendanceDay(svc, { employeeId: EMP, payrollPeriodId: PERIOD, attendanceDate: '2026-08-12', deductionType: 'late_arrival' as never, actorId: EMP }),
+      (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_REDEMPTION_TYPE',
+    )
+    await assert.rejects(
+      () => redeemAttendanceDay(svc, { employeeId: EMP, payrollPeriodId: PERIOD, attendanceDate: '12/08/2026', deductionType: 'absent', actorId: EMP }),
+      (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_DATE',
+    )
+    assert.equal(rpcCalls.length, 0)
+  })
+
+  test("the database's refusals map to statuses: locked and already-covered are 409, insufficient is 409, a bad date is 422, a missing period 404", () => {
+    const cases: [string, number][] = [
+      ['BOE_CREDITS_PERIOD_LOCKED', 409],
+      ['BOE_CREDITS_ALREADY_COVERED', 409],
+      ['BOE_CREDITS_INSUFFICIENT', 409],
+      ['BOE_CREDITS_DUPLICATE_SOURCE', 409],
+      ['BOE_CREDITS_NOT_GENERATED', 422],
+      ['BOE_CREDITS_DATE', 422],
+      ['BOE_CREDITS_REDEMPTION_TYPE', 422],
+      ['BOE_CREDITS_PERIOD', 404],
+      ['BOE_CREDITS_REDEMPTION', 404],
+      ['BOE_CREDITS_ALREADY_REVERSED', 409],
+      ['BOE_CREDITS_DENIED', 403],
+    ]
+    for (const [marker, status] of cases) {
+      assert.equal(creditErrorStatus(creditErrorFrom({ message: `${marker}: x` }, 'f')), status, marker)
+    }
+  })
+
+  test('an insufficient balance surfaces the sentence the database wrote', async () => {
+    const { svc } = fakeClient({
+      rpc: () => ({ data: null, error: { message: 'BOE_CREDITS_INSUFFICIENT: only 1 credits are available', code: '23514' } }),
+    })
+    await assert.rejects(
+      () => redeemAttendanceDay(svc, { employeeId: EMP, payrollPeriodId: PERIOD, attendanceDate: '2026-08-13', deductionType: 'absent', actorId: EMP }),
+      (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_INSUFFICIENT' && e.message === 'only 1 credits are available',
+    )
+  })
+})
+
+describe('reverseAttendanceRedemption', () => {
+  test('needs a reason, then calls reverse_boe_credit_attendance_redemption() with the actor — never the ledger directly', async () => {
+    const { svc, calls, rpcCalls } = fakeClient({
+      rpc: () => ({ data: { redemption_id: 'r-1', reversal_transaction_id: TX, credits: 2, available_credits: 5 }, error: null }),
+    })
+    await assert.rejects(
+      () => reverseAttendanceRedemption(svc, { redemptionId: 'r-1', actorId: ADMIN, reason: '  ' }),
+      (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_REASON',
+    )
+    assert.equal(rpcCalls.length, 0)
+
+    const out = await reverseAttendanceRedemption(svc, { redemptionId: 'r-1', actorId: ADMIN, reason: 'Attendance changed: day corrected to Present' })
+    assert.deepEqual(rpcCalls[0], {
+      name: 'reverse_boe_credit_attendance_redemption',
+      args: { p_redemption_id: 'r-1', p_actor_id: ADMIN, p_reason: 'Attendance changed: day corrected to Present' },
+    })
+    assert.deepEqual(out, { redemption_id: 'r-1', reversal_transaction_id: TX, credits: 2, available_credits: 5 })
+    assert.equal(calls.filter(c => c.op === 'update' || c.op === 'insert' || c.op === 'delete').length, 0)
+  })
+
+  test('an already-reversed redemption is a 409 with the database\'s sentence', async () => {
+    const { svc } = fakeClient({
+      rpc: () => ({ data: null, error: { message: 'BOE_CREDITS_ALREADY_REVERSED: this redemption has already been reversed', code: '55000' } }),
+    })
+    await assert.rejects(
+      () => reverseAttendanceRedemption(svc, { redemptionId: 'r-1', actorId: ADMIN, reason: 'twice' }),
+      (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_ALREADY_REVERSED' && creditErrorStatus(e) === 409,
     )
   })
 })

@@ -8,7 +8,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { generatePayrollForEmployee } from '@/lib/payroll/engine'
-import { fetchAttendanceForPeriod, fetchHolidaysForPeriod, fetchCurrentCorrections } from '@/lib/payroll/store'
+import {
+  fetchAttendanceForPeriod,
+  fetchHolidaysForPeriod,
+  fetchCurrentCorrections,
+  fetchActiveAttendanceRedemptions,
+} from '@/lib/payroll/store'
 import { toSignedAdjustments, type StoredAdjustment } from '@/lib/payroll/adjustments'
 import { isSkip } from '@/lib/payroll/types'
 import type { EngineEmployee, EnginePendingAdjustment } from '@/lib/payroll/types'
@@ -57,12 +62,14 @@ export async function GET(req: NextRequest) {
   let attendance:   Awaited<ReturnType<typeof fetchAttendanceForPeriod>>
   let holidays:     Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
   let corrections:  Awaited<ReturnType<typeof fetchCurrentCorrections>> = []
+  let redemptions:  Awaited<ReturnType<typeof fetchActiveAttendanceRedemptions>> = []
   let adjustments:  EnginePendingAdjustment[] = []
   try {
-    const [att, hols, corr, adjResult] = await Promise.all([
+    const [att, hols, corr, redeemed, adjResult] = await Promise.all([
       fetchAttendanceForPeriod(svc, employee.id, month, year),
       fetchHolidaysForPeriod(svc, month, year),
       fetchCurrentCorrections(svc, employee.id, month, year),
+      fetchActiveAttendanceRedemptions(svc, employee.id, month, year),
       svc
         .from('payroll_pending_adjustments')
         .select('id, adjustment_type, amount, description')
@@ -75,6 +82,7 @@ export async function GET(req: NextRequest) {
     attendance  = att
     holidays    = hols
     corrections = corr
+    redemptions = redeemed
     // Same conversion the generation path uses, so a preview and the payroll it
     // previews cannot read an adjustment differently.
     adjustments = toSignedAdjustments((adjResult.data ?? []) as StoredAdjustment[])
@@ -83,8 +91,8 @@ export async function GET(req: NextRequest) {
   }
 
   // The preview must show the same figures the generated payroll will, so it
-  // applies the same manual corrections.
-  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments, corrections)
+  // applies the same manual corrections and the same BOE Credits coverage.
+  const outcome = generatePayrollForEmployee(employee, previewPeriod, attendance, holidays, adjustments, corrections, undefined, redemptions)
 
   if (isSkip(outcome)) {
     return NextResponse.json({

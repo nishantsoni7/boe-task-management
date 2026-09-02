@@ -39,6 +39,11 @@ import {
 } from '@/lib/payroll/settlement'
 import { COMPANY_PAID_NOTE } from '@/lib/payroll/deductionExplanation'
 import { istClockOf } from '@/lib/istDate'
+import {
+  coveredLabel,
+  redemptionOfferLabel,
+  type RedeemableDate,
+} from '@/lib/boeCredits/attendanceRedemption'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -102,7 +107,10 @@ export type DeductionLineView = {
   deduction_type: string
   hours_deducted: number
   amount_deducted: number
+  /** 'paid_leave' (the company paid) or 'boe_credits' (the employee's credits did). */
   waived_by?: string
+  /** With waived_by 'boe_credits': the credits spent. */
+  credits_redeemed?: number
   explain?: {
     gross_amount: number
     units: number
@@ -200,6 +208,13 @@ export type DetailPayload = {
   considered_days: ConsideredDay[]
   corrections: CorrectionRow[]
   correctable_dates: string[]
+  /**
+   * BOE Credits (Phase 1C). `can_redeem` is true only for the employee's own
+   * view of an unlocked month; `redeemable_dates` lists the dates whose
+   * deduction credits could cover. Absent before migration 20261103000000.
+   */
+  can_redeem?: boolean
+  redeemable_dates?: RedeemableDate[]
   stale: boolean
   day_view_error: string | null
 }
@@ -600,6 +615,34 @@ function EditButton({ onClick, disabled, title }: { onClick: () => void; disable
       }}
     >
       Edit
+    </button>
+  )
+}
+
+/**
+ * The employee's offer to cover a day with BOE Credits (Phase 1C).
+ *
+ * Present only on the employee's own view, only on an unlocked month, and only
+ * on a date whose deduction the server listed as coverable — it opens a
+ * confirmation, and the server decides again before anything is written. The
+ * accent is the credits' own blue so it reads as a different kind of action
+ * from Edit, which changes payroll on the admin's authority.
+ */
+function RedeemButton({ offer, onClick }: { offer: RedeemableDate; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      title={`Cover this deduction with BOE Credits — ${redemptionOfferLabel(offer.deduction_type)}`}
+      style={{
+        fontSize: 12, fontWeight: 600, padding: '0 10px', borderRadius: 6,
+        minHeight: 30, border: '1px solid rgba(79,111,208,0.35)', background: 'rgba(79,111,208,0.06)',
+        color: '#3B63B8', cursor: 'pointer', whiteSpace: 'nowrap',
+        transition: 'background 0.12s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(79,111,208,0.14)' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(79,111,208,0.06)' }}
+    >
+      Use {offer.credits} {offer.credits === 1 ? 'credit' : 'credits'}
     </button>
   )
 }
@@ -1090,7 +1133,7 @@ function paymentNote(settlement: SettlementPayload): string | null {
 // ─── Tab 1: Deductions ────────────────────────────────────────────────────────
 
 function DeductionsTab({
-  days, totalDeductions, corrections, canEdit, editHint, onEdit, onExplain,
+  days, totalDeductions, corrections, canEdit, editHint, onEdit, onExplain, redeemable, onRedeem,
 }: {
   days: DeductionDay[]
   totalDeductions: number | null
@@ -1099,6 +1142,9 @@ function DeductionsTab({
   editHint: string | null
   onEdit?: (date: string) => void
   onExplain: (date: string) => void
+  /** Dates the reader may cover with BOE Credits. Empty for every reader but the employee. */
+  redeemable: Map<string, RedeemableDate>
+  onRedeem?: (date: string) => void
 }) {
   if (days.length === 0) {
     return <div style={{ padding: '28px 20px', fontSize: 13, color: '#8C94A6' }}>No deductions applied.</div>
@@ -1153,7 +1199,7 @@ function DeductionsTab({
                             ? 'Paid Leave · Company Paid'
                             : DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
                         </span>
-                        {l.waived_by !== 'paid_leave' && l.hours_deducted > 0 && (
+                        {l.waived_by == null && l.hours_deducted > 0 && (
                           <span style={{ color: '#8C94A6', fontVariantNumeric: 'tabular-nums' }}>
                             {' · '}{fmtHours(l.hours_deducted)}
                           </span>
@@ -1161,6 +1207,14 @@ function DeductionsTab({
                         {l.waived_by === 'paid_leave' && (
                           <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1 }}>
                             {COMPANY_PAID_NOTE}
+                          </div>
+                        )}
+                        {/* The day keeps its name — Half Day, Absent — and the
+                            note says who paid: the employee's BOE Credits. Both
+                            readers see it; only the employee could act on it. */}
+                        {l.waived_by === 'boe_credits' && (
+                          <div style={{ fontSize: 11.5, color: '#047857', marginTop: 1, fontWeight: 600 }}>
+                            {coveredLabel(l.credits_redeemed ?? 0)}
                           </div>
                         )}
                       </div>
@@ -1203,6 +1257,11 @@ function DeductionsTab({
                         disabled={!canEdit}
                         title={canEdit ? 'Correct this date' : editHint ?? undefined}
                       />
+                    )}
+                    {/* Same statement for the employee's action: present only
+                        where the server offered it. */}
+                    {onRedeem && redeemable.has(day.date) && (
+                      <RedeemButton offer={redeemable.get(day.date)!} onClick={() => onRedeem(day.date)} />
                     )}
                   </td>
                 </tr>
@@ -1338,7 +1397,7 @@ const card: React.CSSProperties = {
  */
 export function PayrollDetailWorkspace({
   result, data, tab, onSelectTab, corrections, correctableDates,
-  canEdit, onEdit, onExplain, onEditCarryForward, onEditPayment, notices, issuePanel,
+  canEdit, onEdit, onExplain, onEditCarryForward, onEditPayment, onRedeem, notices, issuePanel,
 }: {
   result: DetailResult
   data: DetailPayload
@@ -1352,11 +1411,20 @@ export function PayrollDetailWorkspace({
   /** Settlement editing. Absent for the employee, exactly like onEdit. */
   onEditCarryForward?: () => void
   onEditPayment?: () => void
-  /** Admin-only banners (save confirmations and the like). */
+  /**
+   * Covering a day with BOE Credits. The employee's action, absent for the
+   * admin exactly as onEdit is absent for the employee; shown only on the
+   * dates the payload listed as redeemable.
+   */
+  onRedeem?: (date: string) => void
+  /** Banners (save confirmations and the like). */
   notices?: React.ReactNode
   /** The raised-issue panel, which differs between the two readers. */
   issuePanel?: React.ReactNode
 }) {
+  const redeemable = new Map<string, RedeemableDate>(
+    data.can_redeem ? (data.redeemable_dates ?? []).map(r => [r.date, r]) : [],
+  )
   const tabs: ResultTab[] = [
     {
       key: 'deductions',
@@ -1473,6 +1541,8 @@ export function PayrollDetailWorkspace({
                 editHint={data.edit_blocked}
                 onEdit={onEdit}
                 onExplain={onExplain}
+                redeemable={redeemable}
+                onRedeem={onRedeem}
               />
             ) : (
               <ConsideredTab

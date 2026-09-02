@@ -32,6 +32,7 @@ import {
   fetchHolidaysForPeriod,
   fetchPendingAdjustments,
   fetchCurrentCorrections,
+  fetchActiveAttendanceRedemptions,
   createGenerationRow,
   writeEngineResult,
   markAdjustmentsApplied,
@@ -44,6 +45,7 @@ import {
   buildCorrectionAudit,
   type DaySnapshot,
 } from '@/lib/payroll/correctionRules'
+import { reconcileAttendanceCoverage } from '@/lib/payroll/creditCoverage'
 
 export async function POST(req: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -109,19 +111,26 @@ export async function POST(req: NextRequest) {
   let holidays:    Awaited<ReturnType<typeof fetchHolidaysForPeriod>>
   let adjustments: Awaited<ReturnType<typeof fetchPendingAdjustments>>
   let existing:    Awaited<ReturnType<typeof fetchCurrentCorrections>>
+  let redemptions: Awaited<ReturnType<typeof fetchActiveAttendanceRedemptions>>
   try {
-    ;[attendance, holidays, adjustments, existing] = await Promise.all([
+    ;[attendance, holidays, adjustments, existing, redemptions] = await Promise.all([
       fetchAttendanceForPeriod(svc, employeeId, period.payroll_month, period.payroll_year),
       fetchHolidaysForPeriod(svc, period.payroll_month, period.payroll_year),
       fetchPendingAdjustments(svc, employeeId, periodId, period.payroll_month, period.payroll_year),
       fetchCurrentCorrections(svc, employeeId, period.payroll_month, period.payroll_year),
+      // Days the employee covered with BOE Credits stay covered through a
+      // correction; the recalculation below must not charge them again.
+      fetchActiveAttendanceRedemptions(svc, employeeId, period.payroll_month, period.payroll_year),
     ])
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 })
   }
 
-  const run = (corrections: Parameters<typeof generatePayrollForEmployee>[5]) =>
-    generatePayrollForEmployee(employee as EngineEmployee, period, attendance, holidays, adjustments, corrections)
+  const run = (
+    corrections: Parameters<typeof generatePayrollForEmployee>[5],
+    coverage: Parameters<typeof generatePayrollForEmployee>[7] = redemptions,
+  ) =>
+    generatePayrollForEmployee(employee as EngineEmployee, period, attendance, holidays, adjustments, corrections, undefined, coverage)
 
   // ── Before ──────────────────────────────────────────────────────────────────
   const before = run(existing)
@@ -226,11 +235,44 @@ export async function POST(req: NextRequest) {
     if (linkErr) console.error('[payroll/attendance-correction] superseded_by link:', linkErr.message)
   }
 
+  // ── BOE Credits coverage follows the corrected attendance ───────────────────
+  // With the correction now the truth, a redeemed day that no longer carries
+  // the deduction its credits paid for has those credits restored, and one
+  // whose price changed is re-priced — through the ledger, as reversals with
+  // a reason, by this admin. The recalculation below then writes a result
+  // that matches what the ledger holds. A reconciliation that cannot be
+  // read at all is a failed recalculation and is rolled back with it.
+  let settled = after
+  try {
+    const reconciled = await reconcileAttendanceCoverage(svc, {
+      employeeId,
+      periodId,
+      month: period.payroll_month,
+      year:  period.payroll_year,
+      actorId: caller.id,
+      run: coverage => run(nextCorrections, coverage),
+    })
+    if (!isSkip(reconciled.outcome)) settled = reconciled.outcome
+    for (const f of reconciled.failures) {
+      console.error('[payroll/attendance-correction] credit coverage:', f.action.action, f.error)
+    }
+  } catch (e) {
+    await rollback(svc, correctionId, previous?.id)
+    return NextResponse.json(
+      {
+        error:
+          'The correction was not saved: the BOE Credits coverage for this month could not be reconciled. ' +
+          `Nothing was changed. (${String(e)})`,
+      },
+      { status: 500 },
+    )
+  }
+
   // ── Recalculate ─────────────────────────────────────────────────────────────
   try {
     const generationId = await createGenerationRow(svc, periodId, caller.id)
-    const resultId     = await writeEngineResult(svc, generationId, after)
-    await markAdjustmentsApplied(svc, after.applied_adjustment_ids, resultId, periodId)
+    const resultId     = await writeEngineResult(svc, generationId, settled)
+    await markAdjustmentsApplied(svc, settled.applied_adjustment_ids, resultId, periodId)
     // Close the run so the generation log does not accumulate rows stuck at
     // 'running'. Non-fatal: the payroll figures are already written.
     await finalizeGenerationRow(svc, generationId, {
@@ -256,8 +298,8 @@ export async function POST(req: NextRequest) {
     attendance_date: correction.attendance_date,
     before: beforeSnapshot,
     after:  afterSnapshot,
-    net_salary: after.net_salary,
-    total_deductions: after.total_deductions,
+    net_salary: settled.net_salary,
+    total_deductions: settled.total_deductions,
   })
 }
 

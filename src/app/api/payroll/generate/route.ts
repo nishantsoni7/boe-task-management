@@ -33,6 +33,7 @@ import {
 } from '@/lib/payroll/store'
 import { fetchPrecedingPeriod, materialiseSettlement } from '@/lib/payroll/settlementStore'
 import { fetchActiveSettings, pinSettingsToPeriod } from '@/lib/payroll/settingsStore'
+import { reconcileAttendanceCoverage } from '@/lib/payroll/creditCoverage'
 
 export async function POST(req: NextRequest) {
   // ── Auth ────────────────────────────────────────────────────────────────────
@@ -197,15 +198,34 @@ export async function POST(req: NextRequest) {
 
       // Approved manual corrections outrank the raw biometric record, so a
       // regeneration re-applies them instead of reverting to the machine values.
-      const outcome = generatePayrollForEmployee(
-        employee,
-        period,
-        attendance,
-        holidays,
-        adjustments,
-        corrections,
-        settings,
-      )
+      //
+      // Days covered with BOE Credits are re-applied the same way, so a
+      // regenerated month carries each redemption exactly once — after the
+      // coverage has been reconciled against THIS run: a redeemed day that no
+      // longer carries a chargeable deduction (a re-import, a correction) has
+      // its credits restored through the ledger before the result is written,
+      // so what is stored never disagrees with what was charged.
+      const reconciled = await reconcileAttendanceCoverage(svc, {
+        employeeId: employee.id,
+        periodId:   payroll_period_id,
+        month:      period.payroll_month,
+        year:       period.payroll_year,
+        actorId:    caller.id,
+        run: coverage => generatePayrollForEmployee(
+          employee,
+          period,
+          attendance,
+          holidays,
+          adjustments,
+          corrections,
+          settings,
+          coverage,
+        ),
+      })
+      for (const f of reconciled.failures) {
+        console.error(`[payroll/generate] credit coverage for ${employee.id}:`, f.action.action, f.error)
+      }
+      const outcome = reconciled.outcome
 
       if (isSkip(outcome)) {
         skippedCount++

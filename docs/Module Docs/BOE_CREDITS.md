@@ -1,8 +1,136 @@
 # BOE Credits
 
 **Status:** Phase 1A shipped 2026-09-02 (PR #85, `4ae3caa`, migration
-`20261101000000` applied). Phase 1B — review reward — built 2026-09-02, local
-only, migration `20261102000000` **not applied** to production.
+`20261101000000` applied). Phase 1B — review reward — shipped 2026-09-02
+(PR #86, `623ad7a`, migration `20261102000000` applied). Phase 1C —
+attendance redemption — built 2026-09-02, local only, migration
+`20261103000000` **not applied** to production.
+
+## Phase 1C — an employee covers an attendance deduction with credits
+
+| deduction | cost |
+|---|---|
+| Half Day | **1 credit** |
+| Absent (full day) | **2 credits** |
+
+Whole credits, fixed, and **not** linked to salary, rupees or
+`credit_value`. The two literals live in `redeem_boe_credits_for_attendance()`
+and in `ATTENDANCE_REDEMPTION_COST` (`src/lib/boeCredits/attendanceRedemption.ts`);
+`attendanceRedemption.test.ts` pins them against each other. There is no
+settings row for the cost, by design.
+
+**Where.** `/my-payroll/[periodId]`, the employee's own payslip. A deduction
+row whose day credits could cover carries a "Use 1 credit" / "Use 2 credits"
+action; it opens a small confirmation (`RedeemCreditsModal`: the date, the
+deduction removed, the credits used, the credits left) and posts
+`{ payroll_period_id, attendance_date }` to `POST /api/boe-credits/redemptions`.
+Afterwards the row reads **"Covered with 1 BOE Credit"** at ₹0. The admin's
+Payroll Result Detail shows the same row the same way; the admin has no
+redeem action.
+
+**What qualifies.** Eligibility is asked of the payroll **engine's settled
+deduction line**, never of the raw attendance status: an `absent` or
+`half_day` line at more than ₹0 on a date up to today (IST), in an unlocked,
+generated month. Refused, each with a sentence: late arrivals, early
+departures, missing punches, short hours; a company-paid (paid-leave) day; a
+day already covered; a future date; a locked month; a month with no
+generated result for the employee. The route runs the engine over the
+caller's live attendance, corrections, settings snapshot and existing
+coverage and refuses before the database is asked; the browser's offer is
+not trusted.
+
+**How it is recorded — the foundation's vocabulary, unchanged.** One ledger
+row of the existing kind `redemption` (negative), `source_type`
+`attendance_redemption`, `source_id` = the id of the redemption record,
+`payroll_period_id` set, `created_by` the actor, description
+`Attendance redemption · 12 Aug 2026 · Half Day` — and, in the same
+transaction, one row in **`boe_credit_attendance_redemptions`** (date, kind,
+credits, `transaction_id`, period). No transaction kind is added or renamed:
+the applied CHECK admits exactly `review_reward | redemption | reversal |
+admin_adjustment`. The record exists because a ledger row cannot say which
+day it covered or whether it was a half day.
+
+**Active, closed, never edited.** A record is **active** while
+`reversal_transaction_id IS NULL`. It is closed exactly once — by an `AFTER
+INSERT` trigger on the ledger, the moment its ledger row is reversed by any
+path — with the reversal's id and instant; a guard trigger refuses every
+other UPDATE, every DELETE, and a hand-close with a foreign reversal, for
+every role. `UNIQUE (employee_id, attendance_date) WHERE
+reversal_transaction_id IS NULL` is the table-level guarantee of **at most
+one active coverage per day**; the function pre-checks the same under the
+per-employee advisory lock (taken first, before the period row, in both
+functions). History is complete: redemption, reversal and any later
+redemption of the same day are separate rows.
+
+**Re-redemption after a reversal.** A reversed day drops out of the active
+index, so once it carries an eligible deduction again it may be covered
+again — a new record, a new ledger row. `redeem → reverse → redeem again`
+is proven at the database (§12) and two active coverages can never coexist.
+
+**Lifecycle — credits stay spent only while the deduction exists.** Both
+write-intent engine paths (the attendance-correction route and payroll
+generation) call `reconcileAttendanceCoverage`
+(`src/lib/payroll/creditCoverage.ts`) before writing a result: for every
+active redemption it compares the engine's settled line for that date and
+   * reverses the redemption when the day is no longer a chargeable Absent /
+     Half Day (corrected to Present, absorbed by paid leave, ₹0, or a
+     half-day coverage on a day that became a full absence) — credits
+     restored through `reverse_boe_credit_attendance_redemption()` by the
+     admin, with the reason on the reversal row;
+   * re-prices a day bought as Absent that became a Half Day — the 2-credit
+     row is reversed and a fresh 1-credit redemption is posted by the admin
+     on the employee's behalf (`redeem_boe_credits_for_attendance` admits an
+     active admin actor for exactly this).
+No ledger amount is edited and no balance is adjusted by hand. The
+read-only previews and the day view never reconcile.
+
+**Payroll effect.** The engine takes the coverage as its last argument
+(`generatePayrollForEmployee(…, settings, redemptions)`), applies it **after**
+paid-leave absorption and only to a line still chargeable, and settles that
+line at ₹0 with `waived_by: 'boe_credits'` and `credits_redeemed`. The
+classification, `days_absent`, `half_day_count`, the punches and the
+attendance tables are untouched. Every engine caller passes the coverage —
+generation, attendance correction, the monthly preview (both routes), the day
+view — so a regenerated month carries each redemption exactly once. An
+absent-day redemption still covers a day that later became a half day; a
+half-day one does not stretch to a full absence.
+
+**Generated and locked months.** The route requires a generated result and
+refuses a locked period (`BOE_CREDITS_PERIOD_LOCKED`, and the period row is
+read `FOR SHARE` so a concurrent lock waits). After the redemption commits it
+regenerates the caller's result through the ordinary generation path
+(`createGenerationRow` → `writeEngineResult` → `markAdjustmentsApplied`); if
+that fails the redemption stands and the day view's existing staleness check
+reports the stored money as out of date until the period is regenerated. An
+unlocked month (status back to `generated`) admits redemption again; there is
+no separate bypass.
+
+**Security.** Both functions are service-role only; the redemption actor
+must be the employee or an active admin; the route takes the employee from
+the bearer token and accepts no employee id, cost, kind or balance from the
+body. RLS on the record table: own rows or `can_manage_boe_credits()`; no
+client writes.
+
+**Old-code compatibility.** Migration `20261103000000` creates new objects,
+adds one reversal-scoped `AFTER INSERT` trigger on the ledger and restates
+two column comments; the runner diffs the foundation's function definitions,
+constraints, indexes, columns, policies and view before and after and
+requires them identical, so Phase 1B code keeps running while it is applied.
+
+Proof: `src/lib/boeCredits/attendanceRedemption.test.ts`,
+`src/lib/payroll/engine.creditRedemption.test.ts`,
+`src/lib/payroll/creditCoverage.test.ts`,
+`src/lib/payroll/resultDetailPayload.stale.test.ts` (the real stale helper),
+the Phase 1C blocks in `service.test.ts` and `routesAuthority.test.ts`,
+`supabase/tests/boe_credits_attendance_redemption_assertions.sql` executed
+twice by `supabase/tests/run_boe_credits_attendance_redemption_local.sh` on a
+bare PostgreSQL container, and the two-session races in
+`supabase/tests/boe_credits_attendance_redemption_concurrency.sh`.
+
+**Not built (by design):** admin/manual redemption, cash-out, partial
+credits, advance redemption for future dates, a reversal UI (the service-layer
+`reverseCreditTransaction` remains, admin-only), a separate admin management
+page.
 
 ## Phase 1B — a verified review earns its reward
 
