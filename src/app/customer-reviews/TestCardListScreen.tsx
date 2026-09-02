@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { BookOpen, Layers, MessageSquareHeart, ShieldCheck, Sparkles } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
@@ -22,6 +22,7 @@ import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, textParam } from '@/lib/listState'
 import { fetchAllRows } from '@/lib/supabasePaging'
+import { formatCredits } from '@/lib/boeCredits/ledger'
 import { canBookCard, canDeleteCard, type ApprovalMode } from '@/lib/customerReviews/status'
 import {
   DRAFT_BATCH_COLUMNS,
@@ -97,9 +98,28 @@ const TAB_STATUSES: Record<TabKey, readonly TestCardStatus[]> = {
   to_verify: ['submitted'],
 }
 
+/**
+ * The one line the list says about a verification that just happened. The
+ * detail screen sends the verifier back here with `verified=<credits>`, the
+ * amount the transition RPC returned from the SAME transaction that verified
+ * the review (20261102000000). Like ?saved=1 on an order draft, the flag
+ * decides what this line SAYS and nothing about what the list shows: every
+ * row still comes from the queries below, and a verified card is outside all
+ * of them. Credits, never rupees; no amount is computed here.
+ */
+export function verifiedNoticeFrom(flag: string | null): string | null {
+  if (flag === null) return null
+  const credits = /^\d+$/.test(flag) ? Number(flag) : 0
+  return credits > 0
+    ? `Review verified · ${formatCredits(credits, { signed: true })} awarded to the tester.`
+    : 'Review verified.'
+}
+
 export function TestCardListScreen() {
   const { supabase, profile, caps, loading: authLoading, signOut } = useCustomerReviews()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const verifiedNotice = verifiedNoticeFrom(searchParams.get('verified'))
 
   const [cards, setCards] = useState<TestCard[]>([])
   const [batches, setBatches] = useState<Map<string, DraftBatch>>(new Map())
@@ -648,6 +668,11 @@ export function TestCardListScreen() {
         {approved && (
           <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
             {approved}
+          </p>
+        )}
+        {verifiedNotice && (
+          <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
+            {verifiedNotice}
           </p>
         )}
         {loadError && (

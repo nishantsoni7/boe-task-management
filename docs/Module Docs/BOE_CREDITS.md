@@ -1,7 +1,53 @@
 # BOE Credits
 
-**Status:** Phase 1A — the foundation. Built 2026-09-02, local only, migration
-**not applied** to production.
+**Status:** Phase 1A shipped 2026-09-02 (PR #85, `4ae3caa`, migration
+`20261101000000` applied). Phase 1B — review reward — built 2026-09-02, local
+only, migration `20261102000000` **not applied** to production.
+
+## Phase 1B — a verified review earns its reward
+
+When a verifier moves a review `submitted → verified` through
+`transition_customer_review_test_card()`, the same transaction posts exactly
+one ledger row:
+
+| field | value |
+|---|---|
+| `employee_id` | the review's **holder**, `customer_review_test_cards.booked_by` — never the verifier |
+| `transaction_type` | `review_reward` |
+| `credits` | the newest `boe_credit_settings.review_reward_credits` at that instant (no literal anywhere) |
+| `source_type` / `source_id` | `customer_review` / the review's immutable `id` |
+| `created_by` | the verifier (the actor whose decision it was) |
+| `description` | `Review verified · <card_ref>` |
+
+The function now returns `{ card, reward }` (jsonb). The detail screen goes
+back to the To verify list exactly as it did before, carrying
+`verified=<credits>` in the query string (the same one-shot flag pattern as
+`?saved=1` on an order draft), and the list says "Review verified · +100
+credits awarded to the tester." — credits, never rupees, and the number is the
+one the database returned, never one the browser computed. The employee's own
+`/my-payroll` card and history reflect the row with no further work.
+
+**Why it cannot reward twice.** `verified` is terminal and the row is locked
+before its status is read, so any retry, double click or concurrent request
+is refused with `CUSTOMER_REVIEW_TEST_BAD_TRANSITION` before a reward is
+attempted; the posting function's per-employee pre-check and the partial
+unique index stand behind that.
+
+**Not rewarded:** a return, a submit, a refused or unauthorized verify, a
+pending or deleted review. **No backfill:** reviews verified before
+`20261102000000` earn nothing from it; the migration's post-condition proves
+it wrote zero ledger rows.
+
+**Reversal is not wired.** The workflow has no unverify, reopen or
+reject-after-verify; deleting a verified review is a tombstone (singly, in
+bulk, or by replacement) and must not debit anyone. A wrong reward is
+corrected by an administrator through the service layer's reversal or an
+adjustment.
+
+Proof: `src/lib/boeCredits/reviewReward.test.ts` (text) and
+`supabase/tests/boe_credits_review_reward_assertions.sql` executed by
+`supabase/tests/run_boe_credits_review_reward_local.sh` on a local Supabase
+stack carrying the full Review Workflow chain.
 
 Employees earn *credits*, never rupees. Phase 1A builds the ledger, the derived
 balance, the settings, the permissions and the smallest read/adjust surface

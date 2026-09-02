@@ -694,8 +694,10 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
       'a verified card does not fall into the not-available branch')
 
     // ...and verifying navigates away rather than reloading into that branch,
-    // which would read as an error instead of as success.
-    assert.ok(detail.includes("router.push('/customer-reviews?tab=to_verify')"))
+    // which would read as an error instead of as success. Since BOE Credits
+    // Phase 1B the destination also carries `verified=<credits>` for the list
+    // to say; the navigation itself is unchanged.
+    assert.match(detail, /router\.push\(`\/customer-reviews\?tab=to_verify\$\{verifiedQuery\(data\)\}`\)/)
   })
 
   test('NOTHING IS DELETED — this is a display rule, not a data change', () => {

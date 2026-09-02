@@ -43,7 +43,7 @@ describe('the file, and where it sits', () => {
   test('it exists, is the only credits migration, and sorts after everything that was there before it', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     assert.ok(all.includes(FILE))
-    assert.deepEqual(all.filter(f => /credit/i.test(f)), [FILE])
+    assert.deepEqual(all.filter(f => /credit/i.test(f)), [FILE, '20261102000000_boe_credits_review_reward.sql'])
     const prior = all.filter(f => f < FILE)
     assert.equal(prior[prior.length - 1], '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql')
   })

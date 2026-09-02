@@ -622,6 +622,10 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // view, the settings table and the service-role posting functions. Two new
       // tables of its own; it touches nothing any other module creates.
       '20261101000000_boe_credits_foundation.sql',
+      // BOE Credits Phase 1B: re-creates transition_customer_review_test_card() so a
+      // verified review posts its review_reward in the same transaction. One
+      // function, no table, no data.
+      '20261102000000_boe_credits_review_reward.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
