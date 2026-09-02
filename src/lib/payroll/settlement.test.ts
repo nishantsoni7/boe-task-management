@@ -597,3 +597,64 @@ describe('end-to-end: the specification example', () => {
       'the double-counted figure must not equal the correct payable')
   })
 })
+
+
+// ─── BOE Credit Addition (Phase 1D) ──────────────────────────────────────────
+
+describe('the BOE Credit Addition', () => {
+  const application = { credits_used: 5, credit_value_snapshot: 100, credit_amount_snapshot: 500 }
+
+  test('Example A: normal payable 29,500 + 5 credits × ₹100 = 30,000', () => {
+    const f = computeSettlement(
+      { gross_salary: 30_000, total_deductions: 500, pending_adjustment_total: 0, days_present: 24 },
+      settlement(),
+      application,
+    )
+    assert.equal(f.boe_credit_addition, 500)
+    assert.equal(f.salary_payable, 30_000)
+  })
+
+  test('Example B: no attendance deduction at all — 30,000 + ₹500 = 30,500, above gross', () => {
+    const f = computeSettlement(
+      { gross_salary: 30_000, total_deductions: 0, pending_adjustment_total: 0, days_present: 26 },
+      settlement(),
+      application,
+    )
+    assert.equal(f.salary_after_attendance, 30_000)
+    assert.equal(f.boe_credit_addition, 500)
+    assert.equal(f.salary_payable, 30_500, 'not capped at gross, not capped at the deduction')
+  })
+
+  test('the addition is the STORED rupee snapshot, never credits × any rate this function is not given', () => {
+    const f = computeSettlement(result(), settlement(), { credits_used: 5, credit_value_snapshot: 150, credit_amount_snapshot: 500 })
+    assert.equal(f.boe_credit_addition, 500, 'a later rate change does not re-price the snapshot')
+  })
+
+  test('no application → 0, and every other figure is exactly what it was', () => {
+    const without = computeSettlement(result(), settlement())
+    const withNull = computeSettlement(result(), settlement(), null)
+    assert.equal(without.boe_credit_addition, 0)
+    assert.deepEqual(withNull, without)
+  })
+
+  test('it sits outside net adjustments and inside the closing balance', () => {
+    const f = computeSettlement(
+      result(),
+      { carry_forward_amount: 2_000, amount_paid: 24_000 },
+      application,
+    )
+    assert.ok(sameMoney(f.net_adjustments, 2_000), 'net adjustments do not absorb it')
+    assert.ok(sameMoney(f.salary_payable, AFTER_ATTENDANCE + 2_000 + 500))
+    assert.ok(sameMoney(f.closing_balance ?? NaN, AFTER_ATTENDANCE + 2_000 + 500 - 24_000), 'payment recording settles against the revised payable')
+  })
+
+  test('the absence floor does not swallow it — a whole month absent still receives the addition', () => {
+    const f = computeSettlement(
+      { gross_salary: 26_000, total_deductions: 27_000, pending_adjustment_total: 0, days_present: 0 },
+      settlement(),
+      application,
+    )
+    assert.equal(f.salary_after_attendance, 0)
+    assert.equal(f.salary_payable, 500)
+  })
+})

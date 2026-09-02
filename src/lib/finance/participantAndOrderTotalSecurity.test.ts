@@ -751,6 +751,10 @@ describe('the applied migrations are frozen', () => {
       // service-role function that covers one attendance day with credits. One
       // new table of its own; it touches nothing any other module creates.
       '20261103000000_boe_credits_attendance_redemption.sql',
+      // BOE Credits Phase 1D: configurable settings, monthly review qualification
+      // and the payroll salary addition. Three new credits tables of its own; it
+      // touches nothing any other module creates.
+      '20261104000000_boe_credits_phase_1d.sql',
     ])
   })
 
@@ -813,6 +817,10 @@ describe('the applied migrations are frozen', () => {
       // service-role function that covers one attendance day with credits. One
       // new table of its own; it touches nothing any other module creates.
       '20261103000000_boe_credits_attendance_redemption.sql',
+      // BOE Credits Phase 1D: configurable settings, monthly review qualification
+      // and the payroll salary addition. Three new credits tables of its own; it
+      // touches nothing any other module creates.
+      '20261104000000_boe_credits_phase_1d.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

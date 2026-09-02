@@ -102,6 +102,8 @@ export async function collectDeletionFacts(
     lockedResultCount,
     runningCount,
     carryForwardDependentCount,
+    activeCoverageCount,
+    activeApplicationCount,
   ] = await Promise.all([
     countOf('payroll_results',     q => q.eq('payroll_period_id', periodId)),
     countOf('payroll_settlements', q => q.eq('payroll_period_id', periodId)),
@@ -119,6 +121,11 @@ export async function collectDeletionFacts(
       q.eq('carry_forward_source_period_id', periodId)
         .neq('payroll_period_id', periodId)
         .neq('carry_forward_amount', 0)),
+    // BOE Credits spent against this period (Phase 1C/1D): active attendance
+    // coverages and active payroll applications. Their ledger rows name the
+    // period, and neither can be left behind by a deletion.
+    countOf('boe_credit_attendance_redemptions', q => q.eq('payroll_period_id', periodId).is('reversal_transaction_id', null)),
+    countOf('boe_credit_payroll_applications',   q => q.eq('payroll_period_id', periodId).is('reversal_transaction_id', null)),
   ])
 
   return {
@@ -133,6 +140,7 @@ export async function collectDeletionFacts(
       lockedResultCount,
       generationRunning: runningCount > 0,
       carryForwardDependentCount,
+      creditUseCount: activeCoverageCount + activeApplicationCount,
     },
   }
 }

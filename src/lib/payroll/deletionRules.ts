@@ -43,6 +43,12 @@ export type PayrollDeletionFacts = {
    * deletion clears them without changing any figure.
    */
   carryForwardDependentCount: number
+  /**
+   * BOE Credits in use against this period (Phase 1C/1D): ACTIVE attendance
+   * coverages plus ACTIVE payroll credit applications. Optional so callers
+   * written before Phase 1D still type-check; absent reads as none.
+   */
+  creditUseCount?: number
 }
 
 export type PayrollDeletionDenialReason =
@@ -52,6 +58,7 @@ export type PayrollDeletionDenialReason =
   | 'result_locked'
   | 'generation_running'
   | 'carry_forward_dependency'
+  | 'credits_in_use'
 
 export type PayrollDeletionDenial = {
   allowed: false
@@ -146,6 +153,20 @@ export function canDeletePayrollPeriod(
       reason: 'carry_forward_dependency',
       message: 'A later payroll carries a balance forward from this one, so deleting it would leave money that cannot be explained.',
       resolution: 'Clear or override that carry-forward on the later payroll first.',
+    }
+  }
+
+  // The ledger must never be left pointing at a month that no longer exists:
+  // a covered day and a payroll application both name this period, and their
+  // credits are spent against it. They are withdrawn first — the application
+  // by the employee (or it lapses with the unlock), the coverage by a reversal
+  // from BOE Credits — and only then can the period go.
+  if ((facts.creditUseCount ?? 0) > 0) {
+    return {
+      allowed: false,
+      reason: 'credits_in_use',
+      message: `BOE Credits are applied to this payroll (${facts.creditUseCount} ${facts.creditUseCount === 1 ? 'entry' : 'entries'}), so it cannot be deleted.`,
+      resolution: 'Have the employees remove their payroll credit applications, and reverse any attendance days covered with credits from BOE Credits → History, then delete it.',
     }
   }
 

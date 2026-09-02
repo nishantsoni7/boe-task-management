@@ -33,6 +33,7 @@ import type {
   ReportSettlementRow,
 } from '@/lib/payroll/salaryReport'
 import type { AdjustmentType } from '@/lib/payroll/adjustments'
+import { fetchActivePayrollCreditApplicationsByEmployee } from '@/lib/payroll/store'
 
 export async function GET(req: NextRequest) {
   // The whole boundary. The route runs on the service role, which bypasses RLS,
@@ -192,17 +193,36 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Could not load payroll settlements.' }, { status: 500 })
   }
 
-  const settlements: ReportSettlementRow[] = ((settlementRows ?? []) as {
-    employee_id: string
-    carry_forward_amount: number | null
-  }[])
+  // The ACTIVE BOE Credits payroll application per employee (Phase 1D): its
+  // rupee SNAPSHOT is the addition Settlement makes to Salary Payable, and the
+  // report must state the same payable the payslip does. A failure is an
+  // error, like the settlements above: a missing addition would quietly
+  // understate what is payable.
+  let creditApplications: Awaited<ReturnType<typeof fetchActivePayrollCreditApplicationsByEmployee>>
+  try {
+    creditApplications = await fetchActivePayrollCreditApplicationsByEmployee(svc, periodId)
+  } catch (e) {
+    console.error('[payroll/salary-report] credit applications:', e)
+    return NextResponse.json({ error: 'Could not load BOE Credits applications.' }, { status: 500 })
+  }
+
+  const byEmployee = new Map<string, ReportSettlementRow>()
+  for (const row of (settlementRows ?? []) as { employee_id: string; carry_forward_amount: number | null }[]) {
     // Same boundary as the adjustments: a row belonging to somebody not on this
     // report cannot travel with it, even unrendered.
-    .filter(row => includedIds.has(row.employee_id))
-    .map(row => ({
+    if (!includedIds.has(row.employee_id)) continue
+    byEmployee.set(row.employee_id, {
       employee_id:          row.employee_id,
       carry_forward_amount: row.carry_forward_amount,
-    }))
+      boe_credit_addition:  null,
+    })
+  }
+  for (const [employeeId, app] of creditApplications) {
+    if (!includedIds.has(employeeId)) continue
+    const existing = byEmployee.get(employeeId) ?? { employee_id: employeeId, carry_forward_amount: null, boe_credit_addition: null }
+    byEmployee.set(employeeId, { ...existing, boe_credit_addition: app.credit_amount_snapshot })
+  }
+  const settlements: ReportSettlementRow[] = [...byEmployee.values()]
 
   return NextResponse.json({
     period: {

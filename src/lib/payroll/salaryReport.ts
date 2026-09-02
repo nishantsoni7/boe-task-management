@@ -77,6 +77,12 @@ export type ReportAdjustmentRow = {
 export type ReportSettlementRow = {
   employee_id: string
   carry_forward_amount: number | null
+  /**
+   * The rupee SNAPSHOT of the employee's active BOE Credits payroll
+   * application (Phase 1D), or null/absent when there is none. Settlement
+   * adds it to Salary Payable, so the report must too.
+   */
+  boe_credit_addition?: number | null
 }
 
 // ─── Output ───────────────────────────────────────────────────────────────────
@@ -108,7 +114,9 @@ export type ReportEmployee = {
    * total the engine applied.
    */
   advance: number
-  /** salary_to_be_booked + advance. The detail page's Salary Payable. */
+  /** The BOE Credits salary addition (Phase 1D), from the stored snapshot. 0 when none. */
+  boe_credit_addition: number
+  /** salary_to_be_booked + advance + boe_credit_addition. The detail page's Salary Payable. */
   amount_payable: number
 }
 
@@ -154,6 +162,9 @@ export function buildSalaryReport(
   const selected = new Set(selectedEmployeeIds)
   const carryForwardByEmployee = new Map(
     settlements.map(s => [s.employee_id, n(s.carry_forward_amount)]),
+  )
+  const creditAdditionByEmployee = new Map(
+    settlements.map(s => [s.employee_id, n(s.boe_credit_addition ?? null)]),
   )
 
   // Adjustments grouped by employee then by REPORTING category, so an
@@ -233,6 +244,11 @@ export function buildSalaryReport(
         carry_forward_amount: carryForwardByEmployee.get(row.employee_id) ?? 0,
         amount_paid:          null,
       },
+      // The stored snapshot, never re-derived: the same third input the
+      // payslip's settlement block is given.
+      (creditAdditionByEmployee.get(row.employee_id) ?? 0) > 0
+        ? { credits_used: 0, credit_value_snapshot: 0, credit_amount_snapshot: creditAdditionByEmployee.get(row.employee_id) ?? 0 }
+        : null,
     )
 
     employees.push({
@@ -248,6 +264,7 @@ export function buildSalaryReport(
       net_payable: n(row.net_salary),
       salary_to_be_booked: figures.salary_after_attendance,
       advance:             figures.net_adjustments,
+      boe_credit_addition: figures.boe_credit_addition,
       amount_payable:      figures.salary_payable,
     })
   }
@@ -299,6 +316,13 @@ export function renderReportText(report: SalaryReport): string {
       lines.push(`  ${line.label}: ${sign}${formatRupees(Math.abs(line.amount))}`)
     }
     lines.push(`  Net payable: ${formatRupees(e.net_payable)}`)
+    // The BOE Credits addition (Phase 1D) sits outside net_salary by design —
+    // it is a Settlement line — so it is printed after it, with the payable
+    // it produces, whenever one applies.
+    if (e.boe_credit_addition !== 0) {
+      lines.push(`  BOE Credits: +${formatRupees(e.boe_credit_addition)}`)
+      lines.push(`  Amount payable: ${formatRupees(e.amount_payable)}`)
+    }
     lines.push('')
   }
 
@@ -360,6 +384,13 @@ export function renderWhatsAppText(report: SalaryReport): string {
     // no such thing here as an advance of half a rupee that this would miss.
     if (e.advance !== 0) {
       lines.push(`Advance: ${signedRupees(e.advance)}`)
+    }
+    // The BOE Credits addition (Phase 1D), from the stored snapshot. Like the
+    // advance, it appears only when it applies, and it changes what is payable.
+    if (e.boe_credit_addition !== 0) {
+      lines.push(`BOE Credits: +${formatRupees(e.boe_credit_addition)}`)
+    }
+    if (e.advance !== 0 || e.boe_credit_addition !== 0) {
       lines.push(`Amount Payable: ${formatRupees(e.amount_payable)}`)
     }
   }

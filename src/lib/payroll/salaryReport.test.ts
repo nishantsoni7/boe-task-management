@@ -687,3 +687,41 @@ describe('WhatsApp preparation', () => {
     assert.equal(prep.ok, false)
   })
 })
+
+
+// ─── BOE Credits (Phase 1D) ──────────────────────────────────────────────────
+
+describe('the BOE Credits salary addition', () => {
+  const withCredits: ReportSettlementRow = { employee_id: '2', carry_forward_amount: 0, boe_credit_addition: 500 }
+
+  test('Amount Payable carries the stored addition; Net payable (the stored engine figure) does not', () => {
+    const r = buildSalaryReport(7, 2026, [PRIYA], [], ['2'], [withCredits])
+    const e = r.employees[0]!
+    assert.equal(e.boe_credit_addition, 500)
+    assert.equal(e.salary_to_be_booked, 30_000)
+    assert.equal(e.amount_payable, 30_500, 'above gross — no cap')
+    assert.equal(e.net_payable, 30_000)
+    assert.equal(r.totals.amount_payable, 30_500)
+  })
+
+  test('an employee without an application is unchanged', () => {
+    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA], [], ['1', '2'], [withCredits])
+    const amit = r.employees.find(e => e.employee_id === '1')!
+    assert.equal(amit.boe_credit_addition, 0)
+    assert.equal(amit.amount_payable, 25_000)
+  })
+
+  test('both renderers print the line and the payable it produces, only where it applies', () => {
+    const r = buildSalaryReport(7, 2026, [AMIT, PRIYA], [], ['1', '2'], [withCredits])
+    const text = renderReportText(r)
+    assert.match(text, /BOE Credits: \+₹500/)
+    assert.match(text, /Amount payable: ₹30,500/)
+    const wa = renderWhatsAppText(r)
+    assert.match(wa, /BOE Credits: \+₹500/)
+    assert.match(wa, /Amount Payable: ₹30,500/)
+    assert.match(wa, /Total: ₹55,500 \(2\)/)
+    // Amit has no addition and no advance: no BOE line and no Amount Payable line for him.
+    const amitBlock = wa.slice(wa.indexOf('Amit Sharma'), wa.indexOf('Priya Nair'))
+    assert.doesNotMatch(amitBlock, /BOE Credits|Amount Payable/)
+  })
+})
