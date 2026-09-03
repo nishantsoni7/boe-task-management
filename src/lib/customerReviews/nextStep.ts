@@ -60,7 +60,7 @@ export function nextStepFor(
   switch (card.status) {
     case 'pending_approval':
       return viewer.canVerify
-        ? { headline: 'Approve or edit this draft', hint: 'Candidates cannot see it until you release it.', tone: 'act' }
+        ? { headline: 'Approve or edit this draft', hint: 'Candidates cannot see it until it has been approved.', tone: 'act' }
         : { headline: 'Awaiting approval', hint: null, tone: 'wait' }
 
     case 'available':
