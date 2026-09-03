@@ -3,14 +3,17 @@
 import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { Home, LayoutGrid, Building2, Users, ShieldCheck, History, X, Hash, Eraser, DatabaseZap } from 'lucide-react'
+import {
+  Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, X, Hash, Eraser, DatabaseZap,
+} from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import cc from '@/components/controlCenter/controlCenter.module.css'
 
 // 'modules' (Module Visibility) is retained so the existing ?tab=modules URL
-// still resolves for rollback, but it is no longer reachable from the sidebar —
-// see the note where its NavItem used to be.
+// still resolves for rollback, but it is not reachable from the sidebar — see
+// the note in ControlCenterNav.
 export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules' | 'order-numbering'
 
 const MAIN_PATH = '/admin/control-center'
@@ -22,30 +25,60 @@ export function resolveControlCenterTab(tabParam: string | null): ControlCenterT
     ? tabParam : 'overview'
 }
 
-// One heading per route. The shell is mounted once by control-center/layout.tsx
-// and owns the header, so a section no longer hands over its title on every
-// mount. The copy is exactly what each page used to pass.
-const HEADINGS: Record<string, { title: string; subtitle?: string }> = {
-  [MAIN_PATH]: {
+type Heading = { group?: string; title: string; subtitle?: string }
+
+// One heading per destination. The shell is mounted once by
+// control-center/layout.tsx and owns the header, so a section never hands over
+// its own title on mount.
+const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
+  overview: {
     title: 'Control Center',
-    subtitle: 'The admin operating panel for departments, people, module visibility, and access.',
+    subtitle: 'Administration workspace for people, access and system controls.',
+  },
+  people: {
+    group: 'People', title: 'Employees',
+    subtitle: 'Everyone with a BOE account — department, role, position and status.',
+  },
+  departments: {
+    group: 'People', title: 'Departments',
+    subtitle: 'Company departments used for assignment and access defaults.',
+  },
+  modules: {
+    group: 'System', title: 'Module Visibility',
+    subtitle: 'Control which modules appear in the app launcher, and to whom.',
+  },
+  'order-numbering': {
+    group: 'System', title: 'Order Numbering',
+    subtitle: 'The number the next Confirmed Order will be given.',
+  },
+}
+
+const PATH_HEADINGS: Record<string, Heading> = {
+  [`${MAIN_PATH}/positions`]: {
+    group: 'People', title: 'Positions',
+    subtitle: 'Job titles available on employee records.',
   },
   [`${MAIN_PATH}/permissions`]: {
-    title: 'Access Control',
+    group: 'Access', title: 'By Employee',
     subtitle: 'Manage what each employee can access, module by module',
   },
   [`${MAIN_PATH}/test-data-cleanup`]: {
-    title: 'Test Data Cleanup',
+    group: 'System', title: 'Test Data Cleanup',
     subtitle: 'Remove a complete verified test transaction while the system is in testing.',
   },
   [`${MAIN_PATH}/data-management`]: {
-    title: 'Data Management',
+    group: 'System', title: 'Data Management',
     subtitle: 'Clear all operational Order and Finance data. Admin only, and never reversible.',
   },
   [`${MAIN_PATH}/action-queue`]: {
     title: 'Action Queue',
     subtitle: 'Finance and Orders work currently waiting on an admin action',
   },
+}
+
+function headingFor(pathname: string, tab: ControlCenterTab | null): Heading {
+  if (pathname === MAIN_PATH) return TAB_HEADINGS[tab ?? 'overview']
+  return PATH_HEADINGS[pathname] ?? { title: 'Control Center' }
 }
 
 type ControlCenterLayoutProps = {
@@ -58,32 +91,23 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
-  const heading  = HEADINGS[pathname] ?? { title: 'Control Center' }
 
   const closeSidebar = () => setSidebarOpen(false)
-
-  const goHome = () => {
-    router.push('/modules')
-    closeSidebar()
-  }
+  const goHome = () => { router.push('/modules'); closeSidebar() }
 
   return (
     <div className="boe-app-shell">
 
       {/* Mobile overlay */}
-      <div
-        className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`}
-        onClick={closeSidebar}
-      />
+      <div className={`boe-sidebar-overlay${sidebarOpen ? ' open' : ''}`} onClick={closeSidebar} />
 
       {/* Sidebar */}
       <aside className={`boe-sidebar${sidebarOpen ? ' open' : ''}`}>
 
-        {/* Section 1: Module header with Home button */}
         <div className="boe-sidebar-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
             <BoeBrandIcon />
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div className="boe-sidebar-brand-name">Control Center</div>
               <div className="boe-sidebar-brand-sub">BOE Operating System</div>
             </div>
@@ -91,6 +115,7 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
           <button
             onClick={goHome}
             title="BOE OS Home"
+            aria-label="BOE OS Home"
             style={{
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 28, height: 28, borderRadius: '7px',
@@ -98,24 +123,18 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
               border: '1px solid rgba(220,31,46,0.20)',
               color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
           >
             <Home size={14} strokeWidth={2} />
           </button>
         </div>
 
-        {/* Section 2: Control Center navigation only.
-            The active tab is read from the URL inside a Suspense boundary, as
-            useSearchParams asks; the fallback is the same list with no tab
-            known, which only ever renders during prerender. */}
-        <div className="boe-sidebar-section">
-          <Suspense fallback={<ControlCenterNav pathname={pathname} tab={null} onNavigate={closeSidebar} />}>
-            <ControlCenterNavWithTab pathname={pathname} onNavigate={closeSidebar} />
-          </Suspense>
-        </div>
+        {/* Navigation. The active tab is read from the URL inside a Suspense
+            boundary, as useSearchParams asks; the fallback is the same list
+            with no tab known, which only ever renders during prerender. */}
+        <Suspense fallback={<ControlCenterNav pathname={pathname} tab={null} onNavigate={closeSidebar} />}>
+          <ControlCenterNavWithTab pathname={pathname} onNavigate={closeSidebar} />
+        </Suspense>
 
-        {/* Section 3: Global user area */}
         <ViewModeSidebarSection
           profile={profile}
           onSignOut={onSignOut}
@@ -125,50 +144,69 @@ export function ControlCenterLayout({ profile, onSignOut, children }: ControlCen
 
       {/* Main content */}
       <div className="boe-main-content">
+        <Suspense fallback={<ControlCenterHeader pathname={pathname} tab={null} sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} onHome={goHome} />}>
+          <ControlCenterHeaderWithTab pathname={pathname} sidebarOpen={sidebarOpen} onToggle={() => setSidebarOpen(o => !o)} onHome={goHome} />
+        </Suspense>
 
-        {/* Sticky page header */}
-        <div className="boe-page-header">
-          <button
-            className="boe-menu-toggle"
-            onClick={() => setSidebarOpen(o => !o)}
-            aria-label="Open menu"
-          >
-            {sidebarOpen ? <X size={18} /> : '☰'}
-          </button>
-          <div className="boe-page-title-group">
-            <div className="boe-page-title">{heading.title}</div>
-            {heading.subtitle && <div className="boe-page-subtitle">{heading.subtitle}</div>}
-          </div>
-          <div className="boe-header-actions">
-            <button
-              onClick={goHome}
-              title="BOE OS Home"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: '8px',
-                background: 'rgba(0,0,0,0.05)',
-                border: '1px solid rgba(0,0,0,0.10)',
-                color: '#6B7384', cursor: 'pointer',
-                flexShrink: 0, transition: 'background 0.15s, color 0.15s',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' }}
-            >
-              <Home size={14} strokeWidth={2} />
-            </button>
-          </div>
-        </div>
-
-        {/* Page body */}
         <div className="boe-page-body">
-          <ViewModeBanner />
-          {children}
+          <div className={cc.content}>
+            <ViewModeBanner />
+            {children}
+          </div>
         </div>
-
       </div>
     </div>
   )
 }
+
+// ── Header ───────────────────────────────────────────────────────────────────
+
+type HeaderProps = {
+  pathname: string
+  tab: ControlCenterTab | null
+  sidebarOpen: boolean
+  onToggle: () => void
+  onHome: () => void
+}
+
+function ControlCenterHeaderWithTab(props: Omit<HeaderProps, 'tab'>) {
+  const tab = resolveControlCenterTab(useSearchParams().get('tab'))
+  return <ControlCenterHeader {...props} tab={tab} />
+}
+
+function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome }: HeaderProps) {
+  const heading = headingFor(pathname, tab)
+  return (
+    <div className="boe-page-header">
+      <button className="boe-menu-toggle" onClick={onToggle} aria-label="Open menu">
+        {sidebarOpen ? <X size={18} /> : '☰'}
+      </button>
+      <div className="boe-page-title-group">
+        {heading.group && <div className={cc.eyebrow}>{heading.group}</div>}
+        <div className="boe-page-title">{heading.title}</div>
+        {heading.subtitle && <div className="boe-page-subtitle">{heading.subtitle}</div>}
+      </div>
+      <div className="boe-header-actions">
+        <button
+          onClick={onHome}
+          title="BOE OS Home"
+          aria-label="BOE OS Home"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: 32, height: 32, borderRadius: '8px',
+            background: 'rgba(0,0,0,0.05)',
+            border: '1px solid rgba(0,0,0,0.10)',
+            color: '#6B7384', cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          <Home size={14} strokeWidth={2} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Navigation ───────────────────────────────────────────────────────────────
 
 function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; onNavigate: () => void }) {
   const tab = resolveControlCenterTab(useSearchParams().get('tab'))
@@ -176,10 +214,20 @@ function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; o
 }
 
 // Every entry is a real link, so Next prefetches it and Back/Forward walk
-// through sections as they would through any pages. Overview, Departments,
-// People and Order Numbering are still tabs of the main page: on that page a
-// tab link REPLACES the history entry, exactly as the in-place switch always
-// did; from any other section it pushes one.
+// through sections. Overview, Employees, Departments and Order Numbering are
+// tabs of the main page: on that page a tab link REPLACES the history entry,
+// exactly as the in-place switch always did; from any other section it pushes.
+//
+// What is deliberately NOT here:
+//   Roles              — nothing manages roles; the three values are fixed in
+//                        code and shown as a field on the employee.
+//   Module Visibility  — a second, parallel way to decide who sees a module,
+//                        retired from navigation in favour of Access Control.
+//                        ?tab=modules still resolves for rollback.
+//   Action Queue       — every row was a deep link into Finance or Orders; it
+//                        decided nothing. The route remains for old bookmarks.
+//   Change History     — does not exist yet, so it is not offered.
+//   Access › By Module — not built yet; a disabled entry would be a promise.
 function ControlCenterNav({
   pathname, tab, onNavigate,
 }: {
@@ -189,156 +237,112 @@ function ControlCenterNav({
 }) {
   const onMain = pathname === MAIN_PATH
   const tabHref = (t: ControlCenterTab) => `${MAIN_PATH}?tab=${t}`
+  const icon = (I: typeof Home) => <I size={15} strokeWidth={1.8} />
 
   return (
-    <>
+    <nav className="boe-sidebar-section" aria-label="Control Center">
       <NavItem
         label="Overview"
-        icon={<LayoutGrid size={15} strokeWidth={1.8} />}
+        icon={icon(LayoutGrid)}
         href={tabHref('overview')}
         replace={onMain}
         active={onMain && (tab === null || tab === 'overview')}
         onNavigate={onNavigate}
       />
-      <NavItem
-        label="Departments"
-        icon={<Building2 size={15} strokeWidth={1.8} />}
-        href={tabHref('departments')}
-        replace={onMain}
-        active={onMain && tab === 'departments'}
-        onNavigate={onNavigate}
-      />
-      <NavItem
-        label="People"
-        icon={<Users size={15} strokeWidth={1.8} />}
-        href={tabHref('people')}
-        replace={onMain}
-        active={onMain && tab === 'people'}
-        onNavigate={onNavigate}
-      />
-      <NavItem
-        label="Access Control"
-        icon={<ShieldCheck size={15} strokeWidth={1.8} />}
-        href={`${MAIN_PATH}/permissions`}
-        active={pathname === `${MAIN_PATH}/permissions`}
-        onNavigate={onNavigate}
-      />
-      {/* Action Queue used to sit here. Every row it listed was a deep link
-          into Finance or Order Requests — it decided nothing, stored nothing
-          and configured nothing, so it was a second way to reach two
-          modules rather than a Control Center function of its own.
-          The ROUTE (/admin/control-center/action-queue) is deliberately
-          left in place so existing links and bookmarks still resolve, and
-          the Finance and Orders pages it pointed at are untouched. Only
-          this navigation entry is gone. */}
-      {/* Order Numbering earns a top-level entry rather than living inside
-          Overview: an admin looking for "where do I set the next Order
-          number" scans this list, and anything not named here is, in
-          practice, unfindable. */}
-      <NavItem
-        label="Order Numbering"
-        icon={<Hash size={15} strokeWidth={1.8} />}
-        href={tabHref('order-numbering')}
-        replace={onMain}
-        active={onMain && tab === 'order-numbering'}
-        onNavigate={onNavigate}
-      />
-      {/* Module Visibility was a second, parallel way to decide who sees a
-          module, sitting one click from Access Control and disagreeing with
-          it. Access Control is now the single administrator workflow.
 
-          Nothing was deleted: app_modules still governs Showroom QR's
-          department rule and the Attendance/Payroll self-service cards, and
-          the tab's code and API routes are untouched behind
-          ?tab=modules for rollback. What changed is that it is no longer
-          presented as a workflow an administrator is meant to use. */}
-      {/* Its own page, deliberately far from the everyday Finance and
-          Orders lists. Removing a finalized test record is not a routine
-          action and must not sit next to routine ones. */}
-      <NavItem
-        label="Test Data Cleanup"
-        icon={<Eraser size={15} strokeWidth={1.8} />}
-        href={`${MAIN_PATH}/test-data-cleanup`}
-        active={pathname === `${MAIN_PATH}/test-data-cleanup`}
-        onNavigate={onNavigate}
-      />
-      {/* A SEPARATE ENTRY, not a tab of the one above, because the two
-          answer different questions. Test Data Cleanup removes ONE
-          transaction, found by searching for it. Data Management clears a
-          MODULE, where there is nothing to search for and the only choice
-          is which half. Folding them together would put "clear every Order
-          in the system" one click from a search box. */}
-      <NavItem
-        label="Data Management"
-        icon={<DatabaseZap size={15} strokeWidth={1.8} />}
-        href={`${MAIN_PATH}/data-management`}
-        active={pathname === `${MAIN_PATH}/data-management`}
-        onNavigate={onNavigate}
-      />
-      <NavItem
-        label="Change History"
-        icon={<History size={15} strokeWidth={1.8} />}
-        active={false}
-        disabled
-        badge="Soon"
-      />
-    </>
+      <div className={cc.navGroup}>
+        <span className={cc.navGroupLabel}>People</span>
+        <NavItem
+          label="Employees"
+          icon={icon(Users)}
+          href={tabHref('people')}
+          replace={onMain}
+          active={onMain && tab === 'people'}
+          onNavigate={onNavigate}
+        />
+        <NavItem
+          label="Departments"
+          icon={icon(Building2)}
+          href={tabHref('departments')}
+          replace={onMain}
+          active={onMain && tab === 'departments'}
+          onNavigate={onNavigate}
+        />
+        <NavItem
+          label="Positions"
+          icon={icon(Briefcase)}
+          href={`${MAIN_PATH}/positions`}
+          active={pathname === `${MAIN_PATH}/positions`}
+          onNavigate={onNavigate}
+        />
+      </div>
+
+      <div className={cc.navGroup}>
+        <span className={cc.navGroupLabel}>Access</span>
+        <NavItem
+          label="By Employee"
+          icon={icon(ShieldCheck)}
+          href={`${MAIN_PATH}/permissions`}
+          active={pathname === `${MAIN_PATH}/permissions`}
+          onNavigate={onNavigate}
+        />
+      </div>
+
+      <div className={cc.navGroup}>
+        <span className={cc.navGroupLabel}>System</span>
+        <NavItem
+          label="Order Numbering"
+          icon={icon(Hash)}
+          href={tabHref('order-numbering')}
+          replace={onMain}
+          active={onMain && tab === 'order-numbering'}
+          onNavigate={onNavigate}
+        />
+        {/* Test Data Cleanup removes ONE transaction, found by searching for
+            it. Data Management clears a MODULE. Two entries, on purpose. */}
+        <NavItem
+          label="Test Data Cleanup"
+          icon={icon(Eraser)}
+          href={`${MAIN_PATH}/test-data-cleanup`}
+          active={pathname === `${MAIN_PATH}/test-data-cleanup`}
+          onNavigate={onNavigate}
+        />
+        <NavItem
+          label="Data Management"
+          icon={icon(DatabaseZap)}
+          href={`${MAIN_PATH}/data-management`}
+          active={pathname === `${MAIN_PATH}/data-management`}
+          onNavigate={onNavigate}
+        />
+      </div>
+    </nav>
   )
 }
 
 function NavItem({
-  label, icon, active, href, replace, onNavigate, disabled, badge,
+  label, icon, active, href, replace, onNavigate,
 }: {
   label: string
   icon: React.ReactNode
   active: boolean
-  href?: string
+  href: string
   /** Replace the history entry instead of pushing one. */
   replace?: boolean
   onNavigate?: () => void
-  disabled?: boolean
-  badge?: string
 }) {
-  const className = `boe-nav-item${active ? ' active' : ''}`
-  const style: React.CSSProperties = {
-    fontWeight: active ? 600 : 400,
-    marginBottom: '2px',
-    opacity: disabled ? 0.55 : 1,
-    cursor: disabled ? 'default' : 'pointer',
-  }
-  const body = (
-    <>
-      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-        {icon}
-      </span>
-      {label}
-      {badge && <span className="boe-nav-badge amber">{badge}</span>}
-    </>
-  )
-
-  if (disabled || !href) {
-    return (
-      <button
-        className={className}
-        disabled={disabled}
-        title={disabled ? 'Coming soon' : undefined}
-        style={style}
-      >
-        {body}
-      </button>
-    )
-  }
-
   return (
     <Link
       href={href}
       replace={replace}
       onClick={onNavigate}
-      className={className}
+      className={`boe-nav-item${active ? ' active' : ''}`}
       aria-current={active ? 'page' : undefined}
-      style={{ ...style, textDecoration: 'none' }}
+      style={{ fontWeight: active ? 600 : 400, marginBottom: '2px', textDecoration: 'none' }}
     >
-      {body}
+      <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+        {icon}
+      </span>
+      {label}
     </Link>
   )
 }

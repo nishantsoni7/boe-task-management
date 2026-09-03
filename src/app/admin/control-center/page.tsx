@@ -1,15 +1,21 @@
 'use client'
 
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Search, Users, ShieldCheck, Settings2, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { resolveControlCenterTab, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
-import { EmptyState } from '@/components/ui/atoms'
-import { formatFullDate } from '@/lib/ui'
+import { Avatar } from '@/components/ui/atoms'
+import {
+  cc, CcSection, CcToolbar, CcTable, CcBadge, ActiveBadge, CcEmpty, CcDialog, CcField,
+} from '@/components/controlCenter/CcPrimitives'
 import { orderNumberErrorMessage, parseOrderNumberInput, formatOrderNumber } from '@/lib/orderNumbering'
 import { isSelfServiceModule } from '@/lib/moduleAccess'
+import { MODULE_ENFORCEMENT, moduleEnforcement, ENFORCEMENT_BADGE_LABEL } from '@/lib/permissions/enforcement'
+import { ENGINE_GATED_MODULE_KEYS } from '@/lib/permissions/moduleVisibility'
 import {
   useAdminMembers, useDepartments, useAppModules, useControlCenterCache,
   NO_MEMBERS, NO_DEPARTMENTS, NO_APP_MODULES,
@@ -34,223 +40,16 @@ type AppModule      = ControlCenterAppModule
 type Department     = ControlCenterDepartment
 type VisibilityType = AppModule['visibility_type']
 
-// ── Style helpers ─────────────────────────────────────────────────────────────
+const MAIN_PATH = '/admin/control-center'
 
-const SECTION: React.CSSProperties = {
-  marginBottom: 40,
-}
+// ── Module Visibility badge (hidden tab, kept for rollback) ──────────────────
 
-const SECTION_HEADER: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-end',
-  justifyContent: 'space-between',
-  gap: 16,
-  marginBottom: 16,
-  flexWrap: 'wrap',
-}
-
-const SECTION_TITLE: React.CSSProperties = {
-  fontSize: 16,
-  fontWeight: 700,
-  color: '#111318',
-  letterSpacing: '-0.01em',
-  marginBottom: 3,
-}
-
-const SECTION_DESCRIPTION: React.CSSProperties = {
-  fontSize: 12.5,
-  color: '#6B7384',
-}
-
-const PRIMARY_BTN: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#fff',
-  background: '#1A2035',
-  border: 'none',
-  borderRadius: 7,
-  padding: '7px 16px',
-  cursor: 'pointer',
-  flexShrink: 0,
-}
-
-function SectionHeading({
-  title, description, action,
-}: {
-  title: string
-  description: string
-  action?: React.ReactNode
-}) {
-  return (
-    <div style={SECTION_HEADER}>
-      <div>
-        <div style={SECTION_TITLE}>{title}</div>
-        <div style={SECTION_DESCRIPTION}>{description}</div>
-      </div>
-      {action}
-    </div>
-  )
-}
-
-const TABLE: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 13,
-  color: '#111318',
-}
-
-const TH: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '8px 12px',
-  fontWeight: 600,
-  fontSize: 11,
-  color: '#8C94A6',
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  borderBottom: '1.5px solid #E8EBF0',
-}
-
-const TD: React.CSSProperties = {
-  padding: '11px 12px',
-  borderBottom: '1px solid #F0F2F5',
-  verticalAlign: 'middle',
-}
-
-const EDIT_BTN: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#5585E8',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer',
-  padding: '3px 0',
-}
-
-const DELETE_BTN: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#B0364A',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer',
-  padding: '3px 0',
-  marginLeft: 12,
-}
-
-const PEOPLE_COUNT_BTN: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#5585E8',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer',
-  padding: 0,
-  textDecoration: 'underline',
-  textUnderlineOffset: 2,
-}
-
-const MODAL_OVERLAY: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.35)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-}
-
-const MODAL_BOX: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 14,
-  padding: '28px 28px 24px',
-  width: 400,
-  maxWidth: 'calc(100vw - 32px)',
-  boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-}
-
-const MODAL_TITLE: React.CSSProperties = {
-  fontSize: 15,
-  fontWeight: 700,
-  color: '#111318',
-  marginBottom: 20,
-}
-
-const LABEL: React.CSSProperties = {
-  display: 'block',
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#4B5563',
-  marginBottom: 6,
-}
-
-const SELECT: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 11px',
-  fontSize: 13,
-  border: '1.5px solid #D1D5DB',
-  borderRadius: 8,
-  background: '#fff',
-  color: '#111318',
-  marginBottom: 16,
-  outline: 'none',
-}
-
-const INPUT: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 11px',
-  fontSize: 13,
-  border: '1.5px solid #D1D5DB',
-  borderRadius: 8,
-  background: '#fff',
-  color: '#111318',
-  marginBottom: 16,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
-
-const BTN_ROW: React.CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  justifyContent: 'flex-end',
-  marginTop: 4,
-}
-
-const BTN_CANCEL: React.CSSProperties = {
-  padding: '8px 18px',
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#6B7384',
-  background: '#F3F4F6',
-  border: 'none',
-  borderRadius: 8,
-  cursor: 'pointer',
-}
-
-const BTN_SAVE: React.CSSProperties = {
-  padding: '8px 18px',
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#fff',
-  background: '#1A2035',
-  border: 'none',
-  borderRadius: 8,
-  cursor: 'pointer',
-}
-
-const ERROR_MSG: React.CSSProperties = {
-  fontSize: 12,
-  color: '#D94F4F',
-  marginBottom: 12,
-}
-
-// ── Visibility badge ──────────────────────────────────────────────────────────
-
-const VIS_META: Record<VisibilityType, { label: string; color: string; bg: string }> = {
-  live:            { label: 'Live',       color: '#166534', bg: '#F0FDF4' },
-  admin_only:      { label: 'Admin Only', color: '#1E40AF', bg: '#EFF6FF' },
-  department_only: { label: 'Dept Only',  color: '#92400E', bg: '#FFFBEB' },
-  custom:          { label: 'Custom',     color: '#5B21B6', bg: '#F5F3FF' },
-  hidden:          { label: 'Hidden',     color: '#4B5563', bg: '#F3F4F6' },
+const VIS_META: Record<VisibilityType, { label: string; tone: 'green' | 'blue' | 'amber' | 'violet' | 'gray' }> = {
+  live:            { label: 'Live',       tone: 'green' },
+  admin_only:      { label: 'Admin Only', tone: 'blue' },
+  department_only: { label: 'Dept Only',  tone: 'amber' },
+  custom:          { label: 'Custom',     tone: 'violet' },
+  hidden:          { label: 'Hidden',     tone: 'gray' },
 }
 
 /**
@@ -268,7 +67,7 @@ function moduleAllowedSummary(
   if (mod.visibility_type === 'department_only') {
     return mod.allowed_department?.length
       ? mod.allowed_department.map(deptLabel).join(', ')
-      : <span style={{ color: '#B0B8C8' }}>—</span>
+      : <span className={cc.faint}>—</span>
   }
   if (mod.visibility_type === 'custom') {
     const ids = mod.allowed_user_ids ?? []
@@ -279,87 +78,14 @@ function moduleAllowedSummary(
       </span>
     )
   }
-  return <span style={{ color: '#B0B8C8' }}>—</span>
-}
-
-function VisBadge({ type }: { type: VisibilityType }) {
-  const m = VIS_META[type] ?? VIS_META.live
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 700,
-      color: m.color, background: m.bg,
-      borderRadius: 5, padding: '2px 8px',
-    }}>
-      {m.label}
-    </span>
-  )
-}
-
-// ── Overview tab ─────────────────────────────────────────────────────────────
-
-const OVERVIEW_CARD: React.CSSProperties = {
-  border: '1px solid #E8EBF0',
-  borderRadius: 10,
-  padding: '16px 18px',
-  background: '#fff',
-  cursor: 'pointer',
-  textAlign: 'left',
-}
-
-const OVERVIEW_GRID: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-  gap: 12,
-  marginBottom: 28,
-}
-
-const OVERVIEW_NUMBER: React.CSSProperties = {
-  fontSize: 24,
-  fontWeight: 700,
-  color: '#111318',
-  marginBottom: 2,
-}
-
-const OVERVIEW_LABEL: React.CSSProperties = {
-  fontSize: 12.5,
-  fontWeight: 600,
-  color: '#4B5563',
-}
-
-const OVERVIEW_HINT: React.CSSProperties = {
-  fontSize: 11.5,
-  color: '#8C94A6',
-  marginTop: 4,
-}
-
-function OverviewCard({
-  number, label, hint, onClick,
-}: {
-  number: React.ReactNode
-  label: string
-  hint: string
-  onClick: () => void
-}) {
-  return (
-    <button style={OVERVIEW_CARD} onClick={onClick}>
-      <div style={OVERVIEW_NUMBER}>{number}</div>
-      <div style={OVERVIEW_LABEL}>{label}</div>
-      <div style={OVERVIEW_HINT}>{hint}</div>
-    </button>
-  )
+  return <span className={cc.faint}>—</span>
 }
 
 // ── Confirmed Order Number Cycle ─────────────────────────────────────────────
 //
 // The admin control for the next Confirmed Order number (migrations
-// 20260703000000 and 20260704000000).
-//
-// It has its own Control Center tab and its own sidebar entry. The first version
-// of this control lived at the bottom of the Overview tab, below the metric
-// grid and styled like the informational panel beside it — it rendered
-// correctly and shipped in the bundle, and it was still effectively invisible,
-// because nothing in the navigation named it. A control an admin cannot find is
-// a control that does not exist, so discoverability is the feature here.
+// 20260703000000 and 20260704000000). It has its own sidebar entry under
+// SYSTEM: a control an admin cannot find is a control that does not exist.
 //
 // Both values come from get_confirmed_order_number_cycle() rather than from the
 // table: order_number_cycle has RLS enabled with no policies, so it is not
@@ -409,7 +135,12 @@ function OrderNumberCycleTab() {
     setLoading(false)
   }, [supabase])
 
-  useEffect(() => { void load() }, [load])
+  // A FETCH IS STARTED HERE. `load` raises the loading flag before its await,
+  // and on mount that flag is already true, so React bails out of the update.
+  useEffect(() => {
+    const startFetch = () => { void load() }
+    startFetch()
+  }, [load])
 
   const parsed  = parseOrderNumberInput(input)
   const preview = parsed.ok ? formatOrderNumber(parsed.value) : null
@@ -442,163 +173,259 @@ function OrderNumberCycleTab() {
     await load()
   }
 
+  if (loading) return <div className={cc.muted} style={{ fontSize: 12.5 }}>Loading…</div>
+
+  if (loadErr) {
+    return (
+      <CcSection>
+        <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{loadErr}</div>
+        <button className="boe-btn boe-btn-ghost" onClick={() => void load()}>Retry</button>
+      </CcSection>
+    )
+  }
+
   return (
-    <div>
-      <SectionHeading
-        title="Confirmed Order Number Cycle"
-        description="Choose the number the next Confirmed Order will be given. Order Request numbers (ORD-REQ-…) are a separate scheme and are not affected."
-      />
-
-      <div style={SECTION}>
-        {loading ? (
-          <div style={{ fontSize: 12.5, color: '#8C94A6' }}>Loading…</div>
-        ) : loadErr ? (
-          <>
-            <div style={{ ...ERROR_MSG, marginBottom: 12 }}>{loadErr}</div>
-            <button style={BTN_SAVE} onClick={() => void load()}>Retry</button>
-          </>
-        ) : (
-          <>
-            <div style={{ display: 'flex', gap: 40, marginBottom: 22, flexWrap: 'wrap' }}>
-              <div>
-                <div style={OVERVIEW_NUMBER}>{cycle?.highest_existing_display ?? '—'}</div>
-                <div style={OVERVIEW_LABEL}>Highest existing Order number</div>
-              </div>
-              <div>
-                <div style={OVERVIEW_NUMBER}>
-                  {cycle?.next_number_display ?? (cycle?.exhausted ? 'Exhausted' : 'Not set')}
-                </div>
-                <div style={OVERVIEW_LABEL}>Next Confirmed Order number</div>
-              </div>
-            </div>
-
-            <label style={{ ...LABEL, display: 'block' }}>Next Order number</label>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-              <input
-                value={input}
-                onChange={e => { setInput(e.target.value); setError(''); setSaved('') }}
-                onKeyDown={e => { if (e.key === 'Enter' && canSave) void save() }}
-                style={{ ...INPUT, width: 130, marginBottom: 0 }}
-                inputMode="numeric"
-                placeholder="e.g. 25"
-                aria-label="Next Confirmed Order number"
-              />
-              {/* The live four-digit preview: it is what the admin is actually
-                  choosing, so it is shown at the moment of choosing rather than
-                  only after a save. */}
-              <div style={{ fontSize: 12.5, color: '#6B7384' }}>
-                {preview
-                  ? <>will be saved as <strong style={{ color: '#111318', fontSize: 15 }}>{preview}</strong></>
-                  : input.trim() ? <span style={{ color: '#D94F4F' }}>{parsed.ok ? '' : parsed.error}</span> : null}
-              </div>
-            </div>
-
-            <div style={{ ...BTN_ROW, justifyContent: 'flex-start', marginTop: 16 }}>
-              <button
-                style={{ ...BTN_SAVE, opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}
-                onClick={save}
-                disabled={!canSave}
-              >
-                {saving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-
-            {error && <div style={{ ...ERROR_MSG, marginTop: 12, marginBottom: 0 }}>{error}</div>}
-            {saved && <div style={{ fontSize: 12.5, color: '#166534', marginTop: 12 }}>{saved}</div>}
-
-            <div style={{
-              fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
-              border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
-              marginTop: 20, lineHeight: 1.6,
-            }}>
-              This changes the number assigned to the next future Confirmed Order.
-              Existing Orders are not renumbered.
-              <br />
-              Order numbers are always four digits, 0001 to 9999, and the next number must be
-              higher than the highest Order that already exists.
-            </div>
-          </>
-        )}
+    <>
+      <div className={cc.stats} style={{ maxWidth: 520 }}>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>{cycle?.highest_existing_display ?? '—'}</div>
+          <div className={cc.statLabel}>Highest existing Order</div>
+        </div>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>
+            {cycle?.next_number_display ?? (cycle?.exhausted ? 'Exhausted' : 'Not set')}
+          </div>
+          <div className={cc.statLabel}>Next Confirmed Order</div>
+        </div>
       </div>
-    </div>
+
+      <CcSection title="Set the next number" description="Order Request numbers (ORD-REQ-…) are a separate scheme and are not affected.">
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            className={cc.control}
+            style={{ width: 130 }}
+            value={input}
+            onChange={e => { setInput(e.target.value); setError(''); setSaved('') }}
+            onKeyDown={e => { if (e.key === 'Enter' && canSave) void save() }}
+            inputMode="numeric"
+            placeholder="e.g. 25"
+            aria-label="Next Confirmed Order number"
+          />
+          {/* The live four-digit preview: it is what the admin is actually
+              choosing, so it is shown at the moment of choosing rather than
+              only after a save. */}
+          <div className={cc.muted} style={{ fontSize: 12.5 }}>
+            {preview
+              ? <>will be saved as <strong style={{ color: '#111318', fontSize: 15 }}>{preview}</strong></>
+              : input.trim() ? <span style={{ color: '#D94F4F' }}>{parsed.ok ? '' : parsed.error}</span> : null}
+          </div>
+          <button className="boe-btn boe-btn-primary" onClick={save} disabled={!canSave}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+
+        {error && <div className={cc.error}>{error}</div>}
+        {saved && <div className={cc.success} style={{ marginTop: 10 }}>{saved}</div>}
+
+        <div className={cc.note} style={{ marginTop: 18 }}>
+          This changes the number assigned to the next future Confirmed Order.
+          Existing Orders are not renumbered.
+          <br />
+          Order numbers are always four digits, 0001 to 9999, and the next number must be
+          higher than the highest Order that already exists.
+        </div>
+      </CcSection>
+    </>
   )
 }
 
+// ── Overview ─────────────────────────────────────────────────────────────────
+//
+// A landing surface, not a dashboard: what can be managed here, where to go,
+// and whether anything in the configuration that is already loaded looks
+// wrong. Every number and every attention row is derived from the three
+// cached lists and the enforcement table in code — nothing is fetched for it.
+
+type EnforcementSummary = {
+  enforced: string[]
+  partial: string[]
+  prepared: string[]
+}
+
+/**
+ * Which modules the permission engine actually decides, per module, from the
+ * one source that answers that question (src/lib/permissions/enforcement.ts).
+ * Attendance and Payroll are admin-only by product decision and are not
+ * counted — there is no grant to enforce.
+ */
+function summarizeEnforcement(): EnforcementSummary {
+  const keys = new Set<string>([...ENGINE_GATED_MODULE_KEYS, ...Object.keys(MODULE_ENFORCEMENT)])
+  const out: EnforcementSummary = { enforced: [], partial: [], prepared: [] }
+  for (const key of keys) {
+    if (isSelfServiceModule(key)) continue
+    const state = moduleEnforcement(key).state
+    if (state === 'enforced') out.enforced.push(key)
+    else if (state === 'partial') out.partial.push(key)
+    else if (state === 'prepared') out.prepared.push(key)
+  }
+  return out
+}
+
+function titleCase(key: string): string {
+  return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+}
+
 function OverviewTab({
-  deptCount, activeDeptCount, peopleCount, moduleCount, enforcedCount, onNavigate, onOpenAccessControl,
+  members, depts, modules, peopleInDept,
 }: {
-  deptCount: number
-  activeDeptCount: number
-  peopleCount: number
-  moduleCount: number
-  enforcedCount: number
-  onNavigate: (tab: ControlCenterTab) => void
-  onOpenAccessControl: () => void
+  members: UserProfile[]
+  depts: Department[]
+  modules: AppModule[]
+  peopleInDept: (key: string) => number
 }) {
+  const live = members.filter(m => !m.is_deleted)
+  const activeMembers = live.filter(m => m.is_active)
+  const activeDepts = depts.filter(d => d.is_active)
+  const launcherModules = modules.filter(m => m.visibility_type !== 'hidden')
+  const enforcement = summarizeEnforcement()
+  const enforcementTotal = enforcement.enforced.length + enforcement.partial.length + enforcement.prepared.length
+
+  const moduleName = (key: string) => modules.find(m => m.module_key === key)?.module_name ?? titleCase(key)
+
+  // Attention rows — real conditions in loaded data, nothing predicted.
+  const knownDept = new Set(depts.map(d => d.department_key))
+  const withoutDepartment = activeMembers.filter(m => !m.team || !knownDept.has(m.team))
+  const inactiveWithPeople = depts.filter(d => !d.is_active && peopleInDept(d.department_key) > 0)
+  const customEmpty = modules.filter(m => m.visibility_type === 'custom' && (m.allowed_user_ids?.length ?? 0) === 0)
+  const notEnforced = [...enforcement.partial, ...enforcement.prepared]
+
+  const attention: { key: string; text: React.ReactNode; href: string; action: string }[] = []
+  if (withoutDepartment.length > 0) {
+    attention.push({
+      key: 'no-dept',
+      text: <>{withoutDepartment.length} active {withoutDepartment.length === 1 ? 'employee has' : 'employees have'} no department.</>,
+      href: `${MAIN_PATH}?tab=people`, action: 'Review employees',
+    })
+  }
+  for (const d of inactiveWithPeople) {
+    attention.push({
+      key: `inactive-${d.department_key}`,
+      text: <><strong>{d.department_name}</strong> is inactive but still has {peopleInDept(d.department_key)} {peopleInDept(d.department_key) === 1 ? 'person' : 'people'} assigned.</>,
+      href: `${MAIN_PATH}?tab=departments`, action: 'Open departments',
+    })
+  }
+  for (const m of customEmpty) {
+    attention.push({
+      key: `custom-${m.module_key}`,
+      text: <><strong>{m.module_name}</strong> is set to Custom visibility with no members, so nobody but administrators can see it.</>,
+      href: `${MAIN_PATH}?tab=modules`, action: 'Open visibility',
+    })
+  }
+
   return (
-    <div>
-      <SectionHeading
-        title="Overview"
-        description="A quick look at departments, people, and module access — jump into any section below."
-      />
-      <div style={OVERVIEW_GRID}>
-        <OverviewCard
-          number={activeDeptCount}
-          label="Active Departments"
-          hint={`${deptCount} total`}
-          onClick={() => onNavigate('departments')}
-        />
-        <OverviewCard
-          number={peopleCount}
-          label="People"
-          hint="View and reassign departments"
-          onClick={() => onNavigate('people')}
-        />
-        <OverviewCard
-          number={moduleCount}
-          label="Modules"
-          hint="Managed in Access Control"
-          onClick={() => onNavigate('modules')}
-        />
-        <OverviewCard
-          number={`${enforcedCount}/${moduleCount}`}
-          label="Access Control"
-          hint="Modules with enforced permissions"
-          onClick={onOpenAccessControl}
-        />
+    <>
+      <div className={cc.stats}>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>{activeMembers.length}</div>
+          <div className={cc.statLabel}>Active employees</div>
+          <div className={cc.statMeta}>{live.length - activeMembers.length} deactivated</div>
+        </div>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>{activeDepts.length}</div>
+          <div className={cc.statLabel}>Active departments</div>
+          <div className={cc.statMeta}>{depts.length} in total</div>
+        </div>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>{launcherModules.length}</div>
+          <div className={cc.statLabel}>Modules in the launcher</div>
+          <div className={cc.statMeta}>{modules.length - launcherModules.length} hidden</div>
+        </div>
+        <div className={cc.stat}>
+          <div className={cc.statValue}>{enforcement.enforced.length}<span className={cc.muted} style={{ fontSize: 13, fontWeight: 500 }}> / {enforcementTotal}</span></div>
+          <div className={cc.statLabel}>Modules with enforced access</div>
+          <div className={cc.statMeta}>
+            {enforcement.partial.length > 0 && `${enforcement.partial.length} ${ENFORCEMENT_BADGE_LABEL.partial.toLowerCase()} · `}
+            {enforcement.prepared.length} {ENFORCEMENT_BADGE_LABEL.prepared.toLowerCase()}
+          </div>
+        </div>
       </div>
-      {/* A second way in. The sidebar entry is the primary fix for finding this
-          control; this card means an admin who starts on Overview also lands on
-          it without having to already know the feature exists. */}
-      <div style={{
-        fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
-        border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
-        marginBottom: 12,
-      }}>
-        <strong>Confirmed Order numbering</strong> — set the number the next Confirmed Order
-        will be given in{' '}
-        <button
-          onClick={() => onNavigate('order-numbering')}
-          style={{ color: '#5585E8', background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}
-        >
-          Order Numbering
-        </button>.
+
+      <div className={cc.quick}>
+        <div className={cc.quickCard}>
+          <div className={cc.quickHead}><Users size={15} strokeWidth={1.9} />People</div>
+          <div className={cc.quickDesc}>Who has an account, which department and position they hold, and whether the account is active.</div>
+          <div className={cc.quickLinks}>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=people`}>Employees</Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=departments`}>Departments</Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/positions`}>Positions</Link>
+            <Link className={`${cc.quickLink} ${cc.quickLinkMuted}`} href="/admin/members">
+              Employee Records <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} />
+            </Link>
+          </div>
+        </div>
+        <div className={cc.quickCard}>
+          <div className={cc.quickHead}><ShieldCheck size={15} strokeWidth={1.9} />Access</div>
+          <div className={cc.quickDesc}>What each employee can open and do in every module: a level per module, with individual permissions underneath.</div>
+          <div className={cc.quickLinks}>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/permissions`}>By Employee</Link>
+          </div>
+        </div>
+        <div className={cc.quickCard}>
+          <div className={cc.quickHead}><Settings2 size={15} strokeWidth={1.9} />System</div>
+          <div className={cc.quickDesc}>Numbering and the test-data controls. Nothing here is routine, and each one explains itself before it acts.</div>
+          <div className={cc.quickLinks}>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=order-numbering`}>Order Numbering</Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/test-data-cleanup`}>Test Data Cleanup</Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/data-management`}>Data Management</Link>
+          </div>
+        </div>
       </div>
-      <div style={{
-        fontSize: 12.5, color: '#4B5563', background: '#FAFBFC',
-        border: '1px solid #E8EBF0', borderRadius: 10, padding: '12px 16px',
-      }}>
-        <strong>Sample Tracking</strong>{' '}is the only module whose permissions are actively enforced today.
-        Other modules&apos; access settings are prepared but not yet enforced — see{' '}
-        <button
-          onClick={onOpenAccessControl}
-          style={{ color: '#5585E8', background: 'none', border: 'none', padding: 0, font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}
-        >
-          Access Control
-        </button>{' '}
-        for details.
-      </div>
-    </div>
+
+      <CcSection title="Needs attention" description="Checked against the departments, employees and module settings already loaded.">
+        <div className={cc.list}>
+          {attention.length === 0 ? (
+            <div className={cc.listRow}>
+              <span className={`${cc.dot} ${cc.dotOk}`} />
+              Nothing needs attention. Every active employee has a department, no inactive department still holds people, and no module is set to an empty Custom audience.
+            </div>
+          ) : attention.map(row => (
+            <div key={row.key} className={cc.listRow}>
+              <span className={cc.dot} />
+              <span className={cc.listMain}>{row.text}</span>
+              <Link className={cc.linkBtn} href={row.href}>{row.action}</Link>
+            </div>
+          ))}
+        </div>
+      </CcSection>
+
+      {/* Which modules the permission engine decides today, from the one
+          source that answers it (src/lib/permissions/enforcement.ts). A grant
+          in a module that is not enforced is saved but decides nothing, and an
+          administrator handing out access deserves to know that here, not
+          only inside the Change Access dialog. */}
+      <CcSection title="Access enforcement" description="Modules where saved permissions are not yet fully applied by the engine. Every other module is enforced in the database and the screen.">
+        <div className={cc.list}>
+          {notEnforced.length === 0 ? (
+            <div className={cc.listRow}>
+              <span className={`${cc.dot} ${cc.dotOk}`} />
+              Every module&apos;s permissions are enforced.
+            </div>
+          ) : notEnforced.map(key => {
+            const e = moduleEnforcement(key)
+            return (
+              <div key={key} className={cc.listRow}>
+                <span className={cc.dot} />
+                <span className={cc.listMain}>
+                  <strong>{moduleName(key)}</strong>
+                  <div className={cc.listDetail}>{e.detail}</div>
+                </span>
+                <CcBadge tone={e.state === 'partial' ? 'amber' : 'gray'}>{ENFORCEMENT_BADGE_LABEL[e.state]}</CcBadge>
+              </div>
+            )
+          })}
+        </div>
+      </CcSection>
+    </>
   )
 }
 
@@ -613,7 +440,6 @@ export default function ControlCenterPage() {
 }
 
 function ControlCenterPageInner() {
-  const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
   const [token,    setToken]    = useState('')
@@ -631,16 +457,10 @@ function ControlCenterPageInner() {
   const loading = membersQuery.isPending || deptsQuery.isPending || modulesQuery.isPending
 
   // ── Active tab — the URL (?tab=) is the single source of truth, read
-  // reactively via useSearchParams so cross-page navigation (e.g. from Access
-  // Control, which has no in-place tab state) lands on the right section on
-  // the first render, not just after a subsequent in-place click.
+  // reactively via useSearchParams so cross-page navigation lands on the right
+  // section on the first render.
   const searchParams = useSearchParams()
-  const tabParam = searchParams.get('tab')
-  const tab: ControlCenterTab = resolveControlCenterTab(tabParam)
-
-  function changeTab(next: ControlCenterTab) {
-    router.replace(`/admin/control-center?tab=${next}`)
-  }
+  const tab: ControlCenterTab = resolveControlCenterTab(searchParams.get('tab'))
 
   // ── Module edit modal ────────────────────────────────────────────────────
   const [editMod,        setEditMod]        = useState<AppModule | null>(null)
@@ -752,8 +572,18 @@ function ControlCenterPageInner() {
     setDeptError('')
   }
 
+  function closeDeptModal() {
+    setEditDept(null)
+    setAddingDept(false)
+  }
+
   function openDeleteDept(dept: Department) {
     setDeleteDept(dept)
+    setDeleteError('')
+  }
+
+  function closeDeleteDept() {
+    setDeleteDept(null)
     setDeleteError('')
   }
 
@@ -970,229 +800,206 @@ function ControlCenterPageInner() {
     members.filter(m => m.team === key).length
 
   const peopleRoles = Array.from(new Set(members.filter(m => !m.is_deleted).map(m => m.role))).sort()
-
   const peopleCount = members.filter(m => !m.is_deleted).length
-  const enforcedCount = modules.filter(m => m.module_key === 'sample_tracking').length
 
   return (
     <>
-      <div style={{ maxWidth: 900 }}>
+      {/* ── Overview ─────────────────────────────────────────────────────── */}
+      {tab === 'overview' && (
+        <OverviewTab members={members} depts={depts} modules={modules} peopleInDept={peopleInDept} />
+      )}
 
-        {/* ── Overview ─────────────────────────────────────────────────────── */}
-        {tab === 'overview' && (
-          <OverviewTab
-            deptCount={depts.length}
-            activeDeptCount={activeDepts.length}
-            peopleCount={peopleCount}
-            moduleCount={modules.length}
-            enforcedCount={enforcedCount}
-            onNavigate={changeTab}
-            onOpenAccessControl={() => router.push('/admin/control-center/permissions')}
-          />
-        )}
+      {/* ── Order Numbering ──────────────────────────────────────────────── */}
+      {tab === 'order-numbering' && <OrderNumberCycleTab />}
 
-        {/* ── Confirmed Order Number Cycle ─────────────────────────────────── */}
-        {tab === 'order-numbering' && <OrderNumberCycleTab />}
-
-        {/* ── Departments ──────────────────────────────────────────────────── */}
-        {tab === 'departments' && (
-          <div style={SECTION}>
-            <SectionHeading
-              title="Departments"
-              description="Manage company departments used for people assignment and access defaults."
-              action={<button style={PRIMARY_BTN} onClick={openAddDept}>Add Department</button>}
-            />
-            {depts.length === 0 ? (
-              <EmptyState message="No departments yet." hint="Add a department to start assigning people to it." />
-            ) : (
-              <table style={TABLE}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Department</th>
-                    <th style={TH}>Key</th>
-                    <th style={TH}>People</th>
-                    <th style={TH}>Status</th>
-                    <th style={{ ...TH, width: 120 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {depts.map(dept => (
-                    <tr key={dept.department_key}>
-                      <td style={{ ...TD, fontWeight: 600 }}>{dept.department_name}</td>
-                      <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
-                        {dept.department_key}
-                      </td>
-                      <td style={TD}>
-                        <button style={PEOPLE_COUNT_BTN} onClick={() => openPeopleDept(dept)}>
-                          {peopleInDept(dept.department_key)}
-                        </button>
-                      </td>
-                      <td style={TD}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700,
-                          color: dept.is_active ? '#166534' : '#4B5563',
-                          background: dept.is_active ? '#F0FDF4' : '#F3F4F6',
-                          borderRadius: 5, padding: '2px 8px',
-                        }}>
-                          {dept.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td style={TD}>
-                        <button style={EDIT_BTN} onClick={() => openEditDept(dept)}>Edit</button>
-                        <button style={DELETE_BTN} onClick={() => openDeleteDept(dept)}>Delete</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-
-        {/* ── People ───────────────────────────────────────────────────────── */}
-        {tab === 'people' && (
-          <div style={SECTION}>
-            <SectionHeading
-              title="People"
-              description="Manage employees, roles, departments, and account status."
-            />
-
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+      {/* ── Employees ────────────────────────────────────────────────────── */}
+      {tab === 'people' && (
+        <CcSection>
+          <CcToolbar>
+            <div className={cc.search}>
+              <Search size={13} strokeWidth={2} />
               <input
-                style={{ ...INPUT, marginBottom: 0, maxWidth: 240 }}
-                placeholder="Search by name or email…"
+                className={cc.control}
+                placeholder="Search name or email"
+                aria-label="Search employees"
                 value={peopleSearch}
                 onChange={e => setPeopleSearch(e.target.value)}
               />
-              <select
-                style={{ ...SELECT, marginBottom: 0, width: 170 }}
-                value={peopleDeptFilter}
-                onChange={e => setPeopleDeptFilter(e.target.value)}
-              >
-                <option value="">All departments</option>
-                {depts.map(d => (
-                  <option key={d.department_key} value={d.department_key}>{d.department_name}</option>
-                ))}
-              </select>
-              <select
-                style={{ ...SELECT, marginBottom: 0, width: 130 }}
-                value={peopleRoleFilter}
-                onChange={e => setPeopleRoleFilter(e.target.value)}
-              >
-                <option value="">All roles</option>
-                {peopleRoles.map(r => (
-                  <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r}</option>
-                ))}
-              </select>
-              <select
-                style={{ ...SELECT, marginBottom: 0, width: 130 }}
-                value={peopleStatusFilter}
-                onChange={e => setPeopleStatusFilter(e.target.value)}
-              >
-                <option value="">All statuses</option>
-                <option value="active">Active</option>
-                <option value="inactive">Inactive</option>
-              </select>
             </div>
+            <select className={cc.control} aria-label="Department" value={peopleDeptFilter} onChange={e => setPeopleDeptFilter(e.target.value)}>
+              <option value="">All departments</option>
+              {depts.map(d => (
+                <option key={d.department_key} value={d.department_key}>{d.department_name}</option>
+              ))}
+            </select>
+            <select className={cc.control} aria-label="Role" value={peopleRoleFilter} onChange={e => setPeopleRoleFilter(e.target.value)}>
+              <option value="">All roles</option>
+              {peopleRoles.map(r => (
+                <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r}</option>
+              ))}
+            </select>
+            <select className={cc.control} aria-label="Status" value={peopleStatusFilter} onChange={e => setPeopleStatusFilter(e.target.value)}>
+              <option value="">All statuses</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+            <span className={cc.count}>
+              {filteredMembers.length === peopleCount
+                ? `${peopleCount} ${peopleCount === 1 ? 'employee' : 'employees'}`
+                : `${filteredMembers.length} of ${peopleCount}`}
+            </span>
+            <span className={cc.toolbarGrow} />
+            {/* Accounts, roles, positions and passwords are managed in Employee
+                Records. This screen changes departments only, so the full
+                editor is one click away rather than duplicated here. */}
+            <Link href="/admin/members" className="boe-btn boe-btn-ghost">
+              Employee Records <ArrowUpRight size={12} />
+            </Link>
+          </CcToolbar>
 
-            {filteredMembers.length === 0 ? (
-              <EmptyState message="No people match these filters." />
-            ) : (
-              <table style={TABLE}>
-                <thead>
-                  <tr>
-                    <th style={TH}>Name</th>
-                    <th style={TH}>Email</th>
-                    <th style={TH}>Role</th>
-                    <th style={TH}>Department</th>
-                    <th style={TH}>Joined</th>
-                    <th style={TH}>Status</th>
-                    <th style={{ ...TH, width: 60 }}></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMembers.map(member => (
-                    <tr key={member.id}>
-                      <td style={{ ...TD, fontWeight: 600 }}>{member.full_name}</td>
-                      <td style={{ ...TD, color: '#6B7384' }}>{member.email}</td>
-                      <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{member.role}</td>
-                      <td style={{ ...TD, color: member.team ? '#111318' : '#B0B8C8' }}>
-                        {deptLabel(member.team)}
-                      </td>
-                      <td style={{ ...TD, color: '#6B7384' }}>
-                        {member.created_at ? formatFullDate(member.created_at) : '—'}
-                      </td>
-                      <td style={TD}>
-                        <span style={{
-                          fontSize: 11, fontWeight: 700,
-                          color: member.is_active ? '#166534' : '#4B5563',
-                          background: member.is_active ? '#F0FDF4' : '#F3F4F6',
-                          borderRadius: 5, padding: '2px 8px',
-                        }}>
-                          {member.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td style={TD}>
-                        <button style={EDIT_BTN} onClick={() => openEditUser(member)}>Edit</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
-
-        {/* ── Module Visibility ───────────────────────────────────────────── */}
-        {tab === 'modules' && (
-          <div style={SECTION}>
-            <SectionHeading
-              title="Module Visibility"
-              description="Control which modules appear in the app launcher, and to whom."
-            />
-            <table style={TABLE}>
+          {filteredMembers.length === 0 ? (
+            <CcEmpty message="No employees match these filters." />
+          ) : (
+            <CcTable>
               <thead>
                 <tr>
-                  <th style={TH}>Module</th>
-                  <th style={TH}>Visibility</th>
-                  <th style={TH}>Allowed</th>
-                  <th style={TH}>Route</th>
-                  <th style={{ ...TH, width: 60 }}></th>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>Role</th>
+                  <th>Position</th>
+                  <th>Status</th>
+                  <th className={cc.right}></th>
                 </tr>
               </thead>
               <tbody>
-                {modules.map(mod => (
-                  <tr key={mod.module_key}>
-                    <td style={TD}>
-                      <span style={{ fontWeight: 600 }}>{mod.module_name}</span>
+                {filteredMembers.map(member => (
+                  <tr key={member.id}>
+                    <td>
+                      <div className={cc.person}>
+                        <Avatar name={member.full_name} size={26} />
+                        <div style={{ minWidth: 0 }}>
+                          <div className={cc.personName}>{member.full_name}</div>
+                          <div className={cc.personSub}>{member.email}</div>
+                        </div>
+                      </div>
                     </td>
-                    <td style={TD}><VisBadge type={mod.visibility_type} /></td>
-                    <td style={{ ...TD, color: '#111318' }}>
-                      {moduleAllowedSummary(mod, deptLabel, memberLabel)}
-                    </td>
-                    <td style={{ ...TD, color: '#6B7384', fontFamily: 'monospace', fontSize: 12 }}>
-                      {mod.route_path}
-                    </td>
-                    <td style={TD}>
-                      <button style={EDIT_BTN} onClick={() => openEditMod(mod)}>Edit</button>
+                    <td className={member.team ? undefined : cc.faint}>{deptLabel(member.team)}</td>
+                    <td className={`${cc.muted} ${cc.cap}`}>{member.role}</td>
+                    <td className={member.position ? cc.muted : cc.faint}>{member.position ?? '—'}</td>
+                    <td><ActiveBadge active={member.is_active} /></td>
+                    <td className={cc.right}>
+                      <button className={cc.linkBtn} onClick={() => openEditUser(member)}>Change department</button>
                     </td>
                   </tr>
                 ))}
               </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+            </CcTable>
+          )}
+        </CcSection>
+      )}
 
-      {/* ── Module edit modal ─────────────────────────────────────────────── */}
+      {/* ── Departments ──────────────────────────────────────────────────── */}
+      {tab === 'departments' && (
+        <CcSection>
+          <CcToolbar>
+            <span className={cc.count}>
+              {activeDepts.length} active · {depts.length - activeDepts.length} inactive
+            </span>
+            <span className={cc.toolbarGrow} />
+            <button className="boe-btn boe-btn-primary" onClick={openAddDept}>Add Department</button>
+          </CcToolbar>
+
+          {depts.length === 0 ? (
+            <CcEmpty message="No departments yet." hint="Add a department to start assigning people to it." />
+          ) : (
+            <CcTable>
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>People</th>
+                  <th>Status</th>
+                  <th className={cc.right}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {depts.map(dept => (
+                  <tr key={dept.department_key}>
+                    <td>
+                      <div style={{ fontWeight: 600 }}>{dept.department_name}</div>
+                      <div className={cc.mono}>{dept.department_key}</div>
+                    </td>
+                    <td>
+                      <button
+                        className={cc.countBtn}
+                        onClick={() => openPeopleDept(dept)}
+                        title="See who is in this department"
+                      >
+                        {peopleInDept(dept.department_key)}
+                      </button>
+                    </td>
+                    <td><ActiveBadge active={dept.is_active} /></td>
+                    <td className={cc.right}>
+                      <span className={cc.rowActions}>
+                        <button className={cc.linkBtn} onClick={() => openEditDept(dept)}>Edit</button>
+                        <button className={`${cc.linkBtn} ${cc.linkBtnMuted}`} onClick={() => openDeleteDept(dept)}>Delete</button>
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </CcTable>
+          )}
+        </CcSection>
+      )}
+
+      {/* ── Module Visibility (hidden; ?tab=modules, kept for rollback) ──── */}
+      {tab === 'modules' && (
+        <CcSection>
+          <CcTable>
+            <thead>
+              <tr>
+                <th>Module</th>
+                <th>Visibility</th>
+                <th>Allowed</th>
+                <th>Route</th>
+                <th className={cc.right}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {modules.map(mod => (
+                <tr key={mod.module_key}>
+                  <td style={{ fontWeight: 600 }}>{mod.module_name}</td>
+                  <td><CcBadge tone={(VIS_META[mod.visibility_type] ?? VIS_META.live).tone}>{(VIS_META[mod.visibility_type] ?? VIS_META.live).label}</CcBadge></td>
+                  <td>{moduleAllowedSummary(mod, deptLabel, memberLabel)}</td>
+                  <td className={cc.mono}>{mod.route_path}</td>
+                  <td className={cc.right}>
+                    <button className={cc.linkBtn} onClick={() => openEditMod(mod)}>Edit</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </CcTable>
+        </CcSection>
+      )}
+
+      {/* ── Module edit dialog ────────────────────────────────────────────── */}
       {editMod && (
-        <div style={MODAL_OVERLAY} onClick={() => setEditMod(null)}>
-          <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-            <div style={MODAL_TITLE}>Edit — {editMod.module_name}</div>
-
-            <label style={LABEL}>Visibility</label>
+        <CcDialog
+          title={editMod.module_name}
+          subtitle="Who sees this module in the launcher"
+          onClose={() => setEditMod(null)}
+          footer={
+            <>
+              <button className="boe-btn boe-btn-ghost" onClick={() => setEditMod(null)}>Cancel</button>
+              <button className="boe-btn boe-btn-primary" onClick={saveModule} disabled={modSaving}>
+                {modSaving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          <CcField label="Visibility">
             <select
-              style={SELECT}
+              className={cc.fieldControl}
               value={modVisType}
               onChange={e => setModVisType(e.target.value as VisibilityType)}
             >
@@ -1202,327 +1009,249 @@ function ControlCenterPageInner() {
               <option value="custom">Custom — chosen members</option>
               <option value="hidden">Hidden — not shown in launcher</option>
             </select>
+          </CcField>
 
-            {/* Attendance and Payroll are two surfaces under one name: the
-                management module, which reads the whole company and is admins
-                only, and the employee's own record. This setting governs the
-                second one. Said here, at the moment of choosing, because an
-                admin picking members needs to know what they are handing out —
-                and, just as much, what they are not. See
-                SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts. */}
-            {isSelfServiceModule(editMod.module_key) && (
-              <div style={{
-                marginTop: -8, marginBottom: 16, padding: '10px 12px', borderRadius: 8,
-                background: '#FAFBFC', border: '1px solid #E8EBF0',
-                fontSize: 12, color: '#4B5563', lineHeight: 1.5,
-              }}>
-                This controls who can see{' '}
-                <strong>their own {selfServiceNoun(editMod.module_key)}</strong>. Managing{' '}
-                {editMod.module_name}{' '}for the whole company — everyone&rsquo;s records,
-                and every administrative action — stays with admins and cannot be granted here.
-              </div>
-            )}
-
-            {/* One line, only for the self-service modules, and only once Custom
-                is actually chosen. Every other module keeps the plain picker. */}
-            {modVisType === 'custom' && isSelfServiceModule(editMod.module_key) && (
-              <div style={{
-                marginTop: -8, marginBottom: 12,
-                fontSize: 12, color: '#6B7384', lineHeight: 1.5,
-              }}>
-                Selected members can view their own {selfServiceNoun(editMod.module_key)}.
-              </div>
-            )}
-
-            {modVisType === 'custom' && (
-              <ModuleMemberPicker
-                members={pickableMembers}
-                selectedIds={modAllowedUsers}
-                onToggle={toggleModAllowedUser}
-                onRemove={id => setModAllowedUsers(prev => prev.filter(u => u !== id))}
-              />
-            )}
-
-            {modVisType === 'department_only' && (
-              <>
-                <label style={LABEL}>Allowed Departments</label>
-                <div style={{
-                  border: '1.5px solid #D1D5DB', borderRadius: 8,
-                  padding: '10px 12px', marginBottom: 8,
-                  maxHeight: 180, overflowY: 'auto',
-                }}>
-                  {activeDepts.length === 0 ? (
-                    <div style={{ fontSize: 12.5, color: '#8C94A6' }}>No active departments.</div>
-                  ) : (
-                    activeDepts.map(d => (
-                      <label
-                        key={d.department_key}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 8,
-                          fontSize: 13, cursor: 'pointer', padding: '4px 0',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={modAllowedDepts.includes(d.department_key)}
-                          onChange={() => toggleModAllowedDept(d.department_key)}
-                        />
-                        {d.department_name}
-                      </label>
-                    ))
-                  )}
-                </div>
-                <div style={{ fontSize: 11.5, color: '#8C94A6', marginBottom: 16 }}>
-                  {modAllowedDepts.length > 0
-                    ? `Selected: ${modAllowedDepts.map(deptLabel).join(', ')}`
-                    : 'No departments selected — module will be hidden from all non-admins.'}
-                </div>
-              </>
-            )}
-
-            {modError && <div style={ERROR_MSG}>{modError}</div>}
-
-            <div style={BTN_ROW}>
-              <button style={BTN_CANCEL} onClick={() => setEditMod(null)}>Cancel</button>
-              <button style={BTN_SAVE} onClick={saveModule} disabled={modSaving}>
-                {modSaving ? 'Saving…' : 'Save'}
-              </button>
+          {/* Attendance and Payroll are two surfaces under one name: the
+              management module, which reads the whole company and is admins
+              only, and the employee's own record. This setting governs the
+              second one. See SELF_SERVICE_MODULE_KEYS in src/lib/moduleAccess.ts. */}
+          {isSelfServiceModule(editMod.module_key) && (
+            <div className={cc.note} style={{ marginBottom: 14 }}>
+              This controls who can see{' '}
+              <strong>their own {selfServiceNoun(editMod.module_key)}</strong>. Managing{' '}
+              {editMod.module_name}{' '}for the whole company — everyone&rsquo;s records,
+              and every administrative action — stays with admins and cannot be granted here.
             </div>
-          </div>
-        </div>
+          )}
+
+          {modVisType === 'custom' && isSelfServiceModule(editMod.module_key) && (
+            <div className={cc.muted} style={{ fontSize: 12, marginBottom: 10 }}>
+              Selected members can view their own {selfServiceNoun(editMod.module_key)}.
+            </div>
+          )}
+
+          {modVisType === 'custom' && (
+            <ModuleMemberPicker
+              members={pickableMembers}
+              selectedIds={modAllowedUsers}
+              onToggle={toggleModAllowedUser}
+              onRemove={id => setModAllowedUsers(prev => prev.filter(u => u !== id))}
+            />
+          )}
+
+          {modVisType === 'department_only' && (
+            <CcField
+              label="Allowed departments"
+              hint={modAllowedDepts.length > 0
+                ? `Selected: ${modAllowedDepts.map(deptLabel).join(', ')}`
+                : 'No departments selected — the module will be hidden from all non-admins.'}
+            >
+              <div className={cc.pickerBox}>
+                {activeDepts.length === 0 ? (
+                  <div className={cc.muted} style={{ fontSize: 12.5 }}>No active departments.</div>
+                ) : (
+                  activeDepts.map(d => (
+                    <label key={d.department_key} className={cc.check} style={{ padding: '4px 0' }}>
+                      <input
+                        type="checkbox"
+                        checked={modAllowedDepts.includes(d.department_key)}
+                        onChange={() => toggleModAllowedDept(d.department_key)}
+                      />
+                      {d.department_name}
+                    </label>
+                  ))
+                )}
+              </div>
+            </CcField>
+          )}
+
+          {modError && <div className={cc.error}>{modError}</div>}
+        </CcDialog>
       )}
 
-      {/* ── Department modal (add / edit) ─────────────────────────────────── */}
+      {/* ── Department dialog (add / edit) ────────────────────────────────── */}
       {(editDept || addingDept) && (
-        <div style={MODAL_OVERLAY} onClick={() => { setEditDept(null); setAddingDept(false) }}>
-          <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-            <div style={MODAL_TITLE}>
-              {addingDept ? 'Add Department' : `Edit — ${editDept!.department_name}`}
-            </div>
-
-            <label style={LABEL}>Department Name</label>
-            <input
-              style={INPUT}
-              value={deptName}
-              onChange={e => setDeptName(e.target.value)}
-              placeholder="e.g. Business Development"
-            />
-
-            {addingDept && (
-              <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: -12, marginBottom: 16 }}>
-                A short key is generated automatically from this name.
-              </div>
-            )}
-
-            {!addingDept && (
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 16 }}>
-                <input
-                  type="checkbox"
-                  checked={deptActive}
-                  onChange={e => setDeptActive(e.target.checked)}
-                />
-                Active
-              </label>
-            )}
-
-            {deptError && <div style={ERROR_MSG}>{deptError}</div>}
-
-            <div style={BTN_ROW}>
-              <button style={BTN_CANCEL} onClick={() => { setEditDept(null); setAddingDept(false) }}>
-                Cancel
-              </button>
-              <button style={BTN_SAVE} onClick={saveDept} disabled={deptSaving}>
+        <CcDialog
+          title={addingDept ? 'Add Department' : editDept!.department_name}
+          subtitle={addingDept ? 'A short key is generated automatically from the name.' : 'Rename the department or change whether it is active.'}
+          onClose={closeDeptModal}
+          footer={
+            <>
+              <button className="boe-btn boe-btn-ghost" onClick={closeDeptModal}>Cancel</button>
+              <button className="boe-btn boe-btn-primary" onClick={saveDept} disabled={deptSaving}>
                 {deptSaving ? 'Saving…' : 'Save'}
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <CcField label="Department name">
+            <input
+              className={cc.fieldControl}
+              value={deptName}
+              onChange={e => setDeptName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter' && !deptSaving) void saveDept() }}
+              placeholder="e.g. Business Development"
+              autoFocus
+            />
+          </CcField>
+
+          {!addingDept && (
+            <label className={cc.check}>
+              <input
+                type="checkbox"
+                checked={deptActive}
+                onChange={e => setDeptActive(e.target.checked)}
+              />
+              Active
+            </label>
+          )}
+
+          {deptError && <div className={cc.error}>{deptError}</div>}
+        </CcDialog>
       )}
 
-      {/* ── Department delete modal ─────────────────────────────────────────── */}
+      {/* ── Department delete dialog ──────────────────────────────────────── */}
       {deleteDept && (
-        <div style={MODAL_OVERLAY} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
-          <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-            <div style={MODAL_TITLE}>Delete — {deleteDept.department_name}</div>
-
-            {peopleInDept(deleteDept.department_key) > 0 ? (
-              <>
-                <div style={{ fontSize: 13, color: '#111318', marginBottom: 20 }}>
-                  This department has people assigned. Move them before deleting.
-                </div>
-                <div style={BTN_ROW}>
-                  <button style={BTN_SAVE} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
-                    OK
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ fontSize: 13, color: '#111318', marginBottom: 16 }}>
-                  Delete <strong>{deleteDept.department_name}</strong>? This cannot be undone.
-                </div>
-
-                {deleteError && <div style={ERROR_MSG}>{deleteError}</div>}
-
-                <div style={BTN_ROW}>
-                  <button style={BTN_CANCEL} onClick={() => { setDeleteDept(null); setDeleteError('') }}>
-                    Cancel
-                  </button>
-                  <button
-                    style={{ ...BTN_SAVE, background: '#B0364A' }}
-                    onClick={confirmDeleteDept}
-                    disabled={deleteSaving}
-                  >
-                    {deleteSaving ? 'Deleting…' : 'Delete'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Department people popup ─────────────────────────────────────────── */}
-      {peopleDept && (
-        <div style={MODAL_OVERLAY} onClick={closePeopleDept}>
-          <div
-            style={{ ...MODAL_BOX, width: 860, maxWidth: 'calc(100vw - 32px)' }}
-            onClick={e => e.stopPropagation()}
+        peopleInDept(deleteDept.department_key) > 0 ? (
+          <CcDialog
+            title={`Delete ${deleteDept.department_name}`}
+            onClose={closeDeleteDept}
+            footer={<button className="boe-btn boe-btn-primary" onClick={closeDeleteDept}>OK</button>}
           >
-            <div style={MODAL_TITLE}>People in {peopleDept.department_name}</div>
-
-            {(() => {
-              const people = members.filter(m => !m.is_deleted && m.team === peopleDept.department_key)
-              if (people.length === 0) {
-                return (
-                  <div style={{ fontSize: 13, color: '#6B7384', marginTop: 12, marginBottom: 4 }}>
-                    No people are assigned to this department.
-                  </div>
-                )
-              }
-              return (
-                <div style={{ marginTop: 12, overflow: 'hidden', borderRadius: 8 }}>
-                  <table style={{ ...TABLE, tableLayout: 'fixed' }}>
-                    <colgroup>
-                      <col style={{ width: '17%' }} />
-                      <col style={{ width: '26%' }} />
-                      <col style={{ width: '9%' }} />
-                      <col style={{ width: '22%' }} />
-                      <col style={{ width: '11%' }} />
-                      <col style={{ width: '15%' }} />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th style={TH}>Name</th>
-                        <th style={TH}>Email</th>
-                        <th style={TH}>Role</th>
-                        <th style={TH}>Department</th>
-                        <th style={TH}>Status</th>
-                        <th style={{ ...TH, textAlign: 'right' }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {people.map(person => {
-                        const isEditing = editingPersonId === person.id
-                        return (
-                          <tr key={person.id}>
-                            <td style={{ ...TD, fontWeight: 600, wordBreak: 'break-word' }}>
-                              {person.full_name}
-                            </td>
-                            <td style={{
-                              ...TD, color: '#6B7384',
-                              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                            }}>
-                              {person.email}
-                            </td>
-                            <td style={{ ...TD, color: '#6B7384', textTransform: 'capitalize' }}>{person.role}</td>
-                            <td style={TD}>
-                              {isEditing ? (
-                                <>
-                                  <select
-                                    style={{ ...SELECT, marginBottom: 0, padding: '5px 8px', fontSize: 12.5 }}
-                                    value={editingPersonTeam}
-                                    onChange={e => setEditingPersonTeam(e.target.value)}
-                                    disabled={editingPersonSaving}
-                                  >
-                                    {activeDepts.map(d => (
-                                      <option key={d.department_key} value={d.department_key}>
-                                        {d.department_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {editingPersonError && (
-                                    <div style={{ ...ERROR_MSG, marginTop: 4, marginBottom: 0 }}>
-                                      {editingPersonError}
-                                    </div>
-                                  )}
-                                </>
-                              ) : (
-                                <span style={{ color: person.team ? '#111318' : '#B0B8C8' }}>
-                                  {deptLabel(person.team)}
-                                </span>
-                              )}
-                            </td>
-                            <td style={TD}>
-                              <span style={{
-                                display: 'inline-block', whiteSpace: 'nowrap',
-                                fontSize: 11, fontWeight: 700,
-                                color: person.is_active ? '#166534' : '#4B5563',
-                                background: person.is_active ? '#F0FDF4' : '#F3F4F6',
-                                borderRadius: 5, padding: '2px 8px',
-                              }}>
-                                {person.is_active ? 'Active' : 'Inactive'}
-                              </span>
-                            </td>
-                            <td style={{ ...TD, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                              {isEditing ? (
-                                <>
-                                  <button
-                                    style={EDIT_BTN}
-                                    onClick={() => saveEditPerson(person)}
-                                    disabled={editingPersonSaving}
-                                  >
-                                    {editingPersonSaving ? 'Saving…' : 'Save'}
-                                  </button>
-                                  <button
-                                    style={{ ...DELETE_BTN, color: '#6B7384', marginLeft: 10 }}
-                                    onClick={cancelEditPerson}
-                                    disabled={editingPersonSaving}
-                                  >
-                                    Cancel
-                                  </button>
-                                </>
-                              ) : (
-                                <button style={EDIT_BTN} onClick={() => startEditPerson(person)}>Edit</button>
-                              )}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
-
-            <div style={{ ...BTN_ROW, marginTop: 20, paddingTop: 16, borderTop: '1px solid #E8EBF0' }}>
-              <button style={BTN_CANCEL} onClick={closePeopleDept}>Close</button>
+            <div style={{ fontSize: 13 }}>
+              This department has people assigned. Move them before deleting.
             </div>
-          </div>
-        </div>
+          </CcDialog>
+        ) : (
+          <CcDialog
+            title={`Delete ${deleteDept.department_name}`}
+            onClose={closeDeleteDept}
+            footer={
+              <>
+                <button className="boe-btn boe-btn-ghost" onClick={closeDeleteDept}>Cancel</button>
+                <button className="boe-btn boe-btn-danger" onClick={confirmDeleteDept} disabled={deleteSaving}>
+                  {deleteSaving ? 'Deleting…' : 'Delete department'}
+                </button>
+              </>
+            }
+          >
+            <div style={{ fontSize: 13 }}>
+              Delete <strong>{deleteDept.department_name}</strong>? This cannot be undone.
+            </div>
+            {deleteError && <div className={cc.error}>{deleteError}</div>}
+          </CcDialog>
+        )
       )}
 
-      {/* ── User department modal ─────────────────────────────────────────── */}
-      {editUser && (
-        <div style={MODAL_OVERLAY} onClick={() => setEditUser(null)}>
-          <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-            <div style={MODAL_TITLE}>Edit — {editUser.full_name}</div>
+      {/* ── Department people dialog ──────────────────────────────────────── */}
+      {peopleDept && (
+        <CcDialog
+          title={`People in ${peopleDept.department_name}`}
+          subtitle="Reassign anyone here without leaving the list."
+          onClose={closePeopleDept}
+          wide
+          footer={<button className="boe-btn boe-btn-ghost" onClick={closePeopleDept}>Close</button>}
+        >
+          {(() => {
+            const people = members.filter(m => !m.is_deleted && m.team === peopleDept.department_key)
+            if (people.length === 0) {
+              return <div className={cc.muted} style={{ fontSize: 13 }}>No people are assigned to this department.</div>
+            }
+            return (
+              <CcTable>
+                <thead>
+                  <tr>
+                    <th>Employee</th>
+                    <th>Role</th>
+                    <th>Department</th>
+                    <th>Status</th>
+                    <th className={cc.right}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {people.map(person => {
+                    const isEditing = editingPersonId === person.id
+                    return (
+                      <tr key={person.id}>
+                        <td>
+                          <div className={cc.person}>
+                            <Avatar name={person.full_name} size={26} />
+                            <div style={{ minWidth: 0 }}>
+                              <div className={cc.personName}>{person.full_name}</div>
+                              <div className={cc.personSub}>{person.email}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className={`${cc.muted} ${cc.cap}`}>{person.role}</td>
+                        <td>
+                          {isEditing ? (
+                            <>
+                              <select
+                                className={`${cc.control} ${cc.inlineSelect}`}
+                                value={editingPersonTeam}
+                                onChange={e => setEditingPersonTeam(e.target.value)}
+                                disabled={editingPersonSaving}
+                              >
+                                {activeDepts.map(d => (
+                                  <option key={d.department_key} value={d.department_key}>
+                                    {d.department_name}
+                                  </option>
+                                ))}
+                              </select>
+                              {editingPersonError && (
+                                <div className={cc.error} style={{ marginTop: 4 }}>{editingPersonError}</div>
+                              )}
+                            </>
+                          ) : (
+                            <span className={person.team ? undefined : cc.faint}>{deptLabel(person.team)}</span>
+                          )}
+                        </td>
+                        <td><ActiveBadge active={person.is_active} /></td>
+                        <td className={cc.right}>
+                          {isEditing ? (
+                            <span className={cc.rowActions}>
+                              <button className={cc.linkBtn} onClick={() => saveEditPerson(person)} disabled={editingPersonSaving}>
+                                {editingPersonSaving ? 'Saving…' : 'Save'}
+                              </button>
+                              <button className={`${cc.linkBtn} ${cc.linkBtnMuted}`} onClick={cancelEditPerson} disabled={editingPersonSaving}>
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <button className={cc.linkBtn} onClick={() => startEditPerson(person)}>Change department</button>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </CcTable>
+            )
+          })()}
+        </CcDialog>
+      )}
 
-            <label style={LABEL}>Department</label>
+      {/* ── Employee department dialog ────────────────────────────────────── */}
+      {editUser && (
+        <CcDialog
+          title={editUser.full_name}
+          subtitle="Only the department is changed here. Roles, positions and account status are managed in Employee Records."
+          onClose={() => setEditUser(null)}
+          footer={
+            <>
+              <button className="boe-btn boe-btn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
+              <button className="boe-btn boe-btn-primary" onClick={saveUserDept} disabled={userSaving}>
+                {userSaving ? 'Saving…' : 'Save'}
+              </button>
+            </>
+          }
+        >
+          <CcField label="Department">
             <select
-              style={SELECT}
+              className={cc.fieldControl}
               value={userTeam}
               onChange={e => setUserTeam(e.target.value)}
+              autoFocus
             >
               <option value="">— No department —</option>
               {activeDepts.map(d => (
@@ -1531,17 +1260,10 @@ function ControlCenterPageInner() {
                 </option>
               ))}
             </select>
+          </CcField>
 
-            {userError && <div style={ERROR_MSG}>{userError}</div>}
-
-            <div style={BTN_ROW}>
-              <button style={BTN_CANCEL} onClick={() => setEditUser(null)}>Cancel</button>
-              <button style={BTN_SAVE} onClick={saveUserDept} disabled={userSaving}>
-                {userSaving ? 'Saving…' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+          {userError && <div className={cc.error}>{userError}</div>}
+        </CcDialog>
       )}
     </>
   )
