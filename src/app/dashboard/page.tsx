@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, User, CalendarDays } from 'lucide-react'
+import { Check, User, UserPlus, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
 import { isOverdue, getAssignedByDisplay, isValidUUID, taskStatusLabel } from '@/lib/ui'
@@ -417,13 +417,18 @@ export default function DashboardPage() {
         profile={profile}
         title="Dashboard"
         subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
-        actions={
-          !viewAsUserId
-            ? <button onClick={() => router.push('/tasks/create')} className="boe-btn boe-btn-primary">+ New Task</button>
-            : undefined
-        }
         onSignOut={handleLogout}
       >
+        {/* ── Create a task — the dashboard's single creation area. Hidden in
+            View As, exactly like the header button it replaces. ── */}
+        {!viewAsUserId && (
+          <CreateTaskCards
+            isMobile={isMobile}
+            onSelfTask={() => router.push('/tasks/create-self')}
+            onDelegateTask={() => router.push('/tasks/create')}
+          />
+        )}
+
         {/* ── Today's Focus — full-width hero panel ── */}
         <TodaysFocusPanel
           tasks={top3Tasks}
@@ -569,6 +574,80 @@ function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: st
           </span>
         )
       })}
+    </div>
+  )
+}
+
+// ── Create-task cards ─────────────────────────────────────────────────────────
+// Two large, fully clickable cards that hand off to the EXISTING creation pages
+// (/tasks/create-self and /tasks/create). No task logic lives here.
+function CreateTaskCard({
+  title, hint, icon, accent, onClick,
+}: {
+  title: string
+  hint: string
+  icon: React.ReactNode
+  accent: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="boe-card-interactive"
+      style={{
+        display: 'flex', alignItems: 'center', gap: '14px',
+        width: '100%', padding: '16px 18px',
+        textAlign: 'left', fontFamily: 'inherit',
+      }}
+    >
+      <span style={{
+        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+        background: accent + '18', color: accent,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {icon}
+      </span>
+      <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+        <span style={{ fontSize: '15px', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
+          {title}
+        </span>
+        <span style={{ fontSize: '12px', color: '#6B7280', lineHeight: 1.35 }}>
+          {hint}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function CreateTaskCards({
+  isMobile, onSelfTask, onDelegateTask,
+}: {
+  isMobile: boolean
+  onSelfTask: () => void
+  onDelegateTask: () => void
+}) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+      gap: isMobile ? '10px' : '16px',
+      marginBottom: '20px',
+    }}>
+      <CreateTaskCard
+        title="Self Task"
+        hint="Create a task for yourself"
+        icon={<User size={20} strokeWidth={1.8} />}
+        accent="#5585E8"
+        onClick={onSelfTask}
+      />
+      <CreateTaskCard
+        title="Delegate Task"
+        hint="Assign a task to another employee"
+        icon={<UserPlus size={20} strokeWidth={1.8} />}
+        accent="#9B6FD4"
+        onClick={onDelegateTask}
+      />
     </div>
   )
 }
