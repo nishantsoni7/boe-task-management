@@ -227,15 +227,21 @@ export default function PayrollResultsPage() {
         </button>
       </div>
 
-      {/* What employees have reported about their own payslips, on the screen
-          where an admin reviews those payslips. Resolving one records the
+      {/* What employees have reported about THIS payroll run, on the screen
+          where an admin reviews that run's payslips. Resolving one records the
           outcome; any actual correction is still made through the existing
-          adjustment and correction tools. */}
+          adjustment and correction tools.
+
+          Scoped to `periodId` — the run this page is — so a period generated
+          in August no longer carries July's objections underneath August's
+          salaries. Earlier runs keep their issues; they are read on Payroll
+          Monthly Preview for the month they belong to. */}
       <ObjectionQueue
         subject="payroll"
         token={token}
+        period={{ periodId }}
         title="Reported payroll issues"
-        emptyLabel="No employee has reported a payroll issue."
+        emptyLabel="No payroll issues were reported for this period."
       />
 
       {/* Locked banner */}
