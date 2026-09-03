@@ -17,11 +17,17 @@
 // The dependency graph is never reconstructed here. preview_test_data_cleanup()
 // resolves it server-side and execute_test_data_cleanup() re-resolves it under
 // row locks, so what was shown and what is acted on cannot drift.
+//
+// The page reads top to bottom as the decision does: what this tool is, find
+// the record, see what goes and what stays, confirm, act. Red appears only on
+// the act itself.
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
+import { Search } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
+import { cc, CcSection, CcToolbar, CcBadge, CcField } from '@/components/controlCenter/CcPrimitives'
 import { PROOF_BUCKET } from '@/lib/paymentProof'
 
 // ── Types mirroring the RPC payloads ─────────────────────────────────────────
@@ -118,35 +124,17 @@ const COUNT_LABEL: Record<string, string> = {
   order_submission_activity:    'PI activity rows',
 }
 
-// ── Styles (Control Center conventions) ──────────────────────────────────────
+const CLEANUP_PHRASE = 'DELETE TEST DATA'
+const DISABLE_PHRASE = 'DISABLE TEST CLEANUP'
 
-const CARD: React.CSSProperties = {
-  border: '1px solid #E8EBF0', borderRadius: 10,
-  padding: '16px 18px', background: '#fff', marginBottom: 16,
+function Step({ n, title }: { n: number; title: string }) {
+  return (
+    <div className={cc.step}>
+      <span className={cc.stepNum}>{n}</span>
+      <span className={cc.stepTitle}>{title}</span>
+    </div>
+  )
 }
-const INPUT: React.CSSProperties = {
-  width: '100%', padding: '9px 11px', fontSize: 13,
-  border: '1.5px solid #D1D5DB', borderRadius: 8,
-  background: '#fff', color: '#111318', outline: 'none', boxSizing: 'border-box',
-}
-const LABEL: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: '#6B7384',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-  display: 'block', marginBottom: 6,
-}
-const BTN_DARK: React.CSSProperties = {
-  padding: '8px 18px', fontSize: 13, fontWeight: 600, color: '#fff',
-  background: '#1A2035', border: 'none', borderRadius: 8, cursor: 'pointer',
-}
-const BTN_DANGER: React.CSSProperties = {
-  padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#fff',
-  background: '#B91C1C', border: 'none', borderRadius: 8, cursor: 'pointer',
-}
-const BTN_GHOST: React.CSSProperties = {
-  padding: '8px 16px', fontSize: 13, fontWeight: 600, color: '#6B7384',
-  background: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer',
-}
-const ERR: React.CSSProperties = { fontSize: 12.5, color: '#D94F4F', lineHeight: 1.5 }
 
 export default function TestDataCleanupPage() {
   return (
@@ -227,7 +215,10 @@ function TestDataCleanupInner() {
     const t = params.get('type')
     const id = params.get('id')
     if (!loading && active && !preview && id && (t === 'order' || t === 'order_request' || t === 'payment')) {
-      void runPreview(t, id)
+      // A FETCH IS STARTED HERE; every setState inside runPreview follows its
+      // first await, so the call goes through a named local (see loadSettings).
+      const startPreview = () => { void runPreview(t, id) }
+      startPreview()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, active])
@@ -342,297 +333,261 @@ function TestDataCleanupInner() {
     await loadSettings()
   }
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) return <ControlCenterSkeleton />
+
+  if (loadErr) {
+    return (
+      <CcSection>
+        <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{loadErr}</div>
+        <button className="boe-btn boe-btn-ghost" onClick={() => { setLoading(true); void loadSettings() }}>Retry</button>
+      </CcSection>
+    )
+  }
+
+  const canExecute = !running && reason.trim().length > 0 && typed === CLEANUP_PHRASE
+  const canDisable = !disabling && disableTyped === DISABLE_PHRASE
+  const counts = settings?.test_record_counts
+
   return (
-    <>
-      <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 900 }}>
 
-        {loading ? (
-          <div style={{ fontSize: 12.5, color: '#8C94A6' }}>Loading…</div>
-        ) : loadErr ? (
-          <div style={CARD}>
-            <div style={{ ...ERR, marginBottom: 12 }}>{loadErr}</div>
-            <button style={BTN_DARK} onClick={() => { setLoading(true); void loadSettings() }}>Retry</button>
-          </div>
-        ) : (
-          <>
-            {/* ── Status banner ──────────────────────────────────────────── */}
-            {active ? (
-              <div style={{
-                background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
-                padding: '14px 16px', marginBottom: 16, fontSize: 12.5, color: '#92400E', lineHeight: 1.6,
-              }}>
-                <strong>Test Data Cleanup is enabled. Use this only for records created during system testing.</strong>
-                <br />
-                Deletions here are permanent and are recorded in a cleanup audit that survives them.
-                Currently marked as test data: {settings?.test_record_counts.orders} Confirmed{' '}
-                {settings?.test_record_counts.orders === 1 ? 'Order' : 'Orders'},{' '}
-                {settings?.test_record_counts.order_requests} Order{' '}
-                {settings?.test_record_counts.order_requests === 1 ? 'Request' : 'Requests'},{' '}
-                {settings?.test_record_counts.payment_requests} Payment{' '}
-                {settings?.test_record_counts.payment_requests === 1 ? 'Request' : 'Requests'}.
+      {/* ── What this tool is, and whether it is on ────────────────────────── */}
+      {active ? (
+        <div className={`${cc.note} ${cc.noteAmber}`} style={{ marginBottom: 16 }}>
+          <span className={cc.noteTitle}>Test Data Cleanup is enabled. Use this only for records created during system testing.</span>
+          Deletions here are permanent and are recorded in a cleanup audit that survives them.
+          {counts && (
+            <>
+              {' '}Currently marked as test data: {counts.orders} Confirmed{' '}
+              {counts.orders === 1 ? 'Order' : 'Orders'},{' '}
+              {counts.order_requests} Order{' '}
+              {counts.order_requests === 1 ? 'Request' : 'Requests'},{' '}
+              {counts.payment_requests} Payment{' '}
+              {counts.payment_requests === 1 ? 'Request' : 'Requests'}.
+            </>
+          )}
+        </div>
+      ) : (
+        <div className={`${cc.note} ${cc.noteGreen}`} style={{ marginBottom: 16 }}>
+          <span className={cc.noteTitle}>Test Data Cleanup has been permanently disabled. Final Orders and bank payment history cannot be deleted.</span>
+          {settings?.disabled_at && (
+            <>
+              Disabled on {new Date(settings.disabled_at).toLocaleString('en-IN')}
+              {settings.disabled_by_email ? ` by ${settings.disabled_by_email}` : ''}.
+              Re-enabling requires a database migration.
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── Result of the last cleanup ─────────────────────────────────────── */}
+      {result && (
+        <div className={`${cc.note} ${cc.noteGreen}`} style={{ marginBottom: 16 }} role="status">
+          <span className={cc.noteTitle}>
+            Cleaned up {TYPE_LABEL[result.deleted_records[0]?.type ?? 'order']} {result.root_number}
+          </span>
+          {Object.entries(result.deleted)
+            .filter(([, n]) => n > 0)
+            .map(([k, n]) => `${n} ${COUNT_LABEL[k] ?? k}`)
+            .join(' · ') || 'Nothing was removed.'}
+          {storageWarning && (
+            <div className={`${cc.note} ${cc.noteAmber}`} style={{ marginTop: 10, padding: '8px 12px' }}>
+              {storageWarning}
+            </div>
+          )}
+          <div className={cc.mono} style={{ marginTop: 8 }}>Audit entry {result.audit_id}</div>
+        </div>
+      )}
+
+      {active && (
+        <>
+          {/* ── 1. Find the record ─────────────────────────────────────────── */}
+          <CcSection>
+            <Step n={1} title="Find the record" />
+            <CcToolbar>
+              <div className={cc.search} style={{ flex: '1 1 320px' }}>
+                <Search size={13} strokeWidth={2} />
+                <input
+                  className={cc.control}
+                  style={{ width: '100%' }}
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void search() }}
+                  placeholder="Order number, request number, payment number or client"
+                  aria-label="Find a record"
+                />
               </div>
-            ) : (
-              <div style={{
-                background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10,
-                padding: '14px 16px', marginBottom: 16, fontSize: 12.5, color: '#166534', lineHeight: 1.6,
-              }}>
-                <strong>Test Data Cleanup has been permanently disabled. Final Orders and bank payment history cannot be deleted.</strong>
-                {settings?.disabled_at && (
-                  <>
-                    <br />
-                    Disabled on {new Date(settings.disabled_at).toLocaleString('en-IN')}
-                    {settings.disabled_by_email ? ` by ${settings.disabled_by_email}` : ''}.
-                    Re-enabling requires a database migration.
-                  </>
-                )}
+              <button className="boe-btn boe-btn-ghost" onClick={search} disabled={searching || !query.trim()}>
+                {searching ? 'Searching…' : 'Search'}
+              </button>
+            </CcToolbar>
+
+            {results && results.length === 0 && (
+              <div className={cc.muted} style={{ fontSize: 12.5 }}>No records matched.</div>
+            )}
+
+            {results && results.length > 0 && (
+              <div className={cc.records}>
+                {results.map(r => (
+                  <button
+                    key={`${r.type}:${r.id}`}
+                    type="button"
+                    className={`${cc.record} ${cc.recordBtn}`}
+                    onClick={() => void runPreview(r.type, r.id)}
+                  >
+                    <span className={cc.recordId}>{r.number}</span>
+                    <span className={cc.recordMeta}>
+                      {TYPE_LABEL[r.type]} · {r.status}{r.label ? ` · ${r.label}` : ''}
+                    </span>
+                    <TestBadge isTest={r.is_test_data} />
+                  </button>
+                ))}
               </div>
             )}
 
-            {/* ── Result summary ─────────────────────────────────────────── */}
-            {result && (
-              <div style={{ ...CARD, borderColor: '#BBF7D0', background: '#F7FEF9' }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#166534', marginBottom: 8 }}>
-                  Cleaned up {TYPE_LABEL[result.deleted_records[0]?.type ?? 'order']} {result.root_number}
-                </div>
+            {previewErr && <div className={cc.error}>{previewErr}</div>}
+          </CcSection>
+
+          {/* ── 2. Review, 3. Confirm ──────────────────────────────────────── */}
+          {preview && (
+            <CcSection>
+              <Step n={2} title={`Review ${TYPE_LABEL[preview.root_type]} ${preview.root_number}`} />
+              <div className={cc.muted} style={{ fontSize: 12, marginBottom: 12 }}>
+                Everything below is resolved by the database, not by this page.
+              </div>
+
+              <RecordList title="Will be deleted" records={preview.to_delete} tone="delete" />
+              {preview.to_retain.length > 0 && (
+                <RecordList title="Will be kept" records={preview.to_retain} tone="retain" />
+              )}
+
+              <div style={{ marginBottom: 14 }}>
+                <span className={cc.fieldLabel}>Also removed</span>
                 <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7 }}>
-                  {Object.entries(result.deleted)
-                    .filter(([, n]) => n > 0)
+                  {Object.entries(preview.counts)
+                    // The four ROW types already listed above by name are
+                    // excluded here; what is left is the dependent rows
+                    // that go with them.
+                    .filter(([k, n]) => n > 0 && ![
+                      'orders', 'order_requests', 'payment_requests', 'order_submissions',
+                    ].includes(k))
                     .map(([k, n]) => `${n} ${COUNT_LABEL[k] ?? k}`)
-                    .join(' · ') || 'Nothing was removed.'}
+                    .join(' · ') || 'No dependent rows.'}
+                  {preview.storage_paths.length > 0 &&
+                    ` · ${preview.storage_paths.length} proof file(s) in storage`}
                 </div>
-                {storageWarning && (
-                  <div style={{
-                    marginTop: 10, padding: '10px 12px', borderRadius: 8,
-                    background: '#FFF7ED', border: '1px solid #FED7AA', color: '#9A3412', fontSize: 12.5,
-                  }}>
-                    {storageWarning}
+                {/* The PI's own files. Named by their PREFIX rather than
+                    listed: the count is what matters here, the keys are
+                    resolved server-side, and a wall of storage paths is
+                    not what an admin is deciding on. */}
+                {preview.submission_storage_prefix && (
+                  <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7, marginTop: 4 }}>
+                    Every PI file under{' '}
+                    <code className={cc.mono} style={{ color: '#111318' }}>
+                      {preview.submission_storage_prefix}
+                    </code>
                   </div>
                 )}
-                <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 10 }}>
-                  Audit entry {result.audit_id}
-                </div>
               </div>
-            )}
 
-            {active && (
-              <>
-                {/* ── Search ───────────────────────────────────────────── */}
-                <div style={CARD}>
-                  <label style={LABEL}>Find a record</label>
-                  <div style={{ display: 'flex', gap: 10 }}>
-                    <input
-                      value={query}
-                      onChange={e => setQuery(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter') void search() }}
-                      placeholder="Order number, request number, payment number or client"
-                      style={INPUT}
-                    />
-                    <button style={BTN_DARK} onClick={search} disabled={searching || !query.trim()}>
-                      {searching ? 'Searching…' : 'Search'}
-                    </button>
-                  </div>
-
-                  {results && results.length === 0 && (
-                    <div style={{ fontSize: 12.5, color: '#8C94A6', marginTop: 12 }}>
-                      No records matched.
-                    </div>
-                  )}
-
-                  {results && results.length > 0 && (
-                    <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                      {results.map(r => (
-                        <button
-                          key={`${r.type}:${r.id}`}
-                          onClick={() => void runPreview(r.type, r.id)}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left',
-                            border: '1px solid #E8EBF0', borderRadius: 8, padding: '10px 12px',
-                            background: '#fff', cursor: 'pointer',
-                          }}
-                        >
-                          <span style={{ fontSize: 13, fontWeight: 700, color: '#111318', minWidth: 150 }}>
-                            {r.number}
-                          </span>
-                          <span style={{ fontSize: 12, color: '#6B7384', flex: 1 }}>
-                            {TYPE_LABEL[r.type]} · {r.status}{r.label ? ` · ${r.label}` : ''}
-                          </span>
-                          <TestBadge isTest={r.is_test_data} />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+              {!preview.eligible ? (
+                <div className={`${cc.note} ${cc.noteRed}`} role="alert">
+                  <span className={cc.noteTitle}>This chain cannot be cleaned up.</span>
+                  It contains records that are not test data, so removing it would destroy real
+                  business history:{' '}
+                  {preview.blocking
+                    .map(b => b.reason
+                      ? `${TYPE_LABEL[b.type]} — ${b.reason}`
+                      : `${TYPE_LABEL[b.type]} ${b.number ?? b.id}`)
+                    .join(', ')}.
                 </div>
+              ) : (
+                <>
+                  <div className={cc.divider} />
+                  <Step n={3} title="Confirm and clean up" />
 
-                {previewErr && <div style={{ ...CARD, ...ERR }}>{previewErr}</div>}
+                  <CcField label="Why is this being removed?">
+                    <textarea
+                      className={cc.fieldControl}
+                      style={{ height: 'auto', padding: '8px 11px', resize: 'vertical' }}
+                      value={reason}
+                      onChange={e => { setReason(e.target.value); setRunErr('') }}
+                      rows={2}
+                      placeholder="e.g. Re-running the order-to-payment workflow from a clean state"
+                    />
+                  </CcField>
 
-                {/* ── Preview ──────────────────────────────────────────── */}
-                {preview && (
-                  <div style={CARD}>
-                    <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: 4 }}>
-                      {TYPE_LABEL[preview.root_type]} {preview.root_number}
-                    </div>
-                    <div style={{ fontSize: 12, color: '#6B7384', marginBottom: 16 }}>
-                      Everything below is resolved by the database, not by this page.
-                    </div>
+                  <CcField label={`Type ${CLEANUP_PHRASE} to confirm`}>
+                    <input
+                      className={cc.fieldControl}
+                      style={{ maxWidth: 280 }}
+                      value={typed}
+                      onChange={e => { setTyped(e.target.value); setRunErr('') }}
+                      placeholder={CLEANUP_PHRASE}
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </CcField>
 
-                    <RecordList title="Will be deleted" records={preview.to_delete} tone="delete" />
-                    {preview.to_retain.length > 0 && (
-                      <RecordList title="Will be kept" records={preview.to_retain} tone="retain" />
-                    )}
+                  {runErr && <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{runErr}</div>}
 
-                    <div style={{ marginTop: 14, marginBottom: 16 }}>
-                      <label style={LABEL}>Also removed</label>
-                      <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7 }}>
-                        {Object.entries(preview.counts)
-                          // The four ROW types already listed above by name are
-                          // excluded here; what is left is the dependent rows
-                          // that go with them.
-                          .filter(([k, n]) => n > 0 && ![
-                            'orders', 'order_requests', 'payment_requests', 'order_submissions',
-                          ].includes(k))
-                          .map(([k, n]) => `${n} ${COUNT_LABEL[k] ?? k}`)
-                          .join(' · ') || 'No dependent rows.'}
-                        {preview.storage_paths.length > 0 &&
-                          ` · ${preview.storage_paths.length} proof file(s) in storage`}
-                      </div>
-                      {/* The PI's own files. Named by their PREFIX rather than
-                          listed: the count is what matters here, the keys are
-                          resolved server-side, and a wall of storage paths is
-                          not what an admin is deciding on. */}
-                      {preview.submission_storage_prefix && (
-                        <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.7, marginTop: 4 }}>
-                          Every PI file under{' '}
-                          <code style={{ fontSize: 11.5, color: '#111318' }}>
-                            {preview.submission_storage_prefix}
-                          </code>
-                        </div>
-                      )}
-                    </div>
-
-                    {!preview.eligible ? (
-                      <div style={{
-                        background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
-                        padding: '12px 14px', fontSize: 12.5, color: '#991B1B', lineHeight: 1.6,
-                      }}>
-                        <strong>This chain cannot be cleaned up.</strong> It contains records that are
-                        not test data, so removing it would destroy real business history:{' '}
-                        {preview.blocking
-                          .map(b => b.reason
-                            ? `${TYPE_LABEL[b.type]} — ${b.reason}`
-                            : `${TYPE_LABEL[b.type]} ${b.number ?? b.id}`)
-                          .join(', ')}.
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ marginBottom: 14 }}>
-                          <label style={LABEL}>Why is this being removed?</label>
-                          <textarea
-                            value={reason}
-                            onChange={e => { setReason(e.target.value); setRunErr('') }}
-                            rows={2}
-                            placeholder="e.g. Re-running the order-to-payment workflow from a clean state"
-                            style={{ ...INPUT, resize: 'vertical' }}
-                          />
-                        </div>
-
-                        <div style={{ marginBottom: 16 }}>
-                          <label style={LABEL}>Type DELETE TEST DATA to confirm</label>
-                          <input
-                            value={typed}
-                            onChange={e => { setTyped(e.target.value); setRunErr('') }}
-                            placeholder="DELETE TEST DATA"
-                            style={{ ...INPUT, width: 240 }}
-                          />
-                        </div>
-
-                        {runErr && <div style={{ ...ERR, marginBottom: 12 }}>{runErr}</div>}
-
-                        <div style={{ display: 'flex', gap: 10 }}>
-                          <button style={BTN_GHOST} onClick={() => { setPreview(null); setReason(''); setTyped('') }}>
-                            Cancel
-                          </button>
-                          <button
-                            style={{
-                              ...BTN_DANGER,
-                              opacity: running || !reason.trim() || typed !== 'DELETE TEST DATA' ? 0.5 : 1,
-                              cursor:  running || !reason.trim() || typed !== 'DELETE TEST DATA' ? 'default' : 'pointer',
-                            }}
-                            disabled={running || !reason.trim() || typed !== 'DELETE TEST DATA'}
-                            onClick={execute}
-                          >
-                            {running ? 'Cleaning up…' : 'Clean Up Test Transaction'}
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* ── Permanent disable ────────────────────────────────── */}
-                <div style={{ ...CARD, borderColor: '#FECACA' }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: 4 }}>
-                    Finish testing
-                  </div>
-                  <div style={{ fontSize: 12.5, color: '#4B5563', lineHeight: 1.6, marginBottom: 14 }}>
-                    When BOE starts entering real Orders and real bank payments, disable this
-                    permanently. Every record created afterwards counts as real data, and no Order
-                    or bank payment can be removed again. This cannot be undone from the
-                    application — re-enabling would require a database migration.
-                  </div>
-
-                  {!disableOpen ? (
-                    <button style={BTN_GHOST} onClick={() => setDisableOpen(true)}>
-                      Permanently Disable Test Data Cleanup
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => { setPreview(null); setReason(''); setTyped('') }}>
+                      Cancel
                     </button>
-                  ) : (
-                    <>
-                      <label style={LABEL}>Type DISABLE TEST CLEANUP to confirm</label>
-                      <input
-                        value={disableTyped}
-                        onChange={e => { setDisableTyped(e.target.value); setDisableErr('') }}
-                        placeholder="DISABLE TEST CLEANUP"
-                        style={{ ...INPUT, width: 280, marginBottom: 12 }}
-                      />
-                      {disableErr && <div style={{ ...ERR, marginBottom: 12 }}>{disableErr}</div>}
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        <button style={BTN_GHOST} onClick={() => { setDisableOpen(false); setDisableTyped(''); setDisableErr('') }}>
-                          Cancel
-                        </button>
-                        <button
-                          style={{
-                            ...BTN_DANGER,
-                            opacity: disabling || disableTyped !== 'DISABLE TEST CLEANUP' ? 0.5 : 1,
-                            cursor:  disabling || disableTyped !== 'DISABLE TEST CLEANUP' ? 'default' : 'pointer',
-                          }}
-                          disabled={disabling || disableTyped !== 'DISABLE TEST CLEANUP'}
-                          onClick={disable}
-                        >
-                          {disabling ? 'Disabling…' : 'Permanently Disable'}
-                        </button>
-                      </div>
-                    </>
-                  )}
+                    <button className="boe-btn boe-btn-danger" disabled={!canExecute} onClick={execute}>
+                      {running ? 'Cleaning up…' : 'Clean Up Test Transaction'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </CcSection>
+          )}
+
+          {/* ── Finish testing ─────────────────────────────────────────────── */}
+          <CcSection
+            title="Finish testing"
+            description="When BOE starts entering real Orders and real bank payments, disable this permanently. Every record created afterwards counts as real data, and no Order or bank payment can be removed again. Re-enabling would require a database migration."
+          >
+            {!disableOpen ? (
+              <button className="boe-btn boe-btn-ghost" onClick={() => setDisableOpen(true)}>
+                Permanently Disable Test Data Cleanup
+              </button>
+            ) : (
+              <>
+                <CcField label={`Type ${DISABLE_PHRASE} to confirm`}>
+                  <input
+                    className={cc.fieldControl}
+                    style={{ maxWidth: 300 }}
+                    value={disableTyped}
+                    onChange={e => { setDisableTyped(e.target.value); setDisableErr('') }}
+                    placeholder={DISABLE_PHRASE}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </CcField>
+                {disableErr && <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{disableErr}</div>}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="boe-btn boe-btn-ghost" onClick={() => { setDisableOpen(false); setDisableTyped(''); setDisableErr('') }}>
+                    Cancel
+                  </button>
+                  <button className="boe-btn boe-btn-danger" disabled={!canDisable} onClick={disable}>
+                    {disabling ? 'Disabling…' : 'Permanently Disable'}
+                  </button>
                 </div>
               </>
             )}
-          </>
-        )}
-      </div>
-    </>
+          </CcSection>
+        </>
+      )}
+    </div>
   )
 }
 
 function TestBadge({ isTest }: { isTest: boolean }) {
-  return (
-    <span style={{
-      fontSize: 10.5, fontWeight: 700, borderRadius: 5, padding: '2px 8px',
-      color:      isTest ? '#92400E' : '#166534',
-      background: isTest ? '#FFFBEB' : '#F0FDF4',
-      border:     `1px solid ${isTest ? '#FDE68A' : '#BBF7D0'}`,
-    }}>
-      {isTest ? 'Test data' : 'Real data'}
-    </span>
-  )
+  return <CcBadge tone={isTest ? 'amber' : 'green'}>{isTest ? 'Test data' : 'Real data'}</CcBadge>
 }
 
 function RecordList({
@@ -645,25 +600,20 @@ function RecordList({
   if (records.length === 0) return null
   return (
     <div style={{ marginBottom: 14 }}>
-      <label style={LABEL}>{title}</label>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span className={cc.fieldLabel}>{title}</span>
+      <div className={cc.records}>
         {records.map(r => (
           <div
             key={`${r.type}:${r.id}`}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              border: `1px solid ${tone === 'delete' ? '#FECACA' : '#E8EBF0'}`,
-              background: tone === 'delete' ? '#FEF7F7' : '#FAFBFC',
-              borderRadius: 8, padding: '9px 12px',
-            }}
+            className={`${cc.record} ${tone === 'delete' ? cc.recordDanger : cc.recordKeep}`}
           >
             {/* A PI submission has no business number — numbering happens at
                 approval and belongs to the Order. An empty identifier column
                 would read as a missing value, so it says what the row IS. */}
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#111318', minWidth: 150 }}>
+            <span className={cc.recordId}>
               {r.number ?? TYPE_LABEL[r.type]}
             </span>
-            <span style={{ fontSize: 12, color: '#6B7384', flex: 1 }}>
+            <span className={cc.recordMeta}>
               {TYPE_LABEL[r.type]} · {r.status}{r.label ? ` · ${r.label}` : ''}
             </span>
             <TestBadge isTest={r.is_test_data} />

@@ -3,12 +3,12 @@
 import { useEffect, useState, useMemo, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Position } from '@/lib/types'
-import { colors } from '@/lib/tokens'
+import { cc, CcTable, CcToolbar, CcEmpty } from '@/components/controlCenter/CcPrimitives'
 
-// The Positions editor, lifted out of src/app/settings/positions/page.tsx so
-// the same control can be reached from the Control Center (People › Positions)
-// without a second implementation. Logic, queries and markup are the page's,
-// unchanged; the page keeps its own shell and admin check around this.
+// The Positions editor, shared by Settings › Positions and the Control Center's
+// People › Positions so there is one implementation. Queries and rules are
+// unchanged; the presentation is the Control Center's, so a position row reads
+// the same as a department row.
 
 export function PositionsManager() {
   const [loading, setLoading]       = useState(true)
@@ -76,174 +76,95 @@ export function PositionsManager() {
   }
 
   if (loading) {
-    return <div style={{ fontSize: 12.5, color: colors.muted, padding: '8px 0' }}>Loading…</div>
+    return <div className={cc.muted} style={{ fontSize: 12.5, padding: '8px 0' }}>Loading…</div>
   }
 
   return (
-    <div style={{ maxWidth: 560 }}>
-
-      {/* Add position row */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+    <div style={{ maxWidth: 640 }}>
+      <CcToolbar>
         <input
           type="text"
+          className={cc.control}
+          style={{ flex: '1 1 240px' }}
           placeholder="New position name"
+          aria-label="New position name"
           value={newName}
           onChange={e => setNewName(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          style={{
-            flex: 1,
-            height: 38,
-            padding: '0 12px',
-            fontSize: 14,
-            border: `1px solid ${colors.borderSoft}`,
-            borderRadius: 8,
-            outline: 'none',
-            background: colors.base,
-            color: colors.primary,
-          }}
         />
         <button
+          className="boe-btn boe-btn-primary"
           onClick={handleAdd}
           disabled={saving || !newName.trim()}
-          style={{
-            height: 38,
-            padding: '0 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            background: colors.blue,
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            cursor: saving || !newName.trim() ? 'not-allowed' : 'pointer',
-            opacity: saving || !newName.trim() ? 0.6 : 1,
-            whiteSpace: 'nowrap',
-          }}
         >
           Add Position
         </button>
-      </div>
+        <span className={cc.count}>{positions.length} {positions.length === 1 ? 'position' : 'positions'}</span>
+      </CcToolbar>
 
-      {/* Error */}
-      {error && (
-        <div style={{
-          marginBottom: 14,
-          padding: '10px 14px',
-          background: colors.redTint,
-          border: `1px solid ${colors.red}22`,
-          borderRadius: 8,
-          fontSize: 13,
-          color: colors.red,
-        }}>
-          {error}
-        </div>
-      )}
+      {error && <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{error}</div>}
 
-      {/* Positions list */}
       {positions.length === 0 ? (
-        <div style={{
-          background: colors.base,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 10,
-          padding: '32px 24px',
-          textAlign: 'center',
-          color: colors.muted,
-          fontSize: 13,
-        }}>
-          No positions yet. Add one above.
-        </div>
+        <CcEmpty message="No positions yet." hint="Add one above; it becomes available on employee records." />
       ) : (
-        <div style={{
-          background: colors.base,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 10,
-          overflow: 'hidden',
-        }}>
-          {positions.map((pos, i) => (
-            <div
-              key={pos.id}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 12,
-                padding: '12px 16px',
-                borderTop: i === 0 ? 'none' : `1px solid ${colors.border}`,
-              }}
-            >
-              {editId === pos.id ? (
-                <>
-                  <input
-                    autoFocus
-                    type="text"
-                    value={editName}
-                    onChange={e => setEditName(e.target.value)}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') handleEditSave(pos.id)
-                      if (e.key === 'Escape') { setEditId(null); setEditName('') }
-                    }}
-                    style={{
-                      flex: 1,
-                      height: 32,
-                      padding: '0 10px',
-                      fontSize: 13,
-                      border: `1px solid ${colors.blue}`,
-                      borderRadius: 6,
-                      outline: 'none',
-                      background: colors.base,
-                      color: colors.primary,
-                    }}
-                  />
-                  <button
-                    onClick={() => handleEditSave(pos.id)}
-                    disabled={saving || !editName.trim()}
-                    style={actionBtnStyle(colors.green)}
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => { setEditId(null); setEditName('') }}
-                    style={actionBtnStyle(colors.muted)}
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span style={{ flex: 1, fontSize: 14, color: colors.primary }}>
-                    {pos.name}
-                  </span>
-                  <button
-                    onClick={() => { setEditId(pos.id); setEditName(pos.name); setError(null) }}
-                    style={actionBtnStyle(colors.secondary)}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(pos.id)}
-                    disabled={saving}
-                    style={actionBtnStyle(colors.red)}
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
+        <CcTable>
+          <thead>
+            <tr>
+              <th>Position</th>
+              <th className={cc.right}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {positions.map(pos => (
+              <tr key={pos.id}>
+                {editId === pos.id ? (
+                  <>
+                    <td>
+                      <input
+                        autoFocus
+                        type="text"
+                        className={cc.control}
+                        style={{ width: '100%', maxWidth: 360 }}
+                        aria-label="Position name"
+                        value={editName}
+                        onChange={e => setEditName(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === 'Enter') handleEditSave(pos.id)
+                          if (e.key === 'Escape') { setEditId(null); setEditName('') }
+                        }}
+                      />
+                    </td>
+                    <td className={cc.right}>
+                      <span className={cc.rowActions}>
+                        <button className={cc.linkBtn} onClick={() => handleEditSave(pos.id)} disabled={saving || !editName.trim()}>
+                          Save
+                        </button>
+                        <button className={`${cc.linkBtn} ${cc.linkBtnMuted}`} onClick={() => { setEditId(null); setEditName('') }}>
+                          Cancel
+                        </button>
+                      </span>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td style={{ fontWeight: 600 }}>{pos.name}</td>
+                    <td className={cc.right}>
+                      <span className={cc.rowActions}>
+                        <button className={cc.linkBtn} onClick={() => { setEditId(pos.id); setEditName(pos.name); setError(null) }}>
+                          Edit
+                        </button>
+                        <button className={`${cc.linkBtn} ${cc.linkBtnMuted}`} onClick={() => handleDelete(pos.id)} disabled={saving}>
+                          Delete
+                        </button>
+                      </span>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </CcTable>
       )}
     </div>
   )
-}
-
-function actionBtnStyle(color: string): React.CSSProperties {
-  return {
-    padding: '4px 10px',
-    fontSize: 12,
-    fontWeight: 500,
-    color,
-    background: 'transparent',
-    border: `1px solid ${color}44`,
-    borderRadius: 6,
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-  }
 }

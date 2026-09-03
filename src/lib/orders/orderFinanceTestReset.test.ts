@@ -846,7 +846,9 @@ describe('the page cannot ask for something the database would have to refuse', 
     assert.ok(body.includes('role="status"'))
     assert.ok(body.includes('aria-live="polite"'))
     assert.ok(body.includes('role="alert"'), 'and so are refusals')
-    assert.ok(body.includes('aria-modal="true"'))
+    // The final confirmation is the shared Control Center dialog, which owns
+    // role="dialog" and aria-modal="true" (src/components/controlCenter/CcPrimitives.tsx).
+    assert.ok(body.includes('aria-modal="true"') || body.includes('<CcDialog'))
   })
 
   test('an interrupted reset is legible on reopening', () => {
