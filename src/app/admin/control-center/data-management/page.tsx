@@ -20,12 +20,7 @@
 // cards. Red appears once — on the final confirmation — because a screen that
 // shouts from the first pixel teaches people to click through shouting.
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import {
   NUMBER_RESET_ACKNOWLEDGEMENT,
   RESET_ACKNOWLEDGEMENT,
@@ -113,10 +108,6 @@ type RunResult = {
 }
 
 export default function DataManagementPage() {
-  const supabase = useMemo(() => createClient(), [])
-  const router = useRouter()
-
-  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadErr, setLoadErr] = useState('')
 
@@ -171,22 +162,19 @@ export default function DataManagementPage() {
     setLoading(false)
   }, [post])
 
+  // Identity and the admin check are owned by control-center/layout.tsx; this
+  // page mounts only for an admitted administrator. The status call re-derives
+  // admin on the server from the cookie session, exactly as it always did.
+  //
+  // A FETCH IS STARTED HERE; NO STATE IS SET HERE. Every setState inside
+  // loadStatus runs after its first await, so this effect performs no
+  // synchronous state update. react-hooks/set-state-in-effect is static and
+  // cannot see through the await, so the call goes through a named local —
+  // the same shape the customer-reviews screens use for a fetch-on-mount.
   useEffect(() => {
-    const init = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.replace('/login'); return }
-      const { data: me } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', user.id).single()
-      setProfile(me as UserProfile)
-      await loadStatus()
-    }
-    void init()
-  }, [supabase, router, loadStatus])
-
-  const signOut = async () => {
-    await supabase.auth.signOut()
-    router.replace('/login')
-  }
+    const startFetch = () => { void loadStatus() }
+    startFetch()
+  }, [loadStatus])
 
   /** Choosing a card, or changing the choice, invalidates everything below it. */
   const chooseScope = async (next: ResetScope) => {
@@ -296,12 +284,7 @@ export default function DataManagementPage() {
     ? preview.counts.storage_bytes : null
 
   return (
-    <ControlCenterLayout
-      profile={profile}
-      title="Data Management"
-      subtitle="Clear all operational Order and Finance data. Admin only, and never reversible."
-      onSignOut={signOut}
-    >
+    <>
       <div style={{ maxWidth: 900 }}>
         {loading ? (
           <div style={MUTED}>Loading…</div>
@@ -455,7 +438,7 @@ export default function DataManagementPage() {
           onConfirm={() => void run()}
         />
       )}
-    </ControlCenterLayout>
+    </>
   )
 }
 

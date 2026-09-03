@@ -3,13 +3,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
-import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen, EmptyState, AlertBanner } from '@/components/ui/atoms'
+import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
+import { EmptyState, AlertBanner } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
 import { customerDisplayName } from '@/lib/finance/paymentEntry'
-import { useViewAs } from '@/hooks/useViewAs'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
 import { paymentViewClauses } from '@/lib/finance/paymentClassification'
 
@@ -117,14 +115,11 @@ type OrderChangeRequestRow = {
 }
 
 export default function ActionQueuePage() {
-  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<ActionQueueItem[]>([])
   const [error, setError] = useState('')
 
-  const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, exitViewMode } = useViewAs()
 
   const loadQueue = async () => {
     setError('')
@@ -294,21 +289,11 @@ export default function ActionQueuePage() {
     setItems(combined)
   }
 
+  // Identity and the admin check are owned by control-center/layout.tsx; this
+  // page mounts only for an admitted administrator. RLS still decides every
+  // row the queries above may read.
   useEffect(() => {
     const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
-
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
-
-      if (!p || p.role !== 'admin') { router.push('/dashboard'); return }
-      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
-
-      setProfile(p as UserProfile)
       await loadQueue()
       setLoading(false)
     }
@@ -316,15 +301,10 @@ export default function ActionQueuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (loading) return <LoadingScreen />
+  if (loading) return <ControlCenterSkeleton />
 
   return (
-    <ControlCenterLayout
-      profile={profile}
-      title="Action Queue"
-      subtitle="Finance and Orders work currently waiting on an admin action"
-      onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
-    >
+    <>
       {error && (
         <div style={{ marginBottom: '16px' }}>
           <AlertBanner variant="red">{error}</AlertBanner>
@@ -336,7 +316,7 @@ export default function ActionQueuePage() {
       ) : (
         <ActionQueueTable items={items} />
       )}
-    </ControlCenterLayout>
+    </>
   )
 }
 

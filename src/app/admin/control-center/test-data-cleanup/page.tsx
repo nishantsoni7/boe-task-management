@@ -19,13 +19,10 @@
 // row locks, so what was shown and what is acted on cannot drift.
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { PROOF_BUCKET } from '@/lib/paymentProof'
-import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 // ── Types mirroring the RPC payloads ─────────────────────────────────────────
 
@@ -153,7 +150,7 @@ const ERR: React.CSSProperties = { fontSize: 12.5, color: '#D94F4F', lineHeight:
 
 export default function TestDataCleanupPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<ControlCenterSkeleton />}>
       <TestDataCleanupInner />
     </Suspense>
   )
@@ -161,10 +158,8 @@ export default function TestDataCleanupPage() {
 
 function TestDataCleanupInner() {
   const supabase = useMemo(() => createClient(), [])
-  const router   = useRouter()
   const params   = useSearchParams()
 
-  const [profile,  setProfile]  = useState<UserProfile | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [loadErr,  setLoadErr]  = useState('')
@@ -196,16 +191,18 @@ function TestDataCleanupInner() {
     setLoading(false)
   }, [supabase])
 
+  // Identity and the admin check are owned by control-center/layout.tsx; this
+  // page mounts only for an admitted administrator, so it goes straight to its
+  // own data. The RPC still runs under the browser session's own authorization.
+  //
+  // A FETCH IS STARTED HERE. loadSettings clears the error message before its
+  // await; on mount that message is already empty, so React bails out of the
+  // update and nothing re-renders. react-hooks/set-state-in-effect is static and
+  // cannot see that, so the call goes through a named local — the same shape
+  // the customer-reviews screens use for a fetch-on-mount.
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.replace('/login'); return }
-      const { data: me } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
-      setProfile(me as UserProfile)
-      await loadSettings()
-    }
-    void init()
+    const startFetch = () => { void loadSettings() }
+    startFetch()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -345,15 +342,8 @@ function TestDataCleanupInner() {
     await loadSettings()
   }
 
-  const signOut = async () => { await supabase.auth.signOut(); router.replace('/login') }
-
   return (
-    <ControlCenterLayout
-      profile={profile}
-      title="Test Data Cleanup"
-      subtitle="Remove a complete verified test transaction while the system is in testing."
-      onSignOut={signOut}
-    >
+    <>
       <div style={{ maxWidth: 900 }}>
 
         {loading ? (
@@ -628,7 +618,7 @@ function TestDataCleanupInner() {
           </>
         )}
       </div>
-    </ControlCenterLayout>
+    </>
   )
 }
 

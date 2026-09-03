@@ -258,7 +258,17 @@ describe('a system Administrator cannot be edited here', () => {
   })
 
   test('the Control Center itself remains admin-only', () => {
-    assert.ok(page.includes("if (p?.role !== 'admin') { router.push('/dashboard'); return }"))
+    // The gate moved from each section into the segment layout, which Next
+    // keeps mounted across every Control Center route — so the decision is
+    // made once, from the shared permission context, and this page no longer
+    // carries a copy of it. Same rule, new owner.
+    const layout = read('src/app/admin/control-center/layout.tsx')
+    assert.ok(layout.includes('usePermissionContext()'), 'identity comes from the shared resolution')
+    assert.ok(layout.includes("if (userId === null) { router.replace('/login'); return }"))
+    assert.ok(layout.includes("if (role !== 'admin') { router.replace('/dashboard'); return }"))
+    assert.ok(layout.includes('exitViewMode()'), 'View As is exited, never carried into the Control Center')
+    assert.ok(layout.includes('if (!allowed'), 'children render in no state but admitted')
+    assert.equal(page.includes("from('users')"), false, 'the page must not re-read the profile the layout resolved')
   })
 })
 
@@ -391,15 +401,31 @@ describe('the Access Control employee directory', () => {
       'the service role is used behind the admin check, so RLS on public.users cannot hide a colleague')
   })
 
-  test('the counter prefetch is bounded, but the LIST is not', () => {
-    // One request per employee for a decorative "x of y" would be a burst on a
-    // company-wide directory. Bounding the requests is right; bounding what an
-    // administrator can see is what caused the defect.
-    assert.ok(page.includes('const COUNT_PREFETCH_LIMIT = 20'))
-    assert.ok(page.includes('searchResults.slice(0, COUNT_PREFETCH_LIMIT)'))
-    assert.ok(page.includes('countPrefetchTargets.filter(m => !requestedCountIds.current.has(m.id))'),
-      'the effect drives off the bounded window, not the full list')
-    assert.ok(page.includes('}, [countPrefetchTargets, token])'))
+  test('no permission tree is fetched until an employee is opened', () => {
+    // The directory used to prefetch up to twenty trees on load — six backend
+    // calls each — to draw a decorative "x of y". That counter is gone, and the
+    // ONLY GET of the tree route is the one loadTree makes for the employee
+    // the administrator actually selected. The list itself stays complete.
+    assert.equal(page.includes('COUNT_PREFETCH_LIMIT'), false)
+    assert.equal(page.includes('countPrefetchTargets'), false)
+    assert.equal(page.includes('moduleCounts'), false)
+    assert.equal(page.includes('requestedCountIds'), false)
+    const treeRoute = '/api/control-center/permissions/employees/${'
+    assert.equal(page.split(treeRoute).length - 1, 2, 'one GET in loadTree, one PUT in save, nothing else')
+    const loadTreeBody = page.slice(page.indexOf('async function loadTree('), page.indexOf('function changeOverride('))
+    assert.ok(loadTreeBody.includes(treeRoute + 'id}'), 'the GET is the selected employee\'s own')
+    const saveBody = page.slice(page.indexOf('async function save()'), page.indexOf('// ── Render'))
+    assert.ok(saveBody.includes(treeRoute + 'selectedEmployeeId}'))
+  })
+
+  test('the directory and departments come from the shared Control Center queries', () => {
+    // Fetched once per stale window and reused by every section, instead of a
+    // fresh useState copy on every mount of every page.
+    assert.ok(page.includes("from '@/hooks/queries/useControlCenterData'"))
+    assert.ok(page.includes('const membersQuery = useAdminMembers()'))
+    assert.ok(page.includes('const deptsQuery   = useDepartments()'))
+    assert.equal(page.includes("fetch('/api/admin-members'"), false, 'no page-local copy of the directory read')
+    assert.equal(page.includes("fetch('/api/control-center/departments'"), false)
   })
 
   test('the panel says how many people it is showing', () => {
