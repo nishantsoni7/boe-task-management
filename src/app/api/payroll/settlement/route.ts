@@ -40,7 +40,8 @@ import {
   buildSettlementBlock,
   type SettlementResultFigures,
 } from '@/lib/payroll/resultDetailPayload'
-import { sameMoney } from '@/lib/payroll/settlement'
+import { sameMoney, type SettlementCreditInput } from '@/lib/payroll/settlement'
+import { fetchActivePayrollCreditApplication } from '@/lib/payroll/store'
 
 /**
  * A failure the admin can act on, with the technical detail kept server-side.
@@ -165,6 +166,13 @@ export async function PATCH(req: NextRequest) {
     .eq('employee_id', employee_id)
     .maybeSingle()
 
+  // The ACTIVE BOE Credits application (Phase 1D) is the third input to the
+  // settlement figures. A settlement write cannot change it either, so it is
+  // read alongside for the same reason.
+  const creditPromise: Promise<SettlementCreditInput> =
+    fetchActivePayrollCreditApplication(svc, payroll_period_id, employee_id)
+      .catch(err => { console.error('[payroll/settlement] credit application unavailable:', err); return null })
+
   // ── Lock guard, before anything is written ────────────────────────────────
   let lockState
   try {
@@ -191,7 +199,7 @@ export async function PATCH(req: NextRequest) {
   const { data: profile } = await actorNamePromise
   const actor = { id: auth.id, name: (profile?.full_name as string | null) ?? null }
 
-  const ctx: WriteContext = { svc, actor, resultPromise }
+  const ctx: WriteContext = { svc, actor, resultPromise, creditPromise }
 
   return action === 'carry_forward'
     ? handleCarryForward(ctx, settlement, body)
@@ -204,6 +212,7 @@ type WriteContext = {
   svc: ServiceClient
   actor: { id: string | null; name: string | null }
   resultPromise: PromiseLike<{ data: SettlementResultFigures | null }>
+  creditPromise: PromiseLike<SettlementCreditInput>
 }
 
 /**
@@ -226,7 +235,7 @@ async function confirmed(
   row: SettlementRow,
   extra: Record<string, unknown>,
 ) {
-  const { data: result } = await ctx.resultPromise
+  const [{ data: result }, credits] = await Promise.all([ctx.resultPromise, ctx.creditPromise])
 
   // No stored result yet — the settlement is real but there is nothing to
   // compute figures against, so the page falls back to a full reload rather
@@ -236,7 +245,7 @@ async function confirmed(
   return NextResponse.json({
     ok: true,
     ...extra,
-    settlement: buildSettlementBlock(result, row),
+    settlement: buildSettlementBlock(result, row, credits),
   })
 }
 

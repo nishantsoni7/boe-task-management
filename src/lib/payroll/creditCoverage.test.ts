@@ -24,7 +24,10 @@ import type { AttendanceDayCorrection } from '../attendance/corrections'
 import { DEFAULT_PAYROLL_SETTINGS } from './settings'
 import { planCoverageReconciliation, reconcileAttendanceCoverage } from './creditCoverage'
 import type { StoredAttendanceRedemption } from './store'
-import { ATTENDANCE_REDEMPTION_COST } from '../boeCredits/attendanceRedemption'
+// The prices the fixtures were written against (the Phase 1C literals). Since
+// Phase 1D the price is a setting; the PLAN never reads it — it compares the
+// kind of day bought with the kind the engine now settles.
+const ATTENDANCE_REDEMPTION_COST = { half_day: 1, absent: 2 } as const
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -136,7 +139,7 @@ describe('Absent → Half Day: re-priced, never silently over-charged', () => {
     assert.equal(plan[0].action, 'reprice')
     if (plan[0].action === 'reprice') {
       assert.equal(plan[0].new_type, 'half_day')
-      assert.match(plan[0].reason, /re-priced from 2 to 1/)
+      assert.match(plan[0].reason, /now a Half Day, not Absent/)
     }
   })
 

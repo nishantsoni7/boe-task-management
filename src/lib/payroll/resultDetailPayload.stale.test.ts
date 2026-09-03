@@ -72,8 +72,15 @@ function fakeSvc(tables: Record<string, unknown[]>) {
   return { from: (table: string) => chain(table) } as any
 }
 
-function world(opts: { storedTotal: number; activeRedemptions: unknown[]; status?: 'generated' | 'locked' }) {
+/** The active credit settings, as boe_credit_settings holds them: the Phase 1D prices unless a test says otherwise. */
+const PRICES = { half_day: 8, absent: 15 }
+
+function world(opts: { storedTotal: number; activeRedemptions: unknown[]; status?: 'generated' | 'locked'; prices?: { half_day: number; absent: number } }) {
+  const prices = opts.prices ?? PRICES
   return fakeSvc({
+    boe_credit_settings: [{ id: 's-1', review_reward_credits: 1, credit_value: 100, half_day_redemption_credits: prices.half_day, full_day_redemption_credits: prices.absent, minimum_monthly_reviews: 3, note: null, created_at: '2026-09-01T00:00:00Z', created_by: null }],
+    boe_credit_payroll_applications: [],
+    boe_credit_balances: [],
     payroll_periods: [{ id: PERIOD, payroll_month: 7, payroll_year: 2026, status: opts.status ?? 'generated', locked_at: null, settings_snapshot: null }],
     payroll_results: [{
       id: 'res-1', employee_id: EMP, monthly_salary: 26_000, working_days_in_month: 27, days_present: 25, days_absent: 2, half_day_count: 0,
@@ -147,7 +154,11 @@ describe('what the employee is offered', () => {
   test('an unlocked, generated month lists the chargeable day; a covered day is not offered again', async () => {
     const open = await payload({ storedTotal: BEFORE, activeRedemptions: [] })
     assert.equal(open.can_redeem, true)
-    assert.deepEqual(open.redeemable_dates, [{ date: '2026-07-22', deduction_type: 'absent', credits: 2, amount: BEFORE }])
+    assert.deepEqual(open.redeemable_dates, [{ date: '2026-07-22', deduction_type: 'absent', credits: PRICES.absent, amount: BEFORE }])
+
+    // The price follows the settings row, not a constant.
+    const cheap = await payload({ storedTotal: BEFORE, activeRedemptions: [], prices: { half_day: 1, absent: 2 } })
+    assert.deepEqual(cheap.redeemable_dates, [{ date: '2026-07-22', deduction_type: 'absent', credits: 2, amount: BEFORE }])
 
     const covered = await payload({ storedTotal: AFTER, activeRedemptions: [COVER_22] })
     assert.deepEqual(covered.redeemable_dates, [])

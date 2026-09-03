@@ -256,3 +256,42 @@ the route handlers and RLS are what refuse access — see
 - `ATTENDANCE_PAYROLL_ISSUES.md` — the employee issue workflow
 - `ATTENDANCE_MODULE_PLAN.md` — the attendance domain's own plan
 - `../BOE Master Context/BOE_GLOBAL_NAVIGATION_STANDARD.md`
+
+## BOE Credits salary addition (Phase 1D)
+
+Settlement gained a fourth line on 2026-09-03. What BOE finally owes for a
+month is now:
+
+```
+Salary After Attendance
+  + Carry Forward
+  + Other Adjustments
+  + BOE Credit Addition
+= Salary Payable
+```
+
+The BOE Credit Addition is the rupee **snapshot** on the employee's active
+`boe_credit_payroll_applications` row for the period: the credits they applied
+× the credit value at the moment they applied them. It is a Settlement input
+and nothing else — the payroll engine, gross salary, attendance
+classification, every deduction line and `payroll_results.net_salary` are
+untouched, and the addition is not capped by any of them (₹30,000 payable +
+₹500 = ₹30,500 is valid with no deduction at all). A settings change or a
+payroll regeneration never re-prices an existing application; a locked period
+freezes it, and the database refuses even a direct admin reversal while the
+month is locked.
+
+Every surface that states the final payable reads the same
+`computeSettlement(result, settlement, credits)`: the payslip's settlement
+block for both readers, the PATCH settlement route's confirmed figures,
+payment recording (closing balance = revised Salary Payable − amount paid),
+the salary report and its WhatsApp text (a `BOE Credits: +₹500` line and
+Amount Payable), and the next month's proposed carry-forward. The list
+columns headed *Net Payable* (My Payroll, Payroll Runs) remain the stored
+engine figure, as before: they never carried the carry-forward either, and
+the payslip is where Salary Payable is stated.
+
+Deleting a payroll period is refused while credits are in use against it (an
+active attendance coverage or a payroll application); they have to be reversed
+or removed first, so the ledger cannot be left pointing at a month that no
+longer exists. Full reference: `BOE_CREDITS.md` §3.

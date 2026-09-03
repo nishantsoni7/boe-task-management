@@ -16,18 +16,32 @@
 // employee with a +₹800 reimbursement would see it in Salary After Attendance
 // AND again in Net Adjustments.
 //
-// This module therefore builds from the four stored PRIMITIVES and never from
+// This module therefore builds from the stored PRIMITIVES and never from
 // net_salary:
 //
 //   salary_after_attendance = gross_salary − total_deductions
 //   net_adjustments         = carry_forward + other_adjustments
+//   boe_credit_addition     = the ACTIVE payroll credit application's rupee
+//                             snapshot (Phase 1D), or 0
 //   salary_payable          = salary_after_attendance + net_adjustments
+//                             + boe_credit_addition
 //   closing_balance         = salary_payable − amount_paid
 //
 // `other_adjustments` is `pending_adjustment_total`, the signed total the engine
 // itself applied. Carry-forward is NEVER stored as a payroll_pending_adjustments
 // row, so it can never leak into that total. Each figure is used exactly once,
 // by construction rather than by care.
+//
+// THE BOE CREDIT ADDITION (Phase 1D)
+// ----------------------------------
+// An employee may turn spendable BOE Credits into rupees for a payroll month:
+// credits × the credit value at that moment, both SNAPSHOTTED on
+// boe_credit_payroll_applications. It is a Settlement line, deliberately:
+// it does not touch gross salary, attendance, any deduction or net_salary,
+// and it is not capped by any of them — an employee with no deduction at all
+// may still add ₹500 to a ₹30,000 month and be owed ₹30,500. It is read from
+// the stored snapshot, so a later settings change or a payroll regeneration
+// never re-prices it.
 //
 // TWO DELIBERATE DIVERGENCES FROM net_salary
 // ------------------------------------------
@@ -70,6 +84,18 @@ export type SettlementRecordInput = {
   amount_paid: number | null
 } | null
 
+/**
+ * The ACTIVE BOE Credits payroll application for the month, or nothing.
+ *
+ * Only the rupee snapshot is money; the credits and the rate are carried so a
+ * screen can say "5 credits at ₹100" beside the figure without re-deriving it.
+ */
+export type SettlementCreditInput = {
+  credits_used: number
+  credit_value_snapshot: number
+  credit_amount_snapshot: number
+} | null
+
 // ─── Output ───────────────────────────────────────────────────────────────────
 
 /**
@@ -90,6 +116,8 @@ export type SettlementFigures = {
   other_adjustments: number
   /** carry_forward + other_adjustments. */
   net_adjustments: number
+  /** The rupee snapshot of the active BOE Credits application. 0 when none. */
+  boe_credit_addition: number
   /** May be negative: a recovery can exceed the month's pay. */
   salary_payable: number
   /** Null until a payment has been recorded. */
@@ -131,12 +159,14 @@ function num(value: number | null | undefined): number {
  * Every figure the settlement view shows, from stored records only.
  *
  * Pure and total: a missing settlement row means no carry-forward and no
- * payment, which is the correct reading of a month nobody has settled yet
- * rather than a reason to fail.
+ * payment, and a missing credit application means no addition — which is the
+ * correct reading of a month nobody has settled yet rather than a reason to
+ * fail.
  */
 export function computeSettlement(
   result: SettlementResultInput,
   settlement: SettlementRecordInput,
+  credits: SettlementCreditInput = null,
 ): SettlementFigures {
   const gross      = num(result.gross_salary)
   const deductions = num(result.total_deductions)
@@ -151,8 +181,11 @@ export function computeSettlement(
   const carryForward     = num(settlement?.carry_forward_amount)
   const netAdjustments   = carryForward + otherAdjustments
 
+  // The stored snapshot, never credits × today's rate.
+  const creditAddition = credits ? Math.max(0, num(credits.credit_amount_snapshot)) : 0
+
   // No Math.max here, on purpose. See the header.
-  const salaryPayable = attendanceSalary + netAdjustments
+  const salaryPayable = attendanceSalary + netAdjustments + creditAddition
 
   const amountPaid = settlement && settlement.amount_paid != null ? settlement.amount_paid : null
 
@@ -168,6 +201,7 @@ export function computeSettlement(
     carry_forward:           carryForward,
     other_adjustments:       otherAdjustments,
     net_adjustments:         netAdjustments,
+    boe_credit_addition:     creditAddition,
     salary_payable:          salaryPayable,
     amount_paid:             amountPaid,
     closing_balance:         closingBalance,

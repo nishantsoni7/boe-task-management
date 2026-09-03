@@ -10,6 +10,7 @@
 // this file to have no path to it.
 
 import { computeSettlement, proposedCarryForwardFrom, sameMoney } from './settlement'
+import { fetchActivePayrollCreditApplication } from './store'
 
 // Callers pass a service-role client; we accept any schema parameterisation.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -166,8 +167,17 @@ export async function previousClosingBalance(
   // them nothing and is not an unresolved settlement either.
   if (!prevResult) return { amount: 0, resolved: true }
 
-  const prevSettlement = await fetchSettlement(svc, previousPeriodId, employeeId)
-  const figures = computeSettlement(prevResult, prevSettlement)
+  // The prior month's BOE Credits addition is part of what it paid out, so it
+  // is part of the closing balance carried here — read from the stored
+  // snapshot, exactly as that month's own payslip reads it.
+  const [prevSettlement, prevCredits] = await Promise.all([
+    fetchSettlement(svc, previousPeriodId, employeeId),
+    fetchActivePayrollCreditApplication(svc, previousPeriodId, employeeId).catch(err => {
+      console.error('[payroll/settlement] prior credit application unavailable:', err)
+      return null
+    }),
+  ])
+  const figures = computeSettlement(prevResult, prevSettlement, prevCredits)
 
   return {
     amount:   proposedCarryForwardFrom(figures.closing_balance),

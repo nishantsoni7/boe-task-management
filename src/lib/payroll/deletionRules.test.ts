@@ -293,3 +293,29 @@ describe('what the dialog promises', () => {
     }
   })
 })
+
+
+// ─── BOE Credits in use (Phase 1C/1D) ────────────────────────────────────────
+
+describe('credits in use', () => {
+  test('a period with an active coverage or payroll application cannot be deleted', () => {
+    const p = canDeletePayrollPeriod('admin', deletable({ creditUseCount: 2 }))
+    assert.equal(p.allowed, false)
+    if (!p.allowed) {
+      assert.equal(p.reason, 'credits_in_use')
+      assert.match(p.message, /BOE Credits are applied/)
+      assert.match(p.resolution, /remove their payroll credit applications/)
+    }
+  })
+
+  test('none in use, or the fact absent, changes nothing', () => {
+    assert.equal(canDeletePayrollPeriod('admin', deletable({ creditUseCount: 0 })).allowed, true)
+    assert.equal(canDeletePayrollPeriod('admin', deletable()).allowed, true)
+  })
+
+  test('it is checked after the objections an admin cannot clear', () => {
+    const p = canDeletePayrollPeriod('admin', deletable({ creditUseCount: 1, paidSettlementCount: 1 }))
+    assert.equal(p.allowed, false)
+    if (!p.allowed) assert.equal(p.reason, 'paid')
+  })
+})

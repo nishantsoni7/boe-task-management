@@ -163,10 +163,12 @@ describe('every navigation path is a real route', () => {
 // ─── 4. The employee list is self-service only ───────────────────────────────
 
 describe('the employee navigation', () => {
-  test('is exactly the four self-service destinations', () => {
+  test('is exactly the five self-service destinations', () => {
+    // /my-credits (BOE Credits Phase 1D) sits beside My Payroll: every read
+    // behind it derives the employee from the bearer token.
     assert.deepEqual(
       ATTENDANCE_PAYROLL_EMPLOYEE_NAV.map(i => i.path),
-      ['/my-attendance', '/my-payroll', '/my-issues', '/payroll/how-it-works'],
+      ['/my-attendance', '/my-payroll', '/my-credits', '/my-issues', '/payroll/how-it-works'],
     )
   })
 

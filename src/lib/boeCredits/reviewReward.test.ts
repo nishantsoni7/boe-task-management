@@ -46,11 +46,14 @@ const prev = transitionIn(strip(read(join(MIGRATIONS, PREVIOUS))))
 // ── 1. The file ─────────────────────────────────────────────────────────────
 
 describe('the file, and where it sits', () => {
-  test('it sits directly after the foundation, and only Phase 1C follows it', () => {
+  test('it sits directly after the foundation, and only Phase 1C and Phase 1D follow it', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     const at = all.indexOf(FILE)
     assert.equal(all[at - 1], '20261101000000_boe_credits_foundation.sql')
-    assert.deepEqual(all.slice(at + 1), ['20261103000000_boe_credits_attendance_redemption.sql'])
+    assert.deepEqual(all.slice(at + 1), [
+      '20261103000000_boe_credits_attendance_redemption.sql',
+      '20261104000000_boe_credits_phase_1d.sql',
+    ])
   })
 
   test('it touches ONE function and nothing else — no table, no policy, no data', () => {

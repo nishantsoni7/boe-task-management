@@ -26,6 +26,7 @@ import {
   LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Upload, Users, Coins,
 } from 'lucide-react'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
+import { MY_CREDITS_PATH } from '@/lib/boeCredits/paths'
 
 /** The user-facing name of the combined module, in one place. */
 export const ATTENDANCE_PAYROLL_MODULE_NAME = 'Attendance & Payroll'
@@ -112,6 +113,9 @@ export const ATTENDANCE_PAYROLL_ADMIN_NAV: AttendancePayrollNavItem[] = [
 export const ATTENDANCE_PAYROLL_EMPLOYEE_NAV: AttendancePayrollNavItem[] = [
   { label: 'My Attendance', path: '/my-attendance', icon: <CalendarDays size={15} strokeWidth={1.8} /> },
   { label: 'My Payroll',    path: '/my-payroll',    icon: <ClipboardList size={15} strokeWidth={1.8} /> },
+  // Balance, uses, this month's review progress, history — and the guide
+  // under it. Served by routes that derive the employee from the token.
+  { label: 'BOE Credits',   path: MY_CREDITS_PATH,  icon: <Coins size={15} strokeWidth={1.8} /> },
   {
     label: 'My Issues',
     path: '/my-issues',

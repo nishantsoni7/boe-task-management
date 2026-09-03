@@ -106,6 +106,12 @@ describe('the migration is one file, correctly sequenced', () => {
       // service-role function that covers one attendance day with credits. One
       // new table of its own; it touches nothing any other module creates.
       '20261103000000_boe_credits_attendance_redemption.sql',
+      // BOE Credits Phase 1D: configurable settings, monthly review qualification
+      // with provisional credits, settings-priced attendance redemption and the
+      // payroll salary addition. Three new tables of its own; it re-creates
+      // transition_customer_review_test_card() to attribute the reward to the
+      // month of submission, and touches nothing any other module creates.
+      '20261104000000_boe_credits_phase_1d.sql',
     ])
   })
 

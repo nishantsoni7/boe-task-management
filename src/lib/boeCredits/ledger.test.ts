@@ -21,6 +21,7 @@ import {
   creditReasonIssue,
 } from './ledger'
 import { CREDIT_TRANSACTION_TYPES, isCreditTransactionType } from './types'
+import { describeCreditTransaction, withRunningBalance, reviewMonthLabel, REWARD_STATUS_LABELS } from './ledger'
 
 describe('ledger math', () => {
   test('+100 +100 −50 = 150', () => {
@@ -42,9 +43,9 @@ describe('ledger math', () => {
   })
 })
 
-describe('the four kinds', () => {
-  test('exactly review_reward, redemption, reversal and admin_adjustment', () => {
-    assert.deepEqual([...CREDIT_TRANSACTION_TYPES], ['review_reward', 'redemption', 'reversal', 'admin_adjustment'])
+describe('the five kinds', () => {
+  test('exactly review_reward, redemption, reversal, admin_adjustment and review_month_lapse', () => {
+    assert.deepEqual([...CREDIT_TRANSACTION_TYPES], ['review_reward', 'redemption', 'reversal', 'admin_adjustment', 'review_month_lapse'])
     for (const t of CREDIT_TRANSACTION_TYPES) assert.ok(isCreditTransactionType(t))
     assert.equal(isCreditTransactionType('bonus'), false)
     assert.equal(isCreditTransactionType(null), false)
@@ -117,5 +118,66 @@ describe('validation the form and the route share', () => {
     assert.ok(creditReasonIssue(undefined))
     assert.ok(creditReasonIssue('x'.repeat(501)))
     assert.equal(creditReasonIssue('Missed reward for August review'), null)
+  })
+})
+
+
+// ─── Phase 1D: sentences, the running balance, the month label ───────────────
+
+describe('describeCreditTransaction', () => {
+  const base = { credits: 1, description: 'Review verified · TEST-001' } as const
+
+  test('a review reward names its month and whether it can be spent yet', () => {
+    const pending = describeCreditTransaction({ ...base, transaction_type: 'review_reward' }, { kind: 'review_reward', card_ref: 'TEST-001', review_month: '2026-09-01', month_status: 'open', reversed: false })
+    assert.equal(pending.title, 'Review verified · September')
+    assert.equal(pending.status, 'pending')
+    assert.equal(REWARD_STATUS_LABELS.pending, 'Pending monthly target')
+    const available = describeCreditTransaction({ ...base, transaction_type: 'review_reward' }, { kind: 'review_reward', card_ref: 'TEST-001', review_month: '2026-09-01', month_status: 'qualified', reversed: false })
+    assert.equal(available.status, 'available')
+    const lapsed = describeCreditTransaction({ ...base, transaction_type: 'review_reward' }, { kind: 'review_reward', card_ref: null, review_month: '2026-07-01', month_status: 'lapsed', reversed: false })
+    assert.equal(lapsed.status, 'lapsed')
+    const reversed = describeCreditTransaction({ ...base, transaction_type: 'review_reward' }, { kind: 'review_reward', card_ref: null, review_month: '2026-07-01', month_status: 'open', reversed: true })
+    assert.equal(reversed.status, 'reversed')
+  })
+
+  test('a redemption says which day or which payroll month, in words', () => {
+    const half = describeCreditTransaction({ transaction_type: 'redemption', credits: -8, description: null }, { kind: 'attendance_redemption', deduction_type: 'half_day', attendance_date: '2026-08-12', reversed: false })
+    assert.equal(half.title, 'Half Day covered')
+    assert.equal(half.detail, '12 Aug 2026')
+    const full = describeCreditTransaction({ transaction_type: 'redemption', credits: -15, description: null }, { kind: 'attendance_redemption', deduction_type: 'absent', attendance_date: '2026-08-13', reversed: false })
+    assert.equal(full.title, 'Full Day covered')
+    const pay = describeCreditTransaction({ transaction_type: 'redemption', credits: -5, description: null }, { kind: 'payroll_redemption', payroll_month: 9, payroll_year: 2026, credit_amount: 500, reversed: false })
+    assert.equal(pay.title, 'Applied to September 2026 payroll')
+    assert.match(pay.detail ?? '', /₹500/)
+  })
+
+  test('a reversal is described by what it undid; a lapse by its month', () => {
+    const r = describeCreditTransaction({ transaction_type: 'reversal', credits: 5, description: 'changed' }, { kind: 'reversal_of', original_type: 'redemption', original: { kind: 'payroll_redemption', payroll_month: 9, payroll_year: 2026, credit_amount: 500, reversed: true } })
+    assert.equal(r.title, 'Payroll credit application reversed')
+    const restored = describeCreditTransaction({ transaction_type: 'reversal', credits: 8, description: null }, { kind: 'reversal_of', original_type: 'redemption', original: { kind: 'attendance_redemption', deduction_type: 'half_day', attendance_date: '2026-08-12', reversed: true } })
+    assert.equal(restored.title, 'Credits restored')
+    const lapse = describeCreditTransaction({ transaction_type: 'review_month_lapse', credits: -2, description: null }, { kind: 'review_month_lapse', review_month: '2026-09-01' })
+    assert.equal(lapse.title, 'September review credits lapsed')
+  })
+
+  test('no database code reaches a title', () => {
+    for (const t of CREDIT_TRANSACTION_TYPES) {
+      const d = describeCreditTransaction({ transaction_type: t, credits: t === 'redemption' || t === 'review_month_lapse' ? -1 : 1, description: null }, { kind: 'none' })
+      assert.doesNotMatch(d.title, /_/, t)
+    }
+  })
+})
+
+describe('withRunningBalance', () => {
+  test('walks newest-first from the recorded total, so a capped page is still exact', () => {
+    const rows = withRunningBalance([{ credits: -5 }, { credits: 1 }, { credits: 17 }], 13)
+    assert.deepEqual(rows.map(r => r.balance_after), [13, 18, 17])
+  })
+})
+
+describe('reviewMonthLabel', () => {
+  test('"September 2026", or the name alone', () => {
+    assert.equal(reviewMonthLabel('2026-09-01'), 'September 2026')
+    assert.equal(reviewMonthLabel('2026-09-01', { year: false }), 'September')
   })
 })

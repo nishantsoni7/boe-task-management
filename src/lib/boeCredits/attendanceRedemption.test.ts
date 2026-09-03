@@ -1,13 +1,14 @@
 /**
- * BOE Credits Phase 1C — the cost, the eligibility rule, and what the
- * migration SAYS.
+ * BOE Credits Phase 1C, priced by Phase 1D — the cost, the eligibility rule,
+ * and what the two migrations SAY.
  *
  * Three things are pinned here:
- *   1. the cost table in TypeScript and the two literals inside
- *      redeem_boe_credits_for_attendance() are the SAME numbers;
+ *   1. the cost is a SETTING: attendanceRedemptionCost() reads the two
+ *      numbers it is handed and nothing else, and the SQL function reads the
+ *      same two columns from the newest settings row — no literal anywhere;
  *   2. attendanceRedemptionEligibility() admits exactly a chargeable absent or
  *      half-day line and refuses everything the rules exclude, each with its
- *      reason;
+ *      reason, and quotes the price from the settings it is given;
  *   3. 20261103000000_boe_credits_attendance_redemption.sql is shaped as
  *      documented — the foundation's vocabulary ('redemption' /
  *      'attendance_redemption'), service-role only, close-once-else-append-only,
@@ -15,8 +16,9 @@
  *      no attendance table touched, no foundation object altered, no backfill.
  *
  * The executable proof of (3) is supabase/tests/boe_credits_attendance_
- * redemption_assertions.sql. Comments are stripped before every text
- * assertion, so a claim cannot be satisfied by prose.
+ * redemption_assertions.sql; of (1) it is §3 and §11 of
+ * boe_credits_phase_1d_assertions.sql. Comments are stripped before every
+ * text assertion, so a claim cannot be satisfied by prose.
  *
  * Run:
  *   npx tsx --test src/lib/boeCredits/attendanceRedemption.test.ts
@@ -27,60 +29,79 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  ATTENDANCE_REDEMPTION_COST,
+  attendanceRedemptionCost,
   attendanceRedemptionEligibility,
   coveredLabel,
   redemptionCovers,
   redemptionOfferLabel,
   isRedeemableDeductionType,
+  REDEEMABLE_DEDUCTION_TYPES,
   type RedeemableDayInput,
 } from './attendanceRedemption'
+import { DEFAULT_BOE_CREDIT_SETTINGS } from './settings'
 import { CREDIT_TRANSACTION_TYPES } from './types'
 
 const ROOT = process.cwd()
 const FILE = '20261103000000_boe_credits_attendance_redemption.sql'
+const PHASE_1D = '20261104000000_boe_credits_phase_1d.sql'
 const FOUNDATION = '20261101000000_boe_credits_foundation.sql'
 const MIGRATIONS = join(ROOT, 'supabase/migrations')
 const read  = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
 const strip = (s: string) => s.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
 const sql   = read(join(MIGRATIONS, FILE))
 const code  = strip(sql)
+const phase1d = strip(read(join(MIGRATIONS, PHASE_1D)))
 const foundation = strip(read(join(MIGRATIONS, FOUNDATION)))
 
-function fn(name: string): string {
-  const start = code.indexOf(`create or replace function public.${name}(`)
+function fnIn(src: string, name: string): string {
+  const start = src.indexOf(`create or replace function public.${name}(`)
   assert.ok(start >= 0, `function ${name} is defined`)
-  const end = code.indexOf('\n$$;', start)
+  const end = src.indexOf('\n$$;', start)
   assert.ok(end > start, `function ${name} closes`)
-  return code.slice(start, end + 4)
+  return src.slice(start, end + 4)
 }
+const fn = (name: string) => fnIn(code, name)
 
 // ── 1. The cost ─────────────────────────────────────────────────────────────
 
-describe('the cost is fixed, whole, and the same in SQL and TypeScript', () => {
-  test('half day 1, absent 2, nothing else', () => {
-    assert.deepEqual(ATTENDANCE_REDEMPTION_COST, { half_day: 1, absent: 2 })
+const COSTS = { half_day_redemption_credits: 8, full_day_redemption_credits: 15 }
+
+describe('the cost is a setting, read the same way in SQL and TypeScript', () => {
+  test('two kinds, and each reads its own setting — nothing is derived from the other', () => {
+    assert.deepEqual([...REDEEMABLE_DEDUCTION_TYPES], ['half_day', 'absent'])
+    assert.equal(attendanceRedemptionCost('half_day', COSTS), 8)
+    assert.equal(attendanceRedemptionCost('absent', COSTS), 15)
+    assert.equal(attendanceRedemptionCost('half_day', { half_day_redemption_credits: 1, full_day_redemption_credits: 2 }), 1)
+    assert.equal(attendanceRedemptionCost('absent', { half_day_redemption_credits: 20, full_day_redemption_credits: 10 }), 10, 'no ratio is assumed')
+    assert.equal(attendanceRedemptionCost('half_day', DEFAULT_BOE_CREDIT_SETTINGS), 8)
+    assert.equal(attendanceRedemptionCost('absent', DEFAULT_BOE_CREDIT_SETTINGS), 15)
     assert.ok(isRedeemableDeductionType('half_day'))
     assert.ok(isRedeemableDeductionType('absent'))
     assert.equal(isRedeemableDeductionType('late_arrival'), false)
     assert.equal(isRedeemableDeductionType('missing_punch_in'), false)
   })
 
-  test('the SQL function carries the same two literals and nothing about rupees', () => {
-    const f = fn('redeem_boe_credits_for_attendance')
-    assert.match(f, /when 'half_day' then 1\s*\n\s*when 'absent'\s+then 2/)
+  test('the Phase 1D SQL function reads the two settings columns and carries no literal price', () => {
+    const f = fnIn(phase1d, 'redeem_boe_credits_for_attendance')
+    assert.match(f, /select \* into v_settings from public\.boe_credit_settings order by created_at desc limit 1;/)
+    assert.match(f, /when 'half_day' then v_settings\.half_day_redemption_credits\s*\n\s*else\s+v_settings\.full_day_redemption_credits/)
+    assert.equal(/when 'half_day' then \d|when 'absent'\s+then \d/.test(f), false, 'no literal cost')
     assert.equal(/credit_value|monthly_salary|per_day/.test(f), false, 'cost is not derived from money')
-    const half   = f.match(/when 'half_day' then (\d+)/)![1]
-    const absent = f.match(/when 'absent'\s+then (\d+)/)![1]
-    assert.equal(Number(half),   ATTENDANCE_REDEMPTION_COST.half_day)
-    assert.equal(Number(absent), ATTENDANCE_REDEMPTION_COST.absent)
+    // The price is written on the record, so history reads the same when the setting changes.
+    assert.match(f, /v_id, p_employee_id, p_attendance_date, p_deduction_type, v_cost,/)
   })
 
-  test('labels say credits, never rupees', () => {
-    assert.equal(redemptionOfferLabel('half_day'), 'Half Day · 1 credit')
-    assert.equal(redemptionOfferLabel('absent'),   'Absent · 2 credits')
+  test('the Phase 1C file still carries its two literals — it is history, applied and unchanged', () => {
+    const f = fn('redeem_boe_credits_for_attendance')
+    assert.match(f, /when 'half_day' then 1\s*\n\s*when 'absent'\s+then 2/)
+  })
+
+  test('labels say credits, never rupees, at the price they are given', () => {
+    assert.equal(redemptionOfferLabel('half_day', 8), 'Half Day · 8 credits')
+    assert.equal(redemptionOfferLabel('absent', 15),  'Absent · 15 credits')
+    assert.equal(redemptionOfferLabel('half_day', 1), 'Half Day · 1 credit')
     assert.equal(coveredLabel(1), 'Covered with 1 BOE Credit')
-    assert.equal(coveredLabel(2), 'Covered with 2 BOE Credits')
+    assert.equal(coveredLabel(8), 'Covered with 8 BOE Credits')
   })
 
   test('an absent redemption covers a day that became a half day; not the other way', () => {
@@ -93,18 +114,24 @@ describe('the cost is fixed, whole, and the same in SQL and TypeScript', () => {
 
 // ── 2. Eligibility ──────────────────────────────────────────────────────────
 
-const CTX = { periodStatus: 'generated' as const, today: '2026-08-20', periodMonth: 8, periodYear: 2026 }
+const CTX = { periodStatus: 'generated' as const, today: '2026-08-20', periodMonth: 8, periodYear: 2026, costs: COSTS }
 const day = (date: string, lines: RedeemableDayInput['deduction_lines']): RedeemableDayInput => ({ date, deduction_lines: lines })
 
 describe('eligibility comes from the settled deduction line, not the attendance status', () => {
-  test('a chargeable half day → 1 credit', () => {
+  test('a chargeable half day → the half-day price', () => {
     const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 385 }]), CTX)
-    assert.deepEqual(e, { eligible: true, deduction_type: 'half_day', credits: 1, amount: 385 })
+    assert.deepEqual(e, { eligible: true, deduction_type: 'half_day', credits: 8, amount: 385 })
   })
 
-  test('a chargeable absent day → 2 credits', () => {
+  test('a chargeable absent day → the full-day price', () => {
     const e = attendanceRedemptionEligibility(day('2026-08-13', [{ deduction_type: 'absent', amount_deducted: 769 }]), CTX)
-    assert.deepEqual(e, { eligible: true, deduction_type: 'absent', credits: 2, amount: 769 })
+    assert.deepEqual(e, { eligible: true, deduction_type: 'absent', credits: 15, amount: 769 })
+  })
+
+  test('the price follows the settings handed in, not a constant', () => {
+    const cheap = { ...CTX, costs: { half_day_redemption_credits: 1, full_day_redemption_credits: 2 } }
+    const e = attendanceRedemptionEligibility(day('2026-08-13', [{ deduction_type: 'absent', amount_deducted: 769 }]), cheap)
+    assert.ok(e.eligible && e.credits === 2)
   })
 
   test('a company-paid (₹0, paid leave) day is refused', () => {
@@ -143,7 +170,7 @@ describe('eligibility comes from the settled deduction line, not the attendance 
   })
 
   test('an already-covered day is refused as such, not as company paid', () => {
-    const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 0, waived_by: 'boe_credits', credits_redeemed: 1 }]), CTX)
+    const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 0, waived_by: 'boe_credits', credits_redeemed: 8 }]), CTX)
     assert.equal(e.eligible, false)
     if (!e.eligible) assert.equal(e.reason, 'already_covered')
   })
@@ -169,13 +196,14 @@ describe('eligibility comes from the settled deduction line, not the attendance 
   })
 })
 
-// ── 3. The migration ────────────────────────────────────────────────────────
+// ── 3. The Phase 1C migration ───────────────────────────────────────────────
 
 describe('the file, and where it sits', () => {
-  test('it is the newest migration and follows the two credits files', () => {
+  test('it follows the two credits files before it, and Phase 1D follows it', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all[all.length - 1], FILE)
-    assert.equal(all[all.length - 2], '20261102000000_boe_credits_review_reward.sql')
+    const at = all.indexOf(FILE)
+    assert.equal(all[at - 1], '20261102000000_boe_credits_review_reward.sql')
+    assert.equal(all[at + 1], PHASE_1D)
   })
 
   test('it is additive: one new table, and it alters only that table', () => {
@@ -196,14 +224,11 @@ describe('the file, and where it sits', () => {
     }
     assert.equal(/alter table (?:only )?public\.boe_credit_(transactions|settings)/.test(code), false)
     assert.equal(/drop (index|policy|trigger) if exists [^\n]*boe_credit_transactions_(append_only|one_per_source_idx|read_own_or_manage)/.test(code), false)
-    // The name appears in the file only inside the post-condition that PROVES it is absent.
     assert.equal(/credit_redeemed/.test(code.replace(/not like '%credit_redeemed%'/g, '')), false, 'no new transaction kind')
-    // The only things it does TO the ledger: one AFTER INSERT trigger scoped to
-    // reversals (dropped-if-exists and created), and a restated column comment.
     const ledgerTouches = [...code.matchAll(/[^\n]*\bpublic\.boe_credit_transactions\b[^\n]*/g)].map(m => m[0].trim())
-      .filter(t => !/^(select|from|where|and|if|insert into|assert|raise|--)/.test(t))            // reads inside function bodies
-      .filter(t => !/references public\.boe_credit_transactions\(id\)/.test(t))                    // the record's foreign keys
-      .filter(t => !/'public\.boe_credit_transactions'::regclass/.test(t))                          // the post-conditions
+      .filter(t => !/^(select|from|where|and|if|insert into|assert|raise|--)/.test(t))
+      .filter(t => !/references public\.boe_credit_transactions\(id\)/.test(t))
+      .filter(t => !/'public\.boe_credit_transactions'::regclass/.test(t))
       .filter(t => !/boe_credit_redemption_closed_by_reversal on public\.boe_credit_transactions/.test(t))
       .filter(t => !/^after insert on public\.boe_credit_transactions$/.test(t))
       .filter(t => !/^comment on column public\.boe_credit_transactions\.source_type is$/.test(t))
@@ -220,28 +245,29 @@ describe('the file, and where it sits', () => {
   })
 })
 
-describe('the ledger vocabulary is the foundation\'s', () => {
-  test('the foundation admits exactly four kinds, and TypeScript agrees', () => {
+describe('the ledger vocabulary', () => {
+  test('the foundation admits exactly four kinds; Phase 1D adds the fifth, and TypeScript agrees', () => {
     assert.match(foundation, /transaction_type\s+text\s+not null check \(transaction_type in \(\s*'review_reward',\s*'redemption',\s*'reversal',\s*'admin_adjustment'\s*\)\)/)
-    assert.deepEqual([...CREDIT_TRANSACTION_TYPES], ['review_reward', 'redemption', 'reversal', 'admin_adjustment'])
+    assert.deepEqual([...CREDIT_TRANSACTION_TYPES], ['review_reward', 'redemption', 'reversal', 'admin_adjustment', 'review_month_lapse'])
     assert.equal(/credit_redeemed/.test(foundation), false)
   })
 
-  test('the redemption is posted as redemption / attendance_redemption / the record id', () => {
-    const f = fn('redeem_boe_credits_for_attendance')
-    const call = f.slice(f.indexOf('public.post_boe_credit_transaction('), f.indexOf(');', f.indexOf('public.post_boe_credit_transaction(')))
-    const args = call.slice(call.indexOf('(') + 1).split(',').map(a => a.trim())
-    assert.equal(args[0], 'p_employee_id')
-    assert.equal(args[1], "'redemption'")
-    assert.equal(args[2], '-v_cost')
-    assert.equal(args[3], "'attendance_redemption'")
-    assert.equal(args[4], 'v_id', 'the record id, generated fresh per redemption')
-    assert.equal(args[6], 'p_actor_id')
-    assert.equal(args[7], 'p_payroll_period_id')
-    assert.match(f, /v_id\s+:= gen_random_uuid\(\);/)
+  test('the redemption is posted as redemption / attendance_redemption / the record id — in both the 1C and the 1D definition', () => {
+    for (const f of [fn('redeem_boe_credits_for_attendance'), fnIn(phase1d, 'redeem_boe_credits_for_attendance')]) {
+      const call = f.slice(f.indexOf('public.post_boe_credit_transaction('), f.indexOf(');', f.indexOf('public.post_boe_credit_transaction(')))
+      const args = call.slice(call.indexOf('(') + 1).split(',').map(a => a.trim())
+      assert.equal(args[0], 'p_employee_id')
+      assert.equal(args[1], "'redemption'")
+      assert.equal(args[2], '-v_cost')
+      assert.equal(args[3], "'attendance_redemption'")
+      assert.equal(args[4], 'v_id', 'the record id, generated fresh per redemption')
+      assert.equal(args[6], 'p_actor_id')
+      assert.equal(args[7], 'p_payroll_period_id')
+      assert.match(f, /v_id\s+:= gen_random_uuid\(\);/)
+      assert.match(f, /'Attendance redemption · ' \|\| v_label/)
+      assert.match(f, /to_char\(p_attendance_date, 'DD Mon YYYY'\)/)
+    }
     assert.equal(/md5\(/.test(code), false, 'no derived source id: a reversed day may be covered again with a new row')
-    assert.match(f, /'Attendance redemption · ' \|\| v_label/)
-    assert.match(f, /to_char\(p_attendance_date, 'DD Mon YYYY'\)/)
   })
 })
 
@@ -290,46 +316,54 @@ describe('the redemption record', () => {
 })
 
 describe('the two write paths', () => {
-  const redeem  = fn('redeem_boe_credits_for_attendance')
   const reverse = fn('reverse_boe_credit_attendance_redemption')
+  // The redemption's CURRENT definition is Phase 1D's; the rules below hold for both.
+  const redeems = [fn('redeem_boe_credits_for_attendance'), fnIn(phase1d, 'redeem_boe_credits_for_attendance')]
 
-  test('SECURITY DEFINER, search_path pinned, EXECUTE for service_role alone — on the exact signatures', () => {
-    for (const [f, sig] of [
-      [redeem,  'public.redeem_boe_credits_for_attendance(uuid, uuid, date, text, uuid)'],
-      [reverse, 'public.reverse_boe_credit_attendance_redemption(uuid, uuid, text)'],
+  test('SECURITY DEFINER, search_path pinned, EXECUTE for service_role alone — on the exact signatures, in both files', () => {
+    for (const [src, f, sig] of [
+      [code,    redeems[0], 'public.redeem_boe_credits_for_attendance(uuid, uuid, date, text, uuid)'],
+      [phase1d, redeems[1], 'public.redeem_boe_credits_for_attendance(uuid, uuid, date, text, uuid)'],
+      [code,    reverse,    'public.reverse_boe_credit_attendance_redemption(uuid, uuid, text)'],
     ] as const) {
       assert.match(f, /security definer/)
       assert.match(f, /set search_path = public, pg_temp/)
       const esc = sig.replace(/[.()]/g, m => `\\${m}`)
-      assert.match(code, new RegExp(`revoke execute on function ${esc}\\s*\\n\\s*from public, anon, authenticated;`))
-      assert.match(code, new RegExp(`grant  execute on function ${esc}\\s*\\n\\s*to service_role;`))
+      assert.match(src, new RegExp(`revoke execute on function ${esc}\\s*\\n\\s*from public, anon, authenticated;`))
+      assert.match(src, new RegExp(`grant  execute on function ${esc}\\s*\\n\\s*to service_role;`))
     }
   })
 
   test('the actor is the employee or an ACTIVE admin, checked first', () => {
-    assert.match(redeem, /if p_actor_id <> p_employee_id and not exists \(\s*\n\s*select 1 from public\.users\s*\n\s*where id = p_actor_id and role = 'admin' and is_active = true and coalesce\(is_deleted, false\) = false/)
-    assert.ok(redeem.indexOf('BOE_CREDITS_DENIED') < redeem.indexOf('BOE_CREDITS_REDEMPTION_TYPE'))
+    for (const redeem of redeems) {
+      assert.match(redeem, /if p_actor_id <> p_employee_id and not exists \(\s*\n\s*select 1 from public\.users\s*\n\s*where id = p_actor_id and role = 'admin' and is_active = true and coalesce\(is_deleted, false\) = false/)
+      assert.ok(redeem.indexOf('BOE_CREDITS_DENIED') < redeem.indexOf('BOE_CREDITS_REDEMPTION_TYPE'))
+    }
   })
 
   test('both take the per-employee advisory lock FIRST, then the period FOR SHARE — the same order, so they cannot deadlock', () => {
-    for (const f of [redeem, reverse]) {
+    for (const f of [...redeems, reverse]) {
       const lock  = f.indexOf("pg_advisory_xact_lock(hashtext('boe_credits'), hashtext(")
       const share = f.indexOf('for share')
       assert.ok(lock > 0 && share > lock, 'advisory lock before the period row lock')
     }
-    assert.ok(redeem.indexOf('pg_advisory_xact_lock(') < redeem.indexOf('BOE_CREDITS_ALREADY_COVERED'), 'the active check runs under the lock')
+    for (const redeem of redeems) {
+      assert.ok(redeem.indexOf('pg_advisory_xact_lock(') < redeem.indexOf('BOE_CREDITS_ALREADY_COVERED'), 'the active check runs under the lock')
+    }
     assert.ok(reverse.indexOf('pg_advisory_xact_lock(') < reverse.indexOf('for update'), 'the record is locked under the employee lock')
   })
 
   test('the redemption refuses a locked month, an ungenerated month, a bad date, a future date and an active duplicate', () => {
-    assert.match(redeem, /if v_period\.status = 'locked' then\s*\n\s*raise exception 'BOE_CREDITS_PERIOD_LOCKED[^\n]*\n\s*using errcode = '55000'/)
-    assert.match(redeem, /BOE_CREDITS_NOT_GENERATED[^\n]*\n\s*using errcode = '55000'/)
-    assert.match(redeem, /extract\(year\s+from p_attendance_date\)::integer <> v_period\.payroll_year/)
-    assert.match(redeem, /v_today\s+date := \(now\(\) at time zone 'Asia\/Kolkata'\)::date/)
-    assert.match(redeem, /if p_attendance_date > v_today then/)
-    assert.match(redeem, /and reversal_transaction_id is null\s*\n\s*\) then\s*\n\s*raise exception 'BOE_CREDITS_ALREADY_COVERED[^\n]*\n\s*using errcode = '23505'/)
-    assert.equal(/insert into public\.boe_credit_transactions/.test(redeem), false)
-    assert.ok(redeem.indexOf('public.post_boe_credit_transaction(') < redeem.indexOf('insert into public.boe_credit_attendance_redemptions'))
+    for (const redeem of redeems) {
+      assert.match(redeem, /if v_period\.status = 'locked' then\s*\n\s*raise exception 'BOE_CREDITS_PERIOD_LOCKED[^\n]*\n\s*using errcode = '55000'/)
+      assert.match(redeem, /BOE_CREDITS_NOT_GENERATED[^\n]*\n\s*using errcode = '55000'/)
+      assert.match(redeem, /extract\(year\s+from p_attendance_date\)::integer <> v_period\.payroll_year/)
+      assert.match(redeem, /v_today\s+date := \(now\(\) at time zone 'Asia\/Kolkata'\)::date/)
+      assert.match(redeem, /if p_attendance_date > v_today then/)
+      assert.match(redeem, /and reversal_transaction_id is null\s*\n\s*\) then\s*\n\s*raise exception 'BOE_CREDITS_ALREADY_COVERED[^\n]*\n\s*using errcode = '23505'/)
+      assert.equal(/insert into public\.boe_credit_transactions/.test(redeem), false)
+      assert.ok(redeem.indexOf('public.post_boe_credit_transaction(') < redeem.indexOf('insert into public.boe_credit_attendance_redemptions'))
+    }
   })
 
   test('the reversal goes through reverse_boe_credit_transaction (admin + reason), refuses a closed record and a locked month, and checks the trigger closed the record', () => {
@@ -341,7 +375,7 @@ describe('the two write paths', () => {
   })
 
   test('every raise carries a SQLSTATE', () => {
-    for (const f of [redeem, reverse, fn('boe_credit_attendance_redemptions_guard')]) {
+    for (const f of [...redeems, reverse, fn('boe_credit_attendance_redemptions_guard')]) {
       for (const r of f.match(/raise exception[\s\S]*?;/g) ?? []) assert.match(r, /using errcode = '[0-9A-Z]{5}'/, r)
     }
   })

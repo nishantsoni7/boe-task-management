@@ -48,8 +48,10 @@ describe('the ledger read is self-or-admin', () => {
 
   test('both reads are pinned to the id the helper returned, never the query string', () => {
     const c = code(LEDGER)
-    assert.match(c, /getCreditBalance\(caller\.svc, employeeId\)/)
-    assert.match(c, /getCreditTransactions\(caller\.svc, employeeId/)
+    assert.match(c, /const svc = caller\.svc/)
+    assert.match(c, /getCreditBalance\(svc, employeeId\)/)
+    assert.match(c, /getCreditTransactions\(svc, employeeId/)
+    assert.match(c, /getCreditReviewMonths\(svc, employeeId/)
     // `requested` is handed to the helper and to nothing else.
     const uses = c.match(/\brequested\b/g) ?? []
     assert.equal(uses.length, 2, 'declared once, passed to requireSelfOrAdmin once')
@@ -109,7 +111,7 @@ describe('settings: any employee may read, only an admin may write', () => {
 
   test('history is for admins; the two numbers are for everyone', () => {
     const c = code(SETTINGS)
-    assert.match(c, /caller\.isAdmin\s*\?\s*await fetchCreditSettingsHistory/)
+    assert.match(c, /caller\.isAdmin\s*\n\s*\?\s*fetchCreditSettingsHistory/)
   })
 
   test('PUT is requireAdmin, validated with parseBoeCreditSettings, and saved with the token id', () => {

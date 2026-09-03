@@ -4,7 +4,7 @@
 // A redemption is bought against the deduction the payslip showed at the
 // time. Attendance moves afterwards — an admin corrects the day, a re-import
 // changes the punches, paid leave absorbs the day — and the deduction the
-// credits paid for can stop existing, or change size. Every path that
+// credits paid for can stop existing, or change kind. Every path that
 // re-runs the engine WITH WRITE INTENT (the attendance-correction route and
 // payroll generation) reconciles the employee's active coverage against the
 // engine's settled lines before it writes:
@@ -12,9 +12,15 @@
 //   * a redeemed day that is no longer a chargeable Absent or Half Day
 //     (Present, company-paid, ₹0, or a half-day coverage on a day that became
 //     a full absence) → the redemption is REVERSED and the credits restored;
-//   * a day redeemed as Absent that became a Half Day → the 2-credit row is
-//     reversed and a fresh 1-credit redemption is posted, so the employee is
-//     charged what the day now costs and stays covered.
+//   * a day redeemed as Absent that became a Half Day → the absent-day row is
+//     reversed and a fresh half-day redemption is posted at TODAY'S half-day
+//     price, so the employee is charged what the day now costs and stays
+//     covered.
+//
+// WHAT NEVER TRIGGERS A RE-PRICE (Phase 1D): the settings. A day bought at 1
+// credit under the Phase 1C prices stays 1 credit when the setting becomes 8.
+// The plan compares the KIND of day the credits were bought for with the kind
+// the engine now settles — never the record's credits with today's price.
 //
 // Both go through the database's two functions, so the original row, its
 // reversal and any re-priced row all stay in the employee's history; no
@@ -28,7 +34,6 @@ import type { EngineOutcome, EngineResult, PendingDeductionLine } from './types'
 import { isSkip } from './types'
 import { fetchActiveAttendanceRedemptions, type StoredAttendanceRedemption } from './store'
 import {
-  ATTENDANCE_REDEMPTION_COST,
   REDEEMABLE_DEDUCTION_LABELS,
   isRedeemableDeductionType,
   type AttendanceCreditRedemption,
@@ -68,13 +73,14 @@ export function planCoverageReconciliation(
     const bought = REDEEMABLE_DEDUCTION_LABELS[r.deduction_type]
 
     if (dayLine && dayLine.waived_by === 'boe_credits') {
-      // Covered. The only thing that can still be wrong is the price: an
-      // absent-day redemption now covering a half day.
+      // Covered. The only thing that can still be wrong is the KIND: an
+      // absent-day redemption now covering a half day. The price written on
+      // the record is never compared with today's setting.
       const nowType = dayLine.deduction_type as RedeemableDeductionType
-      if (ATTENDANCE_REDEMPTION_COST[nowType] !== r.credits) {
+      if (nowType !== r.deduction_type) {
         actions.push({
           action: 'reprice', redemption: r, new_type: nowType,
-          reason: `Attendance changed: ${when} is now a ${REDEEMABLE_DEDUCTION_LABELS[nowType]}, not ${bought} — re-priced from ${r.credits} to ${ATTENDANCE_REDEMPTION_COST[nowType]}`,
+          reason: `Attendance changed: ${when} is now a ${REDEEMABLE_DEDUCTION_LABELS[nowType]}, not ${bought} — the ${bought} charge of ${r.credits} is restored and the day is covered again at the ${REDEEMABLE_DEDUCTION_LABELS[nowType]} price`,
         })
       }
       continue

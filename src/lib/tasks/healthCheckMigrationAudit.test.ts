@@ -517,6 +517,10 @@ describe('the migration is placed correctly', () => {
       // service-role function that covers one attendance day with credits. One
       // new table of its own; it touches nothing any other module creates.
       '20261103000000_boe_credits_attendance_redemption.sql',
+      // BOE Credits Phase 1D: configurable settings, monthly review qualification
+      // and the payroll salary addition. Three new credits tables of its own; it
+      // touches nothing any other module creates.
+      '20261104000000_boe_credits_phase_1d.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

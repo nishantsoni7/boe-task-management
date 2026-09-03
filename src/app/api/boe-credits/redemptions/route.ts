@@ -1,8 +1,9 @@
 // POST /api/boe-credits/redemptions
 //   { payroll_period_id, attendance_date }
 //
-// The employee covers ONE attendance deduction of their own with BOE Credits:
-// 1 credit for a half day, 2 for an absent day (Phase 1C).
+// The employee covers ONE attendance deduction of their own with BOE Credits
+// at the ACTIVE settings price — half_day_redemption_credits for a half day,
+// full_day_redemption_credits for an absent day (Phase 1C, priced by Phase 1D).
 //
 // WHO. The caller from the bearer token, and nobody else. There is no
 // employee_id in the body: the day redeemed is the caller's, the ledger row is
@@ -16,7 +17,7 @@
 // coverage, and refuses anything that is not a chargeable absent or half-day
 // line: no deduction, a late mark, a missing punch, a company-paid day, a day
 // already covered, a future date, a locked month. The cost is never read from
-// the request either — the database fixes it from the kind.
+// the request either — the database reads it from the settings by the kind.
 //
 // THEN THE DATABASE DECIDES THE REST, under locks: the period is unlocked and
 // stays so until commit, payroll was generated, the date is in the month, the
@@ -57,7 +58,7 @@ import {
   REDEMPTION_REFUSALS,
   type AttendanceCreditRedemption,
 } from '@/lib/boeCredits/attendanceRedemption'
-import { redeemAttendanceDay, CreditServiceError, creditErrorStatus } from '@/lib/boeCredits/service'
+import { redeemAttendanceDay, fetchActiveCreditSettings, CreditServiceError, creditErrorStatus } from '@/lib/boeCredits/service'
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -106,15 +107,20 @@ export async function POST(req: NextRequest) {
   let redemptions: AttendanceCreditRedemption[]
   let adjustments: Awaited<ReturnType<typeof fetchPendingAdjustments>>
   let settings:    Awaited<ReturnType<typeof fetchActiveSettings>>['settings']
+  let credits:     Awaited<ReturnType<typeof fetchActiveCreditSettings>>['settings']
   try {
-    const [att, hols, corr, redeemed, adj, active] = await Promise.all([
+    const [att, hols, corr, redeemed, adj, active, creditSettings] = await Promise.all([
       fetchAttendanceForPeriod(svc, employeeId, period.payroll_month, period.payroll_year),
       fetchHolidaysForPeriod(svc, period.payroll_month, period.payroll_year),
       fetchCurrentCorrections(svc, employeeId, period.payroll_month, period.payroll_year),
       fetchActiveAttendanceRedemptions(svc, employeeId, period.payroll_month, period.payroll_year),
       fetchPendingAdjustments(svc, employeeId, periodId, period.payroll_month, period.payroll_year),
       fetchActiveSettings(svc),
+      // The price the offer is quoted at. The database re-reads the same
+      // newest row when it writes, so the two cannot disagree.
+      fetchActiveCreditSettings(svc),
     ])
+    credits     = creditSettings.settings
     attendance  = att
     holidays    = hols
     corrections = corr
@@ -150,6 +156,7 @@ export async function POST(req: NextRequest) {
     today:        istToday(),
     periodMonth:  period.payroll_month,
     periodYear:   period.payroll_year,
+    costs:        credits,
   })
   if (!eligibility.eligible) {
     const status = eligibility.reason === 'already_covered' || eligibility.reason === 'locked' ? 409 : 422

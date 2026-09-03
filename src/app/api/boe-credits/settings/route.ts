@@ -1,11 +1,12 @@
 // GET  /api/boe-credits/settings   — the active credit settings (+ history for an admin)
 // PUT  /api/boe-credits/settings   — save a new settings row (admin only)
 //
-// Any signed-in employee may READ the two numbers: a later screen will tell
-// them what a verified review earns. Only an admin may change them, through
-// the same requireAdmin the rest of the payroll API uses. The table is
-// append-only, so a save is an INSERT and the row itself is the audit record
-// of who changed what and when.
+// Any signed-in employee may READ the five numbers: the knowledge page, the
+// payslip's offer and the payroll application form all show them. Only an
+// admin may change them, through the same requireAdmin the rest of the
+// payroll API uses. The table is append-only, so a save is an INSERT and the
+// row itself is the audit record of who changed what and when — and every
+// change applies to future actions only; nothing already recorded is touched.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, resolveCaller, isResponse, UNAUTHORIZED } from '@/lib/security/attendancePayrollApiAuth'
@@ -23,16 +24,17 @@ export async function GET(req: NextRequest) {
   if (!caller) return UNAUTHORIZED()
   const svc = caller.svc
 
-  const active = await fetchActiveCreditSettings(svc)
-
   // History is management-only and presentational — a failure to read it must
-  // not stop anyone seeing the settings themselves.
-  const history = caller.isAdmin
-    ? await fetchCreditSettingsHistory(svc).catch(err => {
-        console.error('[boe-credits/settings] history:', err)
-        return []
-      })
-    : []
+  // not stop anyone seeing the settings themselves. Both reads start together.
+  const [active, history] = await Promise.all([
+    fetchActiveCreditSettings(svc),
+    caller.isAdmin
+      ? fetchCreditSettingsHistory(svc).catch(err => {
+          console.error('[boe-credits/settings] history:', err)
+          return []
+        })
+      : Promise.resolve([]),
+  ])
 
   const actorIds = [...new Set(history.map(h => h.created_by).filter((v): v is string => v != null))]
   const names = new Map<string, string>()
@@ -45,10 +47,14 @@ export async function GET(req: NextRequest) {
     settings: active.settings,
     defaults: DEFAULT_BOE_CREDIT_SETTINGS,
     using_defaults: active.fell_back,
+    updated_at: active.created_at,
     history: history.map(h => ({
       id: h.id,
       review_reward_credits: h.review_reward_credits,
       credit_value: h.credit_value,
+      half_day_redemption_credits: h.half_day_redemption_credits,
+      full_day_redemption_credits: h.full_day_redemption_credits,
+      minimum_monthly_reviews: h.minimum_monthly_reviews,
       note: h.note,
       created_at: h.created_at,
       created_by_name: h.created_by ? names.get(h.created_by) ?? null : null,

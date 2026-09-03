@@ -85,14 +85,15 @@ const TX    = '33333333-3333-4333-8333-333333333333'
 describe('getCreditBalance reads the derived view', () => {
   test('an employee with no ledger rows has zero', async () => {
     const { svc, calls } = fakeClient()
-    assert.equal(await getCreditBalance(svc, EMP), 0)
+    assert.deepEqual(await getCreditBalance(svc, EMP), { employee_id: EMP, available_credits: 0, provisional_credits: 0, spendable_credits: 0, transaction_count: 0, last_transaction_at: null })
     assert.equal(calls[0].table, 'boe_credit_balances', 'the VIEW, not the ledger table')
     assert.deepEqual(calls.find(c => c.op === 'eq')?.args, ['employee_id', EMP])
   })
 
   test('the view row is returned as a number', async () => {
-    const { svc } = fakeClient({ tables: { boe_credit_balances: { data: { available_credits: '150' }, error: null } } })
-    assert.equal(await getCreditBalance(svc, EMP), 150)
+    const { svc } = fakeClient({ tables: { boe_credit_balances: { data: { employee_id: EMP, available_credits: '150', provisional_credits: '2', spendable_credits: '148', transaction_count: '3', last_transaction_at: 't' }, error: null } } })
+    const b = await getCreditBalance(svc, EMP)
+    assert.deepEqual([b.available_credits, b.provisional_credits, b.spendable_credits, b.transaction_count], [150, 2, 148, 3])
   })
 
   test('a read failure is a CreditServiceError, not a silent zero', async () => {
@@ -301,10 +302,10 @@ describe('error mapping', () => {
 describe('settings', () => {
   test('the active row is the newest, parsed; a missing table falls back to the defaults and says so', async () => {
     const { svc, calls } = fakeClient({
-      tables: { boe_credit_settings: { data: { id: 's1', review_reward_credits: '150', credit_value: '2.00', created_at: 't', created_by: ADMIN }, error: null } },
+      tables: { boe_credit_settings: { data: { id: 's1', review_reward_credits: '150', credit_value: '2.00', half_day_redemption_credits: '8', full_day_redemption_credits: '15', minimum_monthly_reviews: '3', created_at: 't', created_by: ADMIN }, error: null } },
     })
     const active = await fetchActiveCreditSettings(svc)
-    assert.deepEqual(active.settings, { review_reward_credits: 150, credit_value: 2 })
+    assert.deepEqual(active.settings, { review_reward_credits: 150, credit_value: 2, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 })
     assert.equal(active.fell_back, false)
     assert.deepEqual(calls.find(c => c.op === 'order')?.args, ['created_at', { ascending: false }])
 
@@ -315,14 +316,14 @@ describe('settings', () => {
 
   test('saving is an INSERT of a new row, never an UPDATE, and refuses invalid values', async () => {
     const { svc, calls } = fakeClient({ tables: { boe_credit_settings: { data: { id: 's2', created_at: 't2' }, error: null } } })
-    const saved = await saveCreditSettings(svc, { review_reward_credits: 120, credit_value: 1.5 }, ADMIN, 'Raised for Q4')
+    const saved = await saveCreditSettings(svc, { review_reward_credits: 120, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 }, ADMIN, 'Raised for Q4')
     assert.deepEqual(saved, { id: 's2', created_at: 't2' })
     const insert = calls.find(c => c.op === 'insert')
-    assert.deepEqual(insert?.args, [{ review_reward_credits: 120, credit_value: 1.5, created_by: ADMIN, note: 'Raised for Q4' }])
+    assert.deepEqual(insert?.args, [{ review_reward_credits: 120, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3, created_by: ADMIN, note: 'Raised for Q4' }])
     assert.equal(calls.some(c => c.op === 'update'), false)
 
     await assert.rejects(
-      () => saveCreditSettings(svc, { review_reward_credits: 0, credit_value: 1 }, ADMIN),
+      () => saveCreditSettings(svc, { review_reward_credits: 0, credit_value: 1, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 }, ADMIN),
       (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_SETTINGS',
     )
   })
@@ -377,7 +378,7 @@ describe('redeemAttendanceDay', () => {
       ['BOE_CREDITS_ALREADY_COVERED', 409],
       ['BOE_CREDITS_INSUFFICIENT', 409],
       ['BOE_CREDITS_DUPLICATE_SOURCE', 409],
-      ['BOE_CREDITS_NOT_GENERATED', 422],
+      ['BOE_CREDITS_NOT_GENERATED', 409],
       ['BOE_CREDITS_DATE', 422],
       ['BOE_CREDITS_REDEMPTION_TYPE', 422],
       ['BOE_CREDITS_PERIOD', 404],

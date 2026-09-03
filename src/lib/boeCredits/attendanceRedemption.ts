@@ -1,15 +1,17 @@
-// BOE Credits — Phase 1C: spending credits on an attendance deduction, as pure
-// rules with no database in sight.
+// BOE Credits — Phase 1C/1D: spending credits on an attendance deduction, as
+// pure rules with no database in sight.
 //
-// THE COST, STATED ONCE
-// ---------------------
-//   Half Day  = 1 credit
-//   Absent    = 2 credits
+// THE COST COMES FROM THE SETTINGS (Phase 1D)
+// ------------------------------------------
+//   Half Day  = boe_credit_settings.half_day_redemption_credits   (8 today)
+//   Absent    = boe_credit_settings.full_day_redemption_credits   (15 today)
 //
-// Whole credits, fixed, and NOT linked to salary, to rupees or to
-// boe_credit_settings.credit_value. The same two literals live in
-// redeem_boe_credits_for_attendance() (20261103000000) and
-// attendanceRedemption.test.ts pins the two against each other.
+// Whole credits, independent of each other, NOT linked to salary, to rupees
+// or to credit_value. There is no constant in this file: every caller hands
+// in the settings it read, and redeem_boe_credits_for_attendance() reads the
+// same newest row when it writes — so what the page offers is what the
+// database charges, and what it charged stays written on the record when the
+// setting later changes.
 //
 // WHAT QUALIFIES
 // --------------
@@ -25,18 +27,22 @@
 // on a locked month.
 
 import type { DeductionWaiver } from '../payroll/types'
+import type { BoeCreditSettings } from './types'
 
-export const ATTENDANCE_REDEMPTION_COST = {
-  half_day: 1,
-  absent:   2,
-} as const
+export const REDEEMABLE_DEDUCTION_TYPES = ['half_day', 'absent'] as const
 
-export type RedeemableDeductionType = keyof typeof ATTENDANCE_REDEMPTION_COST
-
-export const REDEEMABLE_DEDUCTION_TYPES = Object.keys(ATTENDANCE_REDEMPTION_COST) as RedeemableDeductionType[]
+export type RedeemableDeductionType = (typeof REDEEMABLE_DEDUCTION_TYPES)[number]
 
 export function isRedeemableDeductionType(value: unknown): value is RedeemableDeductionType {
-  return typeof value === 'string' && value in ATTENDANCE_REDEMPTION_COST
+  return typeof value === 'string' && (REDEEMABLE_DEDUCTION_TYPES as readonly string[]).includes(value)
+}
+
+/** The two prices, as the settings carry them. */
+export type AttendanceRedemptionCosts = Pick<BoeCreditSettings, 'half_day_redemption_credits' | 'full_day_redemption_credits'>
+
+/** What covering this kind of day costs under these settings. */
+export function attendanceRedemptionCost(type: RedeemableDeductionType, costs: AttendanceRedemptionCosts): number {
+  return type === 'half_day' ? costs.half_day_redemption_credits : costs.full_day_redemption_credits
 }
 
 /** The waiver the engine writes on a line credits covered. */
@@ -52,7 +58,7 @@ export const CREDIT_COVERED_WAIVER: DeductionWaiver = 'boe_credits'
 export type AttendanceCreditRedemption = {
   attendance_date: string
   deduction_type: RedeemableDeductionType
-  /** Credits spent, as written on the record. */
+  /** Credits spent, as written on the record — the price at the time. */
   credits: number
 }
 
@@ -75,17 +81,17 @@ export const REDEEMABLE_DEDUCTION_LABELS: Record<RedeemableDeductionType, string
   absent:   'Absent',
 }
 
-/** "1 credit" / "2 credits". */
+/** "1 credit" / "8 credits". */
 export function creditsWord(n: number): string {
   return `${n} ${n === 1 ? 'credit' : 'credits'}`
 }
 
-/** "Half Day · 1 credit" — the row's offer. */
-export function redemptionOfferLabel(type: RedeemableDeductionType): string {
-  return `${REDEEMABLE_DEDUCTION_LABELS[type]} · ${creditsWord(ATTENDANCE_REDEMPTION_COST[type])}`
+/** "Half Day · 8 credits" — the row's offer, at the price the server quoted. */
+export function redemptionOfferLabel(type: RedeemableDeductionType, credits: number): string {
+  return `${REDEEMABLE_DEDUCTION_LABELS[type]} · ${creditsWord(credits)}`
 }
 
-/** "Covered with 1 BOE Credit" — the row's state afterwards. */
+/** "Covered with 8 BOE Credits" — the row's state afterwards. */
 export function coveredLabel(credits: number): string {
   return `Covered with ${credits} BOE ${credits === 1 ? 'Credit' : 'Credits'}`
 }
@@ -116,6 +122,7 @@ export type RedemptionEligibility =
   | {
       eligible: true
       deduction_type: RedeemableDeductionType
+      /** What the day costs under the settings passed in. */
       credits: number
       /** What the line costs today, whole rupees, for the confirmation. */
       amount: number
@@ -137,16 +144,22 @@ function refuse(reason: RedemptionIneligibleReason): RedemptionEligibility {
 }
 
 /**
- * May this employee cover this day with credits?
+ * May this employee cover this day with credits, and at what price?
  *
  * `day` is the engine's settled day result for the date, or undefined when the
  * date is not a working day of the month (weekly off, holiday, pre-joining —
  * the engine produces no lines for those either way). `periodStatus` is the
- * payroll period's, `today` is the IST date.
+ * payroll period's, `today` is the IST date, `costs` the active settings.
  */
 export function attendanceRedemptionEligibility(
   day: RedeemableDayInput | undefined,
-  ctx: { periodStatus: 'draft' | 'generated' | 'locked'; today: string; periodMonth: number; periodYear: number },
+  ctx: {
+    periodStatus: 'draft' | 'generated' | 'locked'
+    today: string
+    periodMonth: number
+    periodYear: number
+    costs: AttendanceRedemptionCosts
+  },
 ): RedemptionEligibility {
   if (ctx.periodStatus === 'locked') return refuse('locked')
   if (!day) return refuse('no_deduction')
@@ -170,7 +183,7 @@ export function attendanceRedemptionEligibility(
   return {
     eligible: true,
     deduction_type,
-    credits: ATTENDANCE_REDEMPTION_COST[deduction_type],
+    credits: attendanceRedemptionCost(deduction_type, ctx.costs),
     amount: line.amount_deducted,
   }
 }
@@ -179,6 +192,7 @@ export function attendanceRedemptionEligibility(
 export type RedeemableDate = {
   date: string
   deduction_type: RedeemableDeductionType
+  /** The price the server quoted; the server re-reads it before it writes. */
   credits: number
   amount: number
 }

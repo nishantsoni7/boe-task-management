@@ -551,3 +551,79 @@ export async function markAdjustmentsApplied(
     .in('id', adjustmentIds)
   if (error) throw new Error(`markAdjustmentsApplied: ${error.message}`)
 }
+
+// ─── BOE Credits payroll applications (Phase 1D) ──────────────────────────────
+
+/**
+ * The ACTIVE payroll credit application for one employee-period, as
+ * boe_credit_payroll_applications stores it: the credits, the rate and the
+ * rupees are SNAPSHOTS taken when it was applied. Settlement adds
+ * `credit_amount_snapshot` to Salary Payable and never re-prices it.
+ */
+export type StoredPayrollCreditApplication = {
+  id: string
+  employee_id: string
+  payroll_period_id: string
+  credits_used: number
+  credit_value_snapshot: number
+  credit_amount_snapshot: number
+  redemption_transaction_id: string
+  created_at: string
+}
+
+const APPLICATION_COLUMNS =
+  'id, employee_id, payroll_period_id, credits_used, credit_value_snapshot, credit_amount_snapshot, redemption_transaction_id, created_at'
+
+function toStoredApplication(row: Record<string, unknown>): StoredPayrollCreditApplication {
+  return {
+    id:                        String(row.id),
+    employee_id:               String(row.employee_id),
+    payroll_period_id:         String(row.payroll_period_id),
+    credits_used:              Number(row.credits_used),
+    credit_value_snapshot:     Number(row.credit_value_snapshot),
+    credit_amount_snapshot:    Number(row.credit_amount_snapshot),
+    redemption_transaction_id: String(row.redemption_transaction_id),
+    created_at:                String(row.created_at),
+  }
+}
+
+/**
+ * ACTIVE means reversal_transaction_id IS NULL — closed by a ledger trigger
+ * the moment its ledger row is reversed, so this one column is the whole
+ * truth, and the partial unique index makes a second active row impossible.
+ * Returns null when the employee has not applied credits to this month.
+ */
+export async function fetchActivePayrollCreditApplication(
+  svc: Svc,
+  periodId: string,
+  employeeId: string,
+): Promise<StoredPayrollCreditApplication | null> {
+  const { data, error } = await svc
+    .from('boe_credit_payroll_applications')
+    .select(APPLICATION_COLUMNS)
+    .eq('payroll_period_id', periodId)
+    .eq('employee_id', employeeId)
+    .is('reversal_transaction_id', null)
+    .maybeSingle()
+  if (error) throw new Error(`fetchActivePayrollCreditApplication: ${error.message}`)
+  return data ? toStoredApplication(data as Record<string, unknown>) : null
+}
+
+/** The same, for EVERY employee in one period, keyed by employee — one read for a report. */
+export async function fetchActivePayrollCreditApplicationsByEmployee(
+  svc: Svc,
+  periodId: string,
+): Promise<Map<string, StoredPayrollCreditApplication>> {
+  const { data, error } = await svc
+    .from('boe_credit_payroll_applications')
+    .select(APPLICATION_COLUMNS)
+    .eq('payroll_period_id', periodId)
+    .is('reversal_transaction_id', null)
+  if (error) throw new Error(`fetchActivePayrollCreditApplicationsByEmployee: ${error.message}`)
+  const out = new Map<string, StoredPayrollCreditApplication>()
+  for (const raw of (data ?? []) as Record<string, unknown>[]) {
+    const a = toStoredApplication(raw)
+    out.set(a.employee_id, a)
+  }
+  return out
+}

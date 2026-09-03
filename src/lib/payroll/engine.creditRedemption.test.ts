@@ -21,7 +21,8 @@ import type { EngineEmployee, EnginePeriod, EngineAttendanceRecord, EngineResult
 import { DEFAULT_PAYROLL_SETTINGS } from './settings'
 import { toDeductionDays, toConsideredDays, isCompanyPaidLine, isCreditCoveredLine } from './resultTabs'
 import { explainLine } from './deductionExplanation'
-import { ATTENDANCE_REDEMPTION_COST } from '../boeCredits/attendanceRedemption'
+// The Phase 1C prices the fixtures were written against; the engine never reads a price.
+const ATTENDANCE_REDEMPTION_COST = { half_day: 1, absent: 2 } as const
 import { PER_DAY_DIVISOR } from './rules'
 
 // ─── Fixtures (the companyPaidLeave suite's month, so the figures are known) ──
