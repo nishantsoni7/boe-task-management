@@ -4,12 +4,17 @@ import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { ControlCenterLayout, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
-import { LoadingScreen, EmptyState } from '@/components/ui/atoms'
-import { useViewAs } from '@/hooks/useViewAs'
+import { resolveControlCenterTab, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
+import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
+import { EmptyState } from '@/components/ui/atoms'
 import { formatFullDate } from '@/lib/ui'
 import { orderNumberErrorMessage, parseOrderNumberInput, formatOrderNumber } from '@/lib/orderNumbering'
 import { isSelfServiceModule } from '@/lib/moduleAccess'
+import {
+  useAdminMembers, useDepartments, useAppModules, useControlCenterCache,
+  NO_MEMBERS, NO_DEPARTMENTS, NO_APP_MODULES,
+  type ControlCenterAppModule, type ControlCenterDepartment,
+} from '@/hooks/queries/useControlCenterData'
 import { ModuleMemberPicker } from './ModuleMemberPicker'
 
 // ── Local types ───────────────────────────────────────────────────────────────
@@ -23,27 +28,11 @@ function selfServiceNoun(moduleKey: string): string {
   return moduleKey === 'payroll' ? 'payroll' : 'attendance'
 }
 
-type VisibilityType = 'live' | 'admin_only' | 'department_only' | 'hidden' | 'custom'
-
-type AppModule = {
-  id: string
-  module_key: string
-  module_name: string
-  description: string | null
-  route_path: string
-  visibility_type: VisibilityType
-  allowed_department: string[] | null
-  allowed_user_ids: string[] | null
-  sort_order: number
-}
-
-type Department = {
-  id: string
-  department_key: string
-  department_name: string
-  is_active: boolean
-  sort_order: number
-}
+// The row shapes come with the shared queries; the local names are kept so
+// nothing below has to change to read them.
+type AppModule      = ControlCenterAppModule
+type Department     = ControlCenterDepartment
+type VisibilityType = AppModule['visibility_type']
 
 // ── Style helpers ─────────────────────────────────────────────────────────────
 
@@ -617,7 +606,7 @@ function OverviewTab({
 
 export default function ControlCenterPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<ControlCenterSkeleton />}>
       <ControlCenterPageInner />
     </Suspense>
   )
@@ -626,14 +615,20 @@ export default function ControlCenterPage() {
 function ControlCenterPageInner() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, exitViewMode } = useViewAs()
 
-  const [profile,  setProfile]  = useState<UserProfile | null>(null)
   const [token,    setToken]    = useState('')
-  const [loading,  setLoading]  = useState(true)
-  const [modules,  setModules]  = useState<AppModule[]>([])
-  const [depts,    setDepts]    = useState<Department[]>([])
-  const [members,  setMembers]  = useState<UserProfile[]>([])
+
+  // Shared with Access Control (and cached across sections): see
+  // src/hooks/queries/useControlCenterData.ts. The setters patch the cache
+  // with the same updaters that used to patch local state.
+  const membersQuery = useAdminMembers()
+  const deptsQuery   = useDepartments()
+  const modulesQuery = useAppModules()
+  const { setMembers, setDepts, setModules } = useControlCenterCache()
+  const members = membersQuery.data ?? NO_MEMBERS
+  const depts   = deptsQuery.data   ?? NO_DEPARTMENTS
+  const modules = modulesQuery.data ?? NO_APP_MODULES
+  const loading = membersQuery.isPending || deptsQuery.isPending || modulesQuery.isPending
 
   // ── Active tab — the URL (?tab=) is the single source of truth, read
   // reactively via useSearchParams so cross-page navigation (e.g. from Access
@@ -641,10 +636,7 @@ function ControlCenterPageInner() {
   // the first render, not just after a subsequent in-place click.
   const searchParams = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const tab: ControlCenterTab =
-    tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
-      || tabParam === 'order-numbering'
-      ? tabParam : 'overview'
+  const tab: ControlCenterTab = resolveControlCenterTab(tabParam)
 
   function changeTab(next: ControlCenterTab) {
     router.replace(`/admin/control-center?tab=${next}`)
@@ -695,34 +687,14 @@ function ControlCenterPageInner() {
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
+      // Identity and the admin check are owned by control-center/layout.tsx,
+      // which renders this page only for an admitted administrator. The stored
+      // session is read here solely for the bearer token the save handlers
+      // below need; the lists themselves come from the shared queries above.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+      if (!session) return
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
-
-      if (p?.role !== 'admin') { router.push('/dashboard'); return }
-      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
-
-      setProfile(p as UserProfile)
       setToken(session.access_token)
-
-      const hdrs = { Authorization: `Bearer ${session.access_token}` }
-
-      const [modsRes, deptsRes, membersRes] = await Promise.all([
-        fetch('/api/control-center/modules',     { headers: hdrs }).then(r => r.json()),
-        fetch('/api/control-center/departments', { headers: hdrs }).then(r => r.json()),
-        fetch('/api/admin-members',              { headers: hdrs }).then(r => r.json()),
-      ])
-
-      if (Array.isArray(modsRes?.modules))      setModules(modsRes.modules)
-      if (Array.isArray(deptsRes?.departments)) setDepts(deptsRes.departments)
-      if (Array.isArray(membersRes?.members))   setMembers(membersRes.members)
-
-      setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -968,7 +940,7 @@ function ControlCenterPageInner() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (loading) return <LoadingScreen />
+  if (loading) return <ControlCenterSkeleton />
 
   const deptLabel = (key: string | null | undefined) => {
     if (!key) return '—'
@@ -1003,14 +975,7 @@ function ControlCenterPageInner() {
   const enforcedCount = modules.filter(m => m.module_key === 'sample_tracking').length
 
   return (
-    <ControlCenterLayout
-      profile={profile}
-      title="Control Center"
-      subtitle="The admin operating panel for departments, people, module visibility, and access."
-      onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
-      activeTab={tab}
-      onTabChange={changeTab}
-    >
+    <>
       <div style={{ maxWidth: 900 }}>
 
         {/* ── Overview ─────────────────────────────────────────────────────── */}
@@ -1578,6 +1543,6 @@ function ControlCenterPageInner() {
           </div>
         </div>
       )}
-    </ControlCenterLayout>
+    </>
   )
 }

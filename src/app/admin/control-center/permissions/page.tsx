@@ -1,16 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Search, CheckCircle2, Circle, LayoutGrid,
   ListChecks, Package, Laptop2, CalendarCheck, Wallet, QrCode, Users, TrendingUp, Landmark, Truck, MessageSquareHeart,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
-import { ControlCenterLayout } from '@/components/layout/ControlCenterLayout'
+import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { LoadingScreen, EmptyState, AlertBanner, Avatar } from '@/components/ui/atoms'
-import { useViewAs } from '@/hooks/useViewAs'
 import {
   moduleEnforcement,
   type EnforcementState,
@@ -29,6 +27,7 @@ import {
   type PresetLevel,
 } from '@/lib/permissions/levels'
 import styles from './permissions.module.css'
+import { useAdminMembers, useDepartments, NO_MEMBERS, NO_DEPARTMENTS } from '@/hooks/queries/useControlCenterData'
 
 // Which modules the engine actually decides now lives in one shared place —
 // src/lib/permissions/enforcement.ts — because the launcher, the route guards
@@ -39,13 +38,6 @@ import styles from './permissions.module.css'
 // "Prepared").
 
 // ── Local types ───────────────────────────────────────────────────────────────
-
-type Department = {
-  id: string
-  department_key: string
-  department_name: string
-  is_active: boolean
-}
 
 type PermissionSource = 'system_default' | 'role' | 'department' | 'employee_override'
 
@@ -184,29 +176,11 @@ function moduleIsAccessible(mod: ModuleState, overrides: Map<string, OverrideCho
   return effectiveMapForModule(mod, overrides)[entryActionFor(mod)] === true
 }
 
-/** Visible/Hidden as last loaded from the server, for the employee-list counters. */
-function moduleIsAccessibleAsLoaded(mod: ModuleState): boolean {
-  const entry = entryActionFor(mod)
-  return mod.actions.some(a => a.actionKey === entry && a.allowed)
-}
-
 function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>, initialOverrides: Map<string, OverrideChoice>): boolean {
   return mod.actions.some(a => {
     const key = overrideKey(mod.moduleKey, a.actionKey)
     return overrides.get(key) !== initialOverrides.get(key)
   })
-}
-
-// A module counts as "accessible" for the employee-list/workspace counters when
-// its parent gate is open — effective `view` — and not merely when some child
-// action survives. See moduleIsAccessibleAsLoaded below.
-type ModuleCount = { allowed: number; total: number }
-
-function accessibleModuleCount(modules: ModuleState[]): ModuleCount {
-  return {
-    allowed: modules.filter(moduleIsAccessibleAsLoaded).length,
-    total: modules.length,
-  }
 }
 
 // ── Source summary (Change Access modal header) ─────────────────────────────
@@ -684,25 +658,16 @@ function ChangeAccessModal({
   )
 }
 
-/**
- * How many employees' access counters are prefetched on load.
- *
- * A bound on REQUESTS, never on what the directory shows. See the note on
- * countPrefetchTargets.
- */
-const COUNT_PREFETCH_LIMIT = 20
-
 // ── Employee panel (left column) ────────────────────────────────────────────
 
 function EmployeePanel({
-  search, onSearchChange, results, selectedEmployeeId, onSelect, moduleCounts, deptLabel,
+  search, onSearchChange, results, selectedEmployeeId, onSelect, deptLabel,
 }: {
   search: string
   onSearchChange: (v: string) => void
   results: UserProfile[]
   selectedEmployeeId: string | null
   onSelect: (id: string) => void
-  moduleCounts: Map<string, ModuleCount>
   deptLabel: (key: string | null | undefined) => string
 }) {
   return (
@@ -738,7 +703,6 @@ function EmployeePanel({
         )}
         {results.map(m => {
           const selected = m.id === selectedEmployeeId
-          const count = moduleCounts.get(m.id)
           return (
             <button
               key={m.id}
@@ -761,9 +725,6 @@ function EmployeePanel({
                 }}>
                   {deptLabel(m.team)} · <span style={{ textTransform: 'capitalize' }}>{m.role}</span>
                 </div>
-              </div>
-              <div style={{ fontSize: 11, color: '#8C94A6', fontWeight: 600, flexShrink: 0, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {count ? `${count.allowed} of ${count.total}` : '···'}
               </div>
             </button>
           )
@@ -959,16 +920,17 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PermissionsPage() {
-  const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, exitViewMode } = useViewAs()
 
-  const [profile, setProfile] = useState<UserProfile | null>(null)
   const [token,   setToken]   = useState('')
-  const [loading, setLoading] = useState(true)
 
-  const [members, setMembers] = useState<UserProfile[]>([])
-  const [depts,   setDepts]   = useState<Department[]>([])
+  // Shared with the main Control Center page and cached across sections: see
+  // src/hooks/queries/useControlCenterData.ts.
+  const membersQuery = useAdminMembers()
+  const deptsQuery   = useDepartments()
+  const members = membersQuery.data ?? NO_MEMBERS
+  const depts   = deptsQuery.data   ?? NO_DEPARTMENTS
+  const loading = membersQuery.isPending || deptsQuery.isPending
 
   const [search,             setSearch]             = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null)
@@ -985,47 +947,17 @@ export default function PermissionsPage() {
   const [saving,   setSaving]   = useState(false)
   const [saveError, setSaveError] = useState('')
 
-  // Per-employee "X of Y modules" counters shown in the employee list.
-  // Lazily filled in by re-using the same per-employee tree endpoint the
-  // workspace already calls on selection — no new API, just more reads of
-  // the existing one, bounded to whatever's currently visible in the list.
-  const [moduleCounts, setModuleCounts] = useState<Map<string, ModuleCount>>(new Map())
-
-  // Every employee id ever requested (by either the list effect below or
-  // loadTree), regardless of outcome. Never cleared, so each employee is
-  // asked for at most once per page session — a failed request is not
-  // retried just because the same row scrolls back into a search result.
-  const requestedCountIds = useRef<Set<string>>(new Set())
-
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
+      // Identity and the admin check are owned by control-center/layout.tsx,
+      // which renders this page only for an admitted administrator. The stored
+      // session is read here solely for the bearer token the tree GET and the
+      // save PUT need; the directory comes from the shared queries above.
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+      if (!session) return
 
-      const { data: p } = await supabase
-        .from('users')
-        .select('id, full_name, email, phone, role, team, is_active, created_at')
-        .eq('id', session.user.id)
-        .single()
-
-      if (p?.role !== 'admin') { router.push('/dashboard'); return }
-      if (viewAsUserId) { exitViewMode(); router.push('/dashboard'); return }
-
-      setProfile(p as UserProfile)
       setToken(session.access_token)
-
-      const hdrs = { Authorization: `Bearer ${session.access_token}` }
-
-      const [membersRes, deptsRes] = await Promise.all([
-        fetch('/api/admin-members',              { headers: hdrs }).then(r => r.json()),
-        fetch('/api/control-center/departments', { headers: hdrs }).then(r => r.json()),
-      ])
-
-      if (Array.isArray(membersRes?.members))   setMembers(membersRes.members)
-      if (Array.isArray(deptsRes?.departments)) setDepts(deptsRes.departments)
-
-      setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1071,22 +1003,15 @@ export default function PermissionsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search, members, depts])
 
-  /**
-   * The rows whose "x of y modules" counter is prefetched.
-   *
-   * The counter costs one request per employee, so it stays bounded exactly as
-   * it was before the cap was lifted — the visible list is now complete, while
-   * the request volume on load is unchanged. Rows past this window keep the
-   * "···" placeholder they already show until a search brings them into it, and
-   * the row is fully usable either way: the counter is decoration, not
-   * information anybody acts on.
-   */
-  const countPrefetchTargets = useMemo(
-    () => searchResults.slice(0, COUNT_PREFETCH_LIMIT),
-    [searchResults],
-  )
-
   // ── Load an employee's permission tree ──────────────────────────────────
+  //
+  // THE ONLY READ OF THE TREE ROUTE, and it happens when an employee is opened.
+  // The directory used to prefetch up to twenty trees on load to draw a
+  // decorative "x of y modules" beside each name — six backend calls per
+  // employee for a number nobody acted on, and the tree it downloaded was
+  // then discarded and fetched again on selection. The counter is gone; the
+  // workspace header already states the same two numbers for the person who
+  // is actually open.
   const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
 
   async function selectEmployee(id: string) {
@@ -1104,9 +1029,6 @@ export default function PermissionsPage() {
   }
 
   async function loadTree(id: string) {
-    // Marked up front so the list-count effect below never issues a
-    // redundant request for an employee whose tree we're already fetching.
-    requestedCountIds.current.add(id)
     setTreeLoading(true)
     setTreeError('')
     try {
@@ -1118,11 +1040,6 @@ export default function PermissionsPage() {
 
       const data = json as EmployeePermissionTree
       setTree(data)
-      setModuleCounts(prev => {
-        const next = new Map(prev)
-        next.set(id, accessibleModuleCount(data.modules))
-        return next
-      })
 
       const initial = new Map<string, OverrideChoice>()
       for (const mod of data.modules) {
@@ -1137,48 +1054,6 @@ export default function PermissionsPage() {
       setTreeLoading(false)
     }
   }
-
-  // ── Employee-list access counters ───────────────────────────────────────
-  // Fetches counts only for the bounded prefetch window above — the employee
-  // list itself is complete, but asking the server for one tree per person in a
-  // company-wide directory would be a burst of requests for a decorative
-  // number. requestedCountIds gates this to at most one request per employee per
-  // page session — searching only ever re-derives membership, never re-requests
-  // an id already marked (whether it succeeded or failed), so there's no loop.
-  useEffect(() => {
-    if (!token) return
-    const toFetch = countPrefetchTargets.filter(m => !requestedCountIds.current.has(m.id))
-    if (toFetch.length === 0) return
-
-    // No mount-cancellation guard here: requestedCountIds already makes
-    // this idempotent (each id is marked, and thus fetched, at most once
-    // for the life of the page), and React 19 safely no-ops a setState
-    // from a component that's since unmounted. A cancellation flag tied to
-    // this effect's own cleanup would instead get flipped by React's
-    // dev-mode Strict Mode double-invoke before these fetches resolve,
-    // silently discarding every result — that bug is why this is written
-    // without one.
-    toFetch.forEach(m => requestedCountIds.current.add(m.id))
-
-    toFetch.forEach(async m => {
-      try {
-        const res = await fetch(`/api/control-center/permissions/employees/${m.id}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) return
-        const data = await res.json() as EmployeePermissionTree
-        setModuleCounts(prev => {
-          const next = new Map(prev)
-          next.set(m.id, accessibleModuleCount(data.modules))
-          return next
-        })
-      } catch {
-        // Network error — this employee's row just keeps showing the
-        // "···" placeholder; already marked in requestedCountIds so it
-        // won't be retried this session, and the row stays fully usable.
-      }
-    })
-  }, [countPrefetchTargets, token])
 
   function changeOverride(moduleKey: string, actionKey: string, choice: OverrideChoice) {
     setOverrides(prev => {
@@ -1370,7 +1245,7 @@ export default function PermissionsPage() {
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  if (loading) return <LoadingScreen />
+  if (loading) return <ControlCenterSkeleton />
 
   const changeModalModule = changeModalModuleKey
     ? tree?.modules.find(m => m.moduleKey === changeModalModuleKey) ?? null
@@ -1381,12 +1256,7 @@ export default function PermissionsPage() {
   const editableModules = tree?.modules.filter(m => !isSelfServiceModuleKey(m.moduleKey)) ?? []
 
   return (
-    <ControlCenterLayout
-      profile={profile}
-      title="Access Control"
-      subtitle="Manage what each employee can access, module by module"
-      onSignOut={async () => { await supabase.auth.signOut(); router.replace('/login') }}
-    >
+    <>
       <div className={styles.layout}>
 
         <EmployeePanel
@@ -1395,7 +1265,6 @@ export default function PermissionsPage() {
           results={searchResults}
           selectedEmployeeId={selectedEmployeeId}
           onSelect={selectEmployee}
-          moduleCounts={moduleCounts}
           deptLabel={deptLabel}
         />
 
@@ -1487,6 +1356,6 @@ export default function PermissionsPage() {
           onClose={() => setChangeModalModuleKey(null)}
         />
       )}
-    </ControlCenterLayout>
+    </>
   )
 }
