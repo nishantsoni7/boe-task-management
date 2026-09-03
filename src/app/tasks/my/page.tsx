@@ -32,7 +32,7 @@ import {
 } from '@/lib/tasks/myTaskTabs'
 import {
   CheckCircle2, Star, AlertCircle,
-  LayoutList, UserCheck, Users, Search, Pencil, Trash2, Plus, Pin,
+  LayoutList, UserCheck, Users, Search, Pencil, Trash2, Pin,
   Paperclip, X, CircleCheckBig, SendHorizontal,
 } from 'lucide-react'
 import { useTopTasks } from '@/hooks/queries/useTopTasks'
@@ -1608,23 +1608,6 @@ function MyTasksContent() {
         profile={profile}
         title="My Tasks"
         onSignOut={handleLogout}
-        actions={!viewAsUserId && (
-          <button
-            onClick={() => setShowCreateModal(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: colors.primary, color: '#fff',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={13} strokeWidth={2.5} />
-            Create Self Task
-          </button>
-        )}
       >
 
         {/* ── Unified workspace card ── */}
