@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   Settings, ChevronRight, ShieldCheck, TrendingUp,
-  Home, Bell, RefreshCw, FileText,
+  Home, Bell, RefreshCw, FileText, Plus,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
@@ -275,31 +275,24 @@ export function DashboardLayout({
             onClick={() => navTo('/dashboard')}
           />
 
-          {/* 2. New Task — hidden in view mode (read-only) */}
-          {!inViewMode && (
+          {/* 2. New Task — hidden in view mode (read-only).
+              Self Task and Delegate Task moved to the page header, where they
+              are reachable from every Task Management screen; repeating them
+              here would be two ways to the same two routes. Raising a quotation
+              request is a third workflow the header does not carry, so it stays
+              — and it is a quotation operation, manage rather than view, which
+              is also the only reason this group still renders at all. */}
+          {!inViewMode && quotationCaps.canManageQuotations && (
             <CollapsibleNav
               label="New Task"
               icon={<PlusCircle size={15} strokeWidth={1.8} />}
-              active={pathname === '/tasks/create-self' || pathname === '/tasks/create' || pathname === '/tasks/quotation-requests/new'}
+              active={pathname === '/tasks/quotation-requests/new'}
             >
               <NavChild
-                label="Self Task"
-                active={pathname === '/tasks/create-self'}
-                onClick={() => navTo('/tasks/create-self')}
+                label="Quotation Request"
+                active={pathname === '/tasks/quotation-requests/new'}
+                onClick={() => navTo('/tasks/quotation-requests/new')}
               />
-              <NavChild
-                label="Delegate Task"
-                active={pathname === '/tasks/create'}
-                onClick={() => navTo('/tasks/create')}
-              />
-              {/* Raising a request is a quotation operation — manage, not view. */}
-              {quotationCaps.canManageQuotations && (
-                <NavChild
-                  label="Quotation Request"
-                  active={pathname === '/tasks/quotation-requests/new'}
-                  onClick={() => navTo('/tasks/quotation-requests/new')}
-                />
-              )}
             </CollapsibleNav>
           )}
 
@@ -491,6 +484,37 @@ export function DashboardLayout({
           </div>
           <div className="boe-header-actions">
             {actions}
+
+            {/* Task creation, on every Task Management screen.
+                They render here rather than page by page, so walking from the
+                dashboard into My Tasks or a task's detail never costs the
+                creation controls. Both are plain navigations to the EXISTING
+                creation routes — this component holds no task logic.
+                Hidden while impersonating, exactly like the sidebar group they
+                replace: View As is read-only. */}
+            {!inViewMode && (
+              <>
+                <button
+                  type="button"
+                  className="boe-record-action"
+                  style={{ minHeight: 38 }}
+                  onClick={() => router.push('/tasks/create-self')}
+                >
+                  <Plus size={14} strokeWidth={2.2} />
+                  Self Task
+                </button>
+                <button
+                  type="button"
+                  className="boe-record-action boe-record-action--primary"
+                  style={{ minHeight: 38 }}
+                  onClick={() => router.push('/tasks/create')}
+                >
+                  <Plus size={14} strokeWidth={2.2} />
+                  Delegate Task
+                </button>
+              </>
+            )}
+
             <button
               onClick={handleRefresh}
               disabled={refreshing}

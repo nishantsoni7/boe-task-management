@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   Home, ClipboardList, Bell, TrendingUp, MoreHorizontal,
-  CheckSquare, Briefcase, Plus, Settings, LogOut, Users,
+  CheckSquare, Briefcase, Settings, LogOut, Users,
 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { useViewAs } from '@/hooks/useViewAs'
@@ -196,12 +196,6 @@ export function MobileBottomNav({
           <MoreItem label="Assigned By Me"  icon={CheckSquare} accent="#2E9E6B" onClick={() => go('/tasks/assigned-by-me')} />
           <MoreItem label="Assets & Access" icon={Briefcase}   accent="#E8A030" onClick={() => go('/assets-access')} />
 
-          {!inViewMode && (
-            <MoreItem label="Create Self Task"  icon={Plus}    accent="#5585E8" onClick={() => go('/tasks/create-self')} />
-          )}
-          {!inViewMode && isAdminOrManager && (
-            <MoreItem label="Delegate Task"     icon={Plus}    accent="#9B6FD4" onClick={() => go('/tasks/create')} />
-          )}
           {/* Matches the desktop rule: keyed on the real signed-in user, and
               hidden while impersonating so View As shows what that employee
               actually sees. */}

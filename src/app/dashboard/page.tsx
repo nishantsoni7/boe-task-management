@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, User, UserPlus, CalendarDays } from 'lucide-react'
+import { Check, User, CalendarDays } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
 import { isOverdue, getAssignedByDisplay, isValidUUID, taskStatusLabel } from '@/lib/ui'
@@ -419,16 +419,6 @@ export default function DashboardPage() {
         subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
         onSignOut={handleLogout}
       >
-        {/* ── Create a task — the dashboard's single creation area. Hidden in
-            View As, exactly like the header button it replaces. ── */}
-        {!viewAsUserId && (
-          <CreateTaskCards
-            isMobile={isMobile}
-            onSelfTask={() => router.push('/tasks/create-self')}
-            onDelegateTask={() => router.push('/tasks/create')}
-          />
-        )}
-
         {/* ── Today's Focus — full-width hero panel ── */}
         <TodaysFocusPanel
           tasks={top3Tasks}
@@ -438,45 +428,50 @@ export default function DashboardPage() {
           userMap={mergedUserMap}
         />
 
-        {/* ── Lower two-column ── */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-          gap: '16px',
-          marginBottom: '16px',
-        }}>
-          <UnacknowledgedPanel
-            tasks={unacknowledgedForMe}
-            userMap={mergedUserMap}
-            now={now}
-            isMobile={isMobile}
-            currentUserId={currentUserId}
-            acknowledgingIds={acknowledgingIds}
-            onAcknowledge={handleAcknowledge}
-            onPreview={task => setSelectedTask(task)}
-            onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
-          />
-          {isAdmin ? (
-            <QuotationPanel
-              tasks={quotationTasks}
-              userMap={mergedUserMap}
-              isMobile={isMobile}
-              onOpen={task => router.push(`/tasks/${task.id}`)}
-              onViewAll={() => router.push('/tasks/quotation-requests')}
-            />
-          ) : (
-            <OverdueTasksPanel
-              tasks={overdueTasks}
+        {/* ── Needs Your Attention ── */}
+        <section style={{ marginBottom: isMobile ? '18px' : '22px' }}>
+          <SectionHeading title="Needs Your Attention" isMobile={isMobile} />
+          {/* align-items: start is what lets an empty acknowledgement card stay
+              short instead of stretching to the quotation card's height. */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+            gap: isMobile ? '10px' : '12px',
+            alignItems: 'start',
+          }}>
+            <UnacknowledgedPanel
+              tasks={unacknowledgedForMe}
               userMap={mergedUserMap}
               now={now}
               isMobile={isMobile}
-              onSelectTask={task => setSelectedTask(task)}
-              onViewAll={() => setPreviewList({ title: 'Overdue Tasks', items: overdueTasks })}
+              currentUserId={currentUserId}
+              acknowledgingIds={acknowledgingIds}
+              onAcknowledge={handleAcknowledge}
+              onPreview={task => setSelectedTask(task)}
+              onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
             />
-          )}
-        </div>
+            {isAdmin ? (
+              <QuotationPanel
+                tasks={quotationTasks}
+                userMap={mergedUserMap}
+                isMobile={isMobile}
+                onOpen={task => router.push(`/tasks/${task.id}`)}
+                onViewAll={() => router.push('/tasks/quotation-requests')}
+              />
+            ) : (
+              <OverdueTasksPanel
+                tasks={overdueTasks}
+                userMap={mergedUserMap}
+                now={now}
+                isMobile={isMobile}
+                onSelectTask={task => setSelectedTask(task)}
+                onViewAll={() => setPreviewList({ title: 'Overdue Tasks', items: overdueTasks })}
+              />
+            )}
+          </div>
+        </section>
 
-        {/* ── Status rail — bottom ── */}
+        {/* ── Operational counters ── */}
         <OperationalStatusPanel
           overdueTasks={overdueTasks}
           waitingTasks={waitingTasks}
@@ -578,77 +573,77 @@ function MetaLine({ segments, gap = '6px' }: { segments: MetaSegment[]; gap?: st
   )
 }
 
-// ── Create-task cards ─────────────────────────────────────────────────────────
-// Two large, fully clickable cards that hand off to the EXISTING creation pages
-// (/tasks/create-self and /tasks/create). No task logic lives here.
-function CreateTaskCard({
-  title, hint, icon, accent, onClick,
+// ── Section heading ───────────────────────────────────────────────────────────
+// ONE heading treatment for every dashboard band. The page itself is the
+// background: a section is a heading plus its cards, never a tinted card that
+// holds more cards. That is what keeps "Top 3 Focus" and "Needs Your Attention"
+// reading as the same level of thing.
+function SectionHeading({
+  title, hint, actionLabel, onAction, isMobile,
 }: {
   title: string
-  hint: string
-  icon: React.ReactNode
-  accent: string
-  onClick: () => void
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="boe-card-interactive"
-      style={{
-        display: 'flex', alignItems: 'center', gap: '14px',
-        width: '100%', padding: '16px 18px',
-        textAlign: 'left', fontFamily: 'inherit',
-      }}
-    >
-      <span style={{
-        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-        background: accent + '18', color: accent,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
-        {icon}
-      </span>
-      <span style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-        <span style={{ fontSize: '15px', fontWeight: 700, color: '#0F172A', letterSpacing: '-0.01em', lineHeight: 1.2 }}>
-          {title}
-        </span>
-        <span style={{ fontSize: '12px', color: '#6B7280', lineHeight: 1.35 }}>
-          {hint}
-        </span>
-      </span>
-    </button>
-  )
-}
-
-function CreateTaskCards({
-  isMobile, onSelfTask, onDelegateTask,
-}: {
+  hint?: string
+  actionLabel?: string
+  onAction?: () => void
   isMobile: boolean
-  onSelfTask: () => void
-  onDelegateTask: () => void
 }) {
   return (
     <div style={{
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-      gap: isMobile ? '10px' : '16px',
-      marginBottom: '20px',
+      display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+      gap: '12px', marginBottom: '10px',
     }}>
-      <CreateTaskCard
-        title="Self Task"
-        hint="Create a task for yourself"
-        icon={<User size={20} strokeWidth={1.8} />}
-        accent="#5585E8"
-        onClick={onSelfTask}
-      />
-      <CreateTaskCard
-        title="Delegate Task"
-        hint="Assign a task to another employee"
-        icon={<UserPlus size={20} strokeWidth={1.8} />}
-        accent="#9B6FD4"
-        onClick={onDelegateTask}
-      />
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: 0 }}>
+        <h2 style={{
+          margin: 0,
+          fontSize: isMobile ? '15px' : '16px',
+          fontWeight: 700, color: '#111318',
+          letterSpacing: '-0.015em', lineHeight: 1.2,
+        }}>
+          {title}
+        </h2>
+        {/* The hint is the first thing to go when the line is short — it is
+            context, never the heading itself. */}
+        {hint && !isMobile && (
+          <span style={{ fontSize: '12px', color: '#9CA3AF', whiteSpace: 'nowrap' }}>
+            {hint}
+          </span>
+        )}
+      </div>
+      {actionLabel && onAction && (
+        <button
+          onClick={onAction}
+          style={{
+            fontSize: '12px', fontWeight: 500, color: '#6B7280',
+            background: 'transparent', border: 'none', padding: '2px 0',
+            cursor: 'pointer', whiteSpace: 'nowrap', transition: 'color 0.12s',
+            flexShrink: 0,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.color = '#111318' }}
+          onMouseLeave={e => { e.currentTarget.style.color = '#6B7280' }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
+  )
+}
+
+// ── Focus rank badge ─────────────────────────────────────────────────────────
+// The 1/2/3 ranking, given room to breathe instead of a circled glyph wedged
+// into the title's top-right corner.
+function RankBadge({ index, muted = false }: { index: number; muted?: boolean }) {
+  return (
+    <span style={{
+      display: 'inline-block', flexShrink: 0,
+      width: '20px', height: '20px', borderRadius: '6px',
+      background: muted ? '#F4F5F7' : '#F1F2F5',
+      color: muted ? '#C4C9D4' : '#8C94A6',
+      fontSize: '11px', fontWeight: 600,
+      lineHeight: '20px', textAlign: 'center',
+      marginTop: '1px',
+    }}>
+      {index + 1}
+    </span>
   )
 }
 
@@ -668,50 +663,23 @@ function TodaysFocusPanel({
   userMap: Record<string, string>
 }) {
   return (
-    <div style={{
-      background: '#F8F7F5',
-      border: '1px solid rgba(0,0,0,0.06)',
-      borderRadius: '16px',
-      padding: isMobile ? '10px 14px' : '10px 22px 8px',
-      marginBottom: '20px',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-    }}>
-      {/* Header — title, slot count and "My Tasks" all on one line */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: '8px',
-      }}>
-        <div style={{ fontWeight: 800, fontSize: isMobile ? '17px' : '19px', color: '#0F172A', letterSpacing: '-0.03em', lineHeight: 1 }}>
-          Top 3 Focus
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '12px', color: '#9CA3AF', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
-            {tasks.length === 0
-              ? 'Pin up to three tasks to keep in focus.'
-              : `${tasks.length} of 3 slots active`}
-          </span>
-          <button
-            onClick={onGoToMyTasks}
-            style={{
-              fontSize: '11px', fontWeight: 500, color: '#9CA3AF',
-              background: 'transparent', border: 'none',
-              padding: '4px 0', cursor: 'pointer',
-              letterSpacing: '0.01em', transition: 'color 0.12s',
-              whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#374151' }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#9CA3AF' }}
-          >
-            My Tasks →
-          </button>
-        </div>
-      </div>
+    <section style={{ marginBottom: isMobile ? '18px' : '22px' }}>
+      <SectionHeading
+        title="Top 3 Focus"
+        hint={tasks.length === 0
+          ? 'Pin up to three tasks to keep in focus.'
+          : `${tasks.length} of 3 slots active`}
+        actionLabel="My Tasks →"
+        onAction={onGoToMyTasks}
+        isMobile={isMobile}
+      />
 
-      {/* 3-column card grid — always rendered, all 3 slots */}
+      {/* Three equal columns, three equal-height cards. The grid stretches its
+          items by default, so a short task and a long one still line up. */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-        gap: isMobile ? '8px' : '8px',
+        gap: isMobile ? '10px' : '12px',
       }}>
         {[0, 1, 2].map(idx => {
           const task = tasks[idx]
@@ -726,33 +694,31 @@ function TodaysFocusPanel({
                 tabIndex={0}
                 onKeyDown={e => e.key === 'Enter' && onGoToMyTasks()}
                 style={{
-                  background: 'rgba(255,255,255,0.5)',
-                  border: '1px dashed #D4D4D4',
+                  background: '#FBFBFC',
+                  border: '1px dashed #DDE1E9',
                   borderRadius: '12px',
-                  padding: isMobile ? '10px 9px' : '10px 11px',
-                  display: 'flex', flexDirection: 'column',
-                  minHeight: isMobile ? 'auto' : '106px',
+                  padding: isMobile ? '13px 14px' : '14px 16px',
+                  display: 'flex', flexDirection: 'column', gap: '5px',
+                  minHeight: isMobile ? 'auto' : '116px',
                   cursor: 'pointer',
                   transition: 'background 0.15s, border-color 0.15s',
                 }}
                 onMouseEnter={e => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.82)'
-                  e.currentTarget.style.borderColor = '#B0B0B0'
+                  e.currentTarget.style.background = '#F7F8FA'
+                  e.currentTarget.style.borderColor = '#C9CFDA'
                 }}
                 onMouseLeave={e => {
-                  e.currentTarget.style.background = 'rgba(255,255,255,0.5)'
-                  e.currentTarget.style.borderColor = '#D4D4D4'
+                  e.currentTarget.style.background = '#FBFBFC'
+                  e.currentTarget.style.borderColor = '#DDE1E9'
                 }}
               >
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '2px' }}>
-                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', lineHeight: 1.4 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+                  <RankBadge index={idx} muted />
+                  <div style={{ fontSize: '13px', fontWeight: 500, color: '#A8B2BF', lineHeight: 1.35 }}>
                     Focus slot available
                   </div>
-                  <span style={{ fontSize: '11px', color: '#C4C9D4', lineHeight: 1, flexShrink: 0 }}>
-                    {['①','②','③'][idx]}
-                  </span>
                 </div>
-                <div style={{ fontSize: '12px', color: '#C4C9D4', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '12px', color: '#C4C9D4', lineHeight: 1.35, marginLeft: '29px' }}>
                   Open My Tasks to add one.
                 </div>
               </div>
@@ -779,6 +745,17 @@ function TodaysFocusPanel({
               ? '#92700A'
               : '#7B8494'
 
+          const chipStyle: React.CSSProperties = {
+            fontSize: '10.5px',
+            background: '#F8F9FB',
+            border: '1px solid #E6E8EC',
+            borderRadius: '999px',
+            padding: '1.5px 8px',
+            lineHeight: 1.5,
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+          }
+
           return (
             <div
               key={task.id}
@@ -788,97 +765,79 @@ function TodaysFocusPanel({
               onKeyDown={e => e.key === 'Enter' && onSelectTask(task)}
               style={{
                 background: '#ffffff',
-                borderTop: '1px solid rgba(0,0,0,0.06)',
-                borderRight: '1px solid rgba(0,0,0,0.06)',
-                borderBottom: '1px solid rgba(0,0,0,0.06)',
-                borderLeft: '3px solid #B8ACA0',
+                border: '1px solid #E7E9EE',
                 borderRadius: '12px',
-                padding: isMobile ? '8px 9px' : '8px 11px',
-                display: 'flex', flexDirection: 'column',
-                minHeight: isMobile ? 'auto' : '98px',
+                padding: isMobile ? '13px 14px' : '14px 16px',
+                display: 'flex', flexDirection: 'column', gap: '10px',
+                minHeight: isMobile ? 'auto' : '116px',
                 cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-                transition: 'box-shadow 0.15s',
+                transition: 'background 0.15s, border-color 0.15s',
               }}
-              onMouseEnter={e => { e.currentTarget.style.boxShadow = '0 3px 10px rgba(0,0,0,0.08)' }}
-              onMouseLeave={e => { e.currentTarget.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)' }}
+              onMouseEnter={e => {
+                e.currentTarget.style.background = '#FCFCFD'
+                e.currentTarget.style.borderColor = '#C9CFDA'
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.background = '#ffffff'
+                e.currentTarget.style.borderColor = '#E7E9EE'
+              }}
             >
-              {/* Zone — title + slot number (top-right) + source, grows to push zone below to bottom */}
-              <div style={{ flex: 1, marginBottom: '3px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px', marginBottom: '4px' }}>
+              {/* Rank, title and where the task came from */}
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '9px' }}>
+                <RankBadge index={idx} />
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{
-                    fontSize: isMobile ? '13px' : '14px',
-                    fontWeight: 700,
-                    color: '#0F172A',
-                    lineHeight: 1.3,
+                    fontSize: isMobile ? '13.5px' : '14px',
+                    fontWeight: 600,
+                    color: '#111318',
+                    lineHeight: 1.35,
                     letterSpacing: '-0.01em',
                   }}>
                     {task.title}
                   </div>
-                  <span style={{ fontSize: '11px', color: '#B0BAC8', lineHeight: 1, flexShrink: 0 }}>
-                    {['①','②','③'][idx]}
-                  </span>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    marginTop: '5px', fontSize: '12px', color: '#8A94A6', lineHeight: 1.3,
+                  }}>
+                    <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />
+                    {isSelf
+                      ? 'Self Task'
+                      : <span>Delegated by <span style={{ color: '#6B7280', fontWeight: 500 }}>{assignerDisplay}</span></span>
+                    }
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#8A94A6', lineHeight: 1.25 }}>
-                  <User size={12} strokeWidth={2} color="#B0BAC8" style={{ flexShrink: 0 }} />
-                  {isSelf
-                    ? 'Self Task'
-                    : <span>Delegated by <span style={{ color: '#6B7280', fontWeight: 500 }}>{assignerDisplay}</span></span>
-                  }
-                </div>
+                <span style={{ display: 'flex', flexShrink: 0, marginTop: '2px' }}>
+                  <ChevronRightIcon color="#C4C9D4" />
+                </span>
               </div>
 
-              {/* Zone — due date, then priority + status together, anchored to bottom */}
-              <div>
-                {/* Due date + chevron — subtle secondary metadata, no warning colours */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  {dueDateStr
-                    ? <span style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', fontWeight: 500, color: '#6B7280' }}>
-                        <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
-                        {`Due ${dueDateStr}`}
-                      </span>
-                    : <span />
-                  }
-                  <ChevronRightIcon />
-                </div>
-                {/* Priority + status chips — kept together, left-aligned */}
-                {(priorityLabel || statusLabel) && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
-                    {priorityLabel && (
-                      <span style={{
-                        fontSize: '10.5px',
-                        color: priorityColor,
-                        background: '#F8F9FB',
-                        border: '1px solid #E6E8EC',
-                        borderRadius: '999px',
-                        padding: '1.5px 7px',
-                        lineHeight: 1.4,
-                        fontWeight: 500,
-                      }}>
-                        {priorityLabel}
-                      </span>
-                    )}
-                    {statusLabel && (
-                      <span style={{
-                        fontSize: '10.5px',
-                        color: '#7B8494',
-                        background: '#F8F9FB',
-                        border: '1px solid #E6E8EC',
-                        borderRadius: '999px',
-                        padding: '1.5px 7px',
-                        lineHeight: 1.4,
-                      }}>
-                        {statusLabel}
-                      </span>
-                    )}
-                  </div>
+              {/* Due date, priority and status — one quiet line at the foot of
+                  every card, so the three cards agree on where to look. */}
+              <div style={{
+                marginTop: 'auto',
+                display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+              }}>
+                {dueDateStr && (
+                  <span style={{
+                    display: 'flex', alignItems: 'center', gap: '4px',
+                    fontSize: '11.5px', fontWeight: 500, color: '#6B7280',
+                  }}>
+                    <CalendarDays size={12} strokeWidth={2} color="#8A94A6" style={{ flexShrink: 0 }} />
+                    {`Due ${dueDateStr}`}
+                  </span>
+                )}
+                {priorityLabel && (
+                  <span style={{ ...chipStyle, color: priorityColor }}>{priorityLabel}</span>
+                )}
+                {statusLabel && (
+                  <span style={{ ...chipStyle, color: '#7B8494', fontWeight: 400 }}>{statusLabel}</span>
                 )}
               </div>
             </div>
           )
         })}
       </div>
-    </div>
+    </section>
   )
 }
 
@@ -897,61 +856,163 @@ function OperationalStatusPanel({
   onShowList: (list: { title: string; items: Task[] }) => void
   isMobile: boolean
 }) {
+  // Overdue keeps its red — it is the one counter that reports a problem.
+  // Waiting and Due Today are states, not alarms, and stay neutral.
   const items = [
-    { label: 'Overdue',   sub: 'Needs attention',  count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#C0392B' },
-    { label: 'Waiting',   sub: 'Pending action',   count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#92400E' },
-    { label: 'Due Today', sub: 'Finish today',      count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',      countColor: '#374151' },
+    { label: 'Overdue',   sub: 'Needs attention', count: overdueTasks.length,  items: overdueTasks,  title: 'Overdue Tasks', countColor: '#C0392B' },
+    { label: 'Waiting',   sub: 'Pending action',  count: waitingTasks.length,  items: waitingTasks,  title: 'Waiting Tasks', countColor: '#111318' },
+    { label: 'Due Today', sub: 'Finish today',    count: dueTodayTasks.length, items: dueTodayTasks, title: 'Due Today',     countColor: '#111318' },
   ]
+  return (
+    <section style={{
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
+      gap: isMobile ? '10px' : '12px',
+    }}>
+      {items.map(item => {
+        // Unchanged rule: a counter opens its list only when it has one.
+        const isInteractive = item.count > 0
+        const open = () => onShowList({ title: item.title, items: item.items })
+        return (
+          <div
+            key={item.label}
+            onClick={() => isInteractive && open()}
+            role={isInteractive ? 'button' : undefined}
+            tabIndex={isInteractive ? 0 : undefined}
+            onKeyDown={e => { if (isInteractive && e.key === 'Enter') open() }}
+            style={{
+              background: '#fff',
+              border: '1px solid #E7E9EE',
+              borderRadius: '12px',
+              padding: '14px 16px',
+              cursor: isInteractive ? 'pointer' : 'default',
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={e => {
+              if (!isInteractive) return
+              e.currentTarget.style.background = '#FCFCFD'
+              e.currentTarget.style.borderColor = '#C9CFDA'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#fff'
+              e.currentTarget.style.borderColor = '#E7E9EE'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{
+                fontSize: '20px', fontWeight: 700, lineHeight: 1,
+                color: item.count > 0 ? item.countColor : '#D1D5DB',
+                letterSpacing: '-0.03em',
+                minWidth: '20px',
+              }}>
+                {item.count}
+              </span>
+              <span style={{ fontSize: '13px', fontWeight: 600, color: '#3D4455', lineHeight: 1 }}>
+                {item.label}
+              </span>
+              {isInteractive && (
+                <span style={{ marginLeft: 'auto', display: 'flex' }}>
+                  <ChevronRightIcon color="#C4C9D4" />
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#9CA3AF', marginTop: '6px', lineHeight: 1.2 }}>
+              {item.sub}
+            </div>
+          </div>
+        )
+      })}
+    </section>
+  )
+}
+
+// ── Unacknowledged Tasks panel ────────────────────────────────────────────────
+
+// ── Attention panel shell ────────────────────────────────────────────────────
+// Needs Acknowledgement, Quotation Requests and Overdue Tasks were three copies
+// of the same header. One shell instead, so the cards beside each other agree on
+// padding, type and where "View all" sits. It decides nothing about contents.
+function AttentionPanel({
+  title, count, badgeTone = 'neutral', onViewAll, isMobile, children,
+}: {
+  title: string
+  count: number
+  badgeTone?: 'neutral' | 'alert'
+  onViewAll: () => void
+  isMobile: boolean
+  children: React.ReactNode
+}) {
+  const interactive = count > 0
   return (
     <div style={{
       background: '#fff',
       border: '1px solid #E7E9EE',
       borderRadius: '12px',
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : 'repeat(3, 1fr)',
-      marginBottom: '24px',
       overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
     }}>
-      {items.map((item, idx) => {
-        const isInteractive = item.count > 0
-        const isLast = idx === items.length - 1
-        return (
-          <div
-            key={item.label}
-            onClick={() => isInteractive && onShowList({ title: item.title, items: item.items })}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              borderRight: !isMobile && !isLast ? '1px solid rgba(0,0,0,0.05)' : 'none',
-              borderBottom: isMobile && !isLast ? '1px solid rgba(0,0,0,0.05)' : 'none',
-              padding: '15px 22px',
-              cursor: isInteractive ? 'pointer' : 'default',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { if (isInteractive) e.currentTarget.style.background = '#FAFAFA' }}
-            onMouseLeave={e => { e.currentTarget.style.background = '' }}
-          >
-            <div>
-              <div style={{ fontSize: '11px', fontWeight: 500, color: '#9CA3AF', letterSpacing: '0.01em', lineHeight: 1 }}>
-                {item.label}
-              </div>
-              <div style={{ fontSize: '10.5px', color: '#C4C9D4', marginTop: '4px', lineHeight: 1 }}>
-                {item.sub}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{
-                fontSize: '20px', fontWeight: 700,
-                color: item.count > 0 ? item.countColor : '#D1D5DB',
-                letterSpacing: '-0.03em',
-              }}>
-                {item.count}
-              </span>
-              {isInteractive && <ChevronRightIcon color="#C4C9D4" />}
-            </div>
-          </div>
-        )
-      })}
+      <div
+        onClick={() => interactive && onViewAll()}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '10px',
+          padding: isMobile ? '12px 14px' : '12px 16px',
+          borderBottom: '1px solid #F0F1F4',
+          cursor: interactive ? 'pointer' : 'default',
+          transition: 'background 0.15s',
+        }}
+        onMouseEnter={e => { if (interactive) e.currentTarget.style.background = '#FAFBFC' }}
+        onMouseLeave={e => { e.currentTarget.style.background = '' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+          <span style={{
+            fontWeight: 600, fontSize: '14px', color: '#3D4455',
+            letterSpacing: '-0.01em', lineHeight: 1.2,
+          }}>
+            {title}
+          </span>
+          {count > 0 && (
+            <span style={{
+              background: badgeTone === 'alert' ? '#FEF2F2' : '#F1F2F5',
+              color: badgeTone === 'alert' ? '#C0392B' : '#6B7280',
+              fontWeight: 600, fontSize: '11px',
+              borderRadius: '999px', padding: '1px 7px', lineHeight: 1.6,
+            }}>
+              {count}
+            </span>
+          )}
+        </div>
+        {interactive && (
+          <span style={{ fontSize: '11.5px', color: '#9CA3AF', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            View all →
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+// ── Compact empty state ──────────────────────────────────────────────────────
+// An empty card must not reserve a populated card's height. This is one row:
+// roughly 64px of content, so the whole card lands near 105px instead of 160.
+function PanelEmptyState({ headline, detail }: { headline: string; detail: string }) {
+  return (
+    <div style={{ padding: '18px 16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <span style={{
+        width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
+        background: '#F1F4F2', color: '#5A8468',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Check size={15} strokeWidth={2.2} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: '13px', fontWeight: 600, color: '#3D4455', lineHeight: 1.3 }}>
+          {headline}
+        </div>
+        <div style={{ fontSize: '12px', color: '#9CA3AF', lineHeight: 1.35, marginTop: '2px' }}>
+          {detail}
+        </div>
+      </div>
     </div>
   )
 }
@@ -980,47 +1041,14 @@ function UnacknowledgedPanel({
   onViewAll: () => void
 }) {
   return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid #E7E9EE',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    }}>
-      <div
-        onClick={() => tasks.length > 0 && onViewAll()}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '12px 16px' : '12px 20px',
-          borderBottom: '1px solid #F0F1F4',
-          cursor: tasks.length > 0 ? 'pointer' : 'default',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-        onMouseLeave={e => { e.currentTarget.style.background = '' }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
-              Needs Acknowledgement
-            </span>
-            {tasks.length > 0 && (
-              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
-                {tasks.length}
-              </span>
-            )}
-          </div>
-        </div>
-        {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
-        )}
-      </div>
-
+    <AttentionPanel
+      title="Needs Acknowledgement"
+      count={tasks.length}
+      onViewAll={onViewAll}
+      isMobile={isMobile}
+    >
       {tasks.length === 0 ? (
-        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>All clear</div>
-          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>No tasks waiting for acknowledgement</div>
-        </div>
+        <PanelEmptyState headline="All clear" detail="No tasks need acknowledgement" />
       ) : (
         <UnacknowledgedTasksSection
           tasks={tasks}
@@ -1034,7 +1062,7 @@ function UnacknowledgedPanel({
           onAcknowledge={onAcknowledge}
         />
       )}
-    </div>
+    </AttentionPanel>
   )
 }
 
@@ -1054,51 +1082,18 @@ function QuotationPanel({
   onViewAll: () => void
 }) {
   return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid #E7E9EE',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    }}>
-      <div
-        onClick={() => tasks.length > 0 && onViewAll()}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '12px 16px' : '12px 20px',
-          borderBottom: '1px solid #F0F1F4',
-          cursor: tasks.length > 0 ? 'pointer' : 'default',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-        onMouseLeave={e => { e.currentTarget.style.background = '' }}
-      >
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
-              Quotation Requests
-            </span>
-            {tasks.length > 0 && (
-              <span style={{ background: '#F3F4F6', color: '#6B7280', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
-                {tasks.length}
-              </span>
-            )}
-          </div>
-        </div>
-        {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
-        )}
-      </div>
-
+    <AttentionPanel
+      title="Quotation Requests"
+      count={tasks.length}
+      onViewAll={onViewAll}
+      isMobile={isMobile}
+    >
       {tasks.length === 0 ? (
-        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>No active requests</div>
-          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>Quotation requests will appear here</div>
-        </div>
+        <PanelEmptyState headline="No active requests" detail="Quotation requests will appear here" />
       ) : (
         <QuotationRequestsSection tasks={tasks} userMap={userMap} onOpen={onOpen} />
       )}
-    </div>
+    </AttentionPanel>
   )
 }
 
@@ -1120,49 +1115,19 @@ function OverdueTasksPanel({
   onViewAll: () => void
 }) {
   return (
-    <div style={{
-      background: '#fff',
-      border: '1px solid #E7E9EE',
-      borderRadius: '12px',
-      overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-    }}>
-      <div
-        onClick={() => tasks.length > 0 && onViewAll()}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: isMobile ? '14px 16px' : '16px 20px',
-          borderBottom: '1px solid #F0F1F4',
-          cursor: tasks.length > 0 ? 'pointer' : 'default',
-          transition: 'background 0.15s',
-        }}
-        onMouseEnter={e => { if (tasks.length > 0) e.currentTarget.style.background = '#FAFAFA' }}
-        onMouseLeave={e => { e.currentTarget.style.background = '' }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-          <span style={{ fontWeight: 600, fontSize: '15px', color: '#6B7280', letterSpacing: '-0.015em', lineHeight: 1 }}>
-            Overdue Tasks
-          </span>
-          {tasks.length > 0 && (
-            <span style={{ background: '#FEF2F2', color: '#C0392B', fontWeight: 500, fontSize: '11px', borderRadius: '5px', padding: '1px 6px', lineHeight: 1.6 }}>
-              {tasks.length}
-            </span>
-          )}
-        </div>
-        {tasks.length > 0 && (
-          <span style={{ fontSize: '11px', color: '#C4C9D4', whiteSpace: 'nowrap', flexShrink: 0 }}>View all →</span>
-        )}
-      </div>
-
+    <AttentionPanel
+      title="Overdue Tasks"
+      count={tasks.length}
+      badgeTone="alert"
+      onViewAll={onViewAll}
+      isMobile={isMobile}
+    >
       {tasks.length === 0 ? (
-        <div style={{ padding: '36px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '5px' }}>All caught up</div>
-          <div style={{ fontSize: '12px', color: '#C4C9D4' }}>No overdue tasks</div>
-        </div>
+        <PanelEmptyState headline="All caught up" detail="No overdue tasks" />
       ) : (
         <UnacknowledgedTasksSection tasks={tasks} userMap={userMap} now={now} onPreview={onSelectTask} compact />
       )}
-    </div>
+    </AttentionPanel>
   )
 }
 
