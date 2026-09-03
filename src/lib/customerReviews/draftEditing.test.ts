@@ -464,4 +464,70 @@ describe('provenance stays honest', () => {
     assert.ok(detail.includes('Now that it is approved its text is final'))
     assert.ok(detail.includes('A verifier edited it before approving it.'))
   })
+
+  // ── The claim is made only where it holds ─────────────────────────────────
+  //
+  // The detail route is addressed by id, so a verifier can open a draft that
+  // is still pending_approval — which the LISTS never link to. On that card
+  // the immutability sentence was false twice over: the draft is not approved,
+  // and a verifier may still edit it from Pending approval. Found in
+  // production during the Phase 1D authenticated verification.
+  //
+  // approved_at is the discriminator, not the status string: it is null
+  // exactly while the card is pending_approval and never null again after
+  // (the state map in ./types.ts), and a released card that is later booked,
+  // returned or verified keeps it.
+
+  describe('the provenance sentence is told by approval state', () => {
+    const detail = read('src/app/customer-reviews/[id]/TestCardDetailScreen.tsx')
+
+    /** The provenance paragraph, from the draft body to its closing tag. */
+    const paragraph = (() => {
+      const start = detail.indexOf('This draft was written by AI')
+      assert.ok(start > 0, 'the provenance paragraph is present')
+      const end = detail.indexOf('</p>', start)
+      assert.ok(end > start)
+      return detail.slice(start, end)
+    })()
+
+    test('the final/immutable claim is guarded by approved_at, and is the only branch that makes it', () => {
+      assert.match(
+        paragraph,
+        /\{card\.approved_at\s*\n?\s*\? ' Now that it is approved its text is final and cannot be edited/,
+        'the immutability sentence is no longer stated unconditionally',
+      )
+      // It appears once, and only inside that guarded branch.
+      assert.equal((paragraph.match(/its text is final/g) ?? []).length, 1)
+    })
+
+    test('a PENDING draft is told it is waiting, still editable, and not visible to candidates', () => {
+      const pendingBranch = paragraph.slice(paragraph.indexOf(': \' It is waiting for a verifier'))
+      assert.match(pendingBranch, /waiting for a verifier to approve it/)
+      assert.match(pendingBranch, /can still edit it from Pending approval/)
+      // "release" is retired vocabulary on this screen (customerReviewOutreach.test.ts
+      // pins it): the module has one verb per action, and this uses the approval one.
+      assert.match(pendingBranch, /Candidates cannot see it until it has been approved/)
+      assert.equal(/\breleased\b|\bRelease\b/.test(pendingBranch), false)
+      // and it must not repeat the approved claim
+      assert.equal(/is final|cannot be edited — not by you/.test(pendingBranch), false)
+    })
+
+    test('the edited note does not say "before approving it" on a draft nobody has approved', () => {
+      assert.match(
+        paragraph,
+        /card\.draft_edited_at\s*\n?\s*\? \(card\.approved_at\s*\n?\s*\? ' A verifier edited it before approving it\.'\s*\n?\s*: ' A verifier has edited it\.'\)/,
+      )
+    })
+
+    test('NOTHING ELSE MOVED: no permission, workflow or query change came with the wording', () => {
+      // The screen still decides actions from the same three helpers, still
+      // reads the same columns, and still refuses verified and deleted cards.
+      assert.ok(detail.includes('availableActions(card, {'))
+      assert.ok(detail.includes('canUnbookCard('))
+      assert.ok(detail.includes('canDeleteCard({'))
+      assert.ok(detail.includes('.select(TEST_CARD_COLUMNS)'))
+      assert.ok(detail.includes("status === 'verified'"))
+      assert.ok(detail.includes('.deleted_at) {'))
+    })
+  })
 })

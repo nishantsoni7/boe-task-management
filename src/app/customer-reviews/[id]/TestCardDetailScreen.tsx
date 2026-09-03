@@ -458,24 +458,33 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             {card.test_body}
           </p>
           {/*
-            THE PROVENANCE SENTENCE, CORRECTED.
+            THE PROVENANCE SENTENCE, PER APPROVAL STATE.
             It used to end "and cannot be edited — not by you, not by an
-            administrator, and not through any screen in BOE." That stopped
-            being true when a verifier gained the ability to correct a draft
-            before approving it, and a sentence that promises immutability on a
-            screen where the text may have been rewritten is worse than no
-            sentence. What IS still true is the narrow thing: the window closes
-            at approval, so the text on this page — which is approved or later —
-            is final.
+            administrator, and not through any screen in BOE" unconditionally.
+            That stopped being true when a verifier gained the ability to
+            correct a draft before approving it, and the sentence was narrowed
+            to "now that it is approved" — which is right for every card the
+            LISTS can reach, because none of them shows a pending draft.
+            The DETAIL ROUTE IS ADDRESSED BY ID, though, so a verifier who
+            opens a pending draft's URL directly was told an unapproved,
+            still-editable draft was approved and final.
+            So the claim is now made only where it holds. approved_at is the
+            discriminator the module already enforces: it is null exactly while
+            the card is pending_approval, and never null again afterwards (see
+            the state map in src/lib/customerReviews/types.ts). Nothing about
+            what may be edited changes here — only what the screen claims.
           */}
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '8px', marginBottom: 0, lineHeight: 1.5 }}>
             This draft was written by AI for a customer to use, adapt or discard. It is not a
             record of anything that happened and is not attributed to anybody.
             {card.draft_edited_at
-              ? ' A verifier edited it before approving it.'
+              ? (card.approved_at
+                  ? ' A verifier edited it before approving it.'
+                  : ' A verifier has edited it.')
               : ' It is exactly as it was generated.'}
-            {' '}Now that it is approved its text is final and cannot be edited — not by you,
-            not by an administrator, and not through any screen in BOE.
+            {card.approved_at
+              ? ' Now that it is approved its text is final and cannot be edited — not by you, not by an administrator, and not through any screen in BOE.'
+              : ' It is waiting for a verifier to approve it, so a verifier can still edit it from Pending approval. Candidates cannot see it until it has been approved.'}
           </p>
           {card.draft_edited_at && (
             <div style={{ marginTop: '8px' }}><DraftEditedNote card={card} /></div>
