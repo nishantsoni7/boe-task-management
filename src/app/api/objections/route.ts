@@ -12,7 +12,14 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { resolveCaller, UNAUTHORIZED, type ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
-import { validateObjectionInput, attendanceSnapshot, payrollSnapshot } from '@/lib/objections'
+import {
+  validateObjectionInput,
+  attendanceSnapshot,
+  payrollSnapshot,
+  PERIOD_ID_PARAM,
+  PERIOD_YEAR_PARAM,
+  PERIOD_MONTH_PARAM,
+} from '@/lib/objections'
 import { istClockOf } from '@/lib/istDate'
 
 const OBJECTION_COLUMNS =
@@ -61,6 +68,29 @@ export async function GET(req: NextRequest) {
   // was never in the query to begin with.
   const id = req.nextUrl.searchParams.get('id')
   if (id) query = query.eq('id', id)
+
+  // Narrowing to ONE payroll run.
+  //
+  // The screens that show reported payroll issues are each about a single
+  // payroll period — the results page IS that run, and Monthly Preview is one
+  // selected month — so the list they ask for has to be the run's, not the
+  // company's whole history. Without this, a period generated in August showed
+  // July's objections underneath August's salaries.
+  //
+  // The scope is resolved through the objection's own foreign key
+  // (payroll_result_id → payroll_results.payroll_period_id) rather than by
+  // comparing the month text in subject_snapshot: the snapshot is a display
+  // string, and a run is a row. Nothing here consults the calendar.
+  //
+  // Applied AFTER the ownership pin above, so like the id filter it can only
+  // ever narrow rows the caller already had.
+  const scoped = await payrollResultIdsForPeriod(caller.svc, req)
+  if (scoped !== null) {
+    // No such period, or a period holding no results, means no payroll issue
+    // can belong to it. An empty answer, not an error.
+    if (scoped.length === 0) return NextResponse.json({ objections: [] })
+    query = query.in('payroll_result_id', scoped)
+  }
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -175,6 +205,56 @@ export async function POST(req: NextRequest) {
   })
 
   return NextResponse.json({ objection: data }, { status: 201 })
+}
+
+/**
+ * Every payroll_result id belonging to the payroll run the caller asked for, or
+ * null when they asked for no particular run.
+ *
+ * Two ways in, one meaning. `payroll_period_id` is the run itself, used by the
+ * period results page which already holds it. `payroll_year` + `payroll_month`
+ * is the same run named the way Monthly Preview knows it, resolved through the
+ * UNIQUE (payroll_month, payroll_year) constraint on payroll_periods — so a
+ * month can never resolve to two runs.
+ *
+ * An empty array means "this run exists but holds no results, or does not exist
+ * at all" — either way nothing can be scoped to it, which is a real answer.
+ */
+async function payrollResultIdsForPeriod(
+  svc: ServiceClient,
+  req: NextRequest,
+): Promise<string[] | null> {
+  const params   = req.nextUrl.searchParams
+  const periodId = params.get(PERIOD_ID_PARAM)
+  const year     = params.get(PERIOD_YEAR_PARAM)
+  const month    = params.get(PERIOD_MONTH_PARAM)
+
+  let resolvedPeriodId = periodId
+
+  if (!resolvedPeriodId) {
+    if (!year || !month) return null
+
+    const y = Number.parseInt(year,  10)
+    const m = Number.parseInt(month, 10)
+    if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return []
+
+    const { data: period } = await svc
+      .from('payroll_periods')
+      .select('id')
+      .eq('payroll_year',  y)
+      .eq('payroll_month', m)
+      .maybeSingle()
+
+    if (!period) return []
+    resolvedPeriodId = period.id as string
+  }
+
+  const { data: results } = await svc
+    .from('payroll_results')
+    .select('id')
+    .eq('payroll_period_id', resolvedPeriodId)
+
+  return (results ?? []).map((r: { id: string }) => r.id)
 }
 
 /**

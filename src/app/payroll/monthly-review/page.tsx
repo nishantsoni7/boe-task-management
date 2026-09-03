@@ -10,6 +10,7 @@ import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLa
 import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,6 +84,12 @@ export default function PayrollMonthlyReviewPage() {
   const [error,     setError]     = useState('')
   const [showSkip,  setShowSkip]  = useState(false)
 
+  // The month the table below is actually showing, which is not the month in
+  // the two selectors: those change the moment an admin picks a different one,
+  // and the historical issues must stay with the figures they were raised
+  // against until Preview is pressed again.
+  const [shown, setShown] = useState<{ year: number; month: number } | null>(null)
+
   const def = currentYearMonth()
   const [year,  setYear]  = useState(def.year)
   const [month, setMonth] = useState(def.month)
@@ -118,7 +125,7 @@ export default function PayrollMonthlyReviewPage() {
         headers: { Authorization: `Bearer ${session.access_token}` },
       })
       const json = await res.json()
-      if (res.ok) setResults(json.results)
+      if (res.ok) { setResults(json.results); setShown({ year: y, month: m }) }
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,9 +140,11 @@ export default function PayrollMonthlyReviewPage() {
     const json = await res.json()
     if (res.ok) {
       setResults(json.results)
+      setShown({ year, month })
     } else {
       setError(json.error ?? 'Failed to load preview')
       setResults(null)
+      setShown(null)
     }
     setFetching(false)
   }
@@ -465,6 +474,27 @@ export default function PayrollMonthlyReviewPage() {
               Per-day rate = salary ÷ 26. Paid leave: 0.5d if present &gt;10 days, 1d if &gt;15 days.
               Adjustments are included in net salary. Click Detail to manage adjustments per employee.
             </div>
+
+            {/* What employees reported about the payroll run for THIS month.
+                An audit record, so it is read where the month is read.
+
+                The same panel the period results page uses, given the month on
+                screen instead of a period id — the route resolves the run
+                through payroll_periods' UNIQUE (payroll_month, payroll_year),
+                so a month can only ever answer with its own issues. A month
+                that was never generated has no run and therefore no issues,
+                which the panel states rather than hides. */}
+            {shown && (
+              <div style={{ marginTop: 24 }}>
+                <ObjectionQueue
+                  subject="payroll"
+                  token={token}
+                  period={{ year: shown.year, month: shown.month }}
+                  title={`Reported payroll issues — ${MONTH_NAMES[shown.month - 1]} ${shown.year}`}
+                  emptyLabel="No payroll issues were reported for this period."
+                />
+              </div>
+            )}
           </>
         )}
 

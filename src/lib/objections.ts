@@ -68,6 +68,51 @@ export function payrollObjectionHref(o: AdminObjectionRow): string | null {
   return `/payroll/results/${r.payroll_period_id}/${r.employee_id}`
 }
 
+// ─── Scoping payroll issues to the period they belong to ─────────────────────
+//
+// A payroll objection names a payroll_result, and a result names exactly one
+// payroll_period (payroll_results.payroll_period_id, NOT NULL since
+// 20260612000000). So "the issues belonging to this payroll run" is already a
+// fact the database can answer — it is a two-hop join, not a comparison of
+// month strings, and nothing here ever looks at today's date.
+//
+// The month/year form exists for Payroll Monthly Preview, which selects a
+// calendar month rather than a run: payroll_periods is UNIQUE (payroll_month,
+// payroll_year), so a month resolves to at most one period and the two forms
+// are the same statement. Which one a screen can express depends only on what
+// that screen already knows — the results page holds a period id, the preview
+// holds a month.
+//
+// A month with no payroll period at all is a real answer — no run, therefore no
+// issues — and not an error.
+
+/** Query parameter names for narrowing /api/objections to one payroll run. */
+export const PERIOD_ID_PARAM    = 'payroll_period_id'
+export const PERIOD_YEAR_PARAM  = 'payroll_year'
+export const PERIOD_MONTH_PARAM = 'payroll_month'
+
+/** The payroll run a list of issues is being asked for. */
+export type PayrollPeriodScope =
+  | { periodId: string }
+  | { year: number; month: number }
+
+/**
+ * The query string that pins /api/objections to one payroll run.
+ *
+ * Built here rather than at each call site so the parameter names have one
+ * definition, shared by the two screens and the route that reads them.
+ */
+export function payrollPeriodScopeQuery(scope: PayrollPeriodScope): string {
+  const params = new URLSearchParams()
+  if ('periodId' in scope) {
+    params.set(PERIOD_ID_PARAM, scope.periodId)
+  } else {
+    params.set(PERIOD_YEAR_PARAM,  String(scope.year))
+    params.set(PERIOD_MONTH_PARAM, String(scope.month))
+  }
+  return params.toString()
+}
+
 // ─── Matching an objection to the row it belongs on ──────────────────────────
 //
 // An attendance objection is keyed by DATE, and a date is not a person. Every

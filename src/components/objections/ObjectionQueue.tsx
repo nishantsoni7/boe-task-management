@@ -22,7 +22,9 @@ import {
   statusTone,
   groupIssueChains,
   issueChainKey,
+  payrollPeriodScopeQuery,
   type ObjectionRow,
+  type PayrollPeriodScope,
 } from '@/lib/objections'
 
 type Subject = 'attendance' | 'payroll'
@@ -30,13 +32,26 @@ type Subject = 'attendance' | 'payroll'
 type Row = ObjectionRow & { employee?: { full_name?: string | null; employee_code?: string | null } | null }
 
 export function ObjectionQueue({
-  subject, token, title, emptyLabel,
+  subject, token, title, emptyLabel, period,
 }: {
   subject: Subject
   /** Bearer token of the signed-in admin. */
   token: string
   title: string
   emptyLabel: string
+  /**
+   * The payroll run whose issues these are. Payroll only.
+   *
+   * Given, the list is exactly that run's — resolved server-side through
+   * payroll_result_id → payroll_period_id, never by month text — and the panel
+   * stays on screen when the run has no issues, because "August has none" and
+   * "we did not ask about August" are different statements and only one of them
+   * is safe to make silently.
+   *
+   * Omitted (the attendance correction log, which is keyed by date and not by a
+   * run), the behaviour is unchanged: the whole list, hidden when empty.
+   */
+  period?: PayrollPeriodScope
 }) {
   const [rows,    setRows]    = useState<Row[]>([])
   const [loading, setLoading] = useState(true)
@@ -44,17 +59,22 @@ export function ObjectionQueue({
   const [error,   setError]   = useState<string | null>(null)
   const [historyKey, setHistoryKey] = useState<string | null>(null)
 
+  // A period turns the request into "this run's issues"; without one the
+  // endpoint answers with everything, as the attendance queue needs.
+  const scopeQuery = period ? payrollPeriodScopeQuery(period) : ''
+
   const load = useCallback(async () => {
     if (!token) return
     setLoading(true)
-    const res = await fetch('/api/objections', { headers: { authorization: `Bearer ${token}` } })
+    const url = scopeQuery ? `/api/objections?${scopeQuery}` : '/api/objections'
+    const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } })
     const json = await res.json().catch(() => ({}))
     if (!res.ok) { setError(json.error ?? 'Could not load reported issues'); setLoading(false); return }
 
     const all: Row[] = json.objections ?? []
     setRows(all.filter(o => (subject === 'attendance' ? o.attendance_date : o.payroll_result_id)))
     setLoading(false)
-  }, [token, subject])
+  }, [token, subject, scopeQuery])
 
   useEffect(() => { void load() }, [load])
 
@@ -90,7 +110,10 @@ export function ObjectionQueue({
   const employeeOfChain = historyChain?.[0]?.employee?.full_name ?? 'Employee'
 
   if (loading) return null
-  if (rows.length === 0) return null
+  // An unscoped queue disappears when there is nothing in it. A scoped one must
+  // not: an admin looking at a payroll run has to be able to tell "no issues
+  // were reported for this run" apart from "the section is somewhere else".
+  if (rows.length === 0 && !period) return null
 
   return (
     <div style={{
