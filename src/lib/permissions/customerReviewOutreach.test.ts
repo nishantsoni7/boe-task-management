@@ -512,7 +512,11 @@ describe('Control Center', () => {
   })
 
   test('withdrawing verify is named in plain words in the confirmation', () => {
-    assert.ok(page.includes("verify:                'Verify and close customer review requests',"))
+    // The plain-words map moved to the shared change rule, which both Access
+    // Control screens (By Employee and By Module) read for their confirmations.
+    const words = read('src/lib/permissions/accessControlChanges.ts')
+    assert.ok(words.includes("verify:                'Verify and close customer review requests',"))
+    assert.ok(page.includes("from '@/lib/permissions/accessControlChanges'"))
   })
 })
 

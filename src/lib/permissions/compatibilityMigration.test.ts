@@ -343,7 +343,10 @@ describe('the Access Control page uses the shared level model', () => {
   })
 
   test('the warning names the actions in plain words', () => {
-    assert.ok(page.includes("assign:                'Assign assets'"))
+    // The plain-words map lives in the shared change rule now, read by both
+    // Access Control screens.
+    const words = read('src/lib/permissions/accessControlChanges.ts')
+    assert.ok(words.includes("assign:                'Assign assets'"))
     assert.ok(page.includes('protectedActionWords'))
   })
 })

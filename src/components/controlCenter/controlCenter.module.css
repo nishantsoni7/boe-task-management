@@ -67,6 +67,7 @@
 /* Row actions: quiet text buttons; red only for a destructive one */
 .rowActions { display: inline-flex; gap: 14px; align-items: center; }
 .linkBtn {
+  display: inline-flex; align-items: center; gap: 3px;
   background: none; border: none; padding: 0; font: inherit; font-size: 12px;
   font-weight: 600; color: #1A2035; cursor: pointer; text-decoration: none; white-space: nowrap;
 }

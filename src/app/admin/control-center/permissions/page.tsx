@@ -1,14 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import {
-  Search, CheckCircle2, Circle, LayoutGrid,
-  ListChecks, Package, Laptop2, CalendarCheck, Wallet, QrCode, Users, TrendingUp, Landmark, Truck, MessageSquareHeart,
-} from 'lucide-react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { Search, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
-import { LoadingScreen, EmptyState, AlertBanner, Avatar } from '@/components/ui/atoms'
+import { AlertBanner, Avatar } from '@/components/ui/atoms'
+import { cc, CcBadge, CcDialog, CcEmpty, CcTable, type CcTone } from '@/components/controlCenter/CcPrimitives'
 import {
   moduleEnforcement,
   type EnforcementState,
@@ -26,20 +26,21 @@ import {
   type AccessLevel,
   type PresetLevel,
 } from '@/lib/permissions/levels'
+import {
+  choicesForDesired,
+  protectedActionWords,
+  SOURCE_LABEL,
+  type OverrideChoice,
+  type PermissionSource,
+} from '@/lib/permissions/accessControlChanges'
 import styles from './permissions.module.css'
 import { useAdminMembers, useDepartments, NO_MEMBERS, NO_DEPARTMENTS } from '@/hooks/queries/useControlCenterData'
 
 // Which modules the engine actually decides now lives in one shared place —
 // src/lib/permissions/enforcement.ts — because the launcher, the route guards
-// and this screen must not each keep their own opinion. The set that used to
-// sit here said only enforced/not-enforced, which could not describe Orders
-// (module entry is enforced, everything inside is still users.role) and had
-// gone stale on Meetings (fully enforced since 20260814000000, still shown as
-// "Prepared").
+// and this screen must not each keep their own opinion.
 
 // ── Local types ───────────────────────────────────────────────────────────────
-
-type PermissionSource = 'system_default' | 'role' | 'department' | 'employee_override'
 
 type ActionState = {
   actionKey: string
@@ -73,9 +74,6 @@ function isSystemAdmin(tree: EmployeePermissionTree | null): boolean {
   return tree?.employee.role === 'admin'
 }
 
-// override choice per "moduleKey:actionKey" — 'inherit' means no employee override
-type OverrideChoice = 'inherit' | 'allow' | 'deny'
-
 /**
  * Attendance and Payroll are two permission modules wearing one name.
  *
@@ -98,18 +96,15 @@ function isSelfServiceModuleKey(moduleKey: string): boolean {
 }
 
 // The level vocabulary lives in src/lib/permissions/levels.ts, shared with the
-// API, the tests and the capability helpers.
-//
-// The copy that used to sit here carried a sixth "Admin" level that granted
-// EVERY action, delete and assign included — the one shape through which a
-// protected permission could be handed out by picking a label off a list. It is
-// gone, and PROTECTED_ACTIONS in levels.ts is what keeps it gone.
+// API, the tests and the capability helpers. The copy that used to sit here
+// carried a sixth "Admin" level that granted EVERY action; it is gone, and
+// PROTECTED_ACTIONS in levels.ts is what keeps it gone.
 const LEVELS = ACCESS_LEVELS.map(key => ({ key, ...ACCESS_LEVEL_LABELS[key] }))
 
-// presetAllowedActions and the level detector are imported from
-// src/lib/permissions/levels.ts. detectAccessLevel here is a thin adapter that
-// feeds this page's ModuleState into the shared detector, so the screen and the
-// save handler can never disagree about what a level means.
+// Override choices are keyed "moduleKey:actionKey" because one tree holds
+// every module. The write rule itself — which choice each action gets for a
+// desired state — is the shared one in accessControlChanges.ts, so By Module
+// cannot store something different for the same intention.
 function overrideKey(moduleKey: string, actionKey: string) {
   return `${moduleKey}:${actionKey}`
 }
@@ -137,35 +132,19 @@ function detectAccessLevel(mod: ModuleState, effective: Record<string, boolean>)
 // THE PARENT GATE, as this screen reports it.
 //
 // Visible/Hidden is effective `view` and nothing else — the same single fact
-// the launcher card and every route guard now read (canAccessManagementModule
-// in src/lib/permissions/moduleVisibility.ts). The screen and the running app
-// therefore cannot disagree about whether a module is on.
-//
-// It used to be "any action of this module is allowed". That is what let a card
-// say Hidden next to the switch while still counting as accessible in the
-// header tally: a leftover child grant satisfied it. Aditya's Sample Tracking
-// is exactly that shape — dispatch/receive/mark_lost allowed, view denied — and
-// it must read as Hidden, because it is.
-//
-// The stored child actions are NOT removed and are still shown inside the
-// Custom modal. They are dormant, and they come back the moment view does.
+// the launcher card and every route guard read (canAccessManagementModule in
+// src/lib/permissions/moduleVisibility.ts). The screen and the running app
+// therefore cannot disagree about whether a module is on. A leftover child
+// grant does NOT make a module Visible; the stored child actions are kept,
+// shown under Custom, and come back the moment view does.
 const MODULE_ENTRY_ACTION = 'view'
 
 /**
  * ONE module expresses entry with a different key, and the switch has to follow
- * it or it is a control that decides nothing.
- *
- * Customer Review Outreach registers `use` and `verify` and NO `view`
- * (src/lib/permissions/modules.ts): a holder sees only their own outreach, so a
- * separate read-only grant would name an empty screen. Without this resolution
- * its card would read Hidden however much access the employee actually held,
- * and turning the switch On would write nothing at all.
- *
- * entryActionForModule reads the module's OWN registered actions rather than a
- * key-to-key map here, so the answer comes from one place —
- * MODULE_ENTRY_ACTIONS in ./levels — and this screen, enableModuleEntry and the
- * module guard cannot drift. `view` remains the answer for every other module,
- * which is why MODULE_ENTRY_ACTION above is still the fallback.
+ * it or it is a control that decides nothing. Customer Review Outreach
+ * registers `use` and `verify` and NO `view`. entryActionForModule reads the
+ * module's OWN registered actions, so this screen, enableModuleEntry and the
+ * module guard cannot drift; `view` remains the answer for every other module.
  */
 function entryActionFor(mod: ModuleState): string {
   return entryActionForModule(mod.actions.map(a => a.actionKey)) ?? MODULE_ENTRY_ACTION
@@ -183,26 +162,17 @@ function moduleIsDirty(mod: ModuleState, overrides: Map<string, OverrideChoice>,
   })
 }
 
-// ── Source summary (Change Access modal header) ─────────────────────────────
+// ── Source summary ───────────────────────────────────────────────────────────
 // Plain-language explanation of *where* a module's current access is coming
-// from, separate from the existing per-action source labels (EffectiveBadge)
-// which stay in place under Custom. This is a coarser, module-level rollup.
+// from, separate from the per-action source labels (EffectiveBadge) that stay
+// in place under Custom. A coarser, module-level rollup.
 
-const SOURCE_SUMMARY_LABEL: Record<PermissionSource, string> = {
-  employee_override: 'Employee override',
-  department: 'Department default',
-  role: 'Role default',
-  system_default: 'System default',
-}
+type SourceSummary = { kind: 'single'; source: PermissionSource; label: string } | { kind: 'mixed' }
 
-type SourceSummary = { kind: 'single'; label: string } | { kind: 'mixed' }
-
-// A pending choice of allow/deny (whether from Custom or from picking a
-// preset) always reads as an employee override, matching how EffectiveBadge
-// already treats unsaved allow/deny picks. Reverting an existing override
-// back to 'inherit' can't be resolved to a real source without a save
-// round-trip, so it's treated as 'unknown' and folds into "mixed" below —
-// same caution EffectiveBadge takes ("Will inherit (recalculated on save)").
+// A pending choice of allow/deny always reads as an employee override, matching
+// how EffectiveBadge treats unsaved picks. Reverting an existing override back
+// to 'inherit' can't be resolved to a real source without a save round-trip, so
+// it is 'unknown' and folds into "mixed".
 function effectiveSourceForAction(action: ActionState, choice: OverrideChoice): PermissionSource | 'unknown' {
   if (choice !== 'inherit') return 'employee_override'
   if (action.source !== 'employee_override') return action.source
@@ -214,139 +184,21 @@ function summarizeSource(mod: ModuleState, getChoice: (actionKey: string) => Ove
   const unique = new Set(sources)
   const only = sources[0]
   if (unique.size === 1 && only !== 'unknown') {
-    return { kind: 'single', label: SOURCE_SUMMARY_LABEL[only] }
+    return { kind: 'single', source: only, label: SOURCE_LABEL[only] }
   }
   return { kind: 'mixed' }
 }
 
-// ── Style helpers (matches src/app/admin/control-center/page.tsx) ──────────────
-
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: 11,
-  fontWeight: 700,
-  letterSpacing: '0.07em',
-  color: '#8C94A6',
-  textTransform: 'uppercase',
-  marginBottom: 12,
+const SOURCE_TONE: Record<PermissionSource, CcTone> = {
+  employee_override: 'violet',
+  department: 'blue',
+  role: 'blue',
+  system_default: 'gray',
 }
 
-const INPUT: React.CSSProperties = {
-  width: '100%',
-  padding: '9px 11px',
-  fontSize: 13,
-  border: '1.5px solid #D1D5DB',
-  borderRadius: 8,
-  background: '#fff',
-  color: '#111318',
-  outline: 'none',
-  boxSizing: 'border-box',
-}
-
-const ACTION_ROW: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '11px 0',
-  borderTop: '1px solid #F0F2F5',
-  gap: 12,
-  flexWrap: 'wrap',
-}
-
-const CHANGE_BTN: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#fff',
-  background: '#1A2035',
-  border: 'none',
-  borderRadius: 7,
-  padding: '7px 16px',
-  cursor: 'pointer',
-  flexShrink: 0,
-}
-
-const MODAL_OVERLAY: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.35)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 1000,
-  padding: 16,
-}
-
-const MODAL_BOX: React.CSSProperties = {
-  background: '#fff',
-  borderRadius: 14,
-  padding: '24px 26px',
-  width: 520,
-  maxWidth: 'calc(100vw - 32px)',
-  maxHeight: '85vh',
-  overflowY: 'auto',
-  boxShadow: '0 8px 40px rgba(0,0,0,0.18)',
-}
-
-const MODAL_TITLE: React.CSSProperties = {
-  fontSize: 15,
-  fontWeight: 700,
-  color: '#111318',
-  marginBottom: 14,
-}
-
-const LEVEL_GRID: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))',
-  gap: 8,
-}
-
-const LEVEL_OPTION: React.CSSProperties = {
-  textAlign: 'left',
-  border: '1.5px solid #D1D5DB',
-  borderRadius: 8,
-  padding: '10px 12px',
-  background: '#fff',
-  cursor: 'pointer',
-}
-
-const LEVEL_OPTION_ACTIVE: React.CSSProperties = {
-  border: '1.5px solid #1A2035',
-  background: '#EEF0F4',
-}
-
-const LEVEL_OPTION_LABEL: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 700,
-  color: '#111318',
-  marginBottom: 2,
-}
-
-const LEVEL_OPTION_DESC: React.CSSProperties = {
-  fontSize: 11,
-  color: '#6B7384',
-  lineHeight: 1.35,
-}
-
-// ── Module icons ─────────────────────────────────────────────────────────────
-// Purely decorative, per-module glyphs for the card grid — matches the icon
-// language already used for these same module_key values on /modules.
-
-const MODULE_ICONS: Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>> = {
-  task_management:  ListChecks,
-  sample_tracking:  Package,
-  assets_access:    Laptop2,
-  attendance:       CalendarCheck,
-  payroll:          Wallet,
-  showroom_qr:      QrCode,
-  employee_records: Users,
-  performance:      TrendingUp,
-  finance:          Landmark,
-  orders:           Truck,
-  customer_review_requests: MessageSquareHeart,
-}
-
-function ModuleIcon({ moduleKey, color }: { moduleKey: string; color: string }) {
-  const Icon = MODULE_ICONS[moduleKey] ?? LayoutGrid
-  return <Icon size={24} strokeWidth={1.75} color={color} />
+function SourceBadge({ summary }: { summary: SourceSummary }) {
+  if (summary.kind === 'mixed') return <CcBadge tone="amber">Mixed</CcBadge>
+  return <CcBadge tone={SOURCE_TONE[summary.source]}>{summary.label.replace(' default', '')}</CcBadge>
 }
 
 // ── Badges ───────────────────────────────────────────────────────────────────
@@ -360,106 +212,42 @@ const ENFORCEMENT_BANNER_VARIANT: Record<EnforcementState, 'green' | 'amber'> = 
   role_only: 'amber',
 }
 
-// THERE IS NO ENFORCEMENT BADGE ON AN EMPLOYEE'S MODULE CARD. Deliberately.
-//
+// THERE IS NO ENFORCEMENT BADGE ON AN EMPLOYEE'S MODULE ROW. Deliberately.
 // "Active", "Partly active", "Prepared" and "Not used" describe how far a
-// MODULE'S CODE has been cut over to the permission engine. They are a fact
-// about the product, identical for every employee, and they were being rendered
-// beside a per-employee switch — so a card could read "Hidden · Partly active"
-// and an administrator would reasonably read the second half as a statement
-// about that person's access. It is not one.
-//
-// The information is not lost: moduleEnforcement() still drives the banner at
-// the top of the Change Access modal (ENFORCEMENT_BANNER_VARIANT below), which
-// is where it belongs — the moment an administrator is choosing individual
-// actions is exactly when "ticking Approve does nothing yet" is worth knowing.
-//
-// An employee card now says three things and no more: enabled or disabled,
-// Visible or Hidden, and — when enabled — the access level.
+// MODULE'S CODE has been cut over to the engine — a fact about the product,
+// identical for every employee. Beside a per-employee switch it read as a
+// statement about that person's access. It stays in the Change Access dialog,
+// which is where "ticking Approve does nothing yet" is worth knowing.
 
-// Protected permissions are named in plain words in the confirmation, because
-// "assign" on its own does not tell an administrator what they are about to
-// take away from Aditya.
-const PROTECTED_ACTION_WORDS: Record<string, string> = {
-  assign:                'Assign assets',
-  manage:                'Manage',
-  delete:                'Delete',
-  admin:                 'Admin',
-  dispatch:              'Dispatch',
-  receive:               'Receive',
-  mark_lost:             'Mark lost',
-  close:                 'Close',
-  // can_be_order_assignee is NOT here. It named Order Request assignees, and
-  // the module no longer registers it — an entry would label an option that is
-  // never offered. A grant made before the retirement is not deleted; it is
-  // simply read by nothing.
-  view_quotations:       'View quotations and quoted prices',
-  manage_quotations:     'Manage quotations',
-  // Assets & Access. Named in full because "manage access records" on its own
-  // does not tell an administrator that they are about to hand over — or take
-  // back — every employee's login records.
-  manage_access_records: 'Manage access records for all employees',
-  // Customer Review Outreach. `use` is not protected — it is that module's
-  // entry — so only the sign-off authority needs naming here.
-  verify:                'Verify and close customer review requests',
-  // One action key registered against two modules, so the words have to come
-  // from the module being edited rather than from this map alone — see
-  // protectedActionWords, which takes the module key for exactly this reason.
-  view_all:              'View all records',
-}
-
-// `view_all` means something different in Orders than in Finance, and an
-// administrator removing it deserves to read which one they are removing.
-const MODULE_SCOPED_ACTION_WORDS: Record<string, Record<string, string>> = {
-  orders:  { view_all: 'View all company orders' },
-  finance: { view_all: 'View all company payments and finance information' },
-}
-
-function protectedActionWords(actionKeys: string[], moduleKey?: string): string {
-  const scoped = moduleKey ? MODULE_SCOPED_ACTION_WORDS[moduleKey] : undefined
-  const names = actionKeys.map(k => scoped?.[k] ?? PROTECTED_ACTION_WORDS[k] ?? k)
-  if (names.length === 1) return names[0]
-  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`
-}
-
-const LEVEL_BADGE_META: Record<AccessLevel, { label: string; color: string; bg: string }> = {
-  no_access:   { label: 'No Access',   color: '#4B5563', bg: '#F3F4F6' },
-  viewer:      { label: 'Viewer',      color: '#1E40AF', bg: '#EFF6FF' },
-  contributor: { label: 'Contributor', color: '#4338CA', bg: '#EEF2FF' },
-  manager:     { label: 'Manager',     color: '#0F766E', bg: '#F0FDFA' },
-  custom:    { label: 'Custom',    color: '#8C6D1F', bg: '#FFFBEB' },
+const LEVEL_TONE: Record<AccessLevel, CcTone> = {
+  no_access:   'gray',
+  viewer:      'blue',
+  contributor: 'blue',
+  manager:     'green',
+  custom:      'amber',
 }
 
 function AccessLevelBadge({ level }: { level: AccessLevel }) {
-  const m = LEVEL_BADGE_META[level]
-  return (
-    <span style={{
-      fontSize: 11, fontWeight: 700,
-      color: m.color, background: m.bg,
-      borderRadius: 5, padding: '2px 8px',
-    }}>
-      {m.label}
-    </span>
-  )
+  return <CcBadge tone={LEVEL_TONE[level]}>{ACCESS_LEVEL_LABELS[level].label}</CcBadge>
 }
 
 function EffectiveBadge({ choice, action }: { choice: OverrideChoice; action: ActionState }) {
   if (choice === 'inherit') {
     if (action.source !== 'employee_override') {
       return (
-        <span style={{ fontSize: 12, color: action.allowed ? '#166534' : '#B0364A' }}>
+        <span className={styles.actionState} style={{ color: action.allowed ? '#166534' : '#B0364A' }}>
           {action.allowed ? 'Allowed' : 'Denied'}
-          <span style={{ color: '#8C94A6' }}> · Inherited from {action.sourceLabel}</span>
+          <span className={cc.muted}> · Inherited from {action.sourceLabel}</span>
         </span>
       )
     }
-    return <span style={{ fontSize: 12, color: '#8C94A6' }}>Will inherit (recalculated on save)</span>
+    return <span className={`${styles.actionState} ${cc.muted}`}>Will inherit (recalculated on save)</span>
   }
   const allowed = choice === 'allow'
   return (
-    <span style={{ fontSize: 12, color: allowed ? '#166534' : '#B0364A' }}>
+    <span className={styles.actionState} style={{ color: allowed ? '#166534' : '#B0364A' }}>
       {allowed ? 'Allowed' : 'Denied'}
-      <span style={{ color: '#8C94A6' }}> · Employee Override</span>
+      <span className={cc.muted}> · Employee Override</span>
     </span>
   )
 }
@@ -470,41 +258,30 @@ function OverrideControl({
   value: OverrideChoice
   onChange: (v: OverrideChoice) => void
 }) {
-  const OPTIONS: { key: OverrideChoice; label: string }[] = [
-    { key: 'inherit', label: 'Inherit' },
-    { key: 'allow', label: 'Allow' },
-    { key: 'deny', label: 'Deny' },
+  const OPTIONS: { key: OverrideChoice; label: string; active: string }[] = [
+    { key: 'inherit', label: 'Inherit', active: styles.segmentInherit },
+    { key: 'allow',   label: 'Allow',   active: styles.segmentAllow },
+    { key: 'deny',    label: 'Deny',    active: styles.segmentDeny },
   ]
   return (
-    <div style={{ display: 'flex', border: '1.5px solid #D1D5DB', borderRadius: 8, overflow: 'hidden' }}>
-      {OPTIONS.map((opt, i) => {
-        const active = value === opt.key
-        const activeColor = opt.key === 'allow' ? '#166534' : opt.key === 'deny' ? '#B0364A' : '#1A2035'
-        const activeBg = opt.key === 'allow' ? '#F0FDF4' : opt.key === 'deny' ? '#FDF1F3' : '#EEF0F4'
-        return (
-          <button
-            key={opt.key}
-            onClick={() => onChange(opt.key)}
-            style={{
-              padding: '5px 12px',
-              fontSize: 12,
-              fontWeight: 600,
-              border: 'none',
-              borderLeft: i > 0 ? '1.5px solid #D1D5DB' : 'none',
-              background: active ? activeBg : '#fff',
-              color: active ? activeColor : '#6B7384',
-              cursor: 'pointer',
-            }}
-          >
-            {opt.label}
-          </button>
-        )
-      })}
+    <div className={styles.segment} role="radiogroup">
+      {OPTIONS.map(opt => (
+        <button
+          key={opt.key}
+          type="button"
+          role="radio"
+          aria-checked={value === opt.key}
+          onClick={() => onChange(opt.key)}
+          className={`${styles.segmentBtn}${value === opt.key ? ` ${opt.active}` : ''}`}
+        >
+          {opt.label}
+        </button>
+      ))}
     </div>
   )
 }
 
-// ── Change Access modal ──────────────────────────────────────────────────────
+// ── Change Access dialog ─────────────────────────────────────────────────────
 
 function ChangeAccessModal({
   mod, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose,
@@ -553,112 +330,101 @@ function ChangeAccessModal({
   }
 
   const sourceSummary = summarizeSource(mod, getChoice)
+  const enforcement = moduleEnforcement(mod.moduleKey)
 
   return (
-    <div style={MODAL_OVERLAY} onClick={onClose}>
-      <div style={MODAL_BOX} onClick={e => e.stopPropagation()}>
-        <div style={MODAL_TITLE}>{mod.displayName} — Change Access</div>
+    <CcDialog
+      title={mod.displayName}
+      subtitle="Choose a level, or set individual permissions under Custom."
+      onClose={onClose}
+      footer={<button className="boe-btn boe-btn-primary" onClick={onClose}>Done</button>}
+    >
+      <div style={{ marginBottom: 14 }}>
+        <AlertBanner variant={ENFORCEMENT_BANNER_VARIANT[moduleEnforcement(mod.moduleKey).state]}>
+          {moduleEnforcement(mod.moduleKey).detail}
+        </AlertBanner>
+      </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <AlertBanner variant={ENFORCEMENT_BANNER_VARIANT[moduleEnforcement(mod.moduleKey).state]}>
-            {moduleEnforcement(mod.moduleKey).detail}
-          </AlertBanner>
+      <div className={cc.note} style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: 600 }}>Current access</span>
+        <AccessLevelBadge level={currentLevel} />
+        <SourceBadge summary={sourceSummary} />
+        <span className={cc.muted} style={{ fontSize: 12 }}>
+          {sourceSummary.kind === 'single' ? `Source: ${sourceSummary.label}` : 'Some permissions are customized'}
+          {enforcement.state === 'partial' && ' · Only the enforced actions decide anything today'}
+        </span>
+      </div>
+
+      {pendingLevel && (
+        <div className={cc.note} style={{ marginBottom: 16, borderColor: '#F0C36D', background: '#FFFBEB' }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#8C6D1F', marginBottom: 6 }}>
+            Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
+            {protectedActionWords(
+              protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
+              mod.moduleKey,
+            )}
+          </div>
+          <div className={cc.muted} style={{ fontSize: 12, marginBottom: 10 }}>
+            These are kept only under Custom. Choose Custom instead if this person
+            should keep them.
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              className="boe-btn boe-btn-danger"
+              onClick={() => { const l = pendingLevel; setPendingLevel(null); applyLevel(l) }}
+            >
+              Remove and continue
+            </button>
+            <button
+              className="boe-btn boe-btn-ghost"
+              onClick={() => { setPendingLevel(null); setMode(currentLevel) }}
+            >
+              Cancel
+            </button>
+          </div>
         </div>
+      )}
 
-        <div style={{
-          marginBottom: 18, padding: '12px 14px', border: '1px solid #E8EBF0',
-          borderRadius: 10, background: '#FAFBFC',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: '#4B5563' }}>Current access:</span>
-            <AccessLevelBadge level={currentLevel} />
-          </div>
-          <div style={{ fontSize: 12, color: '#6B7384' }}>
-            {sourceSummary.kind === 'single'
-              ? `Source: ${sourceSummary.label}`
-              : 'Some permissions are customized'}
-          </div>
-        </div>
+      <div className={styles.levelGrid} role="radiogroup" aria-label="Access level">
+        {LEVELS.map(l => {
+          const active = mode === l.key
+          return (
+            <button
+              key={l.key}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => pick(l.key)}
+              className={`${styles.levelOption}${active ? ` ${styles.levelOptionActive}` : ''}`}
+            >
+              <div className={styles.levelOptionLabel}>{l.label}</div>
+              <div className={styles.levelOptionDesc}>{l.description}</div>
+            </button>
+          )
+        })}
+      </div>
 
-        {pendingLevel && (
-          <div
-            style={{
-              marginBottom: 16, padding: '12px 14px', borderRadius: 10,
-              border: '1px solid #F0C36D', background: '#FFFBEB',
-            }}
-          >
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#8C6D1F', marginBottom: 6 }}>
-              Changing to {ACCESS_LEVEL_LABELS[pendingLevel].label} will remove:{' '}
-              {protectedActionWords(
-                protectedActionsClearedByPreset(pendingLevel, actionKeys, currentlyAllowed),
-                mod.moduleKey,
-              )}
-            </div>
-            <div style={{ fontSize: 12, color: '#6B7384', marginBottom: 10 }}>
-              These are kept only under Custom. Choose Custom instead if this person
-              should keep them.
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="boe-btn boe-btn-primary"
-                style={{ fontSize: 12, padding: '5px 12px' }}
-                onClick={() => { const l = pendingLevel; setPendingLevel(null); applyLevel(l) }}
-              >
-                Remove and continue
-              </button>
-              <button
-                className="boe-btn boe-btn-ghost"
-                style={{ fontSize: 12, padding: '5px 12px' }}
-                onClick={() => { setPendingLevel(null); setMode(currentLevel) }}
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        )}
-
-        <div style={LEVEL_GRID}>
-          {LEVELS.map(l => {
-            const active = mode === l.key
+      {mode === 'custom' && (
+        <div style={{ marginTop: 16 }}>
+          {mod.actions.map(action => {
+            const choice = getChoice(action.actionKey)
             return (
-              <button
-                key={l.key}
-                onClick={() => pick(l.key)}
-                style={{ ...LEVEL_OPTION, ...(active ? LEVEL_OPTION_ACTIVE : null) }}
-              >
-                <div style={LEVEL_OPTION_LABEL}>{l.label}</div>
-                <div style={LEVEL_OPTION_DESC}>{l.description}</div>
-              </button>
+              <div key={action.actionKey} className={styles.actionRow}>
+                <div style={{ minWidth: 160 }}>
+                  <div className={styles.actionName}>{action.displayName}</div>
+                  <EffectiveBadge choice={choice} action={action} />
+                </div>
+                <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
+              </div>
             )
           })}
         </div>
-
-        {mode === 'custom' && (
-          <div style={{ marginTop: 18 }}>
-            {mod.actions.map(action => {
-              const choice = getChoice(action.actionKey)
-              return (
-                <div key={action.actionKey} style={ACTION_ROW}>
-                  <div style={{ minWidth: 140 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#111318' }}>{action.displayName}</div>
-                    <EffectiveBadge choice={choice} action={action} />
-                  </div>
-                  <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
-                </div>
-              )
-            })}
-          </div>
-        )}
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-          <button style={CHANGE_BTN} onClick={onClose}>Done</button>
-        </div>
-      </div>
-    </div>
+      )}
+    </CcDialog>
   )
 }
 
-// ── Employee panel (left column) ────────────────────────────────────────────
+// ── Employee directory (left column) ────────────────────────────────────────
 
 function EmployeePanel({
   search, onSearchChange, results, selectedEmployeeId, onSelect, deptLabel,
@@ -671,35 +437,33 @@ function EmployeePanel({
   deptLabel: (key: string | null | undefined) => string
 }) {
   return (
-    <div className={styles.employeePanel}>
-      <div style={SECTION_LABEL}>Employees</div>
+    <div className={styles.panel}>
+      <div className={styles.panelHead}>
+        <span>Employees</span>
+        {/* A plain count, so an administrator can see the list is the whole
+            directory rather than a window onto it. */}
+        {results.length > 0 && (
+          <span className={styles.panelCount}>
+            {results.length} {results.length === 1 ? 'employee' : 'employees'}
+          </span>
+        )}
+      </div>
 
-      <div style={{ position: 'relative' }}>
-        <Search
-          size={14} strokeWidth={2}
-          style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#8C94A6', pointerEvents: 'none' }}
-        />
+      <div className={cc.search}>
+        <Search size={13} strokeWidth={2} />
         <input
-          style={{ ...INPUT, paddingLeft: 30 }}
-          placeholder="Search by name, department, or role…"
+          className={cc.control}
+          style={{ width: '100%' }}
+          placeholder="Search name, department or role"
           aria-label="Search employees"
           value={search}
           onChange={e => onSearchChange(e.target.value)}
         />
       </div>
 
-      {/* A plain count, so an administrator can see the list is the whole
-          directory rather than a window onto it. This panel used to show the
-          first twenty people and say nothing about the rest. */}
-      {results.length > 0 && (
-        <div style={{ padding: '6px 4px 2px', fontSize: 11.5, color: '#8C94A6' }}>
-          {results.length} {results.length === 1 ? 'employee' : 'employees'}
-        </div>
-      )}
-
-      <div className={styles.employeeList}>
+      <div className={styles.panelList}>
         {results.length === 0 && (
-          <div style={{ padding: '14px 4px', fontSize: 13, color: '#8C94A6' }}>No matches.</div>
+          <div className={cc.muted} style={{ padding: '14px 4px', fontSize: 13 }}>No matches.</div>
         )}
         {results.map(m => {
           const selected = m.id === selectedEmployeeId
@@ -707,23 +471,15 @@ function EmployeePanel({
             <button
               key={m.id}
               type="button"
-              className={`${styles.empRow}${selected ? ` ${styles.selected}` : ''}`}
+              className={`${styles.row}${selected ? ` ${styles.rowSelected}` : ''}${m.is_active ? '' : ` ${styles.rowMuted}`}`}
               aria-pressed={selected}
               onClick={() => onSelect(m.id)}
             >
-              <Avatar name={m.full_name} size={32} />
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div style={{
-                  fontSize: 13, fontWeight: 600, color: '#111318',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {m.full_name}
-                </div>
-                <div style={{
-                  fontSize: 11.5, color: '#8C94A6',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {deptLabel(m.team)} · <span style={{ textTransform: 'capitalize' }}>{m.role}</span>
+              <Avatar name={m.full_name} size={28} />
+              <div className={styles.rowText}>
+                <div className={styles.rowName}>{m.full_name}</div>
+                <div className={styles.rowSub}>
+                  {deptLabel(m.team)} · <span className={cc.cap}>{m.role}</span>{m.is_active ? '' : ' · Inactive'}
                 </div>
               </div>
             </button>
@@ -737,44 +493,39 @@ function EmployeePanel({
 // ── Workspace header (selected employee summary) ────────────────────────────
 
 function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; overrides: Map<string, OverrideChoice> }) {
-  const total = tree.modules.length
-  const accessible = tree.modules.filter(mod => moduleIsAccessible(mod, overrides)).length
-  const noAccess = total - accessible
+  const editable = tree.modules.filter(mod => !isSelfServiceModuleKey(mod.moduleKey))
+  const accessible = editable.filter(mod => moduleIsAccessible(mod, overrides)).length
+  const noAccess = editable.length - accessible
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E8EBF0', borderRadius: 14, padding: '16px 18px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar name={tree.employee.name} size={40} />
-          <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#111318' }}>{tree.employee.name}</div>
-            <div style={{ fontSize: 12, color: '#6B7384', marginTop: 2 }}>
-              {tree.employee.department ?? '—'} · <span style={{ textTransform: 'capitalize' }}>{tree.employee.role}</span>
-            </div>
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#166534' }}>{accessible}</div>
-            <div style={{ fontSize: 10.5, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Accessible</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#4B5563' }}>{noAccess}</div>
-            <div style={{ fontSize: 10.5, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.04em' }}>No Access</div>
+    <div className={styles.header}>
+      <div className={styles.headerIdentity}>
+        <Avatar name={tree.employee.name} size={40} />
+        <div style={{ minWidth: 0 }}>
+          <div className={styles.headerName}>{tree.employee.name}</div>
+          <div className={styles.headerSub}>
+            {tree.employee.department ?? '—'} · <span className={cc.cap}>{tree.employee.role}</span>
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 12, fontSize: 12, color: '#6B7384' }}>
-        Green modules are accessible. White modules are not accessible.
+      <div className={styles.headerStats}>
+        <div className={styles.headerStat}>
+          <div className={styles.headerStatValue} style={{ color: '#166534' }}>{accessible}</div>
+          <div className={styles.headerStatLabel}>Visible</div>
+        </div>
+        <div className={styles.headerStat}>
+          <div className={styles.headerStatValue} style={{ color: '#4B5563' }}>{noAccess}</div>
+          <div className={styles.headerStatLabel}>Hidden</div>
+        </div>
       </div>
     </div>
   )
 }
 
-// ── Module card ──────────────────────────────────────────────────────────────
+// ── Module row ───────────────────────────────────────────────────────────────
 
-function ModuleCard({
-  mod, level, accessible, unsaved, locked, onToggle, open, onOpen,
+function ModuleRow({
+  mod, level, accessible, unsaved, locked, source, onToggle, open, onOpen,
 }: {
   mod: ModuleState
   level: AccessLevel
@@ -782,41 +533,22 @@ function ModuleCard({
   unsaved: boolean
   /** True for a system Administrator — the row is read-only. */
   locked: boolean
+  source: SourceSummary
   onToggle: (on: boolean) => void
   open: boolean
   onOpen: () => void
 }) {
   return (
-    <div
-      className={`${styles.moduleCard}${accessible ? ` ${styles.granted}` : ''}${open ? ` ${styles.open}` : ''}`}
-      style={locked ? { opacity: 0.6 } : undefined}
-    >
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <ModuleIcon moduleKey={mod.moduleKey} color={accessible ? '#166534' : '#8C94A6'} />
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
-          {unsaved && (
-            <span style={{ fontSize: 9.5, fontWeight: 700, color: '#8C6D1F', letterSpacing: '0.03em' }}>UNSAVED</span>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: level !== 'no_access' ? 6 : 0 }}>
-          {mod.displayName}
-        </div>
-        {level !== 'no_access' && <AccessLevelBadge level={level} />}
-      </div>
-
-      {/* ONE control, two halves. The switch says whether the module is on;
-          the button underneath says how much. Both write the same per-action
-          state, so there is no second setting to reconcile. */}
-      <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <label
-          style={{
-            display: 'flex', alignItems: 'center', gap: 8,
-            cursor: locked ? 'default' : 'pointer',
-          }}
-        >
+    <tr style={open ? { background: '#FAFBFC' } : undefined}>
+      <td>
+        <span style={{ fontWeight: 600 }}>{mod.displayName}</span>
+        {unsaved && <span className={styles.unsaved}>Unsaved</span>}
+      </td>
+      <td>
+        {/* ONE control, two halves. The switch says whether the module is on;
+            the level beside it says how much. Both write the same per-action
+            state, so there is no second setting to reconcile. */}
+        <label className={`${styles.switch}${locked ? ` ${styles.switchLocked}` : ''}`}>
           <input
             type="checkbox"
             role="switch"
@@ -824,39 +556,27 @@ function ModuleCard({
             disabled={locked}
             onChange={e => onToggle(e.target.checked)}
             aria-label={`Module access for ${mod.displayName}`}
-            style={{ width: 16, height: 16, cursor: locked ? 'default' : 'pointer' }}
           />
-          <span style={{ fontSize: 11, fontWeight: 600, color: '#6B7384' }}>Module access</span>
-          <span
-            style={{
-              fontSize: 11, fontWeight: 700,
-              color: accessible ? '#166534' : '#6B7384',
-              display: 'flex', alignItems: 'center', gap: 4,
-            }}
-          >
-            {accessible
-              ? <CheckCircle2 size={13} strokeWidth={2} color="#166534" />
-              : <Circle size={13} strokeWidth={2} color="#B7BEC9" />}
+          <span className={`${styles.switchWord} ${accessible ? styles.switchOn : styles.switchOff}`}>
             {accessible ? 'Visible' : 'Hidden'}
           </span>
         </label>
-
+      </td>
+      <td>{level === 'no_access' ? <span className={cc.faint}>—</span> : <AccessLevelBadge level={level} />}</td>
+      <td><SourceBadge summary={source} /></td>
+      <td className={cc.right}>
         <button
           type="button"
+          className={cc.linkBtn}
           onClick={onOpen}
           disabled={locked}
           aria-haspopup="dialog"
           aria-label={`Change access level for ${mod.displayName}`}
-          style={{
-            fontSize: 11.5, fontWeight: 600, color: locked ? '#A0A9BE' : '#1A2035',
-            background: 'transparent', border: '1px solid #E8EBF0', borderRadius: 7,
-            padding: '4px 9px', cursor: locked ? 'default' : 'pointer', textAlign: 'left',
-          }}
         >
-          {accessible ? 'Change level or permissions' : 'Choose access level'}
+          {accessible ? 'Change level' : 'Choose level'}
         </button>
-      </div>
-    </div>
+      </td>
+    </tr>
   )
 }
 
@@ -875,52 +595,44 @@ function AttendancePayrollCard({ modules }: { modules: ModuleState[] }) {
   )
 
   return (
-    <div className={styles.moduleCard} style={{ cursor: 'default' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-        <ModuleIcon moduleKey="attendance" color="#8C94A6" />
-      </div>
-
-      <div>
-        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#111318', marginBottom: 6 }}>
-          {COMBINED_ATTENDANCE_PAYROLL_LABEL}
+    <tr>
+      <td>
+        <span style={{ fontWeight: 600 }}>{COMBINED_ATTENDANCE_PAYROLL_LABEL}</span>
+        <div className={cc.muted} style={{ fontSize: 11.5, marginTop: 2, lineHeight: 1.45 }}>
+          Employees can view their own attendance and payroll and raise issues.
+          {' '}Management access is restricted to system administrators.
         </div>
-        <span
-          style={{
-            fontSize: 10, fontWeight: 700, color: '#1E40AF', background: '#EFF6FF',
-            borderRadius: 5, padding: '2px 7px',
-          }}
-        >
-          Self-service
-        </span>
-      </div>
-
-      <div style={{ marginTop: 'auto', fontSize: 11.5, color: '#6B7384', lineHeight: 1.5 }}>
-        Employees can view their own attendance and payroll and raise issues.
-        <br />
-        Management access is restricted to system administrators.
-      </div>
-
-      {strayOverrides.length > 0 && (
-        <div
-          style={{
-            marginTop: 8, fontSize: 11, color: '#8C6D1F',
-            background: '#FFFBEB', border: '1px solid #F0C36D',
-            borderRadius: 7, padding: '6px 8px', lineHeight: 1.45,
-          }}
-        >
-          <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
-          These grant nothing — management access is admin-only — and have been
-          left exactly as they are.
-        </div>
-      )}
-    </div>
+        {strayOverrides.length > 0 && (
+          <div className={cc.note} style={{ marginTop: 8, fontSize: 11.5, color: '#8C6D1F', borderColor: '#F0C36D', background: '#FFFBEB', padding: '6px 10px' }}>
+            <strong>Unused permissions on record:</strong> {strayOverrides.join(', ')}.
+            These grant nothing — management access is admin-only — and have been
+            left exactly as they are.
+          </div>
+        )}
+      </td>
+      <td><CcBadge tone="blue">Self-service</CcBadge></td>
+      <td><span className={cc.faint}>—</span></td>
+      <td><CcBadge tone="gray">System role</CcBadge></td>
+      <td className={cc.right}><span className={cc.faint}>Admin only</span></td>
+    </tr>
   )
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function PermissionsPage() {
+  return (
+    <Suspense fallback={<ControlCenterSkeleton />}>
+      <PermissionsPageInner />
+    </Suspense>
+  )
+}
+
+function PermissionsPageInner() {
   const supabase = useMemo(() => createClient(), [])
+  const router   = useRouter()
+  const pathname = usePathname()
+  const employeeParam = useSearchParams().get('employee')
 
   const [token,   setToken]   = useState('')
 
@@ -972,23 +684,12 @@ export default function PermissionsPage() {
   /**
    * Every employee an administrator may assign access to.
    *
-   * THE DEFECT THIS FIXES. Both branches used to end in `.slice(0, 20)`, so the
-   * panel showed the first twenty people by name and silently dropped the rest.
-   * There was no counter, no "showing 20 of 60", nothing — an administrator
-   * scanning the list for somebody late in the alphabet concluded, reasonably,
-   * that the account did not exist, and could not grant them anything. A real
-   * Sales account that could sign in was invisible here for exactly that reason.
-   *
-   * A directory that hides people is worse than a long one. The panel scrolls,
-   * the search box narrows it, and neither needs the list to be secretly
-   * truncated — so nothing is truncated now.
-   *
-   * WHAT IS STILL EXCLUDED, and deliberately: soft-deleted accounts. Nothing
-   * else. Inactive accounts remain listed because an administrator has to be
-   * able to see and adjust what a deactivated person would regain, and because
-   * hiding them here is how somebody becomes unassignable. Names are never
-   * filtered on content — "test", "dummy" or anything else — since an account
-   * that can authenticate is an account that can hold permissions.
+   * Nothing is truncated: the panel scrolls and the search box narrows it. The
+   * only exclusion is soft-deleted accounts. Inactive accounts remain listed
+   * because an administrator has to be able to see and adjust what a
+   * deactivated person would regain, and because hiding them here is how
+   * somebody becomes unassignable. Names are never filtered on content — an
+   * account that can authenticate is an account that can hold permissions.
    */
   const searchResults = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -1007,11 +708,8 @@ export default function PermissionsPage() {
   //
   // THE ONLY READ OF THE TREE ROUTE, and it happens when an employee is opened.
   // The directory used to prefetch up to twenty trees on load to draw a
-  // decorative "x of y modules" beside each name — six backend calls per
-  // employee for a number nobody acted on, and the tree it downloaded was
-  // then discarded and fetched again on selection. The counter is gone; the
-  // workspace header already states the same two numbers for the person who
-  // is actually open.
+  // decorative "x of y modules" beside each name; that counter is gone, and the
+  // workspace header states the same two numbers for the person who is open.
   const UNSAVED_PROMPT = 'You have unsaved access changes. Leave without saving?'
 
   async function selectEmployee(id: string) {
@@ -1025,6 +723,10 @@ export default function PermissionsPage() {
     setSelectedEmployeeId(id)
     setSaveError('')
     setChangeModalModuleKey(null)
+    // The selection is in the URL so it can be linked to (By Module's "Open"
+    // lands here) and survives a refresh. Replaced, not pushed: walking a
+    // directory is not a history of pages.
+    router.replace(`${pathname}?employee=${id}`)
     await loadTree(id)
   }
 
@@ -1086,19 +788,14 @@ export default function PermissionsPage() {
   // `deriveDesired` receives the module's current effective map — including any
   // unsaved edits — and returns the intended one. Splitting "what do we want"
   // from "how is it stored" is what lets the level buttons and the Module access
-  // checkbox share a write path while holding genuinely different intentions: a
-  // level states every action, the checkbox states only `view`.
+  // switch share a write path while holding genuinely different intentions: a
+  // level states every action, the switch states only `view`.
   //
   // The current map is read from `prev` INSIDE the updater rather than from the
   // `overrides` closure, so two edits applied in the same tick cannot read a
-  // stale map and undo one another.
-  //
-  // Writes explicit overrides — except for actions that have no employee
-  // override today (source !== 'employee_override') whose inherited value
-  // already matches what is wanted. Those are left as 'inherit' so re-applying
-  // an already-matching state doesn't create needless
-  // employee_permission_overrides rows on save; save() already no-ops any choice
-  // that ends up equal to its initialOverrides entry.
+  // stale map and undo one another. How each action's choice is decided is the
+  // shared rule in accessControlChanges.ts (choicesForDesired), which By Module
+  // uses too.
   function applyDesiredActions(
     mod: ModuleState,
     deriveDesired: (current: Record<string, boolean>) => Record<string, boolean>,
@@ -1106,15 +803,8 @@ export default function PermissionsPage() {
     setOverrides(prev => {
       const desired = deriveDesired(effectiveMapForModule(mod, prev))
       const next = new Map(prev)
-      for (const action of mod.actions) {
-        const key = overrideKey(mod.moduleKey, action.actionKey)
-        const want = desired[action.actionKey] === true
-        const hasExistingOverride = action.source === 'employee_override'
-        if (!hasExistingOverride && want === action.allowed) {
-          next.set(key, 'inherit')
-        } else {
-          next.set(key, want ? 'allow' : 'deny')
-        }
+      for (const [actionKey, choice] of choicesForDesired(mod.actions, desired)) {
+        next.set(overrideKey(mod.moduleKey, actionKey), choice)
       }
       return next
     })
@@ -1123,42 +813,27 @@ export default function PermissionsPage() {
   // Picking a standard level. A preset is a COMPLETE statement about the module,
   // so it ignores what is currently held — that is the whole point of choosing
   // "Viewer", and it is why moving somebody down to it revokes what they had.
-  // Deliberately unchanged by the Module access fix below.
   function applyAccessLevel(mod: ModuleState, level: PresetLevel) {
     const actionKeys = mod.actions.map(a => a.actionKey)
     applyDesiredActions(mod, () => presetAllowedActions(level, actionKeys))
   }
 
   /**
-   * PART 1 — Module access, on or off.
-   *
-   * The toggle is NOT a second authority. It is a shortcut into the same
-   * per-action override state the level selector writes:
+   * Module access, on or off. The switch is NOT a second authority; it is a
+   * shortcut into the same per-action override state the level selector
+   * writes:
    *
    *   Off  →  no_access            (every action for this module set to deny)
    *   On   →  enableModuleEntry    (`view` true, every other action untouched)
    *
-   * Because both controls write the same state and the level is derived back
-   * out of it by detectAccessLevel, the two can never disagree — there is no
-   * separate visibility boolean, and nothing extra is saved.
-   *
-   * THE TWO DIRECTIONS ARE NOT SYMMETRICAL, on purpose.
-   *
-   * OFF is a complete statement — no access means no access — so it applies the
-   * no_access preset, and because that removes things it asks first and names
-   * them.
-   *
-   * ON is the smallest possible statement: let this person in. It says nothing
-   * about what they may do once inside, so it must not decide that for them.
-   * It used to apply the Viewer preset, which wrote an explicit deny over every
-   * child action the employee held — that is what erased Aditya's Sample
-   * Tracking dispatch, receive and mark_lost, silently, because the
-   * destructive-action confirmation only ever ran on the OFF path.
-   *
-   * There is deliberately NO confirmation on ON. Enabling a module can no longer
-   * remove anything, so there is nothing to warn about; adding a prompt here
-   * would train administrators to click through the one on OFF, which still
-   * matters.
+   * THE TWO DIRECTIONS ARE NOT SYMMETRICAL, on purpose. OFF is a complete
+   * statement, so it applies the no_access preset, and because that removes
+   * things it asks first and names them. ON is the smallest possible statement
+   * — let this person in — and says nothing about what they may do once
+   * inside. It used to apply the Viewer preset, which wrote an explicit deny
+   * over every child action the employee held; that is what erased Aditya's
+   * Sample Tracking dispatch, receive and mark_lost in production. There is
+   * deliberately NO confirmation on ON: it removes nothing.
    */
   function toggleModuleAccess(mod: ModuleState, on: boolean) {
     const actionKeys = mod.actions.map(a => a.actionKey)
@@ -1192,6 +867,10 @@ export default function PermissionsPage() {
   }
   const dirty = hasPendingChanges
 
+  const changedModuleCount = tree
+    ? tree.modules.filter(mod => moduleIsDirty(mod, overrides, initialOverrides)).length
+    : 0
+
   // Refresh, tab close and browser Back. The listener is attached only while
   // there is something to lose and removed the moment the screen goes clean, so
   // a saved page never traps anybody. Browsers show their own wording here; the
@@ -1202,6 +881,22 @@ export default function PermissionsPage() {
     window.addEventListener('beforeunload', warn)
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
+
+  // A deep link (?employee=) opens that person once the token and directory
+  // are ready. Only when nothing is selected yet, so it can never override a
+  // choice the administrator has made since.
+  useEffect(() => {
+    if (!token || !employeeParam || selectedEmployeeId) return
+    if (!members.some(m => m.id === employeeParam)) return
+    const open = () => { void selectEmployee(employeeParam) }
+    open()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, employeeParam, members])
+
+  function discardChanges() {
+    setOverrides(new Map(initialOverrides))
+    setSaveError('')
+  }
 
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
@@ -1270,13 +965,16 @@ export default function PermissionsPage() {
 
         <div className={styles.workspace}>
           {!selectedEmployeeId && (
-            <EmptyState message="Select an employee to manage their permissions." />
+            <CcEmpty
+              message="Select an employee to see and change what they can access."
+              hint="Or look at one module across everyone under Access › By Module."
+            />
           )}
 
-          {selectedEmployeeId && treeLoading && <LoadingScreen message="Loading permissions…" />}
+          {selectedEmployeeId && treeLoading && <ControlCenterSkeleton />}
 
           {selectedEmployeeId && !treeLoading && treeError && (
-            <div style={{ fontSize: 13, color: '#B0364A' }}>{treeError}</div>
+            <div className={cc.error}>{treeError}</div>
           )}
 
           {selectedEmployeeId && !treeLoading && tree && (
@@ -1284,7 +982,7 @@ export default function PermissionsPage() {
               <WorkspaceHeader tree={tree} overrides={overrides} />
 
               {adminLocked && (
-                <div style={{ marginTop: 16 }}>
+                <div style={{ marginBottom: 12 }}>
                   <AlertBanner variant="amber">
                     <strong>System Administrator.</strong> Module access is controlled by
                     this person&apos;s system role, not by the settings below. An override
@@ -1293,59 +991,74 @@ export default function PermissionsPage() {
                 </div>
               )}
 
-              <div className={styles.moduleGrid} style={{ marginTop: 16 }}>
-                {/* Attendance & Payroll is one row, and it is not editable —
-                    see SELF_SERVICE_MODULE_KEYS above. It is rendered from the
-                    two underlying modules but writes neither. */}
-                {selfServiceModules.length > 0 && (
+              <CcTable>
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Access</th>
+                    <th>Level</th>
+                    <th>Source</th>
+                    <th className={cc.right}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editableModules.map(mod => {
+                    const effective = effectiveMapForModule(mod, overrides)
+                    const level = detectAccessLevel(mod, effective)
+                    const accessible = moduleIsAccessible(mod, overrides)
+                    const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
+                    const source = summarizeSource(mod, actionKey => overrides.get(overrideKey(mod.moduleKey, actionKey)) ?? 'inherit')
+                    return (
+                      <ModuleRow
+                        key={mod.moduleKey}
+                        mod={mod}
+                        level={level}
+                        accessible={accessible}
+                        unsaved={unsaved}
+                        locked={adminLocked}
+                        source={source}
+                        onToggle={on => toggleModuleAccess(mod, on)}
+                        open={changeModalModuleKey === mod.moduleKey}
+                        onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}
+                      />
+                    )
+                  })}
+                  {/* Attendance & Payroll is one row, and it is not editable —
+                      see SELF_SERVICE_MODULE_KEYS above. It is rendered from the
+                      two underlying modules but writes neither. */}
+                  {selfServiceModules.length > 0 && (
                   <AttendancePayrollCard modules={selfServiceModules} />
-                )}
+                  )}
+                </tbody>
+              </CcTable>
 
-                {editableModules.map(mod => {
-                  const effective = effectiveMapForModule(mod, overrides)
-                  const level = detectAccessLevel(mod, effective)
-                  const accessible = moduleIsAccessible(mod, overrides)
-                  const unsaved = moduleIsDirty(mod, overrides, initialOverrides)
-                  return (
-                    <ModuleCard
-                      key={mod.moduleKey}
-                      mod={mod}
-                      level={level}
-                      accessible={accessible}
-                      unsaved={unsaved}
-                      locked={adminLocked}
-                      onToggle={on => toggleModuleAccess(mod, on)}
-                      open={changeModalModuleKey === mod.moduleKey}
-                      onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}
-                    />
-                  )
-                })}
+              <div className={cc.muted} style={{ fontSize: 11.5, marginTop: 8 }}>
+                Visible means this person can open the module. The level says how much they can do inside it; Custom keeps individually chosen permissions.
+                {' '}<Link href="/admin/control-center/permissions/modules" className={cc.linkBtn}>See one module across everyone <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} /></Link>
               </div>
 
               {/* ── Save bar ──────────────────────────────────────────────── */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 20 }}>
-                <button
-                  onClick={save}
-                  disabled={!dirty || saving}
-                  style={{
-                    padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#fff',
-                    background: dirty ? '#1A2035' : '#C7CBD4',
-                    border: 'none', borderRadius: 8, cursor: dirty ? 'pointer' : 'default',
-                  }}
-                >
+              <div className={styles.saveBar}>
+                <span className={styles.saveBarText}>
+                  {dirty
+                    ? `${changedModuleCount} ${changedModuleCount === 1 ? 'module' : 'modules'} changed · not saved yet`
+                    : 'No unsaved changes'}
+                </span>
+                {saveError && <span className={cc.error} style={{ marginTop: 0 }}>{saveError}</span>}
+                <span className={styles.saveBarSpacer} />
+                <button className="boe-btn boe-btn-ghost" onClick={discardChanges} disabled={!dirty || saving}>
+                  Discard
+                </button>
+                <button className="boe-btn boe-btn-primary" onClick={save} disabled={!dirty || saving}>
                   {saving ? 'Saving…' : 'Save Changes'}
                 </button>
-                {dirty && !saving && (
-                  <span style={{ fontSize: 12, color: '#8C94A6' }}>Unsaved changes</span>
-                )}
-                {saveError && <span style={{ fontSize: 12, color: '#B0364A' }}>{saveError}</span>}
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* ── Change Access modal ────────────────────────────────────────────── */}
+      {/* ── Change Access dialog ───────────────────────────────────────────── */}
       {changeModalModule && (
         <ChangeAccessModal
           mod={changeModalModule}

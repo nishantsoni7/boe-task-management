@@ -1,60 +1,77 @@
-/* ── Access Control (permissions): two-panel layout ──
-   280px employee panel + module workspace on desktop, stacked on tablet/mobile. */
+/* ── Access Control: By Employee and By Module ──
+   A directory column beside a workspace on desktop; stacked on tablet and
+   phone. Everything inside the workspace uses the shared Control Center layer
+   (src/components/controlCenter/controlCenter.module.css). */
+
 .layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
-  gap: 20px;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 16px;
   align-items: start;
 }
 
-.workspace {
-  min-width: 0;
-}
+.workspace { min-width: 0; }
 
-.employeePanel {
+/* The directory (employees, or modules) */
+.panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   background: #fff;
   border: 1px solid #E8EBF0;
-  border-radius: 14px;
-  padding: 14px;
+  border-radius: 8px;
+  padding: 12px;
   position: sticky;
   top: 78px;
   max-height: calc(100vh - 96px);
 }
 
-.employeeList {
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  padding: 0 2px;
+}
+
+.panelCount { font-weight: 500; letter-spacing: 0; text-transform: none; color: #A0A9BE; }
+
+.panelList {
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px;
 }
 
-.empRow {
+.row {
   position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px 8px 13px;
+  padding: 7px 8px 7px 11px;
   border: none;
-  border-radius: 9px;
+  border-radius: 7px;
   background: none;
   cursor: pointer;
   text-align: left;
+  font: inherit;
+  color: inherit;
 }
 
-.empRow:hover {
-  background: rgba(0,0,0,0.045);
-}
+.row:hover { background: rgba(0,0,0,0.045); }
+.rowSelected { background: rgba(220,31,46,0.07); }
+.rowSelected:hover { background: rgba(220,31,46,0.09); }
 
-.empRow.selected {
-  background: rgba(220,31,46,0.07);
-}
-
-.empRow.selected::before {
+.rowSelected::before {
   content: '';
   position: absolute;
   left: 0;
@@ -65,60 +82,97 @@
   background: #DC1F2E;
 }
 
-/* ── Access Control: module card grid ── */
-.moduleGrid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-}
+.rowText { min-width: 0; flex: 1; }
+.rowName { font-size: 13px; font-weight: 600; color: #111318; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowSub  { font-size: 11.5px; color: #8C94A6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rowMuted { opacity: .6; }
 
-@media (min-width: 640px) {
-  .moduleGrid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (min-width: 1024px) {
-  .moduleGrid { grid-template-columns: repeat(3, 1fr); }
-}
-
-@media (min-width: 1440px) {
-  .moduleGrid { grid-template-columns: repeat(4, 1fr); }
-}
-
-.moduleCard {
-  position: relative;
+/* Workspace header card */
+.header {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
-  text-align: left;
-  border: 1.5px solid #E8EBF0;
-  border-radius: 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
   background: #fff;
-  padding: 16px;
-  cursor: pointer;
-  min-height: 132px;
+  border: 1px solid #E8EBF0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
 }
 
-.moduleCard:hover {
-  border-color: #C7CBD4;
-  box-shadow: 0 2px 10px rgba(17,19,24,0.06);
+.headerIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.headerName { font-size: 15px; font-weight: 700; color: #111318; }
+.headerSub  { font-size: 12px; color: #6B7384; margin-top: 2px; }
+.headerStats { display: flex; gap: 22px; }
+.headerStat  { text-align: right; }
+.headerStatValue { font-size: 18px; font-weight: 700; color: #111318; line-height: 1.1; }
+.headerStatLabel { font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #8C94A6; margin-top: 2px; }
+
+/* The switch cell: a real checkbox with a readable state word beside it */
+.switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; white-space: nowrap; }
+.switchLocked { cursor: default; }
+.switchWord { font-size: 12px; font-weight: 600; }
+.switchOn  { color: #166534; }
+.switchOff { color: #6B7384; }
+
+.unsaved {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: #8C6D1F; margin-left: 8px;
 }
 
-.moduleCard.granted {
-  background: #F3FBF5;
-  border-color: #BFE8C9;
+/* Sticky save bar under the workspace */
+.saveBar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #E8EBF0;
+  border-radius: 8px;
+  box-shadow: 0 -2px 12px rgba(17,19,24,.05);
 }
+.saveBarText { font-size: 12px; color: #6B7384; }
+.saveBarSpacer { flex: 1; }
 
-.moduleCard.open {
-  border-color: #DC1F2E;
-  box-shadow: 0 0 0 1px rgba(220,31,46,0.25);
+/* Level options inside the Change Access dialog */
+.levelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.levelOption {
+  text-align: left; border: 1px solid rgba(0,0,0,.13); border-radius: 8px;
+  padding: 9px 11px; background: #fff; cursor: pointer; font: inherit; color: inherit;
 }
+.levelOption:hover { border-color: rgba(0,0,0,.25); }
+.levelOptionActive { border-color: #1A2035; background: #EEF0F4; }
+.levelOptionLabel { font-size: 13px; font-weight: 700; color: #111318; margin-bottom: 2px; }
+.levelOptionDesc  { font-size: 11px; color: #6B7384; line-height: 1.35; }
+
+/* Per-action rows under Custom */
+.actionRow {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; padding: 10px 0; border-top: 1px solid #F0F2F5;
+}
+.actionName { font-size: 13px; font-weight: 600; color: #111318; }
+.actionState { font-size: 12px; }
+
+/* Segmented Inherit / Allow / Deny */
+.segment { display: inline-flex; border: 1px solid rgba(0,0,0,.13); border-radius: 6px; overflow: hidden; }
+.segmentBtn {
+  padding: 5px 11px; font-size: 12px; font-weight: 600; border: none; background: #fff;
+  color: #6B7384; cursor: pointer; font-family: inherit;
+}
+.segmentBtn + .segmentBtn { border-left: 1px solid rgba(0,0,0,.13); }
+.segmentInherit { color: #1A2035; background: #EEF0F4; }
+.segmentAllow   { color: #166534; background: #F0FDF4; }
+.segmentDeny    { color: #B0364A; background: #FDF1F3; }
+
+/* Compact level select in a By Module row */
+.levelSelect { height: 28px; padding: 0 8px; font-size: 12px; }
 
 @media (max-width: 1023px) {
-  .layout {
-    grid-template-columns: 1fr;
-  }
-  .employeePanel {
-    position: static;
-    max-height: 320px;
-  }
+  .layout { grid-template-columns: 1fr; }
+  .panel { position: static; max-height: 300px; }
+  .headerStats { width: 100%; justify-content: flex-start; }
 }
