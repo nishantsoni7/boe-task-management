@@ -323,7 +323,10 @@ describe('the finished workflow holds its boundaries', () => {
   })
 
   test('loading fails closed', () => {
-    assert.ok(page.includes('treeLoading && <LoadingScreen'))
+    // The tree's own loading state is a pane-local skeleton now, not the
+    // 100vh LoadingScreen; the structure is unchanged — nothing editable
+    // renders until the tree has arrived.
+    assert.ok(page.includes('treeLoading && <ControlCenterSkeleton'))
     assert.ok(page.includes('!treeLoading && tree && ('))
   })
 

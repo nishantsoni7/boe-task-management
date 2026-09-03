@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import type { ModuleVisibilityType } from '@/lib/moduleAccess'
 import { useControlCenterSession } from '@/components/layout/ControlCenterContext'
+import type { ResolvedAction } from '@/lib/permissions/accessControlChanges'
 
 // ── The Control Center's shared reference data ───────────────────────────────
 //
@@ -124,4 +125,68 @@ export function useControlCenterCache() {
     setModules: (update: Updater<ControlCenterAppModule>) =>
       queryClient.setQueryData<ControlCenterAppModule[]>(appModulesKey(userId), prev => prev && update(prev)),
   }), [queryClient, userId])
+}
+
+// ── Access Control reads ─────────────────────────────────────────────────────
+//
+// The registered modules (for the By Module list) and the per-module access
+// matrix. Both are admin-gated GETs with the same bearer-token auth as above;
+// the matrix is refetched after a save so a level shown is always the
+// resolver's answer, never a guess.
+
+
+export type PermissionModuleRef = {
+  moduleKey: string
+  displayName: string
+  description: string | null
+  actions: { actionKey: string; displayName: string }[]
+}
+
+export type ModuleMatrixEmployee = {
+  id: string
+  name: string
+  email: string
+  role: string
+  team: string | null
+  is_active: boolean
+  actions: ResolvedAction[]
+}
+
+export type ModuleMatrix = {
+  module: { moduleKey: string; displayName: string; actions: { actionKey: string; displayName: string }[] }
+  employees: ModuleMatrixEmployee[]
+}
+
+export const permissionModulesKey = (userId: string) => ['control-center', 'permission-modules', userId] as const
+export const moduleMatrixKey = (userId: string, moduleKey: string) =>
+  ['control-center', 'module-matrix', userId, moduleKey] as const
+
+export const NO_PERMISSION_MODULES: PermissionModuleRef[] = []
+
+async function adminGetJson<T>(path: string): Promise<T> {
+  const { data: { session } } = await createClient().auth.getSession()
+  if (!session) throw new Error('Not signed in')
+  const res = await fetch(path, { headers: { Authorization: `Bearer ${session.access_token}` } })
+  const body = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(body?.error ?? `${path} failed (HTTP ${res.status})`)
+  return body as T
+}
+
+export function usePermissionModules() {
+  const { userId } = useControlCenterSession()
+  return useQuery<PermissionModuleRef[]>({
+    queryKey: permissionModulesKey(userId),
+    queryFn: () => adminGet<PermissionModuleRef>('/api/control-center/permissions/modules', 'modules'),
+    staleTime: CONTROL_CENTER_STALE_MS,
+  })
+}
+
+export function useModuleAccessMatrix(moduleKey: string | null) {
+  const { userId } = useControlCenterSession()
+  return useQuery<ModuleMatrix>({
+    queryKey: moduleMatrixKey(userId, moduleKey ?? ''),
+    enabled: !!moduleKey,
+    queryFn: () => adminGetJson<ModuleMatrix>(`/api/control-center/permissions/modules/${moduleKey}/employees`),
+    staleTime: CONTROL_CENTER_STALE_MS,
+  })
 }

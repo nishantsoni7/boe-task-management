@@ -4,7 +4,7 @@ import { Suspense, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
-  Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, X, Hash, Eraser, DatabaseZap,
+  Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, Layers, X, Hash, Eraser, DatabaseZap,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -61,6 +61,10 @@ const PATH_HEADINGS: Record<string, Heading> = {
   [`${MAIN_PATH}/permissions`]: {
     group: 'Access', title: 'By Employee',
     subtitle: 'Manage what each employee can access, module by module',
+  },
+  [`${MAIN_PATH}/permissions/modules`]: {
+    group: 'Access', title: 'By Module',
+    subtitle: 'One module across everyone — who can open it, at what level, and why',
   },
   [`${MAIN_PATH}/test-data-cleanup`]: {
     group: 'System', title: 'Test Data Cleanup',
@@ -227,7 +231,6 @@ function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; o
 //   Action Queue       — every row was a deep link into Finance or Orders; it
 //                        decided nothing. The route remains for old bookmarks.
 //   Change History     — does not exist yet, so it is not offered.
-//   Access › By Module — not built yet; a disabled entry would be a promise.
 function ControlCenterNav({
   pathname, tab, onNavigate,
 }: {
@@ -284,6 +287,13 @@ function ControlCenterNav({
           icon={icon(ShieldCheck)}
           href={`${MAIN_PATH}/permissions`}
           active={pathname === `${MAIN_PATH}/permissions`}
+          onNavigate={onNavigate}
+        />
+        <NavItem
+          label="By Module"
+          icon={icon(Layers)}
+          href={`${MAIN_PATH}/permissions/modules`}
+          active={pathname === `${MAIN_PATH}/permissions/modules`}
           onNavigate={onNavigate}
         />
       </div>

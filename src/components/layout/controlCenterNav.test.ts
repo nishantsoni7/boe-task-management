@@ -17,7 +17,7 @@ const shell = read('src/components/layout/ControlCenterLayout.tsx')
 
 describe('Control Center navigation', () => {
   test('offers exactly the groups and entries that have a destination', () => {
-    for (const label of ['Overview', 'Employees', 'Departments', 'Positions', 'By Employee', 'Order Numbering', 'Test Data Cleanup', 'Data Management']) {
+    for (const label of ['Overview', 'Employees', 'Departments', 'Positions', 'By Employee', 'By Module', 'Order Numbering', 'Test Data Cleanup', 'Data Management']) {
       assert.ok(shell.includes(`label="${label}"`), `${label} must be in the sidebar`)
     }
     for (const group of ['People', 'Access', 'System']) {
@@ -26,7 +26,7 @@ describe('Control Center navigation', () => {
   })
 
   test('withholds what has no destination or was retired', () => {
-    for (const label of ['Roles', 'Module Visibility', 'Action Queue', 'Change History', 'By Module']) {
+    for (const label of ['Roles', 'Module Visibility', 'Action Queue', 'Change History']) {
       assert.equal(shell.includes(`label="${label}"`), false, `${label} must not be offered`)
     }
   })
