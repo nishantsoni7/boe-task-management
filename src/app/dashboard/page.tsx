@@ -3,17 +3,18 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, User, CalendarDays } from 'lucide-react'
+import { Check, User, CalendarDays, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { Task } from '@/lib/types'
 import { isOverdue, getAssignedByDisplay, isValidUUID, taskStatusLabel } from '@/lib/ui'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
-import { useTopTasks } from '@/hooks/queries/useTopTasks'
+import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useRefresh } from '@/contexts/RefreshContext'
 
@@ -213,6 +214,129 @@ export default function DashboardPage() {
   const teamUsers = activeUsers
   const { data: top3Data } = useTopTasks(loggedInId || null)
   const top3Tasks = top3Data?.tasks ?? []
+  const [reorderingFocus, setReorderingFocus] = useState(false)
+  const { toast, show: showToast, dismiss: dismissToast } = useToast()
+
+  // ── REORDERING THE TOP 3, ON THE STORAGE THAT ALREADY EXISTS ───────────────
+  //
+  // user_top_tasks already carries display_order, and useTopTasks already reads
+  // in that order — so a swap is two integers changing places, not a new
+  // concept. No migration, no second store, no localStorage.
+  //
+  // WHY DELETE-THEN-INSERT AND NOT UPDATE. The table's row-level security grants
+  // SELECT, INSERT and DELETE to the owner and nothing else; its only ALL-command
+  // policy is RESTRICTIVE (the task_management module gate), and a restrictive
+  // policy narrows access, it never grants it. There is therefore no permissive
+  // UPDATE policy and an UPDATE is refused. Both verbs used here are the ones
+  // the pin and unpin buttons on /tasks/my have always used, under the same
+  // owner check — so this widens nobody's authority: a person can reorder their
+  // own focus list and no one else's.
+  //
+  // It writes ONLY display_order values that already existed, swapped between
+  // two rows, so the set of pinned tasks is identical before and after. Nothing
+  // touches the tasks table, which is what keeps this out of task activity
+  // history and out of the notification path.
+  const handleReorderFocus = async (index: number, direction: -1 | 1) => {
+    const target = index + direction
+    // View As is read-only, and the pins on screen belong to the real signed-in
+    // user in any case — the same rule handlePin follows on /tasks/my.
+    if (!loggedInId || viewAsUserId || reorderingFocus) return
+    if (index < 0 || target < 0 || index >= top3Tasks.length || target >= top3Tasks.length) return
+
+    const moved = top3Tasks[index]
+    const other = top3Tasks[target]
+    if (!moved || !other) return
+
+    setReorderingFocus(true)
+    const queryKey = ['top-tasks', loggedInId]
+    const previous = queryClient.getQueryData<TopTasksData>(queryKey)
+
+    const nextTasks = [...top3Tasks]
+    nextTasks[index] = other
+    nextTasks[target] = moved
+
+    // Immediate feedback: the cards swap and renumber before the round trip.
+    queryClient.setQueryData<TopTasksData>(queryKey, current =>
+      current ? { ...current, tasks: nextTasks } : current)
+
+    const fail = (message: string) => {
+      if (previous) queryClient.setQueryData(queryKey, previous)
+      queryClient.invalidateQueries({ queryKey })
+      showToast(message, 'error')
+      setReorderingFocus(false)
+    }
+
+    try {
+      const { data: pins, error: readError } = await supabase
+        .from('user_top_tasks')
+        .select('task_id, display_order')
+        .eq('user_id', loggedInId)
+        .order('display_order', { ascending: true })
+
+      if (readError || !pins) { fail('Could not reorder focus tasks'); return }
+      const rows = pins as { task_id: string; display_order: number }[]
+
+      // The sequence to store: the cards as they now read, then any pin whose
+      // task the dashboard filters out (submitted for approval, say), kept
+      // behind them in the order it already had.
+      const visible = nextTasks.map(t => t.id)
+      const hidden  = rows.map(r => r.task_id).filter(id => !visible.includes(id))
+      const desired = [...visible, ...hidden]
+
+      // WHY THIS RENUMBERS 1..N INSTEAD OF TRADING TWO VALUES. Pinning numbers a
+      // row from the count of pins, so an unpin followed by a re-pin can hand
+      // out a number that is already taken — live data really does contain two
+      // rows sharing a display_order, and equal numbers carry no order at all.
+      // Writing a clean sequence is what makes the three positions unique, and
+      // it repairs such a collision the first time someone reorders.
+      //
+      // Only rows whose number actually changes are rewritten, and the set of
+      // pinned task_ids is identical before and after: no pin is created or
+      // dropped here.
+      const currentOrder = new Map(rows.map(r => [r.task_id, r.display_order]))
+      const changed = desired
+        .map((id, i) => ({ task_id: id, display_order: i + 1 }))
+        .filter(r => currentOrder.get(r.task_id) !== r.display_order)
+
+      if (changed.length === 0) { setReorderingFocus(false); return }
+
+      const { error: deleteError } = await supabase
+        .from('user_top_tasks')
+        .delete()
+        .eq('user_id', loggedInId)
+        .in('task_id', changed.map(r => r.task_id))
+
+      // Nothing has been removed yet, so the stored order is still the old one.
+      if (deleteError) { fail('Could not reorder focus tasks'); return }
+
+      const { error: insertError } = await supabase
+        .from('user_top_tasks')
+        .insert(changed.map(r => ({
+          user_id: loggedInId, task_id: r.task_id, display_order: r.display_order,
+        })))
+
+      if (insertError) {
+        // Those rows are gone and the new ones did not land. Put the originals
+        // back, so a failed reorder never costs the user a focus task.
+        await supabase
+          .from('user_top_tasks')
+          .insert(changed.map(r => ({
+            user_id: loggedInId,
+            task_id: r.task_id,
+            display_order: currentOrder.get(r.task_id) ?? 1,
+          })))
+        fail('Could not reorder focus tasks')
+        return
+      }
+
+      // Re-read rather than trust the optimistic swap, so the cards can never
+      // sit on an order the database does not hold.
+      queryClient.invalidateQueries({ queryKey })
+      setReorderingFocus(false)
+    } catch {
+      fail('Could not reorder focus tasks')
+    }
+  }
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -426,6 +550,9 @@ export default function DashboardPage() {
           isMobile={isMobile}
           onGoToMyTasks={() => router.push('/tasks/my')}
           userMap={mergedUserMap}
+          canReorder={!viewAsUserId}
+          reordering={reorderingFocus}
+          onReorder={handleReorderFocus}
         />
 
         {/* ── Needs Your Attention ── */}
@@ -500,6 +627,8 @@ export default function DashboardPage() {
           onSelectTask={task => { setEscalationPreview(false); setSelectedTask(task) }}
         />
       )}
+
+      <Toast toast={toast} onDismiss={dismissToast} />
 
       {selectedTask && (
         <TaskDetailPanel
@@ -628,6 +757,56 @@ function SectionHeading({
   )
 }
 
+// ── Focus reorder control ────────────────────────────────────────────────────
+// Two small chevrons at the foot of a focus card, and deliberately nothing more:
+// the card's job is the task, and this has to stay quieter than the title, the
+// due date and the chips. Left/right while the cards sit in a row, up/down once
+// they stack, because that is the direction the card actually travels.
+//
+// The card itself is a button that opens the task, so every handler here stops
+// the event: a click on a chevron must never also open the detail panel.
+function FocusReorderButton({
+  label, icon, disabled, size, onActivate,
+}: {
+  label: string
+  icon: React.ReactNode
+  disabled: boolean
+  /** Bigger on a touch screen, where 24px is a small thing to hit. */
+  size: number
+  onActivate: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={e => { e.stopPropagation(); onActivate() }}
+      onKeyDown={e => { e.stopPropagation() }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: size + 'px', height: size + 'px', borderRadius: '6px',
+        border: 'none', background: 'transparent',
+        color: disabled ? '#DDE1E9' : '#B0BAC8',
+        cursor: disabled ? 'default' : 'pointer',
+        padding: 0, flexShrink: 0,
+        transition: 'background 0.12s, color 0.12s',
+      }}
+      onMouseEnter={e => {
+        if (disabled) return
+        e.currentTarget.style.background = '#F1F2F5'
+        e.currentTarget.style.color = '#6B7280'
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'transparent'
+        e.currentTarget.style.color = disabled ? '#DDE1E9' : '#B0BAC8'
+      }}
+    >
+      {icon}
+    </button>
+  )
+}
+
 // ── Focus rank badge ─────────────────────────────────────────────────────────
 // The 1/2/3 ranking, given room to breathe instead of a circled glyph wedged
 // into the title's top-right corner.
@@ -655,12 +834,18 @@ function TodaysFocusPanel({
   isMobile,
   onGoToMyTasks,
   userMap,
+  canReorder,
+  reordering,
+  onReorder,
 }: {
   tasks: Task[]
   onSelectTask: (task: Task) => void
   isMobile: boolean
   onGoToMyTasks: () => void
   userMap: Record<string, string>
+  canReorder: boolean
+  reordering: boolean
+  onReorder: (index: number, direction: -1 | 1) => void
 }) {
   return (
     <section style={{ marginBottom: isMobile ? '18px' : '22px' }}>
@@ -815,8 +1000,15 @@ function TodaysFocusPanel({
                   every card, so the three cards agree on where to look. */}
               <div style={{
                 marginTop: 'auto',
-                display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                display: 'flex', alignItems: 'center', gap: '8px',
               }}>
+                {/* The task's own metadata wraps inside its column; the reorder
+                    controls sit outside it, so they never drop to a line of
+                    their own and the card keeps its height. */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
+                  flex: 1, minWidth: 0,
+                }}>
                 {dueDateStr && (
                   <span style={{
                     display: 'flex', alignItems: 'center', gap: '4px',
@@ -831,6 +1023,38 @@ function TodaysFocusPanel({
                 )}
                 {statusLabel && (
                   <span style={{ ...chipStyle, color: '#7B8494', fontWeight: 400 }}>{statusLabel}</span>
+                )}
+                </div>
+
+                {/* Reorder, at the far end of the same line so it never competes
+                    with the task's own information. Only the moves that exist
+                    are offered: slot 1 cannot move back, and the last slot
+                    cannot move on. */}
+                {canReorder && tasks.length > 1 && (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+                    {idx > 0 && (
+                      <FocusReorderButton
+                        label={isMobile ? 'Move up' : 'Move left'}
+                        icon={isMobile
+                          ? <ChevronUp size={15} strokeWidth={2} />
+                          : <ChevronLeft size={15} strokeWidth={2} />}
+                        disabled={reordering}
+                        size={isMobile ? 32 : 24}
+                        onActivate={() => onReorder(idx, -1)}
+                      />
+                    )}
+                    {idx < tasks.length - 1 && (
+                      <FocusReorderButton
+                        label={isMobile ? 'Move down' : 'Move right'}
+                        icon={isMobile
+                          ? <ChevronDown size={15} strokeWidth={2} />
+                          : <ChevronRight size={15} strokeWidth={2} />}
+                        disabled={reordering}
+                        size={isMobile ? 32 : 24}
+                        onActivate={() => onReorder(idx, 1)}
+                      />
+                    )}
+                  </span>
                 )}
               </div>
             </div>

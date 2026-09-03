@@ -17,7 +17,7 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import {
   CheckCircle2, ClipboardCheck, ExternalLink, Star, AlertCircle,
-  Search, Pencil, Trash2, Plus, Paperclip, X,
+  Search, Pencil, Trash2, Paperclip, X,
 } from 'lucide-react'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
@@ -1197,23 +1197,6 @@ function AssignedByMeContent() {
         profile={profile}
         title="Assigned By Me"
         onSignOut={handleLogout}
-        actions={!viewAsUserId && (
-          <button
-            onClick={() => setShowDelegateModal(true)}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', borderRadius: '8px', border: 'none',
-              background: colors.primary, color: '#fff',
-              fontSize: '12px', fontWeight: 600, cursor: 'pointer',
-              transition: 'opacity 0.12s', whiteSpace: 'nowrap',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
-            onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
-          >
-            <Plus size={13} strokeWidth={2.5} />
-            Delegate Task
-          </button>
-        )}
       >
 
         <div style={{ minWidth: 0 }}>

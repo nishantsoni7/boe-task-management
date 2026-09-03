@@ -275,25 +275,19 @@ export function DashboardLayout({
             onClick={() => navTo('/dashboard')}
           />
 
-          {/* 2. New Task — hidden in view mode (read-only).
-              Self Task and Delegate Task moved to the page header, where they
-              are reachable from every Task Management screen; repeating them
-              here would be two ways to the same two routes. Raising a quotation
-              request is a third workflow the header does not carry, so it stays
-              — and it is a quotation operation, manage rather than view, which
-              is also the only reason this group still renders at all. */}
+          {/* 2. New Quotation Request — hidden in view mode (read-only).
+              What is left of the old "New Task" group. Self Task and Delegate
+              Task are header actions on every Task Management screen, so the
+              group held one child; a group of one is just an item. The route
+              and its gate are unchanged — raising a request is a quotation
+              operation, manage rather than view. */}
           {!inViewMode && quotationCaps.canManageQuotations && (
-            <CollapsibleNav
-              label="New Task"
+            <NavLeaf
+              label="New Quotation Request"
               icon={<PlusCircle size={15} strokeWidth={1.8} />}
               active={pathname === '/tasks/quotation-requests/new'}
-            >
-              <NavChild
-                label="Quotation Request"
-                active={pathname === '/tasks/quotation-requests/new'}
-                onClick={() => navTo('/tasks/quotation-requests/new')}
-              />
-            </CollapsibleNav>
+              onClick={() => navTo('/tasks/quotation-requests/new')}
+            />
           )}
 
           {/* 3. My Tasks */}
