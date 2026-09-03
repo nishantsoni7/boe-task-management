@@ -21,6 +21,8 @@
 // shouts from the first pixel teaches people to click through shouting.
 
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
+import { cc, CcSection, CcDialog, CcField } from '@/components/controlCenter/CcPrimitives'
 import {
   NUMBER_RESET_ACKNOWLEDGEMENT,
   RESET_ACKNOWLEDGEMENT,
@@ -45,39 +47,8 @@ import {
   type ResetStage,
 } from '@/lib/orders/testDataReset'
 
-// ── Styles, following the Control Center conventions already in use ─────────
-
-const CARD: React.CSSProperties = {
-  border: '1px solid #E8EBF0', borderRadius: 10,
-  padding: '16px 18px', background: '#fff', marginBottom: 16,
-}
-const INPUT: React.CSSProperties = {
-  width: '100%', padding: '9px 11px', fontSize: 13,
-  border: '1.5px solid #D1D5DB', borderRadius: 8,
-  background: '#fff', color: '#111318', outline: 'none', boxSizing: 'border-box',
-}
-const LABEL: React.CSSProperties = {
-  fontSize: 11, fontWeight: 700, color: '#6B7384',
-  textTransform: 'uppercase', letterSpacing: '0.05em',
-  display: 'block', marginBottom: 6,
-}
-const BTN_DARK: React.CSSProperties = {
-  padding: '8px 18px', fontSize: 13, fontWeight: 600, color: '#fff',
-  background: '#1A2035', border: 'none', borderRadius: 8, cursor: 'pointer',
-}
-const BTN_GHOST: React.CSSProperties = {
-  padding: '8px 16px', fontSize: 13, fontWeight: 600, color: '#6B7384',
-  background: '#F3F4F6', border: 'none', borderRadius: 8, cursor: 'pointer',
-}
-const ERR: React.CSSProperties = { fontSize: 12.5, color: '#D94F4F', lineHeight: 1.5 }
-const MUTED: React.CSSProperties = { fontSize: 12, color: '#8C94A6', lineHeight: 1.6 }
-
 /** The only red on the page, and only on the act itself. */
-const btnDanger = (busy: boolean): React.CSSProperties => ({
-  padding: '9px 20px', fontSize: 13, fontWeight: 600, color: '#fff',
-  background: busy ? '#D6A0A0' : '#B91C1C', border: 'none', borderRadius: 8,
-  cursor: busy ? 'not-allowed' : 'pointer',
-})
+const btnDanger = 'boe-btn boe-btn-danger'
 
 type Preview = {
   scope: ResetScope
@@ -283,148 +254,143 @@ export default function DataManagementPage() {
   const storageBytes = typeof preview?.counts.storage_bytes === 'number'
     ? preview.counts.storage_bytes : null
 
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) return <ControlCenterSkeleton />
+
+  if (loadErr) {
+    return (
+      <CcSection>
+        <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }}>{loadErr}</div>
+        <button className="boe-btn boe-btn-ghost" onClick={() => { setLoading(true); void loadStatus() }}>
+          Retry
+        </button>
+      </CcSection>
+    )
+  }
+
   return (
     <>
       <div style={{ maxWidth: 900 }}>
-        {loading ? (
-          <div style={MUTED}>Loading…</div>
-        ) : loadErr ? (
-          <div style={CARD}>
-            <div style={{ ...ERR, marginBottom: 12 }}>{loadErr}</div>
-            <button style={BTN_DARK} onClick={() => { setLoading(true); void loadStatus() }}>
-              Retry
-            </button>
-          </div>
-        ) : (
-          <>
-            <ProjectBanner projectRef={projectRef} />
+        <ProjectBanner projectRef={projectRef} />
 
-            {existing && (
-              <InterruptedNotice
-                existing={existing}
-                onResume={() => { if (existing.scope) void chooseScope(existing.scope) }}
+        {existing && (
+          <InterruptedNotice
+            existing={existing}
+            onResume={() => { if (existing.scope) void chooseScope(existing.scope) }}
+          />
+        )}
+
+        {result && <ResultSummary result={result} />}
+
+        <CcSection
+          title="Choose what to clear"
+          description="Each option lists exactly what it removes and what it leaves alone. Reviewing shows live counts; nothing is deleted until the final confirmation."
+        >
+          <div className={cc.quick} style={{ marginBottom: 0 }}>
+            {RESET_SCOPES.map(option => (
+              <ScopeCard
+                key={option}
+                scope={option}
+                chosen={scope === option}
+                busy={previewing || running}
+                onChoose={() => void chooseScope(option)}
               />
-            )}
+            ))}
+          </div>
+        </CcSection>
 
-            {result && <ResultSummary result={result} />}
+        {scope && previewing && !preview && <ControlCenterSkeleton />}
 
-            <h2 style={{ fontSize: 14, fontWeight: 700, color: '#1A2035', margin: '4px 0 12px' }}>
-              Order &amp; Finance Test Data Cleanup
-            </h2>
-
-            <div style={{ display: 'grid', gap: 16, gridTemplateColumns: '1fr' }}>
-              {RESET_SCOPES.map(option => (
-                <ScopeCard
-                  key={option}
-                  scope={option}
-                  chosen={scope === option}
-                  busy={previewing || running}
-                  onChoose={() => void chooseScope(option)}
-                />
-              ))}
-            </div>
-
-            {scope && preview && (
-              <div style={{ ...CARD, marginTop: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#1A2035', marginBottom: 10 }}>
-                  {RESET_TITLE[scope]} — what is in scope right now
-                </div>
-
-                {blocked ? (
-                  <BlockingNotice blocking={preview.blocking} />
-                ) : previewIsEmpty(preview.counts) ? (
-                  <div style={MUTED}>
-                    There is nothing in this scope. Nothing would be deleted.
-                  </div>
-                ) : (
-                  <>
-                    <CountTable counts={counts} />
-                    <div style={{ ...MUTED, marginTop: 10 }}>
-                      Storage impact: {formatStorageSize(storageBytes)}
-                      {typeof preview.counts.storage_objects === 'number'
-                        && ` across ${preview.counts.storage_objects} file(s)`}.
-                    </div>
-                    <div style={{ ...MUTED, marginTop: 4 }}>{RESET_NUMBERING_NOTE[scope]}</div>
-
-                    <div style={{ height: 1, background: '#EEF0F4', margin: '16px 0' }} />
-
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={LABEL} htmlFor="reset-reason">Why is this being cleared?</label>
-                      <input
-                        id="reset-reason"
-                        style={INPUT}
-                        value={reason}
-                        disabled={running}
-                        onChange={event => setReason(event.target.value)}
-                        placeholder="e.g. resetting the modules after the Order approval test run"
-                      />
-                    </div>
-
-                    <label style={{
-                      display: 'flex', gap: 9, alignItems: 'flex-start',
-                      fontSize: 12.5, color: '#3A4358', lineHeight: 1.55, marginBottom: 12,
-                    }}>
-                      <input
-                        type="checkbox"
-                        checked={acknowledged}
-                        disabled={running}
-                        onChange={event => setAcknowledged(event.target.checked)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <span>{RESET_ACKNOWLEDGEMENT}</span>
-                    </label>
-
-                    {canOfferNumberReset(scope) && (
-                      <NumberResetOption
-                        enabled={resetNumbers}
-                        acknowledged={numbersAcknowledged}
-                        disabled={running}
-                        onToggle={next => {
-                          setResetNumbers(next)
-                          if (!next) setNumbersAcknowledged(false)
-                        }}
-                        onAcknowledge={setNumbersAcknowledged}
-                      />
-                    )}
-
-                    <div style={{ marginBottom: 14 }}>
-                      <label style={LABEL} htmlFor="reset-phrase">
-                        Type <code style={{ fontFamily: 'inherit' }}>{RESET_CONFIRMATION[scope]}</code> to confirm
-                      </label>
-                      <input
-                        id="reset-phrase"
-                        style={INPUT}
-                        value={typed}
-                        disabled={running}
-                        onChange={event => setTyped(event.target.value)}
-                        autoComplete="off"
-                        spellCheck={false}
-                      />
-                    </div>
-
-                    {failure && <div style={{ ...ERR, marginBottom: 12 }} role="alert">{failure.message}</div>}
-
-                    {running && stage
-                      ? <StageList scope={scope} current={stage} />
-                      : (
-                        <button
-                          type="button"
-                          style={btnDanger(!canConfirm)}
-                          disabled={!canConfirm}
-                          onClick={() => setConfirmOpen(true)}
-                        >
-                          {RESET_TITLE[scope]}
-                        </button>
-                      )}
-                  </>
-                )}
+        {scope && preview && (
+          <CcSection title={`${RESET_TITLE[scope]} — what is in scope right now`}>
+            {blocked ? (
+              <BlockingNotice blocking={preview.blocking} />
+            ) : previewIsEmpty(preview.counts) ? (
+              <div className={cc.muted} style={{ fontSize: 12.5 }}>
+                There is nothing in this scope. Nothing would be deleted.
               </div>
-            )}
+            ) : (
+              <>
+                <CountTable counts={counts} />
+                <div className={cc.muted} style={{ fontSize: 12, marginTop: 10 }}>
+                  Storage impact: {formatStorageSize(storageBytes)}
+                  {typeof preview.counts.storage_objects === 'number'
+                    && ` across ${preview.counts.storage_objects} file(s)`}.
+                </div>
+                <div className={cc.muted} style={{ fontSize: 12, marginTop: 4 }}>{RESET_NUMBERING_NOTE[scope]}</div>
 
-            {failure && !preview && (
-              <div style={{ ...CARD, ...ERR }} role="alert">{failure.message}</div>
+                <div className={cc.divider} />
+
+                <CcField label="Why is this being cleared?">
+                  <input
+                    id="reset-reason"
+                    className={cc.fieldControl}
+                    value={reason}
+                    disabled={running}
+                    onChange={event => setReason(event.target.value)}
+                    placeholder="e.g. resetting the modules after the Order approval test run"
+                  />
+                </CcField>
+
+                <label className={cc.check} style={{ alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.55, marginBottom: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={acknowledged}
+                    disabled={running}
+                    onChange={event => setAcknowledged(event.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>{RESET_ACKNOWLEDGEMENT}</span>
+                </label>
+
+                {canOfferNumberReset(scope) && (
+                  <NumberResetOption
+                    enabled={resetNumbers}
+                    acknowledged={numbersAcknowledged}
+                    disabled={running}
+                    onToggle={next => {
+                      setResetNumbers(next)
+                      if (!next) setNumbersAcknowledged(false)
+                    }}
+                    onAcknowledge={setNumbersAcknowledged}
+                  />
+                )}
+
+                <CcField label={`Type ${RESET_CONFIRMATION[scope]} to confirm`}>
+                  <input
+                    id="reset-phrase"
+                    className={cc.fieldControl}
+                    style={{ maxWidth: 420 }}
+                    value={typed}
+                    disabled={running}
+                    onChange={event => setTyped(event.target.value)}
+                    autoComplete="off"
+                    spellCheck={false}
+                  />
+                </CcField>
+
+                {failure && <div className={cc.error} style={{ marginTop: 0, marginBottom: 12 }} role="alert">{failure.message}</div>}
+
+                {running && stage
+                  ? <StageList scope={scope} current={stage} />
+                  : (
+                    <button
+                      type="button"
+                      className={btnDanger}
+                      disabled={!canConfirm}
+                      onClick={() => setConfirmOpen(true)}
+                    >
+                      {RESET_TITLE[scope]}
+                    </button>
+                  )}
+              </>
             )}
-          </>
+          </CcSection>
+        )}
+
+        {failure && !preview && (
+          <div className={cc.error} style={{ marginTop: 0 }} role="alert">{failure.message}</div>
         )}
       </div>
 
@@ -455,23 +421,16 @@ export default function DataManagementPage() {
 function ProjectBanner({ projectRef }: { projectRef: string | null }) {
   if (!projectRef) {
     return (
-      <div style={{
-        background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 10,
-        padding: '14px 16px', marginBottom: 16, fontSize: 12.5, color: '#991B1B', lineHeight: 1.6,
-      }} role="alert">
-        <strong>The connected project could not be identified, so nothing can be cleared here.</strong>
-        <br />
+      <div className={`${cc.note} ${cc.noteRed}`} style={{ marginBottom: 16 }} role="alert">
+        <span className={cc.noteTitle}>The connected project could not be identified, so nothing can be cleared here.</span>
         Check the deployment’s Supabase configuration before using this page.
       </div>
     )
   }
   return (
-    <div style={{
-      background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 10,
-      padding: '12px 16px', marginBottom: 16, fontSize: 12.5, color: '#475569', lineHeight: 1.6,
-    }}>
+    <div className={cc.note} style={{ marginBottom: 16 }}>
       This clears data in the connected Supabase project{' '}
-      <strong style={{ color: '#1A2035' }}>{projectRef}</strong>. Every operational record in the
+      <strong style={{ color: '#111318' }}>{projectRef}</strong>. Every operational record in the
       chosen scope is deleted — nothing is spared for want of a tag.
     </div>
   )
@@ -485,14 +444,11 @@ function InterruptedNotice({ existing, onResume }: {
 }) {
   const stage = stageFromClaim(existing.stage)
   return (
-    <div style={{
-      background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10,
-      padding: '14px 16px', marginBottom: 16, fontSize: 12.5, color: '#92400E', lineHeight: 1.7,
-    }}>
-      <strong>
+    <div className={`${cc.note} ${cc.noteAmber}`} style={{ marginBottom: 16 }}>
+      <span className={cc.noteTitle}>
         A cleanup is in progress: {existing.scope ? RESET_TITLE[existing.scope] : 'a module reset'}.
-      </strong>
-      <div style={{ marginTop: 6 }}>
+      </span>
+      <div>
         Started by {existing.started_by}
         {existing.started_at && ` on ${new Date(existing.started_at).toLocaleString()}`}.
         {' '}Last completed stage: <strong>{RESET_STAGE_LABEL[stage]}</strong>.
@@ -501,7 +457,7 @@ function InterruptedNotice({ existing, onResume }: {
       {existing.failure && <div style={{ marginTop: 6 }}>It stopped because: {existing.failure}</div>}
       <div style={{ marginTop: 10 }}>
         {existing.mine
-          ? <button type="button" style={BTN_DARK} onClick={onResume}>Resume this cleanup</button>
+          ? <button type="button" className="boe-btn boe-btn-primary" onClick={onResume}>Resume this cleanup</button>
           : <span>Only the administrator who started it can finish it. Writes to the affected
               module are refused until it completes.</span>}
       </div>
@@ -518,40 +474,36 @@ function ScopeCard({ scope, chosen, busy, onChoose }: {
   onChoose: () => void
 }) {
   return (
-    <div style={{
-      ...CARD,
-      marginBottom: 0,
-      border: chosen ? '1.5px solid #1A2035' : '1px solid #E8EBF0',
-    }}>
-      <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1A2035', marginBottom: 8 }}>
-        {RESET_TITLE[scope]}
-      </div>
-      <Bullets title="Removes" items={RESET_REMOVES[scope]} tone="#3A4358" />
-      <Bullets title="Leaves alone" items={RESET_RETAINS[scope]} tone="#6B7384" />
-      <div style={{ ...MUTED, marginTop: 8 }}>
+    <div className={`${cc.quickCard}${chosen ? ` ${cc.chosen}` : ''}`}>
+      <div className={cc.quickHead}>{RESET_TITLE[scope]}</div>
+      <Bullets title="Removes" items={RESET_REMOVES[scope]} muted={false} />
+      <Bullets title="Leaves alone" items={RESET_RETAINS[scope]} muted />
+      <div className={cc.muted} style={{ fontSize: 12 }}>
         Requires typing <strong>{RESET_CONFIRMATION[scope]}</strong>. {RESET_NUMBERING_NOTE[scope]}
       </div>
-      <button
-        type="button"
-        style={{ ...BTN_GHOST, marginTop: 12, cursor: busy ? 'not-allowed' : 'pointer' }}
-        disabled={busy}
-        onClick={onChoose}
-      >
-        {chosen ? 'Refresh counts' : 'Review what this would delete'}
-      </button>
+      <div>
+        <button
+          type="button"
+          className="boe-btn boe-btn-ghost"
+          disabled={busy}
+          onClick={onChoose}
+        >
+          {chosen ? 'Refresh counts' : 'Review what this would delete'}
+        </button>
+      </div>
     </div>
   )
 }
 
-function Bullets({ title, items, tone }: {
+function Bullets({ title, items, muted }: {
   title: string
   items: readonly string[]
-  tone: string
+  muted: boolean
 }) {
   return (
-    <div style={{ marginTop: 8 }}>
-      <div style={{ ...LABEL, marginBottom: 4 }}>{title}</div>
-      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: tone, lineHeight: 1.65 }}>
+    <div>
+      <span className={cc.fieldLabel} style={{ marginBottom: 4 }}>{title}</span>
+      <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: muted ? '#6B7384' : '#3A4358', lineHeight: 1.65 }}>
         {items.map(item => <li key={item}>{item}</li>)}
       </ul>
     </div>
@@ -560,13 +512,11 @@ function Bullets({ title, items, tone }: {
 
 function CountTable({ counts }: { counts: { key: string; label: string; value: number }[] }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '5px 16px' }}>
+    <div className={cc.kv}>
       {counts.map(row => (
         <Fragment key={row.key}>
-          <div style={{ fontSize: 12.5, color: '#3A4358' }}>{row.label}</div>
-          <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1A2035', textAlign: 'right' }}>
-            {row.value}
-          </div>
+          <div className={cc.kvKey}>{row.label}</div>
+          <div className={cc.kvVal}>{row.value}</div>
         </Fragment>
       ))}
     </div>
@@ -575,12 +525,9 @@ function CountTable({ counts }: { counts: { key: string; label: string; value: n
 
 function BlockingNotice({ blocking }: { blocking: { kind: string; label?: string; reason?: string }[] }) {
   return (
-    <div style={{
-      background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8,
-      padding: '11px 14px', fontSize: 12.5, color: '#991B1B', lineHeight: 1.6,
-    }} role="alert">
-      <strong>This cleanup is refused: records that are not test data would have to be deleted.</strong>
-      <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+    <div className={`${cc.note} ${cc.noteRed}`} role="alert">
+      <span className={cc.noteTitle}>This cleanup is refused: records that are not test data would have to be deleted.</span>
+      <ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>
         {blocking.map((entry, index) => (
           <li key={`${entry.kind}-${index}`}>
             {entry.label ? <strong>{entry.label}</strong> : entry.kind}
@@ -609,10 +556,8 @@ function NumberResetOption({ enabled, acknowledged, disabled, onToggle, onAcknow
   onAcknowledge: (next: boolean) => void
 }) {
   return (
-    <div style={{
-      border: '1px solid #EEF0F4', borderRadius: 8, padding: '11px 14px', marginBottom: 12,
-    }}>
-      <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 12.5, color: '#3A4358' }}>
+    <div className={cc.note} style={{ marginBottom: 14, background: '#fff' }}>
+      <label className={cc.check} style={{ alignItems: 'flex-start', fontSize: 12.5 }}>
         <input
           type="checkbox"
           checked={enabled}
@@ -623,17 +568,14 @@ function NumberResetOption({ enabled, acknowledged, disabled, onToggle, onAcknow
         <span>
           <strong>Reset the Confirmed Order number series after cleanup</strong>
           <br />
-          <span style={MUTED}>
+          <span className={cc.muted} style={{ fontSize: 12 }}>
             Off by default. Runs only after the records are gone, and is refused if any Order,
             any submitted or approved PI, or any payment allocation still exists.
           </span>
         </span>
       </label>
       {enabled && (
-        <label style={{
-          display: 'flex', gap: 9, alignItems: 'flex-start',
-          fontSize: 12.5, color: '#3A4358', lineHeight: 1.55, marginTop: 10,
-        }}>
+        <label className={cc.check} style={{ alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.55, marginTop: 10 }}>
           <input
             type="checkbox"
             checked={acknowledged}
@@ -659,7 +601,7 @@ function StageList({ scope, current }: { scope: ResetScope; current: ResetStage 
         <div key={entry} style={{
           fontSize: 12.5,
           fontWeight: position === index ? 700 : 500,
-          color: position < index ? '#166534' : position === index ? '#1A2035' : '#B4BAC6',
+          color: position < index ? '#166534' : position === index ? '#111318' : '#B4BAC6',
         }}>
           {position < index ? '✓ ' : position === index ? '• ' : '  '}
           {RESET_STAGE_LABEL[entry]}
@@ -680,41 +622,27 @@ function FinalConfirmation({ scope, counts, resetNumbers, projectRef, onCancel, 
   onConfirm: () => void
 }) {
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={`${RESET_TITLE[scope]}?`}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(17,19,24,0.45)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, zIndex: 60,
-      }}
-    >
-      <div style={{
-        background: '#fff', borderRadius: 12, maxWidth: 460, width: '100%',
-        padding: '20px 22px', maxHeight: '85vh', overflowY: 'auto',
-      }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: '#1A2035', marginBottom: 6 }}>
-          {RESET_TITLE[scope]}?
-        </div>
-        <div style={{ ...MUTED, marginBottom: 14 }}>
-          This permanently deletes the following from project{' '}
-          <strong style={{ color: '#1A2035' }}>{projectRef ?? 'unknown'}</strong>. It cannot be undone.
-        </div>
-        <CountTable counts={counts} />
-        {resetNumbers && (
-          <div style={{ ...MUTED, marginTop: 12 }}>
-            The Confirmed Order number series will also restart at 0001, if nothing that uses a
-            number survives.
-          </div>
-        )}
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 18 }}>
-          <button type="button" style={BTN_GHOST} onClick={onCancel}>Cancel</button>
-          <button type="button" style={btnDanger(false)} onClick={onConfirm}>
+    <CcDialog
+      title={`${RESET_TITLE[scope]}?`}
+      subtitle={`This permanently deletes the following from project ${projectRef ?? 'unknown'}. It cannot be undone.`}
+      onClose={onCancel}
+      footer={
+        <>
+          <button type="button" className="boe-btn boe-btn-ghost" onClick={onCancel}>Cancel</button>
+          <button type="button" className={btnDanger} onClick={onConfirm}>
             {RESET_CONFIRMATION[scope]}
           </button>
+        </>
+      }
+    >
+      <CountTable counts={counts} />
+      {resetNumbers && (
+        <div className={cc.muted} style={{ fontSize: 12, marginTop: 12 }}>
+          The Confirmed Order number series will also restart at 0001, if nothing that uses a
+          number survives.
         </div>
-      </div>
-    </div>
+      )}
+    </CcDialog>
   )
 }
 
@@ -725,16 +653,11 @@ function ResultSummary({ result }: { result: RunResult }) {
     .filter(([, value]) => typeof value === 'number' && value > 0)
     .filter(([key]) => key !== 'storage_removed')
   return (
-    <div style={{
-      background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 10,
-      padding: '14px 16px', marginBottom: 16, fontSize: 12.5, color: '#166534', lineHeight: 1.7,
-    }} role="status">
-      <strong>{RESET_TITLE[result.scope]} completed.</strong>
-      <div style={{ marginTop: 6 }}>
-        {result.confirmedRemovedFiles} file(s) removed from storage.
-      </div>
+    <div className={`${cc.note} ${cc.noteGreen}`} style={{ marginBottom: 16 }} role="status">
+      <span className={cc.noteTitle}>{RESET_TITLE[result.scope]} completed.</span>
+      <div>{result.confirmedRemovedFiles} file(s) removed from storage.</div>
       {rows.length > 0 && (
-        <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+        <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
           {rows.map(([key, value]) => <li key={key}>{key.replace(/_/g, ' ')}: {value}</li>)}
         </ul>
       )}

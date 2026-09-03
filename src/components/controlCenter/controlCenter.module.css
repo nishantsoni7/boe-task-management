@@ -179,4 +179,44 @@
   .search input { width: 100%; }
   .search { flex: 1 1 100%; }
   .stats { grid-template-columns: repeat(2, 1fr); }
+  .recordId { min-width: 96px; }
+  .dialogFoot { flex-wrap: wrap; }
 }
+
+/* ── Notes by tone, for the System pages ──────────────────────────────────── */
+.noteAmber { color: #92400E; background: #FFFBEB; border-color: #FDE68A; }
+.noteRed   { color: #991B1B; background: #FEF2F2; border-color: #FECACA; }
+.noteGreen { color: #166534; background: #F0FDF4; border-color: #BBF7D0; }
+.noteTitle { display: block; font-weight: 700; margin-bottom: 2px; }
+
+/* Record rows (search results, preview chains) */
+.records { display: flex; flex-direction: column; gap: 6px; }
+.record {
+  display: flex; align-items: center; gap: 10px; text-align: left; width: 100%;
+  border: 1px solid #E8EBF0; border-radius: 8px; padding: 8px 12px; background: #fff;
+  font: inherit; color: inherit;
+}
+.recordBtn { cursor: pointer; }
+.recordBtn:hover { border-color: #C7CBD4; background: #FAFBFC; }
+.recordDanger { border-color: #FECACA; background: #FEF7F7; }
+.recordKeep { background: #FAFBFC; }
+.recordId { font-size: 13px; font-weight: 700; color: #111318; min-width: 150px; }
+.recordMeta { font-size: 12px; color: #6B7384; flex: 1; min-width: 0; }
+
+/* Key–value grid (counts) */
+.kv { display: grid; grid-template-columns: 1fr auto; gap: 5px 16px; font-size: 12.5px; }
+.kvKey { color: #3A4358; }
+.kvVal { font-weight: 700; color: #111318; text-align: right; }
+
+.divider { height: 1px; background: #EEF0F4; margin: 14px 0; }
+
+/* A card that is currently chosen */
+.chosen { border-color: #1A2035; box-shadow: 0 0 0 1px #1A2035; }
+
+/* Numbered step heading inside a System page */
+.step { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.stepNum {
+  width: 18px; height: 18px; border-radius: 50%; background: #EEF0F4; color: #4B5563;
+  font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
+}
+.stepTitle { font-size: 13px; font-weight: 700; color: #111318; }
