@@ -68,7 +68,7 @@ const stripComments = (source: string): string =>
     .filter(line => !line.trim().startsWith('//'))
     .join('\n')
 
-const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8'))
+const read = (p: string) => stripComments(readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n'))
 
 const LIST_PAGE = 'src/app/orders/drafts/page.tsx'
 const DETAIL_PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'

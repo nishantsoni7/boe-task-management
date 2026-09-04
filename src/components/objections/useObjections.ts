@@ -46,7 +46,10 @@ export function useObjections(token: string): ObjectionIndex {
     setLoading(false)
   }, [token])
 
-  useEffect(() => { void reload() }, [reload])
+  // Deferred to a microtask: reload() sets state (loading) as its first
+  // statement, before its first await, which would otherwise run
+  // synchronously inside this effect's own call stack.
+  useEffect(() => { queueMicrotask(() => { void reload() }) }, [reload])
 
   // The API returns newest first, so the first hit for a key is the current one.
   const byResult = new Map<string, ObjectionRow>()

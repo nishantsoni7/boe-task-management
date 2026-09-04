@@ -521,6 +521,9 @@ describe('the migration is placed correctly', () => {
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this migration reaches.
+      '20261105000000_holiday_half_day.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

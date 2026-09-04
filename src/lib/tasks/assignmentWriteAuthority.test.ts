@@ -34,7 +34,7 @@ import {
 } from '@/lib/tasks/assignmentNotificationWriter.server'
 import type { NotificationInsert } from '@/lib/notificationWrites'
 
-const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
+const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 
 const ASSIGNEE  = '11111111-1111-4111-8111-111111111111'
 const CREATOR   = '22222222-2222-4222-8222-222222222222'
@@ -634,6 +634,9 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this hotfix reaches.
+      '20261105000000_holiday_half_day.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

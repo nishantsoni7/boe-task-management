@@ -106,13 +106,15 @@ describe('1-4. quotations are protected and gated', () => {
     assert.equal(redactQuotationFields(task, caps.canViewQuotations).customer_name, 'Acme')
   })
 
-  test('manage_quotations without view_quotations confers nothing', () => {
+  test('manage_quotations without view_quotations still grants both — the stronger implies the weaker', () => {
+    // Reversed by 7094d0b ("fix(tasks): restore per-member quotation request
+    // access"): the old double-gate left a manage-only override unable to
+    // surface any UI at all, which was the actual defect. A stronger grant
+    // now always includes the weaker one, so this repairs itself instead of
+    // requiring a re-save.
     const caps = deriveQuotationCapabilities('member', allow('view', 'manage_quotations'))
-    assert.equal(caps.canViewQuotations, false)
-    assert.equal(
-      caps.canManageQuotations, false,
-      'a stored row violating the dependency must not produce management controls',
-    )
+    assert.equal(caps.canViewQuotations, true)
+    assert.equal(caps.canManageQuotations, true)
   })
 
   test('quotation actions need module entry, not just the grant', () => {

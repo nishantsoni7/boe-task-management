@@ -24,7 +24,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, sep } from 'node:path'
 
 /** The production SHA this phase started from. */
 const BASE = '700a30c7a978ee0f6bcc92c5616bd9d6b39978f8'
@@ -427,7 +427,7 @@ describe('this phase records no payment of any kind', () => {
       name: string; parentPath?: string; path?: string; isFile(): boolean
     }[]) {
       if (!file.isFile() || !/\.tsx?$/.test(file.name) || /\.test\./.test(file.name)) continue
-      const path = join(file.parentPath ?? file.path ?? 'src/app', file.name)
+      const path = join(file.parentPath ?? file.path ?? 'src/app', file.name).split(sep).join('/')
       if (now(path).includes("rpc('approve_order_submission'")) callers.push(path)
     }
     assert.deepEqual(callers, [DETAIL_PAGE])

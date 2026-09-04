@@ -28,7 +28,7 @@ import { join } from 'node:path'
 import { MY_TASK_TAB_LABELS, AWAITING_APPROVAL_LABEL } from './myTaskTabs'
 
 const ROOT = process.cwd()
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
 /** Comments explain what the file no longer does — absence checks read code only. */
 const codeOf = (src: string) =>

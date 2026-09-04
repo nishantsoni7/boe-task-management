@@ -76,7 +76,10 @@ export function ObjectionQueue({
     setLoading(false)
   }, [token, subject, scopeQuery])
 
-  useEffect(() => { void load() }, [load])
+  // Deferred to a microtask: load() sets state (loading) as its first
+  // statement, before its first await, which would otherwise run
+  // synchronously inside this effect's own call stack.
+  useEffect(() => { queueMicrotask(() => { void load() }) }, [load])
 
   const review = async (id: string, status: 'approved' | 'rejected') => {
     // A rejection without a word back is a dead end for the employee, so the

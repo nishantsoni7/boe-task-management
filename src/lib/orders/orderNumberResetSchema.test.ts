@@ -319,8 +319,8 @@ describe('a cleanup can still delete an Order that has documents', () => {
 })
 
 describe('and its files are swept with everything else', () => {
-  const route = readFileSync(join(ROOT, 'src/app/api/orders/test-data-cleanup/route.ts'), 'utf8')
-  const helper = readFileSync(join(ROOT, 'src/lib/orders/submissionFilesServer.ts'), 'utf8')
+  const route = lf(readFileSync(join(ROOT, 'src/app/api/orders/test-data-cleanup/route.ts'), 'utf8'))
+  const helper = lf(readFileSync(join(ROOT, 'src/lib/orders/submissionFilesServer.ts'), 'utf8'))
 
   test('the route sweeps the Order\'s OWN prefix, before it finalizes', () => {
     const sweepAt = route.indexOf('removeAllObjectsForOrder(')

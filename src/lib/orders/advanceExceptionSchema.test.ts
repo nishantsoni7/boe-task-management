@@ -175,7 +175,7 @@ describe('Phase B is one additive migration, correctly sequenced', () => {
     // a change to any of these four files is a change to the past.
     const digests = Object.fromEntries(APPLIED.map(file => [
       file,
-      createHash('sha256').update(readFileSync(join(MIGRATIONS_DIR, file))).digest('hex'),
+      createHash('sha256').update(readMigration(file)).digest('hex'),
     ]))
     assert.deepEqual(digests, {
       '20260908000000_order_pi_submissions.sql':

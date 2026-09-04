@@ -196,7 +196,7 @@ describe('the menu escapes the card that clips it', () => {
 
   test('and it is positioned against the viewport, not an offset parent', () => {
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
-    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
     assert.ok(body.includes("position: 'fixed'"),
       'a portalled panel is placed against the viewport')
     assert.ok(!body.includes("position: 'absolute'"),
@@ -215,7 +215,7 @@ describe('the menu escapes the card that clips it', () => {
 
   test('nothing was solved by padding the page or hiding actions', () => {
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
-    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
     assert.ok(!/minHeight|paddingBottom:\s*\d{3}/.test(body),
       'no empty page height was added to make room')
     assert.ok(!/slice\(0,|\.filter\(/.test(body),
@@ -225,7 +225,7 @@ describe('the menu escapes the card that clips it', () => {
 
 describe('placement is measured, and re-measured', () => {
   const menu = view.slice(view.indexOf('function RowActionsMenu'))
-  const body = menu.slice(0, menu.indexOf('\n}\n'))
+  const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
 
   test('the real panel height decides the flip', () => {
     assert.ok(body.includes('panel.offsetHeight'),
@@ -282,7 +282,7 @@ describe('placement is measured, and re-measured', () => {
 describe('the action lists are untouched', () => {
   test('the menu renders every action it is handed, in order', () => {
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
-    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
     assert.ok(body.includes('actions.map(action => ('),
       'one menuitem per action, no slicing and no reordering')
     assert.ok(body.includes('if (actions.length === 0) return null'),
@@ -321,7 +321,7 @@ describe('the action lists are untouched', () => {
     // The component applies no permission logic of its own — proved by absence,
     // which is what keeps a presentation fix from becoming an access change.
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
-    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===', 'profile']) {
       assert.ok(!body.includes(gate),
         `RowActionsMenu must not reference ${gate} — it draws what it is given`)
@@ -681,7 +681,7 @@ function allInputs() {
 describe('a menu entry shows which action is about to run', () => {
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
   const menu = view.slice(view.indexOf('function RowActionsMenu'))
-  const body = menu.slice(0, menu.indexOf('\n}\n'))
+  const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
 
   /** One CSS rule's declaration block, by exact selector. */
   const ruleFor = (selector: string): string => {
@@ -906,7 +906,7 @@ describe('the primary row shows eight columns and no money detail', () => {
 
 describe('every allocation status opens the payment record', () => {
   const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-  const body = badge.slice(0, badge.indexOf('\n}\n'))
+  const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
 
   test('all four statuses render the same control — none is special-cased', () => {
     // zero / partial / full / over all reach the same <button>: the component
@@ -1049,7 +1049,7 @@ describe('the allocation breakdown', () => {
 
 describe('every action carries an icon and keeps its words', () => {
   const menu = view.slice(view.indexOf('function RowActionsMenu'))
-  const menuBody = menu.slice(0, menu.indexOf('\n}\n'))
+  const menuBody = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
 
   test('the icons come from the project’s existing library', () => {
     assert.ok(view.includes("from 'lucide-react'"), 'no new icon dependency')
@@ -1116,7 +1116,7 @@ describe('every action carries an icon and keeps its words', () => {
     // screen reader, title for a pointer. IconAction applies both from one prop,
     // so no call site can forget one.
     const icon = view.slice(view.indexOf('function IconAction'))
-    const body = icon.slice(0, icon.indexOf('\n}\n'))
+    const body = icon.slice(0, icon.indexOf('\nfunction RowActionsMenu'))
     assert.ok(body.includes('aria-label={label}'))
     assert.ok(body.includes('title={label}'))
     assert.ok(body.includes('aria-hidden="true"'), 'and the glyph itself is not announced')
@@ -1217,7 +1217,7 @@ describe('this is a presentation change, and costs no extra request', () => {
 
   test('opening the badge triggers no query at all', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const body = badge.slice(0, badge.indexOf('\n}\n'))
+    const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
       assert.ok(!body.includes(call), `${call} must not appear in a badge`)
     }
@@ -1242,7 +1242,7 @@ describe('nothing about who may do what has moved', () => {
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const body = badge.slice(0, badge.indexOf('\n}\n'))
+    const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===']) {
       assert.ok(!body.includes(gate), `a status badge must not reference ${gate}`)
     }
@@ -1250,7 +1250,7 @@ describe('nothing about who may do what has moved', () => {
 
   test('the menu still decides no permission of its own', () => {
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
-    const body = menu.slice(0, menu.indexOf('\n}\n'))
+    const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'profile']) {
       assert.ok(!body.includes(gate), `RowActionsMenu must not reference ${gate}`)
     }
@@ -1262,7 +1262,7 @@ describe('nothing about who may do what has moved', () => {
 describe('the allocation status reads as a status, not a button', () => {
   const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
   const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-  const body = badge.slice(0, badge.indexOf('\n}\n'))
+  const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
 
   test('the coloured chip sits at the table’s own muted typography', () => {
     // IT WAS TOO BIG: an 11px chip with 2px/8px padding read as a button
@@ -1416,7 +1416,7 @@ describe('the earlier corrections still hold', () => {
     assert.ok(!perRow.test(view), 'no allocation read inside a row loop')
     assert.ok(!view.includes('const allocationProbe'), 'the dropdown’s probe query is gone')
     const icon = view.slice(view.indexOf('function IconAction'))
-    const body = icon.slice(0, icon.indexOf('\n}\n'))
+    const body = icon.slice(0, icon.indexOf('\nfunction RowActionsMenu'))
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
       assert.ok(!body.includes(call), `an icon button must not ${call}`)
     }

@@ -175,7 +175,7 @@ describe('registration', () => {
 
 describe('the Control Center label', () => {
   const API = readFileSync(join(process.cwd(),
-    'src/app/api/control-center/permissions/employees/[id]/route.ts'), 'utf8')
+    'src/app/api/control-center/permissions/employees/[id]/route.ts'), 'utf8').replace(/\r\n/g, '\n')
 
   test("image_editor's `create` is DISPLAYED as 'Use'", () => {
     // The internal key and the displayed word are different on purpose. This is

@@ -16,7 +16,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 
 import { ADMIN_CLIENT_ENV, adminClient, adminClientConfigured } from './admin'
 
@@ -80,10 +80,11 @@ describe('the credential BOE actually uses', () => {
       // This file must skip ITSELF, and comment-stripping cannot do it: the
       // list above is executable code, not prose. One exact path, not a
       // pattern, and nothing in this file constructs a client.
-      if (relative(ROOT, file) === SELF) continue
+      const relPath = relative(ROOT, file).split(sep).join('/')
+      if (relPath === SELF) continue
       const text = stripComments(readFileSync(file, 'utf8'))
       for (const v of variants) {
-        if (text.includes(v)) found.push(`${relative(ROOT, file)}: ${v}`)
+        if (text.includes(v)) found.push(`${relPath}: ${v}`)
       }
     }
     assert.deepEqual(found, [],

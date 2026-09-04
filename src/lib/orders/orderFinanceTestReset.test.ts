@@ -51,7 +51,7 @@ import {
 } from './testDataReset'
 
 const ROOT = process.cwd()
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
 const MIGRATION = 'supabase/migrations/20261010000000_order_submission_and_finance_test_data_reset.sql'
 const ROUTE = 'src/app/api/orders/test-data-reset/route.ts'
@@ -338,6 +338,10 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: two nullable/defaulted columns and one CHECK
+      // constraint on payroll_holidays, an Attendance/Payroll table. It creates
+      // no table and touches neither the reset protocol nor the deletion claim.
+      '20261105000000_holiday_half_day.sql',
     ])
   })
 

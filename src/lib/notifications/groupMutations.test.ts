@@ -308,6 +308,9 @@ describe('34/35. no regression into suppressed territory', () => {
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this module creates.
+      '20261105000000_holiday_half_day.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

@@ -20,9 +20,44 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
+
+const BINARY_EXT = /\.(png|jpe?g|gif|ico|woff2?|ttf|eot|pdf)$/i
+
+/**
+ * A pure-JS stand-in for `grep -rn`, portable across shells. The previous
+ * `execSync('grep ... 2>/dev/null || true')` depended on a POSIX shell;
+ * Windows' default cmd.exe (what execSync spawns there) has neither `grep`
+ * nor `/dev/null`, so the command silently produced empty output instead of
+ * throwing — turning both call sites below into permanently-empty greps that
+ * happened to pass one of the two by coincidence (its assertion expected
+ * nothing found).
+ */
+function grepLines(dirs: string[], needle: string): Array<{ file: string; line: string }> {
+  const hits: Array<{ file: string; line: string }> = []
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) { walk(full); continue }
+      if (BINARY_EXT.test(entry.name)) continue
+      const text = readFileSync(full, 'utf8')
+      const rel = full.split('\\').join('/')
+      for (const line of text.split('\n')) {
+        if (line.includes(needle)) hits.push({ file: rel, line })
+      }
+    }
+  }
+  for (const dir of dirs) walk(dir)
+  return hits
+}
+
+/** Distinct files (not `.test.` files) containing at least one match. */
+function grepFiles(dirs: string[], needle: string): string[] {
+  return [...new Set(grepLines(dirs, needle).map(h => h.file))].filter(f => !/\.test\./.test(f))
+}
 
 const FIX = 'supabase/migrations/20261006000000_payment_participant_and_order_total_security.sql'
 const ATTRIBUTION = 'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql'
@@ -31,12 +66,13 @@ const GRANTS = 'supabase/tests/participant_predicate_grants.sql'
 const SCHEMA = 'supabase/tests/_production_shaped_schema.sql'
 const RUNNER = 'supabase/tests/run_security_suite.sh'
 
-const fix = readFileSync(FIX, 'utf8')
-const attribution = readFileSync(ATTRIBUTION, 'utf8')
-const suite = readFileSync(SUITE, 'utf8')
-const grants = readFileSync(GRANTS, 'utf8')
-const schema = readFileSync(SCHEMA, 'utf8')
-const runner = readFileSync(RUNNER, 'utf8')
+const readText = (p: string) => readFileSync(p, 'utf8').replace(/\r\n/g, '\n')
+const fix = readText(FIX)
+const attribution = readText(ATTRIBUTION)
+const suite = readText(SUITE)
+const grants = readText(GRANTS)
+const schema = readText(SCHEMA)
+const runner = readText(RUNNER)
 
 /** One function's definition, isolated from the rest of the migration. */
 function body(sql: string, name: string): string {
@@ -251,9 +287,7 @@ describe('exposure 2 — the Order total', () => {
   })
 
   test('and no service-role caller exists anywhere in the repository', () => {
-    const hits = execSync(
-      "grep -rln \"rpc('order_linked_payment_total'\" src/ scripts/ 2>/dev/null || true",
-      { encoding: 'utf8' }).split('\n').filter(Boolean).filter(f => !/\.test\./.test(f))
+    const hits = grepFiles(['src', 'scripts'], "rpc('order_linked_payment_total'")
     // One call site, and it is the browser modal. A server route using a
     // service-role client would appear here and would change the ACL decision.
     assert.deepEqual(hits, ['src/app/orders/[id]/OrderAmendmentModals.tsx'])
@@ -338,12 +372,9 @@ describe('exposure 3 — the EXECUTE grant that was never revoked', () => {
 
   test('no code calls the predicate as an RPC, which is the other half of that argument', () => {
     // Only a comment refers to it; there is no invocation anywhere in src/.
-    const hits = execSync(
-      "grep -rn 'can_read_payment_as_participant' src/ 2>/dev/null || true",
-      { encoding: 'utf8' })
-      .split('\n')
-      .filter(l => l.trim() && !/\.test\./.test(l))
-      .filter(l => /\.rpc\(|rpc\(['"`]can_read_payment_as_participant/.test(l))
+    const hits = grepLines(['src'], 'can_read_payment_as_participant')
+      .filter(h => !/\.test\./.test(h.file))
+      .filter(h => /\.rpc\(|rpc\(['"`]can_read_payment_as_participant/.test(h.line))
     assert.deepEqual(hits, [], 'a real RPC call would change the service_role analysis')
   })
 })
@@ -575,6 +606,12 @@ describe('the applied migrations are frozen', () => {
     // The file is not touched. This list is where applied status lives.
     ['supabase/migrations/20261016000000_notifications_link_activity_log.sql',
      '9d586c1e27cb00ad4ad3724a125d5f454e222ce8729efe7a0a6dafab29338fa8'],
+    // Half-day company holidays. APPLIED: `supabase migration list` confirms
+    // Local and Remote both carry 20261105000000. holiday_type/half_session
+    // are added to payroll_holidays as nullable/defaulted columns, so every
+    // existing row (including full-day holidays) is unaffected.
+    ['supabase/migrations/20261105000000_holiday_half_day.sql',
+     '0f2fe234b336b8f574ba5b148b2b2f2a907331544c6b8c33f8fb5c0b1d100265'],
   ]
 
   test('each applied migration still hashes to the bytes that were applied', () => {
@@ -587,7 +624,13 @@ describe('the applied migrations are frozen', () => {
     // a reason that had nothing to do with the migrations. A pinned literal
     // cannot rot that way.
     for (const [file, expected] of FROZEN) {
-      const actual = createHash('sha256').update(readFileSync(file)).digest('hex')
+      // Text-normalized, not the raw disk bytes: `supabase db push` applies
+      // the git-tracked (LF) content, but a Windows checkout with
+      // core.autocrlf=true rewrites these files to CRLF on disk. Hashing the
+      // raw bytes would make this test fail on every such checkout even
+      // though nothing about the migration changed — exactly the false
+      // positive this list exists to avoid.
+      const actual = createHash('sha256').update(readFileSync(file, 'utf8').replace(/\r\n/g, '\n')).digest('hex')
       assert.equal(actual, expected,
         `${file} must not change: it is applied. Correct the database with a new migration instead.`)
     }
@@ -755,6 +798,9 @@ describe('the applied migrations are frozen', () => {
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this list already accounts for.
+      '20261105000000_holiday_half_day.sql',
     ])
   })
 

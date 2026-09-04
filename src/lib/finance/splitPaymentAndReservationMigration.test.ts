@@ -23,7 +23,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
 
 const MIGRATION =
   'supabase/migrations/20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
@@ -31,7 +32,7 @@ const SUITE   = 'supabase/tests/run_order_number_reservation_suite.sh'
 const SCHEMA  = 'supabase/tests/_order_number_reservation_shaped_schema.sql'
 const ASSERTS = 'supabase/tests/order_number_reservation_assertions.sql'
 
-const sql = readFileSync(MIGRATION, 'utf8')
+const sql = readFileSync(MIGRATION, 'utf8').replace(/\r\n/g, '\n')
 
 /** One function's whole body, from its CREATE to the `$$;` that ends it. */
 function body(source: string, name: string): string[] {
@@ -367,7 +368,12 @@ describe('the runnable suite exists, and proves what text cannot', () => {
     for (const file of [SUITE, SCHEMA, ASSERTS]) {
       assert.ok(existsSync(file), `${file} is missing`)
     }
-    assert.ok(statSync(SUITE).mode & 0o111, 'the runner must be executable')
+    // Read the mode git actually tracks, not fs.statSync's: NTFS has no execute
+    // bit, so a Windows checkout reports 100666 for every file regardless of
+    // what is committed, and the check would fail for a reason that has nothing
+    // to do with the runner.
+    const tracked = execFileSync('git', ['ls-files', '-s', SUITE], { encoding: 'utf8' })
+    assert.match(tracked, /^100755 /, 'the runner must be executable')
   })
 
   test('the runner applies THIS migration, and refuses to be vacuous', () => {
