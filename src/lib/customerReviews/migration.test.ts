@@ -112,6 +112,9 @@ describe('the migration is one file, correctly sequenced', () => {
       // transition_customer_review_test_card() to attribute the reward to the
       // month of submission, and touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this module creates.
+      '20261105000000_holiday_half_day.sql',
     ])
   })
 

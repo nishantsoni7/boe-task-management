@@ -9,7 +9,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { createHash } from 'node:crypto'
 
-const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
+const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const MIGRATION = 'supabase/migrations/20261016000000_notifications_link_activity_log.sql'
 const sql = read(MIGRATION)
 /**
@@ -174,6 +174,9 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // transition_customer_review_test_card() to attribute the reward to the
       // month of submission, and touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Half-day company holidays: adds holiday_type/half_session to
+      // payroll_holidays. Touches nothing this migration reaches.
+      '20261105000000_holiday_half_day.sql',
     ])
   })
 

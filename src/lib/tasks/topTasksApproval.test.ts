@@ -59,9 +59,32 @@ test('no two migrations share a version stamp', () => {
   assert.equal(new Set(stamps).size, stamps.length, 'duplicate migration version stamp')
 })
 
-test('it is the newest migration, so it cannot apply ahead of anything', () => {
+test('everything after it is later, unrelated work — it does not apply ahead of any of it', () => {
+  // THIS FILE IS NO LONGER THE NEWEST, and that is fine. Later branches have
+  // since merged behind it. Each is named on purpose: a stray file landing
+  // here unaccounted for still fails this test, which is the property the
+  // original "is the newest" assertion was really defending.
   const files = fs.readdirSync('supabase/migrations').filter(f => /^\d{14}_/.test(f)).sort()
-  assert.equal(files[files.length - 1], MIGRATION_FILE)
+  const at = files.indexOf(MIGRATION_FILE)
+  assert.ok(at >= 0, '118 is present')
+  assert.deepEqual(files.slice(at + 1), [
+    '20261020000000_register_image_editor_module.sql',
+    '20261021000000_seed_customer_review_test_cards.sql',
+    '20261022000000_image_editor_result_history.sql',
+    '20261023000000_review_workflow_ai_drafts.sql',
+    '20261025000000_review_workflow_remove_legacy_test_data.sql',
+    '20261026000000_review_workflow_batch_approval.sql',
+    '20261027000000_review_workflow_generation_claims.sql',
+    '20261028000000_assets_access_manage_access_records.sql',
+    '20261029000000_asset_handover_acknowledgement.sql',
+    '20261030000000_review_workflow_deletion_and_replacement.sql',
+    '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+    '20261101000000_boe_credits_foundation.sql',
+    '20261102000000_boe_credits_review_reward.sql',
+    '20261103000000_boe_credits_attendance_redemption.sql',
+    '20261104000000_boe_credits_phase_1d.sql',
+    '20261105000000_holiday_half_day.sql',
+  ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
 test('a one-time cleanup reaches the rows the trigger never could', () => {

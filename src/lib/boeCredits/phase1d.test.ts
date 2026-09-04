@@ -51,10 +51,11 @@ function* walk(dir: string): Generator<string> {
 // ── 1. The file ─────────────────────────────────────────────────────────────
 
 describe('the file, and where it sits', () => {
-  test('it is the newest migration and follows Phase 1C', () => {
+  test('it immediately follows Phase 1C, with nothing inserted between them', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(all[all.length - 1], FILE)
-    assert.equal(all[all.length - 2], '20261103000000_boe_credits_attendance_redemption.sql')
+    const at = all.indexOf(FILE)
+    assert.ok(at >= 0, 'the file exists in the migrations directory')
+    assert.equal(all[at - 1], '20261103000000_boe_credits_attendance_redemption.sql')
   })
 
   test('it creates exactly the three Phase 1D tables and alters only credits tables', () => {
