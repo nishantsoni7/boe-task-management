@@ -1,6 +1,21 @@
+> ## ⚠️ SUPERSEDED in places
+>
+> This file is **historical**. The company context and long-term vision of a
+> "modular internal operating system for BOE" are still the direction, and are
+> carried forward in
+> [../BOE Master Context/01_Project_Master_Context.md](../BOE%20Master%20Context/01_Project_Master_Context.md).
+>
+> **Its scope statement is not current.** "Phase 1 focuses ONLY on task
+> management and operational accountability" describes a system that has since
+> shipped Attendance, Payroll, BOE Credits, Assets & Access, Orders, Finance,
+> Meetings and more. For what is actually implemented today, read
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md).
+> The canonical entry point is
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md).
+
 # FILE 1 → `docs/PROJECT_CONTEXT.md`
 
-# BOE Task Management System — Project Context
+# BOE Task Management System — Project Context (historical)
 
 ## Company
 
