@@ -3,7 +3,6 @@
 // so per-day lookups are O(1) during calendar building.
 
 import { createClient } from '@supabase/supabase-js'
-import type { EngineHoliday } from './types'
 
 function serviceClient() {
   return createClient(
@@ -31,6 +30,6 @@ export async function fetchHolidaySet(
 
   if (error) throw new Error(`Failed to fetch payroll holidays: ${error.message}`)
 
-  const holidays: EngineHoliday[] = data ?? []
+  const holidays: { holiday_date: string }[] = data ?? []
   return new Set(holidays.map(h => h.holiday_date))
 }

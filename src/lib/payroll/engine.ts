@@ -7,6 +7,7 @@ import type {
   EnginePeriod,
   EngineAttendanceRecord,
   EngineHoliday,
+  HolidayHalfSession,
   EnginePendingAdjustment,
   EngineOutcome,
   EngineSkip,
@@ -31,6 +32,7 @@ import {
 import { DEFAULT_PAYROLL_SETTINGS, type PayrollSettings } from './settings'
 import { roundRupees, sumRupees } from './money'
 import { redemptionCovers, type AttendanceCreditRedemption } from '../boeCredits/attendanceRedemption'
+import { buildHalfWindowSettings, clipAttendanceToWorkingHalf } from './halfDayHoliday'
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -84,7 +86,9 @@ export function generatePayrollForEmployee(
   const calendar = buildWorkingDayCalendar(employee, period, holidays, settings)
 
   // Step 4 — Classify each working day and produce per-day deduction lines
-  const dayResults = classifyAttendanceDays(calendar.workingDays, attendanceRecords, rates, corrections, settings)
+  const dayResults = classifyAttendanceDays(
+    calendar.workingDays, attendanceRecords, rates, corrections, settings, calendar.halfDayHolidays,
+  )
 
   // Step 5 — Aggregate across all working days
   const aggregates = aggregateMonthlyTotals(dayResults, calendar)
@@ -255,6 +259,11 @@ type CalendarResult = {
   // the day-level view can show a weekly off as a weekly off rather than as a
   // gap — no aggregate reads this.
   excludedDays: ExcludedDay[]
+  // Half-day holidays, by date — kept IN workingDays (unlike a full-day
+  // holiday) because the other half is still a normal working obligation.
+  // classifyAttendanceDays reads this to scope classification to the
+  // working half. See src/lib/payroll/halfDayHoliday.ts.
+  halfDayHolidays: Map<string, HolidayHalfSession>
 }
 
 function buildWorkingDayCalendar(
@@ -264,7 +273,18 @@ function buildWorkingDayCalendar(
   s: PayrollSettings,
 ): CalendarResult {
   const { payroll_month, payroll_year } = period
-  const holidaySet = new Set(holidays.map(h => h.holiday_date))
+  // Only a FULL-DAY holiday excludes the date entirely — unchanged from
+  // before holiday_type existed. A half-day holiday stays in the calendar;
+  // see halfDayHolidays below.
+  const fullDayHolidaySet = new Set(
+    holidays.filter(h => h.holiday_type === 'full_day').map(h => h.holiday_date),
+  )
+  const halfDayHolidays = new Map<string, HolidayHalfSession>(
+    holidays
+      .filter((h): h is EngineHoliday & { half_session: HolidayHalfSession } =>
+        h.holiday_type === 'half_day' && h.half_session != null)
+      .map(h => [h.holiday_date, h.half_session]),
+  )
 
   // Build all YYYY-MM-DD strings for the month.
   // Date.UTC(year, month, 0) gives the last day of the previous month,
@@ -277,14 +297,16 @@ function buildWorkingDayCalendar(
     allDays.push(`${payroll_year}-${mm}-${String(d).padStart(2, '0')}`)
   }
 
-  // Exclude Sundays (UTC day-of-week = 0) and holidays.
+  // Exclude Sundays (UTC day-of-week = 0) and full-day holidays. A half-day
+  // holiday is deliberately NOT excluded here — it stays a working day, just
+  // one classifyAttendanceDays evaluates against the working half only.
   // UTC construction is correct here because dates are date-only values —
   // day-of-week is the same in IST and UTC for any given calendar date.
   const excludedDays: ExcludedDay[] = []
   const nonSundayNonHoliday = allDays.filter(date => {
     const dow = new Date(`${date}T00:00:00Z`).getUTCDay()
     if (dow === s.weekly_off_day) { excludedDays.push({ date, reason: 'weekly_off' }); return false }
-    if (holidaySet.has(date)) { excludedDays.push({ date, reason: 'holiday' });    return false }
+    if (fullDayHolidaySet.has(date)) { excludedDays.push({ date, reason: 'holiday' }); return false }
     return true
   })
 
@@ -299,7 +321,7 @@ function buildWorkingDayCalendar(
         return false
       })
 
-  return { workingDays, fullMonthWorkingDays, excludedDays }
+  return { workingDays, fullMonthWorkingDays, excludedDays, halfDayHolidays }
 }
 
 // ─── Step 6: Paid leave entitlement ──────────────────────────────────────────
@@ -337,11 +359,12 @@ function classifyAttendanceDays(
   rates: PayrollRates,
   corrections: AttendanceDayCorrection[],
   s: PayrollSettings,
+  halfDayHolidays: Map<string, HolidayHalfSession>,
 ): DayResult[] {
   const byDate = new Map(attendanceRecords.map(r => [r.attendance_date, r]))
   const correctionByDate = new Map(corrections.map(c => [c.attendance_date, c]))
   return workingDays.map(date =>
-    classifySingleDay(date, byDate.get(date), rates, s, correctionByDate.get(date)),
+    classifySingleDay(date, byDate.get(date), rates, s, correctionByDate.get(date), halfDayHolidays.get(date)),
   )
 }
 
@@ -351,6 +374,7 @@ function classifySingleDay(
   rates: PayrollRates,
   s: PayrollSettings,
   correction?: AttendanceDayCorrection,
+  halfDayHolidaySession?: HolidayHalfSession,
 ): DayResult {
   // The raw record is kept alongside the effective one so the day-level view
   // can show the admin what the machine said next to what payroll used.
@@ -385,6 +409,34 @@ function classifySingleDay(
       deduction_lines: [],
       ...punches,
       ...provenance,
+    }
+  }
+
+  // A half-day company holiday exempts only the declared half; the other
+  // half is a normal working obligation. Evaluated by recursing into THIS
+  // SAME function with a settings variant scoped to the working half (see
+  // halfDayHoliday.ts) — same classification, same late/early/missing-punch
+  // handling, just a different schedule and halved thresholds. The raw
+  // record is also CLIPPED to the working half's window first: punch time
+  // spent in the exempt half must not count toward the working half's
+  // presence, which halving the thresholds alone does not guarantee (an
+  // employee who worked long enough in the exempt half could otherwise still
+  // clear the halved bar for a half they never attended). The one
+  // deliberate rule on top: a no-show for the required half is capped at
+  // half a day, never a full day, since only half a day was ever owed.
+  if (halfDayHolidaySession) {
+    const halfWindowSettings = buildHalfWindowSettings(halfDayHolidaySession, s)
+    const clippedRecord = clipAttendanceToWorkingHalf(record, halfWindowSettings)
+    const subResult = classifySingleDay(date, clippedRecord, rates, halfWindowSettings, correction)
+    const capped = subResult.classification === 'full_absent'
+      ? { ...subResult, classification: 'half_day' as const }
+      : subResult
+    // raw_check_in_at/raw_check_out_at must show what the machine actually
+    // said, never the clipped values used only to decide the classification.
+    return {
+      ...capped,
+      raw_check_in_at:  record?.check_in_at  ?? null,
+      raw_check_out_at: record?.check_out_at ?? null,
     }
   }
 

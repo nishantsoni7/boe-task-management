@@ -343,7 +343,7 @@ export async function fetchHolidaysForPeriod(
 
   const { data, error } = await svc
     .from('payroll_holidays')
-    .select('holiday_date')
+    .select('holiday_date, holiday_type, half_session')
     .gte('holiday_date', start)
     .lt('holiday_date', end)
 

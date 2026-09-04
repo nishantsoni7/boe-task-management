@@ -322,7 +322,7 @@ describe('22. a single punch on a non-working day costs nothing', () => {
   })
 
   test('company holiday', () => {
-    const holidays: EngineHoliday[] = [{ holiday_date: iso(14) }]
+    const holidays: EngineHoliday[] = [{ holiday_date: iso(14), holiday_type: 'full_day', half_session: null }]
     const r = run(monthWith(inOnly(14, 11, 45, 'confirmed')), [], holidays)
 
     assert.equal(classificationOn(r, 14), 'holiday')
