@@ -132,8 +132,10 @@ export function FinanceLayout({
   // payment is already reachable from Payment Requests, so a third top-level
   // section for it duplicated a workflow rather than adding one. `badge` is
   // undefined only while the count query is in flight, or when the
-  // classification columns are not yet in the database — a real zero renders
-  // as "0" rather than disappearing.
+  // classification columns are not yet in the database — a real zero is
+  // rendered as no badge at all (see the `> 0` guard below), matching the
+  // Confirmed Payments page's own empty state rather than showing a "0" next
+  // to a page that has nothing on it.
   const navItems: { label: string; path: string; icon: React.ReactNode; badge?: number }[] = [
     { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} /> },
     { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, badge: receivedCounts.all },
@@ -193,8 +195,11 @@ export function FinanceLayout({
                 </span>
                 {item.label}
                 {/* Neutral volume badge — grey on grey, never the red
-                    unread-alert styling. */}
-                {typeof item.badge === 'number' && (
+                    unread-alert styling. Hidden at a real zero: a badge
+                    reading "0" beside a page with nothing on it describes
+                    the same fact twice, once as a number and once as the
+                    page's own empty state. */}
+                {typeof item.badge === 'number' && item.badge > 0 && (
                   <span style={{
                     marginLeft: 'auto', flexShrink: 0,
                     fontSize: '10px', fontWeight: 700, color: '#3D4455',
