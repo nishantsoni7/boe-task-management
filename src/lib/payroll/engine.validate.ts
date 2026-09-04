@@ -415,7 +415,7 @@ scenario('S12  Net salary floor at zero — large negative adjustment clamps to 
 // Expect:  working_days = 25, days_present = 25, zero deductions
 // ─────────────────────────────────────────────────────────────────────────────
 scenario('S13  Payroll holiday excluded — working_days = 25, holiday attendance ignored', () => {
-  const holidays: EngineHoliday[] = [{ holiday_date: '2026-06-09' }]
+  const holidays: EngineHoliday[] = [{ holiday_date: '2026-06-09', holiday_type: 'full_day', half_session: null }]
   const days    = juneWorkDays(['2026-06-09'])   // 25 working days
   const records = [
     ...days.map(recFull),

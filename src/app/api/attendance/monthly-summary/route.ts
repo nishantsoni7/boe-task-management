@@ -88,10 +88,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: detail }, { status: 500 })
   }
 
-  // Fetch public holidays for the month
+  // Fetch public holidays for the month. Only a FULL-DAY holiday excludes
+  // the date from this screen's calendar — a half-day holiday still owes a
+  // normal working half, and this raw-status screen has no way to evaluate
+  // just that half (see src/lib/payroll/halfDayHoliday.ts, which the real
+  // payroll engine uses instead), so the date is left as an ordinary working
+  // day here rather than wrongly dropped.
   const { data: holidays, error: holErr } = await svc
     .from('payroll_holidays')
     .select('holiday_date')
+    .eq('holiday_type', 'full_day')
     .gte('holiday_date', from)
     .lte('holiday_date', to)
 

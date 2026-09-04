@@ -143,9 +143,11 @@ export async function GET(req: NextRequest) {
       .gte('attendance_date', from)
       .lte('attendance_date', to)
       .order('attendance_date', { ascending: true }),
-    // Public holidays for the month
+    // Public holidays for the month. Only FULL-DAY holidays exclude a date
+    // here — see the matching note in monthly-summary/route.ts.
     svc.from('payroll_holidays')
       .select('holiday_date')
+      .eq('holiday_type', 'full_day')
       .gte('holiday_date', from)
       .lte('holiday_date', to),
     // Which of this employee's days an admin has corrected. Read-only, and
