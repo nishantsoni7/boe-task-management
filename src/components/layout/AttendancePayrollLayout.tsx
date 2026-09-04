@@ -29,6 +29,7 @@ import { IssueNotificationBell } from '@/components/layout/IssueNotificationBell
 import { useUnreadAttendancePayrollNotifications } from '@/hooks/queries/useUnreadNotifications'
 import {
   ATTENDANCE_PAYROLL_MODULE_NAME,
+  ATTENDANCE_PAYROLL_NAV_GROUP_LABEL,
   attendancePayrollNavFor,
   isAttendancePayrollNavItemActive,
 } from './attendancePayrollNav'
@@ -147,21 +148,36 @@ export function AttendancePayrollLayout({
 
         {/* Nav */}
         <div className="boe-sidebar-section">
-          {navItems.map(item => {
+          {navItems.map((item, i) => {
             const active = isAttendancePayrollNavItemActive(pathname, item)
+            // A group header renders once, the first time its group differs
+            // from the item before it — so Administration and Help each get
+            // exactly one label, and the two primary entries above them
+            // (Overview, View Attendance, View Payroll) get none at all.
+            const previousGroup = i > 0 ? navItems[i - 1].group : undefined
+            const showGroupHeader = item.group && item.group !== previousGroup
             return (
-              <button
-                key={item.path}
-                className={`boe-nav-item${active ? ' active' : ''}`}
-                onClick={() => navTo(item.path)}
-                aria-current={active ? 'page' : undefined}
-                style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
-              >
-                <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-                  {item.icon}
-                </span>
-                {item.label}
-              </button>
+              <div key={item.path}>
+                {showGroupHeader && (
+                  <div style={{
+                    padding: '14px 12px 6px', fontSize: 10.5, fontWeight: 700,
+                    color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.08em',
+                  }}>
+                    {ATTENDANCE_PAYROLL_NAV_GROUP_LABEL[item.group!]}
+                  </div>
+                )}
+                <button
+                  className={`boe-nav-item${active ? ' active' : ''}`}
+                  onClick={() => navTo(item.path)}
+                  aria-current={active ? 'page' : undefined}
+                  style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
+                >
+                  <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
+                    {item.icon}
+                  </span>
+                  {item.label}
+                </button>
+              </div>
             )
           })}
         </div>

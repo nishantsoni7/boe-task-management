@@ -38,6 +38,11 @@ export async function GET(req: NextRequest) {
     employeeId,
     canEdit:     permission.allowed,
     editBlocked: permission.allowed ? null : permission.message,
+    // Previous Month Context is an admin-only addition to THIS route. The
+    // employee's own reader, /api/payroll/my-result, does not set this — see
+    // buildResultDetailPayload for why that keeps the field off the wire
+    // entirely for that reader, not merely unrendered.
+    includePreviousMonth: true,
   })
 
   if (!outcome.ok) return NextResponse.json({ error: outcome.error }, { status: outcome.status })

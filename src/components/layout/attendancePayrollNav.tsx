@@ -22,8 +22,8 @@
 // Every path below is an EXISTING route. Nothing here creates a page.
 
 import {
-  Banknote, BookOpen, CalendarDays, CalendarX, ClipboardList, FileBarChart,
-  LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Upload, Users, Coins,
+  Banknote, BookOpen, CalendarDays, CalendarX, ClipboardList,
+  LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Users, Coins,
 } from 'lucide-react'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { MY_CREDITS_PATH } from '@/lib/boeCredits/paths'
@@ -45,24 +45,49 @@ export type AttendancePayrollNavItem = {
   alsoActiveFor?: string[]
   /** Route trees that must NOT light this item, checked before everything else. */
   notActiveFor?: string[]
+  /**
+   * Which section header this item renders under. Undefined items are the two
+   * primary operational entries (Overview, View Attendance, View Payroll) and
+   * render with no header at all — they are the whole point of the sidebar and
+   * do not need one. Grouped items render below a small label the first time
+   * their group differs from the previous item's.
+   */
+  group?: 'administration' | 'help'
+}
+
+/** Display label for each group, in the order they render. */
+export const ATTENDANCE_PAYROLL_NAV_GROUP_LABEL: Record<'administration' | 'help', string> = {
+  administration: 'Administration',
+  help:           'Help',
 }
 
 /**
  * ADMIN — the management surface, admins only.
  *
- * Ordering follows the work: what came in (attendance), then what was computed
- * from it (payroll), then the reference and configuration pages.
+ * Four primary operational destinations, Overview included: View Attendance,
+ * View Payroll and Payroll Issues. Everything else an admin needs is either
+ * reached FROM one of those (Attendance Upload from View Attendance's own
+ * action button; Attendance Records and the Correction Log from Overview's
+ * cards, unchanged; period create/generate/lock/unlock/delete from View
+ * Payroll's own controls) or grouped below as Administration/Help — employee
+ * and holiday configuration, settings, credits, the guide.
  *
- * Two entries carry their page's own title rather than a generic one, because
- * `/attendance/monthly-review` ("Monthly Attendance Review") and
- * `/payroll/monthly-review` ("Payroll Monthly Preview") are different screens
- * over different data, and one label named "Monthly Review" for both would be a
- * link that lies about where it goes.
+ * The routes behind Attendance Records and Attendance Upload have not moved
+ * and still work when linked to directly; they are simply no longer their own
+ * top-level nav entries, because an admin should not have to already know that
+ * "raw records" and "the upload tool" are separate implementation pages to
+ * find the one workspace ("what happened this month") they actually want.
+ *
+ * Payroll Runs is GONE from navigation entirely, not merely regrouped: its
+ * period-lifecycle actions (create, generate, lock, unlock, delete,
+ * participation) now live inside View Payroll itself, because "view this
+ * month's payroll" and "administer this month's payroll" turned out to be one
+ * task to the person doing it, not two screens. `/payroll` itself still
+ * resolves — see the redirect at src/app/payroll/page.tsx — so no bookmark or
+ * hardcoded link breaks; it simply forwards to View Payroll rather than being
+ * its own destination.
  *
  * Not here, deliberately:
- *   Issues        — the sidebar's door onto the issue feed is IssueNotificationBell,
- *                   which carries the unread count. A second plain link would be
- *                   the duplicate entry point this consolidation removes.
  *   Salary Report — `/payroll/results/[periodId]/salary-report` exists only for a
  *                   chosen period; there is no period-free route to link to, and
  *                   inventing one is not this task. It is reached from a payroll
@@ -73,27 +98,45 @@ export const ATTENDANCE_PAYROLL_ADMIN_NAV: AttendancePayrollNavItem[] = [
     label: 'Overview',
     path: '/attendance',
     exact: true,
-    // The correction log is an admin utility reached from the overview cards.
-    alsoActiveFor: ['/attendance/correction-log'],
+    // The correction log and the raw records list are admin utilities reached
+    // from the overview cards, not from their own sidebar entries.
+    alsoActiveFor: ['/attendance/correction-log', '/attendance/records'],
     icon: <LayoutDashboard size={15} strokeWidth={1.8} />,
   },
-  { label: 'Employee Master',           path: '/attendance/employees',      icon: <Users size={15} strokeWidth={1.8} /> },
-  { label: 'Attendance Upload',         path: '/attendance/upload',         icon: <Upload size={15} strokeWidth={1.8} /> },
-  { label: 'Attendance Records',        path: '/attendance/records',        icon: <ClipboardList size={15} strokeWidth={1.8} /> },
-  { label: 'Monthly Attendance Review', path: '/attendance/monthly-review', icon: <CalendarDays size={15} strokeWidth={1.8} /> },
   {
-    label: 'Payroll Runs',
-    path: '/payroll',
-    exact: true,
-    // A generated run and its per-employee payslips live under /payroll/results.
+    label: 'View Attendance',
+    path: '/attendance/monthly-review',
+    // Upload is reached from a button on this page, not a sidebar entry of
+    // its own — the nav should still read as "still on View Attendance"
+    // while an admin is there.
+    alsoActiveFor: ['/attendance/upload'],
+    icon: <CalendarDays size={15} strokeWidth={1.8} />,
+  },
+  {
+    label: 'View Payroll',
+    path: '/payroll/monthly-review',
+    // A month that already has a generated run redirects here to the stored
+    // payslip experience — still "View Payroll" from the admin's side, not a
+    // different destination.
+    //
+    // Bare `/payroll` is deliberately NOT listed here: it now redirects
+    // straight to this page (src/app/payroll/page.tsx), so nobody's browser
+    // sits on it long enough to need it highlighted, and `isUnder` would
+    // otherwise treat EVERY /payroll/* route as "under" it — including
+    // Payroll Settings and BOE Credits, which are their own nav items.
     alsoActiveFor: ['/payroll/results'],
     icon: <Banknote size={15} strokeWidth={1.8} />,
   },
-  { label: 'Payroll Monthly Preview',   path: '/payroll/monthly-review',    icon: <FileBarChart size={15} strokeWidth={1.8} /> },
-  { label: 'How Payroll Works',         path: PAYROLL_GUIDE_PATH,           icon: <BookOpen size={15} strokeWidth={1.8} /> },
-  { label: 'Payroll Settings',          path: '/payroll/settings',          icon: <SlidersHorizontal size={15} strokeWidth={1.8} /> },
-  { label: 'BOE Credits',               path: '/payroll/credits',           icon: <Coins size={15} strokeWidth={1.8} /> },
-  { label: 'Holiday Management',        path: '/attendance/holidays',       icon: <CalendarX size={15} strokeWidth={1.8} /> },
+  {
+    label: 'Payroll Issues',
+    path: '/payroll/issues',
+    icon: <MessageSquareWarning size={15} strokeWidth={1.8} />,
+  },
+  { label: 'Employee Master',    path: '/attendance/employees', icon: <Users size={15} strokeWidth={1.8} />,             group: 'administration' },
+  { label: 'Holiday Management', path: '/attendance/holidays',  icon: <CalendarX size={15} strokeWidth={1.8} />,         group: 'administration' },
+  { label: 'Payroll Settings',   path: '/payroll/settings',     icon: <SlidersHorizontal size={15} strokeWidth={1.8} />, group: 'administration' },
+  { label: 'BOE Credits',        path: '/payroll/credits',      icon: <Coins size={15} strokeWidth={1.8} />,             group: 'administration' },
+  { label: 'How Payroll Works',  path: PAYROLL_GUIDE_PATH,      icon: <BookOpen size={15} strokeWidth={1.8} />,          group: 'help' },
 ]
 
 /**

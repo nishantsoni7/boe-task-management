@@ -1,16 +1,22 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { colors } from '@/lib/tokens'
 import { PayrollModal, PayrollField, PayrollModalActions, PayrollModalError } from '@/components/payroll/PayrollModal'
-import { MONTHS } from '@/lib/payroll/months'
 
 // The Create Payroll Period form, moved off the dashboard and into a dialog.
 //
-// It was a permanently-mounted panel taking the top fifth of the page for a
-// two-select form that is used once a month. The month/year selection, the
-// duplicate handling and the creation call are unchanged — only where the form
-// lives changed.
+// A payroll period may only be created for a month that has already happened
+// AND that attendance has already been uploaded for — enforced server-side by
+// checkPeriodCreateEligibility() in src/app/api/payroll/periods/route.ts. This
+// modal reads GET /api/payroll/periods/eligible-months and offers ONLY the
+// months that check would actually accept, so the admin never picks a
+// combination the server is going to refuse. When the CURRENT month is the one
+// held back, that is stated explicitly rather than the month simply not
+// appearing — see currentMonthUnavailable.
+
+export type EligibleMonth = { year: number; month: number; label: string }
 
 export type CreatePeriodModalProps = {
   saving: boolean
@@ -21,20 +27,32 @@ export type CreatePeriodModalProps = {
    * period is reused, and the caller highlights it in the list behind.
    */
   info: string | null
+  /** Months attendance already exists for and that have no period yet, newest first. */
+  eligibleMonths: EligibleMonth[]
+  /** Set only when the current calendar month specifically has no attendance yet. */
+  currentMonthUnavailable: EligibleMonth | null
+  /** True while GET /api/payroll/periods/eligible-months is still loading. */
+  loadingEligibility: boolean
   onClose: () => void
   onCreate: (month: number, year: number) => void
 }
 
-export function CreatePeriodModal({ saving, error, info, onClose, onCreate }: CreatePeriodModalProps) {
-  const now = new Date()
-  const [month, setMonth] = useState(now.getMonth() + 1)
-  const [year,  setYear]  = useState(now.getFullYear())
+function monthKey(m: { year: number; month: number }): string {
+  return `${m.year}-${m.month}`
+}
+
+export function CreatePeriodModal({
+  saving, error, info, eligibleMonths, currentMonthUnavailable, loadingEligibility, onClose, onCreate,
+}: CreatePeriodModalProps) {
+  const [selected, setSelected] = useState(eligibleMonths[0] ? monthKey(eligibleMonths[0]) : '')
 
   const selectStyle: React.CSSProperties = {
     fontSize: 13, border: `1px solid ${colors.border}`, borderRadius: 7,
     background: colors.base, color: colors.primary, outline: 'none',
     padding: '8px 10px', boxSizing: 'border-box', width: '100%', cursor: 'pointer',
   }
+
+  const chosen = eligibleMonths.find(m => monthKey(m) === selected) ?? eligibleMonths[0] ?? null
 
   return (
     <PayrollModal
@@ -43,24 +61,47 @@ export function CreatePeriodModal({ saving, error, info, onClose, onCreate }: Cr
       onClose={onClose}
       width={460}
     >
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 180px', minWidth: 0 }}>
-          <PayrollField label="Month">
-            <select value={month} onChange={e => setMonth(Number(e.target.value))} style={selectStyle}>
-              {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
-            </select>
-          </PayrollField>
+      {/* The current month specifically, named — not simply absent from the list below. */}
+      {currentMonthUnavailable && (
+        <div style={{
+          padding: '11px 13px', borderRadius: 8,
+          background: 'rgba(85,133,232,0.08)', color: '#1F3A8A',
+          border: '1px solid rgba(85,133,232,0.25)', fontSize: 12.5, lineHeight: 1.5,
+        }}>
+          <strong>{currentMonthUnavailable.label} payroll is not available yet.</strong>
+          <div style={{ marginTop: 3 }}>
+            Attendance for {currentMonthUnavailable.label} has not been uploaded.
+          </div>
+          <Link
+            href="/attendance/upload"
+            style={{
+              display: 'inline-block', marginTop: 8, fontSize: 12.5, fontWeight: 600,
+              color: '#3B63B8', textDecoration: 'none',
+            }}
+          >
+            Upload Attendance →
+          </Link>
         </div>
-        <div style={{ flex: '1 1 110px', minWidth: 0 }}>
-          <PayrollField label="Year">
-            <select value={year} onChange={e => setYear(Number(e.target.value))} style={selectStyle}>
-              {Array.from({ length: 5 }, (_, i) => now.getFullYear() - 2 + i).map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </PayrollField>
-        </div>
-      </div>
+      )}
+
+      {loadingEligibility ? (
+        <div style={{ fontSize: 13, color: colors.tertiary, padding: '6px 0' }}>Checking available months…</div>
+      ) : eligibleMonths.length === 0 ? (
+        !currentMonthUnavailable && (
+          <div style={{ fontSize: 13, color: colors.tertiary, padding: '6px 0' }}>
+            No month is currently available to create payroll for — every recent month with uploaded
+            attendance already has a payroll period.
+          </div>
+        )
+      ) : (
+        <PayrollField label="Payroll Month">
+          <select value={selected || monthKey(eligibleMonths[0])} onChange={e => setSelected(e.target.value)} style={selectStyle}>
+            {eligibleMonths.map(m => (
+              <option key={monthKey(m)} value={monthKey(m)}>{m.label}</option>
+            ))}
+          </select>
+        </PayrollField>
+      )}
 
       {info && (
         <div style={{
@@ -76,8 +117,8 @@ export function CreatePeriodModal({ saving, error, info, onClose, onCreate }: Cr
 
       <PayrollModalActions
         onClose={onClose}
-        onSave={() => onCreate(month, year)}
-        saving={saving}
+        onSave={() => chosen && onCreate(chosen.month, chosen.year)}
+        saving={saving || !chosen}
         saveLabel="Create Payroll Period"
       />
     </PayrollModal>

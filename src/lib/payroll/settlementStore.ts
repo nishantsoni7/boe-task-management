@@ -185,6 +185,94 @@ export async function previousClosingBalance(
   }
 }
 
+// ─── Previous month context ───────────────────────────────────────────────────
+//
+// What the payslip's "Previous Month" panel shows — the preceding payroll
+// period's own settlement, recomputed exactly as that month's own payslip
+// would read it. This is display only: nothing here writes, and nothing here
+// is the figure THIS period carries forward (that is `figures.carry_forward`
+// on the current period's own settlement block, already built by
+// buildSettlementBlock — this file only supplies the "why", one month back).
+//
+// Deliberately independent of the current period's own settlement row (and of
+// carry_forward_source_period_id, which may not exist yet if this period's
+// settlement has never been materialised). "Which month is the previous one"
+// is answered the same way regardless — fetchPrecedingPeriod, the payroll
+// SEQUENCE, not the calendar.
+
+export type PreviousMonthContext = {
+  period: { payroll_month: number; payroll_year: number }
+  /** False when the preceding period exists but holds no result for this employee. */
+  has_result: boolean
+  salary_payable: number | null
+  amount_paid: number | null
+  closing_balance: number | null
+  payment_status: PaymentStatus
+}
+
+// PaymentStatus lives in ./settlement; re-declared narrowly here to avoid a
+// second import just for one type.
+type PaymentStatus = 'recorded' | 'not_recorded'
+
+/**
+ * The preceding payroll period's own settlement, for one employee — or null
+ * when there is no preceding period at all (this is the first payroll month).
+ *
+ * A preceding period that exists but never generated a result for this
+ * employee (joined after that period, or was skipped) is a real, distinct
+ * answer — `has_result: false` — not the same as "no previous month".
+ */
+export async function fetchPreviousMonthContext(
+  svc: Svc,
+  currentMonth: number,
+  currentYear: number,
+  employeeId: string,
+): Promise<PreviousMonthContext | null> {
+  const prevPeriod = await fetchPrecedingPeriod(svc, currentMonth, currentYear)
+  if (!prevPeriod) return null
+
+  const { data: prevResult, error } = await svc
+    .from('payroll_results')
+    .select('gross_salary, total_deductions, pending_adjustment_total, days_present')
+    .eq('payroll_period_id', prevPeriod.id)
+    .eq('employee_id', employeeId)
+    .maybeSingle()
+
+  if (error) throw new Error(`fetchPreviousMonthContext: ${error.message}`)
+
+  const period = { payroll_month: prevPeriod.payroll_month, payroll_year: prevPeriod.payroll_year }
+
+  if (!prevResult) {
+    return {
+      period,
+      has_result: false,
+      salary_payable: null,
+      amount_paid: null,
+      closing_balance: null,
+      payment_status: 'not_recorded',
+    }
+  }
+
+  const [prevSettlement, prevCredits] = await Promise.all([
+    fetchSettlement(svc, prevPeriod.id, employeeId),
+    fetchActivePayrollCreditApplication(svc, prevPeriod.id, employeeId).catch((e: unknown) => {
+      console.error('[payroll/settlement] previous month credit application unavailable:', e)
+      return null
+    }),
+  ])
+
+  const figures = computeSettlement(prevResult, prevSettlement, prevCredits)
+
+  return {
+    period,
+    has_result: true,
+    salary_payable: figures.salary_payable,
+    amount_paid: figures.amount_paid,
+    closing_balance: figures.closing_balance,
+    payment_status: figures.payment_status,
+  }
+}
+
 // ─── Event log ────────────────────────────────────────────────────────────────
 
 /**

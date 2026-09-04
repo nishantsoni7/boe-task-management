@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
 
   if (empErr) return NextResponse.json({ error: empErr.message }, { status: 500 })
   if (!employees || employees.length === 0)
-    return NextResponse.json({ year, month, results: [] })
+    return NextResponse.json({ year, month, results: [], attendance_uploaded: false })
 
   // Fetch all attendance records for the month in one query
   const mm        = String(month).padStart(2, '0')
@@ -255,5 +255,17 @@ export async function GET(req: NextRequest) {
 
   // settings_source is reported so the screen can say which rules the figures
   // were produced under, rather than leaving an admin to infer it.
-  return NextResponse.json({ year, month, results, settings_source: settingsSource })
+  // Whether any attendance has been uploaded for this month at all — reused
+  // from the same paged read this route already did for the preview itself
+  // (allRecords, above), rather than a second query via
+  // attendanceExistsForMonth. View Payroll uses this to decide whether to
+  // show the computed table at all: without it, "everyone absent" and
+  // "nobody's attendance has been uploaded yet" would look identical, and
+  // only one of those is true.
+  const attendanceUploaded = allRecords.length > 0
+
+  return NextResponse.json({
+    year, month, results, settings_source: settingsSource,
+    attendance_uploaded: attendanceUploaded,
+  })
 }

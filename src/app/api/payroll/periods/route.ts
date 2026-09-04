@@ -7,6 +7,9 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, isResponse } from '@/lib/security/attendancePayrollApiAuth'
 import { fetchAllRows } from '@/lib/supabasePaging'
+import { isFutureMonth } from '@/lib/attendance/monthAvailability'
+import { attendanceExistsForMonth } from '@/lib/attendance/attendanceExists'
+import { periodLabel } from '@/lib/payroll/months'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = SupabaseClient<any, any, any>
@@ -33,6 +36,39 @@ export type GetOrCreatePeriodResult =
 // path either returns the pre-existing row ('reused'/'locked') or inserts
 // exactly once ('created'). Callers can treat the result as the single source
 // of truth for which HTTP status to return.
+export type PeriodCreateEligibility =
+  | { ok: true }
+  | { ok: false; error: string }
+
+/**
+ * The rule POST /api/payroll/periods enforces before it will create or reuse
+ * a period: not a future month, and attendance already uploaded for it.
+ *
+ * Extracted so it is testable the same way getOrCreatePayrollPeriod and
+ * computeOutOfDate already are in this file — directly, against a real
+ * Supabase client, without constructing a NextRequest.
+ */
+export async function checkPeriodCreateEligibility(
+  svc: Svc,
+  month: number,
+  year: number,
+): Promise<PeriodCreateEligibility> {
+  if (isFutureMonth(year, month)) {
+    return { ok: false, error: 'Cannot create payroll for a future month.' }
+  }
+
+  const attendanceExists = await attendanceExistsForMonth(svc, year, month)
+  if (!attendanceExists) {
+    const label = periodLabel(month, year)
+    return {
+      ok: false,
+      error: `Attendance for ${label} has not been uploaded. Upload attendance before creating payroll.`,
+    }
+  }
+
+  return { ok: true }
+}
+
 export async function getOrCreatePayrollPeriod(
   svc: Svc,
   month: number,
@@ -350,6 +386,21 @@ export async function POST(req: NextRequest) {
 
   if (!month || month < 1 || month > 12 || !year || year < 2000 || year > 2100) {
     return NextResponse.json({ error: 'Invalid month or year' }, { status: 400 })
+  }
+
+  // A payroll period may only be created for a month that has actually
+  // happened AND that attendance has already been uploaded for. Server-side,
+  // because the eligibility list the UI offers is exactly that — a UI
+  // convenience, not the boundary. A direct POST for an ineligible month must
+  // fail here regardless of what the picker showed.
+  let eligibility: PeriodCreateEligibility
+  try {
+    eligibility = await checkPeriodCreateEligibility(svc, month, year)
+  } catch (e) {
+    return NextResponse.json({ error: String(e) }, { status: 500 })
+  }
+  if (!eligibility.ok) {
+    return NextResponse.json({ error: eligibility.error }, { status: 400 })
   }
 
   let result: GetOrCreatePeriodResult

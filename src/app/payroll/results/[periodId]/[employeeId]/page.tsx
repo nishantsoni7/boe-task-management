@@ -121,6 +121,13 @@ function SavingOverlay({ message }: { message: string }) {
   )
 }
 
+// ─── Selectors ────────────────────────────────────────────────────────────────
+
+/** One entry in the Payroll Month dropdown. */
+type PeriodOption = { id: string; payroll_month: number; payroll_year: number }
+/** One entry in the Employee dropdown — this period's own employees only. */
+type EmployeeOption = { employee_id: string; employee_name: string }
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PayrollResultDetailPage() {
@@ -133,6 +140,13 @@ export default function PayrollResultDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState<string | null>(null)
   const [token,   setToken]   = useState('')
+
+  // Month/employee selectors — populated once per period id, so routine
+  // review (checking one employee after another, or a month after another)
+  // never has to leave this page and re-find the results list.
+  const [periodOptions,   setPeriodOptions]   = useState<PeriodOption[]>([])
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([])
+  const [switching, setSwitching] = useState(false)
 
   const [tab, setTab] = useState<TabKey>('deductions')
   const [editingDate, setEditingDate] = useState<string | null>(null)
@@ -173,6 +187,36 @@ export default function PayrollResultDetailPage() {
     return true
   }
 
+  // Every generated or locked period — a draft with no stored results has
+  // nothing for this page to show. `payroll_periods` is readable by any
+  // authenticated user (20260611_create_payroll_periods.sql), same technique
+  // View Payroll already uses for its own month lookup — no new API route
+  // just to populate a dropdown.
+  const loadPeriodOptions = async () => {
+    const { data: rows } = await supabase
+      .from('payroll_periods')
+      .select('id, payroll_month, payroll_year, status')
+      .in('status', ['generated', 'locked'])
+      .order('payroll_year', { ascending: false })
+      .order('payroll_month', { ascending: false })
+    setPeriodOptions((rows ?? []) as PeriodOption[])
+  }
+
+  // The same list the results page itself is built from — see
+  // src/app/payroll/results/[periodId]/page.tsx and GET /api/payroll/results.
+  const loadEmployeeOptions = async (accessToken: string, forPeriodId: string): Promise<EmployeeOption[]> => {
+    const res  = await fetch(`/api/payroll/results?period_id=${forPeriodId}`, {
+      headers: { authorization: `Bearer ${accessToken}` },
+    })
+    const json = await res.json()
+    if (!res.ok) return []
+    const rows: EmployeeOption[] = (json.results ?? [])
+      .map((r: { employee_id: string; employee_name: string }) => ({ employee_id: r.employee_id, employee_name: r.employee_name }))
+      .sort((a: EmployeeOption, b: EmployeeOption) => a.employee_name.localeCompare(b.employee_name))
+    if (forPeriodId === periodId) setEmployeeOptions(rows)
+    return rows
+  }
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -193,12 +237,47 @@ export default function PayrollResultDetailPage() {
       setProfile(prof)
       setToken(session.access_token)
 
-      await load(session.access_token)
+      await Promise.all([
+        load(session.access_token),
+        loadPeriodOptions(),
+        loadEmployeeOptions(session.access_token, periodId),
+      ])
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodId, employeeId])
+
+  /** Employee → Employee: same period, immediate navigation, existing route. */
+  const handleEmployeeChange = (newEmployeeId: string) => {
+    if (newEmployeeId === employeeId) return
+    router.push(`/payroll/results/${periodId}/${newEmployeeId}`)
+  }
+
+  /**
+   * Month → Month: find the period, try to retain the current employee, and
+   * land somewhere predictable — never on fabricated data — when they have no
+   * result there.
+   */
+  const handlePeriodChange = async (newPeriodId: string) => {
+    if (newPeriodId === periodId || switching) return
+    setSwitching(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { router.push('/login'); return }
+      const employees = await loadEmployeeOptions(session.access_token, newPeriodId)
+      const stillHasResult = employees.some(e => e.employee_id === employeeId)
+      router.push(
+        stillHasResult
+          ? `/payroll/results/${newPeriodId}/${employeeId}`
+          // No result for this employee in the new period — the results LIST
+          // for that period, not a silently different employee's payslip.
+          : `/payroll/results/${newPeriodId}`,
+      )
+    } finally {
+      setSwitching(false)
+    }
+  }
 
   // Every hook runs before the first early return. This one sat below the
   // `if (loading)` guard, so the hook order changed between the loading render
@@ -465,18 +544,73 @@ export default function PayrollResultDetailPage() {
       title="Payroll Result Detail"
       onSignOut={handleSignOut}
     >
-      {/* Back link — secondary, and kept to a single tight line. */}
-      <div style={{ marginBottom: 16 }}>
+      {/* Month + Employee selectors — changing either navigates immediately to
+          the existing route for that combination. Routine review (one
+          employee after another, or the same employee across months) should
+          never need Back → list → next employee. */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap',
+        marginBottom: 16, paddingBottom: 14, borderBottom: '1px solid rgba(0,0,0,0.07)',
+      }}>
         <button
           onClick={() => router.push(`/payroll/results/${periodId}`)}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: '#8C94A6', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
-            padding: 0,
+            padding: 0, marginBottom: 3,
           }}
         >
-          ← Back to Results
+          ← All employees
         </button>
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 600, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              Payroll Month
+            </label>
+            <select
+              value={periodId}
+              onChange={e => { void handlePeriodChange(e.target.value) }}
+              disabled={switching}
+              style={{
+                fontSize: 13, border: '1px solid rgba(0,0,0,0.13)', borderRadius: 7,
+                background: '#fff', color: '#111318', outline: 'none',
+                padding: '6px 10px', minWidth: 150, cursor: switching ? 'wait' : 'pointer',
+              }}
+            >
+              {/* The currently open period is always an option, even if it fell
+                  outside the fetched list for some reason — never a dropdown
+                  that cannot represent the page it is on. */}
+              {!periodOptions.some(p => p.id === periodId) && data && (
+                <option value={periodId}>{periodLabel(data.period.payroll_month, data.period.payroll_year)}</option>
+              )}
+              {periodOptions.map(p => (
+                <option key={p.id} value={p.id}>{periodLabel(p.payroll_month, p.payroll_year)}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 10.5, fontWeight: 600, color: '#8C94A6', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+              Employee
+            </label>
+            <select
+              value={employeeId}
+              onChange={e => handleEmployeeChange(e.target.value)}
+              style={{
+                fontSize: 13, border: '1px solid rgba(0,0,0,0.13)', borderRadius: 7,
+                background: '#fff', color: '#111318', outline: 'none',
+                padding: '6px 10px', minWidth: 170, cursor: 'pointer',
+              }}
+            >
+              {!employeeOptions.some(e => e.employee_id === employeeId) && result && (
+                <option value={employeeId}>{result.employee_name}</option>
+              )}
+              {employeeOptions.map(e => (
+                <option key={e.employee_id} value={e.employee_id}>{e.employee_name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
       </div>
 
       {error && (

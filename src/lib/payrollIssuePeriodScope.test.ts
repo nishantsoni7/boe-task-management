@@ -114,19 +114,23 @@ describe('each screen asks for the run it is about', () => {
       'an empty run says so instead of falling back to another month')
   })
 
-  test('Monthly Preview asks for the month it is showing, not the month selected', () => {
-    const src = read('src/app/payroll/monthly-review/page.tsx')
+  // Payroll Issues (src/app/payroll/issues/page.tsx) is where a HISTORICAL
+  // month's issues are read now — it superseded the panel Monthly Preview
+  // used to embed directly, per the Attendance & Payroll UX consolidation:
+  // View Payroll dropped ObjectionQueue entirely rather than showing the
+  // same period-scoped list in two primary destinations at once.
+  test('Payroll Issues asks for the month it is showing, not the month selected', () => {
+    const src = read('src/app/payroll/issues/page.tsx')
     assert.ok(src.includes('period={{ year: shown.year, month: shown.month }}'),
-      'the issues follow the figures on screen, not the two dropdowns')
-    assert.ok(src.includes('setShown({ year, month })'), 'set when a preview loads')
-    assert.ok(src.includes('setShown(null)'),            'and cleared when one fails')
+      'the issues follow the month actually viewed, not the two dropdowns')
+    assert.ok(src.includes("onClick={() => setShown({ year, month })}"), 'set only on View')
     assert.ok(src.includes('No payroll issues were reported for this period.'))
   })
 
   test('both use the one queue component — there is no second implementation', () => {
     for (const p of [
       'src/app/payroll/results/[periodId]/page.tsx',
-      'src/app/payroll/monthly-review/page.tsx',
+      'src/app/payroll/issues/page.tsx',
     ]) {
       const src = read(p)
       assert.ok(src.includes('ObjectionQueue'), `${p} must reuse the existing panel`)
@@ -135,8 +139,14 @@ describe('each screen asks for the run it is about', () => {
     }
   })
 
-  test('Monthly Preview reads history; it does not become a second way to write one', () => {
+  test('View Payroll no longer embeds the panel at all — Payroll Issues is the one place for it', () => {
     const src = read('src/app/payroll/monthly-review/page.tsx')
+    assert.equal(src.includes('ObjectionQueue'), false,
+      'embedding it here too would duplicate the same list Payroll Issues already shows')
+  })
+
+  test('Payroll Issues reads history; it does not become a second way to write one', () => {
+    const src = read('src/app/payroll/issues/page.tsx')
     assert.equal(/from\('employee_record_objections'\)/.test(src), false)
     assert.equal(src.includes('/api/objections/review'), false,
       'reviewing stays in the queue component and its admin-only route')

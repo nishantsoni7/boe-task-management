@@ -138,28 +138,37 @@ export default function MonthlyReviewPage() {
     padding: '8px 12px', boxSizing: 'border-box',
   }
 
-  // Sort by attendance % descending
+  // Sort by attendance % descending — the exceptions rise where a scanning eye
+  // finds them first, without needing a chart to say so.
   const sorted = summaries
     ? [...summaries].sort((a, b) => attendancePct(b) - attendancePct(a))
     : null
 
-  // KPI aggregates
-  const kpi = sorted ? {
-    totalEmployees: sorted.length,
-    presentDays:    sorted.reduce((a, s) => a + s.present,       0),
-    halfDays:       sorted.reduce((a, s) => a + s.half_day,      0),
-    absentDays:     sorted.reduce((a, s) => a + s.absent,        0),
-    missingPunch:   sorted.reduce((a, s) => a + s.missing_punch, 0),
-    lateMarks:      sorted.reduce((a, s) => a + s.late,          0),
-    totalHours:     sorted.reduce((a, s) => a + s.hours_worked,  0),
+  // One compact line, not a card grid: how many rows actually need a look.
+  const exceptions = sorted ? {
+    absent:        sorted.filter(s => s.absent > 0).length,
+    missingPunch:  sorted.filter(s => s.missing_punch > 0).length,
+    late:          sorted.filter(s => s.late > 0).length,
   } : null
 
   return (
     <AttendancePayrollLayout
       profile={profile}
-      title="Monthly Attendance Review"
-      subtitle="Per-employee attendance summary for the selected month"
+      title="View Attendance"
+      subtitle="Select a month to see attendance for all employees"
       onSignOut={handleSignOut}
+      actions={
+        <Link
+          href="/attendance/upload"
+          style={{
+            padding: '7px 14px', borderRadius: 8, border: '1px solid rgba(0,0,0,0.13)',
+            fontSize: 13, fontWeight: 600, color: '#111318', textDecoration: 'none',
+            whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}
+        >
+          Upload Attendance
+        </Link>
+      }
     >
       <div style={{ maxWidth: 1060, padding: '24px 0' }}>
 
@@ -228,36 +237,21 @@ export default function MonthlyReviewPage() {
           </div>
         )}
 
-        {/* ── KPI cards ── */}
-        {kpi && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, marginBottom: 20 }}>
-            {[
-              { label: 'Total Employees', value: kpi.totalEmployees, color: colors.primary },
-              { label: 'Present Days',    value: kpi.presentDays,    color: '#3B82F6' },
-              { label: 'Half Days',       value: kpi.halfDays,       color: '#F59E0B' },
-              { label: 'Absent Days',     value: kpi.absentDays,     color: kpi.absentDays > 0 ? '#DC2626' : colors.tertiary },
-              { label: 'Missing Punch',   value: kpi.missingPunch,   color: kpi.missingPunch > 0 ? '#7C3AED' : colors.tertiary },
-              { label: 'Late Marks',      value: kpi.lateMarks,      color: kpi.lateMarks > 0 ? '#D97706' : colors.tertiary },
-              { label: 'Productive Hrs',  value: fmtHours(kpi.totalHours), color: '#059669' },
-            ].map(k => (
-              <div key={k.label} style={{
-                background: colors.base, border: `1px solid ${colors.border}`,
-                borderRadius: 10, padding: '16px 18px',
-              }}>
-                <div style={{ fontSize: 22, fontWeight: 700, color: k.color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-                  {k.value}
-                </div>
-                <div style={{ fontSize: 11, color: colors.tertiary, marginTop: 6 }}>{k.label}</div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* ── Employee table ── */}
+        {/* ── Employee table — the page itself, not a dashboard preceding it ── */}
         {sorted !== null && (
           <>
             <div style={{ fontSize: 13, color: colors.secondary, marginBottom: 12 }}>
               {sorted.length} employee{sorted.length !== 1 ? 's' : ''} — {MONTH_NAMES[month - 1]} {year}
+              {exceptions && (exceptions.absent + exceptions.missingPunch + exceptions.late > 0) && (
+                <span style={{ color: colors.tertiary }}>
+                  {' · '}
+                  {exceptions.absent > 0 && <span style={{ color: '#DC2626' }}>{exceptions.absent} absent</span>}
+                  {exceptions.absent > 0 && (exceptions.missingPunch > 0 || exceptions.late > 0) && ', '}
+                  {exceptions.missingPunch > 0 && <span style={{ color: '#7C3AED' }}>{exceptions.missingPunch} missing punch</span>}
+                  {exceptions.missingPunch > 0 && exceptions.late > 0 && ', '}
+                  {exceptions.late > 0 && <span style={{ color: '#D97706' }}>{exceptions.late} late</span>}
+                </span>
+              )}
             </div>
 
             <div style={{

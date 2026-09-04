@@ -37,6 +37,7 @@ import {
   PAYMENT_NOT_RECORDED_LABEL,
   SETTLEMENT_STATUS_NOT_RECORDED,
 } from '@/lib/payroll/settlement'
+import type { PreviousMonthContext } from '@/lib/payroll/settlementStore'
 import { COMPANY_PAID_NOTE } from '@/lib/payroll/deductionExplanation'
 import { istClockOf } from '@/lib/istDate'
 import {
@@ -212,6 +213,11 @@ export type DetailPayload = {
   result: DetailResult
   /** Absent only if migration 20260826000000 has not been applied. */
   settlement?: SettlementPayload
+  /**
+   * The preceding payroll period's own settlement, for context. Null when
+   * this is the first payroll month BOE has run, or the lookup degraded.
+   */
+  previous_month?: PreviousMonthContext | null
   deduction_days: DeductionDay[]
   considered_days: ConsideredDay[]
   corrections: CorrectionRow[]
@@ -434,19 +440,31 @@ export function SectionHeader({ title }: { title: string }) {
 
 // ── Summary rail primitives ───────────────────────────────────────────────────
 
-export function SummaryLine({ label, value, tone }: { label: string; value: string; tone?: string }) {
+export function SummaryLine({
+  label, value, tone, remark,
+}: {
+  label: string
+  value: string
+  tone?: string
+  /** e.g. "Paid 12 Aug · settled in cash" — when the payable figures. */
+  remark?: string | null
+}) {
   return (
-    <div style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-      gap: 12, padding: '5px 0',
-    }}>
-      <span style={{ fontSize: 12.5, color: '#6B7280' }}>{label}</span>
-      <span style={{
-        fontSize: 13.5, fontWeight: 600, color: tone ?? '#3D4455',
-        fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+    <div style={{ padding: '5px 0' }}>
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12,
       }}>
-        {value}
-      </span>
+        <span style={{ fontSize: 12.5, color: '#6B7280' }}>{label}</span>
+        <span style={{
+          fontSize: 13.5, fontWeight: 600, color: tone ?? '#3D4455',
+          fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+        }}>
+          {value}
+        </span>
+      </div>
+      {remark && (
+        <div style={{ fontSize: 11, color: '#8C94A6', marginTop: 1, lineHeight: 1.4 }}>{remark}</div>
+      )}
     </div>
   )
 }
@@ -678,10 +696,13 @@ function RedeemButton({ offer, onClick }: { offer: RedeemableDate; onClick: () =
 // "Gross Salary" to match the results list and the rest of the payroll module.
 
 function PayrollSummaryCard({
-  result, settlement,
+  result, settlement, canEdit, onEditPayment,
 }: {
   result: DetailResult
   settlement?: SettlementPayload
+  /** Whether this reader may record a payment. Absent for the employee, like every edit control on this page. */
+  canEdit?: boolean
+  onEditPayment?: () => void
 }) {
   const deductions = result.total_deductions ?? 0
 
@@ -766,7 +787,11 @@ function PayrollSummaryCard({
           <div style={{ marginTop: 10 }}>
             {settlement.figures.payment_status === 'recorded' ? (
               <>
-                <SummaryLine label="Amount Paid" value={fmt(settlement.figures.amount_paid ?? 0)} />
+                <SummaryLine
+                  label="Amount Paid"
+                  value={fmt(settlement.figures.amount_paid ?? 0)}
+                  remark={paymentNote(settlement)}
+                />
                 <SummaryLine
                   label="Balance Carried Forward"
                   value={fmtSignedAmount(settlement.figures.closing_balance ?? 0)}
@@ -778,6 +803,36 @@ function PayrollSummaryCard({
                 <SummaryLine label="Amount Paid" value={PAYMENT_NOT_RECORDED_LABEL} tone="#8C94A6" />
                 <SummaryLine label="Settlement Status" value={SETTLEMENT_STATUS_NOT_RECORDED} tone="#8C94A6" />
               </>
+            )}
+
+            {/* Plain language, once, where the figures it explains already are —
+                not restated a second time in a lower "Salary Settlement" card.
+                An admin benefits from it too — "+₹2,221.95" does not say who
+                owes whom. */}
+            <div style={{
+              marginTop: 10, padding: '9px 12px', borderRadius: 8,
+              background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#3D4455', lineHeight: 1.5,
+            }}>
+              {settlement.sentence}
+            </div>
+
+            {/* The payment action, directly under the figures it sets — the
+                one place on the page that states Salary Payable / Amount Paid,
+                so the action lives right there instead of a second card. */}
+            {canEdit && onEditPayment && (
+              <button
+                onClick={onEditPayment}
+                className="boe-btn boe-btn-primary"
+                style={{ marginTop: 10, padding: '7px 14px', fontSize: 12.5, width: '100%' }}
+              >
+                {settlement.figures.payment_status === 'recorded' ? 'Edit amount paid' : 'Record amount paid'}
+              </button>
+            )}
+
+            {!!onEditPayment && !canEdit && (
+              <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 8, lineHeight: 1.5 }}>
+                This period is locked. Unlock it to change the balance or the payment.
+              </div>
             )}
           </div>
         )}
@@ -875,27 +930,93 @@ export function signTone(amount: number): string | undefined {
   return amount > 0 ? '#16A34A' : '#DC2626'
 }
 
+/**
+ * "₹3,433 short" / "₹3,433 excess" / "Settled" — the magnitude and its
+ * direction in words, matching how an admin would actually say it, rather
+ * than a bare signed figure they have to interpret themselves.
+ */
+function differenceLabel(closingBalance: number | null): string {
+  if (closingBalance == null) return SETTLEMENT_STATUS_NOT_RECORDED
+  if (Math.abs(closingBalance) < 0.005) return 'Settled'
+  return closingBalance > 0
+    ? `${fmt(closingBalance)} short`
+    : `${fmt(Math.abs(closingBalance))} excess`
+}
+
+/**
+ * What the PRECEDING payroll month worked out to and what was paid — the
+ * orientation for this month's carry-forward, not a duplicate of it. The
+ * carry-forward figure and its remark are THIS period's own settlement
+ * (already shown in the Adjustments card below); this card explains where
+ * that number came from.
+ *
+ * Every value is either a stored primitive or the same computeSettlement()
+ * this whole page already trusts — see fetchPreviousMonthContext in
+ * src/lib/payroll/settlementStore.ts. Nothing here is estimated: a month with
+ * no recorded payment shows "Not recorded", never a fabricated ₹0.
+ */
+function PreviousMonthContextCard({
+  context, carryForward, carryForwardRemark,
+}: {
+  context: PreviousMonthContext
+  /** THIS period's effective carry-forward — settlement.figures.carry_forward. */
+  carryForward: number
+  carryForwardRemark: string | null
+}) {
+  const label = periodLabel(context.period.payroll_month, context.period.payroll_year)
+  const title = `Previous Month · ${label}`
+
+  if (!context.has_result) {
+    return (
+      <SettlementCard title={title}>
+        <div style={{ fontSize: 12.5, color: '#8C94A6', padding: '4px 0', lineHeight: 1.5 }}>
+          No payroll record for this employee in {label}.
+        </div>
+      </SettlementCard>
+    )
+  }
+
+  const recorded = context.payment_status === 'recorded'
+
+  return (
+    <SettlementCard title={title}>
+      <SettlementRow label="Salary Payable" value={fmt(context.salary_payable)} />
+      <SettlementRow
+        label="Amount Paid"
+        value={recorded ? fmt(context.amount_paid) : PAYMENT_NOT_RECORDED_LABEL}
+        muted={!recorded}
+      />
+      <SettlementRule />
+      <SettlementRow
+        label="Difference"
+        value={differenceLabel(context.closing_balance)}
+        tone={recorded ? signTone(context.closing_balance ?? 0) : undefined}
+        muted={!recorded}
+      />
+      <SettlementRow
+        label="Carry Forward"
+        value={fmtSignedAmount(carryForward)}
+        tone={signTone(carryForward)}
+        remark={carryForwardRemark}
+        strong
+      />
+    </SettlementCard>
+  )
+}
+
 export function AdjustmentsAndSettlement({
-  settlement, adjustments, canEdit, onEditCarryForward, onEditPayment,
+  settlement, adjustments, canEdit, onEditCarryForward,
 }: {
   settlement: SettlementPayload
   adjustments: Adjustment[]
   canEdit: boolean
   /** Omitted entirely for the employee — there is no edit path to reach. */
   onEditCarryForward?: () => void
-  onEditPayment?: () => void
 }) {
   const f = settlement.figures
   const hasCarryForward = Math.abs(f.carry_forward) >= 0.005
-  const isAdmin = !!onEditCarryForward || !!onEditPayment
-  const recorded = f.payment_status === 'recorded'
 
   return (
-    // No width of its own. The grid below is the SAME .payroll-detail-workspace
-    // the ledger and summary rail use, so this section's columns, gap and both
-    // outer edges are theirs by construction — the settlement card lines up with
-    // the rail above it because it is in the same column, not because two
-    // numbers happen to match.
     <section style={{ marginTop: 20 }} aria-labelledby="adjustments-settlement">
       {/* The heading sits on the page background rather than inside a card: the
           section is now three cards across two columns, and a header bar on one
@@ -924,205 +1045,75 @@ export function AdjustmentsAndSettlement({
         </div>
       )}
 
-      {/* The page's own workspace grid, reused verbatim. Below 1024 it stacks
-          and the aside takes order:-1 — so the mobile order is Settlement,
-          Calculation, Adjustments, matching the ledger's answer-before-evidence
-          ordering without a second rule to maintain. */}
-      <div className="payroll-detail-workspace">
-        <div className="payroll-detail-main">
-          <div className="payroll-settlement-pair">
+      {/* Full width, no two-column grid: Salary Payable / Amount Paid /
+          Settlement Status now live exactly once, in PayrollSummaryCard above
+          (with the Record/Edit amount paid action right beside them) — a
+          second "Salary Settlement" card restating the identical figures
+          here, just to hang the same button off them again, was the true
+          duplicate live verification of this page caught. What is left here
+          is the one thing that belongs to THIS card alone: the itemised
+          adjustments and the carry-forward that feeds Net Adjustments. */}
+      <SettlementCard title="Adjustments">
+        {hasCarryForward || settlement.carry_forward ? (
+          <SettlementRow
+            label="Previous Balance"
+            value={fmtSignedAmount(f.carry_forward)}
+            tone={signTone(f.carry_forward)}
+            remark={carryForwardNote(settlement)}
+          />
+        ) : (
+          <SettlementRow label="Previous Balance" value={fmt(0)} muted remark="Nothing carried from the previous payroll period" />
+        )}
 
-          {/* ── What the month earned ────────────────────────────────── */}
-          <SettlementCard title="Salary Calculation">
-            <SettlementRow label="Gross Salary" value={fmt(f.gross_salary)} />
-            <SettlementRow
-              label="Attendance Deductions"
-              value={f.attendance_deductions > 0 ? `−${fmt(f.attendance_deductions)}` : fmt(0)}
-              tone={f.attendance_deductions > 0 ? '#DC2626' : undefined}
-            />
-            <SettlementRule />
-            <SettlementRow label="Salary After Attendance" value={fmt(f.salary_after_attendance)} strong />
-          </SettlementCard>
+        {/* One row per adjustment, each with its own reason. Unrelated
+            amounts are never merged — an employee must never meet an
+            unexplained +₹800 on their payslip. */}
+        {adjustments.map(adj => (
+          <SettlementRow
+            key={adj.id}
+            label={adj.description || 'Adjustment'}
+            value={fmtSignedAmount(adj.amount ?? 0)}
+            tone={signTone(adj.amount ?? 0)}
+          />
+        ))}
 
-          {/* ── What was added or recovered ──────────────────────────── */}
-          <SettlementCard title="Adjustments">
-            {hasCarryForward || settlement.carry_forward ? (
-              <SettlementRow
-                label="Previous Balance"
-                value={fmtSignedAmount(f.carry_forward)}
-                tone={signTone(f.carry_forward)}
-                remark={carryForwardNote(settlement)}
-              />
-            ) : (
-              <SettlementRow label="Previous Balance" value={fmt(0)} muted remark="Nothing carried from the previous payroll period" />
-            )}
+        {adjustments.length === 0 && (
+          <SettlementRow label="Other Adjustments" value={fmt(0)} muted remark="None this month" />
+        )}
 
-            {/* One row per adjustment, each with its own reason. Unrelated
-                amounts are never merged — an employee must never meet an
-                unexplained +₹800 on their payslip. */}
-            {adjustments.map(adj => (
-              <SettlementRow
-                key={adj.id}
-                label={adj.description || 'Adjustment'}
-                value={fmtSignedAmount(adj.amount ?? 0)}
-                tone={signTone(adj.amount ?? 0)}
-              />
-            ))}
+        <SettlementRule />
+        <SettlementRow
+          label="Net Adjustments"
+          value={fmtSignedAmount(f.net_adjustments)}
+          tone={signTone(f.net_adjustments)}
+          strong
+        />
 
-            {adjustments.length === 0 && (
-              <SettlementRow label="Other Adjustments" value={fmt(0)} muted remark="None this month" />
-            )}
+        {/* The BOE Credits addition (Phase 1D): a Settlement line of its own,
+            outside net adjustments and outside the engine. Shown only when
+            one applies, with the credits and the rate it was made at. */}
+        {f.boe_credit_addition > 0 && (
+          <SettlementRow
+            label="BOE Credit Addition"
+            value={fmtSignedAmount(f.boe_credit_addition)}
+            tone={signTone(f.boe_credit_addition)}
+            remark={creditAdditionNote(settlement)}
+          />
+        )}
 
-            <SettlementRule />
-            <SettlementRow
-              label="Net Adjustments"
-              value={fmtSignedAmount(f.net_adjustments)}
-              tone={signTone(f.net_adjustments)}
-              strong
-            />
-
-            {/* The BOE Credits addition (Phase 1D): a Settlement line of its own,
-                outside net adjustments and outside the engine. Shown only when
-                one applies, with the credits and the rate it was made at. */}
-            {f.boe_credit_addition > 0 && (
-              <SettlementRow
-                label="BOE Credit Addition"
-                value={fmtSignedAmount(f.boe_credit_addition)}
-                tone={signTone(f.boe_credit_addition)}
-                remark={creditAdditionNote(settlement)}
-              />
-            )}
-
-            {/* The action sits with the value it changes, not in a toolbar. */}
-            {canEdit && onEditCarryForward && (
-              <div style={{ marginTop: 10 }}>
-                <button
-                  onClick={onEditCarryForward}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '4px 12px', fontSize: 12.5 }}
-                >
-                  Edit previous balance
-                </button>
-              </div>
-            )}
-          </SettlementCard>
+        {/* The action sits with the value it changes, not in a toolbar. */}
+        {canEdit && onEditCarryForward && (
+          <div style={{ marginTop: 10 }}>
+            <button
+              onClick={onEditCarryForward}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '4px 12px', fontSize: 12.5 }}
+            >
+              Edit previous balance
+            </button>
           </div>
-        </div>
-
-        {/* ── The conclusion, in the page's summary rail ──────────────── */}
-        <aside className="payroll-detail-aside">
-          <div className="payroll-detail-aside-inner">
-            <div style={{
-              background: '#fff', borderRadius: 12,
-              border: '1px solid rgba(79,111,208,0.28)', overflow: 'hidden',
-            }}>
-              <div style={{
-                padding: '11px 16px 9px',
-                borderBottom: '1px solid rgba(0,0,0,0.06)',
-                background: 'rgba(79,111,208,0.04)',
-                fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase',
-                letterSpacing: '0.09em', color: '#4F6FD0',
-              }}>
-                Salary Settlement
-              </div>
-
-              <div style={{ padding: '13px 16px 15px' }}>
-                <SettlementRow label="Salary After Attendance" value={fmt(f.salary_after_attendance)} />
-                <SettlementRow
-                  label="Net Adjustments"
-                  value={fmtSignedAmount(f.net_adjustments)}
-                  tone={signTone(f.net_adjustments)}
-                />
-                {f.boe_credit_addition > 0 && (
-                  <SettlementRow
-                    label="BOE Credit Addition"
-                    value={fmtSignedAmount(f.boe_credit_addition)}
-                    tone={signTone(f.boe_credit_addition)}
-                  />
-                )}
-
-                {/* Salary Payable is the whole point of the section, so it is
-                    the one figure given size, weight and a tint of its own. */}
-                <div style={{ height: 1, background: 'rgba(0,0,0,0.13)', margin: '10px 0 0' }} />
-                <div style={{
-                  margin: '10px -16px', padding: '11px 16px 12px',
-                  background: 'rgba(79,111,208,0.06)',
-                  display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'baseline', gap: 10, flexWrap: 'wrap',
-                }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 700, textTransform: 'uppercase',
-                    letterSpacing: '0.08em', color: '#3B63B8',
-                  }}>
-                    Salary Payable
-                  </span>
-                  <span style={{
-                    fontSize: 24, fontWeight: 700, lineHeight: 1.05, color: '#111318',
-                    fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
-                  }}>
-                    {fmt(f.salary_payable)}
-                  </span>
-                </div>
-
-                {/* Not recorded is a STATE, not a zero. Rendering "−₹0.00" here,
-                    and a closing balance of the full payable underneath it, would
-                    assert that BOE paid nothing and owes the lot — when in truth
-                    nobody has said what was paid yet. */}
-                <SettlementRow
-                  label="Amount Paid"
-                  value={recorded ? fmtAmountPaid(f.amount_paid ?? 0) : PAYMENT_NOT_RECORDED_LABEL}
-                  muted={!recorded}
-                  remark={paymentNote(settlement)}
-                />
-                <SettlementRule />
-                {recorded ? (
-                  <SettlementRow
-                    label="Balance Carried Forward"
-                    value={fmtSignedAmount(f.closing_balance ?? 0)}
-                    tone={signTone(f.closing_balance ?? 0)}
-                    strong
-                  />
-                ) : (
-                  <SettlementRow
-                    label="Settlement Status"
-                    value={SETTLEMENT_STATUS_NOT_RECORDED}
-                    muted
-                    strong
-                  />
-                )}
-
-                {/* Plain language, for both readers. An admin benefits from it
-                    too — "+₹2,221.95" does not say who owes whom. */}
-                <div style={{
-                  marginTop: 10, padding: '9px 12px', borderRadius: 8,
-                  background: 'rgba(0,0,0,0.028)', fontSize: 12.5, color: '#3D4455', lineHeight: 1.5,
-                }}>
-                  {settlement.sentence}
-                </div>
-
-                {/* The payment action, directly under the figures it sets. */}
-                {canEdit && onEditPayment && (
-                  <button
-                    onClick={onEditPayment}
-                    className="boe-btn boe-btn-primary"
-                    style={{ marginTop: 11, padding: '7px 14px', fontSize: 12.5, width: '100%' }}
-                  >
-                    {recorded ? 'Edit amount paid' : 'Record amount paid'}
-                  </button>
-                )}
-
-                {/* Why the controls are gone, said once, to the reader who would
-                    otherwise have had them. */}
-                {isAdmin && !canEdit && (
-                  <div style={{ fontSize: 11.5, color: '#8C94A6', marginTop: 10, lineHeight: 1.5 }}>
-                    This period is locked. Unlock it to change the balance or the payment.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </aside>
-      </div>
+        )}
+      </SettlementCard>
     </section>
   )
 }
@@ -1131,23 +1122,6 @@ export function AdjustmentsAndSettlement({
 export function fmtSignedAmount(amount: number): string {
   if (Math.abs(amount) < 0.005) return fmt(0)
   return `${amount > 0 ? '+' : '−'}${fmt(Math.abs(amount))}`
-}
-
-/**
- * Amount Paid, shown as the subtraction it is — except at zero.
- *
- * "−₹0.00" is not a smaller number than "₹0.00"; it reads as a negative
- * quantity, which is meaningless for a payment and makes a deliberately recorded
- * ₹0 look like a data error. The minus is punctuation for the subtraction, so it
- * is dropped when there is nothing to subtract.
- *
- * Display only. The formula is unchanged: closing_balance is still
- * salary_payable − amount_paid, and a recorded ₹0 still leaves the whole payable
- * outstanding.
- */
-function fmtAmountPaid(amount: number): string {
-  if (Math.abs(amount) < 0.005) return fmt(0)
-  return `−${fmt(amount)}`
 }
 
 function carryForwardNote(settlement: SettlementPayload): string | null {
@@ -1614,7 +1588,12 @@ export function PayrollDetailWorkspace({
 
         <aside className="payroll-detail-aside">
           <div className="payroll-detail-aside-inner">
-            <PayrollSummaryCard result={result} settlement={data.settlement} />
+            <PayrollSummaryCard
+              result={result}
+              settlement={data.settlement}
+              canEdit={canEdit}
+              onEditPayment={onEditPayment}
+            />
           </div>
         </aside>
       </div>
@@ -1628,13 +1607,28 @@ export function PayrollDetailWorkspace({
           figure it changes. */}
       {creditsPanel}
 
+      {/* Orientation for the carry-forward figure the Adjustments card is
+          about to show: what the preceding month worked out to and what was
+          paid, in the same compact card shape. Absent when there is no
+          preceding payroll month. Deliberately narrow and standalone rather
+          than stretched into the two-column ledger grid — it is one small
+          fact, not a second workspace. */}
+      {data.previous_month && data.settlement && (
+        <div style={{ marginTop: 20, maxWidth: 320 }}>
+          <PreviousMonthContextCard
+            context={data.previous_month}
+            carryForward={data.settlement.figures.carry_forward}
+            carryForwardRemark={data.settlement.carry_forward?.remark ?? null}
+          />
+        </div>
+      )}
+
       {data.settlement && (
         <AdjustmentsAndSettlement
           settlement={data.settlement}
           adjustments={result.adjustments}
           canEdit={canEdit}
           onEditCarryForward={onEditCarryForward}
-          onEditPayment={onEditPayment}
         />
       )}
 

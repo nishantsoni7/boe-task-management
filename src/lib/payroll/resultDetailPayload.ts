@@ -41,7 +41,11 @@ import {
   closingBalanceSentence,
   type SettlementCreditInput,
 } from '@/lib/payroll/settlement'
-import { fetchSettlement, type SettlementRow } from '@/lib/payroll/settlementStore'
+import {
+  fetchSettlement,
+  fetchPreviousMonthContext,
+  type SettlementRow,
+} from '@/lib/payroll/settlementStore'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -158,6 +162,7 @@ export async function buildResultDetailPayload(
     canEdit,
     editBlocked,
     canRedeem = false,
+    includePreviousMonth = false,
   }: {
     periodId: string
     employeeId: string
@@ -171,6 +176,19 @@ export async function buildResultDetailPayload(
      * only, like canEdit: the routes re-decide before anything is written.
      */
     canRedeem?: boolean
+    /**
+     * Whether to fetch and include `previous_month` (the preceding period's
+     * own settlement — Salary Payable, Amount Paid, Difference).
+     *
+     * Admin-only, by the caller's own choice, not by any check in this file:
+     * /api/payroll/results/detail passes true, /api/payroll/my-result does
+     * not pass it at all. False by default so the lookup is skipped entirely
+     * for a reader who never asked for it — this is not employee-facing
+     * settlement information the redesign introduced, and the field is
+     * omitted from the payload rather than sent as null, so "not requested"
+     * and "no preceding period" are never confused.
+     */
+    includePreviousMonth?: boolean
   },
 ): Promise<ResultDetailOutcome> {
   const { data: period, error: periodErr } = await svc
@@ -181,13 +199,16 @@ export async function buildResultDetailPayload(
 
   if (periodErr || !period) return { ok: false, status: 404, error: 'Payroll period not found' }
 
-  // Three independent reads, started together: the result, its settlement row,
-  // and the active credit application — the three inputs of the settlement.
+  // Independent reads, started together: the result, its settlement row, the
+  // active credit application, the credit rate, and the preceding period's own
+  // settlement (Previous Month Context — display only, informed by but not
+  // needed for the settlement figures below).
   const [
     { data: result, error: resultErr },
     settlementRead,
     creditApplication,
     creditSettings,
+    previousMonthContext,
   ] = await Promise.all([
     svc
       .from('payroll_results')
@@ -231,6 +252,19 @@ export async function buildResultDetailPayload(
     // The active credit settings: the attendance prices the offer is quoted
     // at, and the rate a new payroll application would use. Never throws.
     fetchActiveCreditSettings(svc),
+    // Skipped entirely — not just hidden — when the caller did not ask for it.
+    // The employee's own reader (/api/payroll/my-result) never sets
+    // includePreviousMonth, so this never runs a query on that path at all.
+    // Degrades to null rather than failing the payslip when it does run, same
+    // posture as the settlement read above.
+    includePreviousMonth
+      ? fetchPreviousMonthContext(svc, period.payroll_month, period.payroll_year, employeeId).catch(
+          (e: unknown) => {
+            console.error('[payroll/detail] previous month context unavailable:', e)
+            return null
+          },
+        )
+      : Promise.resolve(null),
   ])
 
   if (resultErr) return { ok: false, status: 500, error: resultErr.message }
@@ -350,6 +384,14 @@ export async function buildResultDetailPayload(
         ...settlementBlock,
         adjustments_balance: adjustmentsBalance,
       },
+      // The preceding payroll period's own settlement, for context only — what
+      // it worked out to and what was paid. Present only when the caller asked
+      // for it (includePreviousMonth); OMITTED, not sent as null, otherwise —
+      // "not requested" and "no preceding period" must stay two different
+      // things on the wire, and an employee payload must not carry the key at
+      // all. Null when this IS requested but this is the first payroll month
+      // BOE has run. See fetchPreviousMonthContext.
+      ...(includePreviousMonth ? { previous_month: previousMonthContext } : {}),
       // The employee's BOE Credits standing for this month (Phase 1D). Null on
       // the admin's view.
       credits: creditsBlock,

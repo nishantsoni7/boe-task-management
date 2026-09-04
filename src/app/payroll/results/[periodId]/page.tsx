@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { Suspense, useEffect, useState, useMemo } from 'react'
 import { formatRupees } from '@/lib/payroll/money'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
@@ -12,6 +12,7 @@ import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
+import { UnlockPayrollModal } from '@/app/payroll/UnlockPayrollModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -83,9 +84,25 @@ function ReviewBadge({ reviewedAt }: { reviewedAt: string | null }) {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// Reads `?from=view-payroll`, which needs the Suspense boundary Next requires
+// around useSearchParams. Same shape as /payroll.
 export default function PayrollResultsPage() {
+  return (
+    <Suspense fallback={<LoadingScreen />}>
+      <PayrollResultsPageInner />
+    </Suspense>
+  )
+}
+
+function PayrollResultsPageInner() {
   const params   = useParams()
   const periodId = params.periodId as string
+  const searchParams = useSearchParams()
+  // Whether this page was reached by View Payroll redirecting a generated
+  // month here, rather than by an admin browsing the Payroll Runs list. Only
+  // read to decide where "back" goes — it grants no access and changes no
+  // data, so a hand-edited or stale query string is harmless either way.
+  const fromViewPayroll = searchParams.get('from') === 'view-payroll'
 
   const [profile,     setProfile]     = useState<UserProfile | null>(null)
   const [period,      setPeriod]      = useState<PeriodMeta | null>(null)
@@ -95,6 +112,12 @@ export default function PayrollResultsPage() {
   const [token,       setToken]       = useState('')
   const [locking,     setLocking]     = useState(false)
   const [lockError,   setLockError]   = useState<string | null>(null)
+
+  // Unlock — moved here from the Payroll Runs list (src/app/payroll/page.tsx),
+  // since a locked period's admin now lands on THIS page, not that one.
+  const [unlocking,   setUnlocking]   = useState(false)
+  const [unlockOpen,  setUnlockOpen]  = useState(false)
+  const [unlockError, setUnlockError] = useState<string | null>(null)
 
   // What employees have reported about this period, so a complaint travels
   // with the row instead of living only in the queue above the table.
@@ -166,6 +189,25 @@ export default function PayrollResultsPage() {
     }
   }
 
+  const handleUnlock = async (reason: string) => {
+    if (unlocking) return
+    setUnlocking(true)
+    setUnlockError(null)
+    try {
+      const res  = await fetch('/api/payroll/unlock', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ payroll_period_id: periodId, reason }),
+      })
+      const json = await res.json()
+      if (!res.ok) { setUnlockError(json.error ?? 'Unlock failed'); return }
+      setUnlockOpen(false)
+      await loadData(token)
+    } finally {
+      setUnlocking(false)
+    }
+  }
+
   const handleSignOut = async () => {
     await supabase.auth.signOut()
     router.replace('/login')
@@ -184,6 +226,15 @@ export default function PayrollResultsPage() {
 
   const reviewedCount = results.filter(r => r.employee_reviewed_at).length
   const totalCount    = results.length
+
+  // Scoped to THIS period's own results, from the same objections list the
+  // per-row badges already read — no second fetch. useObjections() itself is
+  // company-wide (see its own header comment); the period boundary is drawn
+  // here, the same way the row badges already draw it via objections.byResult.
+  const resultIds  = new Set(results.map(r => r.id))
+  const openIssues = objections.all.filter(
+    o => o.status === 'pending' && o.payroll_result_id && resultIds.has(o.payroll_result_id),
+  ).length
 
   const totals = results.length > 0 ? {
     gross:       results.reduce((s, r) => s + (r.gross_salary             ?? 0), 0),
@@ -213,18 +264,62 @@ export default function PayrollResultsPage() {
         </Link>
       }
     >
-      {/* Back link */}
+      {/* Back link — where "back" goes depends on how this page was reached.
+          Arriving from View Payroll (a generated month redirected here), back
+          returns to View Payroll: this page IS that month's payroll to the
+          admin, not a separate screen they drilled into. Arriving from the
+          Payroll Runs list, back returns there as it always has. */}
       <div style={{ marginBottom: 16 }}>
         <button
-          onClick={() => router.push('/payroll')}
+          onClick={() => router.push(fromViewPayroll ? '/payroll/monthly-review' : '/payroll')}
           style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: '#6B7280', fontSize: 13, display: 'flex', alignItems: 'center', gap: 4,
             padding: 0,
           }}
         >
-          ← Back to Payroll Periods
+          {fromViewPayroll ? '← Back to View Payroll' : '← Back to Payroll Periods'}
         </button>
+      </div>
+
+      {/* Payroll readiness strip — what is still pending before this month's
+          payroll is complete, in one compact line. Attendance is not restated
+          here: a generated period could not exist without it. Payment status
+          is deliberately absent — nothing in the data model reliably
+          summarises "N of M paid" at the period level today, and a fabricated
+          count would be worse than none. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap',
+        padding: '9px 16px', marginBottom: 16, borderRadius: 8,
+        background: '#F7F7F9', border: '1px solid rgba(0,0,0,0.07)',
+        fontSize: 12.5,
+      }}>
+        <span style={{ color: '#8C94A6' }}>{periodLabel}</span>
+        <span style={{ color: 'rgba(0,0,0,0.12)' }}>·</span>
+        <span>
+          <span style={{ color: '#8C94A6' }}>Payroll </span>
+          <strong style={{ color: isLocked ? '#B45309' : '#059669' }}>
+            {isLocked ? 'Locked' : '✓ Generated'}
+          </strong>
+        </span>
+        <span style={{ color: 'rgba(0,0,0,0.12)' }}>·</span>
+        <span>
+          <span style={{ color: '#8C94A6' }}>Issues </span>
+          <strong style={{ color: openIssues > 0 ? '#DC2626' : '#059669' }}>
+            {openIssues > 0 ? `${openIssues} Open` : 'None Open'}
+          </strong>
+        </span>
+        {totalCount > 0 && (
+          <>
+            <span style={{ color: 'rgba(0,0,0,0.12)' }}>·</span>
+            <span>
+              <span style={{ color: '#8C94A6' }}>Employee Review </span>
+              <strong style={{ color: reviewedCount === totalCount ? '#059669' : '#B45309' }}>
+                {reviewedCount} / {totalCount} Reviewed
+              </strong>
+            </span>
+          </>
+        )}
       </div>
 
       {/* What employees have reported about THIS payroll run, on the screen
@@ -250,14 +345,28 @@ export default function PayrollResultsPage() {
           marginBottom: 16, padding: '12px 18px', borderRadius: 10,
           background: 'rgba(232,160,48,0.10)', color: '#92400E',
           border: '1px solid rgba(232,160,48,0.35)',
-          display: 'flex', alignItems: 'center', gap: 10, fontSize: 13,
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, fontSize: 13,
         }}>
-          <span style={{ fontSize: 16 }}>🔒</span>
-          <span>
-            <strong>Payroll locked</strong>
-            {period?.locked_at ? ` · ${fmtDateTime(period.locked_at)}` : ''}
-            {' — Regeneration and employee review are disabled.'}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 16 }}>🔒</span>
+            <span>
+              <strong>Payroll locked</strong>
+              {period?.locked_at ? ` · ${fmtDateTime(period.locked_at)}` : ''}
+              {' — Regeneration and employee review are disabled.'}
+            </span>
           </span>
+          {/* Same admin-only permission /api/payroll/unlock enforces — showing
+              this to anyone else would only ever produce a 403, same posture
+              as canLock above. */}
+          {profile?.role === 'admin' && (
+            <button
+              onClick={() => setUnlockOpen(true)}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '5px 12px', fontSize: 12.5, whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              Unlock Payroll
+            </button>
+          )}
         </div>
       )}
 
@@ -434,6 +543,16 @@ export default function PayrollResultsPage() {
           </div>
         )}
       </div>
+
+      {unlockOpen && (
+        <UnlockPayrollModal
+          periodLabel={periodLabel}
+          saving={unlocking}
+          error={unlockError}
+          onCancel={() => setUnlockOpen(false)}
+          onConfirm={handleUnlock}
+        />
+      )}
     </AttendancePayrollLayout>
   )
 }

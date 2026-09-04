@@ -17,7 +17,7 @@ import {
   PayrollAttentionModal,
   PayrollRowActionBar,
 } from './PayrollRowActions'
-import { CreatePeriodModal } from './CreatePeriodModal'
+import { CreatePeriodModal, type EligibleMonth } from './CreatePeriodModal'
 import { UnlockPayrollModal } from './UnlockPayrollModal'
 import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollModal'
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
@@ -132,6 +132,12 @@ function PayrollPeriodsPage() {
   const [creating,     setCreating]     = useState(false)
   const [createError,  setCreateError]  = useState<string | null>(null)
   const [createInfo,   setCreateInfo]   = useState<string | null>(null)
+  // Same eligibility source View Payroll's own Create action uses (see
+  // src/app/payroll/monthly-review/page.tsx) — a period may only be created
+  // for a month that already has attendance, enforced server-side either way.
+  const [eligibleMonths, setEligibleMonths] = useState<EligibleMonth[]>([])
+  const [currentMonthUnavailable, setCurrentMonthUnavailable] = useState<EligibleMonth | null>(null)
+  const [loadingEligibility, setLoadingEligibility] = useState(false)
 
   const [unlockTarget, setUnlockTarget] = useState<PayrollPeriodRow | null>(null)
   const [unlocking,    setUnlocking]    = useState(false)
@@ -439,6 +445,27 @@ function PayrollPeriodsPage() {
     }
   }
 
+  const openCreateModal = async () => {
+    setCreateError(null)
+    setCreateInfo(null)
+    setCreateOpen(true)
+    setLoadingEligibility(true)
+    try {
+      const res  = await fetch('/api/payroll/periods/eligible-months', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const json = await res.json()
+      if (res.ok) {
+        setEligibleMonths(json.eligible ?? [])
+        setCurrentMonthUnavailable(json.current_month_unavailable ?? null)
+      } else {
+        setCreateError(json.error ?? 'Failed to load available months')
+      }
+    } finally {
+      setLoadingEligibility(false)
+    }
+  }
+
   const handleCreatePeriod = async (month: number, year: number) => {
     if (creating) return
     setCreating(true)
@@ -583,7 +610,7 @@ function PayrollPeriodsPage() {
           </button>
           <button
             className="boe-btn boe-btn-primary"
-            onClick={() => { setCreateError(null); setCreateInfo(null); setCreateOpen(true) }}
+            onClick={() => { void openCreateModal() }}
             style={{ whiteSpace: 'nowrap' }}
           >
             Create Payroll Period
@@ -767,6 +794,9 @@ function PayrollPeriodsPage() {
           saving={creating}
           error={createError}
           info={createInfo}
+          eligibleMonths={eligibleMonths}
+          currentMonthUnavailable={currentMonthUnavailable}
+          loadingEligibility={loadingEligibility}
           onClose={closeCreate}
           onCreate={handleCreatePeriod}
         />

@@ -140,14 +140,51 @@ describe('every navigation path is a real route', () => {
   })
 
   test('the admin list still reaches both halves of the module', () => {
+    // Attendance Upload and Attendance Records are deliberately no longer
+    // their own top-level entries — reached from View Attendance's own
+    // action button and from the Overview cards instead, per the two-
+    // workspace redesign. Their routes are still real (checked below). Bare
+    // `/payroll` (Payroll Runs) is deliberately absent too — see below.
     const paths = ATTENDANCE_PAYROLL_ADMIN_NAV.map(i => i.path)
     for (const required of [
-      '/attendance', '/attendance/employees', '/attendance/upload', '/attendance/records',
+      '/attendance', '/attendance/employees',
       '/attendance/monthly-review', '/attendance/holidays',
-      '/payroll', '/payroll/monthly-review', '/payroll/how-it-works', '/payroll/settings',
+      '/payroll/monthly-review', '/payroll/issues', '/payroll/how-it-works', '/payroll/settings',
     ]) {
       assert.ok(paths.includes(required), `the admin nav dropped ${required}`)
     }
+  })
+
+  test('Attendance Upload and Attendance Records are still real routes, just not primary nav entries', () => {
+    for (const p of ['src/app/attendance/upload/page.tsx', 'src/app/attendance/records/page.tsx']) {
+      assert.ok(existsSync(join(ROOT, p)), `${p} was removed rather than just un-navved`)
+    }
+  })
+
+  test('the primary workspaces are named for what an admin wants to do', () => {
+    const viewAttendance = byPath(ATTENDANCE_PAYROLL_ADMIN_NAV, '/attendance/monthly-review')
+    const viewPayroll    = byPath(ATTENDANCE_PAYROLL_ADMIN_NAV, '/payroll/monthly-review')
+    const payrollIssues  = byPath(ATTENDANCE_PAYROLL_ADMIN_NAV, '/payroll/issues')
+    assert.equal(viewAttendance.label, 'View Attendance')
+    assert.equal(viewPayroll.label, 'View Payroll')
+    assert.equal(payrollIssues.label, 'Payroll Issues')
+    // None is grouped — they are three of the four primary entries, beside
+    // Overview, not filed under Administration or Help.
+    assert.equal(viewAttendance.group, undefined)
+    assert.equal(viewPayroll.group, undefined)
+    assert.equal(payrollIssues.group, undefined)
+  })
+
+  test('Payroll Runs is gone from navigation entirely, not merely regrouped', () => {
+    // Its period-lifecycle actions (create, generate, lock, unlock, delete,
+    // participation) now live inside View Payroll / the results page — see
+    // src/app/payroll/monthly-review/page.tsx and
+    // src/app/payroll/results/[periodId]/page.tsx. The bare /payroll route
+    // itself still resolves (checked in "nothing structural moved" below),
+    // it just has no nav entry of its own any more.
+    const paths = ATTENDANCE_PAYROLL_ADMIN_NAV.map(i => i.path)
+    assert.equal(paths.includes('/payroll'), false)
+    assert.equal(ATTENDANCE_PAYROLL_ADMIN_NAV.some(i => i.label === 'Payroll Runs'), false)
   })
 
   test('the two monthly reviews are two links, because they are two screens', () => {
@@ -200,9 +237,20 @@ describe('active state', () => {
 
   test('a module root does not claim the pages beneath it', () => {
     assert.deepEqual(activeLabels('/attendance', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Overview'])
-    assert.deepEqual(activeLabels('/payroll', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Runs'])
-    assert.deepEqual(activeLabels('/attendance/records', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Attendance Records'])
+    // No longer a nav entry of its own — reached from Overview, which stays
+    // lit while browsing it, exactly like the correction log already did.
+    assert.deepEqual(activeLabels('/attendance/records', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Overview'])
     assert.deepEqual(activeLabels('/payroll/settings', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Settings'])
+    assert.deepEqual(activeLabels('/payroll/issues', ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Issues'])
+  })
+
+  test('bare /payroll lights nothing — it has no nav entry of its own any more', () => {
+    // Deliberate: it is still a real, reachable page (period administration),
+    // just no longer represented in primary navigation. It was NOT added to
+    // View Payroll's alsoActiveFor either — isUnder('/payroll/settings',
+    // '/payroll') would be true, which would wrongly light View Payroll for
+    // every /payroll/* route including Payroll Settings and BOE Credits.
+    assert.deepEqual(activeLabels('/payroll', ATTENDANCE_PAYROLL_ADMIN_NAV), [])
   })
 
   test('exactly one item is ever active on an admin route', () => {
@@ -210,8 +258,8 @@ describe('active state', () => {
       '/attendance', '/attendance/employees', '/attendance/employees/abc',
       '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
       '/attendance/monthly-review/user-1', '/attendance/holidays', '/attendance/correction-log',
-      '/payroll', '/payroll/monthly-review', '/payroll/monthly-review/user-1',
-      '/payroll/how-it-works', '/payroll/settings',
+      '/payroll/monthly-review', '/payroll/monthly-review/user-1',
+      '/payroll/issues', '/payroll/how-it-works', '/payroll/settings',
       '/payroll/results/p1', '/payroll/results/p1/e1', '/payroll/results/p1/salary-report',
     ]) {
       assert.equal(activeLabels(pathname, ATTENDANCE_PAYROLL_ADMIN_NAV).length, 1,
@@ -219,10 +267,17 @@ describe('active state', () => {
     }
   })
 
-  test('a payroll run and its payslips keep Payroll Runs lit', () => {
+  test('a payroll run and its payslips keep View Payroll lit, not Payroll Runs', () => {
+    // A generated month redirects from View Payroll to /payroll/results/{id} —
+    // to the admin this is still "viewing payroll", not a trip to period
+    // administration, so the nav must agree with where they actually are.
     for (const p of ['/payroll/results/p1', '/payroll/results/p1/e1', '/payroll/results/p1/salary-report']) {
-      assert.deepEqual(activeLabels(p, ATTENDANCE_PAYROLL_ADMIN_NAV), ['Payroll Runs'], p)
+      assert.deepEqual(activeLabels(p, ATTENDANCE_PAYROLL_ADMIN_NAV), ['View Payroll'], p)
     }
+  })
+
+  test('the attendance upload page keeps View Attendance lit', () => {
+    assert.deepEqual(activeLabels('/attendance/upload', ATTENDANCE_PAYROLL_ADMIN_NAV), ['View Attendance'])
   })
 
   test('the correction log keeps Overview lit, since that is where it is reached from', () => {
@@ -257,7 +312,52 @@ describe('active state', () => {
   })
 })
 
-// ─── 6. Nothing structural moved ─────────────────────────────────────────────
+// ─── 6. Groups render once each, in order ────────────────────────────────────
+
+describe('the nav groups into Administration and Help', () => {
+  test('a group is contiguous — the header would never repeat', () => {
+    // The shell renders a header only when an item's group differs from the
+    // one before it. If Administration items were split by a Help item (or
+    // vice versa), the header would silently print twice.
+    const groups = ATTENDANCE_PAYROLL_ADMIN_NAV.map(i => i.group ?? null)
+    const seen = new Set<string | null>()
+    let previous: string | null = null
+    for (const g of groups) {
+      if (g !== previous) {
+        assert.equal(seen.has(g), false, `group ${g} is not contiguous`)
+        seen.add(g)
+      }
+      previous = g
+    }
+  })
+
+  test('Overview, View Attendance, View Payroll and Payroll Issues are the only ungrouped entries', () => {
+    const ungrouped = ATTENDANCE_PAYROLL_ADMIN_NAV.filter(i => !i.group).map(i => i.label)
+    assert.deepEqual(ungrouped, ['Overview', 'View Attendance', 'View Payroll', 'Payroll Issues'])
+  })
+
+  test('the shell renders a header for every group the nav defines', () => {
+    assert.match(SHELL, /ATTENDANCE_PAYROLL_NAV_GROUP_LABEL/)
+  })
+})
+
+// ─── 6b. Upload is reachable FROM the workspace, not beside it ────────────────
+
+describe('Attendance Upload is reached from View Attendance, not from its own nav entry', () => {
+  test('View Attendance renders an Upload Attendance action to /attendance/upload', () => {
+    const page = read('src/app/attendance/monthly-review/page.tsx')
+    assert.match(page, /href="\/attendance\/upload"/)
+    assert.match(page, />\s*Upload Attendance\s*</)
+  })
+
+  test('View Payroll renders a lateral link to period administration', () => {
+    const page = read('src/app/payroll/monthly-review/page.tsx')
+    assert.match(page, /href="\/payroll"/)
+    assert.match(page, />\s*Manage Payroll Runs\s*</)
+  })
+})
+
+// ─── 7. Nothing structural moved ─────────────────────────────────────────────
 
 describe('the merge is user-interface only', () => {
   test('both URL trees still exist, unmoved', () => {
