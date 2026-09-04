@@ -125,7 +125,7 @@ describe('every applied migration is unchanged', () => {
     // already run it: the file and the schema stop agreeing, and nothing warns.
     const digests = Object.fromEntries(APPLIED.map(file => [
       file,
-      createHash('sha256').update(readFileSync(join(MIGRATIONS_DIR, file))).digest('hex'),
+      createHash('sha256').update(readMigration(file)).digest('hex'),
     ]))
     assert.deepEqual(digests, {
       '20260908000000_order_pi_submissions.sql':

@@ -49,7 +49,7 @@ const MIGRATIONS = join(ROOT, 'supabase', 'migrations')
 const MIGRATION = '20260914000000_order_submission_permanent_deletion.sql'
 const APPLIED_PHASE_B = '20260913000000_order_submission_advance_exceptions.sql'
 
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const sql = () => read(join('supabase', 'migrations', MIGRATION))
 
 const OWNER   = '11111111-1111-4111-8111-111111111111'

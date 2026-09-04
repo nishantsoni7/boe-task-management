@@ -27,7 +27,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
+const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 
 const LIST = read('src/app/api/image-editor/results/route.ts')
 const ITEM = read('src/app/api/image-editor/results/[id]/route.ts')

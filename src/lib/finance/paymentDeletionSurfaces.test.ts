@@ -26,7 +26,7 @@ import {
 } from '@/lib/orders/submissionDeletion'
 
 const ROOT = process.cwd()
-const read = (p: string) => readFileSync(join(ROOT, p), 'utf8')
+const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 const code = (src: string) => src.split('\n')
   .filter(line => !line.trim().startsWith('*') && !line.trim().startsWith('//') && !line.trim().startsWith('{/*'))
   .join('\n')

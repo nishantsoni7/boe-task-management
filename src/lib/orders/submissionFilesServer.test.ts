@@ -767,9 +767,9 @@ describe('NOTHING IS STILL RUNNING WHEN THE SWEEP HANDS BACK CONTROL', () => {
 describe('there is no timeout, and no timer-triggered release', () => {
   const root = process.cwd()
   const helper = readFileSync(
-    join(root, 'src', 'lib', 'orders', 'submissionFilesServer.ts'), 'utf8')
+    join(root, 'src', 'lib', 'orders', 'submissionFilesServer.ts'), 'utf8').replace(/\r\n/g, '\n')
   const route = readFileSync(
-    join(root, 'src', 'app', 'api', 'orders', 'submissions', 'delete', 'route.ts'), 'utf8')
+    join(root, 'src', 'app', 'api', 'orders', 'submissions', 'delete', 'route.ts'), 'utf8').replace(/\r\n/g, '\n')
 
   /** Comments are stripped: both files DESCRIBE the removed timeout at length. */
   const code = (source: string) => source.split('\n')

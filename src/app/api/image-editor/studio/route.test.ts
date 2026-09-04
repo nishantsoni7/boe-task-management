@@ -38,7 +38,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const SOURCE = readFileSync(join(process.cwd(), 'src/app/api/image-editor/studio/route.ts'), 'utf8')
+const SOURCE = readFileSync(join(process.cwd(), 'src/app/api/image-editor/studio/route.ts'), 'utf8').replace(/\r\n/g, '\n')
 
 /** The handler's CODE, with comments stripped — so an assertion about what the
  *  route does cannot be tripped by a sentence explaining what it does not. */

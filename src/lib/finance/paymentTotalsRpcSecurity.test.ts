@@ -27,8 +27,8 @@ import { readFileSync } from 'node:fs'
 const MIGRATION = 'supabase/migrations/20261005000000_order_linked_payment_total_counts_allocations.sql'
 const HARNESS = 'supabase/tests/payment_active_allocation_totals_security.sql'
 
-const migration = readFileSync(MIGRATION, 'utf8')
-const harness = readFileSync(HARNESS, 'utf8')
+const migration = readFileSync(MIGRATION, 'utf8').replace(/\r\n/g, '\n')
+const harness = readFileSync(HARNESS, 'utf8').replace(/\r\n/g, '\n')
 
 /** The helper's own definition, isolated from the rest of the migration. */
 const helper = migration.slice(

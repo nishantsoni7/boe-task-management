@@ -357,7 +357,7 @@ describe('?tab= deep links', () => {
 // ── The wiring ────────────────────────────────────────────────────────────────
 
 describe('the page issues a bounded, server-filtered read', () => {
-  const page = readFileSync('src/app/finance/page.tsx', 'utf8')
+  const page = readFileSync('src/app/finance/page.tsx', 'utf8').replace(/\r\n/g, '\n')
 
   test('the list read is bounded and counted by the database', () => {
     assert.ok(page.includes('.range(range.from, range.to)'), 'the list must be paged')
