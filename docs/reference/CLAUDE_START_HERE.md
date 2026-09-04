@@ -1,4 +1,21 @@
-# BOE Operational Accountability System — Start Here
+> ## ⚠️ SUPERSEDED — this is not the entry point
+>
+> This file is **historical**. It describes an early, Phase-1-only version of
+> BOE Task Management (task management only — no Attendance, Payroll, BOE
+> Credits, Assets & Access, Orders, Finance, Meetings or the other modules that
+> have since shipped) and does not reflect the current shipped system.
+>
+> The canonical entry point is
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md),
+> which sets the reading order into the current project records. For what is
+> actually implemented today, read
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md)
+> directly.
+>
+> Read this file only for the original product intent, not as a working
+> instruction.
+
+# BOE Operational Accountability System — Start Here (historical)
 
 Before doing ANY implementation work, read these files carefully in the following order:
 

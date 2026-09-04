@@ -1,6 +1,22 @@
+> ## ⚠️ SUPERSEDED — do not follow these as working instructions
+>
+> This file is **historical**. Its "Phase 1 Constraints" section lists
+> comments/chat and file attachments as things NOT to introduce — both exist and
+> are in daily use today, alongside modules this task-management-only file never
+> anticipated at all (Attendance, Payroll, BOE Credits, Assets & Access, Orders,
+> Finance, Meetings).
+>
+> For working instructions, and for what is actually implemented today, start
+> at
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md)
+> and
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md).
+>
+> Read this file only for the original product intent.
+
 # FILE 4 → `docs/CLAUDE_TASK.md`
 
-# BOE Task Management System — Claude Working Instructions
+# BOE Task Management System — Claude Working Instructions (historical)
 
 # Primary Instruction
 

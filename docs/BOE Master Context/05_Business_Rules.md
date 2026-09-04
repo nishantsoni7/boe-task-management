@@ -2,7 +2,8 @@
 
 # Business Rules
 
-Last Updated: September 2026 — Order Management rules added; earlier sections unchanged.
+Last Updated: September 2026 — Order Management rules added, and a "Known Gaps"
+register added (M-5, task escalation thresholds); earlier sections unchanged.
 
 ---
 
@@ -1052,3 +1053,58 @@ number format, so the corrected date reaches the PDF only); `client_name`
 A field outside that contract is **refused**, not ignored. A formula found in a
 correction target refuses the whole document rather than publishing it with one
 correction quietly missing.
+
+---
+
+# KNOWN GAPS — DOCUMENTATION VS. IMPLEMENTATION
+
+Open, unresolved mismatches between an approved rule recorded elsewhere and
+what the code actually does. Recorded because the mismatch itself is a fact
+worth keeping, not because either side is being changed here. Each needs an
+owner decision.
+
+## M-5 — Task escalation thresholds
+
+**The written rule.**
+[`docs/reference/MASTER_PRODUCT_VISION.md`](../reference/MASTER_PRODUCT_VISION.md)
+(lines 54–57) states: *"No update for 24 hours = Caution Zone. No update for 48
+hours = Danger Zone. No update for 72 hours = Escalation to senior."* This is
+the only surviving written statement of the rule — `MASTER_PRODUCT_VISION.md`
+is an early-phase document and is not a current-state record, but nothing else
+in the repository restates escalation thresholds as a named business rule.
+
+**What the code actually does — two separate mechanisms, neither matching the
+rule above:**
+
+1. **`public.run_task_health_check()`**, an hourly `pg_cron` job whose current
+   body is not tracked in `supabase/migrations/` (it was installed directly
+   against the database — see
+   [`docs/proposals/NOTIFICATION_NOISE_AND_PAGE_SPEED.md`](../proposals/NOTIFICATION_NOISE_AND_PAGE_SPEED.md)).
+   Migration `20261015000000_task_health_check_stops_notifying.sql` is
+   **applied** and removed the job's `notifications` inserts entirely: it now
+   only writes a `task_activity_log` row at **24 hours** (overdue with no
+   action) and at **72 hours** (no update since), each guarded against
+   duplicates. The **48-hour branch was removed outright** — its only effect
+   had been the notification insert that no longer exists, so there is no
+   "Danger Zone" left in the code at all. Nothing here reaches a senior: it is
+   a silent activity-log entry visible only inside that task's own history.
+   Even before this migration, the `escalation`/`overdue` notification types it
+   used to write were excluded from every user-visible feed by
+   `SYSTEM_GENERATED_NOTIFICATION_TYPES` (`src/lib/notifications.ts:283-292`),
+   so no user has ever actually seen one.
+2. **The dashboard's admin-only escalation view**, `adminEscalations`
+   (`src/app/dashboard/page.tsx:476-497`, rendered by `EscalationListDrawer`).
+   Admin-only, and **day-granularity**, not hour-granularity: `> 5` days for
+   `blocked`/`waiting` tasks, `> 7` days for `working`/`pending`/`started`
+   tasks. No named zones ("Caution"/"Danger"), and it is a passive drawer an
+   admin opens on demand — nothing is pushed to anyone, senior or otherwise.
+
+**Status: open — needs an owner decision.** Both implemented thresholds are
+several times looser than the written 24/48/72-hour rule, neither names a
+"Caution Zone" or "Danger Zone", and neither notifies a senior. Do not resolve
+this by editing thresholds or reintroducing the removed notification branch —
+confirm with the owner which behaviour (if either) is actually intended first.
+Verified against `src/app/dashboard/page.tsx`,
+`supabase/migrations/20261015000000_task_health_check_stops_notifying.sql`,
+`docs/proposals/run_task_health_check.production.sql` and
+`src/lib/notifications.ts` on `main` at commit `ebc801c` (2026-09-04).

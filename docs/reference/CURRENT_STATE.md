@@ -1,6 +1,21 @@
+> ## ⚠️ SUPERSEDED — not current state
+>
+> This file is **historical**. It describes an early, Phase-1-only version of
+> BOE Task Management (task management and operational accountability only)
+> and does not reflect the current shipped system, which now also includes
+> Attendance, Payroll, BOE Credits, Assets & Access, Orders, Finance, Meetings
+> and more.
+>
+> For what is actually implemented today, read
+> [../BOE Master Context/02_Current_System_State.md](../BOE%20Master%20Context/02_Current_System_State.md).
+> The canonical entry point into the current project records is
+> [../BOE Master Context/00_README_FIRST.md](../BOE%20Master%20Context/00_README_FIRST.md).
+>
+> Read this file only for the original product intent.
+
 # FILE 3 → `docs/CURRENT_STATE.md`
 
-# BOE Task Management System — Current State
+# BOE Task Management System — Current State (historical)
 
 # Current Development Stage
 
