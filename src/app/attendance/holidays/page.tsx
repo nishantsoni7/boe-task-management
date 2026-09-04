@@ -11,10 +11,15 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import Link from 'next/link'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
+type HolidayType = 'full_day' | 'half_day'
+type HalfSession = 'first_half' | 'second_half'
+
 type Holiday = {
   id: string
   holiday_date: string
   holiday_name: string
+  holiday_type: HolidayType
+  half_session: HalfSession | null
   created_at: string | null
 }
 
@@ -27,6 +32,8 @@ export default function HolidaysPage() {
 
   const [newDate, setNewDate] = useState('')
   const [newName, setNewName] = useState('')
+  const [newType, setNewType] = useState<HolidayType>('full_day')
+  const [newSession, setNewSession] = useState<HalfSession | ''>('')
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -68,6 +75,7 @@ export default function HolidaysPage() {
   const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newDate || !newName.trim()) return
+    if (newType === 'half_day' && !newSession) return
     setSaving(true)
     setError(null)
     const { data: { session } } = await supabase.auth.getSession()
@@ -76,13 +84,20 @@ export default function HolidaysPage() {
     const res = await fetch('/api/attendance/holidays', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-      body: JSON.stringify({ holiday_date: newDate, holiday_name: newName.trim() }),
+      body: JSON.stringify({
+        holiday_date: newDate,
+        holiday_name: newName.trim(),
+        holiday_type: newType,
+        half_session: newType === 'half_day' ? newSession : undefined,
+      }),
     })
     const json = await res.json()
     if (res.ok) {
       setHolidays(prev => [json.holiday, ...prev].sort((a, b) => b.holiday_date.localeCompare(a.holiday_date)))
       setNewDate('')
       setNewName('')
+      setNewType('full_day')
+      setNewSession('')
     } else {
       setError(json.error ?? 'Failed to add holiday')
     }
@@ -182,9 +197,51 @@ export default function HolidaysPage() {
                 }}
               />
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Holiday Type
+              </label>
+              <select
+                value={newType}
+                onChange={e => {
+                  const holiday_type = e.target.value as HolidayType
+                  setNewType(holiday_type)
+                  if (holiday_type === 'full_day') setNewSession('')
+                }}
+                style={{
+                  padding: '7px 10px', borderRadius: 7, fontSize: 13,
+                  border: `1px solid ${colors.border}`, background: colors.base,
+                  color: colors.primary, outline: 'none', minWidth: 130,
+                }}
+              >
+                <option value="full_day">Full Day</option>
+                <option value="half_day">Half Day</option>
+              </select>
+            </div>
+            {newType === 'half_day' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: colors.tertiary, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Session
+                </label>
+                <select
+                  value={newSession}
+                  onChange={e => setNewSession(e.target.value as HalfSession)}
+                  required
+                  style={{
+                    padding: '7px 10px', borderRadius: 7, fontSize: 13,
+                    border: `1px solid ${colors.border}`, background: colors.base,
+                    color: colors.primary, outline: 'none', minWidth: 130,
+                  }}
+                >
+                  <option value="">Select…</option>
+                  <option value="first_half">First Half Holiday</option>
+                  <option value="second_half">Second Half Holiday</option>
+                </select>
+              </div>
+            )}
             <button
               type="submit"
-              disabled={saving || !newDate || !newName.trim()}
+              disabled={saving || !newDate || !newName.trim() || (newType === 'half_day' && !newSession)}
               style={{
                 padding: '7px 18px', borderRadius: 7, fontSize: 13, fontWeight: 600,
                 background: saving ? 'rgba(232,160,48,0.4)' : '#E8A030',
@@ -220,6 +277,9 @@ export default function HolidaysPage() {
               const createdLabel = h.created_at
                 ? new Date(h.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
                 : null
+              const typeLabel = h.holiday_type === 'half_day'
+                ? `Half Day — ${h.half_session === 'first_half' ? 'First Half' : 'Second Half'}`
+                : 'Full Day'
 
               return (
                 <div
@@ -233,6 +293,14 @@ export default function HolidaysPage() {
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600, color: colors.primary, marginBottom: 3 }}>
                       {h.holiday_name}
+                      {h.holiday_type === 'half_day' && (
+                        <span style={{
+                          marginLeft: 10, fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999,
+                          background: 'rgba(232,160,48,0.12)', color: '#E8A030',
+                        }}>
+                          {typeLabel}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 12, color: colors.tertiary }}>
                       {dateLabel}

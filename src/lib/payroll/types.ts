@@ -35,8 +35,19 @@ export type EngineAttendanceRecord = {
   direction_source?: import('../attendance/punchDirection').PunchDirectionSource | null
 }
 
+export type HolidayHalfSession = 'first_half' | 'second_half'
+
 export type EngineHoliday = {
   holiday_date: string   // ISO date
+  /**
+   * 'full_day' (the default for every pre-existing row) excludes the date
+   * from the working-day calendar entirely, unchanged from before this type
+   * gained the field. 'half_day' keeps the date IN the calendar — only the
+   * session named by half_session is exempt; the other half is a normal
+   * working obligation. See src/lib/payroll/halfDayHoliday.ts.
+   */
+  holiday_type: 'full_day' | 'half_day'
+  half_session: HolidayHalfSession | null
 }
 
 // The manual override layer. Re-exported from the attendance module so payroll
