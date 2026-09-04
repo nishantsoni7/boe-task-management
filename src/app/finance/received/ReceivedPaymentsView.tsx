@@ -188,6 +188,67 @@ type PaymentRequest = {
   created_at: string
 }
 
+// ── The five legacy custody columns: not on the projection ──────────────────
+//
+// RECEIVED_PAYMENTS_SOURCE (finance_received_payments) never carried
+// collected_by_user_id / collected_from_text / handed_over_to_user_id /
+// handed_over_at / collection_handover_note — they exist only on the base
+// table, finance_payment_requests. Asking the PROJECTION to select a column
+// it does not have is PostgREST error 42703, and that fails the WHOLE
+// request, not just these five fields: the entire Confirmed Payments list
+// query used to come back empty for every reader, with the sidebar count
+// (a separate, narrower query) still reading correctly beside it.
+//
+// Fetched separately, by id, straight from finance_payment_requests — the
+// same table the projection is security_invoker over, so this grants no
+// reader anything the projection would not already have shown them.
+const LEGACY_CUSTODY_COLUMNS = [
+  'collected_by_user_id',
+  'collected_from_text',
+  'handed_over_to_user_id',
+  'handed_over_at',
+  'collection_handover_note',
+] as const
+
+type LegacyCustodyFields = Pick<PaymentRequest,
+  | 'collected_by_user_id'
+  | 'collected_from_text'
+  | 'handed_over_to_user_id'
+  | 'handed_over_at'
+  | 'collection_handover_note'>
+
+const NO_LEGACY_CUSTODY: LegacyCustodyFields = {
+  collected_by_user_id: null,
+  collected_from_text: null,
+  handed_over_to_user_id: null,
+  handed_over_at: null,
+  collection_handover_note: null,
+}
+
+/** The five legacy custody columns for a bounded set of payment ids, keyed by id. */
+async function fetchLegacyCustodyFields(
+  supabase: ReturnType<typeof createClient>,
+  ids: readonly string[],
+): Promise<Map<string, LegacyCustodyFields>> {
+  const map = new Map<string, LegacyCustodyFields>()
+  if (ids.length === 0) return map
+  const { data } = await supabase
+    .from('finance_payment_requests')
+    .select(`id, ${LEGACY_CUSTODY_COLUMNS.join(', ')}`)
+    .in('id', [...ids])
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of ((data ?? []) as any[])) {
+    map.set(row.id, {
+      collected_by_user_id:     row.collected_by_user_id ?? null,
+      collected_from_text:      row.collected_from_text ?? null,
+      handed_over_to_user_id:   row.handed_over_to_user_id ?? null,
+      handed_over_at:           row.handed_over_at ?? null,
+      collection_handover_note: row.collection_handover_note ?? null,
+    })
+  }
+  return map
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /**
@@ -2011,6 +2072,16 @@ function ReceivedPaymentsViewInner(
   const [profile,        setProfile]        = useState<UserProfile | null>(null)
   const [requests,       setRequests]       = useState<PaymentRequest[]>([])
   const [listLoading,    setListLoading]    = useState(false)
+  // A FAILED READ IS NOT AN EMPTY LIST. The sidebar's Confirmed Payments count
+  // is a single narrow `id`-only query; this list asks for every classification
+  // and allocation column besides. That asymmetry means the two can fail
+  // independently, and a swallowed error here used to fall through to
+  // `data ?? []` — rendering the same "No payments received yet" a genuinely
+  // empty ledger would show, with the sidebar badge (unaffected by whatever
+  // failed) still reading the true count beside it. Kept separate from
+  // `narrowed`'s "no matches" copy: this is not a filter finding nothing, it is
+  // the read itself not having happened.
+  const [listError,      setListError]      = useState<string | null>(null)
   const [detailRequest,  setDetailRequest]  = useState<PaymentRequest | null>(null)
   const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
   const [deleteTarget,   setDeleteTarget]   = useState<PaymentRequest | null>(null)
@@ -2186,8 +2257,7 @@ function ReceivedPaymentsViewInner(
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
         id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-        received_in, collected_by_user_id, collected_from_text,
-        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        received_in,
         proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
@@ -2247,7 +2317,7 @@ function ReceivedPaymentsViewInner(
     // two payments recorded in the same instant could otherwise swap between
     // pages, showing one twice and hiding the other.
     const range = pageRange(page)
-    const { data, count } = await scoped
+    const { data, count, error } = await scoped
       .order('created_at', { ascending: false })
       .order('id', { ascending: false })
       .range(range.from, range.to)
@@ -2256,15 +2326,35 @@ function ReceivedPaymentsViewInner(
     // repaint the screen underneath it.
     if (token !== loadToken.current) return
 
+    // THE FAILURE IS SHOWN, NEVER READ AS ZERO. `total` stays null rather than
+    // 0 so resultSummary says "0 payments" is unknown, not confirmed — see
+    // resultSummary's own null handling in listQuery.ts — and the empty state
+    // below renders the error instead of "No payments received yet".
+    if (error) {
+      setListError(error.message || 'Could not load payments.')
+      setRequests([])
+      setTotal(null)
+      setListLoading(false)
+      return
+    }
+    setListError(null)
+
     // The two submitter/approver names arrive already flattened — the projection
     // joins users itself, so what used to be two embedded resources to unwrap is
     // now two plain columns. Same values, same nulls: approved_by_name is set by
     // approve_finance_payment_request (20260688/20260690) and is null only on a
     // row approved before that column existed. `?? undefined` keeps the optional
     // fields optional so every consumer below reads exactly as before.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mapped: PaymentRequest[] = ((data ?? []) as any[]).map(r => ({
+    //
+    // The five legacy custody columns are NOT on this row — see
+    // fetchLegacyCustodyFields — so they are read separately, by the same ids,
+    // before the page paints. Bounded exactly as the list is: at most 50 ids.
+    const rows = (data ?? []) as unknown as Omit<PaymentRequest, keyof LegacyCustodyFields>[]
+    const custody = await fetchLegacyCustodyFields(supabase, rows.map(r => r.id))
+    if (token !== loadToken.current) return
+    const mapped: PaymentRequest[] = rows.map(r => ({
       ...r,
+      ...(custody.get(r.id) ?? NO_LEGACY_CUSTODY),
       submitted_by_name: r.submitted_by_name ?? undefined,
       approved_by_name:  r.approved_by_name  ?? undefined,
     }))
@@ -2431,8 +2521,7 @@ function ReceivedPaymentsViewInner(
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
         id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-        received_in, collected_by_user_id, collected_from_text,
-        handed_over_to_user_id, handed_over_at, collection_handover_note,
+        received_in,
         proof_note, order_number, order_id,
         order_request_id, order_request_number, sales_note,
         status, payment_against, submitted_by, admin_note, created_at,
@@ -2446,8 +2535,10 @@ function ReceivedPaymentsViewInner(
     if (!data) return
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = data as any
+    const custody = (await fetchLegacyCustodyFields(supabase, [id])).get(id) ?? NO_LEGACY_CUSTODY
     const mapped: PaymentRequest = {
       ...row,
+      ...custody,
       submitted_by_name: row.submitted_by_name ?? undefined,
       approved_by_name:  row.approved_by_name  ?? undefined,
     }
@@ -2676,9 +2767,8 @@ function ReceivedPaymentsViewInner(
           .from(RECEIVED_PAYMENTS_SOURCE)
           .select(`
             id, request_number, human_payment_id, client_name, amount, payment_date, payment_mode,
-            received_in, collected_by_user_id, collected_from_text,
-        handed_over_to_user_id, handed_over_at, collection_handover_note,
-        proof_note, order_number, order_id,
+            received_in,
+            proof_note, order_number, order_id,
             order_request_id, order_request_number, sales_note,
             status, payment_against, submitted_by, admin_note, created_at,
             submitted_by_name, approved_by_name,
@@ -2689,8 +2779,12 @@ function ReceivedPaymentsViewInner(
           .maybeSingle()
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const row = data as any
+        const custody = row
+          ? (await fetchLegacyCustodyFields(supabase, [row.id])).get(row.id) ?? NO_LEGACY_CUSTODY
+          : NO_LEGACY_CUSTODY
         match = row
           ? { ...row,
+              ...custody,
               submitted_by_name: row.submitted_by_name ?? undefined,
               approved_by_name:  row.approved_by_name  ?? undefined } as PaymentRequest
           : null
@@ -2958,12 +3052,27 @@ function ReceivedPaymentsViewInner(
         {listLoading ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
-          /* TWO DIFFERENT EMPTIES, said differently. "No payments" is a
-             statement about the business; "nothing matches" is a statement
-             about the filter, and it offers the way out. Confusing the two
-             sends somebody hunting for a payment that is merely filtered. */
+          /* THREE DIFFERENT EMPTIES, said differently. A failed read is not a
+             business fact and must never be spoken as one — "No payments
+             received yet" on a read that never happened is exactly the
+             mismatch this block exists to prevent (the sidebar count, a
+             separate and simpler query, is unaffected by whatever failed
+             here and keeps reading correctly). "No payments" is a statement
+             about the business; "nothing matches" is a statement about the
+             filter, and it offers the way out. Confusing any of the three
+             sends somebody hunting for a payment that is merely filtered, or
+             trusting a count of zero nobody actually read. */
           <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
-            {narrowed ? (
+            {listError ? (
+              <div style={{ maxWidth: '420px', margin: '0 auto', textAlign: 'left' }}>
+                <ErrorBanner message={`Could not load payments: ${listError}`} />
+                <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                  <button onClick={() => loadRequests()} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+                    Retry
+                  </button>
+                </div>
+              </div>
+            ) : narrowed ? (
               <>
                 No payments match the current filters.
                 <div style={{ marginTop: '10px' }}>
