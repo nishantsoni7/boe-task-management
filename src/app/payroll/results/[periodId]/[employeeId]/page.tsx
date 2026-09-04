@@ -35,7 +35,6 @@ import {
   fmt,
   CLASSIFICATION_LABELS,
   type DetailPayload,
-  type CorrectionRow,
   type TabKey,
 } from './PayrollDetailView'
 import { CarryForwardModal, PaymentModal } from './SettlementModal'
