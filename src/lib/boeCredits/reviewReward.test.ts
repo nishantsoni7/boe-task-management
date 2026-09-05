@@ -57,6 +57,19 @@ describe('the file, and where it sits', () => {
       // Employee designation level: one nullable, informational column on
       // public.users, granted to authenticated. Reaches nothing here.
       '20261106000000_employee_designation_level.sql',
+      // Review types, batch assignment and the project image library. IT DOES
+      // REACH THIS WORK, and that is why it is named rather than allowed by a
+      // loosened rule: it re-creates transition_customer_review_test_card() a
+      // third time so the reward is priced by the review's own review_type, and
+      // replaces post_boe_credit_review_reward() with a six-argument form.
+      //
+      // WHAT THIS FILE ASSERTS IS UNAFFECTED. Every claim below is about what
+      // 20261102000000 SAYS — the shape Phase 1B introduced, in the file that
+      // introduced it. A later file changing the live definition does not
+      // change what this one contains, and the two together are the history.
+      // The current shape is asserted in
+      // src/lib/customerReviews/reviewTypes.test.ts.
+      '20261107000000_review_types_assignment_and_image_groups.sql',
     ])
   })
 

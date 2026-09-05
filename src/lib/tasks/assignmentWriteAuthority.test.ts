@@ -640,6 +640,10 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // Employee designation level: one nullable, informational column on
       // public.users, granted to authenticated. Reaches nothing here.
       '20261106000000_employee_designation_level.sql',
+      // Review types, batch assignment and the project image library: two new
+      // tables of its own, columns on customer_review_test_cards and one on
+      // boe_credit_settings. It reaches nothing here.
+      '20261107000000_review_types_assignment_and_image_groups.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

@@ -118,6 +118,19 @@ describe('the migration is one file, correctly sequenced', () => {
       // Employee designation level: one nullable, informational column on
       // public.users, granted to authenticated. Reaches nothing here.
       '20261106000000_employee_designation_level.sql',
+      // Review types, batch assignment and the project image library. It DOES
+      // reach this module: it adds review_type, assigned_to and image_group_id
+      // to customer_review_test_cards, re-creates this file's SELECT policy so
+      // an available review belongs to its assignee rather than to everybody,
+      // and re-creates book_customer_review_test_card() and
+      // can_view_customer_review_test_card().
+      //
+      // IT CREATES NONE OF THE THREE TABLES ASSERTED BELOW, and it does not
+      // change what THIS file says — every claim here is about the schema
+      // 20261017000000 established, which is still the schema everything else
+      // extends. The current policy shape is asserted in
+      // src/lib/customerReviews/reviewTypes.test.ts.
+      '20261107000000_review_types_assignment_and_image_groups.sql',
     ])
   })
 

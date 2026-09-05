@@ -314,6 +314,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // Employee designation level: one nullable, informational column on
       // public.users, granted to authenticated. Reaches nothing here.
       '20261106000000_employee_designation_level.sql',
+      // Review types, batch assignment and the project image library: two new
+      // tables of its own, columns on customer_review_test_cards and one on
+      // boe_credit_settings. It reaches nothing here.
+      '20261107000000_review_types_assignment_and_image_groups.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

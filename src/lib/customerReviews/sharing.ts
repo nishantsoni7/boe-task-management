@@ -20,7 +20,8 @@
 // sent — because nothing here can know, and claiming otherwise would be the one
 // dishonesty this module is most careful to avoid.
 
-import type { TestCardStatus } from './types'
+import type { ReviewType, TestCardStatus } from './types'
+import { imageReadiness } from './reviewTypes'
 
 /**
  * Whether a review may be shared at all.
@@ -36,13 +37,55 @@ import type { TestCardStatus } from './types'
  * A deleted review is refused too — a verifier threw it away, and throwing
  * something away should not leave it shareable.
  */
-export function isShareableReview(card: {
-  status: TestCardStatus
-  approved_at: string | null
-  deleted_at: string | null
-}): boolean {
+export function isShareableReview(
+  card: {
+    status: TestCardStatus
+    approved_at: string | null
+    deleted_at: string | null
+    review_type?: ReviewType
+    image_group_id?: string | null
+  },
+  /**
+   * The group exists, is not archived and holds a live image.
+   *
+   * REQUIRED IN PRACTICE FOR AN IMAGE REVIEW, even though it is optional in the
+   * type. A caller that omits it is saying "I have not looked", and this
+   * function then admits the review on the strength of `image_group_id` alone —
+   * which is right for a list drawing a badge and wrong for the share control,
+   * so ShareReviewButton always reads the group and passes the answer.
+   */
+  groupUsable?: boolean,
+): boolean {
   if (card.deleted_at !== null) return false
   if (card.status === 'pending_approval') return false
+
+  // AN IMAGE REVIEW WITHOUT USABLE PROJECT IMAGES IS NOT SHAREABLE, and this is
+  // the second half of the same rule booking enforces. Booking is refused by
+  // the database; sharing is not a database operation at all — it hands text
+  // and files to the operating system — so there is no server to refuse it and
+  // this function is the only thing that can.
+  //
+  // WHAT IT PREVENTS, concretely: an image review sharing TEXT ALONE. The whole
+  // of an image review is a review posted with photographs of one project, so
+  // text-only would send a review about how something LOOKS with nothing to
+  // look at — and, because a share sheet reports nothing back, the sender would
+  // have no way to tell that was what happened. ShareReviewButton refuses the
+  // same case a second time at the moment of action, after it has tried and
+  // failed to load the files.
+  //
+  // `review_type` is optional so that callers holding a narrow row keep
+  // working; an absent one is a text review, which is what every review was
+  // before the type existed.
+  if (
+    card.review_type === 'image'
+    && imageReadiness(
+      { review_type: 'image', image_group_id: card.image_group_id ?? null },
+      groupUsable,
+    ) === 'awaiting_images'
+  ) {
+    return false
+  }
+
   // APPROVED_AT IS CHECKED TOO, not just the status. They agree — a CHECK
   // enforces that a pending card has no approval stamp — and asking both means
   // a row that somehow held one without the other is refused rather than

@@ -1,7 +1,7 @@
 // GET  /api/boe-credits/settings   — the active credit settings (+ history for an admin)
 // PUT  /api/boe-credits/settings   — save a new settings row (admin only)
 //
-// Any signed-in employee may READ the five numbers: the knowledge page, the
+// Any signed-in employee may READ the six numbers: the knowledge page, the
 // payslip's offer and the payroll application form all show them. Only an
 // admin may change them, through the same requireAdmin the rest of the
 // payroll API uses. The table is append-only, so a save is an INSERT and the
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
     history: history.map(h => ({
       id: h.id,
       review_reward_credits: h.review_reward_credits,
+      image_review_reward_credits: h.image_review_reward_credits,
       credit_value: h.credit_value,
       half_day_redemption_credits: h.half_day_redemption_credits,
       full_day_redemption_credits: h.full_day_redemption_credits,

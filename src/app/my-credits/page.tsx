@@ -228,7 +228,13 @@ export default function MyCreditsPage() {
                   : month?.status === 'lapsed'
                     ? 'This month closed below the target, so its review credits lapsed. Older credits were not affected.'
                     : done === 0
-                      ? `Verified reviews earn ${formatCredits(settings.review_reward_credits)} each. Reach ${target} in a month and that month’s credits become spendable.`
+                      // BOTH REWARDS WHEN THEY DIFFER. Naming one number for
+                      // "verified reviews" would be telling somebody doing
+                      // image reviews the wrong figure.
+                      ? `${settings.review_reward_credits === settings.image_review_reward_credits
+                          ? `Verified reviews earn ${formatCredits(settings.review_reward_credits)} each.`
+                          : `A verified text review earns ${formatCredits(settings.review_reward_credits)} and an image review ${formatCredits(settings.image_review_reward_credits)}.`
+                        } Reach ${target} in a month and that month’s credits become spendable.`
                       : `${target - done} more verified ${target - done === 1 ? 'review' : 'reviews'} and this month’s ${formatCredits(month?.earned_review_credits ?? 0)} become spendable.`}
               </div>
             </div>
@@ -253,7 +259,10 @@ export default function MyCreditsPage() {
           ) : rows.length === 0 ? (
             <div style={{ padding: '24px 18px', fontSize: 13, color: colors.muted, lineHeight: 1.6 }}>
               No credits yet. Book a review in the Review Workflow, send it, submit your screenshot, and a verified
-              review earns {formatCredits(settings.review_reward_credits)}.
+              review earns{' '}
+              {settings.review_reward_credits === settings.image_review_reward_credits
+                ? formatCredits(settings.review_reward_credits)
+                : `${formatCredits(settings.review_reward_credits)} for a text review or ${formatCredits(settings.image_review_reward_credits)} for an image review`}.
             </div>
           ) : (
             <ol style={{ listStyle: 'none', margin: 0, padding: '4px 18px' }}>

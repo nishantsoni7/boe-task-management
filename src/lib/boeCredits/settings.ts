@@ -1,9 +1,21 @@
 // BOE Credits settings — the defaults, and the one parser both the form and
 // the API use, so the form cannot accept something the server will reject.
 //
-// FIVE NUMBERS, FIVE DIFFERENT THINGS.
+// SIX NUMBERS, SIX DIFFERENT THINGS.
 //
-//   review_reward_credits         how many credits ONE verified review earns.
+//   review_reward_credits         how many credits ONE verified TEXT review
+//                                 earns. It keeps its name because it keeps its
+//                                 meaning: before review types existed every
+//                                 review was a text review and this was the
+//                                 reward, so every history row already stored
+//                                 under this name still says what it said.
+//   image_review_reward_credits   how many credits ONE verified IMAGE review
+//                                 earns. Set on its own, never derived from the
+//                                 text reward. THE DATABASE CHOOSES BETWEEN THE
+//                                 TWO from the review's own stored review_type,
+//                                 read off the locked row inside the verify
+//                                 transition — no screen and no request decides
+//                                 which one is paid.
 //   credit_value                  how many rupees ONE credit is worth when an
 //                                 employee applies credits to payroll. It is
 //                                 SNAPSHOTTED on the application, so a later
@@ -31,6 +43,7 @@ import type { BoeCreditSettings } from './types'
  */
 export const DEFAULT_BOE_CREDIT_SETTINGS: BoeCreditSettings = {
   review_reward_credits: 1,
+  image_review_reward_credits: 1,
   credit_value: 100.0,
   half_day_redemption_credits: 8,
   full_day_redemption_credits: 15,
@@ -59,9 +72,10 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
-/** The four whole-credit fields share one rule: a positive whole number within its bound. */
+/** The five whole-credit fields share one rule: a positive whole number within its bound. */
 const WHOLE_FIELDS: { key: keyof BoeCreditSettings; label: string; unit: string; max: number }[] = [
-  { key: 'review_reward_credits',       label: 'Verified review reward',     unit: 'credits', max: MAX_REVIEW_REWARD_CREDITS },
+  { key: 'review_reward_credits',       label: 'Text review reward',         unit: 'credits', max: MAX_REVIEW_REWARD_CREDITS },
+  { key: 'image_review_reward_credits', label: 'Image review reward',        unit: 'credits', max: MAX_REVIEW_REWARD_CREDITS },
   { key: 'half_day_redemption_credits', label: 'Half Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
   { key: 'full_day_redemption_credits', label: 'Full Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
   { key: 'minimum_monthly_reviews',     label: 'Minimum reviews per month',  unit: 'reviews', max: MAX_MINIMUM_MONTHLY_REVIEWS },
@@ -106,13 +120,38 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
   return { ok: true, settings: out as BoeCreditSettings }
 }
 
-/** True when two settings objects carry the same five values. */
+/** True when two settings objects carry the same six values. */
 export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings): boolean {
   return a.review_reward_credits === b.review_reward_credits
+    && a.image_review_reward_credits === b.image_review_reward_credits
     && Math.abs(a.credit_value - b.credit_value) < 0.005
     && a.half_day_redemption_credits === b.half_day_redemption_credits
     && a.full_day_redemption_credits === b.full_day_redemption_credits
     && a.minimum_monthly_reviews === b.minimum_monthly_reviews
+}
+
+/**
+ * What a verified review of this type earns, under these settings.
+ *
+ * FOR LABELS ONLY, AND THAT IS NOT A HEDGE — it is the point. What is actually
+ * paid is decided inside transition_customer_review_test_card(), from the
+ * newest settings row and the review's own stored review_type, in the same
+ * transaction that verifies the review. This function exists so the button can
+ * say "Award +2 credits" before the verifier presses it; if the settings change
+ * between the render and the press, the database pays the new amount and the
+ * screen was showing the old one. That is the correct order of authority, and
+ * it is why nothing here is passed to the RPC.
+ *
+ * An unknown type reads as text, which is what every review was before types
+ * existed and what the database's own default says.
+ */
+export function rewardForReviewType(
+  settings: BoeCreditSettings,
+  reviewType: string | null | undefined,
+): number {
+  return reviewType === 'image'
+    ? settings.image_review_reward_credits
+    : settings.review_reward_credits
 }
 
 /** "₹100" / "₹100.50" — the rupee value of one credit, for labels. */

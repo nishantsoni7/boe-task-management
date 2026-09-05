@@ -5,14 +5,30 @@ import { Loader2, Share2 } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
 import { buildReviewMessage } from '@/lib/customerReviews/internalTest'
-import { REVIEW_IMAGE_BUCKET } from '@/lib/customerReviews/reviewImages'
+import { AWAITING_IMAGES_LABEL } from '@/lib/customerReviews/reviewTypes'
 import {
   MANUAL_ATTACH_INSTRUCTION,
   downloadFileName,
   isShareableReview,
   shareCapability,
 } from '@/lib/customerReviews/sharing'
-import { testCategoryLabel, type TestCard, type TestCardPhoto } from '@/lib/customerReviews/types'
+import { testCategoryLabel, type TestCard } from '@/lib/customerReviews/types'
+
+/**
+ * The two things this control needs of an image, and nothing else.
+ *
+ * DELIBERATELY NARROWER THAN EITHER ROW TYPE. A per-card `review_image`
+ * (TestCardPhoto) and a project group image (ReviewGroupImage) are different
+ * records in different tables in different buckets; what they have in common is
+ * an object key and a decoded MIME type, which is all a share sheet wants.
+ * Naming that overlap is what lets ONE share path serve both without a branch
+ * on which kind it was handed.
+ */
+export type ShareableImage = { storage_path: string; mime_type: string }
+
+const AWAITING_IMAGES_MESSAGE =
+  `${AWAITING_IMAGES_LABEL}. This image review cannot be shared until an administrator `
+  + 'attaches a project with photographs in it.'
 
 // ── Handing an approved review to the share sheet ────────────────────────────
 //
@@ -26,9 +42,16 @@ import { testCategoryLabel, type TestCard, type TestCardPhoto } from '@/lib/cust
 //     this file. Every word of copy below is written to avoid implying
 //     otherwise: the button says "Share review", the success state says the
 //     sheet was opened, and nothing anywhere says "sent".
-//   * IT DOES NOT TOUCH A PENDING DRAFT. isShareableReview() is asked first and
-//     the control is not rendered at all when the answer is no. Nothing about a
-//     review awaiting approval leaves this application.
+//   * THE IMAGES AN IMAGE REVIEW CARRIES ARE ITS PROJECT GROUP'S. The old
+//     per-card `review_image` attachment plays no part in an image review:
+//     the caller reads the group through its own RLS and hands the files
+//     here. A text review still carries whatever per-card images it has.
+//   * IT DOES NOT TOUCH A PENDING DRAFT, OR AN IMAGE REVIEW WITH NO PROJECT.
+//     isShareableReview() is asked first and the control is not rendered at all
+//     when the answer is no. Nothing about a review awaiting approval leaves
+//     this application, and an image review whose photographs are not ready
+//     cannot be shared as text alone — which would send a review about how
+//     something LOOKS with nothing to look at.
 //   * IT DOES NOT MAKE ANYTHING PUBLIC. The images are fetched through
 //     short-lived signed URLs, in the browser, under the same policy that
 //     governs reading the card. No public URL is minted and nothing is uploaded
@@ -66,26 +89,56 @@ export function ShareReviewButton({
   supabase,
   card,
   images,
+  bucket,
+  groupUsable,
 }: {
   supabase: SupabaseClient
   card: TestCard
-  /** Live images only. The caller's query filters removals out. */
-  images: TestCardPhoto[]
+  /**
+   * The images that go out with this review. Live only — the caller's query
+   * filters removals out.
+   *
+   * FOR AN IMAGE REVIEW THESE ARE THE PROJECT GROUP'S, and that is the whole of
+   * this control's contract with the rest of the module: a project image group
+   * is the authoritative source for an image review, and the old per-card
+   * `review_image` attachment plays no part in it. For a text review they are
+   * whatever per-card images a verifier attached, exactly as before.
+   */
+  images: ShareableImage[]
+  /** Which private bucket `images` live in. The two kinds do not share one. */
+  bucket: string
+  /**
+   * For an image review: the group exists, is not archived and holds a live
+   * image. Passed rather than assumed, because this is the one control that
+   * must not admit a review it cannot actually deliver.
+   */
+  groupUsable?: boolean
 }) {
   const [state, setState] = useState<ShareState>({ kind: 'idle' })
   const inFlight = useRef(false)
 
   // THE GATE, ASKED BEFORE ANYTHING IS RENDERED. A pending draft has no share
   // control at all — not a disabled one, which would be a thing to try to
-  // enable.
-  const shareable = isShareableReview(card)
+  // enable. An image review whose project is missing, archived or empty is
+  // refused here too, for the same reason and by the same function.
+  const shareable = isShareableReview(card, groupUsable)
 
   const run = useCallback(async () => {
     if (inFlight.current) return
     // Re-asked at the moment of action, not only at render. The row may have
     // been refreshed since this button was drawn.
-    if (!isShareableReview(card)) {
-      setState({ kind: 'error', message: 'Only an approved review can be shared.' })
+    if (!isShareableReview(card, groupUsable)) {
+      // TWO REASONS, AND THEY NEED DIFFERENT SENTENCES. An unapproved review is
+      // waiting for a verifier to read it; an image review whose project is
+      // missing, archived or empty is waiting for somebody to attach usable
+      // photographs. Telling the second person the first sentence would send
+      // them to ask the wrong question.
+      setState({
+        kind: 'error',
+        message: card.review_type === 'image'
+          ? AWAITING_IMAGES_MESSAGE
+          : 'Only an approved review can be shared.',
+      })
       return
     }
     inFlight.current = true
@@ -100,7 +153,35 @@ export function ShareReviewButton({
       })
       const title = card.test_title
 
-      const files = await loadImageFiles(supabase, card, images)
+      const files = await loadImageFiles(supabase, card, bucket, images)
+
+      // ── AN IMAGE REVIEW NEVER GOES OUT AS TEXT ALONE ────────────────────
+      //
+      // isShareableReview() has already said this review HAS usable project
+      // images. If none of them actually loaded — an expired signature, a
+      // dropped connection, an object removed between the read and now — then
+      // the thing we are about to hand over is not the thing the candidate was
+      // asked to post.
+      //
+      // shareCapability() would answer `text` for an empty file list, which is
+      // exactly right for a text review and exactly wrong here: the share sheet
+      // reports nothing back, so the candidate would send a review about how
+      // something LOOKS with nothing to look at and have no way to notice.
+      // Refusing is the honest outcome, and it is recoverable — pressing Share
+      // again re-signs the URLs.
+      if (card.review_type === 'image' && files.length === 0) {
+        setState({
+          kind: 'error',
+          // NOTE THE WORDING, and it is not incidental: this component may not
+          // contain the word "sent" anywhere outside "press send yourself",
+          // because no state here can know whether a message left anybody's
+          // phone. reviewSharing.test.ts enforces that bluntly, on purpose —
+          // so the sentence says what this code actually observed.
+          message: 'The project images for this review could not be loaded, so nothing was shared — '
+            + 'an image review never goes out as text alone. Check your connection and try again.',
+        })
+        return
+      }
 
       const capability = shareCapability(
         typeof navigator === 'undefined' ? undefined : (navigator as unknown as Parameters<typeof shareCapability>[0]),
@@ -133,7 +214,7 @@ export function ShareReviewButton({
     } finally {
       inFlight.current = false
     }
-  }, [supabase, card, images])
+  }, [supabase, card, images, bucket, groupUsable])
 
   if (!shareable) return null
 
@@ -155,9 +236,17 @@ export function ShareReviewButton({
           {working ? 'Preparing…' : 'Share review'}
         </button>
         <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
-          {images.length > 0
-            ? `The review and its ${images.length} image${images.length === 1 ? '' : 's'}.`
-            : 'The review text.'}
+          {/*
+            SAYS WHERE THE IMAGES CAME FROM, not just how many. A candidate
+            sharing an image review is posting one project's photographs, and
+            the sentence beside the button is where they can check that before
+            the share sheet takes over.
+          */}
+          {images.length === 0
+            ? 'The review text.'
+            : card.review_type === 'image'
+              ? `The review and its ${images.length} project image${images.length === 1 ? '' : 's'}.`
+              : `The review and its ${images.length} image${images.length === 1 ? '' : 's'}.`}
         </span>
       </div>
 
@@ -192,13 +281,14 @@ export function ShareReviewButton({
 async function loadImageFiles(
   supabase: SupabaseClient,
   card: TestCard,
-  images: TestCardPhoto[],
+  bucket: string,
+  images: ShareableImage[],
 ): Promise<File[]> {
   if (images.length === 0) return []
 
   const paths = images.map(i => i.storage_path)
   const { data } = await supabase.storage
-    .from(REVIEW_IMAGE_BUCKET)
+    .from(bucket)
     .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)
   if (!data) return []
 

@@ -16,7 +16,12 @@ import { ScreenshotManager } from '@/components/customerReviews/ScreenshotManage
 import { ReviewImageManager } from '@/components/customerReviews/ReviewImageManager'
 import { ShareReviewButton } from '@/components/customerReviews/ShareReview'
 import { DraftEditedNote } from '@/components/customerReviews/EditDraft'
-import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
+import { ReadinessBadge, ReviewTypeBadge } from '@/components/customerReviews/AssignedReviews'
+import { ProjectGroupControl } from '@/components/customerReviews/ProjectGroupControl'
+import { VerifyPanel } from '@/components/customerReviews/VerifyPanel'
+import { REVIEW_IMAGE_BUCKET, REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
+import { GROUP_IMAGE_BUCKET } from '@/lib/customerReviews/imageGroups'
+import { ProjectImages, useProjectImages } from '@/components/customerReviews/ProjectImages'
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
@@ -68,6 +73,9 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
   const [card, setCard] = useState<TestCard | null>(null)
   const [screenshots, setScreenshots] = useState<TestCardPhoto[]>([])
+  /** The employee who will be paid, and the project this review posts. Display only. */
+  const [holderName, setHolderName] = useState<string | null>(null)
+  const [groupLabel, setGroupLabel] = useState<string | null>(null)
   /**
    * The review's own images, kept apart from the test screenshot.
    *
@@ -165,6 +173,39 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         .sort((a, b) => (a.image_slot ?? 0) - (b.image_slot ?? 0)),
     )
     setEvents((trail ?? []) as unknown as TestCardEvent[])
+
+    // ── The two names the verification panel says out loud ──────────────────
+    //
+    // WHO IS PAID, and WHICH PROJECT. Both are looked up only when there is
+    // something to look up: a review nobody has booked has no recipient, and a
+    // text review has no project. Two conditional reads rather than two joins,
+    // because most reviews need neither.
+    //
+    // A NAME THAT FAILS TO LOAD IS LEFT NULL, and the panel says "the employee
+    // who booked it" instead. Naming the wrong person on a screen about paying
+    // them would be worse than naming nobody.
+    const detail = cardRow as unknown as TestCard
+    if (detail.booked_by) {
+      // Named columns, never `*` — a `select('*')` against public.users is a
+      // permission error in this project (src/lib/users/safeColumns.ts).
+      const { data: holder } = await supabase
+        .from('users').select('id, full_name').eq('id', detail.booked_by).maybeSingle()
+      setHolderName((holder as { full_name: string | null } | null)?.full_name ?? null)
+    } else {
+      setHolderName(null)
+    }
+
+    if (detail.image_group_id) {
+      const { data: group } = await supabase
+        .from('customer_review_image_groups')
+        .select('id, label')
+        .eq('id', detail.image_group_id)
+        .maybeSingle()
+      setGroupLabel((group as { label: string } | null)?.label ?? null)
+    } else {
+      setGroupLabel(null)
+    }
+
     setLoading(false)
   }, [supabase, profile, cardId])
 
@@ -190,6 +231,20 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   // Holding a card is the whole of what authorises a tester action, for an
   // administrator as much as anyone.
   const mine = card ? holdsThisCard(card, profile?.id, caps) : false
+
+  /**
+   * THE PROJECT IMAGES, READ ONCE AND USED FOR THREE THINGS.
+   *
+   * Whether the review is Ready, what the candidate is shown, and what the
+   * share sheet carries all come from this one read — so they cannot disagree.
+   * It goes through the signed-in user's own client, so RLS decides what comes
+   * back: a group belonging only to somebody else's assigned review returns
+   * nothing at all.
+   *
+   * A text review passes `null` and the hook does no work.
+   */
+  const isImageReview = card?.review_type === 'image'
+  const projectImages = useProjectImages(supabase, isImageReview ? card?.image_group_id : null)
 
   const actions = useMemo(
     () => (card
@@ -416,10 +471,29 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
+          {/*
+            THE TYPE AND, FOR AN IMAGE REVIEW, WHETHER IT IS READY. Both are
+            facts about what this review IS and what it needs; the status beside
+            them is where it has got to. Readiness renders for image reviews and
+            nothing else.
+          */}
+          <ReviewTypeBadge type={card.review_type} />
+          <ReadinessBadge card={card} />
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: colors.tertiary }}>
             {card.card_ref}
           </span>
         </div>
+
+        {/*
+          THE PROJECT AN IMAGE REVIEW POSTS, and the verifier's control for
+          attaching one to a review that was assigned before its project was
+          ready. It renders nothing at all for a text review, and for a
+          candidate it renders a read-only sentence — set_customer_review_image_group()
+          resolves `verify` and is what actually decides.
+        */}
+        {card.review_type === 'image' && caps.canVerify && (
+          <ProjectGroupControl supabase={supabase} card={card} onChanged={load} />
+        )}
 
         {/*
           WHERE THIS REVIEW IS, AND WHAT COMES NEXT — said once, at the top,
@@ -512,17 +586,55 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         the person picks WhatsApp, picks a recipient and presses send. Nothing
         here sends anything, and no copy on this screen says it does.
       */}
-      {(reviewImages.length > 0 || card.approved_at) && (
-        <Section title="Review images">
+      {/*
+        ── ONE SECTION, TWO SOURCES, AND THE TYPE DECIDES WHICH ─────────────
+
+        AN IMAGE REVIEW SHOWS ITS PROJECT GROUP AND NOTHING ELSE. The project
+        image group is the authoritative source for an image review, so the old
+        per-card ReviewImageManager is NOT rendered beside it — showing both
+        would offer a verifier two ways to attach photographs to one review and
+        leave a candidate unable to tell which set actually goes out.
+
+        A TEXT REVIEW IS UNTOUCHED. It keeps the per-card images exactly as
+        before, which is what makes this a change to the image path rather than
+        a removal of the old one.
+
+        THE CANDIDATE CHOOSES NOTHING either way. On an image review the
+        photographs are the project's, shown read-only; on a text review they
+        are whatever a verifier attached, also read-only — every card this page
+        renders is approved or later, and the server refuses an attach or a
+        removal once a review is approved.
+      */}
+      {(isImageReview || reviewImages.length > 0 || card.approved_at) && (
+        <Section title={isImageReview ? 'Project images' : 'Review images'}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <ReviewImageManager
+            {isImageReview ? (
+              <ProjectImages supabase={supabase} set={projectImages} label={groupLabel} />
+            ) : (
+              <ReviewImageManager
+                supabase={supabase}
+                cardId={card.id}
+                images={reviewImages}
+                onChanged={load}
+                canEdit={false}
+              />
+            )}
+            {/*
+              SHARING IS OFFERED ONLY FOR AN APPROVED REVIEW. ShareReviewButton
+              asks isShareableReview() and renders nothing at all when the
+              answer is no — not a disabled button, which is a thing somebody
+              would try to enable. For an image review it is handed the PROJECT
+              GROUP'S images and the group's usability, so a review whose
+              project is missing, archived or empty offers no share control and
+              can never go out as text alone.
+            */}
+            <ShareReviewButton
               supabase={supabase}
-              cardId={card.id}
-              images={reviewImages}
-              onChanged={load}
-              canEdit={false}
+              card={card}
+              images={isImageReview ? projectImages.images : reviewImages}
+              bucket={isImageReview ? GROUP_IMAGE_BUCKET : REVIEW_IMAGE_BUCKET}
+              groupUsable={isImageReview ? projectImages.usable : undefined}
             />
-            <ShareReviewButton supabase={supabase} card={card} images={reviewImages} />
           </div>
         </Section>
       )}
@@ -644,6 +756,30 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         {/* ── Step 4 and 5: submit, then somebody verifies ── */}
         {actions.length > 0 && (
           <Section title="Next step" id="review-next-step">
+            {/*
+              WHAT THE VERIFICATION WILL DO, BEFORE IT IS DONE. Rendered only
+              when Verify is actually one of the available actions, which
+              availableActions() decides from the resolved `verify` permission
+              and the card's status — so a candidate never sees a panel about
+              awarding themselves anything.
+
+              THE PANEL DECIDES NOTHING. It reads the active settings and names
+              the reward for this review's stored type; the RPC below sends a
+              card id, a status and a note, and the database chooses the amount
+              from `review_type` on the row it locks. There is no field through
+              which this screen could offer a type, a reward or a recipient.
+            */}
+            {actions.some(a => a.to === 'verified') && (
+              <div style={{ marginBottom: '12px' }}>
+                <VerifyPanel
+                  card={card}
+                  holderName={holderName}
+                  groupLabel={groupLabel}
+                  hasEvidence={screenshots.length > 0}
+                />
+              </div>
+            )}
+
             {blockers.length > 0 && card.status === 'booked' && (
               <ul style={{
                 margin: '0 0 10px', paddingLeft: '18px',
