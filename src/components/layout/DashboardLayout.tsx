@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
-  Settings, ChevronRight, ShieldCheck, TrendingUp,
+  ChevronRight,
   Home, Bell, RefreshCw, FileText, Plus,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -90,7 +90,7 @@ export function DashboardLayout({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const { viewAsUserId, viewAsProfile } = useViewAs()
+  const { viewAsUserId } = useViewAs()
 
   const inViewMode  = !!viewAsUserId
 
@@ -100,19 +100,12 @@ export function DashboardLayout({
   // is safe to run while View As is active — the admin is the one browsing.
   useRecordAppOpen(!!profile)
 
-  // Sidebar nav reflects the viewed user's role when in view mode
-  const navProfile       = viewAsProfile ?? profile
-  const isAdmin          = navProfile?.role === 'admin'
-
-  // Team Performance is an authorization decision, not a presentation one, so
-  // it follows the *real* signed-in user rather than `navProfile`. Viewing a
-  // manager's profile must not surface management navigation, and while
-  // impersonating anyone the entry stays hidden so View As reflects what that
-  // employee actually sees. Leaving View As restores it.
-  const realRole = profile?.role
-  const canViewTeamPerformance =
-    !inViewMode && (realRole === 'admin' || realRole === 'manager')
-
+  // NO ROLE-DERIVED SIDEBAR ENTRIES REMAIN. The admin-only Settings group and
+  // the role-derived Team Performance entry both left this sidebar — the first
+  // to the Control Center, the second to the launcher card Performance already
+  // has. What is left is task navigation plus the quotation entries, and those
+  // are decided by the permission engine (quotationCaps below), not by a role.
+  //
   // The real logged-in user, plus their role and effective permissions, from the
   // one session-scoped resolution shared with ModuleGuard and /modules.
   //
@@ -353,71 +346,26 @@ export function DashboardLayout({
             />
           )}
 
-          {/* 5. Performance */}
-          {canViewTeamPerformance ? (
-            <CollapsibleNav
-              label="Performance"
-              icon={<TrendingUp size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/performance')}
-            >
-              <NavChild
-                label="My Performance"
-                active={pathname === '/performance'}
-                onClick={() => navTo('/performance')}
-              />
-              <NavChild
-                label="Team Performance"
-                active={pathname === '/performance/team'}
-                onClick={() => navTo('/performance/team')}
-              />
-            </CollapsibleNav>
-          ) : (
-            <NavLeaf
-              label="Performance"
-              icon={<TrendingUp size={15} strokeWidth={1.8} />}
-              active={pathname.startsWith('/performance')}
-              onClick={() => navTo('/performance')}
-            />
-          )}
+          {/* TASK MANAGEMENT HOLDS TASK WORK, AND NOTHING ELSE.
+              Two groups used to live here and no longer do.
 
-          {/* 6. Settings + Super Admin — admin only, hidden in view mode */}
-          {isAdmin && !inViewMode && (
-            <>
-              <CollapsibleNav
-                label="Settings"
-                icon={<Settings size={15} strokeWidth={1.8} />}
-                active={pathname.startsWith('/settings') || pathname === '/admin/members'}
-              >
-                <NavChild
-                  label="Members"
-                  active={pathname === '/admin/members'}
-                  onClick={() => navTo('/admin/members')}
-                />
-                <NavChild
-                  label="Roles"
-                  active={pathname.startsWith('/settings/roles')}
-                  onClick={() => navTo('/settings/roles')}
-                />
-                <NavChild
-                  label="Positions"
-                  active={pathname.startsWith('/settings/positions')}
-                  onClick={() => navTo('/settings/positions')}
-                />
-                <NavChild
-                  label="My Account"
-                  active={pathname === '/account'}
-                  onClick={() => navTo('/account?returnTo=/dashboard')}
-                />
-              </CollapsibleNav>
+              PERFORMANCE was a second front door into a module that already has
+              its own: Performance Management is a card on the BOE launcher,
+              gated by the `performance` permission engine entry. Reaching it
+              through the Task Management sidebar made this module look like the
+              way into another one, and the "Team Performance" child duplicated
+              the launcher's own management landing. Nothing about the module,
+              its scoring, its routes or its permissions changed — only this
+              sidebar stopped being a second route in. Mobile matches: see
+              MobileBottomNav.
 
-              <NavLeaf
-                label="Super Admin"
-                icon={<ShieldCheck size={15} strokeWidth={1.8} />}
-                active={pathname === '/super-admin'}
-                onClick={() => navTo('/super-admin')}
-              />
-            </>
-          )}
+              SETTINGS + SUPER ADMIN were administration. Members is now Control
+              Center › People › Employees (which also absorbed the department
+              editing the Control Center did separately), Positions is Control
+              Center › People › Designations, Super Admin is Control Center ›
+              System › Task Records, and My Account is the user menu at the
+              bottom of this sidebar. Every one of those routes still exists and
+              is still authorized exactly as it was. */}
 
           {/* Permanent Notifications entry — always visible, badge only when unread */}
           <NotificationsNavItem onNavigate={() => setSidebarOpen(false)} />
@@ -546,7 +494,6 @@ export function DashboardLayout({
 
       {/* Mobile-only bottom navigation — hidden on desktop via CSS */}
       <MobileBottomNav
-        profile={profile}
         showNotifications
         notificationsHref="/notifications"
         unreadNotifs={unreadNotifs}

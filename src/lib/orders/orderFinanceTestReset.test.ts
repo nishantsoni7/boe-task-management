@@ -342,6 +342,9 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // constraint on payroll_holidays, an Attendance/Payroll table. It creates
       // no table and touches neither the reset protocol nor the deletion claim.
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ])
   })
 

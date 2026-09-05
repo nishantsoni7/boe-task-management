@@ -177,6 +177,9 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // Half-day company holidays: adds holiday_type/half_session to
       // payroll_holidays. Touches nothing this migration reaches.
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ])
   })
 

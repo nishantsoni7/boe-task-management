@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { Home, Settings, X } from 'lucide-react'
+import { Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
@@ -54,12 +54,11 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
             active={pathname === '/modules'}
             onClick={() => navTo('/modules')}
           />
-          <OsNavItem
-            label="Account Settings"
-            icon={<Settings size={15} strokeWidth={1.8} />}
-            active={pathname === '/account'}
-            onClick={() => navTo('/account?returnTo=/modules')}
-          />
+          {/* Account Settings is NOT a second nav item here. The launcher
+              carried it in this list and again at the foot of the sidebar; now
+              that the foot is one identity menu, keeping it here would put the
+              same destination on screen twice. The menu is the one place, and
+              the route is unchanged. */}
         </div>
 
         {/* Bottom: profile + account settings + view as + sign out */}

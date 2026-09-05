@@ -262,7 +262,7 @@ export function AssetsLayout({
 
       </div>
 
-      <MobileBottomNav profile={profile} onSignOut={onSignOut} />
+      <MobileBottomNav onSignOut={onSignOut} />
 
     </div>
   )

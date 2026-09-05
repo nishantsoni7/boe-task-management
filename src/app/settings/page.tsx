@@ -9,18 +9,28 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
+// This screen is no longer in any navigation — administration is the Control
+// Center's, and changing your own password is /account. The route and these
+// cards are kept working for existing bookmarks; both destinations point at
+// their Control Center homes.
 const ADMIN_SETTING_CARDS = [
   {
-    title: 'Roles',
-    description: 'View and manage member roles.',
+    title: 'System roles',
+    description: 'What the three system roles mean. Roles are set on the employee record.',
     href: '/settings/roles',
     dotColor: colors.blue,
   },
   {
-    title: 'Positions',
-    description: 'View and manage job positions.',
-    href: '/settings/positions',
+    title: 'Designations',
+    description: 'The job titles available on employee records.',
+    href: '/admin/control-center/positions',
     dotColor: colors.green,
+  },
+  {
+    title: 'Employees',
+    description: 'Add, edit and retire employee accounts in the Control Center.',
+    href: '/admin/control-center/people',
+    dotColor: colors.amber,
   },
 ]
 

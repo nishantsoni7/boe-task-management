@@ -311,6 +311,9 @@ describe('34/35. no regression into suppressed territory', () => {
       // Half-day company holidays: adds holiday_type/half_session to
       // payroll_holidays. Touches nothing this module creates.
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

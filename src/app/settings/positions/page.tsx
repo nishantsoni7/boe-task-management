@@ -47,8 +47,8 @@ export default function PositionsPage() {
   return (
     <DashboardLayout
       profile={profile}
-      title="Positions"
-      subtitle="Settings · Positions"
+      title="Designations"
+      subtitle="Settings · Designations"
       onSignOut={handleSignOut}
     >
       <div style={{ padding: '24px 0' }}>

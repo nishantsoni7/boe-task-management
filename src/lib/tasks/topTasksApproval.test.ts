@@ -84,6 +84,9 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20261103000000_boe_credits_attendance_redemption.sql',
     '20261104000000_boe_credits_phase_1d.sql',
     '20261105000000_holiday_half_day.sql',
+    // Employee designation level: one nullable, informational column on
+    // public.users, granted to authenticated. Reaches nothing here.
+    '20261106000000_employee_designation_level.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

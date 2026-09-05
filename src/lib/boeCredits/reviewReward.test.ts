@@ -54,6 +54,9 @@ describe('the file, and where it sits', () => {
       '20261103000000_boe_credits_attendance_redemption.sql',
       '20261104000000_boe_credits_phase_1d.sql',
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ])
   })
 

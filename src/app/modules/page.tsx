@@ -342,8 +342,10 @@ export default function BoeOsHomePage() {
     ...(canOpenModule('employee_records') ? [{
       key: 'members',
       title: 'Employee Records',
-      description: 'View and manage employee profiles, roles, and team assignments.',
-      href: '/admin/members',
+      description: 'Add, edit and retire employee accounts — department, designation, level, status and access.',
+      // Straight to where employee administration now lives. /admin/members
+      // still works and redirects here; the card skips the hop.
+      href: '/admin/control-center/people',
       accent: '#1E40AF',
       icon: <MembersIcon />,
       notificationCount: null,
