@@ -113,8 +113,8 @@ export function ReviewTypeControl({
       </div>
 
       <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
-        An image review is posted with photographs of one project, and earns the image reward.
-        This can only be changed before the review is approved.
+        An image review posts one project&rsquo;s photographs and earns the image reward. Changeable
+        until the review is approved.
         {card.review_type === 'image' && card.image_group_id
           ? ' Changing it to text will detach the project images it currently carries.'
           : ''}

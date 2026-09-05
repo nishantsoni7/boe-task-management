@@ -219,8 +219,12 @@ describe('the screens', () => {
   const l = clean(read(join(ROOT, 'src/app/customer-reviews/TestCardListScreen.tsx')))
 
   test('the detail screen reads the RPC result and goes back to the To verify list as before, carrying the credits', () => {
+    // THE LIST MOVED TO `/customer-reviews/reviews` when the module gained its
+    // own workspaces. The root is the verifier's Overview, which reads no query
+    // parameters and would have swallowed the reward flag. The guarantee is
+    // unchanged: a verification lands on the list that says what was awarded.
     assert.match(d, /const \{ data, error: rpcError \} = await supabase\.rpc\('transition_customer_review_test_card'/)
-    assert.match(d, /if \(action\.to === 'verified'\) \{\s*router\.push\(`\/customer-reviews\?tab=to_verify\$\{verifiedQuery\(data\)\}`\)\s*return\s*\}/)
+    assert.match(d, /if \(action\.to === 'verified'\) \{\s*router\.push\(`\/customer-reviews\/reviews\?tab=to_verify\$\{verifiedQuery\(data\)\}`\)\s*return\s*\}/)
     assert.match(d, /export function verifiedQuery\(data: unknown\): string/)
     assert.match(d, /return `&verified=\$\{credits\}`/)
     assert.equal(/setVerifiedReward|VerifiedRewardNote|readVerifiedReward/.test(d), false, 'the screen does not stay behind')

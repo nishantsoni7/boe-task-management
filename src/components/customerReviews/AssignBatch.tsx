@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, UserPlus } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
-import { IMAGE_REVIEWS_PER_BATCH, REVIEWS_PER_BATCH, TEXT_REVIEWS_PER_BATCH } from '@/lib/customerReviews/reviewTypes'
+import { IMAGE_REVIEWS_PER_BATCH, REVIEWS_PER_BATCH } from '@/lib/customerReviews/reviewTypes'
+import { StackSkeleton } from './ReviewSkeletons'
 
 // ── Giving one batch to one employee ─────────────────────────────────────────
 //
@@ -155,9 +156,8 @@ export function AssignBatch({
       </div>
 
       <p style={{ fontSize: '11px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
-        All {REVIEWS_PER_BATCH} reviews — {TEXT_REVIEWS_PER_BATCH} text and {IMAGE_REVIEWS_PER_BATCH} image —
-        go to one employee, and only they will see them. The image reviews are given
-        {' '}{IMAGE_REVIEWS_PER_BATCH} different project image groups where enough are ready.
+        All {REVIEWS_PER_BATCH} go to one employee, and only they see them. The
+        {' '}{IMAGE_REVIEWS_PER_BATCH} image reviews get different projects where enough are ready.
       </p>
 
       {people !== null && people.length === 0 && !error && (
@@ -191,6 +191,9 @@ type BatchRow = {
   eligible: number
   live: number
   generatedAt: string | null
+  /** The composition of the reviews that are ready. Counted from rows already read. */
+  text: number
+  image: number
 }
 
 export function AssignBatchPanel({ supabase, onAssigned }: {
@@ -206,7 +209,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
     // could be rendered as a review by a later edit.
     const { data, error: readError } = await supabase
       .from('customer_review_test_cards')
-      .select('id, batch_id, status, assigned_to, created_at')
+      .select('id, batch_id, status, assigned_to, review_type, created_at')
       .not('batch_id', 'is', null)
       .is('deleted_at', null)
       .in('status', ['pending_approval', 'available'])
@@ -217,15 +220,22 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
       return
     }
 
-    type Raw = { batch_id: string | null; status: string; assigned_to: string | null; created_at: string }
-    const byBatch = new Map<string, { eligible: number; live: number; at: string }>()
+    type Raw = {
+      batch_id: string | null; status: string; assigned_to: string | null
+      review_type: string; created_at: string
+    }
+    const byBatch = new Map<string, { eligible: number; live: number; at: string; text: number; image: number }>()
     for (const row of (data ?? []) as unknown as Raw[]) {
       if (!row.batch_id) continue
-      const entry = byBatch.get(row.batch_id) ?? { eligible: 0, live: 0, at: row.created_at }
+      const entry = byBatch.get(row.batch_id) ?? { eligible: 0, live: 0, at: row.created_at, text: 0, image: 0 }
       entry.live++
       // ELIGIBLE means approved AND unassigned. A batch part-way through
       // approval, or one already given to somebody, is not offered.
-      if (row.status === 'available' && row.assigned_to === null) entry.eligible++
+      if (row.status === 'available' && row.assigned_to === null) {
+        entry.eligible++
+        if (row.review_type === 'image') entry.image++
+        else entry.text++
+      }
       if (row.created_at < entry.at) entry.at = row.created_at
       byBatch.set(row.batch_id, entry)
     }
@@ -236,7 +246,10 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
         // A batch with nothing eligible has either been assigned already or has
         // not been approved at all; neither is something to act on here.
         .filter(([, v]) => v.eligible > 0)
-        .map(([batchId, v]) => ({ batchId, eligible: v.eligible, live: v.live, generatedAt: v.at }))
+        .map(([batchId, v]) => ({
+          batchId, eligible: v.eligible, live: v.live, generatedAt: v.at,
+          text: v.text, image: v.image,
+        }))
         .sort((a, b) => (b.generatedAt ?? '').localeCompare(a.generatedAt ?? '')),
     )
   }, [supabase])
@@ -250,7 +263,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
     return <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
   }
   if (rows === null) {
-    return <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading…</p>
+    return <StackSkeleton count={2} height={104} />
   }
   if (rows.length === 0) {
     return (
@@ -258,8 +271,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
         margin: 0, padding: '18px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
         border: `1px dashed ${colors.border}`, color: colors.muted,
       }}>
-        No batch is waiting to be assigned. Approve all {REVIEWS_PER_BATCH} reviews in a batch
-        from the Pending approval tab, and it will appear here.
+        No batch is ready to assign. Approve all {REVIEWS_PER_BATCH} reviews above first.
       </p>
     )
   }
@@ -272,12 +284,23 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
           padding: '12px', background: '#FFFFFF',
           display: 'flex', flexDirection: 'column', gap: '8px',
         }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+          {/*
+            THE SAME FOUR FACTS THE APPROVAL SECTION SHOWS, so a batch reads
+            the same way at both steps: how much is ready, what it is made of,
+            which batch, and what happens next.
+          */}
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
               {row.eligible} of {REVIEWS_PER_BATCH} ready
             </span>
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.tertiary }}>
-              batch {row.batchId.slice(0, 8)}
+            <span style={{ fontSize: '11.5px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+              {row.text} Text · {row.image} Image
+            </span>
+            <span style={{
+              marginLeft: 'auto', fontFamily: 'var(--font-mono)',
+              fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
+            }}>
+              {row.batchId.slice(0, 8)}
             </span>
           </div>
 

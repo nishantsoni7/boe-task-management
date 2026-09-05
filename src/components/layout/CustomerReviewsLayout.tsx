@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { BookOpen, Home, Layers, MessageSquareHeart, ShieldCheck, Sparkles } from 'lucide-react'
+import { useRouter, usePathname } from 'next/navigation'
+import { BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -14,19 +14,19 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// FIVE entries, and all five are about work that is still live:
+// FIVE DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
 //
-//   Pending approval  drafts a verifier has not released yet. Verifier only,
-//                     and it leads because it is the one queue with somebody's
-//                     name on it — a candidate cannot see a pending draft at
-//                     all, by RLS rather than by this list.
-//   Available         the approved, unbooked pool. Anyone who may use the
-//                     module sees it.
-//   My reviews        the reviews this person is holding or has submitted.
-//   Booked            who is holding what right now. Verifier only.
-//   To Verify         what is waiting for somebody to check it. Verifier only,
-//                     because for anybody else it would be an empty screen with
-//                     a promising name.
+//   Overview       what needs attention right now. The verifier's landing page.
+//   Reviews        the operational queue. The four workflow states live inside
+//                  it as tabs, because a state filters one queue rather than
+//                  being a place of its own.
+//   Batches        generate → review → approve → assign, in one workspace.
+//   Image Library  the project image groups an image review draws from.
+//   Progress       assigned / posted / verified / remaining, per employee.
+//
+//   My Reviews     the candidate's single screen, and their only entry. It is
+//                  the same route as Overview; what it renders depends on
+//                  whether the viewer resolves `verify`.
 //
 // THERE IS NO HISTORY ENTRY, AND THAT IS DELIBERATE. A verified card is
 // finished, and the product owner's rule is that a finished card appears in no
@@ -48,36 +48,65 @@ type CustomerReviewsLayoutProps = {
 type NavItem = {
   label: string
   path: string
-  query?: string
   icon: React.ReactNode
+  /** Only `pathname === path` lights this item. The module root needs it. */
+  exact?: boolean
   verifierOnly?: boolean
 }
 
+/**
+ * FIVE DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE — and each is a place,
+ * not a filter.
+ *
+ * WHAT THIS REPLACED, AND WHY. The sidebar used to list the five workflow
+ * STATES, every entry pointing at `/customer-reviews?tab=…`, while the page
+ * body rendered the same five as tabs. Two controls, one query parameter: the
+ * sidebar told you where you were and the tab strip told you the same thing
+ * again, and neither could show you anything the other could not. A state is
+ * not a destination — it is a filter over one queue, and it belongs inside that
+ * queue's page.
+ *
+ * A candidate now has ONE entry. They used to have two, Available and My
+ * reviews, which split one question ("what work do I have?") across two screens
+ * and made every summary number partial.
+ */
 const NAV_ITEMS: NavItem[] = [
+  // The candidate's only entry, and the verifier's landing page. One route,
+  // two audiences: a verifier gets Overview, a candidate gets My Reviews.
   {
-    label: 'Pending approval',
+    label: 'My Reviews',
     path: '/customer-reviews',
-    query: 'tab=pending',
+    icon: <MessageSquareHeart size={15} strokeWidth={1.8} />,
+    exact: true,
+  },
+  {
+    label: 'Reviews',
+    path: '/customer-reviews/reviews',
+    icon: <Layers size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
+  {
+    label: 'Batches',
+    path: '/customer-reviews/batches',
     icon: <Sparkles size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
-  { label: 'Available', path: '/customer-reviews', query: 'tab=available', icon: <Layers size={15} strokeWidth={1.8} /> },
-  { label: 'My reviews', path: '/customer-reviews', query: 'tab=mine',     icon: <MessageSquareHeart size={15} strokeWidth={1.8} /> },
   {
-    label: 'Booked',
-    path: '/customer-reviews',
-    query: 'tab=booked',
-    icon: <BookOpen size={15} strokeWidth={1.8} />,
+    label: 'Image Library',
+    path: '/customer-reviews/images',
+    icon: <ImageIcon size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
   {
-    label: 'To Verify',
-    path: '/customer-reviews',
-    query: 'tab=to_verify',
-    icon: <ShieldCheck size={15} strokeWidth={1.8} />,
+    label: 'Progress',
+    path: '/customer-reviews/progress',
+    icon: <BarChart3 size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
 ]
+
+/** The verifier's landing page is Overview; the candidate's is their own work. */
+const ROOT_LABEL = { verifier: 'Overview', candidate: 'My Reviews' } as const
 
 export function CustomerReviewsLayout({
   profile, title, subtitle, actions, canVerify, onSignOut, children,
@@ -85,29 +114,25 @@ export function CustomerReviewsLayout({
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router = useRouter()
   const pathname = usePathname()
-  const searchParams = useSearchParams()
 
-  const items = NAV_ITEMS.filter(item => !item.verifierOnly || canVerify)
-  const href = (item: NavItem) => (item.query ? `${item.path}?${item.query}` : item.path)
+  const items = NAV_ITEMS
+    .filter(item => !item.verifierOnly || canVerify)
+    // The root entry is Overview for a verifier and My Reviews for everybody
+    // else. It is the same route; what it renders differs, so the label has to.
+    .map(item => (item.exact && canVerify ? { ...item, label: ROOT_LABEL.verifier } : item))
 
-  // Only the list route highlights an entry at all — a detail screen is not one
-  // of the four questions the nav asks, so nothing lights up there. That is
-  // honest rather than tidy: pretending "Available" is selected while the user
-  // is reading one card tells them nothing.
+  // BY ROUTE, not by query — the same shape MeetingsLayout uses. The root is
+  // `exact` because otherwise it would claim every page beneath it.
   //
-  // EVERY ENTRY NOW CARRIES A QUERY, so the highlight has to read the actual
-  // tab rather than "the one without a query". An earlier version returned
-  // `!item.query`, which was correct while one entry had none and silently
-  // highlighted nothing once they all did.
-  const activeTab = searchParams.get('tab') ?? 'available'
-  const isActive = (item: NavItem): boolean => {
-    if (pathname !== '/customer-reviews') return false
-    return item.query === `tab=${activeTab}`
-  }
+  // A DETAIL SCREEN LIGHTS NOTHING, deliberately. `/customer-reviews/<id>` is
+  // not one of the five questions the nav asks, and pretending "Reviews" is
+  // selected while somebody reads one card tells them nothing true.
+  const isActive = (item: NavItem): boolean =>
+    item.exact ? pathname === item.path : pathname.startsWith(item.path)
 
   const navTo = (item: NavItem) => {
     setSidebarOpen(false)
-    router.push(href(item))
+    router.push(item.path)
   }
 
   return (
@@ -155,7 +180,7 @@ export function CustomerReviewsLayout({
             const active = isActive(item)
             return (
               <button
-                key={`${item.path}-${item.query ?? ''}`}
+                key={item.path}
                 className={`boe-nav-item${active ? ' active' : ''}`}
                 onClick={() => navTo(item)}
                 style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}

@@ -10,6 +10,7 @@ import {
   REVIEW_GROUP_IMAGE_COLUMNS,
   type ReviewGroupImage,
 } from '@/lib/customerReviews/types'
+import { ImageGridSkeleton } from './ReviewSkeletons'
 
 // ── The photographs an image review posts ────────────────────────────────────
 //
@@ -180,19 +181,22 @@ export function ProjectImages({
     return () => { active = false }
   }, [supabase, set.images])
 
-  if (set.loading) {
-    return <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>Loading the project images…</p>
-  }
+  // TILE-SHAPED, so the block does not grow under the reader's eye when the
+  // photographs arrive. The review text above it never waits for this.
+  if (set.loading) return <ImageGridSkeleton />
 
-  if (set.images.length === 0) {
+  // AN ARCHIVED GROUP IS NOT SHOWN AS A GALLERY. It can still hold pictures,
+  // and drawing them said `here is what goes out` about a review that cannot
+  // be booked or shared — the badge beside it says `Waiting for admin images`
+  // and the database refuses the booking. This is the same sentence.
+  if (set.images.length === 0 || set.usable === false) {
     return (
       <p style={{
         margin: 0, padding: '14px 16px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
         border: `1px dashed ${colors.border}`, color: '#92400E', background: '#FFFBEB',
       }}>
         <strong>{AWAITING_IMAGES_LABEL}.</strong>{' '}
-        An administrator is preparing the photographs for this review. You can book and share it
-        as soon as they are attached.
+        You can book and share this review once they are attached.
       </p>
     )
   }
@@ -201,8 +205,7 @@ export function ProjectImages({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
       <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
         {set.images.length} photograph{set.images.length === 1 ? '' : 's'} of one project
-        {label ? ` · ${label}` : ''}. These go out with the review when you share it — you do not
-        need to choose or attach anything.
+        {label ? ` · ${label}` : ''}. These go out when you share the review.
       </p>
 
       <ul style={{

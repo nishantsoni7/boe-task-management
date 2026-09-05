@@ -353,10 +353,14 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
         return
       }
       setUnbooking(false)
-      // BACK TO THE LIST, because this card is no longer this person's. Staying
-      // on a page for a review somebody else may already have booked would
-      // leave them looking at controls that have all just disappeared.
-      router.push('/customer-reviews?tab=available')
+      // BACK TO THE WORKSPACE, because this card is no longer this person's.
+      // Staying on a page for a review somebody else may already have booked
+      // would leave them looking at controls that have all just disappeared.
+      //
+      // `?tab=available` USED TO SELECT A TAB HERE and now selects nothing: the
+      // two candidate lists became one workspace, and the review reappears on it
+      // as available without being asked for by name.
+      router.push('/customer-reviews')
     } catch {
       setError('That review could not be unbooked. Check your connection and try again.')
     } finally {
@@ -391,7 +395,12 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       // kind of one-shot query flag the order drafts use for ?saved=1: it
       // decides only what the list SAYS, never what it shows.
       if (action.to === 'verified') {
-        router.push(`/customer-reviews?tab=to_verify${verifiedQuery(data)}`)
+        // THE QUEUE, NOT THE ROOT. `/customer-reviews` is the verifier's Overview
+        // now, and Overview reads no query parameters — sending the reward flag
+        // there dropped it, so a verifier stopped being told what the database
+        // had just awarded. The To verify list is where that sentence is
+        // rendered, so that is where the verification ends.
+        router.push(`/customer-reviews/reviews?tab=to_verify${verifiedQuery(data)}`)
         return
       }
 
