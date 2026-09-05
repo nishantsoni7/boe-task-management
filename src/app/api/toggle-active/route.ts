@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
+import { checkLastAdministrator } from '@/lib/users/lastAdministrator'
 
 export async function POST(req: NextRequest) {
   const { userId, is_active } = await req.json()
@@ -41,14 +41,8 @@ export async function POST(req: NextRequest) {
   // Only switching OFF can violate it — reactivating somebody adds an
   // administrator, it never removes one.
   if (is_active === false) {
-    const { data: target } = await serviceClient
-      .from('users')
-      .select('role, is_active, is_deleted')
-      .eq('id', userId)
-      .single()
-
-    const blocked = await lastAdministratorBlock(serviceClient, target, userId, 'deactivate')
-    if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
+    const check = await checkLastAdministrator(serviceClient, userId, 'deactivate')
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
   }
 
   const { error } = await serviceClient

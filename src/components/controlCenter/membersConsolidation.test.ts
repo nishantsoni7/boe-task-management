@@ -139,8 +139,8 @@ describe('Super Admin safety', () => {
   test('demotion consults the shared last-administrator rule', () => {
     assert.ok(route.includes("role !== undefined && role !== 'admin'"),
       'only a change away from admin can violate the invariant')
-    assert.ok(route.includes("lastAdministratorBlock(supabase, target, userId, 'demote')"))
-    assert.ok(route.includes('if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })'))
+    assert.ok(route.includes("checkLastAdministrator(supabase, userId, 'demote')"))
+    assert.ok(route.includes('if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })'))
   })
 
   test('every non-admin caller is still refused before any of this', () => {

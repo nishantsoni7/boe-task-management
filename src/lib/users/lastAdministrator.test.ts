@@ -27,39 +27,69 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  lastAdministratorBlock,
+  checkLastAdministrator,
   otherUsableAdministratorCount,
   targetCarriesAdministratorAuthority,
   type AdministratorAction,
-  type AdministratorRow,
 } from './lastAdministrator'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
 
-// ── A fake `users` table that answers the guard's one query ─────────────────
+// ── A fake `users` table answering the guard's TWO queries ──────────────────
 //
-// The guard asks exactly one thing of the database: how many OTHER rows are
-// role='admin', is_active=true and not deleted. This mirrors that filter chain
-// rather than a generic query engine, so a change to the filter shows up as a
-// failing test instead of being silently mimicked.
+// The guard now owns both: reading the target row (`.single()`), and counting
+// the other administrators who are active and not deleted (a head count). The
+// fake mirrors those filter chains rather than being a general query engine, so
+// changing a filter shows up as a failing test instead of being mimicked.
+//
+// `failTarget` and `failCount` inject the failures that matter: a target read
+// that errors is the fail-open condition this file's second half exists for.
 
 type Row = { id: string; role: string; is_active: boolean; is_deleted: boolean | null }
 
-function fakeClient(rows: Row[], opts: { failCount?: boolean } = {}): SupabaseClient {
-  const builder = {
+type FakeOpts = {
+  failCount?: boolean
+  /** 'read' = a transient failure; 'missing' = PGRST116, no such member. */
+  failTarget?: 'read' | 'missing'
+}
+
+function fakeClient(rows: Row[], opts: FakeOpts = {}): SupabaseClient {
+  const makeBuilder = () => ({
     _role: '' as string,
     _active: undefined as boolean | undefined,
     _notDeleted: false,
     _exclude: '' as string,
-    select() { return this },
+    _id: '' as string,
+    _head: false,
+    select(_cols?: string, options?: { head?: boolean }) {
+      this._head = options?.head === true
+      return this
+    },
     eq(column: string, value: unknown) {
       if (column === 'role') this._role = value as string
       if (column === 'is_active') this._active = value as boolean
+      if (column === 'id') this._id = value as string
       return this
     },
     or() { this._notDeleted = true; return this },
     neq(_column: string, value: unknown) { this._exclude = value as string; return this },
+
+    // The target read.
+    single() {
+      if (opts.failTarget === 'read') {
+        return Promise.resolve({ data: null, error: { code: '08006', message: 'connection lost' } })
+      }
+      if (opts.failTarget === 'missing') {
+        return Promise.resolve({ data: null, error: { code: 'PGRST116', message: 'no rows' } })
+      }
+      const row = rows.find(r => r.id === this._id) ?? null
+      return Promise.resolve(
+        row ? { data: row, error: null } : { data: null, error: { code: 'PGRST116', message: 'no rows' } },
+      )
+    },
+
+    // The head count.
     then(resolve: (r: { count: number | null; error: { message: string } | null }) => void) {
       if (opts.failCount) return resolve({ count: null, error: { message: 'connection lost' } })
       const count = rows.filter(r =>
@@ -70,8 +100,8 @@ function fakeClient(rows: Row[], opts: { failCount?: boolean } = {}): SupabaseCl
       ).length
       return resolve({ count, error: null })
     },
-  }
-  return { from: () => ({ ...builder }) } as unknown as SupabaseClient
+  })
+  return { from: () => makeBuilder() } as unknown as SupabaseClient
 }
 
 const ACTIONS: AdministratorAction[] = ['demote', 'deactivate', 'delete', 'permanently_delete']
@@ -155,32 +185,27 @@ describe('which targets carry administrator authority', () => {
 describe('the last administrator is protected on all four paths', () => {
   const LAST = 'last-admin'
 
+  /** The target row as each path would actually find it. */
+  const targetRow = (action: AdministratorAction): Row =>
+    action === 'permanently_delete' ? deletedAdmin(LAST)
+      : action === 'delete'         ? inactiveAdmin(LAST)
+      :                               activeAdmin(LAST)
+
   for (const action of ACTIONS) {
     test(`${action}: REFUSED when they are the only usable administrator`, async () => {
-      const target: AdministratorRow = action === 'permanently_delete'
-        ? { role: 'admin', is_active: false, is_deleted: true }
-        : { role: 'admin', is_active: action === 'delete' ? false : true, is_deleted: false }
-      const rows = action === 'permanently_delete' ? [deletedAdmin(LAST)] : [activeAdmin(LAST)]
-
-      const blocked = await lastAdministratorBlock(fakeClient(rows), target, LAST, action)
-      assert.ok(blocked, `${action} must be refused`)
-      assert.match(blocked!, /last administrator account/)
+      const check = await checkLastAdministrator(fakeClient([targetRow(action)]), LAST, action)
+      assert.equal(check.ok, false, `${action} must be refused`)
+      assert.equal(check.ok === false && check.status, 400)
+      assert.match(check.ok === false ? check.error : '', /last administrator account/)
     })
 
     test(`${action}: ALLOWED when a second valid administrator remains`, async () => {
-      const target: AdministratorRow = action === 'permanently_delete'
-        ? { role: 'admin', is_active: false, is_deleted: true }
-        : { role: 'admin', is_active: action === 'delete' ? false : true, is_deleted: false }
-      const rows = [
-        action === 'permanently_delete' ? deletedAdmin(LAST) : activeAdmin(LAST),
-        activeAdmin('second-admin'),
-      ]
-
-      assert.equal(await lastAdministratorBlock(fakeClient(rows), target, LAST, action), null)
+      const rows = [targetRow(action), activeAdmin('second-admin')]
+      assert.deepEqual(await checkLastAdministrator(fakeClient(rows), LAST, action), { ok: true })
     })
 
     test(`${action}: an ordinary employee is never blocked, even with no admins at all`, async () => {
-      assert.equal(await lastAdministratorBlock(fakeClient([]), member('m'), 'm', action), null)
+      assert.deepEqual(await checkLastAdministrator(fakeClient([member('m')]), 'm', action), { ok: true })
     })
   }
 
@@ -189,16 +214,15 @@ describe('the last administrator is protected on all four paths', () => {
     // with somebody who can actually work, not somebody who would first have to
     // be reactivated by an administrator who no longer exists.
     const rows = [activeAdmin('last-admin'), inactiveAdmin('benched')]
-    const target: AdministratorRow = { role: 'admin', is_active: true, is_deleted: false }
-    const blocked = await lastAdministratorBlock(fakeClient(rows), target, 'last-admin', 'deactivate')
-    assert.ok(blocked)
-    assert.match(blocked!, /reactivate/)
+    const check = await checkLastAdministrator(fakeClient(rows), 'last-admin', 'deactivate')
+    assert.equal(check.ok, false)
+    assert.match(check.ok === false ? check.error : '', /reactivate/)
   })
 
   test('a SOFT-DELETED second administrator is not a replacement either', async () => {
     const rows = [activeAdmin('last-admin'), deletedAdmin('gone')]
-    const target: AdministratorRow = { role: 'admin', is_active: true, is_deleted: false }
-    assert.ok(await lastAdministratorBlock(fakeClient(rows), target, 'last-admin', 'demote'))
+    const check = await checkLastAdministrator(fakeClient(rows), 'last-admin', 'demote')
+    assert.equal(check.ok, false)
   })
 })
 
@@ -206,22 +230,66 @@ describe('the last administrator is protected on all four paths', () => {
 
 describe('the deactivate → soft-delete lockout chain', () => {
   test('step one is refused: the final administrator cannot be deactivated', async () => {
-    const rows = [activeAdmin('solo')]
-    const blocked = await lastAdministratorBlock(
-      fakeClient(rows), { role: 'admin', is_active: true, is_deleted: false }, 'solo', 'deactivate',
-    )
-    assert.ok(blocked, 'deactivating the last administrator must be refused')
+    const check = await checkLastAdministrator(fakeClient([activeAdmin('solo')]), 'solo', 'deactivate')
+    assert.equal(check.ok, false, 'deactivating the last administrator must be refused')
   })
 
   test('and step two is refused independently, for a row that is already inactive', async () => {
     // Belt and braces: even if an inactive administrator exists from before the
     // guard, or from a direct database edit, soft-deleting them is refused
     // while nobody else can administer.
-    const rows = [inactiveAdmin('solo')]
-    const blocked = await lastAdministratorBlock(
-      fakeClient(rows), { role: 'admin', is_active: false, is_deleted: false }, 'solo', 'delete',
+    const check = await checkLastAdministrator(fakeClient([inactiveAdmin('solo')]), 'solo', 'delete')
+    assert.equal(check.ok, false, 'soft-deleting the last administrator must be refused even when inactive')
+  })
+})
+
+// ── 4b. THE FAIL-OPEN CONDITION ─────────────────────────────────────────────
+//
+// Review of the previous head found it: two routes read the target and threw
+// the query's error away. A failed read produced `null`, `null` was
+// indistinguishable from "not an administrator", and the write went ahead —
+// fail-open in the one guard that must fail closed.
+//
+// The read now lives inside the rule, so there is no error for a route to
+// discard. These tests pin that: an unreadable target, and an unreadable count,
+// must both stop the request.
+
+describe('a check that cannot be completed never says "go ahead"', () => {
+  for (const action of ACTIONS) {
+    test(`${action}: an unreadable TARGET stops the request with a 500`, async () => {
+      // The exact regression: previously this produced `null` and waved the
+      // write through. The rows say the target IS the last administrator, so a
+      // fail-open would be catastrophic here.
+      const check = await checkLastAdministrator(
+        fakeClient([activeAdmin('solo')], { failTarget: 'read' }), 'solo', action,
+      )
+      assert.equal(check.ok, false, 'an unreadable target must not be treated as "not an admin"')
+      assert.equal(check.ok === false && check.status, 500)
+      assert.match(check.ok === false ? check.error : '', /nothing was changed/)
+    })
+
+    test(`${action}: an unreadable COUNT stops the request with a 500`, async () => {
+      const check = await checkLastAdministrator(
+        fakeClient([activeAdmin('solo')], { failCount: true }), 'solo', action,
+      )
+      assert.equal(check.ok, false)
+      assert.equal(check.ok === false && check.status, 500)
+    })
+  }
+
+  test('a genuinely missing member is a 404, not a 500 — the two are told apart', async () => {
+    const check = await checkLastAdministrator(
+      fakeClient([], { failTarget: 'missing' }), 'ghost', 'demote',
     )
-    assert.ok(blocked, 'soft-deleting the last administrator must be refused even when inactive')
+    assert.equal(check.ok, false)
+    assert.equal(check.ok === false && check.status, 404)
+    assert.equal(check.ok === false && check.error, 'Member not found')
+  })
+
+  test('a missing row found by an ordinary lookup is also a 404', async () => {
+    const check = await checkLastAdministrator(fakeClient([activeAdmin('someone')]), 'ghost', 'delete')
+    assert.equal(check.ok, false)
+    assert.equal(check.ok === false && check.status, 404)
   })
 })
 
@@ -236,39 +304,66 @@ describe('all four routes enforce it', () => {
   ]
 
   for (const [path, action] of ROUTES) {
-    test(`${path} calls the shared guard with '${action}'`, () => {
+    test(`${path} calls the shared rule with '${action}' and obeys its answer`, () => {
       const src = read(path)
       assert.ok(src.includes("from '@/lib/users/lastAdministrator'"), 'imports the shared rule')
+      assert.ok(src.includes(`checkLastAdministrator(`), 'uses the one entry point')
       assert.ok(src.includes(`'${action}')`), `passes the ${action} action`)
-      assert.ok(src.includes('if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })'),
-        'returns the block as a 400 rather than continuing')
+      // The status comes from the rule, so a 404, a 500 and a 400 each reach
+      // the administrator as themselves rather than being flattened.
+      assert.ok(
+        src.includes('if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })'),
+        'stops the request on any not-ok answer, with the rule’s own status',
+      )
     })
 
-    test(`${path} selects the columns the rule reads`, () => {
-      // A guard handed a row without `role` would silently never fire.
+    test(`${path} CANNOT reach a write past a failed target lookup`, () => {
+      // THE REGRESSION THIS FILE EXISTS FOR. Two routes used to read the target
+      // themselves and discard the query error; a failed read then looked like
+      // "not an administrator". A route may no longer read the target FOR the
+      // guard at all — the rule does it — so there is no error left to drop.
       const src = read(path)
-      assert.ok(/select\('(id, )?role, is_active, is_deleted'\)/.test(src),
-        'the target read must include role, is_active and is_deleted')
+      const guardAt = src.indexOf('checkLastAdministrator(')
+      assert.ok(guardAt > -1, 'the rule is called')
+
+      // Any target read the route still does for its OWN reasons must check its
+      // error. delete-user and permanently-delete-user legitimately read the
+      // row to enforce is_active/is_deleted; both already guard `targetError`.
+      if (/const \{ data: target/.test(src)) {
+        assert.ok(
+          /error: targetError \}/.test(src) && /if \(targetError \|\| !target\)/.test(src),
+          `${path}: a target read must capture and check its error`,
+        )
+      }
+
+      // And nothing may silently drop an error from a target read.
+      assert.equal(
+        /const \{ data: target \} = await/.test(src), false,
+        `${path}: a target read that ignores its error is the fail-open defect`,
+      )
     })
   }
 
-  test('no route re-implements the count inline', () => {
-    // The original defect was a bespoke count in one route. One rule, one file.
+  test('no route re-implements the count or the target read inline', () => {
+    // The original defect was a bespoke count in one route; the second was a
+    // bespoke target read in two. One rule, one file, one read.
     for (const [path] of ROUTES) {
       const src = read(path)
       assert.equal(src.includes(".eq('role', 'admin')"), false, `${path} must not count admins itself`)
+      assert.equal(src.includes('targetCarriesAdministratorAuthority'), false,
+        `${path} must not re-decide who carries authority`)
     }
   })
 
-  test('the guard runs BEFORE the row is changed', () => {
+  test('the rule runs BEFORE the row is changed', () => {
     for (const [path] of ROUTES) {
       const src = read(path)
-      const guardAt = src.indexOf('lastAdministratorBlock(')
+      const guardAt = src.indexOf('checkLastAdministrator(')
       const writeAt = Math.min(
         ...['\n    .update(', '\n    .delete(', 'auth.admin.deleteUser']
           .map(marker => { const i = src.indexOf(marker); return i === -1 ? Number.MAX_SAFE_INTEGER : i }),
       )
-      assert.ok(guardAt > -1 && guardAt < writeAt, `${path}: the guard must precede the write`)
+      assert.ok(guardAt > -1 && guardAt < writeAt, `${path}: the rule must precede the write`)
     }
   })
 })

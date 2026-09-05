@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { isDesignationLevel } from '@/lib/users/designationLevels'
-import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
+import { checkLastAdministrator } from '@/lib/users/lastAdministrator'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -62,14 +62,8 @@ export async function POST(req: NextRequest) {
   // Only a change AWAY from 'admin' can violate it: leaving `role` out of the
   // request, or setting it to 'admin', removes nothing.
   if (role !== undefined && role !== 'admin') {
-    const { data: target } = await supabase
-      .from('users')
-      .select('role, is_active, is_deleted')
-      .eq('id', userId)
-      .single()
-
-    const blocked = await lastAdministratorBlock(supabase, target, userId, 'demote')
-    if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
+    const check = await checkLastAdministrator(supabase, userId, 'demote')
+    if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
   }
 
   const { error } = await supabase

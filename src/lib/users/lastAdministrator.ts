@@ -126,29 +126,88 @@ const ACTION_PHRASE: Record<AdministratorAction, string> = {
   permanently_delete:'permanently delete this account',
 }
 
+/** What a route should do next: proceed, or send exactly this response. */
+export type AdministratorCheck =
+  | { ok: true }
+  | { ok: false; status: number; error: string }
+
 /**
- * The blocking message for an operation that would remove the last
- * administrator, or null when the operation is safe.
+ * THE ONE ENTRY POINT. Reads the target itself, decides, and tells the caller
+ * either "proceed" or the exact response to send.
  *
- * Returns null immediately — without a count — when the target is not an
- * administrator account, so deactivating an ordinary employee never pays for
- * this check and can never be refused by it.
+ * IT OWNS THE READ ON PURPOSE. The first version took a target row the route
+ * had already fetched, and two of the four routes fetched it while discarding
+ * the query's error. A failed read produced `null`, `null` looked exactly like
+ * "not an administrator", and the guard waved the write through — fail-open, in
+ * the one place that must fail closed. Both call sites made the same mistake,
+ * which is the signature of an API that invites it rather than two careless
+ * edits.
+ *
+ * So the read moved in here. A route cannot forget to check an error it never
+ * sees, and a future fifth caller inherits the correct behaviour by default.
+ * The cost is one small SELECT on the two routes that already hold the row for
+ * their own checks; that is a fair price for deleting a class of bug.
+ *
+ * EVERY FAILURE PATH STOPS THE REQUEST:
+ *   target unreadable   → 500, nothing changed
+ *   target missing      → 404
+ *   count unreadable    → 500, nothing changed
+ *   last administrator  → 400 with the message the administrator needs
+ *
+ * The only `ok: true` results are "this target carries no administrator
+ * authority" and "somebody else can still administer BOE".
  */
-export async function lastAdministratorBlock(
+export async function checkLastAdministrator(
   supabase: SupabaseClient,
-  target: AdministratorRow | null | undefined,
   targetUserId: string,
   action: AdministratorAction,
-): Promise<string | null> {
-  if (!targetCarriesAdministratorAuthority(target, action)) return null
+): Promise<AdministratorCheck> {
+  const { data: target, error: targetError } = await supabase
+    .from('users')
+    .select('role, is_active, is_deleted')
+    .eq('id', targetUserId)
+    .single()
 
-  const remaining = await otherUsableAdministratorCount(supabase, targetUserId)
-  if (remaining > 0) return null
+  if (targetError) {
+    // PGRST116 is PostgREST's "no rows" for .single() — a genuinely missing
+    // member, which is a 404. Anything else is a read we could not complete,
+    // and an unanswerable question must never be read as "go ahead".
+    if (targetError.code === 'PGRST116') {
+      return { ok: false, status: 404, error: 'Member not found' }
+    }
+    return {
+      ok: false,
+      status: 500,
+      error: 'Could not check whether this member is the last administrator, so nothing was changed. Please try again.',
+    }
+  }
 
-  return (
-    `This is the last administrator account, so you cannot ${ACTION_PHRASE[action]}. ` +
-    'Give another active member the Administrator system role first — or reactivate ' +
-    'an existing administrator — and then try again. Without one, nobody would be ' +
-    'able to manage BOE.'
-  )
+  if (!target) return { ok: false, status: 404, error: 'Member not found' }
+
+  // Not an administrator: nothing to protect, and no count is taken. An
+  // ordinary employee can never be refused by this check.
+  if (!targetCarriesAdministratorAuthority(target as AdministratorRow, action)) return { ok: true }
+
+  let remaining: number
+  try {
+    remaining = await otherUsableAdministratorCount(supabase, targetUserId)
+  } catch {
+    return {
+      ok: false,
+      status: 500,
+      error: 'Could not check whether another administrator remains, so nothing was changed. Please try again.',
+    }
+  }
+
+  if (remaining > 0) return { ok: true }
+
+  return {
+    ok: false,
+    status: 400,
+    error:
+      `This is the last administrator account, so you cannot ${ACTION_PHRASE[action]}. ` +
+      'Give another active member the Administrator system role first — or reactivate ' +
+      'an existing administrator — and then try again. Without one, nobody would be ' +
+      'able to manage BOE.',
+  }
 }
