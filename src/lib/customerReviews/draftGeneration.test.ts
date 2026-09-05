@@ -39,6 +39,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const ROUTE = read('src/app/api/customer-reviews/generate/route.ts')
 const PANEL = read('src/components/customerReviews/GenerateDrafts.tsx')
 const LIST = read('src/app/customer-reviews/TestCardListScreen.tsx')
+const BATCHES = read('src/app/customer-reviews/BatchesScreen.tsx')
 // 20261023000000 introduced generation; 20261026000000 replaced its two central
 // rules. Both are read, because the pieces that did NOT change — the batch
 // table, the telephone twin — still live in the first file, and asserting the
@@ -67,12 +68,13 @@ const goodDrafts = (n = DRAFTS_PER_BATCH) =>
 
 describe('generation is gated on the RESOLVED verify permission, at every layer', () => {
   test('the screen renders the panel only when caps.canVerify', () => {
-    assert.ok(LIST.includes('{caps.canVerify && ('))
-    assert.ok(LIST.includes('<GenerateDrafts'))
-    // The panel sits inside that guard, not beside it.
-    const guardAt = LIST.indexOf('{caps.canVerify && (')
-    const panelAt = LIST.indexOf('<GenerateDrafts')
-    assert.ok(guardAt !== -1 && panelAt > guardAt)
+    // THE WHOLE BATCHES PAGE IS THE GUARD NOW. The generator used to sit
+    // inside a `{caps.canVerify && (` block on a screen candidates also used;
+    // it now lives on a page a non-verifier is redirected out of before
+    // anything renders, which is a stronger gate than a conditional element.
+    assert.ok(BATCHES.includes('<GenerateDrafts'))
+    assert.ok(BATCHES.includes("if (!caps.canVerify) router.replace('/customer-reviews')"),
+      'the Batches page does not turn a non-verifier away')
   })
 
   test('THE ROUTE RESOLVES verify BEFORE IT READS THE BODY OR SPENDS A CREDENTIAL', () => {
@@ -207,9 +209,9 @@ describe('a full pool does not block the next batch', () => {
   })
 
   test('AND GENERATION IS NOT CONDITIONED ON IT', () => {
-    const code = executable(LIST)
+    const code = executable(BATCHES)
     const at = code.indexOf('<GenerateDrafts')
-    assert.ok(at > 0, 'the generator is no longer rendered by the list')
+    assert.ok(at > 0, 'the generator is no longer rendered by the Batches page')
 
     // WHATEVER GUARDS THE GENERATOR, A POOL COUNT IS NOT PART OF IT. Read the
     // condition immediately preceding the element rather than the whole file:

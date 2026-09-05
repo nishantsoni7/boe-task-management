@@ -136,9 +136,45 @@ export function imageReadiness(
   return 'ready'
 }
 
+/**
+ * WHAT A LOADED PROJECT GROUP SAYS ABOUT READINESS, for a surface that loads
+ * one. Text reviews and callers that load nothing get `undefined`, which is
+ * what imageReadiness() and canBookCard() already treat as "no extra
+ * information" — so this changes nothing for anybody who does not use it.
+ *
+ * `undefined` also means NOT YET ANSWERED while the read is in flight, and
+ * callers treat that as "not bookable yet": an enabled Book that a resolved
+ * read is about to withdraw is worse than a button that arrives a beat late.
+ *
+ * A READ THAT FAILED RESOLVES TO `false`, and deliberately. The panel of
+ * photographs shows the waiting state for a set it could not load, and a badge
+ * saying `Ready` beside a panel saying `Waiting for admin images` is the exact
+ * contradiction this exists to remove. It fails closed and costs a reopened
+ * sheet; the row is untouched, and the booking UPDATE still decides.
+ */
+export function projectGroupUsable(
+  card: Pick<TestCard, 'review_type'>,
+  /** Structurally typed, so this file does not depend on a component. */
+  set: { usable: boolean | undefined; loading: boolean } | undefined,
+): boolean | undefined {
+  if (card.review_type !== 'image' || !set) return undefined
+  if (set.loading) return undefined
+  return set.usable === true
+}
+
 /** The sentence a candidate reads beside an image review that is not ready. */
 export const AWAITING_IMAGES_LABEL = 'Waiting for admin images'
 export const READY_LABEL = 'Ready'
+/**
+ * WHAT A SURFACE SAYS WHILE THE PROJECT GROUP IS STILL BEING READ.
+ *
+ * Not a third kind of readiness — imageReadiness() still answers with two —
+ * but a third thing a BADGE can say, because for a moment the honest answer
+ * is neither. Saying `Ready` and correcting it to `Waiting` a beat later is
+ * the flicker this exists to prevent; saying `Waiting` first accuses an
+ * administrator of not having done something they have in fact done.
+ */
+export const CHECKING_IMAGES_LABEL = 'Checking images'
 
 export function readinessLabel(readiness: ImageReadiness): string | null {
   if (readiness === 'ready') return READY_LABEL

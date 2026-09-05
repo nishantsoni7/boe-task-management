@@ -6,6 +6,7 @@ import { colors } from '@/lib/tokens'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import { countReviewsByType, type CountsByType } from '@/lib/customerReviews/reviewTypes'
 import type { ReviewType, TestCardStatus } from '@/lib/customerReviews/types'
+import { StackSkeleton } from './ReviewSkeletons'
 
 // ── Per-employee progress, for the people accountable for it ─────────────────
 //
@@ -129,7 +130,8 @@ export function EmployeeProgress({ supabase }: { supabase: SupabaseClient }) {
     return <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0 }}>{error}</p>
   }
   if (rows === null) {
-    return <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading…</p>
+    // Row-shaped, so the table does not jump when the counts land.
+    return <StackSkeleton count={4} height={38} />
   }
   if (rows.length === 0) {
     return (

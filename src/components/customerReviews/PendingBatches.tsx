@@ -25,6 +25,7 @@ import {
   type TestCardPhoto,
 } from '@/lib/customerReviews/types'
 import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
+import { countByType } from '@/lib/customerReviews/reviewTypes'
 
 // ── The verifier's Pending approval workspace ────────────────────────────────
 //
@@ -236,6 +237,9 @@ function BatchGroup({
   }, [confirm, mode, onApprove, onApproveBatch, batchId])
 
   const generatedBy = batch ? (actorNames.get(batch.generated_by) ?? 'a verifier') : null
+  // Counted from the drafts in hand — no extra read. For a freshly generated
+  // batch these are all twelve, so it reads 8 Text · 4 Image.
+  const composition = countByType(cards)
 
   return (
     <section
@@ -250,16 +254,51 @@ function BatchGroup({
         padding: '12px 14px', borderBottom: `1px solid ${colors.border}`,
         background: colors.raised, display: 'flex', flexDirection: 'column', gap: '9px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
-          <strong style={{ fontSize: '13px', color: colors.primary }}>
-            {pendingCount} awaiting approval
+        {/*
+          ONE BATCH, ONE OPERATIONAL LINE. A verifier scanning this page needs
+          four facts before they open anything: which batch, how much of it is
+          still waiting, what it is made of, and what to do next. They used to
+          be one sentence of small grey text with the model name in it.
+        */}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
+          <strong style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
+            {batch ? `${pendingCount} of ${batch.card_count} awaiting approval` : `${pendingCount} awaiting approval`}
           </strong>
+
+          {/* WHAT IT IS MADE OF, counted from the drafts actually in hand. */}
+          <span style={{ fontSize: '11.5px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+            {composition.text} Text · {composition.image} Image
+          </span>
+
           {batch && (
-            <span style={{ fontSize: '11px', color: colors.tertiary }}>
-              of {batch.card_count} · generated {formatTestTimestamp(batch.generated_at)} by {generatedBy} · {batch.model}
+            <span style={{
+              marginLeft: 'auto', fontFamily: 'var(--font-mono)',
+              fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
+            }}>
+              {batchId.slice(0, 8)}
             </span>
           )}
         </div>
+
+        {batch && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '11px', color: colors.tertiary }}>
+              Generated {formatTestTimestamp(batch.generated_at)} by {generatedBy}
+            </span>
+            {/*
+              THE NEXT REQUIRED ACTION, said once. Approving the batch is what
+              makes it assignable, and the Ready to assign section below only
+              lists batches where every review is already approved.
+            */}
+            <span style={{
+              display: 'inline-block', padding: '2px 8px', borderRadius: '5px',
+              background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
+              fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+            }}>
+              Next: approve, then assign
+            </span>
+          </div>
+        )}
 
         {batch && (
           <div>

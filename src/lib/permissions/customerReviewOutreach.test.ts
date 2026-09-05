@@ -552,7 +552,22 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // the whole thing before taking it — but the predicate behind it did not
     // change, and it is still the resolved `use` permission and the card's own
     // status rather than anything a screen decided.
-    assert.ok(list.includes('canBookCard(reading, { userId: profile?.id ?? null, canUse: caps.canUse })'))
+    //
+    // THE THIRD ARGUMENT IS NOT A SECOND PREDICATE. canBookCard has always
+    // taken the project group's usability; the screen now supplies it from the
+    // group it loaded for the sheet instead of leaving it undefined, so an
+    // image review whose photographs are missing stops offering a button the
+    // database was always going to refuse. The answer is computed ONCE and both
+    // the control and the sentence explaining its absence read that one value.
+    assert.ok(list.includes([
+      'canBookCard(',
+      '      reading,',
+      '      { userId: profile?.id ?? null, canUse: caps.canUse },',
+      '      projectGroupUsable(reading, readingImages),',
+      '    )',
+    ].join('\n')))
+    // One answer, read by the control and by the sentence explaining its absence.
+    assert.equal((list.match(/canBook=\{readingCanBook\}/g) ?? []).length, 2)
     assert.equal(/canVerify/.test(
       list.slice(list.indexOf('canBookCard'), list.indexOf('canBookCard') + 120),
     ), false, 'booking consults the verify permission')
@@ -617,11 +632,21 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     }
   })
 
-  test('the verifier tabs are hidden from non-verifiers', () => {
-    assert.ok(list.includes('if (caps.canVerify) {'))
-    // ...and a non-verifier who types the URL is put back on Available rather
-    // than left on an empty screen with a promising name.
-    assert.ok(list.includes("setState({ tab: 'available' })"))
+  test('the whole review queue is hidden from non-verifiers', () => {
+    // It used to be that three of five TABS were verifier-only and a
+    // non-verifier typing one was bounced to Available. The page itself is now
+    // a verifier workspace — a candidate's own work lives on its own screen —
+    // so the bounce moves the PERSON rather than the tab.
+    assert.ok(list.includes("if (!caps.canVerify) router.replace('/customer-reviews')"),
+      'the review queue does not turn a non-verifier away')
+    for (const screen of [
+      'src/app/customer-reviews/BatchesScreen.tsx',
+      'src/app/customer-reviews/ImagesScreen.tsx',
+      'src/app/customer-reviews/ProgressScreen.tsx',
+    ]) {
+      assert.ok(read(screen).includes("if (!caps.canVerify) router.replace('/customer-reviews')"),
+        `${screen} does not turn a non-verifier away`)
+    }
   })
 
   test('A VERIFIED CARD IS IN NO LIST AT ALL', () => {
@@ -631,8 +656,13 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // an absence of anything that asks.
     const table = list.slice(list.indexOf('const TAB_STATUSES'), list.indexOf('export function TestCardListScreen'))
     assert.ok(/available: \['available'\]/.test(table))
-    assert.ok(/mine:\s*\['booked', 'submitted'\]/.test(table))
     assert.ok(/to_verify:\s*\['submitted'\]/.test(table))
+    // The candidate's own work moved to MyReviewsScreen, whose status filter
+    // is subject to the same rule and is asserted here too.
+    const mine = read('src/app/customer-reviews/MyReviewsScreen.tsx')
+    assert.ok(mine.includes("const MINE_STATUSES = ['available', 'booked', 'submitted'] as const"))
+    assert.equal(/MINE_STATUSES[\s\S]{0,120}'verified'/.test(mine), false,
+      'the candidate screen asks the database for verified cards')
     assert.equal(table.includes("'verified'"), false,
       'some tab still asks the database for verified cards')
   })
@@ -644,10 +674,10 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.ok(tabs, 'the tab list is missing')
     assert.deepEqual(
       tabs.split(',').map(t => t.trim().replace(/'/g, '')).filter(Boolean),
-      // `pending` and `booked` are the two the approval workflow added, and
-      // both are verifier-only. There is still no key a candidate could type
-      // that reaches a finished record.
-      ['pending', 'available', 'mine', 'booked', 'to_verify'],
+      // Four verifier queues. `mine` is gone — a candidate's own work is its
+      // own screen now. There is still no key anybody could type that reaches
+      // a finished record.
+      ['pending', 'available', 'booked', 'to_verify'],
     )
 
     // Nothing draws one, nothing routes to one, and the icon it used is no
@@ -663,28 +693,32 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     assert.equal(/history/i.test(executable), false, 'the sidebar still links to history')
     // Five entries now, and three of the five are verifier-only. The two a
     // candidate sees are the two they always saw.
+    // FIVE DESTINATIONS, NOT FIVE STATES. The sidebar used to list the
+    // workflow states, every entry pointing at `?tab=` on one route, while the
+    // page rendered the same five as tabs — two controls for one parameter.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['Pending approval', 'Available', 'My reviews', 'Booked', 'To Verify'])
+    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Batches', 'Image Library', 'Progress'])
+
+    // AND NO ENTRY CARRIES A QUERY ANY MORE: each is a route of its own, so
+    // the sidebar cannot duplicate an in-page tab by construction.
+    assert.equal(/query:/.test(executable), false, 'a nav entry still points at a tab')
 
     const verifierOnly = [...executable.matchAll(/label: '([^']+)'[\s\S]*?(?=\{\s*$|\},)/g)]
     assert.ok(verifierOnly.length >= 0)   // structural read below is the assertion
     // Everything but Available and My reviews carries verifierOnly, so a
     // candidate's sidebar is unchanged by this work.
-    const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf(']\n\nexport function'))
-    for (const label of ['Pending approval', 'Booked', 'To Verify']) {
+    const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf('const ROOT_LABEL'))
+    // FOUR OF THE FIVE ARE VERIFIER-ONLY. A candidate sees exactly one entry.
+    for (const label of ['Reviews', 'Batches', 'Image Library', 'Progress']) {
       const at = entries.indexOf(`label: '${label}'`)
       assert.ok(at !== -1, `${label} is missing`)
       assert.ok(entries.slice(at, at + 260).includes('verifierOnly: true'),
         `${label} is shown to candidates`)
     }
-    for (const label of ['Available', 'My reviews']) {
-      const at = entries.indexOf(`label: '${label}'`)
-      assert.ok(at !== -1, `${label} is missing`)
-      // Each of these is one line, so the next 160 characters cannot reach into
-      // the following entry's flag.
-      assert.equal(entries.slice(at, at + 160).includes('verifierOnly'), false,
-        `${label} became verifier-only`)
-    }
+    const rootAt = entries.indexOf("label: 'My Reviews'")
+    assert.ok(rootAt !== -1, 'My Reviews is missing')
+    assert.equal(entries.slice(rootAt, rootAt + 160).includes('verifierOnly'), false,
+      'My Reviews became verifier-only')
   })
 
   test('THE DETAIL SCREEN DECLINES A VERIFIED CARD TOO', () => {
@@ -700,8 +734,14 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // ...and verifying navigates away rather than reloading into that branch,
     // which would read as an error instead of as success. Since BOE Credits
     // Phase 1B the destination also carries `verified=<credits>` for the list
-    // to say; the navigation itself is unchanged.
-    assert.match(detail, /router\.push\(`\/customer-reviews\?tab=to_verify\$\{verifiedQuery\(data\)\}`\)/)
+    // to say. THE LIST IS NOW `/customer-reviews/reviews`: the root became the
+    // verifier's Overview, which renders no such notice, so sending the flag
+    // there would have quietly discarded what the database had just awarded.
+    assert.match(detail, /router\.push\(`\/customer-reviews\/reviews\?tab=to_verify\$\{verifiedQuery\(data\)\}`\)/)
+    assert.equal(
+      /router\.push\('?`?\/customer-reviews\?tab=/.test(detail), false,
+      'a redirect still selects a tab on a route that no longer has tabs',
+    )
   })
 
   test('NOTHING IS DELETED — this is a display rule, not a data change', () => {
@@ -723,7 +763,13 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // RLS already narrows a `use` holder to their own cards — but a VERIFIER
     // sees everybody's, so without this their "My tests" tab would show the
     // whole company's work under a possessive heading.
-    assert.ok(list.includes("if (tab === 'mine') query = query.eq('booked_by', profile.id)"))
+    // IT MOVED, AND IT IS SCOPED BY ASSIGNMENT NOW. The screen shows every
+    // review assigned to this person in every live state, so the filter is
+    // `assigned_to` rather than `booked_by`. RLS already narrows a candidate;
+    // this is what stops a VERIFIER's own screen showing everybody's work.
+    const mine = read('src/app/customer-reviews/MyReviewsScreen.tsx')
+    assert.ok(mine.includes(".eq('assigned_to', profile.id)"),
+      'My Reviews is not scoped to the signed-in person in the query')
   })
 
   test('THE LIST IS NOT A DASHBOARD', () => {
@@ -748,7 +794,11 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // that the page-level one is gone. This asserts the surfaces that show a
     // draft's WORDS in full — the Available tab's tile, the detail screen, the
     // complete-review view — all still carry it.
-    assert.ok(list.includes('<InternalTestWarning compact />'), 'a card tile has no label')
+    // The card is one component now — ReviewCard — drawn by all four verifier
+    // queues and by the candidate's own screen, so the label covers more
+    // surfaces than it did and from one place rather than a copy per screen.
+    assert.ok(read('src/components/customerReviews/ReviewCard.tsx')
+      .includes('<InternalTestWarning compact />'), 'a card has no label')
     assert.ok(detail.includes('<InternalTestWarning />'), 'the detail screen has no label')
 
     const full = read('src/components/customerReviews/ReviewFullView.tsx')
@@ -799,7 +849,7 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // what will actually be sent.
     const full = read('src/components/customerReviews/ReviewFullView.tsx')
     assert.ok(full.includes('const identical = message === card.test_body.trim()'))
-    assert.ok(full.includes("label={identical ? 'The full review, and the exact message' : 'The full review'}"))
+    assert.ok(full.includes("label={identical ? 'The review, and the exact message' : 'The review'}"))
     assert.ok(full.includes('{!identical && ('), 'the differing case has no second block')
 
     // The outgoing text is rendered in BOTH branches, so neither hides it.
@@ -818,7 +868,7 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
 
     // 1. IDENTICAL AFTER NORMALISATION → ONE BLOCK, ONE HEADING. The heading
     //    says both things rather than the page saying one thing twice.
-    assert.ok(full.includes("label={identical ? 'The full review, and the exact message' : 'The full review'}"))
+    assert.ok(full.includes("label={identical ? 'The review, and the exact message' : 'The review'}"))
 
     // 2. NOT IDENTICAL → TWO BLOCKS, the review and the exact outgoing message
     //    separately, because the candidate is entitled to see the text that

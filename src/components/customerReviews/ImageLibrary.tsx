@@ -20,6 +20,7 @@ import {
   type ReviewGroupImage,
   type ReviewImageGroup,
 } from '@/lib/customerReviews/types'
+import { StackSkeleton } from './ReviewSkeletons'
 
 // ── The project image library ────────────────────────────────────────────────
 //
@@ -337,9 +338,8 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
           Project image library
         </h2>
         <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
-          One group is one project. An image review is given a whole group, so the photographs
-          a candidate posts are always of a single project. Images stay private — nothing here
-          is published anywhere.
+          One group is one project. An image review is given a whole group, so a candidate
+          always posts one project&rsquo;s photographs. Images stay private.
         </p>
       </header>
 
@@ -375,14 +375,13 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
       {notice && <p role="status" style={{ fontSize: '12px', color: '#166534', margin: 0, lineHeight: 1.6 }}>{notice}</p>}
 
       {groups === null ? (
-        <p style={{ fontSize: '12px', color: colors.muted, margin: 0 }}>Loading…</p>
+        <StackSkeleton count={3} height={62} />
       ) : groups.length === 0 ? (
         <p style={{
           margin: 0, padding: '18px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
           border: `1px dashed ${colors.border}`, color: colors.muted,
         }}>
-          There are no project groups yet. Until at least one exists with images in it, every
-          image review will be assigned and then wait for its photographs.
+          No project groups yet. Until one has images, every image review waits.
         </p>
       ) : (
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -459,6 +458,46 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                     {group.archived_at ? 'Restore' : 'Archive'}
                   </button>
                 </div>
+
+                {/*
+                  A THUMBNAIL STRIP ON THE COLLAPSED CARD, so a project is
+                  recognisable without opening it — an admin scanning a library
+                  is looking for a project, and a row of labels all look alike.
+
+                  IT COSTS NOTHING EXTRA. These are the SAME signed URLs the
+                  expanded view uses, already minted by the effect above for
+                  every image on the page. Only the first four are drawn, and a
+                  URL that has not arrived yet simply renders nothing — no
+                  placeholder box, because a row of grey squares reads as a
+                  broken project rather than a loading one.
+                */}
+                {!open && count > 0 && (
+                  <div style={{
+                    display: 'flex', gap: '6px', padding: '0 12px 11px',
+                    alignItems: 'center', flexWrap: 'wrap',
+                  }}>
+                    {group.images.slice(0, 4).map(image => (
+                      urls[image.storage_path] ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          key={image.id}
+                          src={urls[image.storage_path]}
+                          alt=""
+                          style={{
+                            width: '44px', height: '44px', objectFit: 'cover',
+                            borderRadius: '6px', border: `1px solid ${colors.border}`,
+                            display: 'block', flexShrink: 0,
+                          }}
+                        />
+                      ) : null
+                    ))}
+                    {count > 4 && (
+                      <span style={{ fontSize: '11px', color: colors.muted }}>
+                        +{count - 4}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {open && (
                   <div style={{
@@ -561,8 +600,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
 
                     {assigned > 0 && (
                       <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
-                        Once a candidate has booked a review using this project, its images can no
-                        longer be removed — they were told to post these photographs.
+                        Once a candidate books a review using this project, its images are fixed.
                       </p>
                     )}
                   </div>

@@ -136,8 +136,8 @@ export function ProjectGroupControl({
       {!editable ? (
         <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
           {ready
-            ? 'A project group is attached. A candidate has picked this review up, so it can no longer be changed.'
-            : 'This review has no project group and can no longer be given one — a candidate is already holding it.'}
+            ? 'Project attached. A candidate has picked this review up, so it is now fixed.'
+            : 'No project attached, and a candidate is already holding this review.'}
         </p>
       ) : (
         <>
@@ -152,8 +152,7 @@ export function ProjectGroupControl({
             <p style={{ margin: 0, fontSize: '11px', color: colors.muted }}>Loading projects…</p>
           ) : groups.length === 0 ? (
             <p style={{ margin: 0, fontSize: '11px', color: colors.secondary, lineHeight: 1.6 }}>
-              No project group has any images yet. Add one in the project image library, and this
-              review becomes ready as soon as you attach it.
+              No project group has images yet. Add one in the Image Library, then attach it here.
             </p>
           ) : (
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>

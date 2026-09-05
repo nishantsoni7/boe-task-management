@@ -1,11 +1,18 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { Check, Copy, Loader2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { InternalTestWarning, ReviewBadge } from './ReviewPieces'
+import { ReadinessBadge, ReviewTypeBadge } from './AssignedReviews'
+import { ProjectImages, type ProjectImageSet } from './ProjectImages'
 import { buildReviewMessage } from '@/lib/customerReviews/internalTest'
-import { AWAITING_IMAGES_LABEL, imageReadiness } from '@/lib/customerReviews/reviewTypes'
+import {
+  AWAITING_IMAGES_LABEL,
+  imageReadiness,
+  projectGroupUsable,
+} from '@/lib/customerReviews/reviewTypes'
 import {
   TEST_CARD_STATUS_META,
   formatTestDate,
@@ -31,7 +38,21 @@ import {
 //
 // WHAT IT SHOWS, IN THE ORDER SOMEBODY NEEDS IT:
 //   the provenance note, the reference and status, the complete title, the
-//   complete body, THE EXACT TEXT WHATSAPP WILL BE HANDED, and then the action.
+//   complete body, THE EXACT TEXT WHATSAPP WILL BE HANDED, on an image review
+//   THE PHOTOGRAPHS THAT GO OUT WITH IT, and then the action.
+//
+// THE PHOTOGRAPHS ARE PASSED IN, NOT FETCHED HERE. An image review's badge
+// says `Image · Ready` and the candidate was asked to accept it without ever
+// seeing what they would be posting — the pictures only appeared after booking,
+// on the detail screen. They now appear before the decision.
+//
+// The set arrives as a prop because the OWNER OF THE FETCH MUST BE THE OWNER OF
+// THE LIFETIME. A hook here would run on every render of this view, including
+// the verifier's batch preview, which already loads the same group for its own
+// display — two components would ask twice for one answer. Callers pass
+// useProjectImages(supabase, isImage ? card.image_group_id : null), which is
+// null for a text review and null while no sheet is open, so a text review's
+// sheet and an unopened image review both issue exactly no queries.
 //
 // THE MESSAGE IS BUILT BY buildReviewMessage AND NOTHING ELSE, which is the
 // same single builder the server uses to compose the wa.me link. That is what
@@ -48,12 +69,21 @@ export function ReviewFullView({
   card,
   canBook,
   bookError,
+  supabase,
+  projectImages,
 }: {
   card: TestCard
   /** Only to explain its absence — the control itself is in the sheet footer. */
   canBook: boolean
   /** Kept visible inside the view, so a failure does not throw the reader out. */
   bookError: string | null
+  /**
+   * The reader's OWN client, for signing thumbnail URLs. Omitted by callers
+   * that show the photographs themselves, which is what keeps this optional.
+   */
+  supabase?: SupabaseClient
+  /** This review's project images. Only ever supplied for an image review. */
+  projectImages?: ProjectImageSet
 }) {
   const message = useMemo(() => buildReviewMessage({
     title: card.test_title,
@@ -73,32 +103,60 @@ export function ReviewFullView({
    */
   const identical = message === card.test_body.trim()
 
+  /*
+   * ONE ANSWER ABOUT READINESS, USED BY ALL THREE THINGS THAT STATE IT: the
+   * badge at the top, the panel of photographs, and the sentence explaining a
+   * missing Book button. They read the same values, so the sheet cannot say
+   * `Ready` in one place and `Waiting for admin images` in another.
+   *
+   * A caller that passes no set at all — the verifier's batch preview, which
+   * shows the photographs itself — gets `undefined` for both and therefore the
+   * behaviour this view had before any of this existed.
+   */
+  const checkingImages = card.review_type === 'image' && !!card.image_group_id && !!projectImages?.loading
+  const groupUsable = projectGroupUsable(card, projectImages)
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <InternalTestWarning />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      {/*
+        THE BADGES, IN THE SAME ORDER THE CARD SHOWS THEM: what this review IS,
+        then whether it is ready, then where it has got to. The type and
+        readiness used to be missing here entirely — a candidate could see them
+        on the card and then lose them on the screen where they decide whether
+        to take the review on, which is exactly the wrong way round.
+
+        Both read from the card already passed in. Nothing new is fetched.
+      */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+        <ReviewTypeBadge type={card.review_type} />
+        <ReadinessBadge card={card} groupHasImages={groupUsable} pending={checkingImages} />
         <ReviewBadge meta={TEST_CARD_STATUS_META[card.status]} />
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.tertiary }}>
+        <span style={{
+          marginLeft: 'auto', fontFamily: 'var(--font-mono)',
+          fontSize: '11px', color: colors.tertiary, whiteSpace: 'nowrap',
+        }}>
           {card.card_ref}
         </span>
-        <span style={{ fontSize: '11px', color: colors.muted }}>
-          {testCategoryLabel(card.test_category)}
-        </span>
-        {card.approved_at && (
-          <span style={{ fontSize: '11px', color: colors.muted }}>
-            Approved {formatTestDate(card.approved_at)}
-          </span>
-        )}
       </div>
 
       <div>
         <h3 style={{
-          margin: 0, fontSize: '15px', fontWeight: 700, color: colors.primary,
-          lineHeight: 1.4, overflowWrap: 'anywhere',
+          margin: 0, fontSize: '17px', fontWeight: 700, color: colors.primary,
+          lineHeight: 1.35, letterSpacing: '-0.01em', overflowWrap: 'anywhere',
         }}>
           {card.test_title}
         </h3>
+        {/*
+          THE QUIET METADATA, UNDER THE TITLE RATHER THAN COMPETING WITH THE
+          BADGES. Category and approval date are context somebody reads once;
+          they were sitting in the badge row making it four things wide.
+        */}
+        <p style={{ margin: '5px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
+          {testCategoryLabel(card.test_category)}
+          {card.approved_at && ` · Approved ${formatTestDate(card.approved_at)}`}
+        </p>
       </div>
 
       {/*
@@ -115,28 +173,34 @@ export function ReviewFullView({
         text it was made from. When it does not happen, the heading says the two
         are the same instead of proving it by repetition.
       */}
-      <Block label={identical ? 'The full review, and the exact message' : 'The full review'}>
+      <Block label={identical ? 'The review, and the exact message' : 'The review'}>
         {identical ? (
           <>
+            {/*
+              A COMFORTABLE MEASURE. `62ch` is roughly 60–70 characters a line,
+              which is where prose stops being work to read. The body is the
+              thing this screen exists to show, so it gets the largest type on
+              the page after the title.
+            */}
             <pre
               data-testid="review-outgoing-message"
               style={{
-                margin: 0, fontSize: '13px', color: colors.primary, lineHeight: 1.65,
+                margin: 0, maxWidth: '62ch',
+                fontSize: '14px', color: colors.primary, lineHeight: 1.7,
                 whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 fontFamily: 'inherit', background: 'transparent', border: 'none', padding: 0,
               }}
             >
               {message}
             </pre>
-            <p style={{ margin: '9px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-              This is exactly what WhatsApp will be handed and exactly what the recipient
-              would see — the review and nothing else. You choose the number and press send
-              yourself in WhatsApp; BOE never sends a message for you.
+            <p style={{ margin: '10px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+              This is exactly what WhatsApp is handed. You choose the number and press send yourself.
             </p>
           </>
         ) : (
           <p style={{
-            margin: 0, fontSize: '13px', color: colors.primary, lineHeight: 1.65,
+            margin: 0, maxWidth: '62ch',
+            fontSize: '14px', color: colors.primary, lineHeight: 1.7,
             whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
           }}>
             {card.test_body}
@@ -160,11 +224,28 @@ export function ReviewFullView({
           >
             {message}
           </pre>
-          <p style={{ margin: '9px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-            The spacing above is normalised, so this differs slightly from the review as
-            stored. This is the version that goes out — the review and nothing else. You
-            choose the number and press send yourself; BOE never sends a message for you.
+          <p style={{ margin: '10px 0 0', fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
+            Spacing is normalised, so this differs slightly from the stored review. This is
+            the version that goes out. You choose the number and press send yourself.
           </p>
+        </Block>
+      )}
+
+      {/*
+        THE PHOTOGRAPHS, LAST IN THE BODY AND THEREFORE NEXT TO THE ACTION.
+        On a phone the footer is pinned, so the last thing scrolled past is the
+        last thing read before Book — which is where the evidence for the
+        decision belongs.
+
+        THE SAME COMPONENT THE DETAIL SCREEN AND THE BATCH PREVIEW USE, so the
+        set shown here is the set that goes out, and there is one signed-URL
+        path in the module rather than one per surface. A group that is missing,
+        archived or empty renders ProjectImages' own `Waiting for admin images`
+        panel; nothing here quietly presents an image review as a text one.
+      */}
+      {card.review_type === 'image' && supabase && projectImages && (
+        <Block label="Project images">
+          <ProjectImages supabase={supabase} set={projectImages} label={null} />
         </Block>
       )}
 
@@ -189,14 +270,17 @@ export function ReviewFullView({
         the actionable sentence is the one naming what is actually missing.
       */}
       {!canBook && card.status === 'available' && (
-        imageReadiness(card) === 'awaiting_images' ? (
+        checkingImages ? (
+          <p style={{ margin: 0, fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
+            Checking the project images…
+          </p>
+        ) : imageReadiness(card, groupUsable) === 'awaiting_images' ? (
           <p style={{ margin: 0, fontSize: '12px', color: '#92400E', lineHeight: 1.55, fontWeight: 600 }}>
-            {AWAITING_IMAGES_LABEL}. An administrator is preparing the photographs for this
-            review — you can book and share it as soon as they are attached.
+            {AWAITING_IMAGES_LABEL}. This review can be booked once project images are ready.
           </p>
         ) : (
           <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
-            You can read this review, but booking one needs the Use permission for this module.
+            Booking a review needs the Use permission.
           </p>
         )
       )}
@@ -316,7 +400,7 @@ function Block({ label, children }: { label: string; children: React.ReactNode }
   return (
     <section>
       <h4 style={{
-        margin: '0 0 7px', fontSize: '11px', fontWeight: 700,
+        margin: '0 0 9px', fontSize: '11px', fontWeight: 700,
         textTransform: 'uppercase', letterSpacing: '0.05em', color: colors.tertiary,
       }}>
         {label}

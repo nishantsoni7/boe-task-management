@@ -326,7 +326,12 @@ describe('the module no longer calls itself a test', () => {
   test('the module displays "Review Workflow"', () => {
     assert.ok(read('src/lib/permissions/modules.ts').includes("displayName: 'Review Workflow'"))
     assert.ok(read('src/app/modules/page.tsx').includes("title: 'Review Workflow'"))
-    assert.ok(read('src/app/customer-reviews/TestCardListScreen.tsx').includes('title="Review Workflow"'))
+    // The MODULE is called Review Workflow; its pages are called what they
+    // are — Overview, Reviews, Batches, Image Library, Progress, My Reviews.
+    // The module name lives in the shell's brand sub-label, asserted in the
+    // test below this one, which is the one place a person always sees it.
+    assert.ok(read('src/components/layout/CustomerReviewsLayout.tsx')
+      .includes("<div className=\"boe-sidebar-brand-sub\">Review Workflow</div>"))
   })
 
   test('including the sidebar, which said "Workflow Test" longer than anything else', () => {
@@ -353,10 +358,14 @@ describe('the module no longer calls itself a test', () => {
     // The status describes ONE draft. Above a list of twenty it labels nothing,
     // and it read as a banner about the module rather than about a draft.
     const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
-    // Executable lines only — the comment above the card renderer still names
-    // the component, and a comment is not a render.
+    const card = read('src/components/customerReviews/ReviewCard.tsx')
+    // Executable lines only — a comment naming the component is not a render.
     assert.equal(executable(list).includes('<InternalTestWarning />'), false)
-    assert.ok(list.includes('<InternalTestWarning compact />'), 'the per-card status is gone too')
+    // THE PER-CARD STATUS MOVED WITH THE CARD. It lives in ReviewCard, which is
+    // the one component the four verifier queues AND the candidate's own screen
+    // draw — so the guarantee now covers more surfaces than it did, from one
+    // place instead of one copy per screen.
+    assert.ok(card.includes('<InternalTestWarning compact />'), 'the per-card status is gone too')
   })
 
   test('and the booking control lives in the full view, not on the card', () => {
@@ -364,11 +373,13 @@ describe('the module no longer calls itself a test', () => {
     // review on the strength of its first line and a half. The card offers
     // `View`; `Book this review` exists only inside the complete-review sheet,
     // which is how the UI path is made to require reading it.
-    const list = read('src/app/customer-reviews/TestCardListScreen.tsx')
+    const card = read('src/components/customerReviews/ReviewCard.tsx')
     const full = read('src/components/customerReviews/ReviewFullView.tsx')
-    assert.ok(list.includes("{showView ? 'View' : 'Open'}"))
-    assert.equal(/'Book'|Book this review/.test(list.slice(list.indexOf('function TestCardTile'))), false,
-      'the card tile still offers a booking control')
+    // The card offers ONE action and it is a read: `View review` on an
+    // available review, `Open` on one already in flight.
+    assert.ok(card.includes('{actionLabel} →'))
+    assert.equal(/'Book'|Book this review/.test(card), false,
+      'the review card still offers a booking control')
     assert.ok(full.includes("{booking ? 'Booking…' : 'Book this review'}"))
   })
 })

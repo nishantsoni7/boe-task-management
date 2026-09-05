@@ -679,7 +679,9 @@ describe('the interface asks the choice at approval, every time', () => {
 
 describe('deletion controls are placed where they cannot be hit by accident', () => {
   test('candidates are never rendered one', () => {
-    assert.ok(LIST.includes('canDelete={canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })}'))
+    // The card's Delete moved with the card: ReviewCard takes a `secondary`
+    // slot, and the queue fills it only for a resolved verify holder.
+    assert.ok(LIST.includes('canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })'))
     assert.ok(LIST.includes('{caps.canVerify && !listLoading && (\n          <DeleteAllReviewsBar'))
     assert.ok(DETAIL.includes('canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })'))
   })
@@ -694,7 +696,10 @@ describe('deletion controls are placed where they cannot be hit by accident', ()
     assert.ok(DELETE_UI.includes('borderTop: `1px solid ${colors.border}`'))
     // It is the last thing on the page, after the list — not a neighbour of the
     // generate panel at the top.
-    assert.ok(LIST.indexOf('<DeleteAllReviewsBar') > LIST.indexOf('<GenerateDrafts'))
+    // Delete all is the LAST thing on the queue page, below the cards. The
+    // generator is no longer on this page at all — it lives on Batches — so
+    // the ordering is asserted against the list it sits under.
+    assert.ok(LIST.indexOf('<DeleteAllReviewsBar') > LIST.indexOf('<ReviewCardGrid>'))
     assert.ok(LIST.indexOf('<DeleteAllReviewsBar') > LIST.indexOf('<PendingBatches'))
   })
 

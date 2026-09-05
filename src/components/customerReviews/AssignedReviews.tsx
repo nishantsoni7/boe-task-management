@@ -6,6 +6,7 @@ import { colors } from '@/lib/tokens'
 import { ReviewBadge } from './ReviewPieces'
 import {
   AWAITING_IMAGES_LABEL,
+  CHECKING_IMAGES_LABEL,
   READY_LABEL,
   countReviewsByType,
   imageReadiness,
@@ -100,13 +101,25 @@ export function TypeProgress({ type, counts }: { type: ReviewType; counts: Revie
  * booking if it is not.
  */
 export function ReadinessBadge({
-  card, groupHasImages,
+  card, groupHasImages, pending,
 }: {
   card: Pick<TestCard, 'review_type' | 'image_group_id'>
   groupHasImages?: boolean
+  /**
+   * The group is being read RIGHT NOW and has not answered yet.
+   *
+   * Only a surface that actually loads the group passes this. Every other
+   * caller shows what the row alone implies, which is all it knows.
+   */
+  pending?: boolean
 }) {
   const readiness = imageReadiness(card, groupHasImages)
   if (readiness === 'not_applicable') return null
+  // A review with no group at all is not pending anything — there is nothing
+  // to read — so it keeps the definite answer it already has.
+  if (pending && card.image_group_id) {
+    return <ReviewBadge meta={{ label: CHECKING_IMAGES_LABEL, bg: colors.raised, color: colors.tertiary, border: colors.border }} />
+  }
   return readiness === 'ready'
     ? <ReviewBadge meta={{ label: READY_LABEL, bg: '#F0FDF4', color: '#166534', border: '#BBF7D0' }} />
     : <ReviewBadge meta={{ label: AWAITING_IMAGES_LABEL, bg: '#FFFBEB', color: '#92400E', border: '#FDE68A' }} />
