@@ -2,7 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { purgeUserResults } from '@/lib/imageEditor/history'
 import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
-import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
+import { checkLastAdministrator } from '@/lib/users/lastAdministrator'
 
 export async function POST(req: NextRequest) {
   const { userId } = await req.json()
@@ -61,8 +61,8 @@ export async function POST(req: NextRequest) {
   // place, so in normal operation this never fires. It fires for a row that was
   // soft-deleted before that guard existed, or straight in the database — which
   // is exactly the state an irreversible route should refuse to compound.
-  const blocked = await lastAdministratorBlock(serviceClient, target, userId, 'permanently_delete')
-  if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
+  const check = await checkLastAdministrator(serviceClient, userId, 'permanently_delete')
+  if (!check.ok) return NextResponse.json({ error: check.error }, { status: check.status })
 
   // ── Cascade cleanup in safe order ────────────────────────────────────────
 
