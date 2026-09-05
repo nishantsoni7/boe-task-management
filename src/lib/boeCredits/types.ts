@@ -80,8 +80,24 @@ export type EmployeeCreditBalance = CreditBalance & {
  * FUTURE actions only — see settings.ts.
  */
 export type BoeCreditSettings = {
-  /** Credits ONE verified review earns. */
+  /**
+   * Credits ONE verified TEXT review earns.
+   *
+   * THE FIELD KEEPS ITS ORIGINAL NAME BECAUSE IT KEEPS ITS ORIGINAL MEANING.
+   * Before review types existed every review was a text review and this was its
+   * reward; renaming it would rewrite the meaning of every append-only history
+   * row that already carries a value, and would be a deployment window in which
+   * a released build selects a column that no longer exists.
+   */
   review_reward_credits: number
+  /**
+   * Credits ONE verified IMAGE review earns.
+   *
+   * INDEPENDENT, never derived from the text reward — the same relationship the
+   * two attendance redemption costs have, and for the same reason: they are two
+   * decisions, and a derived second number is a decision nobody made.
+   */
+  image_review_reward_credits: number
   /** Rupees ONE credit is worth when applied to payroll. Snapshotted per application. */
   credit_value: number
   /** Credits that cover a chargeable Half Day. */

@@ -1,9 +1,10 @@
 /**
  * BOE Credits settings — the defaults, the parser, and the migration seed.
  *
- * Five numbers, five different things: review_reward_credits, credit_value,
- * half_day_redemption_credits, full_day_redemption_credits and
- * minimum_monthly_reviews. The Phase 1D seed in
+ * Six numbers, six different things: review_reward_credits (the TEXT review
+ * reward, which kept its name because it kept its meaning),
+ * image_review_reward_credits, credit_value, half_day_redemption_credits,
+ * full_day_redemption_credits and minimum_monthly_reviews. The Phase 1D seed in
  * 20261104000000_boe_credits_phase_1d.sql is asserted against
  * DEFAULT_BOE_CREDIT_SETTINGS here, so a constant that changes on one side
  * without the other breaks a test rather than a payslip.
@@ -34,14 +35,30 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const D = DEFAULT_BOE_CREDIT_SETTINGS
 
 describe('the defaults', () => {
-  test('reward 1, ₹100 per credit, half day 8, full day 15, three reviews a month', () => {
+  test('text reward 1, image reward 1, ₹100 per credit, half day 8, full day 15, three reviews a month', () => {
     assert.deepEqual(D, {
       review_reward_credits: 1,
+      // THE IMAGE REWARD SHIPS EQUAL TO THE TEXT ONE, deliberately. Review
+      // types are a structural change; what an image review is WORTH is a
+      // business decision, and shipping a different number would be making it
+      // on the owner's behalf. Changing it is one settings save.
+      image_review_reward_credits: 1,
       credit_value: 100,
       half_day_redemption_credits: 8,
       full_day_redemption_credits: 15,
       minimum_monthly_reviews: 3,
     })
+  })
+
+  test('review_reward_credits IS the text reward, and it kept its name for a reason', () => {
+    // Renaming it would rewrite the meaning of every append-only history row
+    // that already carries a value, and would be a deployment window in which a
+    // released build selects a column that no longer exists. The image reward
+    // is a NEW column beside it — see 20261107000000 § 11.
+    const sql = read('supabase/migrations/20261107000000_review_types_assignment_and_image_groups.sql')
+    assert.match(sql, /add column if not exists image_review_reward_credits integer not null default 1/)
+    assert.equal(/rename column .*review_reward_credits/.test(sql), false)
+    assert.equal(/alter table public\.boe_credit_settings\s+drop column/.test(sql), false)
   })
 
   test('half day and full day are two settings — neither is derived from the other', () => {
@@ -102,17 +119,36 @@ describe('the parser', () => {
 
   test('accepts numeric strings, as a form and PostgREST both produce', () => {
     const r = parseBoeCreditSettings({
-      review_reward_credits: '2', credit_value: '150.50',
+      review_reward_credits: '2', image_review_reward_credits: '5', credit_value: '150.50',
       half_day_redemption_credits: '10', full_day_redemption_credits: '20', minimum_monthly_reviews: '4',
     })
     assert.ok(r.ok)
     assert.deepEqual(r.ok && r.settings, {
-      review_reward_credits: 2, credit_value: 150.5,
+      review_reward_credits: 2, image_review_reward_credits: 5, credit_value: 150.5,
       half_day_redemption_credits: 10, full_day_redemption_credits: 20, minimum_monthly_reviews: 4,
     })
   })
 
-  for (const key of ['review_reward_credits', 'half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews'] as const) {
+  test('THE IMAGE REWARD IS REQUIRED, not defaulted when a caller omits it', () => {
+    // A settings save that silently filled in a reward nobody chose would be a
+    // price nobody decided. The five-field payload a pre-review-types client
+    // would send is refused, and the refusal names the missing field.
+    const r = parseBoeCreditSettings({
+      review_reward_credits: 1, credit_value: 100,
+      half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3,
+    })
+    assert.equal(r.ok, false)
+    assert.ok(!r.ok && r.issues.some(i => i.key === 'image_review_reward_credits'))
+  })
+
+  test('the two review rewards are validated independently — 1 / 1 and 2 / 9 are both accepted', () => {
+    assert.ok(parseBoeCreditSettings({ ...D, review_reward_credits: 1, image_review_reward_credits: 1 }).ok)
+    assert.ok(parseBoeCreditSettings({ ...D, review_reward_credits: 2, image_review_reward_credits: 9 }).ok)
+    // Neither is derived from the other, so a smaller image reward is legal too.
+    assert.ok(parseBoeCreditSettings({ ...D, review_reward_credits: 9, image_review_reward_credits: 2 }).ok)
+  })
+
+  for (const key of ['review_reward_credits', 'image_review_reward_credits', 'half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews'] as const) {
     test(`${key} must be a whole positive number`, () => {
       for (const bad of [0, -1, 1.5, 'abc', null, undefined, NaN, Infinity]) {
         const r = parseBoeCreditSettings({ ...D, [key]: bad })
@@ -139,16 +175,20 @@ describe('the parser', () => {
   })
 
   test('every problem is reported at once', () => {
-    const r = parseBoeCreditSettings({ review_reward_credits: 0, credit_value: -1, half_day_redemption_credits: 'x', full_day_redemption_credits: 0.5, minimum_monthly_reviews: null })
+    const r = parseBoeCreditSettings({ review_reward_credits: 0, image_review_reward_credits: -2, credit_value: -1, half_day_redemption_credits: 'x', full_day_redemption_credits: 0.5, minimum_monthly_reviews: null })
     assert.equal(r.ok, false)
-    assert.equal(!r.ok && r.issues.length, 5)
+    assert.equal(!r.ok && r.issues.length, 6)
   })
 
-  test('sameBoeCreditSettings compares all five', () => {
+  test('sameBoeCreditSettings compares all six', () => {
     assert.ok(sameBoeCreditSettings(D, { ...D }))
     assert.ok(sameBoeCreditSettings(D, { ...D, credit_value: 100.001 }), 'sub-paisa noise is the same value')
     assert.equal(sameBoeCreditSettings(D, { ...D, minimum_monthly_reviews: 4 }), false)
     assert.equal(sameBoeCreditSettings(D, { ...D, full_day_redemption_credits: 16 }), false)
+    // WITHOUT THIS ONE the settings form would treat a change to the image
+    // reward as no change at all, disable its own Save button, and silently
+    // discard it.
+    assert.equal(sameBoeCreditSettings(D, { ...D, image_review_reward_credits: 4 }), false)
   })
 
   test('formatCreditValue prints whole rupees without paise and paise when present', () => {

@@ -11,6 +11,10 @@ import { ApprovalChoiceCards } from './ApprovalChoice'
 import { DeleteReviewButton } from './DeleteReviews'
 import { DraftEditedNote, EditDraftActions, EditDraftFields, useDraftEditor } from './EditDraft'
 import { ReviewImageManager } from './ReviewImageManager'
+import { ReviewTypeBadge } from './AssignedReviews'
+import { ReviewTypeControl } from './ReviewTypeControl'
+import { ProjectGroupControl } from './ProjectGroupControl'
+import { ProjectImages, useProjectImages } from './ProjectImages'
 import type { ApprovalMode } from '@/lib/customerReviews/status'
 import {
   TEST_CARD_PHOTO_COLUMNS,
@@ -28,18 +32,33 @@ import { REVIEW_IMAGE_KIND } from '@/lib/customerReviews/reviewImages'
 // judgement about a batch's guidance as much as about twelve separate reviews:
 // "these all sound the same" is a thing you can only see when they are together.
 //
-// TWO THINGS A VERIFIER MAY DO TO A DRAFT BEFORE APPROVING IT, and both live
-// inside the full-view sheet rather than on the tile, for the reason booking
-// lives at the end of a read: a correction made from a 130-character preview is
-// a correction made without the text in front of you.
+// FOUR THINGS A VERIFIER MAY DO TO A DRAFT BEFORE APPROVING IT, and all four
+// live inside the full-view sheet rather than on the tile, for the reason
+// booking lives at the end of a read: a correction made from a 130-character
+// preview is a correction made without the text in front of you.
 //
 //   EDIT     replace the title and the body. Saving does not approve — the
 //            draft comes back to this list still awaiting approval.
-//   IMAGES   attach up to four photographs of the furniture. They stay with the
-//            review after approval and are what the share sheet carries.
+//   TYPE     correct a draft between text and image. THIS IS THE ONLY WINDOW in
+//            which that is possible: once a review is approved and assigned, its
+//            type decides both what the candidate was asked to do and what they
+//            are paid, so changing it would rewrite the price of work already
+//            under way.
+//   PROJECT  attach the project image group an image review posts photographs
+//            of. Attaching one is what makes the review Ready; it is also
+//            offered later, from the detail screen, for a review that was
+//            assigned before its project existed. The group's photographs are
+//            shown read-only beneath it, so an image review is not approved
+//            blind.
+//   IMAGES   attach up to four photographs of the furniture — FOR A TEXT REVIEW
+//            ONLY. An image review's photographs are its project group's, and
+//            that is the whole of it: the share sheet carries the GROUP's
+//            images, so drawing the per-card manager beside the project picker
+//            would offer two ways to attach and honour only one.
 //
-// Both are refused by the server once a review is approved, and neither is
-// offered here for anything that is not pending.
+// All four are refused by the server once a review is approved (PROJECT stays
+// open one step longer, until a candidate actually books the review), and none
+// is offered here for anything that is not pending.
 //
 // THREE WAYS TO APPROVE, and they are the three the workflow asks for:
 //   * one review, from its own row;
@@ -509,6 +528,18 @@ function ReadDraftSheet({
    */
   const [current, setCurrent] = useState<TestCard>(card)
 
+  /**
+   * The project images this draft would post, for the read-only display below.
+   *
+   * Read through the VERIFIER'S OWN client, so RLS decides — the same read the
+   * candidate's screen makes, which is what keeps the two showing the same set.
+   * A text review passes null and the hook does no work.
+   */
+  const projectImages = useProjectImages(
+    supabase,
+    current.review_type === 'image' ? current.image_group_id : null,
+  )
+
   const loadImages = useCallback(async () => {
     const { data } = await supabase
       .from('customer_review_test_card_screenshots')
@@ -615,15 +646,58 @@ function ReadDraftSheet({
             <div><DraftEditedNote card={current} /></div>
           )}
           <ReviewFullView card={current} canBook={false} bookError={null} />
-          <ReviewImageManager
+          {/*
+            THE TYPE, AND THE ONLY PLACE IT MAY BE CORRECTED. It sits between
+            the review's words and its images because that is the order the
+            decision happens in: you read the draft, you decide what kind of
+            review it is, and only then does attaching pictures make sense.
+          */}
+          <ReviewTypeControl
             supabase={supabase}
-            cardId={current.id}
-            images={images}
-            onChanged={async () => { await loadImages(); onChanged() }}
-            // Pending, always — this sheet is only rendered from the pending
-            // workspace. The server refuses anything else regardless.
-            canEdit={current.status === 'pending_approval'}
+            card={current}
+            onChanged={onChanged}
           />
+          <ProjectGroupControl
+            supabase={supabase}
+            card={current}
+            onChanged={onChanged}
+          />
+          {/*
+            WHAT THE CANDIDATE WILL ACTUALLY POST, shown to the verifier before
+            they approve it. The picker above names the project and its count;
+            this is the photographs themselves, so approving an image review is
+            not done blind. Read-only — the library is where a project's images
+            are managed.
+          */}
+          {current.review_type === 'image' && current.image_group_id && (
+            <ProjectImages supabase={supabase} set={projectImages} label={null} />
+          )}
+          {/*
+            THE PER-CARD IMAGE MANAGER, FOR A TEXT REVIEW ONLY.
+
+            AN IMAGE REVIEW'S PHOTOGRAPHS ARE ITS PROJECT GROUP'S, and the
+            control for that is ProjectGroupControl directly above. Rendering
+            both for one image review would put two ways to attach photographs
+            side by side — and only one of them is what the candidate actually
+            posts, because ShareReviewButton carries the GROUP's images. A
+            verifier filling in the wrong one would produce a review that looks
+            prepared and shares nothing of what they attached.
+
+            NOTHING IS REMOVED FOR A TEXT REVIEW. The per-card attachment, its
+            table, its bucket and its route are all untouched; this decides
+            which control is drawn, and nothing else.
+          */}
+          {current.review_type !== 'image' && (
+            <ReviewImageManager
+              supabase={supabase}
+              cardId={current.id}
+              images={images}
+              onChanged={async () => { await loadImages(); onChanged() }}
+              // Pending, always — this sheet is only rendered from the pending
+              // workspace. The server refuses anything else regardless.
+              canEdit={current.status === 'pending_approval'}
+            />
+          )}
         </div>
       )}
     </ReviewSheet>
@@ -683,6 +757,13 @@ function PendingDraftRow({
             <span style={{ fontSize: '10px', color: colors.muted }}>
               {testCategoryLabel(card.test_category)}
             </span>
+            {/*
+              THE TYPE, ON THE TILE, because the composition of a batch is a
+              thing a verifier checks at a glance: eight of one badge and four
+              of the other. Seeing five image badges is how they notice a
+              correction is needed before approving.
+            */}
+            <ReviewTypeBadge type={card.review_type} />
             {/*
               ON THE TILE TOO, not only inside the sheet. A verifier scanning
               twelve drafts should be able to see which ones somebody has

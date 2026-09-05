@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { BookOpen, Layers, MessageSquareHeart, ShieldCheck, Sparkles } from 'lucide-react'
+import { BookOpen, ChevronDown, ChevronRight, Layers, MessageSquareHeart, ShieldCheck, Sparkles } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { StatusTabs, accentFromBadge, BRAND_TAB_ACCENT, type StatusTab } from '@/components/ui/StatusTabs'
 import { colors } from '@/lib/tokens'
@@ -18,6 +18,14 @@ import {
   DeleteReviewButton,
   DeleteReviewsSheet,
 } from '@/components/customerReviews/DeleteReviews'
+import {
+  ReadinessBadge,
+  ReviewTypeBadge,
+  ReviewTypeSections,
+} from '@/components/customerReviews/AssignedReviews'
+import { AssignBatchPanel, assignmentNotice } from '@/components/customerReviews/AssignBatch'
+import { ImageLibrary } from '@/components/customerReviews/ImageLibrary'
+import { EmployeeProgress } from '@/components/customerReviews/EmployeeProgress'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { enumParam, textParam } from '@/lib/listState'
@@ -36,9 +44,11 @@ import {
   type DeletionCounts,
   type DeletionSummary,
   type DraftBatch,
+  type ReviewType,
   type TestCard,
   type TestCardStatus,
 } from '@/lib/customerReviews/types'
+import { AWAITING_IMAGES_LABEL } from '@/lib/customerReviews/reviewTypes'
 
 // The review list.
 //
@@ -48,10 +58,19 @@ import {
 //   Pending approval  what is waiting for ME to release it? Verifier only, and
 //                     the only tab that reads unapproved drafts — which no
 //                     candidate can read at all, by RLS rather than by query.
-//   Available         what can I pick up? Approved, unbooked reviews.
+//   Available         what can I pick up? Approved, unbooked reviews ASSIGNED
+//                     TO ME. There is no company-wide pool any more: the SELECT
+//                     policy offers an available review to the person it was
+//                     assigned to and to a verifier, and to nobody else, so this
+//                     tab is scoped by the database rather than by a filter.
 //   My reviews        what am I holding, and what have I handed over?
 //   Booked            who is working on what right now? Verifier only.
 //   To verify         what is waiting for me to check it? Verifier only.
+//
+// THE TWO CANDIDATE TABS ARE SPLIT INTO TEXT AND IMAGE SECTIONS, with the four
+// operational counts above them — see SECTIONED_TABS. The two verifier queues
+// are not: there the type is a badge, because the question is "what is waiting"
+// rather than "how far through am I".
 //
 // A VERIFIED CARD IS IN NO TAB AT ALL. It is the last status in the workflow
 // and the product owner's rule is that a finished card leaves the frontend
@@ -70,9 +89,19 @@ import {
 // whatever this screen sent. Nothing here reports "the candidate read it",
 // because a browser flag saying so would not be evidence.
 //
-// IT IS NOT A DASHBOARD. There are no counters of reviews completed, no
-// per-employee totals and no charts. The only numbers here are how many rows
-// each tab holds.
+// IT IS STILL NOT A DASHBOARD. There are counts now — a candidate's assigned,
+// posted, remaining and available, and a verifier's per-employee table — because
+// people doing twelve reviews a batch need to know where they are. There are no
+// charts, no percentages, no trends and no ranking, and nothing compares one
+// employee with another. They are operational counts, and that is the whole of
+// what they are.
+//
+// THE VERIFIER'S SUMMARY COUNTS VERIFIED REVIEWS WITHOUT LISTING THEM, which is
+// the one place that distinction is load-bearing. TAB_STATUSES still names no
+// tab that asks for a verified row, so there is still no list on this screen
+// that can reach one; EmployeeProgress reads statuses and types with no review
+// text at all, so there is nothing in its query that could be rendered as a
+// card even by mistake.
 
 const TABS = ['pending', 'available', 'mine', 'booked', 'to_verify'] as const
 type TabKey = typeof TABS[number]
@@ -86,6 +115,30 @@ const VERIFIER_TABS: ReadonlySet<TabKey> = new Set<TabKey>(['pending', 'booked',
 const LIST_PARAMS = {
   tab: enumParam(TABS, 'available'),
   q:   textParam(),
+}
+
+/**
+ * THE TABS SPLIT INTO TEXT AND IMAGE SECTIONS, and the two that do are the two
+ * about ONE PERSON'S OWN WORK.
+ *
+ * Available and My reviews are a candidate asking "what am I doing and how far
+ * through am I", which is a question with two different answers depending on
+ * the kind of review. Booked and To verify are a verifier asking "what is
+ * waiting", where the type is a badge rather than a heading.
+ */
+const SECTIONED_TABS: ReadonlySet<TabKey> = new Set<TabKey>(['available', 'mine'])
+
+/**
+ * What an empty TEXT or IMAGE section says.
+ *
+ * Separate sentences because the reasons a section is empty differ: a candidate
+ * with no image reviews left has finished them, whereas a candidate whose image
+ * reviews are all waiting for photographs has not started them and cannot.
+ */
+function emptySectionText(type: ReviewType): string {
+  return type === 'image'
+    ? `No image reviews here. An image review appears once it is assigned to you; until an administrator attaches its project photographs it reads “${AWAITING_IMAGES_LABEL}” and cannot be booked.`
+    : 'No text reviews here.'
 }
 
 // NO ENTRY CONTAINS 'verified', AND THAT IS THE WHOLE MECHANISM. Every read
@@ -176,6 +229,10 @@ export function TestCardListScreen() {
     null | { cards: TestCard[]; source: 'single' | 'selected' }
   >(null)
   const [deleteAllOpen, setDeleteAllOpen] = useState(false)
+  /** The two verifier panels above the tabs. Closed until somebody asks for them. */
+  const [assignOpen, setAssignOpen] = useState(false)
+  const [libraryOpen, setLibraryOpen] = useState(false)
+  const [progressOpen, setProgressOpen] = useState(false)
   const [deleteSummary, setDeleteSummary] = useState<DeletionSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(false)
   const [deleteBusy, setDeleteBusy] = useState(false)
@@ -331,6 +388,14 @@ export function TestCardListScreen() {
       // way to see the available pool it is being asked about. `head: true`
       // fetches no rows.
       //
+      // UNASSIGNED ONLY, matching what customer_review_replace_available()
+      // actually does. Replace clears the reviews that belong to NOBODY; a
+      // review somebody has been given is that employee's outstanding work and
+      // is never displaced by an approval. Counting assigned rows here would
+      // put a number in front of a verifier that is larger than the
+      // consequence, which is the wrong direction for a confirmation to be
+      // wrong in either.
+      //
       // IT IS A DISPLAY NUMBER, NOT A DECISION. Between this and the write
       // somebody can book a review; the database chooses and locks the set
       // inside the transaction and returns what it actually replaced.
@@ -338,6 +403,7 @@ export function TestCardListScreen() {
         .from('customer_review_test_cards')
         .select('id', { count: 'exact', head: true })
         .eq('status', 'available')
+        .is('assigned_to', null)
         .is('deleted_at', null),
     ])
     setPendingTotal(pending.count ?? 0)
@@ -597,6 +663,32 @@ export function TestCardListScreen() {
     return base
   }, [tab, filtered.length, caps.canVerify, pendingTotal])
 
+  /**
+   * ONE TILE, DRAWN THE SAME WAY WHEREVER IT APPEARS.
+   *
+   * Extracted so the sectioned view and the flat view render the identical
+   * control set: two copies of this call is how a tab quietly loses its Delete
+   * button, or keeps one it should not have.
+   */
+  const renderTile = (card: TestCard) => (
+    <TestCardTile
+      key={card.id}
+      card={card}
+      showView={tab === 'available'}
+      /*
+        DELETION IS A VERIFIER'S CONTROL AND CANDIDATES NEVER SEE ONE.
+        `caps.canVerify` is the resolved permission, never a role, and
+        it is the weakest of the three checks — the RPC resolves it
+        again and the database function resolves it a third time.
+      */
+      canDelete={canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })}
+      viewer={{ userId: profile?.id ?? null, canUse: caps.canUse, canVerify: caps.canVerify }}
+      onDelete={() => openDelete([card], 'single')}
+      onView={() => { setBookError(null); setReading(card) }}
+      onOpen={() => router.push(`/customer-reviews/${card.id}`)}
+    />
+  )
+
   if (authLoading) return <LoadingScreen />
 
   // EVERY EMPTY STATE NAMES THE NEXT VALID ACTION FOR THIS PERSON. "Nothing
@@ -607,11 +699,15 @@ export function TestCardListScreen() {
       ? 'Nothing is waiting for approval. Generate a batch of drafts to review.'
     : tab === 'available'
       ? (caps.canVerify
-          ? 'No reviews are available. Approve some pending drafts, or generate a new batch.'
-          : 'No reviews are available right now. A verifier approves new ones as they are drafted.')
+          ? 'No approved review is waiting to be picked up. Approve a batch of twelve and assign it to an employee.'
+          // THE HONEST SENTENCE NOW NAMES ASSIGNMENT. A candidate with an empty
+          // list used to be waiting for somebody to approve a draft; they are
+          // now waiting for somebody to give a batch to THEM, and telling them
+          // the old thing would send them to ask the wrong question.
+          : 'Nothing is assigned to you right now. Reviews reach you a batch at a time — an administrator assigns one, and it appears here.')
     : tab === 'mine'
       ? (caps.canUse
-          ? 'You are not holding any reviews. Open one from Available and book it there.'
+          ? 'You are not holding any reviews. Open one from Available — the reviews assigned to you — and book it there.'
           : 'You do not have permission to book reviews, so nothing appears here.')
     : tab === 'booked'
       ? 'Nobody is holding a review right now.'
@@ -640,6 +736,58 @@ export function TestCardListScreen() {
             void load()
             void loadPendingCount()
           }} />
+        )}
+
+        {/*
+          TWO MANAGEMENT PANELS, COLLAPSED, AND NOT TWO NEW TABS.
+
+          Both are verifier-only and both are consulted occasionally rather than
+          worked in, so they sit above the tab strip folded away instead of
+          competing with the five tabs a person uses every day. Adding tabs for
+          them would also have put a "which tab am I on" decision in front of a
+          candidate who can open neither.
+
+          Each mounts only when opened. That is not a micro-optimisation: the
+          library signs a URL per image and the summary reads every assigned
+          review, and doing both on every visit to a list of twelve reviews
+          would be work nobody asked for.
+        */}
+        {caps.canVerify && (
+          <>
+            <Foldaway
+              title="Assign a batch"
+              hint="Give one approved batch of twelve to one employee. Only they will see it."
+              open={assignOpen}
+              onToggle={() => setAssignOpen(v => !v)}
+            >
+              <AssignBatchPanel
+                supabase={supabase}
+                onAssigned={outcome => {
+                  setApproved(assignmentNotice(outcome))
+                  void load()
+                  void loadPendingCount()
+                }}
+              />
+            </Foldaway>
+
+            <Foldaway
+              title="Project image library"
+              hint="Create a project group and add its photographs. An image review is given a whole group."
+              open={libraryOpen}
+              onToggle={() => setLibraryOpen(v => !v)}
+            >
+              <ImageLibrary supabase={supabase} />
+            </Foldaway>
+
+            <Foldaway
+              title="Employee progress"
+              hint="Assigned, posted, verified and remaining, per employee."
+              open={progressOpen}
+              onToggle={() => setProgressOpen(v => !v)}
+            >
+              <EmployeeProgress supabase={supabase} />
+            </Foldaway>
+          </>
         )}
 
         {/*
@@ -743,43 +891,26 @@ export function TestCardListScreen() {
             onRevised={() => { void load(); void loadPendingCount() }}
             onCardChanged={() => { void load(); void loadPendingCount() }}
           />
+        ) : SECTIONED_TABS.has(tab) ? (
+          /*
+            THE CANDIDATE'S TWO TABS ARE SPLIT BY REVIEW TYPE, with the counts
+            above them. A text review and an image review are different work —
+            one is words, the other is words plus photographs somebody has to
+            have prepared — and mixing them in one list means a candidate learns
+            the difference by opening a review and finding a disabled button.
+
+            THE VERIFIER'S TABS ARE NOT SPLIT. Booked and To verify are queues
+            of other people's work in progress; the question there is "what is
+            waiting", not "how far through am I", and two headings over a
+            handful of rows would be scaffolding around nothing.
+          */
+          <ReviewTypeSections
+            cards={filtered}
+            emptyText={emptySectionText}
+            renderCards={rows => <TileGrid>{rows.map(renderTile)}</TileGrid>}
+          />
         ) : (
-          <div
-            style={{
-              display: 'grid',
-              // AT MOST TWO PER ROW, and one where there is not room for two.
-              // The previous layout was `minmax(280px, 1fr)` with auto-fill,
-              // which put four narrow columns on a wide screen and made every
-              // review body a column of two-word lines. `min(100%, 340px)` is
-              // what keeps the single-column case from overflowing a 360px
-              // phone: the track can never be wider than the container.
-              gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
-              maxWidth: '860px',
-              gap: '12px',
-              // Cards in a row share a top edge without being forced to share a
-              // height, so a short review does not grow to match a long one.
-              alignItems: 'start',
-            }}
-          >
-            {filtered.map(card => (
-              <TestCardTile
-                key={card.id}
-                card={card}
-                showView={tab === 'available'}
-                /*
-                  DELETION IS A VERIFIER'S CONTROL AND CANDIDATES NEVER SEE ONE.
-                  `caps.canVerify` is the resolved permission, never a role, and
-                  it is the weakest of the three checks — the RPC resolves it
-                  again and the database function resolves it a third time.
-                */
-                canDelete={canDeleteCard({ userId: profile?.id ?? null, canVerify: caps.canVerify })}
-                viewer={{ userId: profile?.id ?? null, canUse: caps.canUse, canVerify: caps.canVerify }}
-                onDelete={() => openDelete([card], 'single')}
-                onView={() => { setBookError(null); setReading(card) }}
-                onOpen={() => router.push(`/customer-reviews/${card.id}`)}
-              />
-            ))}
-          </div>
+          <TileGrid>{filtered.map(renderTile)}</TileGrid>
         )}
 
         {/*
@@ -861,6 +992,75 @@ export function TestCardListScreen() {
  * full text unreachable to the view that legitimately needs it, and would put a
  * display decision somewhere no reader of this screen would think to look.
  */
+/**
+ * A titled section that starts folded and mounts its child only when opened.
+ *
+ * THE MOUNTING IS THE POINT, not the animation — there is no animation. A
+ * closed panel renders no child at all, so the library signs no URLs and the
+ * summary issues no query until somebody actually asks for one.
+ */
+function Foldaway({
+  title, hint, open, onToggle, children,
+}: {
+  title: string
+  hint: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div style={{ border: `1px solid ${colors.borderSoft}`, borderRadius: '10px', background: colors.base }}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        style={{
+          display: 'flex', alignItems: 'center', gap: '8px', width: '100%',
+          padding: '11px 14px', minHeight: '44px', textAlign: 'left',
+          background: 'transparent', border: 'none', cursor: 'pointer',
+        }}
+      >
+        {open ? <ChevronDown size={15} style={{ flexShrink: 0, color: colors.secondary }} />
+              : <ChevronRight size={15} style={{ flexShrink: 0, color: colors.secondary }} />}
+        <span style={{ fontSize: '13px', fontWeight: 700, color: colors.primary }}>{title}</span>
+        <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>{hint}</span>
+      </button>
+      {open && (
+        <div style={{ borderTop: `1px solid ${colors.borderSoft}`, padding: '12px 14px' }}>
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The tile grid, in one place because two views draw it.
+ *
+ * AT MOST TWO PER ROW, and one where there is not room for two. The previous
+ * layout was `minmax(280px, 1fr)` with auto-fill, which put four narrow columns
+ * on a wide screen and made every review body a column of two-word lines.
+ * `min(100%, 340px)` is what keeps the single-column case from overflowing a
+ * 360px phone: the track can never be wider than the container.
+ */
+function TileGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))',
+        maxWidth: '860px',
+        gap: '12px',
+        // Cards in a row share a top edge without being forced to share a
+        // height, so a short review does not grow to match a long one.
+        alignItems: 'start',
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
 function TestCardTile({
   card,
   showView,
@@ -910,7 +1110,15 @@ function TestCardTile({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: colors.tertiary }}>
           {card.card_ref}
         </span>
-        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center' }}>
+        <span style={{ display: 'inline-flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/*
+            THE TYPE AND THE READINESS, BEFORE THE STATUS. Both are facts about
+            what this review IS and what it needs; the status is where it has
+            got to. Readiness renders for image reviews only — a "Ready" badge
+            on a text review would answer a question nobody asked.
+          */}
+          <ReviewTypeBadge type={card.review_type} />
+          <ReadinessBadge card={card} />
           {returned && (
             <span style={{
               display: 'inline-block', padding: '2px 8px', borderRadius: '5px',

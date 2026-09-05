@@ -73,9 +73,29 @@ describe('twelve, and everything that reads the number', () => {
     const prompt = buildUserPrompt('Cafe seating, plain and specific.')
     assert.ok(prompt.includes('Draft exactly 12 reviews'))
     assert.ok(prompt.includes('a JSON array of 12 objects'))
-    // The rules the count sits beside are unchanged, and stay in the system
-    // turn where the guidance cannot reach them.
-    assert.equal(/\b(8|eight)\b/i.test(prompt), false, 'the prompt still says eight')
+
+    // THE BATCH SIZE IS STILL TWELVE AND ONLY TWELVE. This used to be "the word
+    // eight appears nowhere", which was the right assertion while eight was the
+    // COUNT it had been mistaken for. Review types then made 8 a legitimate
+    // number in this prompt — eight of the twelve are posted as text — so the
+    // assertion is narrowed to what it was always defending: that no sentence
+    // asks the model for eight REVIEWS.
+    assert.equal(/\b(8|eight)\s+reviews?\b/i.test(prompt), false, 'the prompt still asks for eight reviews')
+    assert.equal(/exactly\s+(8|eight)\b/i.test(prompt), false, 'the prompt still says exactly eight')
+    assert.equal(/array of (8|eight)\b/i.test(prompt), false, 'the prompt still asks for an array of eight')
+  })
+
+  test('…and the composition it describes is not a count the model controls', () => {
+    // The prompt TELLS the model what the last four drafts are for, because a
+    // draft written to sit beside photographs reads better beside them. It does
+    // not ask the model to label anything: there is no `type` field in the
+    // schema the system turn defines, and assignReviewTypes() stamps eight text
+    // and four image on whatever comes back — see reviewTypes.test.ts.
+    const prompt = buildUserPrompt('Cafe seating, plain and specific.')
+    assert.ok(prompt.includes('posted as text alone'))
+    assert.ok(prompt.includes('alongside photographs of a single completed project'))
+    assert.equal(/"type"/.test(buildSystemPrompt()), false,
+      'the model is asked to label a review type')
   })
 
   test('the system turn does not name a count at all', () => {

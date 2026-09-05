@@ -116,7 +116,10 @@ describe('only an approved review leaves the building', () => {
   test('the component asks the gate at render AND at the moment of action', () => {
     // Rendering is not enough on its own: the row may have been refreshed
     // between the button being drawn and the button being pressed.
-    const asks = SHARE_CODE.split('isShareableReview(card)').length - 1
+    // The gate now carries the group's usability as its second argument, so an
+    // image review whose project is missing, archived or empty is refused by
+    // the same function that refuses a pending draft.
+    const asks = SHARE_CODE.split('isShareableReview(card, groupUsable)').length - 1
     assert.equal(asks, 2, 'the gate is asked once, not twice')
     assert.ok(SHARE_CODE.includes('if (!shareable) return null'))
   })

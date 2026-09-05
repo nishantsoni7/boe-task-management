@@ -110,7 +110,15 @@ export default function HowCreditsWorkPage() {
 
   const s = settings
   const value = formatCreditValue(s.credit_value)
-  const reward = formatCredits(s.review_reward_credits)
+  // TWO REWARDS NOW, and every sentence that used to name one names both. A
+  // page that said "a verified review earns 1 credit" would be telling an
+  // employee doing image reviews the wrong number, which is worse than a
+  // slightly longer sentence. When the two are equal — which is the shipped
+  // default — it reads exactly as it did before.
+  const textReward = formatCredits(s.review_reward_credits)
+  const imageReward = formatCredits(s.image_review_reward_credits)
+  const sameReward = s.review_reward_credits === s.image_review_reward_credits
+  const reward = sameReward ? textReward : `${textReward} text · ${imageReward} image`
   const exampleCredits = 5
   const exampleAddition = exampleCredits * s.credit_value
   const examplePayable = 30_000
@@ -198,6 +206,7 @@ export default function HowCreditsWorkPage() {
             </div>
             <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>
               Review {target + 1}, {target + 2}… in the same month are available straight away.
+              {sameReward ? '' : ` Shown with the text review reward; an image review earns ${imageReward}.`}
             </div>
           </div>
           <div style={{ ...card, padding: '14px 16px' }}>
@@ -294,7 +303,9 @@ export default function HowCreditsWorkPage() {
         <SectionHeading id="rules" title="The rule book" note="Everything BOE Credits does. If a rule is not here, credits do not do it." />
         <div style={card}>
           {[
-            ['Earning',        `${reward} for every review a verifier confirms. The credit belongs to the month you submitted the review.`],
+            ['Earning',        sameReward
+              ? `${textReward} for every review a verifier confirms. The credit belongs to the month you submitted the review.`
+              : `${textReward} for every text review a verifier confirms, and ${imageReward} for every image review. The credit belongs to the month you submitted the review.`],
             ['Monthly target', `${target} verified ${target === 1 ? 'review' : 'reviews'} in a month. The target that applied when the month started is the one that counts, even if the setting changes later.`],
             ['Pending credits', 'A month’s review credits are pending — recorded but not spendable — until that month reaches the target.'],
             ['Available credits', 'Pending credits become available the moment the target is reached; any further review that month is available at once.'],

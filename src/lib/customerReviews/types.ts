@@ -194,6 +194,47 @@ export type TestCategory = (typeof TEST_CATEGORIES)[number]
  */
 export type TestPhotoKind = 'test_screenshot' | 'review_image'
 
+// ─── Review type ──────────────────────────────────────────────────────────────
+
+/**
+ * TWO KINDS OF REVIEW, AND THE DIFFERENCE IS WHAT THE CANDIDATE POSTS.
+ *
+ *   text   the review's words, and nothing else.
+ *   image  the words together with the photographs of ONE project, drawn from a
+ *          project image group the verifier attached.
+ *
+ * IT IS A STORED FACT, NOT A DERIVATION. The reward depends on it, so it cannot
+ * be inferred from whether images happen to be attached to something — a
+ * derivation would be a price that changes when an unrelated row does.
+ *
+ * A generated batch is EXACTLY eight text and four image, and the DATABASE
+ * counts them: create_customer_review_draft_batch() refuses any other
+ * composition. See REVIEWS_PER_BATCH in ./reviewTypes.
+ *
+ * IT CANNOT BE CHANGED AFTER APPROVAL. set_customer_review_draft_type() refuses
+ * anything but a pending draft, because by the time a review is approved and
+ * assigned it has told a candidate what to do and told the ledger what to pay.
+ *
+ * Mirrors customer_review_test_cards_review_type_check in
+ * supabase/migrations/20261107000000.
+ */
+export const REVIEW_TYPES = ['text', 'image'] as const
+
+export type ReviewType = (typeof REVIEW_TYPES)[number]
+
+export const REVIEW_TYPE_META: Record<ReviewType, BadgeMeta & { plural: string }> = {
+  // Slate, so it reads as the ordinary case rather than as a warning.
+  text:  { label: 'Text',  plural: 'Text reviews',  bg: '#F1F5F9', color: '#334155', border: '#E2E8F0' },
+  // Teal, distinct from every status colour: an image review is not a state, and
+  // the one thing a candidate must never misread is a type badge as a status.
+  image: { label: 'Image', plural: 'Image reviews', bg: '#ECFEFF', color: '#155E75', border: '#A5F3FC' },
+}
+
+export function reviewTypeLabel(value: string | null | undefined): string {
+  if (!value) return '—'
+  return REVIEW_TYPE_META[value as ReviewType]?.label ?? value
+}
+
 // ─── Rows ─────────────────────────────────────────────────────────────────────
 
 export type TestCard = {
@@ -209,6 +250,46 @@ export type TestCard = {
 
   /** Which generated batch this draft came from. Null for anything older. */
   batch_id: string | null
+
+  /**
+   * Text review or image review. THE FACT THE REWARD IS PRICED FROM.
+   *
+   * The database reads it off the locked row inside
+   * transition_customer_review_test_card() and never from a parameter, so
+   * nothing a browser sends can change which reward a verification posts.
+   */
+  review_type: ReviewType
+
+  /**
+   * The one employee this review belongs to, and the reason there is no longer
+   * a company-wide pool.
+   *
+   * ASSIGNMENT IS NOT BOOKING. `assigned_to` is who may work on this review at
+   * all; `booked_by` is who has actually picked it up. Releasing a booking
+   * returns the review to its assignee rather than to everybody, because the
+   * assignment was never about the booking — the same separation approval and
+   * status already have.
+   *
+   * THE SELECT POLICY READS IT. An available review is visible to the person it
+   * was assigned to and to a verifier, and to nobody else: not through the
+   * page, not through PostgREST, not by typing an id.
+   */
+  assigned_to: string | null
+  assigned_at: string | null
+  assigned_by: string | null
+
+  /**
+   * The project image group an IMAGE review posts photographs from.
+   *
+   * Chosen once — when the batch is assigned, or later when a project becomes
+   * ready — and then stable. A group that changed on every load would show a
+   * candidate different photographs each time they opened the same review.
+   *
+   * NULL ON AN IMAGE REVIEW MEANS "WAITING FOR ADMIN IMAGES", which is a
+   * readiness fact and deliberately NOT a sixth status. Always null on a text
+   * review; a CHECK enforces it.
+   */
+  image_group_id: string | null
 
   /**
    * When a verifier released this draft into the candidate pool, and who did.
@@ -294,7 +375,64 @@ export type TestCard = {
   // Joined for display — never selected with `*`.
   tester_name?: string | null
   verifier_name?: string | null
+  /** The assignee's display name, joined by the screens that list other people's work. */
+  assignee_name?: string | null
 }
+
+// ─── The project image library ────────────────────────────────────────────────
+
+/**
+ * ONE GROUP IS ONE PROJECT.
+ *
+ * Its images are that project's photographs and nothing else, and that is the
+ * whole mechanism by which two projects never end up in one candidate's post:
+ * an image review points at a GROUP, not at four individually chosen images.
+ * Selecting images one at a time is exactly the thing that would mix them.
+ *
+ * `label` is internal. It names the project for the people managing the
+ * library; no candidate-facing screen shows it and no outgoing message carries
+ * it.
+ *
+ * A GROUP IS ARCHIVED, NEVER DELETED. A review that points at one is a record
+ * of what a candidate was asked to post, so the group has to keep existing.
+ * Archiving takes it out of future random selection and touches nothing else.
+ */
+export type ReviewImageGroup = {
+  id: string
+  label: string
+  created_by: string
+  created_at: string
+  updated_at: string
+  archived_at: string | null
+  archived_by: string | null
+
+  // Joined for display — never selected with `*`.
+  /** Live images in the group. A group with none is not offered to a review. */
+  image_count?: number
+  /** How many live reviews currently point at it. */
+  assigned_count?: number
+  creator_name?: string | null
+}
+
+export const REVIEW_IMAGE_GROUP_COLUMNS =
+  'id, label, created_by, created_at, updated_at, archived_at, archived_by'
+
+/** One image inside a project group. Metadata for an object in the private bucket. */
+export type ReviewGroupImage = {
+  id: string
+  group_id: string
+  storage_path: string
+  file_name: string
+  mime_type: string
+  byte_size: number
+  uploaded_by: string
+  uploaded_at: string
+  /** Non-null while a removal is in flight. Every read filters these out. */
+  removal_started_at: string | null
+}
+
+export const REVIEW_GROUP_IMAGE_COLUMNS =
+  'id, group_id, storage_path, file_name, mime_type, byte_size, uploaded_by, uploaded_at, removal_started_at'
 
 export type TestCardPhoto = {
   id: string
@@ -382,6 +520,14 @@ export const TEST_CARD_COLUMNS = [
   'test_title',
   'test_body',
   'batch_id',
+  // THE THREE FACTS ADDED BY REVIEW TYPES, and every one of them is displayed:
+  // the type decides which section a review sits in and what it pays, the
+  // assignment decides whose it is, and the group decides whether it is ready.
+  'review_type',
+  'assigned_to',
+  'assigned_at',
+  'assigned_by',
+  'image_group_id',
   'approved_at',
   'approved_by',
   'draft_edited_at',
@@ -430,6 +576,13 @@ export const TEST_CARD_AVAILABLE_COLUMNS = [
   'test_category',
   'test_title',
   'test_body',
+  // THE THREE THAT DECIDE WHAT THIS LIST LOOKS LIKE. `review_type` splits it
+  // into its two sections, `image_group_id` is the difference between Ready and
+  // Waiting for admin images, and `assigned_to` is what the counts are of.
+  'review_type',
+  'assigned_to',
+  'assigned_at',
+  'image_group_id',
   // Selected so the list can ASSERT what its filter did, not to display it.
   'deleted_at',
   'created_at',
@@ -455,6 +608,12 @@ export const TEST_CARD_PENDING_COLUMNS = [
   'test_title',
   'test_body',
   'batch_id',
+  // THE TYPE IS DISPLAYED AND CORRECTABLE HERE, which is why it is selected
+  // here: the pending workspace is the only window in which a verifier may
+  // change it, and a badge that reads the wrong column would be a badge showing
+  // a correction that did not happen.
+  'review_type',
+  'image_group_id',
   // THE EDIT STAMP IS DISPLAYED HERE, so it is selected here.
   //
   // It was missed when editing was added, and the consequence was quiet rather

@@ -52,7 +52,7 @@ const BALANCE_COLUMNS =
   'employee_id, available_credits, provisional_credits, spendable_credits, transaction_count, last_transaction_at'
 
 const SETTINGS_COLUMNS =
-  'id, review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, note, created_at, created_by'
+  'id, review_reward_credits, image_review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, note, created_at, created_by'
 
 const MONTH_COLUMNS =
   'id, employee_id, review_month, minimum_reviews_snapshot, qualifying_review_count, earned_review_credits, status, qualified_at, finalized_at, lapse_transaction_id'
@@ -657,6 +657,11 @@ export type ActiveCreditSettings = {
 function settingsFromRow(row: Record<string, unknown>) {
   return parseBoeCreditSettings({
     review_reward_credits:       row.review_reward_credits,
+    // A row written before the image reward existed carries no value for it.
+    // Falling back to the built-in default keeps fetchActiveCreditSettings()'s
+    // promise that it never fails and never returns null — a screen must not go
+    // blank because one column is younger than one row.
+    image_review_reward_credits: row.image_review_reward_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.image_review_reward_credits,
     credit_value:                row.credit_value,
     half_day_redemption_credits: row.half_day_redemption_credits,
     full_day_redemption_credits: row.full_day_redemption_credits,
@@ -718,6 +723,7 @@ export async function saveCreditSettings(
     .from('boe_credit_settings')
     .insert({
       review_reward_credits:       parsed.settings.review_reward_credits,
+      image_review_reward_credits: parsed.settings.image_review_reward_credits,
       credit_value:                parsed.settings.credit_value,
       half_day_redemption_credits: parsed.settings.half_day_redemption_credits,
       full_day_redemption_credits: parsed.settings.full_day_redemption_credits,
@@ -749,6 +755,7 @@ export async function fetchCreditSettingsHistory(svc: Svc, limit = 20): Promise<
   return ((data ?? []) as Record<string, unknown>[]).map(r => ({
     id:                          String(r.id),
     review_reward_credits:       Number(r.review_reward_credits),
+    image_review_reward_credits: Number(r.image_review_reward_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.image_review_reward_credits),
     credit_value:                Number(r.credit_value),
     half_day_redemption_credits: Number(r.half_day_redemption_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.half_day_redemption_credits),
     full_day_redemption_credits: Number(r.full_day_redemption_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.full_day_redemption_credits),

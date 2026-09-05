@@ -1,4 +1,5 @@
 import type { TestCard, TestCardStatus } from './types'
+import { imageReadiness } from './reviewTypes'
 
 // THE TRANSITION TABLE, and the prerequisites that guard the two moves that
 // matter.
@@ -185,8 +186,10 @@ export function availableActions(
  * UPDATE in the database, and by nothing in this file.
  */
 export function canBookCard(
-  card: Pick<TestCard, 'status' | 'deleted_at'>,
+  card: Pick<TestCard, 'status' | 'deleted_at' | 'assigned_to' | 'review_type' | 'image_group_id'>,
   viewer: { userId: string | null; canUse: boolean },
+  /** The group exists, is not archived and holds a live image. See imageReadiness(). */
+  groupUsable?: boolean,
 ): boolean {
   if (!viewer.userId) return false
   // A PENDING DRAFT IS NOT BOOKABLE, and `status !== 'available'` already says
@@ -201,6 +204,23 @@ export function canBookCard(
   // reason — `and deleted_at is null` sits in the conditional UPDATE that claims
   // the row, because `where status = 'available'` would otherwise match it.
   if (card.deleted_at) return false
+
+  // YOURS, AND NOBODY ELSE'S. There is no pool any more: a review reaches a
+  // candidate by being assigned to them, and this is the browser-side mirror of
+  // `and c2.assigned_to = v_uid` inside the conditional UPDATE that claims the
+  // row. RLS already means another employee's review is not readable here at
+  // all; this clause is what stops a VERIFIER — who can read everybody's — from
+  // being offered a Book button on work that is not theirs.
+  if (card.assigned_to !== viewer.userId) return false
+
+  // AND READY, IF IT IS AN IMAGE REVIEW. "Waiting for admin images" is not a
+  // status and does not need to be: an image review with no project group, or
+  // one whose group is archived or holds nothing, simply cannot be booked. The
+  // database asks the same three questions inside the same UPDATE, so a stale
+  // screen produces a refusal that explains itself rather than a booking that
+  // should not have happened.
+  if (imageReadiness(card, groupUsable) === 'awaiting_images') return false
+
   return viewer.canUse
 }
 

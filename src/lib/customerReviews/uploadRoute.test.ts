@@ -81,13 +81,14 @@ describe('the endpoint', () => {
       }
       return out
     }
-    // SIX routes, and naming each is the point: a seventh appearing without
+    // SEVEN routes, and naming each is the point: an eighth appearing without
     // anybody noticing is what this assertion exists to catch. The photos route
     // is the only writer of a test screenshot; the images route is the only
-    // writer of a review image; the whatsapp route is the only builder of a
-    // wa.me link. None of them is a general service.
+    // writer of a review image; the image-groups route is the only writer of a
+    // project image; the whatsapp route is the only builder of a wa.me link.
+    // None of them is a general service.
     const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
-    assert.equal(routes.length, 6, `unexpected routes: ${routes.join(', ')}`)
+    assert.equal(routes.length, 7, `unexpected routes: ${routes.join(', ')}`)
     assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
     // Review images: the same byte pipeline as photos, a different
@@ -103,6 +104,12 @@ describe('the endpoint', () => {
     // ANTHROPIC_API_KEY, which a browser must never hold.
     assert.ok(routes.some(r => r.endsWith('customer-reviews/generate/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/revise/route.ts')))
+    // The project image library. Same byte pipeline as the two image routes
+    // above and a third subject: an image belongs to a PROJECT, is reused
+    // across reviews and across employees, and lives in its own private
+    // bucket. It is a route for the reason they are — adding or removing one
+    // spans the bucket and a metadata table, and no client may do half of it.
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/image-groups/route.ts')))
   })
 
   test('and APPROVING adds no route at all', () => {

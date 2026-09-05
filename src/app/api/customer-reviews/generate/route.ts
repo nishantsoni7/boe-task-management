@@ -51,6 +51,7 @@ import {
   runGeneration,
   type ClaimOutcome,
 } from '@/lib/customerReviews/generationRun'
+import { assignReviewTypes } from '@/lib/customerReviews/reviewTypes'
 
 export const dynamic = 'force-dynamic'
 
@@ -225,12 +226,28 @@ export async function POST(req: Request) {
       buildUser: buildUserPrompt,
       maxTokens: MAX_TOKENS,
       insertBatch: async (drafts) => {
+        // ── THE COMPOSITION IS STAMPED HERE, NOT ASKED FOR ─────────────────
+        //
+        // Eight text and four image, decided by position, on whatever the model
+        // returned. There is no `type` field in the schema the model is given,
+        // no branch below that reads one, and no fallback that trusts one — so
+        // a reply cannot influence the mix however it was talked into
+        // answering. The prompt TELLS the model what the last four are for,
+        // which makes them better-matched drafts; it does not let the model
+        // decide how many there are.
+        //
+        // AND IT IS NOT THE LAST WORD EITHER. create_customer_review_draft_batch()
+        // counts the two types again and refuses any batch that is not 8 and 4,
+        // so a bug in this line produces a failed generation rather than a
+        // silently wrong batch that somebody is paid the wrong amount for.
+        const typed = assignReviewTypes(drafts)
+
         const { data: batchId, error } = await admin.client.rpc(
           'create_customer_review_draft_batch',
           {
             p_guidance:    guidance,
             p_model:       GENERATION_MODEL,
-            p_drafts:      drafts,
+            p_drafts:      typed,
             p_actor_id:    user.id,
             p_request_key: requestKey,
           },

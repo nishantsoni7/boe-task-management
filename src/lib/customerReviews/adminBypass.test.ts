@@ -66,6 +66,24 @@ const deny = (...keys: string[]): EffectivePermission[] =>
 const HOLDER = 'user-holder'
 const ADMIN = 'user-admin'
 
+/**
+ * An approved text review ASSIGNED TO `who`.
+ *
+ * Every canBookCard case in this file is about a PERMISSION, so each one is
+ * handed a review that is genuinely the viewer's. Without the assignment a
+ * `false` would be ambiguous between "they do not hold `use`" and "it is not
+ * their review", and the negative assertions would start passing for the wrong
+ * reason — which is exactly the kind of quietly-hollow test this file exists to
+ * prevent.
+ */
+const assignedTo = (who: string) => ({
+  status: 'available' as const,
+  deleted_at: null,
+  review_type: 'text' as const,
+  assigned_to: who,
+  image_group_id: null,
+})
+
 // Every file in the module that could express an authorization decision.
 const APP_FILES = [
   'src/app/api/customer-reviews/whatsapp/route.ts',
@@ -102,7 +120,7 @@ describe('an admin with the seed’s normal grants keeps the full intended acces
   })
 
   test('they may book an available card', () => {
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: ADMIN, canUse: caps.canUse }), true)
+    assert.equal(canBookCard(assignedTo(ADMIN), { userId: ADMIN, canUse: caps.canUse }), true)
   })
 
   test('they may run a card they booked themselves, end to end', () => {
@@ -147,7 +165,7 @@ describe('an admin whose `use` is revoked cannot act as a candidate', () => {
   })
 
   test('they cannot BOOK', () => {
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: ADMIN, canUse: caps.canUse }), false)
+    assert.equal(canBookCard(assignedTo(ADMIN), { userId: ADMIN, canUse: caps.canUse }), false)
   })
 
   test('they cannot PREPARE WHATSAPP, UPLOAD, REMOVE or CONFIRM — all four are `mine`', () => {
@@ -276,7 +294,7 @@ describe('a tester and a verifier with valid permissions still work', () => {
 
   test('THE TESTER: book → prepare → confirm → submit', () => {
     assert.equal(tester.canAccessModule, true)
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: HOLDER, canUse: tester.canUse }), true)
+    assert.equal(canBookCard(assignedTo(HOLDER), { userId: HOLDER, canUse: tester.canUse }), true)
     // Everything between booking and submitting is drawn from `mine`.
     assert.equal(holdsThisCard({ booked_by: HOLDER }, HOLDER, tester), true)
     assert.deepEqual(
@@ -305,7 +323,7 @@ describe('a tester and a verifier with valid permissions still work', () => {
   })
 
   test('…and cannot book or act as a tester, which is the other half', () => {
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: 'user-verifier', canUse: verifier.canUse }), false)
+    assert.equal(canBookCard(assignedTo('user-verifier'), { userId: 'user-verifier', canUse: verifier.canUse }), false)
     assert.equal(holdsThisCard({ booked_by: 'user-verifier' }, 'user-verifier', verifier), false)
   })
 })

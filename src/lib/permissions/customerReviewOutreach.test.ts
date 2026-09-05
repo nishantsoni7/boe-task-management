@@ -279,7 +279,7 @@ describe('deriving capabilities', () => {
         [],
         'a verifier can submit a card they hold',
       )
-      assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: VIEWER, canUse: verifierOnly.canUse }), false)
+      assert.equal(canBookCard({ status: 'available', deleted_at: null, review_type: 'text', assigned_to: VIEWER, image_group_id: null }, { userId: VIEWER, canUse: verifierOnly.canUse }), false)
 
       // (c) THE DATABASE IS UNTOUCHED. Read off the migration: the two definer
       // functions that gate these moves still resolve their permission and
@@ -394,7 +394,7 @@ describe('who holds one test card', () => {
     assert.equal(bare.canVerify, true, 'precondition: their verify is intact')
 
     // BOOK — the list's button, on an unbooked card.
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: OTHER, canUse: bare.canUse }), false)
+    assert.equal(canBookCard({ status: 'available', deleted_at: null, review_type: 'text', assigned_to: OTHER, image_group_id: null }, { userId: OTHER, canUse: bare.canUse }), false)
 
     // WHATSAPP, SCREENSHOT UPLOAD, SCREENSHOT REMOVAL and CONFIRM SENT are all
     // drawn from `mine` on the detail screen, which is holdsThisCard(). False

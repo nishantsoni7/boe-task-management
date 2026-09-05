@@ -83,6 +83,16 @@ const card = (over: Partial<TestCard> = {}): TestCard => ({
   test_title: 'A title',
   test_body: 'A body long enough to be a body.',
   batch_id: 'batch-1',
+  review_type: 'text',
+  // ASSIGNED TO THE CANDIDATE BY DEFAULT, because booking now requires it and
+  // this file's subject is DELETION. A fixture assigned to nobody would make
+  // every "not bookable" assertion here pass for the wrong reason — the
+  // tombstone would be credited with a refusal the missing assignment had
+  // already produced.
+  assigned_to: HOLDER,
+  assigned_at: '2026-09-01T09:00:00Z',
+  assigned_by: 'user-verifier',
+  image_group_id: null,
   approved_at: null,
   approved_by: null,
   draft_edited_at: null,

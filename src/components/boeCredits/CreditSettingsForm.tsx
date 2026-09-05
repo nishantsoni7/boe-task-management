@@ -1,6 +1,6 @@
 'use client'
 
-// "BOE Credits Settings" — the five numbers, editable by an admin, in one
+// "BOE Credits Settings" — the six numbers, editable by an admin, in one
 // section. Saving writes a NEW settings row; the previous ones stay as
 // history, and nothing already recorded is touched.
 //
@@ -23,7 +23,12 @@ const inputStyle: React.CSSProperties = {
 type FieldKey = keyof BoeCreditSettings
 
 const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean }[] = [
-  { key: 'review_reward_credits',       label: 'Verified Review Reward',       unit: 'credit(s)', hint: 'Credits one verified review earns.', step: '1' },
+  // TWO REWARDS, AND THE HINTS SAY WHICH IS WHICH RATHER THAN LEAVING THE
+  // LABELS TO IMPLY IT. The stored field is still review_reward_credits; the
+  // label is what changed, because the label is the part a person reads and the
+  // field name is the part the history is written under.
+  { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one verified text review earns.', step: '1' },
+  { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one verified image review earns. Set on its own, not from the text reward.', step: '1' },
   { key: 'credit_value',                label: 'Value of 1 Credit',            unit: '',          hint: 'Rupees one credit adds to salary when applied to payroll.', step: '0.01', money: true },
   { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1' },
   { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1' },
@@ -33,6 +38,7 @@ const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: 
 function toDraft(s: BoeCreditSettings): Record<FieldKey, string> {
   return {
     review_reward_credits:       String(s.review_reward_credits),
+    image_review_reward_credits: String(s.image_review_reward_credits),
     credit_value:                Number.isInteger(s.credit_value) ? String(s.credit_value) : s.credit_value.toFixed(2),
     half_day_redemption_credits: String(s.half_day_redemption_credits),
     full_day_redemption_credits: String(s.full_day_redemption_credits),

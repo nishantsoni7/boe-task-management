@@ -1,4 +1,5 @@
 import type { TestCard } from './types'
+import { AWAITING_IMAGES_LABEL, imageReadiness } from './reviewTypes'
 
 // THE NEXT STEP, IN WORDS — what this person should do with this review now.
 //
@@ -38,6 +39,9 @@ export type NextStepViewer = {
 type StepCard = Pick<
   TestCard,
   'status' | 'booked_by' | 'whatsapp_opened_at' | 'sent_confirmed_at' | 'returned_at' | 'return_reason' | 'deleted_at'
+  // Readiness is a sentence a person reads, so the two columns it is written
+  // from travel with the row that the sentence is about.
+  | 'review_type' | 'image_group_id'
 >
 
 /**
@@ -63,10 +67,28 @@ export function nextStepFor(
         ? { headline: 'Approve or edit this draft', hint: 'Candidates cannot see it until it has been approved.', tone: 'act' }
         : { headline: 'Awaiting approval', hint: null, tone: 'wait' }
 
-    case 'available':
+    case 'available': {
+      // AN IMAGE REVIEW WITHOUT ITS PROJECT IS NOT A THING TO ACT ON, and
+      // saying "View, then book it" beside a Book button that refuses would be
+      // the worst of both. Whose move it is decides the tone: the candidate is
+      // waiting, the verifier is the person who has to do something.
+      if (imageReadiness(card) === 'awaiting_images') {
+        return viewer.canVerify
+          ? {
+              headline: 'Attach the project images',
+              hint: 'This image review cannot be booked until a project group is attached to it.',
+              tone: 'attention',
+            }
+          : {
+              headline: AWAITING_IMAGES_LABEL,
+              hint: 'An administrator is preparing the project photographs for this review.',
+              tone: 'wait',
+            }
+      }
       return viewer.canUse
         ? { headline: 'View, then book it', hint: 'Read the full review before you take it.', tone: 'act' }
         : { headline: 'Available to candidates', hint: null, tone: 'wait' }
+    }
 
     case 'booked': {
       if (!mine) {

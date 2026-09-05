@@ -5,6 +5,7 @@ import { Check, Copy, Loader2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { InternalTestWarning, ReviewBadge } from './ReviewPieces'
 import { buildReviewMessage } from '@/lib/customerReviews/internalTest'
+import { AWAITING_IMAGES_LABEL, imageReadiness } from '@/lib/customerReviews/reviewTypes'
 import {
   TEST_CARD_STATUS_META,
   formatTestDate,
@@ -173,10 +174,31 @@ export function ReviewFullView({
         </p>
       )}
 
+      {/*
+        WHY THE BOOK BUTTON IS NOT THERE, and it has to name the real reason.
+
+        This sentence used to blame the Use permission unconditionally, which
+        was true while that was the only thing that could stop a candidate
+        booking an approved review. An image review waiting for its project
+        images is now a second reason, and it is one the candidate can neither
+        act on nor understand from a sentence about permissions — it is an
+        administrator's job to attach the project.
+
+        The readiness case is checked first because it is the specific one; a
+        review can be both unready and unbookable for permission reasons, and
+        the actionable sentence is the one naming what is actually missing.
+      */}
       {!canBook && card.status === 'available' && (
-        <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
-          You can read this review, but booking one needs the Use permission for this module.
-        </p>
+        imageReadiness(card) === 'awaiting_images' ? (
+          <p style={{ margin: 0, fontSize: '12px', color: '#92400E', lineHeight: 1.55, fontWeight: 600 }}>
+            {AWAITING_IMAGES_LABEL}. An administrator is preparing the photographs for this
+            review — you can book and share it as soon as they are attached.
+          </p>
+        ) : (
+          <p style={{ margin: 0, fontSize: '12px', color: colors.tertiary, lineHeight: 1.55 }}>
+            You can read this review, but booking one needs the Use permission for this module.
+          </p>
+        )
       )}
     </div>
   )

@@ -586,7 +586,15 @@ export default function BoeCreditsPage() {
                   <div key={h.id} style={{ fontSize: 12, color: colors.tertiary, lineHeight: 1.55 }}>
                     <strong style={{ color: colors.primary }}>{stamp(h.created_at)}</strong>
                     {' — '}{h.created_by_name ?? 'System'}
-                    {' · '}{formatCredits(h.review_reward_credits)} per review · {formatCreditValue(h.credit_value)} per credit
+                    {/*
+                      BOTH REWARDS, because the history is the audit record of
+                      what somebody chose. A line that showed only the text
+                      reward would make a change to the image reward look like a
+                      row that changed nothing.
+                    */}
+                    {' · '}{formatCredits(h.review_reward_credits)} per text review
+                    {' · '}{formatCredits(h.image_review_reward_credits)} per image review
+                    {' · '}{formatCreditValue(h.credit_value)} per credit
                     {' · '}Half Day {h.half_day_redemption_credits} · Full Day {h.full_day_redemption_credits} · {h.minimum_monthly_reviews} reviews a month
                     {h.note ? ` · ${h.note}` : ''}
                   </div>

@@ -80,7 +80,7 @@ describe('the shape of the lifecycle', () => {
         availableActions({ status: 'pending_approval', booked_by: null, deleted_at: null }, viewer), [])
     }
     assert.equal(
-      canBookCard({ status: 'pending_approval', deleted_at: null }, { userId: 'u1', canUse: true }), false)
+      canBookCard({ status: 'pending_approval', deleted_at: null, review_type: 'text', assigned_to: 'u1', image_group_id: null }, { userId: 'u1', canUse: true }), false)
   })
 
   test('THERE IS NO `returned` STATUS — a return goes back to `booked`', () => {
@@ -239,25 +239,74 @@ describe('who may make which move', () => {
 })
 
 describe('booking', () => {
+  /**
+   * An approved text review ASSIGNED TO `who`.
+   *
+   * Assignment is now a condition of booking, so every case here hands the
+   * viewer a review that is genuinely theirs. Otherwise a `false` would be
+   * ambiguous between the permission failing and the assignment failing, and
+   * the permission tests would pass without testing the permission.
+   */
+  const mine = (who: string | null) => ({
+    status: 'available' as const,
+    deleted_at: null,
+    review_type: 'text' as const,
+    assigned_to: who,
+    image_group_id: null,
+  })
+
   test('only an available card, and only somebody who may use the module', () => {
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, tester), true)
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, admin), true)
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, nobody), false)
+    assert.equal(canBookCard(mine(HOLDER), tester), true)
+    assert.equal(canBookCard(mine(OTHER), admin), true)
+    assert.equal(canBookCard(mine(OTHER), nobody), false)
   })
 
   test('A VERIFIER WHO DOES NOT HOLD `use` CANNOT BOOK', () => {
     // The checker does not become the tester.
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, verifier), false)
+    assert.equal(canBookCard(mine(OTHER), verifier), false)
   })
 
   test('a card that is already taken cannot be booked again', () => {
     for (const status of ['booked', 'submitted', 'verified'] as const) {
-      assert.equal(canBookCard({ status, deleted_at: null }, tester), false, status)
+      assert.equal(canBookCard({ ...mine(HOLDER), status }, tester), false, status)
     }
   })
 
   test('a signed-out caller books nothing', () => {
-    assert.equal(canBookCard({ status: 'available', deleted_at: null }, { userId: null, canUse: true }), false)
+    assert.equal(canBookCard(mine(HOLDER), { userId: null, canUse: true }), false)
+  })
+
+  // ── THE POOL IS GONE ──────────────────────────────────────────────────────
+  //
+  // These four are the whole of "a candidate books only within what they were
+  // assigned", on the browser side. RLS is what stops another employee's review
+  // being READABLE; this is what stops a Book button being drawn on one that a
+  // verifier — who can read everybody's — is looking at.
+
+  test('AN UNASSIGNED REVIEW IS BOOKABLE BY NOBODY, however much permission they hold', () => {
+    assert.equal(canBookCard(mine(null), tester), false)
+    assert.equal(canBookCard(mine(null), admin), false)
+    assert.equal(canBookCard(mine(null), adminHoldingIt), false)
+  })
+
+  test('SOMEBODY ELSE’S ASSIGNED REVIEW IS NOT BOOKABLE', () => {
+    assert.equal(canBookCard(mine(OTHER), tester), false)
+    // Not even by a full administrator who can see it.
+    assert.equal(canBookCard(mine(HOLDER), admin), false)
+  })
+
+  test('AN IMAGE REVIEW WITH NO PROJECT GROUP CANNOT BE BOOKED', () => {
+    const waiting = { ...mine(HOLDER), review_type: 'image' as const, image_group_id: null }
+    assert.equal(canBookCard(waiting, tester), false)
+  })
+
+  test('…and it becomes bookable the moment a group with images is attached', () => {
+    const ready = { ...mine(HOLDER), review_type: 'image' as const, image_group_id: 'group-1' }
+    assert.equal(canBookCard(ready, tester), true)
+    // A group that exists but holds nothing is still not ready. The caller
+    // passes that fact in, because it lives in another table.
+    assert.equal(canBookCard(ready, tester, false), false)
+    assert.equal(canBookCard(ready, tester, true), true)
   })
 })
 

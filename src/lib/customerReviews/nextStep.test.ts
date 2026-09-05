@@ -18,7 +18,10 @@ const both = { userId: OTHER, canUse: true, canVerify: true }
 
 const card = (over: Partial<Parameters<typeof nextStepFor>[0]> = {}) => ({
   status: 'booked' as const, booked_by: ME, whatsapp_opened_at: null, sent_confirmed_at: null,
-  returned_at: null, return_reason: null, deleted_at: null, ...over,
+  returned_at: null, return_reason: null, deleted_at: null,
+  // Every review was a text review before types existed, so that is what a
+  // default fixture is; the image cases say so explicitly.
+  review_type: 'text' as const, image_group_id: null, ...over,
 })
 
 describe('the holder’s path, in order', () => {

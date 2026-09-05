@@ -121,6 +121,13 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
       // inside create_customer_review_draft_batch(), not executed by the
       // migration, which inserts no card of its own.
       '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql',
+      // The review-types generator, and the same shape a fourth time: the
+      // INSERT is inside create_customer_review_draft_batch(), which this file
+      // re-creates so it counts eight text and four image before writing
+      // anything. The migration itself inserts no card — its own post-condition
+      // asserts that review_type DEFAULTS to text rather than that any row was
+      // written, precisely because it writes none.
+      '20261107000000_review_types_assignment_and_image_groups.sql',
     ])
   })
 
