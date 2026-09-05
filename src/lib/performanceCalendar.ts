@@ -466,20 +466,22 @@ export function parseDateRangeParams(from: string | null, to: string | null): Da
   return { ok: true, from, to }
 }
 
-/**
- * May this caller see the whole team's performance? Team Performance exposes
- * every employee's numbers, so it is management-only regardless of what the
- * page renders.
- */
-export function canViewTeamPerformance(caller: { role: string }): boolean {
-  return caller.role === 'admin' || caller.role === 'manager'
-}
-
-/** May this caller read performance data for the target user? */
-export function canViewPerformanceOf(
-  caller: { id: string; role: string },
-  targetUserId: string,
-): boolean {
-  if (caller.id === targetUserId) return true
-  return caller.role === 'admin' || caller.role === 'manager'
-}
+// WHO MAY SEE WHOSE PERFORMANCE NO LONGER LIVES HERE.
+//
+// This file used to export two role tests:
+//
+//   canViewTeamPerformance(caller)      role = admin OR manager
+//   canViewPerformanceOf(caller, id)    self, OR role = admin OR manager
+//
+// Both are gone, and their absence is the point. Deriving a module capability
+// from `users.role` is what made Personal Performance and Team Performance one
+// decision — and it made that decision in a way no administrator could change,
+// because nothing about it read the permission engine. A Manager consequently
+// held the team screen and lost their own report, which is a configuration
+// nobody chose.
+//
+// The replacements are derivePerformanceCapabilities, canReadPerformanceOf and
+// isWithinTeamPerformanceScope in src/lib/permissions/performance.ts, resolved
+// from `performance.view`, `performance.view_team` and `performance.view_all`
+// (registered by 20261109000000). They are not re-exported from here: a role
+// test that still compiles is a role test somebody will reach for.

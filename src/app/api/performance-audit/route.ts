@@ -14,6 +14,9 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import type { DayInputs, ScoreBreakdown, TrendAnalysis, PerformanceAudit, TrendDay } from '@/lib/types'
+import {
+  resolvePerformanceAccess, canReadPerformanceOf,
+} from '@/lib/permissions/performance'
 
 function sb() {
   return createClient(
@@ -22,17 +25,8 @@ function sb() {
   )
 }
 
-async function getCallerProfile(token: string) {
-  const client = sb()
-  const { data: { user }, error } = await client.auth.getUser(token)
-  if (error || !user) return null
-  const { data } = await client
-    .from('users')
-    .select('id, role, full_name, team, position')
-    .eq('id', user.id)
-    .single()
-  return data as { id: string; role: string; full_name: string; team: string; position: string | null } | null
-}
+// Caller identity and Performance capabilities both come from
+// resolvePerformanceAccess — see src/lib/permissions/performance.ts.
 
 // ─── Prompt builder ───────────────────────────────────────────────────────────
 
@@ -214,8 +208,11 @@ export async function POST(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const client = sb()
+
+  const access = await resolvePerformanceAccess(client, token)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { caller, capabilities } = access
 
   const body = await req.json()
   const {
@@ -234,16 +231,22 @@ export async function POST(req: NextRequest) {
   }
 
   const targetId = userId ?? caller.id
-  if (targetId !== caller.id && !['admin', 'manager'].includes(caller.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
-  const client = sb()
+  // The target is read BEFORE the authorization decision, because the decision
+  // needs their department: without `view_all`, a Team Performance holder may
+  // only reflect on somebody in their own. Reading your own reflection needs
+  // Personal Performance, which team access does not substitute for.
   const { data: targetUser } = await client
     .from('users')
-    .select('full_name, team, position, role')
+    .select('id, full_name, team, position, role')
     .eq('id', targetId)
     .single()
+
+  const target = (targetUser as { id: string; team: string | null } | null)
+    ?? (targetId === caller.id ? { id: caller.id, team: caller.team } : null)
+  if (!target || !canReadPerformanceOf(caller, capabilities, target)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
 
   const apiKey = process.env.ANTHROPIC_API_KEY
 

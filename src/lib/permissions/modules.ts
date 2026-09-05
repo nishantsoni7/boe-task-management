@@ -150,11 +150,33 @@ registerModule({
   displayName: 'Performance',
   description: 'Daily performance scores and trends.',
   actions: [
+    // PERSONAL PERFORMANCE, and module entry. Own score, own month, own daily
+    // history, own EOD and self-rating. Read as "Personal Performance" in
+    // Control Center through the module-scoped label map — see
+    // src/app/api/control-center/permissions/employees/[id]/route.ts.
     { actionKey: 'view', displayName: 'View' },
     { actionKey: 'create', displayName: 'Create' },
     { actionKey: 'edit', displayName: 'Edit' },
     { actionKey: 'export', displayName: 'Export' },
     { actionKey: 'manage', displayName: 'Manage' },
+    // TEAM PERFORMANCE — /performance/team and the management dataset behind
+    // it. Registered by 20261109000000. Until then this was `users.role`
+    // in canViewTeamPerformance(), so a Manager could not be given the module
+    // without the management screen and could not be given the management
+    // screen without becoming a Manager. Protected: no access level grants it.
+    { actionKey: 'view_team', displayName: 'Team Performance' },
+    // FULL TEAM VISIBILITY — every eligible employee rather than the caller's
+    // own department. Separate from view_team for the same reason Orders and
+    // Finance register `view_all` separately (20260903000000): opening the
+    // management screen and seeing the whole company in it are two decisions.
+    //
+    // The display name is the GLOBAL vocabulary and must stay that way —
+    // syncPermissionRegistry upserts permission_actions on conflict
+    // (action_key), so a performance-specific label here would rename Orders'
+    // and Finance's `view_all` too. Control Center shows this module's as
+    // "View All Employees" through the module-scoped label map, the same
+    // mechanism MODULE_SCOPED_ACTION_WORDS uses for Orders versus Finance.
+    { actionKey: 'view_all', displayName: 'View All Records' },
   ],
 })
 

@@ -173,16 +173,23 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   // from the module being edited rather than from this map alone — see
   // protectedActionWords, which takes the module key for exactly this reason.
   view_all:              'View all records',
+  // Performance. Named for what it discloses rather than for the screen it
+  // opens, because that is what an administrator is deciding about.
+  view_team:             'See other employees’ performance',
   approve_order:             'Approve order submissions',
   approve_advance_exception: 'Approve advance exceptions',
   allocate:                  'Allocate payments',
   allocate_correct:          'Correct payment allocations',
 }
 
-/** `view_all` means something different in Orders than in Finance. */
+/** `view_all` means something different in Orders, Finance and Performance. */
 export const MODULE_SCOPED_ACTION_WORDS: Record<string, Record<string, string>> = {
   orders:  { view_all: 'View all company orders' },
   finance: { view_all: 'View all company payments and finance information' },
+  performance: {
+    view_team: 'Open Team Performance',
+    view_all:  'See every employee in Team Performance, not only their own department',
+  },
 }
 
 export function protectedActionWords(actionKeys: readonly string[], moduleKey?: string): string {

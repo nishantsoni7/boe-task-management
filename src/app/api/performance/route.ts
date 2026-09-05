@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { istToday } from '@/lib/istDate'
+import { resolvePerformanceAccess } from '@/lib/permissions/performance'
 
 function serviceClient() {
   return createClient(
@@ -9,16 +10,19 @@ function serviceClient() {
   )
 }
 
-async function getCallerProfile(token: string) {
-  const sb = serviceClient()
-  const { data: { user }, error } = await sb.auth.getUser(token)
-  if (error || !user) return null
-  const { data: profile } = await sb
-    .from('users')
-    .select('id, role')
-    .eq('id', user.id)
-    .single()
-  return profile as { id: string; role: string } | null
+/**
+ * The caller's own daily performance log. Self-scoped in both directions — the
+ * row is always keyed on the token's user — so the only question is whether this
+ * person has Personal Performance at all.
+ *
+ * That question is asked here, and not only in the navigation: a caller whose
+ * Personal Performance has been switched off in Control Center must not reach
+ * this endpoint by typing the URL. See src/lib/permissions/performance.ts.
+ */
+async function personalAccess(token: string) {
+  const access = await resolvePerformanceAccess(serviceClient(), token)
+  if (!access || !access.capabilities.canAccessPersonalPerformance) return null
+  return access.caller
 }
 
 // GET /api/performance?date=YYYY-MM-DD
@@ -27,8 +31,8 @@ export async function GET(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const caller = await personalAccess(token)
+  if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const { searchParams } = new URL(req.url)
   const date = searchParams.get('date') ?? istToday()
@@ -51,8 +55,8 @@ export async function POST(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const caller = await personalAccess(token)
+  if (!caller) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await req.json()
   const { completed_today, in_progress, blockers, tomorrow_focus } = body

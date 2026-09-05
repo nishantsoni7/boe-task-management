@@ -18,6 +18,7 @@ import {
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
+import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
 import { Image as ImageIcon } from 'lucide-react'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -229,11 +230,23 @@ export default function BoeOsHomePage() {
   // now an explicit `showroom_qr:view` grant, and inferring authority from a
   // free-text team name is exactly the implicit rule this work removes.
 
-  // Management lands on Team Performance, everyone else on their own report.
-  const performanceHref =
-    (effectiveProfile?.role === 'admin' || effectiveProfile?.role === 'manager')
-      ? '/performance/team'
-      : '/performance'
+  // Where the Performance card goes: the management landing for whoever holds
+  // Team Performance, their own report for everyone else.
+  //
+  // Derived from the capability, not from `users.role`. The role version sent
+  // every manager to /performance/team and therefore offered a manager no route
+  // to their own report at all — one of the two ways a Manager silently lost
+  // Personal Performance (the other was the View As gate on /performance). The
+  // destination is unchanged for everyone who holds Team Performance today,
+  // because 20261109000000 grants view_team at role level to exactly the admins
+  // and managers this test used to name.
+  const performanceCapabilities = derivePerformanceCapabilities(
+    signedInRole,
+    permsByModule.get('performance') ?? [],
+  )
+  const performanceHref = performanceCapabilities.canAccessTeamPerformance
+    ? '/performance/team'
+    : '/performance'
 
   // ── Attendance & Payroll — one card for what used to be two ────────────────
   //

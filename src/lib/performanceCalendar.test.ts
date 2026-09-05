@@ -18,10 +18,10 @@ import assert from 'node:assert/strict'
 import {
   isExpectedWorkingDay, expectedWorkingDates, eligiblePerformanceDates,
   hasDayCutoffPassed, resolveExitDate,
-  parseDateRangeParams, canViewPerformanceOf,
+  parseDateRangeParams,
   PERFORMANCE_ROLLOUT_DATE, PERFORMANCE_DAY_CUTOFF_HOUR, MAX_RANGE_DAYS,
   APPROVED_LEAVE_UNAVAILABLE, isValidBusinessDate, parsePeriod, PERFORMANCE_PERIODS,
-  resolvePeriod, isPeriodKey, canViewTeamPerformance, PERIOD_KEYS,
+  resolvePeriod, isPeriodKey, PERIOD_KEYS,
   type WorkingDayContext,
 } from './performanceCalendar'
 import { periodAverageScore, trendDayFromInputs, computeBreakdown } from './performance'
@@ -362,30 +362,12 @@ describe('score weights are unchanged', () => {
 })
 
 // ─── 11. Parameter authorization ──────────────────────────────────────────────
-
-describe('canViewPerformanceOf', () => {
-  const employee = { id: 'u1', role: 'employee' }
-  const manager  = { id: 'm1', role: 'manager'  }
-  const admin    = { id: 'a1', role: 'admin'    }
-
-  test('anyone may read their own', () => {
-    assert.equal(canViewPerformanceOf(employee, 'u1'), true)
-  })
-
-  test('an employee may not read someone else', () => {
-    assert.equal(canViewPerformanceOf(employee, 'u2'), false)
-  })
-
-  test('managers and admins may read anyone', () => {
-    assert.equal(canViewPerformanceOf(manager, 'u2'), true)
-    assert.equal(canViewPerformanceOf(admin,   'u2'), true)
-  })
-
-  test('an unknown role is not privileged', () => {
-    assert.equal(canViewPerformanceOf({ id: 'x', role: 'viewer' }, 'u2'), false)
-    assert.equal(canViewPerformanceOf({ id: 'x', role: '' },       'u2'), false)
-  })
-})
+//
+// canViewPerformanceOf and canViewTeamPerformance used to be tested here. They
+// were role tests, they are deleted, and their replacements live in
+// src/lib/permissions/performance.test.ts — which covers the same questions plus
+// the ones a role could not answer: a Manager who holds Team Performance and not
+// Personal, and a Team Performance holder without company-wide sight.
 
 // ─── 12. Invalid date ranges ──────────────────────────────────────────────────
 
@@ -568,18 +550,5 @@ describe('one period drives every section', () => {
     const dates = eligiblePerformanceDates(p.from, p.to, sunday, ctx(),
       new Date(Date.parse(istDayStartUtc(sunday)) + 22 * 3600_000))
     assert.deepEqual(dates, [])
-  })
-})
-
-describe('canViewTeamPerformance', () => {
-  test('admins and managers may see the whole team', () => {
-    assert.equal(canViewTeamPerformance({ role: 'admin' }),   true)
-    assert.equal(canViewTeamPerformance({ role: 'manager' }), true)
-  })
-
-  test('an ordinary employee may not', () => {
-    assert.equal(canViewTeamPerformance({ role: 'employee' }), false)
-    assert.equal(canViewTeamPerformance({ role: '' }),         false)
-    assert.equal(canViewTeamPerformance({ role: 'viewer' }),   false)
   })
 })

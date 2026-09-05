@@ -250,7 +250,12 @@ describe('dependencies', () => {
   test('the chains are exactly the ones specified', () => {
     assert.deepEqual(actionDependencyChain('manage_quotations'), ['view_quotations', 'view'])
     assert.deepEqual(actionDependencyChain('view_quotations'), ['view'])
-    assert.deepEqual(actionDependencyChain('view_all'), ['view'])
+    // `view_all` now hangs off `view_team` (20261109000000), because in
+    // Performance the screen it widens is Team Performance. Orders and Finance
+    // register no `view_team`, so withRequiredDependencies skips the missing
+    // link and their effective chain is unchanged — asserted just below.
+    assert.deepEqual(actionDependencyChain('view_all'), ['view_team', 'view'])
+    assert.deepEqual(actionDependencyChain('view_team'), ['view'])
   })
 
   test('granting a child pulls its parents in', () => {

@@ -44,11 +44,14 @@ import {
 } from '@/lib/performance'
 import {
   expectedWorkingDates, eligiblePerformanceDates, resolveExitDate,
-  parseDateRangeParams, canViewPerformanceOf, parsePeriod, isValidBusinessDate,
+  parseDateRangeParams, parsePeriod, isValidBusinessDate,
   PERFORMANCE_ROLLOUT_DATE,
   type WorkingDayContext,
 } from '@/lib/performanceCalendar'
 import { EXCLUDED_SELF_NOTICE } from '@/lib/performanceEligibility'
+import {
+  resolvePerformanceAccess, canReadPerformanceOf,
+} from '@/lib/permissions/performance'
 import { fetchAllRows, unwrapPagedRows } from '@/lib/supabasePaging'
 import {
   istToday, istDateOf, istDayStartUtc, istDayEndUtc, istAddDays,
@@ -63,17 +66,9 @@ function sb() {
   )
 }
 
-async function getCallerProfile(token: string) {
-  const client = sb()
-  const { data: { user }, error } = await client.auth.getUser(token)
-  if (error || !user) return null
-  const { data } = await client
-    .from('users')
-    .select('id, role, full_name, team, position')
-    .eq('id', user.id)
-    .single()
-  return data as { id: string; role: string; full_name: string; team: string; position: string | null } | null
-}
+// The caller and their Performance capabilities both come from
+// resolvePerformanceAccess, which reads the bearer token and nothing else — see
+// src/lib/permissions/performance.ts.
 
 // ─── Row shapes ───────────────────────────────────────────────────────────────
 
@@ -283,8 +278,11 @@ export async function GET(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const client = sb()
+
+  const access = await resolvePerformanceAccess(client, token)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { caller, capabilities } = access
 
   const { searchParams } = new URL(req.url)
   const userId  = searchParams.get('userId') ?? caller.id
@@ -295,7 +293,26 @@ export async function GET(req: NextRequest) {
 
   // Authorisation is decided here, on the server, from the caller's own token —
   // never from anything the client sends about itself.
-  if (!canViewPerformanceOf(caller, userId)) {
+  //
+  // Reading YOUR OWN figures needs Personal Performance and nothing else: team
+  // access is not a substitute for it. Reading SOMEBODY ELSE'S needs Team
+  // Performance, and — without `view_all` — that person has to be inside the
+  // caller's own department. The target's department is read from the database
+  // here rather than taken from the request, so a hand-typed `?userId=` cannot
+  // widen the scope. An out-of-scope id is refused before any window is built.
+  let target: { id: string; team: string | null } = { id: userId, team: caller.team }
+  if (userId !== caller.id) {
+    const { data: targetScope } = await client
+      .from('users')
+      .select('id, team')
+      .eq('id', userId)
+      .maybeSingle()
+    // A target that cannot be read is not a target that can be authorized.
+    if (!targetScope) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    target = targetScope as { id: string; team: string | null }
+  }
+
+  if (!canReadPerformanceOf(caller, capabilities, target)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -318,8 +335,6 @@ export async function GET(req: NextRequest) {
     rangeFrom = parsed.from
     rangeTo   = parsed.to
   }
-
-  const client = sb()
 
   // ── Target employee's working calendar ──────────────────────────────────────
   const { data: targetUser } = await client

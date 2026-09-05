@@ -1512,10 +1512,14 @@ export default function TeamPerformancePage() {
           return
         }
 
-        if (!['admin', 'manager'].includes((profileData as UserProfile).role)) {
-          router.push('/performance'); return
-        }
-
+        // Entry is NOT decided here. It was — `role` had to be admin or manager
+        // — and that role test is what made Team Performance and Personal
+        // Performance the same decision. It now belongs to
+        // src/app/performance/team/layout.tsx, which resolves
+        // `performance.view_team` and does not mount this component without it,
+        // and to the two team APIs, which resolve the same capability from the
+        // caller's own token. A check here could only ever be a third opinion
+        // arriving after the screen had already mounted.
         setProfile(profileData as UserProfile)
         setToken(session.access_token)
       } catch (e) {

@@ -237,8 +237,8 @@ The screen states what the engine actually decides, per module, from
 | Label | Meaning | Modules |
 |---|---|---|
 | **Active** | every registered action is checked | Assets & Access, Meetings |
-| **Partly active** | some actions checked, the rest inert | Orders, Finance, Sample Tracking, Task Management |
-| **Prepared** | saved, nothing consults it yet | Showroom QR, Employee Records, Performance |
+| **Partly active** | some actions checked, the rest inert | Orders, Finance, Sample Tracking, Task Management, Performance |
+| **Prepared** | saved, nothing consults it yet | Showroom QR, Employee Records |
 | **Not used** | governed by the admin role by design | Attendance, Payroll |
 
 A single enforced/not-enforced flag could not describe Orders, and had already
@@ -764,3 +764,81 @@ Control Center function.
 The route `/admin/control-center/action-queue` is **left in place** so existing
 links and bookmarks still resolve, and the Finance and Orders pages it pointed at
 are untouched. Only the navigation entry in `ControlCenterLayout` was removed.
+
+---
+
+## Performance: Personal and Team are separate capabilities (`20261109000000`)
+
+**Manager role does not replace Personal Performance. Personal Performance/EOD
+and Team Performance are separately configurable capabilities. A manager may
+hold both.**
+
+That sentence is the rule. It is written here because the module previously
+broke it, and broke it invisibly.
+
+### The defect
+
+`users.role` decided both halves of Performance, and it decided them in
+opposite directions:
+
+| Where | Rule | Effect on a Manager |
+|---|---|---|
+| `canViewTeamPerformance()` | `role = admin OR manager` | got the team screen |
+| `src/app/modules/page.tsx` | `role = admin OR manager` → `/performance/team` | the launcher card offered **no route to their own report** |
+| `src/app/performance/page.tsx` | refused any **non-admin** holding a View As target | the team screen's "view full report" button — which sets View As, then navigates to `/performance` — **ejected them to `/dashboard`** and left a stale `adminViewAs` key behind to eject them again |
+
+So a Manager held Team Performance and lost their own score, their own month,
+their own daily history and their own EOD form. Nobody decided that; it fell out
+of deriving a module capability from a role. No Control Center setting could put
+it back, because none of the three rules read the permission engine.
+
+### The model
+
+Three capabilities on the existing `performance` module, granted like any other
+module permission and shown in the employee access editor in Performance's own
+words:
+
+| Control Center | Action | Means |
+|---|---|---|
+| **Personal Performance** | `view` | Own report, own month, own daily history, own EOD and self-rating. Also module entry. |
+| **Team Performance** | `view_team` | `/performance/team` and the management dataset behind it. Protected. |
+| **View All Employees** | `view_all` | Every eligible employee, rather than only the caller's own department. Protected. |
+
+Dependencies: `view_all` → `view_team` → `view`. Orders and Finance register no
+`view_team`, so their `view_all` → `view` chain is unchanged.
+
+Neither new action is granted by any preset — including the preset **named**
+Manager, which is the collision that made protecting `view_team` necessary.
+
+### Scope
+
+A `view_team` holder without `view_all` sees themselves plus their own
+department (`users.team`, matched case- and space-insensitively). A caller with
+no department of their own sees only themselves, deliberately: matching "no
+department" against other unassigned rows would hand out an arbitrary set of
+colleagues.
+
+### Nobody's access changed when this applied
+
+The migration grants `view_team` and `view_all` at **role** level to `admin` and
+`manager`, which reproduces exactly what the role checks did. It touches no
+`employee_permission_overrides` row and names no individual, so no
+administrator's hand-made grant was overwritten. An employee override outranks
+the role row, so either action can now be withdrawn from one person.
+
+### Enforcement
+
+Hidden navigation is not authorization. Every capability is checked server-side,
+from the caller's own bearer token, by `resolvePerformanceAccess` in
+[`src/lib/permissions/performance.ts`](../../src/lib/permissions/performance.ts):
+
+| Route | Requires |
+|---|---|
+| `GET`/`POST /api/performance` | Personal Performance |
+| `POST /api/daily-log` (submit EOD) | Personal Performance |
+| `GET /api/performance-metrics`, `/api/daily-log`, `/api/performance-audit` | Personal Performance for self; Team Performance **and scope** for anyone else |
+| `GET /api/performance-metrics/team`, `/api/eod-logs/team` | Team Performance; the employee list is filtered by scope **before** any metric is computed |
+
+The target's department is read from the database, never from the request, so a
+hand-typed `?userId=` cannot widen the scope, and the team routes take no
+visibility parameter at all.

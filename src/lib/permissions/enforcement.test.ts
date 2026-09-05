@@ -185,12 +185,41 @@ describe('the claims still match the code', () => {
   })
 
   test('the modules newly gated on entry claim exactly that and no more', () => {
-    for (const moduleKey of ['showroom_qr', 'employee_records', 'performance']) {
+    // Performance is deliberately absent: 20261109000000 gave it two more
+    // enforced actions, so "entry and no more" stopped being true of it. Its
+    // own claim is asserted below, and against the routes that back it in
+    // src/lib/permissions/performanceAccessEnforcement.test.ts.
+    for (const moduleKey of ['showroom_qr', 'employee_records']) {
       assert.equal(moduleEnforcement(moduleKey).state, 'partial', moduleKey)
       assert.deepEqual(moduleEnforcement(moduleKey).enforcedActions, ['view'], moduleKey)
       assert.equal(isActionEnforced(moduleKey, 'view'), true, moduleKey)
       assert.equal(isActionEnforced(moduleKey, 'manage'), false, moduleKey)
     }
+  })
+
+  test('Performance claims entry plus the two access actions, and nothing else', () => {
+    assert.equal(moduleEnforcement('performance').state, 'partial')
+    assert.deepEqual(moduleEnforcement('performance').enforcedActions,
+      ['view', 'view_team', 'view_all'])
+
+    // Each of the three has a guard behind it.
+    const moduleLayout = read('src/app/performance/layout.tsx')
+    assert.ok(moduleLayout.includes('ModuleGuard') && moduleLayout.includes('moduleKey="performance"'),
+      'the Personal Performance claim needs the module route guard')
+    const teamLayout = read('src/app/performance/team/layout.tsx')
+    assert.ok(teamLayout.includes('canAccessTeamPerformance'),
+      'the Team Performance claim needs the team route guard')
+    const teamRoute = read('src/app/api/performance-metrics/team/route.ts')
+    assert.ok(teamRoute.includes('isWithinTeamPerformanceScope'),
+      'the View All Employees claim needs the server-side scope filter')
+
+    // create/edit/export/manage remain saved and unused, and the entry says so.
+    for (const action of ['create', 'edit', 'export', 'manage']) {
+      assert.equal(isActionEnforced('performance', action), false, action)
+    }
+    assert.equal(isActionEnforced('performance', 'view'), true)
+    assert.equal(isActionEnforced('performance', 'view_team'), true)
+    assert.equal(isActionEnforced('performance', 'view_all'), true)
   })
 
   test('the Access Control screen reads this file, not a local set', () => {

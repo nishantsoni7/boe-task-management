@@ -234,10 +234,29 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
 
   // Entry: src/app/performance/layout.tsx, covering /performance and
   // /performance/team. The team route stays authorized server-side as well.
+  // The three that decide access are all enforced, in the screen AND in the API:
+  //
+  //   view       Personal Performance. src/app/performance/layout.tsx via
+  //              ModuleGuard, and — the half that makes the claim true —
+  //              GET/POST /api/performance, POST /api/daily-log (submitting an
+  //              EOD) and the self branch of GET /api/performance-metrics,
+  //              /api/daily-log and /api/performance-audit, all through
+  //              canReadPerformanceOf in src/lib/permissions/performance.ts.
+  //   view_team  src/app/performance/team/layout.tsx, plus
+  //              GET /api/performance-metrics/team and GET /api/eod-logs/team.
+  //   view_all   the scope filter applied to the employee list inside those two
+  //              team routes, before any metric is computed, and to the target
+  //              of every per-employee read. No query parameter widens it.
+  //
+  // create/edit/export/manage remain saved and unused — Performance has no
+  // record anyone creates, edits or exports, and `manage` gates nothing. They
+  // are left registered rather than removed because existing grants reference
+  // them; this entry is `partial` for that reason and not because any access
+  // decision is unenforced.
   performance: {
     state: 'partial',
-    enforcedActions: ['view'],
-    detail: 'Opening the module is enforced. The other Performance actions are saved but not yet used.',
+    enforcedActions: ['view', 'view_team', 'view_all'],
+    detail: 'Personal Performance, Team Performance and View All Employees are all enforced — in the screen and in the API. Create, Edit, Export and Manage are saved but decide nothing.',
   },
 
   // Management Attendance and Payroll read the whole company and are admin-only
