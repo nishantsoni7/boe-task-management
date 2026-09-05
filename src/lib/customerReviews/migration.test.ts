@@ -137,6 +137,12 @@ describe('the migration is one file, correctly sequenced', () => {
       // that reproduce today's role checks exactly. It creates no table, alters
       // no table and defines no function, so it reaches nothing asserted here.
       '20261109000000_performance_personal_and_team_capabilities.sql',
+      // The forward-only correction to it: Performance management visibility is
+      // granted per employee, never inherited from the `manager` role name. It
+      // deletes two role_permissions rows and inserts two
+      // employee_permission_overrides rows. It creates no table, alters no table
+      // and defines no function, so it reaches nothing asserted here.
+      '20261110000000_performance_team_visibility_is_granted_not_inherited.sql',
     ])
   })
 

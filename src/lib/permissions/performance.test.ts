@@ -346,3 +346,151 @@ describe('the capability object is the only input', () => {
     assert.equal(isWithinTeamPerformanceScope(EMPLOYEE, caps, spoofed), false)
   })
 })
+
+// ─── 10. The corrected default: management visibility is granted, not inherited
+
+describe('after 20261110000000 — team visibility is never inherited from a role', () => {
+  // These model the PRODUCTION permission rows exactly as the resolver returns
+  // them once the correction has applied, so the capability model and the
+  // database are asserted to agree about the same four people.
+  //
+  // `source` is load-bearing here rather than decoration: it is the precedence
+  // level the row came from, and the whole point of the correction is that
+  // 'role' is no longer a source for view_team or view_all.
+
+  /** Every active employee holds `view` as an employee override. Nobody holds more. */
+  const employeeRows = (extra: Record<string, boolean> = {}): EffectivePermission[] => ([
+    { actionKey: 'view',      allowed: true,  source: 'employee_override' },
+    { actionKey: 'create',    allowed: extra.create ?? false, source: 'employee_override' },
+    { actionKey: 'edit',      allowed: extra.edit   ?? false, source: 'employee_override' },
+    { actionKey: 'export',    allowed: extra.export ?? false, source: 'employee_override' },
+    { actionKey: 'manage',    allowed: extra.manage ?? false, source: 'employee_override' },
+    // After the correction there is no `manager` role row, so both resolve from
+    // the module's system default unless an override says otherwise.
+    { actionKey: 'view_team', allowed: extra.view_team ?? false,
+      source: extra.view_team ? 'employee_override' : 'system_default' },
+    { actionKey: 'view_all',  allowed: extra.view_all ?? false,
+      source: extra.view_all ? 'employee_override' : 'system_default' },
+  ])
+
+  const DHRUV        = { id: 'dhruv',  team: 'management' }
+  const OTHER_MGR    = { id: 'nitish', team: 'operations' }
+  const SALES_MEMBER = { id: 'shravi', team: 'sales' }
+
+  test('1. the manager ROLE alone does not imply view_all', () => {
+    // A manager with no explicit grant: every management row is a system default.
+    const caps = derivePerformanceCapabilities('manager', employeeRows())
+    assert.equal(caps.canViewAllEmployeePerformance, false)
+    // And it stays false however the role is spelled — the role is not consulted.
+    for (const role of ['manager', 'Manager', 'MANAGER', 'lead', 'supervisor']) {
+      assert.equal(
+        derivePerformanceCapabilities(role, employeeRows()).canViewAllEmployeePerformance,
+        false,
+        `${role} must not confer company-wide visibility`,
+      )
+    }
+  })
+
+  test('2. the manager ROLE alone receives no company-wide team data', () => {
+    const caps = derivePerformanceCapabilities('manager', employeeRows())
+    assert.equal(caps.canAccessTeamPerformance, false)
+    // The scope predicate the two team routes filter on returns nothing — not
+    // their own department, not themselves, not anybody.
+    for (const person of [DHRUV, OTHER_MGR, SALES_MEMBER]) {
+      assert.equal(isWithinTeamPerformanceScope(OTHER_MGR, caps, person), false)
+    }
+    // And a per-employee read of somebody else is refused.
+    assert.equal(canReadPerformanceOf(OTHER_MGR, caps, SALES_MEMBER), false)
+  })
+
+  test('3. the explicitly configured manager resolves to all three', () => {
+    // Dhruv: role manager (unchanged) plus employee overrides for view,
+    // view_team and view_all. This is the production row set after the
+    // correction.
+    const caps = derivePerformanceCapabilities('manager', employeeRows({
+      create: true, edit: true, export: true, manage: false,
+      view_team: true, view_all: true,
+    }))
+    assert.equal(caps.canAccessPersonalPerformance, true)
+    assert.equal(caps.canSubmitOwnEod, true)
+    assert.equal(caps.canAccessTeamPerformance, true)
+    assert.equal(caps.canViewAllEmployeePerformance, true)
+    // Every active employee, in every department.
+    for (const person of [DHRUV, OTHER_MGR, SALES_MEMBER]) {
+      assert.equal(isWithinTeamPerformanceScope(DHRUV, caps, person), true)
+    }
+    // And his own report is still his.
+    assert.equal(canReadPerformanceOf(DHRUV, caps, DHRUV), true)
+  })
+
+  test('4. a DIFFERENT manager without that grant does not resolve to viewAll', () => {
+    const dhruv = derivePerformanceCapabilities('manager', employeeRows({
+      view_team: true, view_all: true,
+    }))
+    const other = derivePerformanceCapabilities('manager', employeeRows({
+      create: true, edit: true, export: true, manage: true,
+    }))
+    // Same role, same module, different configuration — different answer. That
+    // difference is the entire correction: one employee's grant cannot reach
+    // another through a shared job title.
+    assert.equal(dhruv.canViewAllEmployeePerformance, true)
+    assert.equal(other.canViewAllEmployeePerformance, false)
+    assert.equal(other.canAccessTeamPerformance, false)
+    // Personal Performance is untouched for the unconfigured manager — the bug
+    // this whole piece of work exists to prevent coming back.
+    assert.equal(other.canAccessPersonalPerformance, true)
+    assert.equal(other.canSubmitOwnEod, true)
+  })
+
+  test('5. admin retains full access, with no role rows consulted at all', () => {
+    const caps = derivePerformanceCapabilities('admin', employeeRows())
+    assert.equal(caps.canAccessPersonalPerformance, true)
+    assert.equal(caps.canSubmitOwnEod, true)
+    assert.equal(caps.canAccessTeamPerformance, true)
+    assert.equal(caps.canViewAllEmployeePerformance, true)
+    const admin = { id: 'nishant', team: 'admin' }
+    for (const person of [DHRUV, OTHER_MGR, SALES_MEMBER]) {
+      assert.equal(isWithinTeamPerformanceScope(admin, caps, person), true)
+      assert.equal(canReadPerformanceOf(admin, caps, person), true)
+    }
+  })
+
+  test('6. a normal employee keeps Personal Performance and gains nothing', () => {
+    const caps = derivePerformanceCapabilities('member', employeeRows())
+    assert.equal(caps.canAccessPersonalPerformance, true)
+    assert.equal(caps.canSubmitOwnEod, true)
+    assert.equal(canReadPerformanceOf(SALES_MEMBER, caps, SALES_MEMBER), true)
+    assert.equal(caps.canAccessTeamPerformance, false)
+    assert.equal(caps.canViewAllEmployeePerformance, false)
+    // Not even a colleague in their own department.
+    assert.equal(canReadPerformanceOf(SALES_MEMBER, caps, { id: 'prerna', team: 'sales' }), false)
+  })
+
+  test('7. server-side scope still narrows a team holder who lacks view_all', () => {
+    // The middle case the correction makes reachable: an administrator may now
+    // grant Team Performance WITHOUT company-wide sight, and the scope predicate
+    // the two team routes filter on has to honour that.
+    const caps = derivePerformanceCapabilities('manager', employeeRows({ view_team: true }))
+    assert.equal(caps.canAccessTeamPerformance, true)
+    assert.equal(caps.canViewAllEmployeePerformance, false)
+    assert.equal(isWithinTeamPerformanceScope(OTHER_MGR, caps, OTHER_MGR), true)
+    assert.equal(isWithinTeamPerformanceScope(OTHER_MGR, caps, { id: 'x', team: 'operations' }), true)
+    assert.equal(isWithinTeamPerformanceScope(OTHER_MGR, caps, SALES_MEMBER), false)
+    assert.equal(canReadPerformanceOf(OTHER_MGR, caps, SALES_MEMBER), false)
+  })
+
+  test('a role-sourced grant would still work — it is simply no longer written', () => {
+    // The engine has not been changed, only the data. Stated so that a future
+    // reader does not "fix" derivePerformanceCapabilities to ignore role rows:
+    // an administrator who deliberately restores a role-level grant must still
+    // get what they asked for. What the correction removed is the grant, not
+    // the ability to make one.
+    const caps = derivePerformanceCapabilities('manager', [
+      { actionKey: 'view',      allowed: true, source: 'employee_override' },
+      { actionKey: 'view_team', allowed: true, source: 'role' },
+      { actionKey: 'view_all',  allowed: true, source: 'role' },
+    ])
+    assert.equal(caps.canAccessTeamPerformance, true)
+    assert.equal(caps.canViewAllEmployeePerformance, true)
+  })
+})

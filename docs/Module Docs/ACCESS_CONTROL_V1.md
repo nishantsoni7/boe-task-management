@@ -820,11 +820,11 @@ colleagues.
 
 ### Nobody's access changed when this applied
 
-The migration grants `view_team` and `view_all` at **role** level to `admin` and
-`manager`, which reproduces exactly what the role checks did. It touches no
-`employee_permission_overrides` row and names no individual, so no
-administrator's hand-made grant was overwritten. An employee override outranks
-the role row, so either action can now be withdrawn from one person.
+`20261109000000` granted `view_team` and `view_all` at **role** level to `admin`
+and `manager`, which reproduced exactly what the role checks did. It touched no
+`employee_permission_overrides` row and named no individual.
+
+**That role seed was withdrawn by `20261110000000` — see the next section.**
 
 ### Enforcement
 
@@ -842,3 +842,51 @@ from the caller's own bearer token, by `resolvePerformanceAccess` in
 The target's department is read from the database, never from the request, so a
 hand-typed `?userId=` cannot widen the scope, and the team routes take no
 visibility parameter at all.
+
+### Team visibility is granted, never inherited (`20261110000000`)
+
+`20261109000000` seeded `role_permissions` for `manager` with **both**
+`view_team` and `view_all`, reasoning that this reproduced the role checks it was
+replacing. Reproducing them was the mistake. It meant every manager — present and
+**future** — silently acquired sight of every employee's score the moment their
+role was set, and an administrator opening Control Center saw two capabilities
+nobody had granted.
+
+Splitting Personal from Team was the point. Leaving Team attached to the role
+name undid half of it: the module stopped being role-derived for the person the
+defect harmed and stayed role-derived for everybody else.
+
+**The rule, and it is the same one `20260723000000` §2 wrote for Assets &
+Access: nobody gets Performance management visibility from their role name
+except the admin.** It is granted per employee in Control Center, or not at all.
+
+| Level | `view` | `view_team` | `view_all` |
+|---|---|---|---|
+| System default | deny | deny | deny |
+| Role `admin` | allow | allow | allow |
+| Role `manager` | *(no row)* | *(no row)* | *(no row)* |
+| Employee override | every active employee: allow | granted per person | granted per person |
+
+The forward migration:
+
+1. **deletes** the two `manager` role rows — `DELETE`, not `allowed = false`,
+   because `role_permissions` has no `revoked_at` and a `false` row is an active
+   role-level **deny** that would be a statement about every future manager.
+   Scoped to `module_key = 'performance'`, those two action keys, and
+   `role <> 'admin'`;
+2. **inserts** two `employee_permission_overrides` rows for the one employee
+   whose job is company-wide execution monitoring, targeted by `users.id` (the
+   repository's convention for a per-employee grant — never by display name),
+   with `granted_by` resolved to the acting administrator by role;
+3. touches **no** `permission_actions` or `module_permission_actions` row, so
+   both capabilities stay registered and default-deny;
+4. refuses to run if the targeted id is not the reviewed account, is inactive, or
+   would end up without Personal Performance.
+
+The applied `20261109000000` is **not edited** — editing an applied migration
+makes the repository disagree with the database it claims to describe.
+
+**Consequence, by design:** a manager holding no explicit grant sees their own
+Performance and no team screen. Restoring team access is one tick of **Team
+Performance** in Control Center — a decision somebody makes, rather than a side
+effect of a job title.
