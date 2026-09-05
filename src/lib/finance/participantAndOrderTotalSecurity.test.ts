@@ -801,6 +801,9 @@ describe('the applied migrations are frozen', () => {
       // Half-day company holidays: adds holiday_type/half_session to
       // payroll_holidays. Touches nothing this list already accounts for.
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ])
   })
 
@@ -867,10 +870,14 @@ describe('the applied migrations are frozen', () => {
       // and the payroll salary addition. Three new credits tables of its own; it
       // touches nothing any other module creates.
       '20261104000000_boe_credits_phase_1d.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users. Unapplied, and last in filename order, so it lands after
+      // every file above it whatever sequence the branches merge in.
+      '20261106000000_employee_designation_level.sql',
     ])
-    // 115 and 116 are deliberately absent: both have been pushed, so they
-    // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore
-    // NOT in the guard below.
+    // 115, 116 and 20261105000000 are deliberately absent: all have been
+    // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
+    // are therefore NOT in the guard below.
     for (const [file] of FROZEN) {
       assert.ok(file.slice(-70).slice(0, 14) <= '20261008000000'
         || !/2026100900|2026101000|2026101100|2026101200|2026101300|2026101400/.test(file),

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, Layers, X, Hash, Eraser, DatabaseZap,
+  ClipboardList,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -35,9 +36,11 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
     title: 'Control Center',
     subtitle: 'Administration workspace for people, access and system controls.',
   },
+  // Retained so an old ?tab=people bookmark still names something while the
+  // main page redirects it to /people, where employee administration now lives.
   people: {
     group: 'People', title: 'Employees',
-    subtitle: 'Everyone with a BOE account — department, role, position and status.',
+    subtitle: 'Everyone with a BOE account — department, designation, level and status.',
   },
   departments: {
     group: 'People', title: 'Departments',
@@ -54,8 +57,12 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
 }
 
 const PATH_HEADINGS: Record<string, Heading> = {
+  [`${MAIN_PATH}/people`]: {
+    group: 'People', title: 'Employees',
+    subtitle: 'Add, edit and retire employee accounts — department, designation, level, status and access.',
+  },
   [`${MAIN_PATH}/positions`]: {
-    group: 'People', title: 'Positions',
+    group: 'People', title: 'Designations',
     subtitle: 'Job titles available on employee records.',
   },
   [`${MAIN_PATH}/permissions`]: {
@@ -218,13 +225,14 @@ function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; o
 }
 
 // Every entry is a real link, so Next prefetches it and Back/Forward walk
-// through sections. Overview, Employees, Departments and Order Numbering are
-// tabs of the main page: on that page a tab link REPLACES the history entry,
-// exactly as the in-place switch always did; from any other section it pushes.
+// through sections. Overview, Departments and Order Numbering are tabs of the
+// main page: on that page a tab link REPLACES the history entry, exactly as the
+// in-place switch always did; from any other section it pushes.
 //
 // What is deliberately NOT here:
-//   Roles              — nothing manages roles; the three values are fixed in
-//                        code and shown as a field on the employee.
+//   Roles              — nothing manages the three system roles; they are fixed
+//                        in code and set as a field on the employee, under
+//                        Access in the member dialog.
 //   Module Visibility  — a second, parallel way to decide who sees a module,
 //                        retired from navigation in favour of Access Control.
 //                        ?tab=modules still resolves for rollback.
@@ -255,12 +263,14 @@ function ControlCenterNav({
 
       <div className={cc.navGroup}>
         <span className={cc.navGroupLabel}>People</span>
+        {/* Employee administration is a route of its own, not a tab: it is the
+            one Members area now, so it carries the `employee_records` module
+            gate its own segment layout applies. */}
         <NavItem
           label="Employees"
           icon={icon(Users)}
-          href={tabHref('people')}
-          replace={onMain}
-          active={onMain && tab === 'people'}
+          href={`${MAIN_PATH}/people`}
+          active={pathname === `${MAIN_PATH}/people`}
           onNavigate={onNavigate}
         />
         <NavItem
@@ -272,7 +282,7 @@ function ControlCenterNav({
           onNavigate={onNavigate}
         />
         <NavItem
-          label="Positions"
+          label="Designations"
           icon={icon(Briefcase)}
           href={`${MAIN_PATH}/positions`}
           active={pathname === `${MAIN_PATH}/positions`}
@@ -322,6 +332,18 @@ function ControlCenterNav({
           icon={icon(DatabaseZap)}
           href={`${MAIN_PATH}/data-management`}
           active={pathname === `${MAIN_PATH}/data-management`}
+          onNavigate={onNavigate}
+        />
+        {/* Member-wise task reporting and permanent task deletion. It used to
+            be the "Super Admin" entry in the Task Management sidebar, which was
+            two things at once: administrative navigation inside a module that
+            should hold task work only, and a name that now collides with the
+            Super Admin designation level. The route and the page are unchanged. */}
+        <NavItem
+          label="Task Records"
+          icon={icon(ClipboardList)}
+          href="/super-admin"
+          active={pathname === '/super-admin'}
           onNavigate={onNavigate}
         />
       </div>

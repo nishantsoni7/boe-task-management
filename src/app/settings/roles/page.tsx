@@ -9,23 +9,30 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useViewAs } from '@/hooks/useViewAs'
 
+// THE THREE SYSTEM ROLES — an authorization fact, not a job description.
+//
+// These are the values of `users.role`, which is what every RLS policy tests
+// and what the permission engine keys its role level on. They are NOT the
+// employee hierarchy: that is the Designation Level (Super Admin,
+// Administrator, Manager, Executive, Assistant, Trainee), it is recorded
+// separately, and it grants nothing. See src/lib/users/designationLevels.ts.
 const ROLES = [
   {
-    name: 'Admin',
+    name: 'Administrator',
     value: 'admin',
-    description: 'Full access. Can manage members, settings, and all tasks.',
+    description: 'Full system authority: every module, the Control Center, and employee administration.',
     dotColor: colors.blue,
   },
   {
     name: 'Manager',
     value: 'manager',
-    description: 'Can view team tasks, assign work, and access the manager view.',
+    description: 'Standard access plus team performance reporting. Module access is still granted individually.',
     dotColor: colors.amber,
   },
   {
     name: 'Member',
     value: 'member',
-    description: 'Standard employee. Can create and manage their own tasks.',
+    description: 'Standard access. Every module they can open is granted individually in Access Control.',
     dotColor: colors.green,
   },
 ]
@@ -64,8 +71,8 @@ export default function RolesPage() {
   return (
     <DashboardLayout
       profile={profile}
-      title="Roles"
-      subtitle="Settings · Roles"
+      title="System Roles"
+      subtitle="Settings · System Roles"
       onSignOut={handleSignOut}
     >
       <div style={{ maxWidth: 560, padding: '24px 0' }}>
@@ -106,7 +113,11 @@ export default function RolesPage() {
         </div>
 
         <p style={{ marginTop: 24, fontSize: 12, color: colors.muted }}>
-          Roles are assigned per member in the Members page. Full permissions management coming soon.
+          A system role is set on the employee record in Control Center › People › Employees,
+          under Access. What each person can open, module by module, is decided in
+          Control Center › Access. The employee&apos;s Designation Level — Super Admin,
+          Administrator, Manager, Executive, Assistant or Trainee — is a separate,
+          organisational fact and grants no access on its own.
         </p>
       </div>
     </DashboardLayout>

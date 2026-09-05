@@ -3,16 +3,18 @@
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  Home, ClipboardList, Bell, TrendingUp, MoreHorizontal,
-  CheckSquare, Briefcase, Settings, LogOut, Users,
+  Home, ClipboardList, Bell, MoreHorizontal,
+  CheckSquare, Briefcase, LogOut, UserCog,
 } from 'lucide-react'
-import type { UserProfile } from '@/lib/types'
-import { useViewAs } from '@/hooks/useViewAs'
 
 type NavCounts = { myActive: number; assignedByMeActive: number }
 
+// `profile` is deliberately NOT a prop any more. It existed for the two
+// role-derived entries this bar used to carry — Team Performance and the admin
+// Settings link — and both have gone: Performance is reached from its own
+// launcher card, and administration lives in the Control Center. What is left
+// is the same for everybody, so the bar has no reason to know who is looking.
 type Props = {
-  profile:      UserProfile | null
   /** Opt-in: renders the "Notifs" tab. Defaults to false so a module with no
    *  notification system of its own (e.g. Assets & Access, which reuses this
    *  bottom nav) never shows a Task Management notifications tab. */
@@ -123,18 +125,13 @@ function MoreItem({
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function MobileBottomNav({
-  profile, showNotifications = false, notificationsHref = '/notifications',
+  showNotifications = false, notificationsHref = '/notifications',
   unreadNotifs = 0, navCounts, onSignOut,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false)
 
   const router   = useRouter()
   const pathname = usePathname()
-  const { viewAsUserId } = useViewAs()
-  const inViewMode = !!viewAsUserId
-
-  const isAdmin          = profile?.role === 'admin'
-  const isAdminOrManager = isAdmin || profile?.role === 'manager'
 
   const go = (path: string) => {
     setMoreOpen(false)
@@ -148,9 +145,8 @@ export function MobileBottomNav({
 
   const myTasksActive   = pathname.startsWith('/tasks/my') || pathname.startsWith('/tasks/cancelled')
   const notifsActive    = showNotifications && pathname.startsWith(notificationsHref)
-  const perfActive      = pathname.startsWith('/performance')
   const homeActive      = pathname === '/dashboard'
-  const moreActive      = !homeActive && !myTasksActive && !notifsActive && !perfActive
+  const moreActive      = !homeActive && !myTasksActive && !notifsActive
 
   const myBadge   = navCounts?.myActive   || 0
   const notifBadge = unreadNotifs
@@ -196,15 +192,18 @@ export function MobileBottomNav({
           <MoreItem label="Assigned By Me"  icon={CheckSquare} accent="#2E9E6B" onClick={() => go('/tasks/assigned-by-me')} />
           <MoreItem label="Assets & Access" icon={Briefcase}   accent="#E8A030" onClick={() => go('/assets-access')} />
 
-          {/* Matches the desktop rule: keyed on the real signed-in user, and
-              hidden while impersonating so View As shows what that employee
-              actually sees. */}
-          {isAdminOrManager && !inViewMode && (
-            <MoreItem label="Team Performance"  icon={Users}   accent="#D94F4F" onClick={() => go('/performance/team')} />
-          )}
-          {isAdmin && !inViewMode && (
-            <MoreItem label="Settings"          icon={Settings} accent="#6B7384" onClick={() => go('/settings')} />
-          )}
+          {/* Account Settings, for everybody — the mobile counterpart of the
+              user menu at the foot of the sidebar. It replaces the admin-only
+              Settings entry that used to sit here: that one led to the app's
+              administration screens, which belong to the Control Center, and
+              its only universally useful control was changing your own
+              password — which is what /account is.
+
+              TEAM PERFORMANCE IS GONE FROM HERE TOO, and so is the Performance
+              tab in the bar below. Performance is its own BOE module with its
+              own launcher card and its own access rules; Task Management is no
+              longer a second way in. Nothing about that module changed. */}
+          <MoreItem label="Account Settings" icon={UserCog} accent="#6B7384" onClick={() => go('/account')} />
 
           {/* Divider */}
           <div style={{ height: 1, background: '#F0F1F3', margin: '8px 20px' }} />
@@ -232,7 +231,6 @@ export function MobileBottomNav({
         {showNotifications && (
           <BottomNavItem label="Notifs"    icon={Bell}          active={notifsActive}  badge={notifBadge} onClick={() => go(notificationsHref)} />
         )}
-        <BottomNavItem label="Performance" icon={TrendingUp}    active={perfActive}    onClick={() => go('/performance')} />
         <BottomNavItem
           label="More"
           icon={MoreHorizontal}

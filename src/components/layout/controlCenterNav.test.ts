@@ -17,7 +17,7 @@ const shell = read('src/components/layout/ControlCenterLayout.tsx')
 
 describe('Control Center navigation', () => {
   test('offers exactly the groups and entries that have a destination', () => {
-    for (const label of ['Overview', 'Employees', 'Departments', 'Positions', 'By Employee', 'By Module', 'Order Numbering', 'Test Data Cleanup', 'Data Management']) {
+    for (const label of ['Overview', 'Employees', 'Departments', 'Designations', 'By Employee', 'By Module', 'Order Numbering', 'Test Data Cleanup', 'Data Management', 'Task Records']) {
       assert.ok(shell.includes(`label="${label}"`), `${label} must be in the sidebar`)
     }
     for (const group of ['People', 'Access', 'System']) {
@@ -26,9 +26,27 @@ describe('Control Center navigation', () => {
   })
 
   test('withholds what has no destination or was retired', () => {
-    for (const label of ['Roles', 'Module Visibility', 'Action Queue', 'Change History']) {
+    // "Positions" is gone as a LABEL, not as a screen: the same route and the
+    // same editor are offered as Designations, which is what the field is
+    // called everywhere else now.
+    for (const label of ['Roles', 'Positions', 'Module Visibility', 'Action Queue', 'Change History']) {
       assert.equal(shell.includes(`label="${label}"`), false, `${label} must not be offered`)
     }
+  })
+
+  test('Employees is a route, not a tab, so its module gate can apply', () => {
+    // Employee administration carries the `employee_records` ModuleGuard, which
+    // needs a segment of its own — a ?tab= value cannot be guarded.
+    assert.ok(shell.includes('href={`${MAIN_PATH}/people`}'))
+    assert.equal(shell.includes("href={tabHref('people')}"), false)
+    const layout = read('src/app/admin/control-center/people/layout.tsx')
+    assert.ok(layout.includes('moduleKey="employee_records"'))
+  })
+
+  test('Task Records is the old Task Management "Super Admin" entry, moved not rebuilt', () => {
+    assert.ok(shell.includes('href="/super-admin"'))
+    const dashboard = read('src/components/layout/DashboardLayout.tsx')
+    assert.equal(dashboard.includes('label="Super Admin"'), false, 'it must not still be in Task Management')
   })
 
   test('every entry is a real link, with tab links replacing history on the main page', () => {
@@ -41,7 +59,7 @@ describe('Control Center navigation', () => {
     assert.ok(shell.includes("tabParam === 'modules'"))
   })
 
-  test('Positions is reachable inside the shell without a second implementation', () => {
+  test('Designations is reachable inside the shell without a second implementation', () => {
     const route = read('src/app/admin/control-center/positions/page.tsx')
     const settings = read('src/app/settings/positions/page.tsx')
     assert.ok(route.includes("from '@/components/positions/PositionsManager'"))

@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
 import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
-import { Search, Users, ShieldCheck, Settings2, ArrowUpRight } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Users, ShieldCheck, Settings2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { resolveControlCenterTab, type ControlCenterTab } from '@/components/layout/ControlCenterLayout'
@@ -304,7 +304,7 @@ function OverviewTab({
     attention.push({
       key: 'no-dept',
       text: <>{withoutDepartment.length} active {withoutDepartment.length === 1 ? 'employee has' : 'employees have'} no department.</>,
-      href: `${MAIN_PATH}?tab=people`, action: 'Review employees',
+      href: `${MAIN_PATH}/people`, action: 'Review employees',
     })
   }
   for (const d of inactiveWithPeople) {
@@ -353,14 +353,11 @@ function OverviewTab({
       <div className={cc.quick}>
         <div className={cc.quickCard}>
           <div className={cc.quickHead}><Users size={15} strokeWidth={1.9} />People</div>
-          <div className={cc.quickDesc}>Who has an account, which department and position they hold, and whether the account is active.</div>
+          <div className={cc.quickDesc}>Who has an account, which department, designation and level they hold, and whether the account is active.</div>
           <div className={cc.quickLinks}>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=people`}>Employees</Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/people`}>Employees</Link>
             <Link className={cc.quickLink} href={`${MAIN_PATH}?tab=departments`}>Departments</Link>
-            <Link className={cc.quickLink} href={`${MAIN_PATH}/positions`}>Positions</Link>
-            <Link className={`${cc.quickLink} ${cc.quickLinkMuted}`} href="/admin/members">
-              Employee Records <ArrowUpRight size={11} style={{ verticalAlign: '-1px' }} />
-            </Link>
+            <Link className={cc.quickLink} href={`${MAIN_PATH}/positions`}>Designations</Link>
           </div>
         </div>
         <div className={cc.quickCard}>
@@ -460,6 +457,7 @@ function ControlCenterPageInner() {
   // reactively via useSearchParams so cross-page navigation lands on the right
   // section on the first render.
   const searchParams = useSearchParams()
+  const router = useRouter()
   const tab: ControlCenterTab = resolveControlCenterTab(searchParams.get('tab'))
 
   // ── Module edit modal ────────────────────────────────────────────────────
@@ -492,18 +490,6 @@ function ControlCenterPageInner() {
   const [editingPersonSaving,setEditingPersonSaving]= useState(false)
   const [editingPersonError, setEditingPersonError] = useState('')
 
-  // ── User department modal ─────────────────────────────────────────────────
-  const [editUser,   setEditUser]   = useState<UserProfile | null>(null)
-  const [userTeam,   setUserTeam]   = useState('')
-  const [userSaving, setUserSaving] = useState(false)
-  const [userError,  setUserError]  = useState('')
-
-  // ── People search/filter ─────────────────────────────────────────────────
-  const [peopleSearch,       setPeopleSearch]       = useState('')
-  const [peopleDeptFilter,   setPeopleDeptFilter]   = useState('')
-  const [peopleRoleFilter,   setPeopleRoleFilter]   = useState('')
-  const [peopleStatusFilter, setPeopleStatusFilter] = useState('')
-
   // ── Init ─────────────────────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
@@ -520,19 +506,14 @@ function ControlCenterPageInner() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // People tab's filtered view. Computed with useMemo (not a plain const)
-  // because it must run unconditionally every render, same as the other
-  // hooks above — it's used after the `if (loading) return` below, but its
-  // own hook call has to happen before that early return.
-  const filteredMembers = useMemo(() => {
-    const q = peopleSearch.trim().toLowerCase()
-    return members
-      .filter(m => !m.is_deleted)
-      .filter(m => !q || m.full_name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q))
-      .filter(m => !peopleDeptFilter || m.team === peopleDeptFilter)
-      .filter(m => !peopleRoleFilter || m.role === peopleRoleFilter)
-      .filter(m => !peopleStatusFilter || (peopleStatusFilter === 'active' ? m.is_active : !m.is_active))
-  }, [members, peopleSearch, peopleDeptFilter, peopleRoleFilter, peopleStatusFilter])
+  // ?tab=people was where the read-only employee table lived. Employee
+  // administration is now one screen at /people — the list AND every operation
+  // on a person, which used to be split across this tab and a separate Employee
+  // Records page. The tab keeps resolving so an old bookmark still lands
+  // somewhere useful; it just lands on the real screen.
+  useEffect(() => {
+    if (tab === 'people') router.replace(`${MAIN_PATH}/people`)
+  }, [tab, router])
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
@@ -608,12 +589,6 @@ function ControlCenterPageInner() {
   function cancelEditPerson() {
     setEditingPersonId(null)
     setEditingPersonError('')
-  }
-
-  function openEditUser(user: UserProfile) {
-    setEditUser(user)
-    setUserTeam(user.team ?? '')
-    setUserError('')
   }
 
   // ── Save handlers ──────────────────────────────────────────────────────────
@@ -742,32 +717,6 @@ function ControlCenterPageInner() {
     }
   }
 
-  async function saveUserDept() {
-    if (!editUser) return
-    setUserSaving(true); setUserError('')
-    try {
-      const res = await fetch('/api/update-member', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          userId:    editUser.id,
-          full_name: editUser.full_name,
-          team:      userTeam,
-          role:      editUser.role,
-          position:  editUser.position ?? null,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok) { setUserError(json.error ?? 'Save failed'); return }
-      setMembers(prev => prev.map(m =>
-        m.id === editUser.id ? { ...m, team: userTeam } : m
-      ))
-      setEditUser(null)
-    } finally {
-      setUserSaving(false)
-    }
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (loading) return <ControlCenterSkeleton />
@@ -799,9 +748,6 @@ function ControlCenterPageInner() {
   const peopleInDept = (key: string) =>
     members.filter(m => m.team === key).length
 
-  const peopleRoles = Array.from(new Set(members.filter(m => !m.is_deleted).map(m => m.role))).sort()
-  const peopleCount = members.filter(m => !m.is_deleted).length
-
   return (
     <>
       {/* ── Overview ─────────────────────────────────────────────────────── */}
@@ -811,92 +757,6 @@ function ControlCenterPageInner() {
 
       {/* ── Order Numbering ──────────────────────────────────────────────── */}
       {tab === 'order-numbering' && <OrderNumberCycleTab />}
-
-      {/* ── Employees ────────────────────────────────────────────────────── */}
-      {tab === 'people' && (
-        <CcSection>
-          <CcToolbar>
-            <div className={cc.search}>
-              <Search size={13} strokeWidth={2} />
-              <input
-                className={cc.control}
-                placeholder="Search name or email"
-                aria-label="Search employees"
-                value={peopleSearch}
-                onChange={e => setPeopleSearch(e.target.value)}
-              />
-            </div>
-            <select className={cc.control} aria-label="Department" value={peopleDeptFilter} onChange={e => setPeopleDeptFilter(e.target.value)}>
-              <option value="">All departments</option>
-              {depts.map(d => (
-                <option key={d.department_key} value={d.department_key}>{d.department_name}</option>
-              ))}
-            </select>
-            <select className={cc.control} aria-label="Role" value={peopleRoleFilter} onChange={e => setPeopleRoleFilter(e.target.value)}>
-              <option value="">All roles</option>
-              {peopleRoles.map(r => (
-                <option key={r} value={r} style={{ textTransform: 'capitalize' }}>{r}</option>
-              ))}
-            </select>
-            <select className={cc.control} aria-label="Status" value={peopleStatusFilter} onChange={e => setPeopleStatusFilter(e.target.value)}>
-              <option value="">All statuses</option>
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            <span className={cc.count}>
-              {filteredMembers.length === peopleCount
-                ? `${peopleCount} ${peopleCount === 1 ? 'employee' : 'employees'}`
-                : `${filteredMembers.length} of ${peopleCount}`}
-            </span>
-            <span className={cc.toolbarGrow} />
-            {/* Accounts, roles, positions and passwords are managed in Employee
-                Records. This screen changes departments only, so the full
-                editor is one click away rather than duplicated here. */}
-            <Link href="/admin/members" className="boe-btn boe-btn-ghost">
-              Employee Records <ArrowUpRight size={12} />
-            </Link>
-          </CcToolbar>
-
-          {filteredMembers.length === 0 ? (
-            <CcEmpty message="No employees match these filters." />
-          ) : (
-            <CcTable>
-              <thead>
-                <tr>
-                  <th>Employee</th>
-                  <th>Department</th>
-                  <th>Role</th>
-                  <th>Position</th>
-                  <th>Status</th>
-                  <th className={cc.right}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredMembers.map(member => (
-                  <tr key={member.id}>
-                    <td>
-                      <div className={cc.person}>
-                        <Avatar name={member.full_name} size={26} />
-                        <div style={{ minWidth: 0 }}>
-                          <div className={cc.personName}>{member.full_name}</div>
-                          <div className={cc.personSub}>{member.email}</div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className={member.team ? undefined : cc.faint}>{deptLabel(member.team)}</td>
-                    <td className={`${cc.muted} ${cc.cap}`}>{member.role}</td>
-                    <td className={member.position ? cc.muted : cc.faint}>{member.position ?? '—'}</td>
-                    <td><ActiveBadge active={member.is_active} /></td>
-                    <td className={cc.right}>
-                      <button className={cc.linkBtn} onClick={() => openEditUser(member)}>Change department</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </CcTable>
-          )}
-        </CcSection>
-      )}
 
       {/* ── Departments ──────────────────────────────────────────────────── */}
       {tab === 'departments' && (
@@ -1231,40 +1091,6 @@ function ControlCenterPageInner() {
         </CcDialog>
       )}
 
-      {/* ── Employee department dialog ────────────────────────────────────── */}
-      {editUser && (
-        <CcDialog
-          title={editUser.full_name}
-          subtitle="Only the department is changed here. Roles, positions and account status are managed in Employee Records."
-          onClose={() => setEditUser(null)}
-          footer={
-            <>
-              <button className="boe-btn boe-btn-ghost" onClick={() => setEditUser(null)}>Cancel</button>
-              <button className="boe-btn boe-btn-primary" onClick={saveUserDept} disabled={userSaving}>
-                {userSaving ? 'Saving…' : 'Save'}
-              </button>
-            </>
-          }
-        >
-          <CcField label="Department">
-            <select
-              className={cc.fieldControl}
-              value={userTeam}
-              onChange={e => setUserTeam(e.target.value)}
-              autoFocus
-            >
-              <option value="">— No department —</option>
-              {activeDepts.map(d => (
-                <option key={d.department_key} value={d.department_key}>
-                  {d.department_name}
-                </option>
-              ))}
-            </select>
-          </CcField>
-
-          {userError && <div className={cc.error}>{userError}</div>}
-        </CcDialog>
-      )}
     </>
   )
 }

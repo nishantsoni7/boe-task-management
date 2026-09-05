@@ -72,6 +72,16 @@ export type UserProfile = {
   role: UserRole
   team: string
   position: string | null
+  /**
+   * Organisational hierarchy rung — see src/lib/users/designationLevels.ts.
+   * Null for everybody until an administrator sets one: the column was
+   * deliberately not backfilled. INFORMATIONAL ONLY — it grants no access, and
+   * `role` above remains the authorization field.
+   *
+   * Optional because most reads of UserProfile do not select it — the same
+   * reason performance_tracking_enabled below is optional.
+   */
+  designation_level?: string | null
   is_active: boolean
   created_at: string
   // Employee Master V1 fields (nullable — backfilled gradually)

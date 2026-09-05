@@ -9,6 +9,7 @@ import { initials } from '@/lib/ui'
 import { colors } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeBrandIcon } from '@/components/layout/BoeBrandIcon'
+import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designationLevels'
 
 export default function AccountPage() {
   return (
@@ -40,7 +41,7 @@ function AccountPageInner() {
       if (!session) { router.push('/login'); return }
       const { data } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+        .select('id, full_name, email, phone, role, team, position, designation_level, is_active, created_at')
         .eq('id', session.user.id)
         .single()
       setProfile(data as UserProfile)
@@ -73,6 +74,8 @@ function AccountPageInner() {
   }
 
   if (loading) return <LoadingScreen />
+
+  const level = designationLevelLabel(profile?.designation_level)
 
   return (
     <div style={{
@@ -141,9 +144,19 @@ function AccountPageInner() {
             </div>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: '#111318' }}>{profile.full_name}</div>
-              <div style={{ fontSize: 12.5, color: '#8C94A6', marginTop: 2, textTransform: 'capitalize' }}>
-                {profile.role}{profile.team ? ` · ${profile.team}` : ''}{profile.position ? ` · ${profile.position}` : ''}
+              {/* Designation and department — the employee's own words for
+                  their job. `role` used to lead this line, which meant most of
+                  the company opened their account page and read the word
+                  "member" as a description of themselves. It is the
+                  authorization role and it does not belong here. */}
+              <div style={{ fontSize: 12.5, color: '#8C94A6', marginTop: 2 }}>
+                {employeeSubtitle(profile)}
               </div>
+              {level && (
+                <div style={{ fontSize: 11.5, color: '#A0A9BE', marginTop: 2 }}>
+                  Level: {level}
+                </div>
+              )}
               <div style={{ fontSize: 12, color: '#A0A9BE', marginTop: 2 }}>{profile.email}</div>
             </div>
             <User size={18} strokeWidth={1.6} color="#C8CDD9" style={{ marginLeft: 'auto', flexShrink: 0 }} />

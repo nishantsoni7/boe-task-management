@@ -212,7 +212,7 @@ export default function ViewUserPage() {
             style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 12px' }}
           >
             <ArrowLeft size={13} />
-            Back to Super Admin
+            Back to Task Records
           </button>
         </div>
 

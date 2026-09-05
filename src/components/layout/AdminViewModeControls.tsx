@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
   Users, ChevronDown, LogOut, Settings,
   Eye, X,
@@ -11,6 +11,7 @@ import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
 import { createClient } from '@/lib/supabase/client'
+import { employeeSubtitle } from '@/lib/users/designationLevels'
 
 // ─── ViewModeBanner ───────────────────────────────────────────────────────────
 // Amber "ADMIN VIEW MODE" inline banner rendered inside the page body.
@@ -70,9 +71,15 @@ export function ViewModeBanner() {
 }
 
 // ─── ViewModeSidebarSection ───────────────────────────────────────────────────
-// Bottom sidebar block: profile chip + Switch User dropdown (admin) + sign out.
-// When impersonating, shows the viewed-user chip + Exit View Mode.
+// Bottom sidebar block: the Switch User dropdown (admin only) above one user
+// identity control that opens Account Settings and Sign Out — see UserMenu.
+// When impersonating, shows the viewed-user chip + Exit View Mode instead.
 // Renders nothing if profile is null.
+//
+// Every module layout mounts this, so the identity control is the same on the
+// Task Management, Orders, Finance, Assets, Meetings, Samples, Attendance,
+// Payroll, Customer Reviews, Image Editor, Showroom and Control Center shells,
+// and on the launcher.
 
 export function ViewModeSidebarSection({
   profile,
@@ -87,7 +94,6 @@ export function ViewModeSidebarSection({
   const { viewAsUserId, viewAsProfile, enterViewMode, exitViewMode } = useViewAs()
   const [switcherOpen, setSwitcherOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
-  const router = useRouter()
 
   const isRealAdmin = profile?.role === 'admin'
   const inViewMode  = !!viewAsUserId
@@ -98,7 +104,7 @@ export function ViewModeSidebarSection({
     queryFn: async () => {
       const { data } = await supabase
         .from('users')
-        .select('id, full_name, email, phone, role, team, position, is_active, created_at')
+        .select('id, full_name, email, phone, role, team, position, designation_level, is_active, created_at')
         .eq('is_active', true)
         .order('full_name')
       return (data as UserProfile[]) ?? []
@@ -147,8 +153,8 @@ export function ViewModeSidebarSection({
               <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {viewAsProfile?.full_name}
               </div>
-              <div style={{ fontSize: '10.5px', color: '#D97706', textTransform: 'capitalize' }}>
-                {viewAsProfile?.role} · {viewAsProfile?.team}
+              <div style={{ fontSize: '10.5px', color: '#D97706' }}>
+                {viewAsProfile ? employeeSubtitle(viewAsProfile) : ''}
               </div>
             </div>
           </div>
@@ -167,30 +173,8 @@ export function ViewModeSidebarSection({
           </button>
         </div>
       ) : (
-        /* ── Normal mode: profile chip + optional switcher + sign out ── */
+        /* ── Normal mode: the user menu + the admin View As switcher ── */
         <>
-          {/* Profile chip */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px 6px' }}>
-            <div style={{
-              width: 30, height: 30, borderRadius: '8px',
-              background: '#1A2035',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '11px', fontWeight: 700,
-              color: '#DC1F2E', flexShrink: 0,
-              letterSpacing: '0.02em',
-            }}>
-              {initials(profile.full_name)}
-            </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <div style={{ fontSize: '12.5px', fontWeight: 600, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {profile.full_name}
-              </div>
-              <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
-                {profile.role} · {profile.team}
-              </div>
-            </div>
-          </div>
-
           {/* Switch User — admin only */}
           {isRealAdmin && members.length > 0 && (
             <div style={{ position: 'relative', margin: '4px 0 6px' }}>
@@ -262,8 +246,10 @@ export function ViewModeSidebarSection({
                             <div style={{ fontSize: '12.5px', fontWeight: 500, color: '#111318', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {member.full_name}
                             </div>
-                            <div style={{ fontSize: '10.5px', color: '#8C94A6', textTransform: 'capitalize' }}>
-                              {member.role}
+                            {/* Their designation, not `member` — the switcher
+                                names people the way the rest of the app does. */}
+                            <div style={{ fontSize: '10.5px', color: '#8C94A6' }}>
+                              {employeeSubtitle(member)}
                             </div>
                           </div>
                         </button>
@@ -274,27 +260,200 @@ export function ViewModeSidebarSection({
             </div>
           )}
 
-          {/* Account Settings — shown when href provided */}
-          {accountSettingsHref && (
-            <button
-              className="boe-nav-item"
-              onClick={() => router.push(accountSettingsHref)}
-              style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
-            >
-              <Settings size={14} strokeWidth={1.8} />
-              Account Settings
-            </button>
-          )}
+          {/* ONE identity control, in place of the chip + two loose buttons
+              that used to sit here. Account Settings and Sign Out are the two
+              things it opens, and Control Center deliberately is not among
+              them: that is application navigation for authorized
+              administrators, not an account action. */}
+          <UserMenu
+            profile={profile}
+            accountSettingsHref={accountSettingsHref}
+            onSignOut={onSignOut}
+          />
+        </>
+      )}
+    </div>
+  )
+}
 
-          {/* Sign out */}
-          <button
-            onClick={onSignOut}
-            className="boe-nav-item"
-            style={{ color: '#8C94A6', fontSize: '12.5px', gap: '8px' }}
+// ─── UserMenu ─────────────────────────────────────────────────────────────────
+//
+// The signed-in person, and the two actions that belong to their account.
+//
+// WHAT IT SHOWS. Avatar, name, and the same secondary line every other screen
+// uses — job title, or the organisational level when there is no title,
+// qualified by department. Never `member`: that is the authorization role, and
+// showing an employee a technical label as though it described their job is the
+// exact confusion this work exists to remove. employeeSubtitle cannot leak it,
+// because it is not given `role` at all.
+//
+// BEHAVIOUR. Click outside closes. Escape closes and returns focus to the
+// trigger, so a keyboard user is never stranded. Up/Down move between the two
+// items and Home/End jump to the ends; opening moves focus to the first item.
+// The trigger carries aria-haspopup="menu" and aria-expanded, and the popover is
+// role="menu" with role="menuitem" children, so a screen reader announces a menu
+// rather than two anonymous buttons.
+//
+// SIGN OUT IS UNCHANGED — it calls the same `onSignOut` each layout already
+// passed, which is that layout's own supabase.auth.signOut() plus its redirect.
+// Account Settings navigates to the same `accountSettingsHref` the old button
+// did, per-layout returnTo included.
+function UserMenu({
+  profile, accountSettingsHref, onSignOut,
+}: {
+  profile: UserProfile
+  accountSettingsHref?: string
+  onSignOut: () => void
+}) {
+  const router = useRouter()
+  const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const itemRefs   = useRef<(HTMLButtonElement | null)[]>([])
+
+  const close = useCallback((returnFocus: boolean) => {
+    setOpen(false)
+    if (returnFocus) triggerRef.current?.focus()
+  }, [])
+
+  // Escape anywhere closes it — a menu that only closes when you find its
+  // trigger again is a trap.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); close(true) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open, close])
+
+  // Focus the first item on open, which is what makes the menu usable from the
+  // keyboard at all: Enter on the trigger lands somewhere.
+  useEffect(() => {
+    if (open) itemRefs.current[0]?.focus()
+  }, [open])
+
+  const items: { label: string; icon: React.ReactNode; onSelect: () => void }[] = [
+    ...(accountSettingsHref ? [{
+      label: 'Account Settings',
+      icon: <Settings size={14} strokeWidth={1.8} />,
+      onSelect: () => { setOpen(false); router.push(accountSettingsHref) },
+    }] : []),
+    {
+      label: 'Sign Out',
+      icon: <LogOut size={14} strokeWidth={1.8} />,
+      onSelect: () => { setOpen(false); onSignOut() },
+    },
+  ]
+
+  const onItemKeyDown = (e: React.KeyboardEvent, index: number) => {
+    if (e.key === 'ArrowDown')      { e.preventDefault(); itemRefs.current[(index + 1) % items.length]?.focus() }
+    else if (e.key === 'ArrowUp')   { e.preventDefault(); itemRefs.current[(index - 1 + items.length) % items.length]?.focus() }
+    else if (e.key === 'Home')      { e.preventDefault(); itemRefs.current[0]?.focus() }
+    else if (e.key === 'End')       { e.preventDefault(); itemRefs.current[items.length - 1]?.focus() }
+    else if (e.key === 'Tab')       { close(false) }
+  }
+
+  const subtitle = employeeSubtitle(profile)
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Account menu for ${profile.full_name}`}
+        style={{
+          width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+          padding: '8px 10px', borderRadius: '8px',
+          background: open ? 'rgba(0,0,0,0.05)' : 'transparent',
+          border: 'none', cursor: 'pointer', textAlign: 'left',
+          font: 'inherit', transition: 'background 0.12s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.05)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = open ? 'rgba(0,0,0,0.05)' : 'transparent' }}
+      >
+        <span style={{
+          width: 30, height: 30, borderRadius: '8px',
+          background: '#1A2035',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: '11px', fontWeight: 700,
+          color: '#DC1F2E', flexShrink: 0,
+          letterSpacing: '0.02em',
+        }}>
+          {initials(profile.full_name)}
+        </span>
+        <span style={{ minWidth: 0, flex: 1 }}>
+          <span style={{
+            display: 'block', fontSize: '12.5px', fontWeight: 600, color: '#111318',
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>
+            {profile.full_name}
+          </span>
+          {subtitle && (
+            <span style={{
+              display: 'block', fontSize: '10.5px', color: '#8C94A6',
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+            }}>
+              {subtitle}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          size={13} strokeWidth={2}
+          style={{
+            flexShrink: 0, color: '#8C94A6',
+            transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s',
+          }}
+        />
+      </button>
+
+      {open && (
+        <>
+          {/* Click-away. A fixed full-screen catcher rather than a document
+              listener, so a tap anywhere on mobile closes the menu without
+              also activating what is underneath. */}
+          <div
+            style={{ position: 'fixed', inset: 0, zIndex: 49 }}
+            onClick={() => close(false)}
+          />
+          <div
+            role="menu"
+            aria-label="Account"
+            style={{
+              position: 'absolute', bottom: 'calc(100% + 4px)', left: 0, right: 0,
+              background: '#fff',
+              border: '1px solid #E5E7EB',
+              borderRadius: '10px',
+              boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+              zIndex: 50,
+              padding: '5px',
+            }}
           >
-            <LogOut size={14} strokeWidth={1.8} />
-            Sign out
-          </button>
+            {items.map((item, index) => (
+              <button
+                key={item.label}
+                ref={el => { itemRefs.current[index] = el }}
+                type="button"
+                role="menuitem"
+                onClick={item.onSelect}
+                onKeyDown={e => onItemKeyDown(e, index)}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', gap: '9px',
+                  padding: '8px 10px', borderRadius: '7px',
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  textAlign: 'left', font: 'inherit',
+                  fontSize: '12.5px', color: '#3D4455',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#F9FAFB' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
+              >
+                <span style={{ color: '#8C94A6', display: 'flex' }}>{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
+          </div>
         </>
       )}
     </div>

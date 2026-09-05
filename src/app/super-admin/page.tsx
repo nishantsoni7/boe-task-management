@@ -139,7 +139,7 @@ export default function SuperAdminPage() {
   return (
     <DashboardLayout
       profile={profile}
-      title="Super Admin"
+      title="Task Records"
       subtitle="Member-wise task reporting. View and permanently delete tasks."
       onSignOut={handleLogout}
     >

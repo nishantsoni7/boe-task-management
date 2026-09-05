@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { UserProfile } from '@/lib/types'
+import type { UserProfile, Position } from '@/lib/types'
 import type { ModuleVisibilityType } from '@/lib/moduleAccess'
 import { useControlCenterSession } from '@/components/layout/ControlCenterContext'
 import type { ResolvedAction } from '@/lib/permissions/accessControlChanges'
@@ -34,9 +34,11 @@ import type { ResolvedAction } from '@/lib/permissions/accessControlChanges'
 
 export const CONTROL_CENTER_STALE_MS = 30_000
 
-export const adminMembersKey = (userId: string) => ['control-center', 'admin-members', userId] as const
-export const departmentsKey  = (userId: string) => ['control-center', 'departments',   userId] as const
-export const appModulesKey   = (userId: string) => ['control-center', 'app-modules',   userId] as const
+export const adminMembersKey   = (userId: string) => ['control-center', 'admin-members',   userId] as const
+export const deletedMembersKey = (userId: string) => ['control-center', 'deleted-members', userId] as const
+export const departmentsKey    = (userId: string) => ['control-center', 'departments',     userId] as const
+export const appModulesKey     = (userId: string) => ['control-center', 'app-modules',     userId] as const
+export const positionsKey      = (userId: string) => ['control-center', 'positions',       userId] as const
 
 export type ControlCenterDepartment = {
   id: string
@@ -62,6 +64,7 @@ export type ControlCenterAppModule = {
 export const NO_MEMBERS: UserProfile[] = []
 export const NO_DEPARTMENTS: ControlCenterDepartment[] = []
 export const NO_APP_MODULES: ControlCenterAppModule[] = []
+export const NO_POSITIONS: Position[] = []
 
 /**
  * One admin-gated GET. getSession() is a local read of the stored session, not
@@ -82,6 +85,45 @@ export function useAdminMembers() {
   return useQuery<UserProfile[]>({
     queryKey: adminMembersKey(userId),
     queryFn: () => adminGet<UserProfile>('/api/admin-members', 'members'),
+    staleTime: CONTROL_CENTER_STALE_MS,
+  })
+}
+
+/**
+ * The soft-deleted accounts, from the admin-only route the Employee Records
+ * screen has always used. Separate from useAdminMembers because the two routes
+ * are separate: /api/admin-members excludes deleted rows outright, and RLS
+ * blocks a browser client from either list, which is why both go through a
+ * service-role route that re-verifies the caller is an admin.
+ */
+export function useDeletedMembers() {
+  const { userId } = useControlCenterSession()
+  return useQuery<UserProfile[]>({
+    queryKey: deletedMembersKey(userId),
+    queryFn: () => adminGet<UserProfile>('/api/deleted-members', 'members'),
+    staleTime: CONTROL_CENTER_STALE_MS,
+  })
+}
+
+/**
+ * The Designations master list (table `positions`).
+ *
+ * Read with the browser client, not an admin route: `positions` grants every
+ * authenticated user SELECT by design (20260530), because member forms need to
+ * offer the list. Writes are admin-only through the table's own RLS.
+ */
+export function usePositions() {
+  const { userId } = useControlCenterSession()
+  return useQuery<Position[]>({
+    queryKey: positionsKey(userId),
+    queryFn: async () => {
+      const { data, error } = await createClient()
+        .from('positions')
+        .select('id, name, created_at')
+        .order('name')
+      if (error) throw error
+      return (data as Position[]) ?? []
+    },
     staleTime: CONTROL_CENTER_STALE_MS,
   })
 }
@@ -120,6 +162,10 @@ export function useControlCenterCache() {
   return useMemo(() => ({
     setMembers: (update: Updater<UserProfile>) =>
       queryClient.setQueryData<UserProfile[]>(adminMembersKey(userId), prev => prev && update(prev)),
+    setDeletedMembers: (update: Updater<UserProfile>) =>
+      queryClient.setQueryData<UserProfile[]>(deletedMembersKey(userId), prev => prev && update(prev)),
+    /** After an add: the new row is the server's, so refetch rather than guess its id. */
+    refetchMembers: () => queryClient.invalidateQueries({ queryKey: adminMembersKey(userId) }),
     setDepts: (update: Updater<ControlCenterDepartment>) =>
       queryClient.setQueryData<ControlCenterDepartment[]>(departmentsKey(userId), prev => prev && update(prev)),
     setModules: (update: Updater<ControlCenterAppModule>) =>

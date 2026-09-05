@@ -220,3 +220,24 @@
   font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center;
 }
 .stepTitle { font-size: 13px; font-weight: 700; color: #111318; }
+
+/* ── Member details dialog ────────────────────────────────────────────────
+   One selected employee, in grouped sections: Employment, Account, Access and
+   a Danger Zone. Everything that belongs to a person lives here rather than on
+   a screen of its own, so no member action costs a navigation. */
+.memberHead { display: flex; align-items: center; gap: 12px; padding-bottom: 4px; }
+.memberHeadName { font-size: 15px; font-weight: 700; color: #111318; }
+.memberHeadSub { font-size: 12px; color: #6B7384; margin-top: 1px; }
+.memberGroup { padding: 14px 0 2px; border-top: 1px solid #F0F2F5; }
+.memberGroupTitle {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: #6B7384; margin-bottom: 10px;
+}
+.memberGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 14px; }
+.memberDangerGroup { border-top: 1px solid #F6D8DE; }
+.memberActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.memberHistory { font-size: 11.5px; color: #6B7384; line-height: 1.7; margin-top: 8px; }
+
+@media (max-width: 700px) {
+  .memberGrid { grid-template-columns: 1fr; }
+}

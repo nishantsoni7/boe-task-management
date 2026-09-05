@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at'
+const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, designation_level, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at'
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''

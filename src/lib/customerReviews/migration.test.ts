@@ -115,6 +115,9 @@ describe('the migration is one file, correctly sequenced', () => {
       // Half-day company holidays: adds holiday_type/half_session to
       // payroll_holidays. Touches nothing this module creates.
       '20261105000000_holiday_half_day.sql',
+      // Employee designation level: one nullable, informational column on
+      // public.users, granted to authenticated. Reaches nothing here.
+      '20261106000000_employee_designation_level.sql',
     ])
   })
 

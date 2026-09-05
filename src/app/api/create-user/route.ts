@@ -1,8 +1,17 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { isDesignationLevel } from '@/lib/users/designationLevels'
 
 export async function POST(req: NextRequest) {
-  const { email, password, full_name, phone, role, team, position } = await req.json()
+  const { email, password, full_name, phone, role, team, position, designation_level } = await req.json()
+
+  // The organisational rung. Optional, and validated rather than trusted: the
+  // column carries a CHECK constraint, so an unknown value would fail the
+  // insert with a database error instead of a readable one. It grants nothing
+  // either way — see src/lib/users/designationLevels.ts.
+  if (designation_level != null && designation_level !== '' && !isDesignationLevel(designation_level)) {
+    return NextResponse.json({ error: 'Unknown designation level' }, { status: 400 })
+  }
 
   const authHeader = req.headers.get('authorization') ?? ''
   const callerToken = authHeader.replace('Bearer ', '').trim()
@@ -44,6 +53,7 @@ export async function POST(req: NextRequest) {
     role,
     team,
     position: position || null,
+    designation_level: designation_level || null,
     is_active: true,
   })
 

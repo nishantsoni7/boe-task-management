@@ -36,6 +36,7 @@ export const USER_PROFILE_COLUMNS = [
   'role',
   'team',
   'position',
+  'designation_level',
   'is_active',
   'created_at',
   'employee_code',
