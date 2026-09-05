@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
 
 export async function POST(req: NextRequest) {
   const { userId } = await req.json()
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
 
   const { data: target, error: targetError } = await serviceClient
     .from('users')
-    .select('id, is_active, is_deleted')
+    .select('id, role, is_active, is_deleted')
     .eq('id', userId)
     .single()
 
@@ -47,6 +48,20 @@ export async function POST(req: NextRequest) {
   if (target.is_deleted) {
     return NextResponse.json({ error: 'Member is already deleted' }, { status: 400 })
   }
+
+  // ── The last-administrator invariant ──────────────────────────────────────
+  //
+  // The SECOND HALF of the lockout chain. A target reaching this line is always
+  // inactive — the check above requires it — so "they were only deactivated,
+  // not removed" is no defence: this is the step that takes the account out of
+  // the directory, and it must not take the last administrator with it.
+  //
+  // The shared rule asks whether any OTHER active, non-deleted administrator
+  // remains, which is the right question here too: soft-deleting a spare
+  // administrator while a working one exists is ordinary housekeeping and stays
+  // allowed.
+  const blocked = await lastAdministratorBlock(serviceClient, target, userId, 'delete')
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
 
   const now = new Date()
   const scheduledAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)

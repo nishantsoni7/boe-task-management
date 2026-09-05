@@ -132,20 +132,18 @@ describe('Task Management navigation', () => {
 describe('Super Admin safety', () => {
   const route = read('src/app/api/update-member/route.ts')
 
-  test('demoting the only remaining administrator is refused', () => {
-    assert.ok(route.includes("role !== undefined && role !== 'admin'"))
-    assert.ok(route.includes(".eq('role', 'admin')"))
-    assert.ok(route.includes('(count ?? 0) <= 1'))
-    assert.ok(route.includes('only administrator account'))
+  // The invariant itself, and all four routes that must honour it, are covered
+  // in src/lib/users/lastAdministrator.test.ts. What matters here is that this
+  // route — the member editor's own save path — asks the shared question and
+  // asks it only when a demotion is actually happening.
+  test('demotion consults the shared last-administrator rule', () => {
+    assert.ok(route.includes("role !== undefined && role !== 'admin'"),
+      'only a change away from admin can violate the invariant')
+    assert.ok(route.includes("lastAdministratorBlock(supabase, target, userId, 'demote')"))
+    assert.ok(route.includes('if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })'))
   })
 
-  test('the guard counts accounts that can still sign in', () => {
-    // A soft-deleted admin cannot sign in, so it must not be counted as the
-    // administrator who would be left behind.
-    assert.ok(route.includes("'is_deleted.eq.false,is_deleted.is.null'"))
-  })
-
-  test('the route still refuses every non-admin caller before any of this', () => {
+  test('every non-admin caller is still refused before any of this', () => {
     assert.ok(route.includes("callerProfile?.role !== 'admin'"))
     assert.ok(route.includes('Only admins can update members'))
   })
@@ -156,7 +154,7 @@ describe('Super Admin safety', () => {
     // organisational rung ever appears inside it, the hierarchy has started
     // deciding who may administer the system.
     const guard = route.slice(
-      route.indexOf('last-administrator guard'),
+      route.indexOf('last-administrator invariant'),
       route.indexOf('const { error } = await supabase'),
     )
     assert.ok(guard.length > 0, 'the guard block is findable')
