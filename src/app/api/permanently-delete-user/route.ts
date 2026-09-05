@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { purgeUserResults } from '@/lib/imageEditor/history'
 import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
+import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
 
 export async function POST(req: NextRequest) {
   const { userId } = await req.json()
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
   // Confirm target exists and is already soft-deleted
   const { data: target, error: targetError } = await serviceClient
     .from('users')
-    .select('id, is_deleted')
+    .select('id, role, is_active, is_deleted')
     .eq('id', userId)
     .single()
 
@@ -46,6 +47,22 @@ export async function POST(req: NextRequest) {
   if (!target.is_deleted) {
     return NextResponse.json({ error: 'Member must be soft-deleted before permanently deleting' }, { status: 400 })
   }
+
+  // ── The last-administrator invariant ──────────────────────────────────────
+  //
+  // This is the irreversible route: everything below removes tasks, activity,
+  // notifications, password-reset history and finally the auth user, with no
+  // restore afterwards. A soft-deleted administrator is still RECOVERABLE —
+  // restore, reactivate, and BOE has an administrator again — and this is the
+  // step that ends that, which is why the shared rule counts a deleted row as
+  // an administrator account for this action alone.
+  //
+  // /api/delete-user now refuses to create the dangerous state in the first
+  // place, so in normal operation this never fires. It fires for a row that was
+  // soft-deleted before that guard existed, or straight in the database — which
+  // is exactly the state an irreversible route should refuse to compound.
+  const blocked = await lastAdministratorBlock(serviceClient, target, userId, 'permanently_delete')
+  if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
 
   // ── Cascade cleanup in safe order ────────────────────────────────────────
 

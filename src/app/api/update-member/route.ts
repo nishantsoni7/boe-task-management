@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { isDesignationLevel } from '@/lib/users/designationLevels'
+import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -50,42 +51,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Only admins can update members' }, { status: 403 })
   }
 
-  // ── The last-administrator guard ──────────────────────────────────────────
+  // ── The last-administrator invariant ──────────────────────────────────────
   //
-  // `users.role = 'admin'` is this system's highest authority: it is what every
-  // RLS policy tests, what the permission engine short-circuits on, and what
-  // admits somebody to the Control Center. Nothing else can hand it back.
+  // Demotion is one of four paths that can take the final administrator's
+  // authority away; the others are deactivation, soft deletion and permanent
+  // deletion, each guarded in its own route with the same shared rule. See
+  // src/lib/users/lastAdministrator.ts for why the count requires an ACTIVE
+  // administrator and not merely a non-deleted one.
   //
-  // Until this check, an administrator could set the only remaining admin
-  // account — their own, in the usual case — to `manager` or `member` in one
-  // click, and the organisation would be locked out of its own administration
-  // with no route to recovery inside the application. That is the exact
-  // accident this refuses.
-  //
-  // It is deliberately narrow: demoting an admin is fine while another one
-  // remains. Only the LAST one is protected, and the message says so.
+  // Only a change AWAY from 'admin' can violate it: leaving `role` out of the
+  // request, or setting it to 'admin', removes nothing.
   if (role !== undefined && role !== 'admin') {
     const { data: target } = await supabase
       .from('users')
-      .select('role')
+      .select('role, is_active, is_deleted')
       .eq('id', userId)
       .single()
 
-    if (target?.role === 'admin') {
-      // Deleted accounts cannot sign in, so they do not count as a remaining
-      // administrator; an inactive one can be reactivated and does.
-      const { count } = await supabase
-        .from('users')
-        .select('id', { count: 'exact', head: true })
-        .eq('role', 'admin')
-        .or('is_deleted.eq.false,is_deleted.is.null')
-
-      if ((count ?? 0) <= 1) {
-        return NextResponse.json({
-          error: 'This is the only administrator account. Give another member the Administrator system role before changing this one, or the system would be left with nobody who can manage it.',
-        }, { status: 400 })
-      }
-    }
+    const blocked = await lastAdministratorBlock(supabase, target, userId, 'demote')
+    if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
   }
 
   const { error } = await supabase

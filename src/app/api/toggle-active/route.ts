@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { lastAdministratorBlock } from '@/lib/users/lastAdministrator'
 
 export async function POST(req: NextRequest) {
   const { userId, is_active } = await req.json()
@@ -28,6 +29,26 @@ export async function POST(req: NextRequest) {
 
   if (callerProfile?.role !== 'admin') {
     return NextResponse.json({ error: 'Only admins can change member status' }, { status: 403 })
+  }
+
+  // ── The last-administrator invariant ──────────────────────────────────────
+  //
+  // Deactivation was the FIRST HALF of the lockout chain this guard closes:
+  // the final administrator could be deactivated here, and /api/delete-user
+  // would then accept them precisely BECAUSE they were inactive. Guarding
+  // demotion in /api/update-member alone stopped neither step.
+  //
+  // Only switching OFF can violate it — reactivating somebody adds an
+  // administrator, it never removes one.
+  if (is_active === false) {
+    const { data: target } = await serviceClient
+      .from('users')
+      .select('role, is_active, is_deleted')
+      .eq('id', userId)
+      .single()
+
+    const blocked = await lastAdministratorBlock(serviceClient, target, userId, 'deactivate')
+    if (blocked) return NextResponse.json({ error: blocked }, { status: 400 })
   }
 
   const { error } = await serviceClient
