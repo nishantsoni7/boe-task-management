@@ -38,6 +38,7 @@ const ROUTES = {
 } as const
 
 const MIGRATION = 'supabase/migrations/20261109000000_performance_personal_and_team_capabilities.sql'
+const CORRECTION = 'supabase/migrations/20261110000000_performance_team_visibility_is_granted_not_inherited.sql'
 
 // ─── 1. No Performance route decides access from a role ──────────────────────
 
@@ -225,6 +226,11 @@ describe('20261109000000', () => {
   })
 
   test('grants the two new actions at ROLE level to admin and manager', () => {
+    // SUPERSEDED BY 20261110000000, which deletes the `manager` half. This
+    // assertion is about the CONTENT of an applied migration, which does not
+    // change, and it is kept so the correction below has something to be a
+    // correction to. What production actually resolves is asserted in the
+    // 20261110000000 block.
     assert.match(sql, /insert into public\.role_permissions[\s\S]*\('admin'\), \('manager'\)/)
     assert.match(sql, /where m\.module_key = 'performance'[\s\S]*a\.action_key in \('view_team', 'view_all'\)/)
   })
@@ -252,5 +258,105 @@ describe('20261109000000', () => {
     assert.match(sql, /raise exception 'expected 4 allowed admin\/manager role grants/)
     const blocks = [...sql.matchAll(/^do \$\$/gm)]
     assert.equal(blocks.length, 1, 'expected exactly one assertion block')
+  })
+})
+
+// ─── 8. The correction: management visibility is granted, never inherited ────
+
+describe('20261110000000', () => {
+  const sql = read(CORRECTION)
+
+  test('it is a NEW file — the applied migration is not edited', () => {
+    // 20261109000000 is in production. Editing an applied migration makes the
+    // repository disagree with the database it claims to describe.
+    assert.notEqual(MIGRATION, CORRECTION)
+    assert.ok(read(MIGRATION).includes("('admin'), ('manager')"),
+      'the applied migration must be left exactly as it was applied')
+  })
+
+  test('removes the manager role grants and nothing else', () => {
+    assert.match(sql, /delete from public\.role_permissions/)
+    // Scoped three ways: this module, these two actions, non-admin roles.
+    assert.match(sql, /pm\.module_key = 'performance'/)
+    assert.match(sql, /pa\.action_key in \('view_team', 'view_all'\)/)
+    assert.match(sql, /rp\.role <> 'admin'/)
+    // Exactly one DELETE in the whole file.
+    assert.equal((sql.match(/^delete from/gm) ?? []).length, 1)
+  })
+
+  test('DELETEs rather than writing an explicit role-level deny', () => {
+    // role_permissions has no revoked_at, and `allowed = false` is an ACTIVE
+    // deny that says something about every future manager. Deleting lets the
+    // decision fall through to the module default. Same reasoning as
+    // 20260723000000 §2.
+    assert.ok(!/update public\.role_permissions/i.test(sql),
+      'the manager rows must be removed, not set to false')
+  })
+
+  test('preserves the registered actions', () => {
+    for (const table of ['permission_actions', 'module_permission_actions']) {
+      assert.ok(!new RegExp(`(insert into|update|delete from) public\.${table}`, 'i')
+        .test(sql.replace(/--[^\n]*/g, '')),
+        `${table} must not be touched — this file corrects who holds an action, never whether it exists`)
+    }
+    assert.match(sql, /raise exception 'view_team and view_all must stay registered and default-deny/)
+  })
+
+  test('preserves admin access', () => {
+    assert.match(sql, /raise exception 'admin role grants on performance dropped to/)
+  })
+
+  test('grants the one reviewed employee an EMPLOYEE-LEVEL override', () => {
+    assert.match(sql, /insert into public\.employee_permission_overrides/)
+    assert.match(sql, /pa\.action_key in \('view_team', 'view_all'\)/)
+    // Targeted by the stable primary key, which is the repository's convention
+    // for a per-employee grant (20260723000000 §3a/§3b) — never by display name.
+    assert.match(sql, /u\.id = '61f4a1f7-3c2a-435f-abca-f884301dcc96'/)
+    assert.ok(!/full_name\s*(=|ilike)/i.test(sql),
+      'an employee must never be matched by display name')
+    // granted_by is resolved to the acting administrator, not hardcoded.
+    assert.match(sql, /select id from public\.users where role = 'admin' and is_active order by created_at limit 1/)
+  })
+
+  test('refuses to grant the wrong person company-wide visibility', () => {
+    assert.match(sql, /raise exception 'refusing to grant company-wide Performance visibility/)
+    assert.match(sql, /v_target\.email is distinct from 'boebdm@gmail\.com'/)
+    assert.match(sql, /raise exception 'refusing to grant Performance visibility to an inactive or deleted account/)
+  })
+
+  test('never takes Personal Performance away', () => {
+    // The bug the whole piece of work exists to prevent coming back.
+    assert.match(sql, /raise exception 'the reviewed account lost Personal Performance/)
+    assert.ok(!/'view'[^_]/.test(
+      sql.split('do $$')[0].replace(/--[^\n]*/g, '')),
+      'the executable body before the assertions must not mention the personal `view` action at all')
+  })
+
+  test('disturbs no unrelated override', () => {
+    const body = sql.replace(/--[^\n]*/g, '')
+    // No soft-revoke, no delete, no blanket update of anybody's overrides.
+    assert.ok(!/revoked_at\s*=\s*now\(\)/.test(body),
+      'no existing override may be revoked by this migration')
+    assert.ok(!/delete from public\.employee_permission_overrides/i.test(body))
+    // The only write is the ON CONFLICT re-activation of the two rows it owns.
+    assert.equal((body.match(/insert into public\.employee_permission_overrides/g) ?? []).length, 1)
+    assert.match(sql, /on conflict \(user_id, module_id, action_id\) do update/)
+  })
+
+  test('is idempotent, and does not rewrite the audit trail on a re-run', () => {
+    // granted_at / granted_by are absent from the DO UPDATE clause, so a second
+    // run cannot restamp when the authority was first given.
+    const conflictClause = sql.slice(sql.indexOf('on conflict (user_id'))
+    assert.ok(!/granted_at/.test(conflictClause.split(';')[0]),
+      'a re-run must not rewrite granted_at')
+    assert.ok(!/granted_by/.test(conflictClause.split(';')[0]),
+      'a re-run must not rewrite granted_by')
+  })
+
+  test('does nothing at all on a database without that employee', () => {
+    // INSERT ... SELECT FROM users, so a fresh local stack writes zero rows and
+    // does not fail. The grant is a production fact, not a schema fact.
+    assert.match(sql, /from public\.users u\s*\n\s*cross join public\.permission_modules pm/)
+    assert.match(sql, /if v_target\.id is not null then/)
   })
 })
