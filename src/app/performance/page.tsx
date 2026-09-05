@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useViewAs } from '@/hooks/useViewAs'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
 } from '@/lib/types'
@@ -985,9 +987,37 @@ export default function PerformancePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
+  const { viewAsUserId, exitViewMode } = useViewAs()
+
+  // Team Performance is what makes somebody else's report legible here, so it is
+  // what decides whether a View As target is honoured on this page.
+  //
+  // THE DEFECT THIS REPLACES. The test was `role !== 'admin'`, and failing it
+  // dropped View As and pushed the caller to /dashboard. The team screen's "view
+  // full report" button reaches this page by calling enterViewMode() and then
+  // navigating here — so for a MANAGER that button did not open an employee's
+  // report, it ejected them from Performance altogether, and it left the
+  // `adminViewAs` key in localStorage to eject them again on their next visit.
+  // A manager's own Performance page was therefore unreachable through the one
+  // in-app link that led to it, which is the symptom this whole change exists
+  // to fix. Nobody chose that; it fell out of gating a module capability on a
+  // role.
+  //
+  // The server is unchanged in what it will hand over: /api/performance-metrics
+  // authorizes every read against the caller's own token and refuses a target
+  // outside their scope, so honouring View As here discloses nothing the team
+  // screen did not already show that caller.
+  const { ready: permissionsReady, role: callerRole, permissionsByModule } = usePermissionContext()
+  const capabilities = derivePerformanceCapabilities(
+    callerRole,
+    permissionsByModule.get('performance') ?? [],
+  )
+  const mayViewOthers = permissionsReady && capabilities.canAccessTeamPerformance
 
   useEffect(() => {
+    // Wait for the permission context: `ready` false reports a null role and an
+    // empty map, which reads as a denial and would drop a legitimate View As.
+    if (!permissionsReady) return
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
@@ -997,17 +1027,19 @@ export default function PerformancePage() {
         .select('id, full_name, email, phone, role, team, position, is_active, created_at')
         .eq('id', session.user.id)
         .single()
-      if (viewAsUserId && callerProfile?.role !== 'admin') {
+      // A stale View As target held by somebody who may not read other people's
+      // performance is dropped — and they stay HERE, on their own report, rather
+      // than being thrown out to /dashboard. They are entitled to this page; the
+      // only thing they were not entitled to was the impersonation.
+      if (viewAsUserId && !mayViewOthers) {
         exitViewMode()
-        router.push('/dashboard')
-        return
       }
       if (callerProfile) setProfile(callerProfile as UserProfile)
       setLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, router, viewAsUserId])
+  }, [supabase, router, viewAsUserId, permissionsReady, mayViewOthers])
 
   // ── Single fetch: today score + 7-day trend in one request ──────────────────
   const fetchPerf = useCallback(async (t: string, bustCache = false) => {
@@ -1131,8 +1163,11 @@ export default function PerformancePage() {
   if (showLoader) return <PerformanceProgressLoader progress={progress} />
 
   const todayLabel      = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  const viewedProfile   = viewAsProfile ?? profile
-  const isAdminOrManager = viewedProfile?.role === 'admin' || viewedProfile?.role === 'manager'
+  // The Team View link follows the capability, not a role — and not the VIEWED
+  // profile, which is what the role test it replaces actually read. Whether this
+  // person may open Team Performance is a fact about the signed-in caller; View
+  // As never lends that authority nor takes it away.
+  const canOpenTeamView = capabilities.canAccessTeamPerformance
 
   return (
     <DashboardLayout
@@ -1145,7 +1180,7 @@ export default function PerformancePage() {
           fontSize: 12, fontWeight: 600, color: '#8C94A6', textDecoration: 'none',
           border: '1px solid #EEF0F4', padding: '6px 14px', borderRadius: 7,
         }}>← Back to Team Performance</a>
-      ) : isAdminOrManager ? (
+      ) : canOpenTeamView ? (
         <a href="/performance/team" style={{
           fontSize: 12, fontWeight: 600, color: '#5585E8', textDecoration: 'none',
           border: '1px solid #5585E815', background: '#5585E808',
@@ -1303,7 +1338,16 @@ export default function PerformancePage() {
                     </div>
                   </div>
                 )}
-                <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
+                {/* The EOD form writes the SIGNED-IN user's log — POST
+                    /api/daily-log takes the author from the bearer token and
+                    accepts no user id — so it has no business appearing on
+                    somebody else's report, where saving would file the viewer's
+                    EOD from a page showing another employee's name. It is also
+                    absent for anyone whose Personal Performance is switched off,
+                    matching what that route will now accept. */}
+                {!viewAsUserId && capabilities.canSubmitOwnEod && (
+                  <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
+                )}
               </div>
 
               {/* RIGHT COLUMN: coach + reflection */}

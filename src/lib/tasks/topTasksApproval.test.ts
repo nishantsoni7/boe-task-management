@@ -91,6 +91,12 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // tables of its own, columns on customer_review_test_cards and one on
     // boe_credit_settings. It reaches nothing here.
     '20261107000000_review_types_assignment_and_image_groups.sql',
+    // Performance: Personal Performance and Team Performance become separately
+    // configurable capabilities. It registers two actions on the existing
+    // `performance` permission module and seeds the admin/manager role grants
+    // that reproduce today's role checks exactly. It creates no table, alters
+    // no table and defines no function, so it reaches nothing asserted here.
+    '20261109000000_performance_personal_and_team_capabilities.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

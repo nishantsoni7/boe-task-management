@@ -644,6 +644,12 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // tables of its own, columns on customer_review_test_cards and one on
       // boe_credit_settings. It reaches nothing here.
       '20261107000000_review_types_assignment_and_image_groups.sql',
+      // Performance: Personal Performance and Team Performance become separately
+      // configurable capabilities. It registers two actions on the existing
+      // `performance` permission module and seeds the admin/manager role grants
+      // that reproduce today's role checks exactly. It creates no table, alters
+      // no table and defines no function, so it reaches nothing asserted here.
+      '20261109000000_performance_personal_and_team_capabilities.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

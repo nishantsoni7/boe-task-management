@@ -224,11 +224,22 @@ describe('Manager never receives a protected action', () => {
     // the plainest reason on this list: it must be handed to a named person on
     // purpose, one person at a time, and never acquired by picking "Manager"
     // from a dropdown.
+    //
+    // And by one more in 20261109000000: `view_team`, registered by Performance.
+    // It opens Team Performance — every employee's score, ranking, EOD
+    // discipline and attention briefing — which is sight of other people's
+    // measured work. The name collision is the reason it must be protected: the
+    // `manager` PRESET must not be a way to acquire the management half of
+    // Performance, or the split between Personal and Team that 20261109000000
+    // exists to create would be undone by a dropdown. `view_all`, already on
+    // this list, is what widens it from the caller's own department to the
+    // whole company.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
       'mark_lost', 'receive', 'verify', 'view_all', 'view_quotations',
+      'view_team',
     ])
   })
 

@@ -50,7 +50,7 @@ import {
 import {
   expectedWorkingDates, eligiblePerformanceDates, resolveExitDate,
   resolvePeriod, isPeriodKey, parseDateRangeParams, hasDayCutoffPassed,
-  canViewTeamPerformance, holidayCalendarCoverage, calendarConfidence,
+  holidayCalendarCoverage, calendarConfidence,
   PERFORMANCE_ROLLOUT_DATE,
   type WorkingDayContext, type PeriodKey, type ResolvedPeriod,
 } from '@/lib/performanceCalendar'
@@ -76,6 +76,9 @@ import {
 } from '@/lib/performanceAdoption'
 import { ATTENDANCE_LIMITATION_NOTE } from '@/lib/performanceAttendance'
 import {
+  resolvePerformanceAccess, isWithinTeamPerformanceScope,
+} from '@/lib/permissions/performance'
+import {
   fetchAllRows, unwrapPagedRows, PagedReadError, PAGED_FETCH_ROW_CAP,
 } from '@/lib/supabasePaging'
 import { istToday, istDateOf, istDayStartUtc, istDayEndUtc, istMinutesOfDay } from '@/lib/istDate'
@@ -85,15 +88,6 @@ function sb() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-}
-
-async function getCallerProfile(token: string) {
-  const client = sb()
-  const { data: { user }, error } = await client.auth.getUser(token)
-  if (error || !user) return null
-  const { data } = await client
-    .from('users').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
 }
 
 // ─── Row types ────────────────────────────────────────────────────────────────
@@ -149,11 +143,15 @@ export async function GET(req: NextRequest) {
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  // Server-side gate. The page also hides itself from other roles, but that is
-  // cosmetic — this is the check that matters.
-  if (!canViewTeamPerformance(caller)) {
+  // Server-side gate. src/app/performance/team/layout.tsx also hides the screen,
+  // but that is cosmetic — this is the check that matters, and it is resolved
+  // from the caller's own bearer token. Nothing the client sends about itself —
+  // role, actor id, employee id, permission value — is read anywhere in this
+  // file.
+  const access = await resolvePerformanceAccess(sb(), token)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { caller, capabilities } = access
+  if (!capabilities.canAccessTeamPerformance) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -202,11 +200,23 @@ export async function GET(req: NextRequest) {
   // cast. The runtime shape is checked by the select list itself.
   const allActive = (usersRaw ?? []) as unknown as UserRow[]
 
+  // ── Visibility scope, applied before eligibility and before anything is
+  //    measured ───────────────────────────────────────────────────────────────
+  // `view_all` is the whole company; `view_team` without it is the caller's own
+  // department plus themselves. Applied HERE, to the row list, so an
+  // out-of-scope employee is absent from every query below and therefore from
+  // every metric, total, average, rate, ranking and briefing item. Filtering
+  // afterwards — or in the browser — would leave every server-computed aggregate
+  // carrying people the caller may not see, which is the same disclosure by a
+  // slower route. There is no query parameter that widens this: the scope comes
+  // from the caller's own resolved capabilities.
+  const inScope = allActive.filter(user => isWithinTeamPerformanceScope(caller, capabilities, user))
+
   // ── Performance eligibility, applied before anything is measured ────────────
   // Excluded accounts are dropped here, so they are absent from every query
   // below, from every per-employee metric, and therefore from every total,
   // average, rate, ranking and briefing item. There is no later filter to forget.
-  const { tracked: userRows, excluded } = partitionByTracking(allActive)
+  const { tracked: userRows, excluded } = partitionByTracking(inScope)
   const showExcludedDetails = canViewExcludedDetails(caller)
 
   if (userRows.length === 0) {

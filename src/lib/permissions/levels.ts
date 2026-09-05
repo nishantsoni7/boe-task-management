@@ -157,6 +157,15 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // person at a time, and never something acquired by picking "Manager" from a
   // dropdown. Registered by 20261028000000.
   'manage_access_records',
+  // Opening Team Performance: every employee's score, ranking, EOD discipline
+  // and attention briefing. Protected because it is sight of other people's
+  // measured work — the authority an administrator must hand over on purpose
+  // rather than acquire by picking "Manager" from a dropdown — and because the
+  // whole point of registering it (20261109000000) is that Personal Performance
+  // and Team Performance stop being one decision made by `users.role`.
+  // `view_all` is already on this list and is what widens this one to the whole
+  // company rather than the caller's own department.
+  'view_team',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -179,7 +188,16 @@ export function isProtectedAction(actionKey: string): boolean {
 export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   manage_quotations: 'view_quotations',
   view_quotations:   'view',
-  view_all:          'view',
+  // Team Performance is inside the Performance module, so it cannot be held by
+  // somebody who may not open it.
+  view_team:         'view',
+  // `view_all` widens a management screen the holder must already be able to
+  // open. In Performance that screen is Team Performance, so the chain is
+  // view_all → view_team → view; in Orders and Finance, which register no
+  // `view_team`, withRequiredDependencies skips the missing link and the chain
+  // resolves to `view` exactly as it did before — an action a module does not
+  // declare is never invented.
+  view_all:          'view_team',
   // A reviewer who cannot open Order Management cannot review anything, and
   // the RLS on order_submissions is gated on module entry as well — so the
   // grant would be one that could never land.

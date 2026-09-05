@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import {
+  resolvePerformanceAccess, isWithinTeamPerformanceScope,
+} from '@/lib/permissions/performance'
 
 function sb() {
   return createClient(
@@ -8,23 +11,19 @@ function sb() {
   )
 }
 
-async function getCallerProfile(token: string) {
-  const client = sb()
-  const { data: { user }, error } = await client.auth.getUser(token)
-  if (error || !user) return null
-  const { data } = await client.from('users').select('id, role').eq('id', user.id).single()
-  return data as { id: string; role: string } | null
-}
-
 // GET /api/eod-logs/team?from=YYYY-MM-DD&to=YYYY-MM-DD
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''
   const token = authHeader.replace('Bearer ', '').trim()
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const caller = await getCallerProfile(token)
-  if (!caller) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!['admin', 'manager'].includes(caller.role)) {
+  // The EOD register is other people's written work, so it is Team Performance
+  // — the same capability that opens /performance/team, resolved from the
+  // caller's own token. `users.role` decided this until 20261109000000.
+  const access = await resolvePerformanceAccess(sb(), token)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const { caller, capabilities } = access
+  if (!capabilities.canAccessTeamPerformance) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
@@ -61,7 +60,15 @@ export async function GET(req: NextRequest) {
   if (usersErr) return NextResponse.json({ error: usersErr.message }, { status: 500 })
 
   type UserRow = { id: string; full_name: string; team: string; position: string | null }
-  const userMap = new Map<string, UserRow>((users ?? []).map((u: UserRow) => [u.id, u]))
+  // Scope is applied to the EMPLOYEE MAP, and an entry is built only for a log
+  // whose author is in it — so a log written by somebody outside the caller's
+  // visibility is dropped rather than returned. Without `view_all` that is the
+  // caller's own department plus themselves.
+  const userMap = new Map<string, UserRow>(
+    (users ?? [])
+      .filter((u: UserRow) => isWithinTeamPerformanceScope(caller, capabilities, u))
+      .map((u: UserRow) => [u.id, u]),
+  )
 
   type LogRow = { user_id: string; log_date: string; summary: string; highlights: string | null; self_score: number | null; created_at: string }
   const entries = (logs ?? []).flatMap((log: LogRow) => {

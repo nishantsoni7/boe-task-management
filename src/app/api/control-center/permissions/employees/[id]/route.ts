@@ -58,6 +58,17 @@ const ACTION_DISPLAY_LABELS: Record<string, string> = {
  */
 const MODULE_SCOPED_ACTION_LABELS: Record<string, Record<string, string>> = {
   image_editor: { create: 'Use' },
+  // Performance is three separable capabilities, and an administrator has to be
+  // able to read which is which off the screen. `view` is the personal report —
+  // own score, own month, own EOD — and calling it "View" invited exactly the
+  // reading that produced the defect: that a Manager who has Team Performance
+  // has already been given everything. The keys are unchanged system/global
+  // vocabulary; only the words shown here are Performance's own.
+  performance: {
+    view:      'Personal Performance',
+    view_team: 'Team Performance',
+    view_all:  'View All Employees',
+  },
 }
 
 function actionDisplayLabel(action: PermissionActionRef, moduleKey: string): string {

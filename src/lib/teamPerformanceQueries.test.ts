@@ -105,7 +105,7 @@ describe('team endpoint query shape', () => {
     // `partitionByTracking(` appears in the import list first, so the call site is
     // the last occurrence. `Promise.all([` is the bulk round itself, rather than
     // the "Round 2" comment in the file header.
-    const partitionAt = source.lastIndexOf('partitionByTracking(allActive)')
+    const partitionAt = source.lastIndexOf('partitionByTracking(inScope)')
     const bulkAt      = source.indexOf('await Promise.all([')
     const loopAt      = source.indexOf('for (const user of userRows) {')
 
@@ -117,8 +117,27 @@ describe('team endpoint query shape', () => {
 
     // userIds — which scopes every bulk read — must come from the tracked list.
     assert.ok(source.includes('const userIds = userRows.map(u => u.id)'))
-    assert.ok(source.includes('const { tracked: userRows, excluded } = partitionByTracking(allActive)'),
+    assert.ok(source.includes('const { tracked: userRows, excluded } = partitionByTracking(inScope)'),
       'userRows must be the tracked subset, not the full active list')
+  })
+
+  // ── Visibility scope is applied before anything is measured ──────────────────
+  test('the caller visibility scope narrows the row list, not the response', () => {
+    const scopeAt     = source.indexOf('isWithinTeamPerformanceScope(caller, capabilities, user)')
+    const partitionAt = source.indexOf('partitionByTracking(inScope)')
+    const bulkAt      = source.indexOf('Promise.all([')
+
+    assert.notEqual(scopeAt, -1, 'the visibility scope filter has been removed')
+    assert.ok(scopeAt < partitionAt && scopeAt < bulkAt,
+      'scope must be applied to the user rows before eligibility and before any bulk read, '
+      + 'so an out-of-scope employee cannot reach a total, an average or a ranking')
+
+    // The scope comes from the resolved capabilities and from nothing the client
+    // sent. A `searchParams` read feeding it would be a query parameter that
+    // widens visibility, which is the exact failure this filter exists to
+    // prevent.
+    assert.ok(!/isWithinTeamPerformanceScope\([^)]*searchParams/.test(source),
+      'the visibility scope must never be derived from a query parameter')
   })
 
   test('the excluded list is admin-gated in the payload', () => {
@@ -130,14 +149,20 @@ describe('team endpoint query shape', () => {
 
   // ── Required case 34 — authorization remains correct ──────────────────────────
   test('34. the endpoint still refuses non-management callers server-side', () => {
-    assert.ok(source.includes('canViewTeamPerformance(caller)'),
+    // The gate is now the `performance.view_team` capability, resolved from the
+    // caller's own bearer token, and no longer `users.role`. A role test here is
+    // what made Team Performance and Personal Performance one decision.
+    assert.ok(source.includes('capabilities.canAccessTeamPerformance'),
       'the management gate has been removed')
-    assert.ok(/if \(!canViewTeamPerformance\(caller\)\) \{\s*\n\s*return NextResponse\.json\(\{ error: 'Forbidden' \}, \{ status: 403 \}\)/.test(source),
+    assert.ok(/if \(!capabilities\.canAccessTeamPerformance\) \{\s*\n\s*return NextResponse\.json\(\{ error: 'Forbidden' \}, \{ status: 403 \}\)/.test(source),
       'the management gate no longer returns 403')
-    // And it happens before the team list is read. (getCallerProfile's own
-    // `from('users')` is the role lookup that feeds the gate, so the employee-list
-    // select is the read that must come after it.)
-    assert.ok(source.indexOf('canViewTeamPerformance(caller)') < source.indexOf("'id, full_name, team, position, joining_date"),
+    assert.ok(!/\['admin', 'manager'\]|role === 'manager'/.test(source),
+      'authorization must not be derived from users.role')
+
+    // And it happens before the team list is read. resolvePerformanceAccess makes
+    // its own `from('users')` read for the caller, so the employee-list select is
+    // the read that must come after the gate.
+    assert.ok(source.indexOf('capabilities.canAccessTeamPerformance') < source.indexOf("'id, full_name, team, position, joining_date"),
       'the authorization check must precede the team-list read')
   })
 
