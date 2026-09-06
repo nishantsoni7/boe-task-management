@@ -128,6 +128,12 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // table, alters no other table and defines no function, so it reaches
     // nothing asserted here.
     '20261114000000_review_generation_word_range_and_body_length.sql',
+    // Restores the transaction-local marker approve_finance_payment_request
+    // sets around its own decision UPDATE, which 20261013000000 dropped when it
+    // restated the function. One function body re-emitted; it creates no table,
+    // alters no table, touches no policy and adds no grant, so it reaches
+    // nothing asserted here.
+    '20261115000000_restore_finance_payment_verification_context.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

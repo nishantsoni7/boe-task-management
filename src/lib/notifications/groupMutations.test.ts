@@ -355,6 +355,12 @@ describe('34/35. no regression into suppressed territory', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Restores the transaction-local marker approve_finance_payment_request
+      // sets around its own decision UPDATE, which 20261013000000 dropped when it
+      // restated the function. One function body re-emitted; it creates no table,
+      // alters no table, touches no policy and adds no grant, so it reaches
+      // nothing asserted here.
+      '20261115000000_restore_finance_payment_verification_context.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
