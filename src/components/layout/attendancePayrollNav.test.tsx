@@ -143,7 +143,7 @@ describe('every navigation path is a real route', () => {
     const paths = ATTENDANCE_PAYROLL_ADMIN_NAV.map(i => i.path)
     for (const required of [
       '/attendance', '/attendance/employees', '/attendance/upload', '/attendance/records',
-      '/attendance/monthly-review', '/attendance/holidays',
+      '/attendance/monthly-review', '/attendance/minop', '/attendance/holidays',
       '/payroll', '/payroll/monthly-review', '/payroll/how-it-works', '/payroll/settings',
     ]) {
       assert.ok(paths.includes(required), `the admin nav dropped ${required}`)
@@ -209,7 +209,7 @@ describe('active state', () => {
     for (const pathname of [
       '/attendance', '/attendance/employees', '/attendance/employees/abc',
       '/attendance/upload', '/attendance/records', '/attendance/monthly-review',
-      '/attendance/monthly-review/user-1', '/attendance/holidays', '/attendance/correction-log',
+      '/attendance/monthly-review/user-1', '/attendance/minop', '/attendance/holidays', '/attendance/correction-log',
       '/payroll', '/payroll/monthly-review', '/payroll/monthly-review/user-1',
       '/payroll/how-it-works', '/payroll/settings',
       '/payroll/results/p1', '/payroll/results/p1/e1', '/payroll/results/p1/salary-report',
