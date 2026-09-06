@@ -46,15 +46,21 @@ import {
 // candidates and scarcity was the only brake. Approval is the brake now: the
 // drafts land in Pending approval, where no candidate can see them.
 //
-// ── THE FORM, AND WHY IT IS NOT ONE LONG COLUMN ────────────────────────────
+// ── THE FORM, AND WHY IT IS SECTIONED RATHER THAN ONE LONG COLUMN ──────────
 //
-// There are now four groups of controls where there used to be one paragraph.
-// Two of them — how many reviews, and how they should read — are answered every
-// time, so they are open. Two of them — the real facts a batch may refer to,
-// and the perspective mix — have working defaults and are answered occasionally,
-// so they are folded away with their current state summarised on the header.
-// A verifier who wants the old behaviour types a paragraph, presses Continue
-// and gets twelve drafts, exactly as before.
+// SIX CONTROLS ARE NEVER HIDDEN, because they are the ones asked every time:
+// how many reviews, who they may be for, what to write about, how long each
+// one runs, how much is Hinglish, and which cities may be named. They sit in
+// three always-open groups — Batch, Content, Location — read top to bottom in
+// under a few seconds.
+//
+// EVERYTHING ELSE FOLDS AWAY TOGETHER. Projects, products, team members, the
+// perspective mix and a real issue-and-resolution story are answered
+// occasionally, have working defaults, and used to be split across two
+// separate accordions — "Real facts" and "Review mix" — which was one
+// accordion more than the form needed. They are now one "More generation
+// options" section, closed by default, because nothing important is behind it
+// any more: everything that has to be seen for a normal batch already is.
 //
 // NOTHING HERE IS A CONTROL IN THE SECURITY SENSE. Every bound below is applied
 // again by validateGenerationSettings() inside the route before a claim is
@@ -89,6 +95,25 @@ const labelStyle: React.CSSProperties = {
 
 const helpStyle: React.CSSProperties = {
   margin: 0, fontSize: '11px', color: colors.tertiary, lineHeight: 1.5,
+}
+
+/** The small uppercase heading over an always-visible group of controls. */
+const groupLabelStyle: React.CSSProperties = {
+  fontSize: '10px', fontWeight: 700, textTransform: 'uppercase',
+  letterSpacing: '0.08em', color: colors.tertiary,
+}
+
+/** One of the three groups that are never folded away. */
+function FormGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '10px',
+      paddingBottom: '14px', borderBottom: `1px solid ${colors.border}`,
+    }}>
+      <span style={groupLabelStyle}>{label}</span>
+      {children}
+    </div>
+  )
 }
 
 function NumberField({
@@ -143,6 +168,10 @@ function NumberField({
  * distribution is thinking in reviews rather than in percent. It is computed
  * with percentageToCount() — the same function the plan is built with — so the
  * number shown here is the number that will actually be asked for.
+ *
+ * THE % SIGN IS THE WHOLE POINT OF THIS COMPONENT, and NumberField never shows
+ * one — the two are visually distinct so a word count and a percentage are
+ * never mistaken for each other.
  */
 function PercentField({
   id, label, value, batchSize, disabled, onChange, unit = 'reviews',
@@ -282,8 +311,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
   const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_GENERATION_SETTINGS)
   const [phase, setPhase] = useState<Phase>({ kind: 'writing' })
   const [done, setDone] = useState<number | null>(null)
-  const [showReferences, setShowReferences] = useState(true)
-  const [showMix, setShowMix] = useState(false)
+  const [showMore, setShowMore] = useState(false)
 
   const [candidates, setCandidates] = useState<Employee[]>([])
   const [staffPool, setStaffPool] = useState<Employee[]>([])
@@ -416,18 +444,41 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
   const working = phase.kind === 'working'
   const confirming = phase.kind === 'confirming'
   const blocked = trimmed.length === 0 || !checked.ok
+  // THE EDITABLE FORM AND THE CONFIRMATION ARE TWO SCREENS, NOT ONE STACKED ON
+  // TOP OF THE OTHER. Showing every field underneath the confirmation was the
+  // "cluttered form" this redesign exists to remove — once Continue is
+  // pressed, the sheet reads as a summary a person scans, not a form they
+  // scroll past a second time.
+  const showForm = phase.kind === 'writing' || phase.kind === 'failed'
 
-  const referenceSummary = [
-    settings.locations.filter(Boolean).length ? `${settings.locations.filter(Boolean).length} cities` : null,
+  const moreSummary = [
     settings.projects.filter(Boolean).length ? `${settings.projects.filter(Boolean).length} projects` : null,
     settings.products.length ? `${settings.products.length} products` : null,
     settings.staff.length ? `${settings.staff.length} people` : null,
-  ].filter(Boolean).join(' · ') || 'Nothing specific'
+    REVIEW_FOCUSES.some(f => settings.focusPct[f] > 0) ? 'a focus mix' : null,
+    settings.issueContext ? 'an issue' : null,
+  ].filter(Boolean).join(' · ') || 'Nothing extra'
 
-  const mixSummary = REVIEW_FOCUSES
-    .filter(f => settings.focusPct[f] > 0)
-    .map(f => `${REVIEW_FOCUS_META[f].label} ${settings.focusPct[f]}%`)
-    .join(' · ') || 'No preference'
+  const candidateName = settings.intendedFor
+    ? (candidates.find(c => c.id === settings.intendedFor)?.full_name ?? 'Selected')
+    : null
+
+  // THE CONFIRMATION IS BULLETS, NOT A PARAGRAPH — the same numbers the old
+  // paragraph reported, laid out so they are scanned rather than read.
+  const summaryLines = [
+    `${settings.minWords}–${settings.maxWords} words`,
+    settings.hinglishPct > 0 ? `${settings.hinglishPct}% Hinglish` : 'All English',
+    totals && totals.location > 0 ? `${totals.location} of ${size} mention a city` : null,
+    totals && totals.project > 0 ? `${totals.project} of ${size} mention a project` : null,
+    totals && totals.staff > 0 ? `${totals.staff} of ${size} name a colleague` : null,
+    totals && totals.issue > 0 ? `${totals.issue} of ${size} cover the issue` : null,
+    ...(totals
+      ? REVIEW_FOCUSES
+          .filter(f => totals.focus[f] > 0)
+          .map(f => `${totals.focus[f]} of ${size} ${REVIEW_FOCUS_META[f].label.toLowerCase()}`)
+      : []),
+    candidateName ? `Candidate: ${candidateName}` : 'Candidate: decide when assigning',
+  ].filter((line): line is string => Boolean(line))
 
   return (
     <>
@@ -453,7 +504,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           title={`Generate ${size} review drafts`}
           subtitle="They will wait for your approval. No candidate can see them until you approve."
           onClose={close}
-          maxWidth="560px"
+          maxWidth="760px"
           // A stray tap outside must never discard a paragraph somebody typed.
           dismissOnBackdrop={false}
           footer={
@@ -502,343 +553,363 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             )
           }
         >
-          {/* ══ BATCH ══════════════════════════════════════════════════════ */}
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <NumberField
-              id="review-count"
-              label="Number of reviews"
-              value={settings.batchSize}
-              min={MIN_BATCH_SIZE}
-              max={MAX_BATCH_SIZE}
-              disabled={working}
-              onChange={next => patch({ batchSize: next })}
-              suffix={`${MIN_BATCH_SIZE}–${MAX_BATCH_SIZE}`}
-            />
-            <div style={{ flex: '2 1 220px', minWidth: 0 }}>
-              <label htmlFor="review-candidate" style={labelStyle}>Candidate (optional)</label>
-              <select
-                id="review-candidate"
-                className="boe-input"
-                value={settings.intendedFor ?? ''}
-                disabled={working}
-                onChange={e => patch({ intendedFor: e.target.value || null })}
-                style={{ minHeight: '40px' }}
-              >
-                <option value="">Decide when assigning</option>
-                {candidates.map(c => (
-                  <option key={c.id} value={c.id}>{c.full_name ?? 'Unnamed'}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-          <p style={helpStyle}>
-            {textReviewsFor(size)} text and {imageReviewsFor(size)} image reviews. Choosing a
-            candidate here does not assign anything and shows them nothing — it selects their
-            name for you at the assignment step, after you approve.
-          </p>
-
-          {/* ══ CONTENT ════════════════════════════════════════════════════ */}
-          <label htmlFor="review-guidance" style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-            Review guidance
-          </label>
-          <p id="review-guidance-help" style={helpStyle}>
-            Describe the tone, the product type, the project context and the subjects to
-            cover — for example “restaurant banquette seating for a mid-range chain, warm
-            and practical, covering delivery and after-sales”. Do not include a customer’s
-            name or any real project detail you would not want written down.
-          </p>
-
-          <textarea
-            id="review-guidance"
-            aria-describedby="review-guidance-help"
-            value={guidance}
-            onChange={e => {
-              setGuidance(e.target.value)
-              if (phase.kind === 'failed') setPhase({ kind: 'writing' })
-            }}
-            maxLength={MAX_GUIDANCE}
-            rows={5}
-            disabled={working}
-            placeholder="Describe the reviews you want drafted…"
-            style={{
-              width: '100%', padding: '10px 12px', borderRadius: '8px',
-              border: `1px solid ${colors.border}`, fontSize: '13px', lineHeight: 1.55,
-              fontFamily: 'inherit', resize: 'vertical', minHeight: '96px',
-            }}
-          />
-          <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'right', marginTop: '-8px' }}>
-            {guidance.length} / {MAX_GUIDANCE}
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-            <NumberField
-              id="review-min-words"
-              label="Minimum words"
-              value={settings.minWords}
-              min={MIN_WORDS_FLOOR}
-              max={MAX_WORDS_CEILING}
-              disabled={working}
-              onChange={next => patch({ minWords: next })}
-            />
-            <NumberField
-              id="review-max-words"
-              label="Maximum words"
-              value={settings.maxWords}
-              min={MIN_WORDS_FLOOR}
-              max={MAX_WORDS_CEILING}
-              disabled={working}
-              onChange={next => patch({ maxWords: next })}
-            />
-            <PercentField
-              id="review-hinglish"
-              label="Hinglish"
-              value={settings.hinglishPct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ hinglishPct: next })}
-            />
-          </div>
-          <p style={helpStyle}>
-            Lengths vary across the range rather than clustering in the middle. The
-            remaining {100 - settings.hinglishPct}% are written in English.
-          </p>
-
-          {/* ══ REFERENCES ═════════════════════════════════════════════════ */}
-          <Section
-            title="Real facts a review may use"
-            summary={referenceSummary}
-            open={showReferences}
-            onToggle={() => setShowReferences(v => !v)}
-          >
-            <p style={helpStyle}>
-              Only what you put here can be named. Anything you leave empty is never
-              invented — a review with no city writes around the question instead.
-            </p>
-
-            <div>
-              <span style={labelStyle}>Cities (up to {MAX_LOCATIONS})</span>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {Array.from({ length: MAX_LOCATIONS }, (_, i) => (
-                  <input
-                    key={i}
-                    className="boe-input"
-                    aria-label={`City ${i + 1}`}
-                    value={settings.locations[i] ?? ''}
+          {showForm && (
+            <>
+              {/* ══ BATCH ══════════════════════════════════════════════════ */}
+              <FormGroup label="Batch">
+                <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <NumberField
+                    id="review-count"
+                    label="Number of reviews"
+                    value={settings.batchSize}
+                    min={MIN_BATCH_SIZE}
+                    max={MAX_BATCH_SIZE}
                     disabled={working}
-                    placeholder={`City ${i + 1}`}
-                    maxLength={60}
-                    onChange={e => {
-                      // POSITIONAL WHILE TYPING, TIDIED WHEN VALIDATED. The
-                      // array is kept at full length so clearing box 2 does
-                      // not shuffle box 3 up into it under the cursor;
-                      // validateGenerationSettings() drops the empties.
-                      const next = [...settings.locations]
-                      while (next.length < MAX_LOCATIONS) next.push('')
-                      next[i] = e.target.value
-                      patch({ locations: next })
-                    }}
-                    style={{ flex: '1 1 110px', minWidth: 0, minHeight: '40px' }}
+                    onChange={next => patch({ batchSize: next })}
+                    suffix={`${MIN_BATCH_SIZE}–${MAX_BATCH_SIZE}`}
                   />
-                ))}
-              </div>
-            </div>
-            <PercentField
-              id="review-location-pct"
-              label="Reviews mentioning a city"
-              value={settings.locationPct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ locationPct: next })}
-            />
+                  <div style={{ flex: '2 1 220px', minWidth: 0 }}>
+                    <label htmlFor="review-candidate" style={labelStyle}>Candidate (optional)</label>
+                    <select
+                      id="review-candidate"
+                      className="boe-input"
+                      value={settings.intendedFor ?? ''}
+                      disabled={working}
+                      onChange={e => patch({ intendedFor: e.target.value || null })}
+                      style={{ minHeight: '40px' }}
+                    >
+                      <option value="">Decide when assigning</option>
+                      {candidates.map(c => (
+                        <option key={c.id} value={c.id}>{c.full_name ?? 'Unnamed'}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <p style={helpStyle}>
+                  {textReviewsFor(size)} text and {imageReviewsFor(size)} image reviews. A candidate
+                  here only prefills who to assign later — nothing is assigned or shown yet.
+                </p>
+              </FormGroup>
 
-            <div>
-              <span style={labelStyle}>Projects (up to {MAX_PROJECTS})</span>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {Array.from({ length: MAX_PROJECTS }, (_, i) => (
-                  <input
-                    key={i}
-                    className="boe-input"
-                    aria-label={`Project name ${i + 1}`}
-                    value={settings.projects[i] ?? ''}
-                    disabled={working}
-                    placeholder={`Project name ${i + 1}`}
-                    maxLength={60}
-                    onChange={e => {
-                      const next = [...settings.projects]
-                      while (next.length < MAX_PROJECTS) next.push('')
-                      next[i] = e.target.value
-                      patch({ projects: next })
-                    }}
-                    style={{ flex: '1 1 150px', minWidth: 0, minHeight: '40px' }}
-                  />
-                ))}
-              </div>
-            </div>
-            <PercentField
-              id="review-project-pct"
-              label="Reviews mentioning a project"
-              value={settings.projectPct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ projectPct: next })}
-            />
+              {/* ══ CONTENT ════════════════════════════════════════════════ */}
+              <FormGroup label="Content">
+                <div>
+                  <label htmlFor="review-guidance" style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                    Review guidance
+                  </label>
+                  <p id="review-guidance-help" style={helpStyle}>
+                    Tell AI what these reviews should generally talk about.
+                  </p>
+                </div>
 
-            <div>
-              <span style={labelStyle}>Products supplied</span>
-              <CheckList
-                options={BOE_PRODUCT_CATEGORIES.map(p => ({ key: p, label: p }))}
-                selected={new Set(settings.products)}
-                disabled={working}
-                onToggle={key => patch({
-                  products: settings.products.includes(key)
-                    ? settings.products.filter(p => p !== key)
-                    : [...settings.products, key],
-                })}
-              />
-            </div>
-
-            <div>
-              <span style={labelStyle}>Team members who were actually involved</span>
-              {staffPool.length === 0 ? (
-                <p style={helpStyle}>No active employees could be loaded.</p>
-              ) : (
-                <CheckList
-                  options={staffPool.map(p => ({
-                    key: p.id,
-                    label: p.full_name ?? 'Unnamed',
-                    note: p.position ?? undefined,
-                  }))}
-                  selected={new Set(
-                    staffPool
-                      .filter(p => settings.staff.some(s => s.name === (p.full_name ?? '')))
-                      .map(p => p.id),
-                  )}
+                <textarea
+                  id="review-guidance"
+                  aria-describedby="review-guidance-help"
+                  value={guidance}
+                  onChange={e => {
+                    setGuidance(e.target.value)
+                    if (phase.kind === 'failed') setPhase({ kind: 'writing' })
+                  }}
+                  maxLength={MAX_GUIDANCE}
+                  rows={4}
                   disabled={working}
-                  onToggle={id => {
-                    const person = staffPool.find(p => p.id === id)
-                    if (!person) return
-                    const name = person.full_name ?? ''
-                    patch({
-                      staff: settings.staff.some(s => s.name === name)
-                        ? settings.staff.filter(s => s.name !== name)
-                        : [...settings.staff, { name, role: person.position ?? '' }],
-                    })
+                  placeholder="Describe the reviews you want drafted…"
+                  style={{
+                    width: '100%', padding: '10px 12px', borderRadius: '8px',
+                    border: `1px solid ${colors.border}`, fontSize: '13px', lineHeight: 1.55,
+                    fontFamily: 'inherit', resize: 'vertical', minHeight: '80px',
                   }}
                 />
-              )}
-            </div>
-            <PercentField
-              id="review-staff-pct"
-              label="Reviews mentioning a team member"
-              value={settings.staffPct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ staffPct: next })}
-            />
-          </Section>
+                <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'right', marginTop: '-8px' }}>
+                  {guidance.length} / {MAX_GUIDANCE}
+                </div>
 
-          {/* ══ REVIEW MIX ═════════════════════════════════════════════════ */}
-          <Section
-            title="Review mix"
-            summary={mixSummary}
-            open={showMix}
-            onToggle={() => setShowMix(v => !v)}
-          >
-            <p style={helpStyle}>
-              What the reviews talk about. Each one is a separate share of the batch, not a
-              slice of one pie — they can add up to more than 100%, and where two overlap the
-              same review covers both subjects. Product 70% and Service 50% of {size} means{' '}
-              {percentageToCount(size, 70)} and {percentageToCount(size, 50)} reviews, with
-              some of them doing both. Leave them at 0 to let the subjects vary on their own.
-            </p>
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {REVIEW_FOCUSES.map(focus => (
+                <div>
+                  <span style={groupLabelStyle}>Review length</span>
+                  {/*
+                    WORD COUNTS AND A PERCENTAGE, SIDE BY SIDE BUT NEVER CONFUSED.
+                    NumberField shows a "words" suffix and never a % sign;
+                    PercentField always shows one. The two cannot be mistaken for
+                    each other at a glance, which is the property this row exists
+                    to have.
+                  */}
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end', marginTop: '6px' }}>
+                    <NumberField
+                      id="review-min-words"
+                      label="Minimum words"
+                      value={settings.minWords}
+                      min={MIN_WORDS_FLOOR}
+                      max={MAX_WORDS_CEILING}
+                      disabled={working}
+                      onChange={next => patch({ minWords: next })}
+                      suffix="words"
+                    />
+                    <NumberField
+                      id="review-max-words"
+                      label="Maximum words"
+                      value={settings.maxWords}
+                      min={MIN_WORDS_FLOOR}
+                      max={MAX_WORDS_CEILING}
+                      disabled={working}
+                      onChange={next => patch({ maxWords: next })}
+                      suffix="words"
+                    />
+                    <PercentField
+                      id="review-hinglish"
+                      label="Hinglish"
+                      value={settings.hinglishPct}
+                      batchSize={size}
+                      disabled={working}
+                      onChange={next => patch({ hinglishPct: next })}
+                    />
+                  </div>
+                  <p style={{ ...helpStyle, marginTop: '6px' }}>
+                    Lengths vary across the range; the remaining {100 - settings.hinglishPct}% are English.
+                  </p>
+                </div>
+              </FormGroup>
+
+              {/* ══ LOCATION ═══════════════════════════════════════════════ */}
+              <FormGroup label="Location">
+                <div>
+                  <span style={labelStyle}>Cities to mention (optional)</span>
+                  <p style={{ ...helpStyle, marginBottom: '6px' }}>
+                    Add up to {MAX_LOCATIONS} real cities the reviews may refer to. Leave any blank
+                    and no city is invented in its place.
+                  </p>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {Array.from({ length: MAX_LOCATIONS }, (_, i) => (
+                      <input
+                        key={i}
+                        className="boe-input"
+                        aria-label={`City ${i + 1}`}
+                        value={settings.locations[i] ?? ''}
+                        disabled={working}
+                        placeholder={`City ${i + 1}`}
+                        maxLength={60}
+                        onChange={e => {
+                          // POSITIONAL WHILE TYPING, TIDIED WHEN VALIDATED. The
+                          // array is kept at full length so clearing box 2 does
+                          // not shuffle box 3 up into it under the cursor;
+                          // validateGenerationSettings() drops the empties.
+                          const next = [...settings.locations]
+                          while (next.length < MAX_LOCATIONS) next.push('')
+                          next[i] = e.target.value
+                          patch({ locations: next })
+                        }}
+                        style={{ flex: '1 1 150px', minWidth: 0, minHeight: '40px' }}
+                      />
+                    ))}
+                  </div>
+                </div>
                 <PercentField
-                  key={focus}
-                  id={`review-focus-${focus}`}
-                  label={REVIEW_FOCUS_META[focus].label}
-                  value={settings.focusPct[focus]}
+                  id="review-location-pct"
+                  label="Reviews mentioning a city"
+                  value={settings.locationPct}
                   batchSize={size}
                   disabled={working}
-                  onChange={next => patch({
-                    focusPct: { ...settings.focusPct, [focus]: next } as Record<ReviewFocus, number>,
-                  })}
+                  onChange={next => patch({ locationPct: next })}
                 />
-              ))}
-            </div>
+              </FormGroup>
 
-            <div>
-              <label htmlFor="review-issue" style={labelStyle}>
-                A real issue and how it was resolved (optional)
-              </label>
-              <textarea
-                id="review-issue"
-                value={settings.issueContext}
-                disabled={working}
-                maxLength={MAX_ISSUE_CONTEXT}
-                rows={3}
-                placeholder="What actually went wrong, what was done about it, and how it ended…"
-                onChange={e => patch({ issueContext: e.target.value })}
-                style={{
-                  width: '100%', padding: '9px 11px', borderRadius: '8px',
-                  border: `1px solid ${colors.border}`, fontSize: '12.5px', lineHeight: 1.5,
-                  fontFamily: 'inherit', resize: 'vertical', minHeight: '64px',
-                }}
-              />
-            </div>
-            <PercentField
-              id="review-issue-pct"
-              label="Reviews covering that issue"
-              value={settings.issuePct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ issuePct: next })}
-            />
-            <p style={helpStyle}>
-              A complaint is never invented. Leave the notes empty and this stays at 0.
-            </p>
-          </Section>
+              {/* ══ MORE GENERATION OPTIONS ════════════════════════════════ */}
+              <Section
+                title="More generation options"
+                summary={moreSummary}
+                open={showMore}
+                onToggle={() => setShowMore(v => !v)}
+              >
+                <p style={helpStyle}>
+                  Only what you put here can be named. Anything left empty is never invented.
+                </p>
 
-          {/*
-            THE VALIDATION MESSAGE, SAID ONCE AND IN THE FORM. Every combination
-            the route would refuse is refused here first, with the same sentence
-            the route would have sent — "40% mention a city" with no city typed
-            is an instruction to invent one, and it is better caught before the
-            button than after a round trip.
-          */}
-          {!checked.ok && (
-            <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
-              {checked.error}
-            </p>
+                <div>
+                  <span style={labelStyle}>Projects (up to {MAX_PROJECTS})</span>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {Array.from({ length: MAX_PROJECTS }, (_, i) => (
+                      <input
+                        key={i}
+                        className="boe-input"
+                        aria-label={`Project name ${i + 1}`}
+                        value={settings.projects[i] ?? ''}
+                        disabled={working}
+                        placeholder={`Project name ${i + 1}`}
+                        maxLength={60}
+                        onChange={e => {
+                          const next = [...settings.projects]
+                          while (next.length < MAX_PROJECTS) next.push('')
+                          next[i] = e.target.value
+                          patch({ projects: next })
+                        }}
+                        style={{ flex: '1 1 150px', minWidth: 0, minHeight: '40px' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <PercentField
+                  id="review-project-pct"
+                  label="Reviews mentioning a project"
+                  value={settings.projectPct}
+                  batchSize={size}
+                  disabled={working}
+                  onChange={next => patch({ projectPct: next })}
+                />
+
+                <div>
+                  <span style={labelStyle}>Products supplied</span>
+                  <CheckList
+                    options={BOE_PRODUCT_CATEGORIES.map(p => ({ key: p, label: p }))}
+                    selected={new Set(settings.products)}
+                    disabled={working}
+                    onToggle={key => patch({
+                      products: settings.products.includes(key)
+                        ? settings.products.filter(p => p !== key)
+                        : [...settings.products, key],
+                    })}
+                  />
+                </div>
+
+                <div>
+                  <span style={labelStyle}>Team members who were actually involved</span>
+                  {staffPool.length === 0 ? (
+                    <p style={helpStyle}>No active employees could be loaded.</p>
+                  ) : (
+                    <CheckList
+                      options={staffPool.map(p => ({
+                        key: p.id,
+                        label: p.full_name ?? 'Unnamed',
+                        note: p.position ?? undefined,
+                      }))}
+                      selected={new Set(
+                        staffPool
+                          .filter(p => settings.staff.some(s => s.name === (p.full_name ?? '')))
+                          .map(p => p.id),
+                      )}
+                      disabled={working}
+                      onToggle={id => {
+                        const person = staffPool.find(p => p.id === id)
+                        if (!person) return
+                        const name = person.full_name ?? ''
+                        patch({
+                          staff: settings.staff.some(s => s.name === name)
+                            ? settings.staff.filter(s => s.name !== name)
+                            : [...settings.staff, { name, role: person.position ?? '' }],
+                        })
+                      }}
+                    />
+                  )}
+                </div>
+                <PercentField
+                  id="review-staff-pct"
+                  label="Reviews mentioning a team member"
+                  value={settings.staffPct}
+                  batchSize={size}
+                  disabled={working}
+                  onChange={next => patch({ staffPct: next })}
+                />
+
+                <div>
+                  <span style={labelStyle}>Review focus mix</span>
+                  <p style={helpStyle}>
+                    Each is a separate share of the batch, not a slice of one pie — they can add up
+                    to more than 100%. Leave them at 0 to let the subjects vary on their own.
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    {REVIEW_FOCUSES.map(focus => (
+                      <PercentField
+                        key={focus}
+                        id={`review-focus-${focus}`}
+                        label={REVIEW_FOCUS_META[focus].label}
+                        value={settings.focusPct[focus]}
+                        batchSize={size}
+                        disabled={working}
+                        onChange={next => patch({
+                          focusPct: { ...settings.focusPct, [focus]: next } as Record<ReviewFocus, number>,
+                        })}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="review-issue" style={labelStyle}>
+                    A real issue and how it was resolved (optional)
+                  </label>
+                  <textarea
+                    id="review-issue"
+                    value={settings.issueContext}
+                    disabled={working}
+                    maxLength={MAX_ISSUE_CONTEXT}
+                    rows={3}
+                    placeholder="What actually went wrong, what was done about it, and how it ended…"
+                    onChange={e => patch({ issueContext: e.target.value })}
+                    style={{
+                      width: '100%', padding: '9px 11px', borderRadius: '8px',
+                      border: `1px solid ${colors.border}`, fontSize: '12.5px', lineHeight: 1.5,
+                      fontFamily: 'inherit', resize: 'vertical', minHeight: '64px',
+                    }}
+                  />
+                </div>
+                <PercentField
+                  id="review-issue-pct"
+                  label="Reviews covering that issue"
+                  value={settings.issuePct}
+                  batchSize={size}
+                  disabled={working}
+                  onChange={next => patch({ issuePct: next })}
+                />
+                <p style={helpStyle}>
+                  A complaint is never invented. Leave the notes empty and this stays at 0.
+                </p>
+              </Section>
+
+              {/*
+                THE VALIDATION MESSAGE, SAID ONCE AND IN THE FORM. Every combination
+                the route would refuse is refused here first, with the same sentence
+                the route would have sent — "40% mention a city" with no city typed
+                is an instruction to invent one, and it is better caught before the
+                button than after a round trip.
+              */}
+              {!checked.ok && (
+                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
+                  {checked.error}
+                </p>
+              )}
+
+              {phase.kind === 'failed' && (
+                <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
+                  {phase.message} Nothing was created, and your guidance is still here — press
+                  the button again to retry the same request.
+                </p>
+              )}
+            </>
           )}
 
           {/*
-            FRESH GUIDANCE, EVERY TIME. Nothing is remembered between batches and
-            nothing is prefilled: the route refuses an empty field rather than
-            reusing what was said last time, so a second batch is described
-            again or it does not happen.
+            THE CONFIRMATION, AND IT REPLACES THE FORM RATHER THAN SITTING UNDER
+            IT. A verifier who pressed Continue already filled in the form; what
+            they need next is what is about to happen, scanned in a few seconds,
+            not the same fields read a second time.
           */}
-          {confirming && (
+          {!showForm && (
             <div style={{
-              display: 'grid', gap: '8px', padding: '12px',
+              display: 'grid', gap: '10px', padding: '14px',
               border: '1px solid #DDD6FE', borderRadius: '8px', background: '#F5F3FF',
             }}>
-              <strong style={{ fontSize: '12px', color: '#4C1D95' }}>
+              <strong style={{ fontSize: '13px', color: '#4C1D95' }}>
                 This creates exactly {size} drafts, pending your approval.
               </strong>
-              {totals && (
-                <p style={{ margin: 0, fontSize: '11.5px', color: '#5B21B6', lineHeight: 1.6 }}>
-                  {textReviewsFor(size)} text · {imageReviewsFor(size)} image ·{' '}
-                  {totals.hinglish} Hinglish · {totals.english} English
-                  {REVIEW_FOCUSES.filter(f => totals.focus[f] > 0).map(f =>
-                    ` · ${totals.focus[f]} ${REVIEW_FOCUS_META[f].label.toLowerCase()}`).join('')}
-                  {totals.location > 0 ? ` · ${totals.location} mention a city` : ''}
-                  {totals.project > 0 ? ` · ${totals.project} mention a project` : ''}
-                  {totals.staff > 0 ? ` · ${totals.staff} name a colleague` : ''}
-                  {totals.issue > 0 ? ` · ${totals.issue} cover the issue` : ''}
-                  {' '}· {settings.minWords}–{settings.maxWords} words
-                </p>
-              )}
+              <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'grid', gap: '4px' }}>
+                {summaryLines.map(line => (
+                  <li key={line} style={{
+                    fontSize: '12.5px', color: '#5B21B6', lineHeight: 1.5,
+                    display: 'flex', alignItems: 'baseline', gap: '6px',
+                  }}>
+                    <span aria-hidden style={{ color: '#B794F4' }}>•</span>
+                    {line}
+                  </li>
+                ))}
+              </ul>
               {/*
                 THIS SENTENCE USED TO OPEN "They cannot be edited by hand".
                 That stopped being true the moment a verifier could correct a
@@ -849,24 +920,15 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
               */}
               <p style={{ margin: 0, fontSize: '12px', color: '#4C1D95', lineHeight: 1.55 }}>
                 No candidate can see any of them until you approve. You can edit a draft&rsquo;s
-                words yourself, regenerate the whole set from new feedback, or approve them
-                one at a time.
+                words, regenerate the whole set from new feedback, or approve them one at a time.
               </p>
+
+              {working && (
+                <p role="status" style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
+                  Drafting {size} reviews… this usually takes well under a minute.
+                </p>
+              )}
             </div>
-          )}
-
-          {working && (
-            <p role="status" style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.55 }}>
-              Drafting {size} reviews… this usually takes well under a minute.
-              Nothing is created unless all {size} pass their checks.
-            </p>
-          )}
-
-          {phase.kind === 'failed' && (
-            <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
-              {phase.message} Nothing was created, and your guidance is still here — press
-              the button again to retry the same request.
-            </p>
           )}
         </ReviewSheet>
       )}

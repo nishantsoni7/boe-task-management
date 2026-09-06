@@ -30,7 +30,7 @@ import type { TestCard } from '@/lib/customerReviews/types'
 // ── WHY A HOOK AND TWO COMPONENTS ──────────────────────────────────────────
 //
 // ReviewSheet pins its footer, which is what makes the primary action reachable
-// on a phone without scrolling past a 900-character body. That means the fields
+// on a phone without scrolling past a long body. That means the fields
 // and the Save button are rendered into two different slots by the caller, and
 // they need one piece of state between them. A hook is the smallest thing that
 // gives them one: the caller owns it, passes it to both, and there is no
@@ -130,9 +130,10 @@ export function EditDraftFields({ editor }: { editor: DraftEditor }) {
       </Field>
 
       {/*
-        THE WHOLE REVIEW, OPEN. Fourteen rows is about a full 900-character body
+        THE WHOLE REVIEW, OPEN. Fourteen rows covers most of a real draft
         without the inner scrollbar that makes long-form editing feel like
-        working through a letterbox, and it is resizable rather than clipped.
+        working through a letterbox, and it is resizable rather than clipped —
+        a body near the MAX_BODY ceiling still just grows the box.
       */}
       <Field
         label="Review"

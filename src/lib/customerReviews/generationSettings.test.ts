@@ -576,42 +576,59 @@ describe('the word range is a range', () => {
   })
 
   test('THE WORD CEILING IS A CONSERVATIVE CAP, NOT A CHARACTER CONVERSION', () => {
-    // Two failures this pins against, in order of how badly they went wrong.
+    // Three failures this pins against, in order of how badly they went wrong.
     //
     // First: 15 and 120, numbers nobody decided, justified in a comment after
     // the fact. Second, and subtler: `floor(900 / 6) = 150`, which LOOKED
     // derived but treated an AVERAGE AS A BOUND — half of all drafts sit above
     // an average by construction, so the form was offering a target that mostly
     // produced drafts the 900-character check would refuse, after the call had
-    // been paid for.
+    // been paid for. Third: 100 itself, which was correct as a conservative cap
+    // but too low for what BOE's verifiers actually wanted to ask for — see
+    // 20261114000000, which raised the column so the cap could move too.
     //
-    // 100 is chosen once, conservatively, with headroom. No claim is made that
-    // 100 words IS 900 characters.
+    // 200 is chosen once, conservatively, with headroom. No claim is made that
+    // 200 words IS 1800 characters.
     assert.equal(MIN_WORDS_FLOOR, 10)
-    assert.equal(MAX_WORDS_CEILING, 100)
+    assert.equal(MAX_WORDS_CEILING, 200)
 
     // And the thing that actually decides is still the character count.
-    assert.equal(MAX_BODY, 900)
+    assert.equal(MAX_BODY, 1800)
     assert.equal(MAX_TITLE, 120)
   })
 
   test('the ceiling leaves real headroom rather than sitting on the limit', () => {
-    // The property that makes 100 conservative: even at a wordy seven
-    // characters a word it fits inside 900 with room to spare. This is a
+    // The property that makes 200 conservative: even at a wordy seven
+    // characters a word it fits inside 1800 with room to spare. This is a
     // sanity check on the choice, NOT a derivation of it — moving
     // MAX_WORDS_CEILING is a deliberate edit, not an arithmetic consequence.
-    assert.ok(MAX_WORDS_CEILING * 7 < MAX_BODY, 'the ceiling has no headroom under 900')
+    assert.ok(MAX_WORDS_CEILING * 7 < MAX_BODY, 'the ceiling has no headroom under MAX_BODY')
   })
 
-  test('and the storage limits here are the ones the column actually states', () => {
-    // 20261017000000: length(test_body) between 20 and 900,
-    //                 length(test_title) <= 120.
-    const sql = readFileSync(
+  test('the original column shape is a historical record, not edited', () => {
+    // 20261017000000 is an APPLIED migration and is never edited in place — see
+    // BOE's forward-migration-only rule. It still literally says 900, and always
+    // will; the CURRENT bound comes from the widening below, not from here.
+    const original = readFileSync(
       join(process.cwd(), 'supabase/migrations/20261017000000_customer_review_outreach.sql'),
       'utf8',
     ).replace(/\r\n/g, '\n')
+    assert.ok(original.includes(`length(test_body) between ${STORAGE_MIN_BODY} and 900`))
+    assert.ok(original.includes(`length(test_title) <= ${MAX_TITLE}`))
+  })
+
+  test('and a forward migration raises it to what MAX_BODY now says', () => {
+    // 20261114000000 widens the column CHECK rather than touching the migration
+    // above, so the effective bound the constants describe is the one this file
+    // adds, not the one the table was created with.
+    const sql = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20261114000000_review_generation_word_range_and_body_length.sql'),
+      'utf8',
+    ).replace(/\r\n/g, '\n')
     assert.ok(sql.includes(`length(test_body) between ${STORAGE_MIN_BODY} and ${MAX_BODY}`))
-    assert.ok(sql.includes(`length(test_title) <= ${MAX_TITLE}`))
+    // A widening, not a narrowing: every stored body already fits.
+    assert.equal(/not valid/i.test(sql), false,
+      'a pure widening of an already-satisfied bound does not need NOT VALID')
   })
 
   test('THE APPLICATION FLOOR IS STRICTER THAN THE COLUMN, and that is deliberate', () => {

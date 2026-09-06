@@ -137,10 +137,19 @@ export function spreadIndexes(batchSize: number, count: number, offset: number):
 
 /**
  * WHAT THE DATABASE WILL ACTUALLY STORE. These are the column CHECKs on
- * public.customer_review_test_cards, from 20261017000000:
+ * public.customer_review_test_cards:
  *
- *   test_title   length(test_title) <= 120
- *   test_body    length(test_body) between 20 and 900
+ *   test_title   length(test_title) <= 120,                    from 20261017000000
+ *   test_body    length(test_body) between 20 and 900,          from 20261017000000
+ *                length(test_body) between 20 and 1800,         raised in 20261114000000
+ *
+ * THE 900 CEILING WAS TOO LOW FOR THE WORD RANGE ADMINISTRATORS ACTUALLY
+ * WANTED. It was sized for a 100-word maximum and nothing past it; asking for
+ * a 150 or 200-word review meant every draft would be discarded by this same
+ * check after the model call had already been paid for. 20261114000000 raises
+ * the column to 1800 — see MAX_WORDS_CEILING below for why 1800 and not some
+ * other number. The floor is untouched: a 20-character body was never the
+ * problem.
  *
  * They live here rather than in ./draftGeneration because the form needs them
  * too and this module imports nothing, so there is no cycle to arrange around.
@@ -148,7 +157,7 @@ export function spreadIndexes(batchSize: number, count: number, offset: number):
  * reads them from where it always did.
  */
 export const MAX_TITLE = 120
-export const MAX_BODY = 900
+export const MAX_BODY = 1800
 
 /**
  * THE STORAGE FLOOR AND THE APPLICATION FLOOR ARE NOT THE SAME NUMBER, and a
@@ -166,46 +175,51 @@ export const MIN_BODY = 40
 /**
  * WHAT AN ADMINISTRATOR MAY ASK FOR — AND IT IS NOT A CONVERSION.
  *
- * THE HARD RULE IS AND REMAINS `length(test_body) <= 900`. That check lives in
- * the column, and validateDrafts()/validateDraftText() apply the same ceiling
- * before anything is written. Nothing below relaxes it, replaces it or predicts
- * it.
+ * THE HARD RULE IS AND REMAINS `length(test_body) <= MAX_BODY`. That check
+ * lives in the column, and validateDrafts()/validateDraftText() apply the same
+ * ceiling before anything is written. Nothing below relaxes it, replaces it or
+ * predicts it.
  *
  * THE WORD RANGE IS A TARGET GIVEN TO A LANGUAGE MODEL. Nothing counts the
  * words in a returned draft, and nothing should. So the only job these two
  * numbers have is to stop the form OFFERING a target that is structurally
- * unrealistic under 900 characters — a request for 150-word reviews is a
- * request for drafts that will mostly be refused after the call has been paid
- * for.
+ * unrealistic under MAX_BODY characters — a request for reviews longer than
+ * the column can hold is a request for drafts that will mostly be refused
+ * after the call has been paid for.
  *
- * ── WHY 100, AND WHY NOT 900 ÷ SOMETHING ──────────────────────────────────
+ * ── WHY 200, AND WHY NOT MAX_BODY ÷ SOMETHING ─────────────────────────────
  *
- * An earlier version set the ceiling to `floor(900 / 6)` = 150 and called six
- * characters per word the average for English prose. That is roughly true and
- * completely useless here, because an AVERAGE IS NOT A BOUND: half of all
- * drafts sit above it by construction. A 150-word conversational review runs
- * past 900 characters more often than not, so the form was offering a setting
- * that quietly wasted generations.
+ * The same mistake is worth naming again, because it is the one that put this
+ * number wrong the first time: `floor(MAX_BODY / 6)` treats six characters a
+ * word as a BOUND when it is only an average, and half of all drafts sit above
+ * an average by construction. Deriving the ceiling from the character limit
+ * produces a setting that looks principled and quietly wastes generations.
  *
- * 100 IS A CONSERVATIVE CAP, CHOSEN ONCE, NOT COMPUTED. Conversational Indian
- * English and Hinglish of the kind this module produces runs roughly five to
- * seven characters a word including the following space, and longer once
- * punctuation and the occasional long noun are counted. A hundred words leaves
- * real headroom under 900 even for a draft that runs wordy, which is the
- * property wanted: the ceiling should be comfortably satisfiable, not
- * arithmetically exact. NO CLAIM IS MADE that 100 words is 900 characters, or
- * that a 100-word draft always fits — a draft that overruns is still refused by
- * the checks above, which is the point of having them.
+ * 200 IS A CONSERVATIVE CAP, CHOSEN ONCE, NOT COMPUTED — the same way 100 was
+ * before it, and raised because 100 was too low for what BOE's verifiers
+ * actually wanted to ask for (a 40–120 word range, for one real example).
+ * Conversational Indian English and Hinglish of the kind this module produces
+ * runs roughly five to seven characters a word including the following space,
+ * and longer once punctuation and the occasional long noun are counted. Two
+ * hundred words leaves real headroom under MAX_BODY (1800) even for a draft
+ * that runs wordy — 200 × 7 = 1400, the same ~78% utilisation the 100/900 pair
+ * held — which is the property wanted: the ceiling should be comfortably
+ * satisfiable, not arithmetically exact. NO CLAIM IS MADE that 200 words is
+ * 1800 characters, or that a 200-word draft always fits — a draft that
+ * overruns is still refused by the checks above, which is the point of having
+ * them.
  *
  * TEN IS THE FLOOR for the same kind of reason at the other end: fewer than ten
  * words is a phrase rather than a review, and a ten-word review reliably clears
  * the 40-character application floor without the form having to reason about it.
  *
  * IF EITHER NUMBER NEEDS TO MOVE, move it here, deliberately, with the reason
- * written down — do not re-derive it from a character count.
+ * written down — do not re-derive it from a character count. Moving the
+ * ceiling UP past what MAX_BODY can hold also means raising MAX_BODY, in a new
+ * forward migration — see the column comment above.
  */
 export const MIN_WORDS_FLOOR = 10
-export const MAX_WORDS_CEILING = 100
+export const MAX_WORDS_CEILING = 200
 
 /**
  * A target length for each draft, spread across the range the administrator set.

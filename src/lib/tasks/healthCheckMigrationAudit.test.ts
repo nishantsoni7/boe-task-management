@@ -558,6 +558,12 @@ describe('the migration is placed correctly', () => {
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // Widens the Review Workflow test_body column CHECK from 900 to 1800
+      // characters, so a 200-word generation ceiling is not silently capped by
+      // storage. One constraint dropped and re-added, wider. It creates no
+      // table, alters no other table and defines no function, so it reaches
+      // nothing asserted here.
+      '20261114000000_review_generation_word_range_and_body_length.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

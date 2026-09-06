@@ -17,6 +17,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { TEST_CATEGORIES } from './types'
+import { MAX_BODY, MAX_TITLE, STORAGE_MIN_BODY } from './generationSettings'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -319,9 +320,9 @@ describe('the sixteen cards', () => {
 
   test('every body fits the column’s CHECK constraint', () => {
     for (const c of CARDS) {
-      assert.ok(c.body.length >= 20, `${c.ref} is too short`)
-      assert.ok(c.body.length <= 900, `${c.ref} is ${c.body.length} characters, over the 900 limit`)
-      assert.ok(c.title.length <= 120, `${c.ref} has a title over 120 characters`)
+      assert.ok(c.body.length >= STORAGE_MIN_BODY, `${c.ref} is too short`)
+      assert.ok(c.body.length <= MAX_BODY, `${c.ref} is ${c.body.length} characters, over the ${MAX_BODY} limit`)
+      assert.ok(c.title.length <= MAX_TITLE, `${c.ref} has a title over ${MAX_TITLE} characters`)
     }
   })
 

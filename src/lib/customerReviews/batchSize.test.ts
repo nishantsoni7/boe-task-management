@@ -36,6 +36,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
+  MIN_REPLY_TOKENS,
   buildSystemPrompt,
   buildUserPrompt,
   maxTokensFor,
@@ -128,16 +129,21 @@ describe('six to twenty, and everything that reads the range', () => {
     assert.equal(/\b12\b|\btwelve\b/i.test(system), false)
   })
 
-  test('THE REPLY BUDGET GROWS WITH THE BATCH', () => {
-    // Twelve bodies at 900 characters do not fit in 4000 tokens with the titles
-    // and the JSON scaffolding, and a reply cut off mid-array is invalid JSON —
-    // refused whole, after the call has been paid for. A fixed budget would
-    // have made that the ordinary outcome at twenty rather than a rare one.
-    assert.equal(maxTokensFor(12), 6000, 'twelve no longer gets what it got')
+  test('THE REPLY BUDGET GROWS WITH THE BATCH, AND WITH THE WORD CEILING', () => {
+    // Twelve bodies at the (now 1800-character) ceiling do not fit in a flat
+    // 4000-token floor with the titles and the JSON scaffolding, and a reply cut
+    // off mid-array is invalid JSON — refused whole, after the call has been
+    // paid for. A fixed budget would have made that the ordinary outcome at the
+    // largest size rather than a rare one.
+    assert.equal(maxTokensFor(12), 12_000, 'twelve does not get the rate the ceiling now needs')
     assert.ok(maxTokensFor(20) > maxTokensFor(12))
-    assert.ok(maxTokensFor(6) >= 4000, 'a small batch has no headroom for scaffolding')
+    // At today's rate the floor is a backstop for a hypothetically tiny count,
+    // not for the smallest batch this module actually allows.
+    assert.equal(maxTokensFor(1), MIN_REPLY_TOKENS, 'the floor still exists for a tiny count')
+    assert.ok(maxTokensFor(MIN_BATCH_SIZE) > MIN_REPLY_TOKENS,
+      'the smallest real batch is sized by the rate, not resting on the floor')
     for (let n = MIN_BATCH_SIZE; n <= MAX_BATCH_SIZE; n++) {
-      assert.ok(maxTokensFor(n) >= n * 400, `${n} is under-budgeted`)
+      assert.ok(maxTokensFor(n) >= n * 800, `${n} is under-budgeted`)
     }
   })
 
