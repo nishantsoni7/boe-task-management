@@ -23,7 +23,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   PI_ACTIVITY_COLUMNS,
@@ -91,60 +91,52 @@ describe('every action reads as English', () => {
   test('the labels match the action set the migrations define', () => {
     // The CONSTRAINT is the authority; this keeps the two from drifting apart
     // silently, which is exactly how a raw enum ends up on screen. The set is
-    // closed and grows only in a migration, so the NEWEST one that rewrites it
-    // is the one to read — the same rule orderActivityActions.test.ts applies.
-    //
-    // THE DEFECT THIS NOW CATCHES. Until 20261116000000 this read Phase B's
-    // constraint alone and pinned the map at eight words, so every action a
-    // later phase admitted — the finance check, the payments, the approval, the
-    // Order number — was silently DROPPED from every PI's timeline. The map now
-    // names everything the constraint admits, in both directions.
+    // closed and grows only in a migration, so the newest one that rewrites it
+    // is the one to read.
     const dir = join(process.cwd(), 'supabase', 'migrations')
-    let constraint = ''
-    for (const file of readdirSync(dir).filter(f => f.endsWith('.sql')).sort()) {
-      const text = readFileSync(join(dir, file), 'utf8')
-      const start = text.lastIndexOf('add constraint order_submission_activity_action_check')
-      if (start === -1) continue
-      constraint = text.slice(start, text.indexOf(';', start))
-    }
-    assert.ok(constraint.length > 0, 'some migration must define the action constraint')
+    const phaseB = readFileSync(
+      join(dir, '20260913000000_order_submission_advance_exceptions.sql'), 'utf8')
+    const start = phaseB.indexOf('add constraint order_submission_activity_action_check')
+    assert.ok(start > 0, 'Phase B must restate the action constraint')
+    const constraint = phaseB.slice(start, phaseB.indexOf(';', start))
 
     for (const action of Object.keys(PI_ACTIVITY_LABEL)) {
       assert.ok(constraint.includes(`'${action}'`), `${action} is labelled but not in the constraint`)
     }
     // And the other way round: an action the database admits but the screen
     // cannot name would be dropped from the history silently.
-    // Deduplicated: a comment inside the list may quote an action it explains.
-    const admitted = [...new Set([...constraint.matchAll(/'([a-z_]+)'/g)].map(m => m[1]))]
+    const admitted = [...constraint.matchAll(/'([a-z_]+)'/g)].map(m => m[1])
     for (const action of admitted) {
       assert.ok(PI_ACTIVITY_LABEL[action], `${action} is admitted but has no words`)
     }
-    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, admitted.length,
-      'the map names exactly what the constraint admits, and nothing else')
+    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, 8,
+      'eight actions exist after Phase B; a ninth needs its own migration and its own words')
   })
 
   test('an action this build does not know is dropped, not printed raw', () => {
-    const entries = describe_([row(), row({ id: 'a2', action: 'something_a_later_phase_adds' })])
+    const entries = describe_([row(), row({ id: 'a2', action: 'approved' })])
     assert.equal(entries.length, 1, 'a later phase’s action must not appear as an enum')
     assert.equal(entries[0].label, 'Submitted for approval')
   })
 
-  test('the two rejections and the two approvals stay distinct, by their words', () => {
-    // "Advance exception approved" is one commercial term; "PI approved" is the
-    // document; "Confirmed Order created" is the Order. Each is its own event
-    // and its own sentence, so a reader is never asked to tell them apart by
-    // colour or by position.
+  test('nothing about PI approval is claimed by this phase’s vocabulary', () => {
+    const words = Object.values(PI_ACTIVITY_LABEL).join(' ').toLowerCase()
+    // "Advance exception approved" is a real event and says so. What must never
+    // appear is a word claiming the PI itself, or an order, was approved or
+    // numbered — so the check is on the PHRASES that would say that, not on the
+    // word "approved", which now legitimately appears.
+    for (const forbidden of ['pi approved', 'order approved', 'approved for order',
+                             'order number', 'order created', 'payment']) {
+      assert.ok(!words.includes(forbidden), `no label may say "${forbidden}"`)
+    }
     assert.equal(PI_ACTIVITY_LABEL['advance_exception_approved'], 'Advance exception approved')
-    assert.equal(PI_ACTIVITY_LABEL['pi_approved'], 'PI approved')
-    assert.equal(PI_ACTIVITY_LABEL['approved'], 'Confirmed Order created')
     assert.equal(PI_ACTIVITY_LABEL['rejected'], 'Rejected',
       'and the PI’s own rejection stays distinct from the advance exception’s')
+    // The two rejections are told apart by their LABELS and by nothing else.
+    // There used to be a fixed sentence under each advance event saying what it
+    // did and did not mean; it repeated under every occurrence and has been
+    // dropped, so the words above have to carry the distinction on their own.
     assert.equal(PI_ACTIVITY_LABEL['advance_exception_rejected'], 'Advance exception rejected')
-    assert.equal(PI_ACTIVITY_LABEL['pi_revision_rejected'], 'Revised PI rejected')
-    // No label is a database value.
-    for (const label of Object.values(PI_ACTIVITY_LABEL)) {
-      assert.ok(!label.includes('_'), `${label} must not be shown as a database value`)
-    }
   })
 })
 

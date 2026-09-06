@@ -142,11 +142,6 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // other and from finance.approve. Registered by 20260918000000.
   'allocate',
   'allocate_correct',
-  // Aligning a Confirmed Order for production: the Head of Manufacturing's
-  // statement that the factory can make it. Protected because it is the gate
-  // between a commercial approval and work starting, and a preset must not
-  // hand it to everyone who can manage the module. Registered by 20261116000000.
-  'align_production',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim
   // about the outside world that anybody else will rely on, and because the
@@ -210,8 +205,6 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // Same reason, and NOT a dependency on approve_order: the two authorities are
   // independent in both directions by design.
   approve_advance_exception: 'view',
-  // Same again: aligning an Order one cannot open is a grant with nowhere to land.
-  align_production: 'view',
   // Customer Review Outreach expresses module entry as `use`, not `view` (it
   // registers no `view` at all — see modules.ts). A verifier who cannot open
   // the module cannot verify anything, so ticking Verify in Custom brings Use

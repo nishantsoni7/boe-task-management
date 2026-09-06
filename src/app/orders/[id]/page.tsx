@@ -75,42 +75,11 @@ import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
   OrderDocumentsCard,
-  OrderPiHistoryCard,
   OrderPiNoSource,
   OrderPiProducts,
   OrderPiSummaryCard,
   OrderPiUnavailable,
 } from './OrderPiSections'
-import {
-  ApproveRevisionModal,
-  ProductionAlignmentModal,
-  ProposeRevisionModal,
-  RejectRevisionModal,
-} from './OrderRevisionModals'
-import {
-  ORDER_PI_VERSION_COLUMNS,
-  canDecidePiRevision,
-  canProposePiRevision,
-  describePiRevisionFailure,
-  describePiVersionHistory,
-  revisionWorkbookPath,
-  versionActorIds,
-  type PersistedPiVersion,
-  type PiVersionView,
-} from '@/lib/orders/orderPiVersions'
-import { WORKBOOK_UPLOAD_MIME } from '@/lib/orders/saveDraftFlow'
-import {
-  canAlignProduction,
-  describeAlignmentFailure,
-  describeProductionAlignment,
-} from '@/lib/orders/productionAlignment'
-import {
-  PI_ACTIVITY_COLUMNS,
-  activityActorIds,
-  type PersistedActivity,
-} from '@/lib/orders/submissionActivity'
-import { mergeOrderHistory } from '@/lib/orders/orderHistory'
-import { notifyPiSubmission } from '@/lib/notify'
 import {
   ORDER_DOCUMENT_COLUMNS,
   ORDER_DOCUMENT_URL_TTL_SECONDS,
@@ -157,13 +126,6 @@ type Order = {
   // 20260923000000. Read here only so the handoff can tell a declared
   // percentage from an undeclared one without a second read of the PI.
   billing_percentage?: number | string | null
-  // Production alignment (20261116000000). 'not_aligned' on every Order at
-  // creation; moved only by set_order_production_alignment().
-  production_alignment?: string | null
-  production_aligned_by?: string | null
-  production_aligned_by_name?: string
-  production_aligned_at?: string | null
-  production_alignment_note?: string | null
 }
 
 // The list this screen shows is the LEGACY linked payments plus anything the
@@ -438,16 +400,6 @@ function ActivityDot({ event_type }: { event_type: string }) {
   return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
 }
 
-/** The same marker for an event from the source PI's trail, by its tone. */
-function HistoryDot({ tone }: { tone: 'neutral' | 'blue' | 'amber' | 'green' | 'red' }) {
-  const c = tone === 'green' ? colors.green
-    : tone === 'amber' ? colors.amber
-    : tone === 'red' ? colors.red
-    : tone === 'blue' ? colors.blue
-    : colors.muted
-  return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
-}
-
 // An amendment is the one event whose detail is a LIST, not a sentence: it can
 // move seven fields at once and every before/after pair matters. Rendering it
 // as prose would either lose values or produce an unreadable run-on, so it gets
@@ -694,27 +646,6 @@ export default function OrderDetailPage() {
   const [wbPath,      setWbPath]      = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
 
-  // ── The PI's versions and its trail (20261116000000) ──
-  //
-  // Both read under the caller's own RLS beside the handoff: can_view_order
-  // decides the versions, can_view_order_submission_via_order the trail. The
-  // names are one batched users read for every actor either mentions.
-  const [piVersions,   setPiVersions]   = useState<PersistedPiVersion[]>([])
-  const [piActivity,   setPiActivity]   = useState<PersistedActivity[]>([])
-  const [piNames,      setPiNames]      = useState<Map<string, string>>(new Map())
-  const [revisionDialog, setRevisionDialog] = useState<
-    | { kind: 'propose' }
-    | { kind: 'approve'; version: PiVersionView }
-    | { kind: 'reject'; version: PiVersionView }
-    | null
-  >(null)
-  const [revisionBusy,  setRevisionBusy]  = useState(false)
-  const [revisionError, setRevisionError] = useState<string | null>(null)
-  const [versionOpening, setVersionOpening] = useState<string | null>(null)
-  const [alignDialog,   setAlignDialog]   = useState<boolean | null>(null)
-  const [alignBusy,     setAlignBusy]     = useState(false)
-  const [alignError,    setAlignError]    = useState<string | null>(null)
-
   // ── The generated documents ──
   //
   // The register, read under the caller's own RLS: can_view_order decides, so a
@@ -760,12 +691,10 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'none' })
       setPiProducts([])
       setWbPath(null)
-      setPiVersions([])
-      setPiActivity([])
       return
     }
 
-    const [subRes, itemsRes, imagesRes, versionsRes, trailRes] = await Promise.all([
+    const [subRes, itemsRes, imagesRes] = await Promise.all([
       supabase
         .from('order_submissions')
         .select(ORDER_PI_HANDOFF_COLUMNS)
@@ -781,38 +710,7 @@ export default function OrderDetailPage() {
         .select(PI_DRAFT_ITEM_IMAGE_COLUMNS)
         .eq('submission_id', submissionId)
         .order('position', { ascending: true }),
-      supabase
-        .from('order_pi_versions')
-        .select(ORDER_PI_VERSION_COLUMNS)
-        .eq('order_id', order.id)
-        .order('version_number', { ascending: false }),
-      supabase
-        .from('order_submission_activity')
-        .select(PI_ACTIVITY_COLUMNS)
-        .eq('submission_id', submissionId)
-        .order('created_at', { ascending: false }),
     ])
-
-    // THE HISTORY, whatever the handoff's own outcome: a viewer who may open
-    // the Order may see which PI versions it has carried and what happened to
-    // them, and an empty read is simply an empty list.
-    const versionRows = (versionsRes.data ?? []) as unknown as PersistedPiVersion[]
-    const trailRows = (trailRes.data ?? []) as unknown as PersistedActivity[]
-    setPiVersions(versionRows)
-    setPiActivity(trailRows)
-    const actorIds = [...new Set([
-      ...versionActorIds(versionRows),
-      ...activityActorIds(trailRows),
-    ])]
-    const names = new Map<string, string>()
-    if (actorIds.length > 0) {
-      const { data: people } = await supabase
-        .from('users').select('id, full_name').in('id', actorIds)
-      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
-        if (person?.id && person.full_name) names.set(person.id, person.full_name)
-      }
-    }
-    setPiNames(names)
 
     const row = subRes.data as unknown as OrderPiRow | null
     if (subRes.error || !row) {
@@ -913,11 +811,9 @@ export default function OrderDetailPage() {
         lead_source, status, notes, created_at, updated_at,
         source_order_request_id, source_request_number, is_test_data,
         source_order_submission_id, billing_percentage,
-        production_alignment, production_aligned_by, production_aligned_at, production_alignment_note,
         requested_by_user:users!requested_by(full_name),
         assigned_to_user:users!assigned_to(full_name),
-        created_by_user:users!created_by(full_name),
-        production_aligned_by_user:users!production_aligned_by(full_name)
+        created_by_user:users!created_by(full_name)
       `)
       .eq('id', id)
       .single()
@@ -931,8 +827,6 @@ export default function OrderDetailPage() {
       requested_by_name: raw.requested_by_user?.full_name ?? undefined,
       assigned_to_name:  raw.assigned_to_user?.full_name  ?? undefined,
       created_by_name:   raw.created_by_user?.full_name   ?? undefined,
-      production_aligned_by_name: raw.production_aligned_by_user?.full_name ?? undefined,
-      production_aligned_by_user: undefined,
       requested_by_user: undefined,
       assigned_to_user:  undefined,
       created_by_user:   undefined,
@@ -1169,118 +1063,6 @@ export default function OrderDetailPage() {
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
-  // ── PI versions (20261116000000) ──
-
-  /** Any version's file, signed on demand exactly as the current workbook is. */
-  const openVersion = async (version: PiVersionView) => {
-    if (!version.workbookPath || versionOpening) return
-    setVersionOpening(version.id)
-    setRevisionError(null)
-    const { data, error } = await supabase
-      .storage
-      .from(ORDER_FILES_BUCKET)
-      .createSignedUrl(version.workbookPath, ORDER_PI_WORKBOOK_URL_TTL_SECONDS, { download: true })
-    setVersionOpening(null)
-    if (error || !data?.signedUrl) { setRevisionError(WORKBOOK_UNAVAILABLE); return }
-    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  /**
-   * Propose a revised PI: the file to private storage under the PI's own
-   * original/ folder (the revision insert policy decides), then ONE RPC that
-   * records the pending version. Nothing on the Order or the current PI moves.
-   */
-  const proposeRevision = async (file: File, reason: string) => {
-    if (!order?.source_order_submission_id || revisionBusy) return
-    setRevisionBusy(true)
-    setRevisionError(null)
-    try {
-      const path = revisionWorkbookPath(order.source_order_submission_id, crypto.randomUUID())
-      const { error: uploadError } = await supabase.storage
-        .from(ORDER_FILES_BUCKET)
-        .upload(path, file, { contentType: WORKBOOK_UPLOAD_MIME })
-      if (uploadError) { setRevisionError(describePiRevisionFailure(uploadError, 'propose')); return }
-
-      const { error } = await supabase.rpc('propose_order_pi_revision', {
-        p_order_id: order.id,
-        p_workbook_path: path,
-        p_workbook_name: file.name,
-        p_reason: reason,
-      })
-      if (error) { setRevisionError(describePiRevisionFailure(error, 'propose')); return }
-      setRevisionDialog(null)
-      void notifyPiSubmission({ event: 'pi_revision_proposed', submissionId: order.source_order_submission_id })
-      await loadOrder()
-    } finally {
-      setRevisionBusy(false)
-    }
-  }
-
-  /**
-   * Approve a revision. THE ROUTE PARSES THE FILE: the browser hands up one id
-   * and the server reads the bytes it holds, applies them and decides the
-   * version rows in one transaction.
-   */
-  const approveRevision = async (version: PiVersionView) => {
-    if (!order?.source_order_submission_id || revisionBusy) return
-    setRevisionBusy(true)
-    setRevisionError(null)
-    try {
-      const res = await fetch('/api/orders/pi-revisions/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ versionId: version.id }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => null) as { error?: string; message?: string } | null
-        setRevisionError(describePiRevisionFailure(body?.error ?? body?.message ?? '', 'approve'))
-        return
-      }
-      setRevisionDialog(null)
-      void notifyPiSubmission({ event: 'pi_revision_approved', submissionId: order.source_order_submission_id })
-      await loadOrder()
-    } finally {
-      setRevisionBusy(false)
-    }
-  }
-
-  const rejectRevision = async (version: PiVersionView, reason: string) => {
-    if (!order?.source_order_submission_id || revisionBusy) return
-    setRevisionBusy(true)
-    setRevisionError(null)
-    try {
-      const { error } = await supabase.rpc('reject_order_pi_revision', {
-        p_version_id: version.id,
-        p_reason: reason,
-      })
-      if (error) { setRevisionError(describePiRevisionFailure(error, 'reject')); return }
-      setRevisionDialog(null)
-      void notifyPiSubmission({ event: 'pi_revision_rejected', submissionId: order.source_order_submission_id })
-      await loadOrder()
-    } finally {
-      setRevisionBusy(false)
-    }
-  }
-
-  // ── Production alignment (20261116000000) ──
-  const setAlignment = async (aligned: boolean, note: string | null) => {
-    if (!order || alignBusy) return
-    setAlignBusy(true)
-    setAlignError(null)
-    try {
-      const { error } = await supabase.rpc('set_order_production_alignment', {
-        p_order_id: order.id,
-        p_aligned: aligned,
-        p_note: note,
-      })
-      if (error) { setAlignError(describeAlignmentFailure(error)); return }
-      setAlignDialog(null)
-      await loadOrder()
-    } finally {
-      setAlignBusy(false)
-    }
-  }
-
   /**
    * Ask for this Order's documents.
    *
@@ -1435,57 +1217,6 @@ export default function OrderDetailPage() {
    */
   const mayGenerateDocuments = ordersCaps.canApproveOrderSubmission && !viewAsUserId
 
-  /**
-   * THE PI HISTORY AND WHO MAY MOVE IT (20261116000000).
-   *
-   * Proposing: the PI's owner or an admin holding orders.create — the same
-   * people who could upload the PI in the first place. Deciding: an active
-   * admin, matching the deployed rule for moving a submitted PI's figures. Both
-   * are re-derived by the database; both are suppressed under View As.
-   */
-  const piHistory = describePiVersionHistory(piVersions, piNames, iso => (iso ? fmtDateTime(iso) : '—'))
-  // THE PI'S OWNER, as this page can know it: approve_order_submission() writes
-  // the PI's submitter into orders.requested_by. The RPC re-derives the full
-  // rule (creator OR submitter OR admin) under a row lock; this only decides
-  // whether the control is drawn.
-  const mayProposeRevision = !!order && canProposePiRevision(
-    { viewerId: viewAsUserId ? null : (profile?.id ?? null), isAdmin: actingAsAdmin, canCreate: ordersCaps.canCreateOrder && !viewAsUserId },
-    {
-      orderStatus: order.status,
-      createdBy: null,
-      submittedBy: order.requested_by,
-      hasCurrentVersion: piHistory.current !== null,
-      hasPendingRevision: piHistory.pending !== null,
-    },
-  )
-  const mayDecideRevision = canDecidePiRevision({ isAdmin: actingAsAdmin })
-
-  /** Production alignment, and whether this reader may move it. */
-  const mayAlignProduction = canAlignProduction(ordersCaps, Boolean(viewAsUserId))
-  const production = order ? describeProductionAlignment({
-    alignment: order.production_alignment,
-    alignedByName: order.production_aligned_by_name ?? null,
-    alignedAt: order.production_aligned_at ? fmtDateTime(order.production_aligned_at) : null,
-    note: order.production_alignment_note ?? null,
-    orderStatus: order.status,
-    canAlign: mayAlignProduction,
-  }) : null
-
-  /**
-   * THE WHOLE CHRONOLOGY: the Order's own trail and the source PI's, merged.
-   * The page keeps its own words for the Order events it already labelled;
-   * everything else is named by the two shared modules.
-   */
-  const history = mergeOrderHistory({
-    orderRows: activity,
-    orderLabel: eventType => EVENT_TYPE_LABEL[eventType] ?? null,
-    orderDetail: row => activityDescription(row) || null,
-    piRows: piActivity,
-    namesById: piNames,
-    formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
-  })
-  const orderEntryById = new Map(activity.map(entry => [entry.id, entry]))
-
   /** ONE ANSWER about the documents, so the card, the buttons and the tests
    *  cannot disagree about whether there is anything to download. */
   const documentsView = buildOrderDocumentsView(documents)
@@ -1623,18 +1354,6 @@ export default function OrderDetailPage() {
                 {myPendingEdit ? 'Change Requested' : 'Request a Change'}
               </button>
             )}
-            {/* Production alignment: the Head of Manufacturing's door
-                (20261116000000). Drawn only for orders.align_production, never
-                lent by View As; the RPC decides again under a row lock. */}
-            {production?.action && (
-              <button
-                onClick={() => setAlignDialog(production.value !== 'aligned')}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
-              >
-                {production.action}
-              </button>
-            )}
             {canRequest && (
               <button
                 onClick={() => setCancelOpen(true)}
@@ -1687,28 +1406,6 @@ export default function OrderDetailPage() {
         }}>
           <MetaField label="Requested By" value={order.requested_by_name} />
           <MetaField label="Assignee"     value={order.assigned_to_name} />
-          {/* Production alignment, stated for every reader. 'Not Aligned' is the
-              default every Order is born with — commercial approval is not
-              production acceptance — so the field is always present. */}
-          {production && (
-            <MetaField
-              label="Production"
-              value={
-                <span
-                  title={production.line ?? production.hint}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: '5px',
-                    fontSize: '11px', fontWeight: 700,
-                    background: production.value === 'aligned' ? colors.greenTint : colors.amberTint,
-                    color: production.value === 'aligned' ? colors.green : colors.amber,
-                    border: `1px solid ${production.value === 'aligned' ? 'rgba(69,168,112,0.3)' : 'rgba(190,140,40,0.28)'}`,
-                  }}
-                >
-                  {production.label}
-                </span>
-              }
-            />
-          )}
           <MetaField
             label="Confirm Date"
             value={fmtDate(order.confirm_date)}
@@ -2014,23 +1711,6 @@ export default function OrderDetailPage() {
             indistinguishable from the outside, and the first reader of this
             screen read the silence as the second. The panel is read-only and
             offers no action, because there is no action to offer. */}
-        {/* THE PI HISTORY (20261116000000): the current PI, a pending revision
-            and everything before, for every Order that came from a PI. */}
-        {piHandoff.kind !== 'none' && (
-          <OrderPiHistoryCard
-            history={piHistory}
-            canPropose={mayProposeRevision}
-            canDecide={mayDecideRevision && piHistory.pending !== null}
-            onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-            onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-            onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-            onOpen={openVersion}
-            opening={versionOpening}
-            busy={revisionBusy}
-            error={revisionDialog === null ? revisionError : null}
-          />
-        )}
-
         {piHandoff.kind === 'none' && <OrderPiNoSource />}
 
         {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
@@ -2128,57 +1808,41 @@ export default function OrderDetailPage() {
 
         {/* ── Activity timeline ── */}
         <SectionCard title="Activity">
-          {history.length === 0 ? (
+          {activity.length === 0 ? (
             <div style={{ color: colors.muted, fontSize: '13px' }}>No activity recorded yet.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
-                  source PI's, interleaved newest first — draft, submission,
-                  payments, Finance's decisions, the exception, the PI decision,
-                  the Order, its number, revisions and alignment. A PI event is
-                  marked as such so a reader knows which record wrote it. */}
-              {history.map((entry, idx) => {
-                const orderEntry = entry.source === 'order'
-                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-                  : null
-                const lines = orderEntry ? amendmentLines(orderEntry) : []
-                return (
-                  <div key={entry.key} style={{ display: 'flex', gap: '12px', paddingBottom: idx < history.length - 1 ? '16px' : '0' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
-                      {orderEntry
-                        ? <ActivityDot event_type={orderEntry.event_type} />
-                        : <HistoryDot tone={entry.tone} />}
-                      {idx < history.length - 1 && (
-                        <div style={{ flex: 1, width: 1, background: colors.border, marginTop: '4px' }} />
-                      )}
+              {activity.map((entry, idx) => (
+                <div key={entry.id} style={{ display: 'flex', gap: '12px', paddingBottom: idx < activity.length - 1 ? '16px' : '0' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
+                    <ActivityDot event_type={entry.event_type} />
+                    {idx < activity.length - 1 && (
+                      <div style={{ flex: 1, width: 1, background: colors.border, marginTop: '4px' }} />
+                    )}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                      {EVENT_TYPE_LABEL[entry.event_type] ?? entry.event_type}
                     </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                        {entry.label}
-                        {entry.source === 'pi' && (
-                          <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, marginLeft: '6px' }}>PI</span>
-                        )}
+                    {activityDescription(entry) && (
+                      <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
+                        {activityDescription(entry)}
                       </div>
-                      {entry.detail && (
-                        <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
-                          {entry.detail}
-                        </div>
-                      )}
-                      {lines.length > 0 && (
-                        <ul style={{
-                          margin: '4px 0 0', paddingLeft: '16px',
-                          fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
-                        }}>
-                          {lines.map(line => <li key={line}>{line}</li>)}
-                        </ul>
-                      )}
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
-                        {entry.actor ? `${entry.actor} · ` : ''}{entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—'}
-                      </div>
+                    )}
+                    {amendmentLines(entry).length > 0 && (
+                      <ul style={{
+                        margin: '4px 0 0', paddingLeft: '16px',
+                        fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
+                      }}>
+                        {amendmentLines(entry).map(line => <li key={line}>{line}</li>)}
+                      </ul>
+                    )}
+                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
+                      {entry.actor_name ? `${entry.actor_name} · ` : ''}{fmtDateTime(entry.created_at)}
                     </div>
                   </div>
-                )
-              })}
+                </div>
+              ))}
             </div>
           )}
         </SectionCard>
@@ -2218,48 +1882,6 @@ export default function OrderDetailPage() {
           parties, spelled out. The same component the PI screen uses. */}
       {clientOpen && piHandoff.kind === 'ready' && (
         <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
-      )}
-
-      {/* ── PI revision and production alignment dialogs (20261116000000) ── */}
-      {revisionDialog?.kind === 'propose' && (
-        <ProposeRevisionModal
-          orderNumber={order.display_number}
-          nextVersion={(piVersions[0]?.version_number ?? 0) + 1}
-          saving={revisionBusy}
-          failure={revisionError}
-          onClose={() => { if (!revisionBusy) setRevisionDialog(null) }}
-          onConfirm={proposeRevision}
-        />
-      )}
-      {revisionDialog?.kind === 'approve' && (
-        <ApproveRevisionModal
-          orderNumber={order.display_number}
-          versionNumber={revisionDialog.version.versionNumber}
-          saving={revisionBusy}
-          failure={revisionError}
-          onClose={() => { if (!revisionBusy) setRevisionDialog(null) }}
-          onConfirm={() => approveRevision(revisionDialog.version)}
-        />
-      )}
-      {revisionDialog?.kind === 'reject' && (
-        <RejectRevisionModal
-          orderNumber={order.display_number}
-          versionNumber={revisionDialog.version.versionNumber}
-          saving={revisionBusy}
-          failure={revisionError}
-          onClose={() => { if (!revisionBusy) setRevisionDialog(null) }}
-          onConfirm={reason => rejectRevision(revisionDialog.version, reason)}
-        />
-      )}
-      {alignDialog !== null && (
-        <ProductionAlignmentModal
-          orderNumber={order.display_number}
-          aligning={alignDialog}
-          saving={alignBusy}
-          failure={alignError}
-          onClose={() => { if (!alignBusy) setAlignDialog(null) }}
-          onConfirm={note => setAlignment(alignDialog, note)}
-        />
       )}
 
       {viewerItem && viewerNavState && (

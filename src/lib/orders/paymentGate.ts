@@ -118,58 +118,6 @@ export const PAYMENT_POSITION_HINT: Record<PaymentPosition, string> = {
     `Verified payment has not reached ${PAYMENT_STANDARD_PERCENT}% of the grand total.`,
 }
 
-// ── Where a PI stands for SUBMISSION ──────────────────────────────────────────
-//
-// A SECOND, NARROWER QUESTION than the approval position above, and deliberately
-// a separate vocabulary: the Order gate asks how much VERIFIED money there is;
-// the submission rule (20261116000000) asks how much is ATTACHED — verified plus
-// reported-but-undecided — because an employee whose client has paid should not
-// have to argue for an exception while Finance has not yet looked. Below 40%
-// attached, zero included, a reason is owed before management is asked.
-//
-// THE SERVER DECIDES WHICH ONE. `submission_position` arrives on the summary,
-// resolved in numeric by pi_submission_payment_summary(), and
-// submit_pi_for_review_internal() re-derives the same answer under row locks.
-
-export type SubmissionPosition = 'attached_met' | 'attached_partial' | 'no_payment'
-
-export const SUBMISSION_POSITIONS: readonly SubmissionPosition[] = [
-  'attached_met', 'attached_partial', 'no_payment',
-]
-
-export function asSubmissionPosition(value: string | null | undefined): SubmissionPosition | null {
-  if (!value) return null
-  return (SUBMISSION_POSITIONS as readonly string[]).includes(value)
-    ? value as SubmissionPosition
-    : null
-}
-
-export const SUBMISSION_POSITION_LABEL: Record<SubmissionPosition, string> = {
-  attached_met:     `Attached payment is at or above ${PAYMENT_STANDARD_PERCENT}%`,
-  attached_partial: `Attached payment is below ${PAYMENT_STANDARD_PERCENT}%`,
-  no_payment:       'No payment is attached to this PI',
-}
-
-/**
- * The sentence that asks for the reason, naming the figure it is about.
- *
- * "Only 27% payment is currently attached" says what management will see;
- * "No payment is attached" says the same for zero. The percentage is the
- * server's, formatted by the caller, and is never computed here.
- */
-export function submissionReasonPrompt(
-  position: SubmissionPosition,
-  attachedPercentLabel: string | null,
-): string {
-  if (position === 'no_payment') {
-    return 'No payment is attached to this PI. Please explain why this PI should be sent for approval.'
-  }
-  const figure = attachedPercentLabel && attachedPercentLabel.trim() !== ''
-    ? attachedPercentLabel.trim()
-    : `less than ${PAYMENT_STANDARD_PERCENT}%`
-  return `Only ${figure} payment is currently attached. Please explain why this PI should be sent for approval.`
-}
-
 // ── The words a refusal uses ──────────────────────────────────────────────────
 //
 // Business language, always. The database's own message carries statement text
@@ -239,12 +187,10 @@ export type SubmissionTermsValidation =
 /**
  * What the submit dialog may send.
  *
- * `meetsStandard` is whether ATTACHED payment (verified + awaiting verification)
- * reaches the requirement — `attached_meets_standard` on the summary, since
- * 20261116000000 — and NULL when the payment position could not be read at all.
- * A null FAILS CLOSED: nobody submits a PI whose payment position nobody knows,
- * because the route — and therefore which fields are mandatory — is exactly what
- * is unknown.
+ * `meetsStandard` is NULL when the payment position could not be read at all,
+ * and that FAILS CLOSED: nobody submits a PI whose payment position nobody
+ * knows, because the route — and therefore which fields are mandatory — is
+ * exactly what is unknown.
  *
  * WHEN THE REQUIREMENT IS MET the reason is not asked for and is not sent. A
  * reason typed before a payment landed is not a request the business still needs
@@ -300,47 +246,29 @@ export function submissionTermsUntouched(terms: PiSubmissionTerms): boolean {
 export type PaymentPositionLine = { key: string; label: string; value: string }
 
 /**
- * The figures the submit dialog prints, in the confirmed order.
+ * The five figures the submit dialog prints, in the confirmed order.
  *
  * READ STRAIGHT OFF THE SUMMARY. Every one of them was computed in `numeric` in
  * the database; this only formats. `formatFigure` is injected so the dialog and
  * the payment card render money through exactly one formatter.
- *
- * The two ATTACHED lines are optional so a caller holding an older summary still
- * prints the five it always had; when the server reports them, they follow the
- * unverified line, because attached = verified + awaiting verification and the
- * total reads best after its parts.
  */
 export function paymentPositionLines(input: {
   grandTotal: string | number | null
   verifiedAmount: string | number | null
   verifiedPercent: string | number | null
   unverifiedAmount: string | number | null
-  unverifiedPercent?: string | number | null
-  attachedAmount?: string | number | null
-  attachedPercent?: string | number | null
   neededForStandard: string | number | null
   formatFigure: (v: string | number | null | undefined) => string
   formatPercentage: (v: string | number | null | undefined) => string
 }): PaymentPositionLine[] {
   const { formatFigure: money, formatPercentage: pct } = input
-  const lines: PaymentPositionLine[] = [
+  return [
     { key: 'grand',      label: 'Grand total',                 value: money(input.grandTotal) },
     { key: 'verified',   label: 'Verified payment',            value: money(input.verifiedAmount) },
     { key: 'percent',    label: 'Verified payment %',          value: pct(input.verifiedPercent) },
     { key: 'unverified', label: 'Awaiting verification',       value: money(input.unverifiedAmount) },
+    { key: 'needed',     label: 'Needed for standard approval', value: money(input.neededForStandard) },
   ]
-  if (input.unverifiedPercent !== undefined) {
-    lines.push({ key: 'unverifiedPercent', label: 'Awaiting verification %', value: pct(input.unverifiedPercent) })
-  }
-  if (input.attachedAmount !== undefined) {
-    lines.push({ key: 'attached', label: 'Total attached payment', value: money(input.attachedAmount) })
-  }
-  if (input.attachedPercent !== undefined) {
-    lines.push({ key: 'attachedPercent', label: 'Total attached payment %', value: pct(input.attachedPercent) })
-  }
-  lines.push({ key: 'needed', label: 'Needed for standard approval', value: money(input.neededForStandard) })
-  return lines
 }
 
 // ── The refusals the database can give, in business language ──────────────────

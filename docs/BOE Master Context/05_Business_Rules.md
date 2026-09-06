@@ -762,52 +762,18 @@ not merged and not applied.*
 
 ## Approval
 
-* **The PI decision and the Confirmed Order are two acts** (20261116000000).
-  `approve_pi_review()` records that management approves the document —
-  `orders.approve_order`, a current finance check, no blocking issues — and
-  creates nothing. `approve_order_submission()` creates exactly one Confirmed
-  Order, allocates its number and moves the money, and is refused until the
-  payment condition is cleared; it stamps the PI decision itself when it is the
-  first press, so a fully paid PI keeps its one-click path.
-* **The payment condition is verified payment ≥ 40% of the grand total, or a
-  current approved reduced-payment exception.** Attached-but-unverified money
-  clears no gate. An exception is never inferred from a PI approval.
+* Approval is **one atomic act** that approves the PI, creates exactly one
+  Confirmed Order, allocates its number and moves the money. Either all of it
+  happens or none of it does.
 * It requires `orders.approve_order` — a protected, deny-by-default action,
   granted per employee. It is **not** `orders.approve`, which means "convert an
   Order Request" and is a different, older authority.
 * It requires **Finance verification**, and that verification **goes stale the
-  moment the record moves** — as does the PI decision.
+  moment the record moves**.
 * **One submission, one Order, in both directions** — two partial unique indexes,
   not a convention in the function that writes them.
 * A failed approval **consumes nothing**: the number cycle advances inside the
   caller's transaction and rolls back with it.
-
-## Submission
-
-* **The reason is owed below 40% ATTACHED payment** — verified plus awaiting
-  Finance verification — zero included. At or above it nothing is mandatory. The
-  route is chosen by the database under row locks; a percentage the browser
-  sends decides nothing. The reason lives on the existing exception columns.
-
-## PI versions on a Confirmed Order
-
-* **A later PI never overwrites the current one.** It is a pending version in
-  `order_pi_versions`; V1 is the document the Order was approved from. Exactly
-  one approved and at most one pending version per Order, by partial unique
-  index. A rejected revision keeps its file and its reason; a superseded one
-  stays openable.
-* Proposing needs the PI's owner or an admin holding `orders.create`, and a
-  reason. Approving or rejecting is an **active admin**'s, with a reason on
-  rejection. Approval applies the revised workbook through the one parser path
-  and supersedes the previous version in the same transaction.
-
-## Production alignment
-
-* **Every Confirmed Order is born `Not Aligned`.** Commercial approval is not
-  production acceptance. The Head of Manufacturing aligns it explicitly through
-  `set_order_production_alignment()` under `orders.align_production` — a
-  protected action no preset grants and neither `approve_order` nor `manage`
-  implies. No other writer, service role included, may move the columns.
 
 ## Order numbering
 

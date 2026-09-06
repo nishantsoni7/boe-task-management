@@ -23,7 +23,6 @@ import type { EffectivePermission } from './types'
 
 const ORDERS_ACTIONS = [
   'view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order',
-  'align_production',
 ]
 
 /** The two the module no longer registers. Never granted, never derived. */
@@ -56,7 +55,7 @@ describe('module entry', () => {
   })
 
   test('a stronger action without view grants no module control', () => {
-    for (const action of ['create', 'edit', 'approve_order', 'export', 'manage', 'delete', 'align_production']) {
+    for (const action of ['create', 'edit', 'approve_order', 'export', 'manage', 'delete']) {
       const caps = deriveOrdersCapabilities('member', perms([action]))
       assert.equal(caps.canAccessOrdersModule, false, `${action} must not open the module`)
       assert.deepEqual(caps, NO_ORDERS_CAPABILITIES, `${action} must not produce a button`)
@@ -69,9 +68,6 @@ describe('each capability maps to exactly one action', () => {
     ['create', 'canCreateOrder'],
     ['edit', 'canEditOrder'],
     ['approve_order', 'canApproveOrderSubmission'],
-    // The Head of Manufacturing's decision (20261116000000). Its own action,
-    // its own capability, and neither approve_order nor manage implies it.
-    ['align_production', 'canAlignProduction'],
     ['export', 'canExportOrders'],
     ['delete', 'canDeleteOrder'],
     ['manage', 'canManageOrders'],

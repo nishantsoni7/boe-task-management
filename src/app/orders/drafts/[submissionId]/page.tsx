@@ -182,11 +182,8 @@ import { notifyPiSubmission } from '@/lib/notify'
 import {
   describeApprovalReadiness,
   describeFinanceStatus,
-  describeReviewDecision,
   financeVerificationIsCurrent,
   orderHref,
-  piApprovedLine,
-  piDecisionIsCurrent,
   readApprovalOutcome,
 } from '@/lib/orders/finalApproval'
 import {
@@ -280,8 +277,6 @@ type Draft = {
   advanceDeciderName: string | null
   /** Who verified the figures for finance, when there is a verification. */
   financeVerifierName: string | null
-  /** Who approved the PI itself (20261116000000), resolved the same way. */
-  piApproverName: string | null
   /**
    * The official number of the Order this PI became, or null.
    *
@@ -449,9 +444,7 @@ function PiDraftDetailPageInner() {
   const [canVerifyFinance, setCanVerifyFinance] = useState(false)
 
   /** Which decision dialog is open, if any. */
-  const [dialog, setDialog] = useState<
-    'submit' | 'verify_finance' | 'approve' | 'approve_pi' | 'create_order' | PiNoteIntent | null
-  >(null)
+  const [dialog, setDialog] = useState<'submit' | 'verify_finance' | 'approve' | PiNoteIntent | null>(null)
   const [acting, setActing] = useState(false)
   const [actionFailure, setActionFailure] = useState<string | null>(null)
   /**
@@ -602,7 +595,6 @@ function PiDraftDetailPageInner() {
       row.advance_exception_decided_by,
       row.finance_verified_by,
       row.approved_by,
-      row.pi_approved_by,
     ])
     if (actorIds.length > 0) {
       // Two safe columns, named explicitly: `select('*')` on public.users is a
@@ -643,8 +635,6 @@ function PiDraftDetailPageInner() {
         submission: row,
         financeVerifierName: row.finance_verified_by
           ? namesById.get(row.finance_verified_by) ?? null : null,
-        piApproverName: row.pi_approved_by
-          ? namesById.get(row.pi_approved_by) ?? null : null,
         orderDisplayNumber,
         activity: describeActivityEntries(history, namesById, formatSavedAt),
         submitterName: row.submitted_by ? namesById.get(row.submitted_by) ?? null : null,
@@ -1240,24 +1230,6 @@ function PiDraftDetailPageInner() {
     return { error }
   }), [runAction, supabase, submissionId])
 
-  /**
-   * The PI decision ON ITS OWN (20261116000000).
-   *
-   * Pressed only when the payment condition is what stands between this PI and
-   * a Confirmed Order. approve_pi_review() records that management approves
-   * the document and creates NOTHING — no Order, no number, no moved money —
-   * so Finance and the exception approver keep their own decisions, and the
-   * Order is created by approve_order_submission() once both gates clear. The
-   * same id-only call as every other decision on this page.
-   */
-  const approvePiReview = useCallback(() => runAction('approve', async () => {
-    const { error } = await supabase.rpc('approve_pi_review', {
-      p_submission_id: submissionId,
-    })
-    if (!error) await loadPayments()
-    return { error }
-  }), [runAction, supabase, submissionId, loadPayments])
-
   const closeDialog = useCallback(() => {
     if (actingRef.current) return
     setDialog(null)
@@ -1463,7 +1435,7 @@ function PiDraftDetailPageInner() {
     })),
   )
 
-  const readinessInput = {
+  const readiness = describeApprovalReadiness({
     status: submission.status,
     financeVerified,
     paymentPosition: asPaymentPosition(payments?.approval_position),
@@ -1474,31 +1446,7 @@ function PiDraftDetailPageInner() {
     // The same list every other surface reads. Last of the blockers, because
     // everything above it is a larger obstacle than a missing field.
     incompleteSummary: submissionReadiness.ready ? null : submissionReadiness.summary,
-  }
-  const readiness = describeApprovalReadiness(readinessInput)
-
-  /**
-   * THE PI DECISION, and which door this reviewer is offered.
-   *
-   * Whether the PI itself stands approved is the record's, mirrored by the
-   * same rule the database applies (order_submission_pi_approved); on an
-   * approved record the columns are read straight, exactly as the finance
-   * check is. Which control to draw — approve-and-create, approve the PI only,
-   * or create the Order the PI already earned — is one pure decision over the
-   * readiness input above, so the button and the RPC behind it cannot disagree.
-   */
-  const piApproved = submission.status === 'approved'
-    ? Boolean(submission.pi_approved_at)
-    : piDecisionIsCurrent(submission, submission.submitted_at)
-  const reviewDecision = describeReviewDecision({
-    readiness: readinessInput,
-    piApproved,
-    canApprove: actions.canApprove,
   })
-  const piApprovedText = piApproved
-    ? piApprovedLine(draft.piApproverName,
-        submission.pi_approved_at ? formatSavedAt(submission.pi_approved_at) : null)
-    : null
 
   /**
    * The Order, preferring the value read back from the database.
@@ -1891,22 +1839,9 @@ function PiDraftDetailPageInner() {
           finance={finance}
           approvalBlocker={readiness.blocker}
           approvalReady={readiness.ready}
-          decision={reviewDecision}
-          piApprovedLine={piApprovedText}
           approvedOrder={approvedOrder}
           onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
-          onApprove={() => {
-            setActionFailure(null)
-            // THE DOOR FOLLOWS THE DECISION, never the other way round: the
-            // PI-only dialog opens only when the payment condition is the one
-            // thing outstanding, and the create-Order dialog only when the PI
-            // already stands approved.
-            setDialog(
-              reviewDecision.mode === 'approve_pi' ? 'approve_pi'
-              : reviewDecision.mode === 'create_order' ? 'create_order'
-              : 'approve',
-            )
-          }}
+          onApprove={() => { setActionFailure(null); setDialog('approve') }}
           onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
           advanceBand={advanceBand}
         />
@@ -2349,34 +2284,20 @@ function PiDraftDetailPageInner() {
         />
       )}
 
-      {(dialog === 'approve' || dialog === 'approve_pi' || dialog === 'create_order') && (
+      {dialog === 'approve' && (
         <PiApproveOrderModal
           client={clientLabel}
-          mode={dialog === 'approve_pi' ? 'approve_pi' : dialog === 'create_order' ? 'create_order' : 'approve_and_create'}
           rows={buildApprovalSummary({
             client: clientLabel,
             grandTotal: grandTotalLabel,
             advanceLabel: verifiedPaymentLabel ?? advanceLabel,
             financeVerified,
             productCount: products.length,
-            // THE PAYMENT SUMMARY the approver evaluates the PI beside: every
-            // figure the database's, formatted here and computed nowhere.
-            payment: payments === null ? null : {
-              orderValue: formatMoney(payments.grand_total),
-              approved: `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`,
-              pending: `${formatMoney(payments.unverified_amount)} · ${formatPercent(payments.unverified_percent)}`,
-              attached: payments.attached_amount === undefined || payments.attached_amount === null
-                ? null
-                : `${formatMoney(payments.attached_amount)} · ${formatPercent(payments.attached_percent)}`,
-              exceptionReason: payments.exception_status ? (payments.exception_reason ?? null) : null,
-              exceptionStatus: payments.exception_status ?? null,
-            },
-            piApprovedLine: piApprovedText,
           })}
           saving={acting}
           failure={actionFailure}
           onCancel={closeDialog}
-          onConfirm={dialog === 'approve_pi' ? approvePiReview : approveSubmission}
+          onConfirm={approveSubmission}
         />
       )}
 
