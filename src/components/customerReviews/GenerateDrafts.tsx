@@ -307,10 +307,15 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
 
   // ── The two people lists, and why they are two ────────────────────────────
   //
-  // THE CANDIDATE is who the batch is for, and only somebody who resolves `use`
-  // can be given one — so it comes from customer_review_assignable_employees(),
-  // the same verify-gated function the assignment step uses. A picker offering
-  // a name the assignment would refuse is worse than a shorter picker.
+  // THE CANDIDATE FIELD IS GENERATION CONTEXT, NOT ASSIGNMENT. Naming somebody
+  // here only records who the batch is intended for so their name can be
+  // preselected later; it does not assign reviews or grant module access. For
+  // that reason every active, non-deleted employee is shown here rather than
+  // only employees who currently resolve Review Workflow `use`.
+  //
+  // FINAL ASSIGNMENT REMAINS STRICT. AssignBatch still loads
+  // customer_review_assignable_employees(), and assign_customer_review_batch()
+  // resolves `use` again inside the database before writing assigned_to.
   //
   // A TEAM MEMBER TO MENTION is a different question with a different answer.
   // The Co-Founder and the Operations Manager are people a review may
@@ -326,18 +331,16 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
     let active = true
     const startFetch = () => {
       void (async () => {
-        const [assignable, directory] = await Promise.all([
-          supabase.rpc('customer_review_assignable_employees'),
-          supabase
-            .from('users')
-            .select('id, full_name, position, is_deleted')
-            .eq('is_active', true)
-            .order('full_name'),
-        ])
+        const { data: directory } = await supabase
+          .from('users')
+          .select('id, full_name, position, is_deleted')
+          .eq('is_active', true)
+          .order('full_name')
         if (!active) return
-        setCandidates(((assignable.data ?? []) as Employee[]))
-        const rows = (directory.data ?? []) as (Employee & { is_deleted: boolean | null })[]
-        setStaffPool(rows.filter(r => !r.is_deleted && r.full_name))
+        const rows = (directory ?? []) as (Employee & { is_deleted: boolean | null })[]
+        const activeNamed = rows.filter(r => !r.is_deleted && r.full_name)
+        setCandidates(activeNamed)
+        setStaffPool(activeNamed)
       })()
     }
     startFetch()

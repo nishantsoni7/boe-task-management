@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { ImageLibrary } from '@/components/customerReviews/ImageLibrary'
+import { ProjectCityManager } from '@/components/customerReviews/ProjectCityManager'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 
 // The project image library, as a workspace of its own.
@@ -13,10 +14,9 @@ import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 // both easy to miss and — once opened — competing for the same screen as the
 // queue. Managing a project's photographs is its own task; it gets its own page.
 //
-// NOTHING ABOUT THE LIBRARY CHANGED. Same component, same RLS-scoped reads,
-// same route for uploads. What changed is that its thumbnails are signed only
-// when somebody actually opens this page, instead of on every visit to the
-// module that happened to expand the panel.
+// Project name stays owned by ImageLibrary. City is project-level metadata,
+// edited beside the library so every image inside one group inherits the same
+// project/city reference without changing the stable upload path.
 export function ImagesScreen() {
   const { supabase, profile, caps, loading, signOut } = useCustomerReviews()
   const router = useRouter()
@@ -38,6 +38,7 @@ export function ImagesScreen() {
     >
       <div style={{ maxWidth: '900px' }}>
         <ImageLibrary supabase={supabase} />
+        <ProjectCityManager supabase={supabase} />
       </div>
     </CustomerReviewsLayout>
   )
