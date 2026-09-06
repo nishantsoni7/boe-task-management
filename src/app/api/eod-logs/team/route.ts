@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import {
   resolvePerformanceAccess, isWithinTeamPerformanceScope,
 } from '@/lib/permissions/performance'
+import { isPerformanceTracked } from '@/lib/performanceEligibility'
 
 function sb() {
   return createClient(
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false }),
     client
       .from('users')
-      .select('id, full_name, team, position')
+      .select('id, full_name, team, position, performance_tracking_enabled')
       .eq('is_active', true)
       .eq('is_deleted', false),
   ])
@@ -59,13 +60,24 @@ export async function GET(req: NextRequest) {
   if (logsErr)  return NextResponse.json({ error: logsErr.message },  { status: 500 })
   if (usersErr) return NextResponse.json({ error: usersErr.message }, { status: 500 })
 
-  type UserRow = { id: string; full_name: string; team: string; position: string | null }
+  type UserRow = {
+    id: string; full_name: string; team: string; position: string | null
+    performance_tracking_enabled: boolean | null
+  }
   // Scope is applied to the EMPLOYEE MAP, and an entry is built only for a log
   // whose author is in it — so a log written by somebody outside the caller's
   // visibility is dropped rather than returned. Without `view_all` that is the
   // caller's own department plus themselves.
   const userMap = new Map<string, UserRow>(
     (users ?? [])
+      // PERFORMANCE PARTICIPATION, then visibility scope. An employee held out
+      // of Performance reporting (users.performance_tracking_enabled) is not part
+      // of the measured population, so their EOD entries are not part of the
+      // team's EOD record either — the same rule the team dataset applies before
+      // it computes anything. Applied to the AUTHOR MAP, and an entry is built
+      // only for a log whose author survives it, so an excluded employee cannot
+      // reach the response or the totals derived from it.
+      .filter((u: UserRow) => isPerformanceTracked(u))
       .filter((u: UserRow) => isWithinTeamPerformanceScope(caller, capabilities, u))
       .map((u: UserRow) => [u.id, u]),
   )

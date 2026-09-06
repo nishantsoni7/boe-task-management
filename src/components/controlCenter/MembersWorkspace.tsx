@@ -460,6 +460,25 @@ function MemberDialog({
   const [level,    setLevel]    = useState(member.designation_level ?? '')
   const [role,     setRole]     = useState<'member' | 'manager' | 'admin'>(member.role)
 
+  // PERFORMANCE PARTICIPATION — whether this person is MEASURED by Performance.
+  //
+  // Deliberately NOT a permission, and deliberately not next to the permission
+  // controls. `performance:view` / `view_team` / `view_all` decide which pages
+  // somebody may open; this decides whether they are part of the population
+  // Performance reports on — the team average, the rankings, Best Performer,
+  // Most Improved, Needs Attention, the EOD rate, the coverage count. A partner
+  // or an owner can legitimately hold full access to the module while not being
+  // one of the employees it measures, and until now the only place to say so was
+  // a form inside the ATTENDANCE module, which is not where an administrator
+  // looks for it.
+  //
+  // Null and undefined both read as INCLUDED, matching isPerformanceTracked and
+  // the column's NOT NULL DEFAULT true — so an employee whose row predates this
+  // control, or a payload that omits the field, is never silently dropped from
+  // the report.
+  const [inPerformance, setInPerformance] =
+    useState(member.performance_tracking_enabled !== false)
+
   const [saving,  setSaving]  = useState(false)
   const [error,   setError]   = useState('')
   const [busy,    setBusy]    = useState('')
@@ -524,6 +543,43 @@ function MemberDialog({
       position: position || null,
       designation_level: level || null,
     })
+  }
+
+  /**
+   * Include or exclude this employee from Performance measurement.
+   *
+   * Writes `users.performance_tracking_enabled` through the existing admin-only
+   * PATCH /api/update-employee — the same field and the same route the
+   * Attendance Employee Master already used, so there is one setting and one
+   * writer rather than a second participation model.
+   *
+   * NOTHING IS DELETED AND NOTHING IS RECALCULATED. Excluding somebody removes
+   * them from every future report; their EOD logs, scores and history stay
+   * exactly where they are, and switching this back on makes them eligible again
+   * under the ordinary date rules. That reversibility is the reason this is a
+   * flag on the employee rather than a deletion or a permission revocation.
+   */
+  const setParticipation = async (next: boolean) => {
+    setBusy('performance')
+    setError('')
+    try {
+      const res = await fetch('/api/update-employee', {
+        method: 'PATCH',
+        headers: await authHeaders(),
+        body: JSON.stringify({ id: member.id, performance_tracking_enabled: next }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setError(data?.error ?? `Failed to update Performance participation (HTTP ${res.status})`)
+        return
+      }
+      setInPerformance(next)
+      onSaved({ performance_tracking_enabled: next })
+    } catch {
+      setError('Network error — please check your connection and try again.')
+    } finally {
+      setBusy('')
+    }
   }
 
   const toggleActive = async () => {
@@ -713,6 +769,39 @@ function MemberDialog({
           </div>
         )}
       </div>
+
+      {/* ── Performance ────────────────────────────────────────────────── */}
+      {/* ITS OWN GROUP, and above Access on purpose. Participation and access
+          are different questions and must not read as one control: this says
+          whether the person is MEASURED, the Access group below says what they
+          may OPEN. Somebody can hold every Performance permission and still not
+          be part of the measured population — a partner, an owner, a test
+          account — which is exactly the case this exists for. */}
+      {!isDeleted && (
+        <div className={cc.memberGroup}>
+          <div className={cc.memberGroupTitle}>Performance</div>
+          <div className={cc.memberActions} style={{ marginBottom: 8 }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: busy === 'performance' ? 'wait' : 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={inPerformance}
+                disabled={busy === 'performance'}
+                onChange={e => { void setParticipation(e.target.checked) }}
+              />
+              Included in Performance
+            </label>
+          </div>
+          <div className={cc.note}>
+            {inPerformance
+              ? 'Counted in Team Performance — the employee list, the team average, rankings, '
+                + 'Best Performer, Most Improved, Needs Attention, the EOD rate and the coverage count.'
+              : 'Held out of Performance reporting. This employee appears in no team list, average, '
+                + 'ranking or rate. Nothing is deleted — their history is kept, and switching this '
+                + 'back on makes them eligible again.'}
+            {' '}This is separate from Performance <em>access</em>, which is set under Access Control.
+          </div>
+        </div>
+      )}
 
       {/* ── Access ─────────────────────────────────────────────────────── */}
       <div className={cc.memberGroup}>

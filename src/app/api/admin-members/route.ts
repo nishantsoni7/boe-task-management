@@ -1,7 +1,13 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 
-const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, designation_level, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at'
+// `performance_tracking_enabled` (20260719000000) is included so Control Center
+// can show and set "Included in Performance" on the employee it is editing.
+// PARTICIPATION IS NOT ACCESS: it decides whether this person is MEASURED by
+// Performance — counted in the team average, the rankings, the attention list —
+// and says nothing about which pages they may open, which stays with the
+// permission engine. See src/lib/performanceEligibility.ts.
+const MEMBER_COLUMNS = 'id, full_name, email, phone, role, team, position, designation_level, is_active, created_at, is_deleted, deleted_at, deletion_scheduled_at, performance_tracking_enabled'
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization') ?? ''

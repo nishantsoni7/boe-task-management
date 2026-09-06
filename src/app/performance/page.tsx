@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { PerformanceLayout } from '@/components/layout/PerformanceLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
@@ -1212,9 +1212,10 @@ export default function PerformancePage() {
   const canOpenTeamView = capabilities.canAccessTeamPerformance
 
   return (
-    <DashboardLayout
+    <PerformanceLayout
       profile={profile}
-      title="Performance"
+      canViewTeam={canOpenTeamView}
+      title="My Performance"
       subtitle={todayLabel}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
       actions={viewAsUserId ? (
@@ -1420,6 +1421,6 @@ export default function PerformancePage() {
         )}
 
       </div>
-    </DashboardLayout>
+    </PerformanceLayout>
   )
 }
