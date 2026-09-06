@@ -286,7 +286,11 @@ describe('ModuleGuard cannot leak the page or its data', () => {
     // the guard reads it from there instead of resolving a second time. The far
     // end — that the context really calls the resolver — is pinned by the
     // usePermissionContext describe below; together they pin the whole path.
-    assert.ok(guard.includes('usePermissionContext()'), 'the guard must read the shared resolution')
+    // The shared resolution is now reached THROUGH useDisplaySubject, which
+    // returns the session-scoped permission context unchanged outside View As
+    // and the server-resolved subject inside it. One hop further along the same
+    // path, not a second path.
+    assert.ok(guard.includes('useDisplaySubject()'), 'the guard must read the shared resolution')
     assert.ok(
       guard.includes('permissionsByModule.get(moduleKey) ?? []'),
       'the permissions handed to the rule must come from that shared resolution',
@@ -298,11 +302,25 @@ describe('ModuleGuard cannot leak the page or its data', () => {
     }
   })
 
-  test('it reads the signed-in user, never a View As target', () => {
-    assert.ok(
-      !guard.includes('useViewAs') && !guard.includes('viewAsUserId'),
-      'View As is a preview and must not lend or remove authority in a guard',
-    )
+  test('it reads the DISPLAY SUBJECT, and asks nothing about authority', () => {
+    // THIS ASSERTION WAS INVERTED, on purpose. It used to require the guard to
+    // read the signed-in user even while previewing, on the reasoning that View
+    // As must not lend or remove authority. The reasoning is right; the
+    // conclusion was wrong, because a route guard decides what is DISPLAYED and
+    // not what is permitted. Reading the admin meant "Viewing as Dhruv" could
+    // walk into a module Dhruv does not have — which makes the preview useless
+    // for the one thing it exists for.
+    //
+    // Authority is untouched by this: the guard grants nothing. RLS and each
+    // route's own server checks refuse the DATA and they read the real caller,
+    // so narrowing a preview here cannot weaken anything and widening it could
+    // never have granted anything.
+    assert.ok(guard.includes('useDisplaySubject'), 'the guard must resolve the display subject')
+    assert.ok(guard.includes('subjectRole') && guard.includes('subjectPermissionsByModule'),
+      'the guard must decide from the subject, not the actor')
+    // And it still reads the ACTOR for the session check — a preview with no
+    // session is not a preview.
+    assert.ok(guard.includes('actorUserId'), 'the session check must read the authenticated actor')
   })
 })
 
@@ -379,20 +397,26 @@ describe('the launcher agrees with the guards', () => {
     )
 
     const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
-    assert.ok(gate.includes('role: signedInRole'), 'the gate must read the SIGNED-IN role')
-    assert.ok(gate.includes('permissions: permsByModule.get(moduleKey) ?? []'))
+    assert.ok(gate.includes('role: subjectRole'), 'the gate must read the DISPLAY SUBJECT\'s role')
+    assert.ok(gate.includes('permissions: subjectPermissions.get(moduleKey) ?? []'))
     assert.ok(gate.includes('isModuleActive: true'))
   })
 
-  test('View As never lends authority to a launcher card', () => {
-    // The launcher does hold an effectiveProfile, and legitimately uses it for
-    // presentation and for the Attendance/Payroll self-service card. It must
-    // never reach the parent gate: previewing somebody's screen must not open a
-    // module for them, nor close one the administrator holds.
+  test('View As changes what is SHOWN, and never what is permitted', () => {
+    // The card grid follows the subject — that is the correction, and it is what
+    // makes the preview truthful. What must NOT happen is the launcher inventing
+    // an authority answer of its own: the gate reads the resolved subject and
+    // nothing else. No raw View As id, no profile-shaped shortcut, and no second
+    // resolution.
     const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
-    for (const viewAs of ['effectiveProfile', 'viewAsProfile', 'viewAsUserId']) {
-      assert.ok(!gate.includes(viewAs), `the parent gate must not read ${viewAs}`)
+    for (const forbidden of ['viewAsProfile', 'viewAsUserId', 'effectiveProfile']) {
+      assert.ok(!gate.includes(forbidden), `the parent gate must not read ${forbidden}`)
     }
+    // The subject itself is resolved SERVER-SIDE, so the browser never decides
+    // whether this caller may preview that employee.
+    assert.ok(launcher.includes('useDisplaySubject'), 'the launcher must resolve the subject')
+    assert.ok(!launcher.replace(/\/\/[^\n]*/g, '').includes('getEffectivePermissions('),
+      'the launcher must not resolve another user’s permissions in the browser')
   })
 
   test('no card is rendered before authorization resolves', () => {
@@ -528,16 +552,16 @@ describe('a disabled module never starts its count request', () => {
   test('the gate is the shared rule, not a second opinion', () => {
     const gate = launcher.slice(launcher.indexOf('const canOpenModule'), launcher.indexOf('const isAdminFallback'))
     assert.ok(gate.includes('canAccessManagementModule'))
-    assert.ok(gate.includes('permissions: permsByModule.get(moduleKey) ?? []'))
+    assert.ok(gate.includes('permissions: subjectPermissions.get(moduleKey) ?? []'))
     // …and that map is the shared resolution, not a launcher-local lookup.
     assert.ok(
-      launcher.includes('permissionsByModule: permsByModule'),
-      'the permission map must come from usePermissionContext',
+      launcher.includes('subjectPermissionsByModule: subjectPermissions'),
+      'the permission map must come from useDisplaySubject',
     )
   })
 
   test('permissions resolve BEFORE any count is requested', () => {
-    const contextAt = launcher.indexOf('} = usePermissionContext()')
+    const contextAt = launcher.indexOf('} = useDisplaySubject()')
     const gateAt    = launcher.indexOf('const canOpenModule')
     const flagAt    = launcher.indexOf('const mayOpenTask')
     const loadAt    = launcher.indexOf('const load =')

@@ -255,7 +255,11 @@ describe('one key, one request, mutations included', () => {
   })
 
   test('12. the launcher card and both navs read ONE query key', () => {
-    assert.ok(HOOK.includes('queryKey: notificationKeys.count(category)'))
+    // Still ONE key per category — now suffixed with the DISPLAY SUBJECT, so an
+    // administrator previewing an employee reads that employee's count instead
+    // of overwriting their own cached badge with it. Outside View As the suffix
+    // is the signed-in user and all three surfaces still share one entry.
+    assert.ok(HOOK.includes('queryKey: [...notificationKeys.count(category), userId ?? null]'))
     assert.ok(MODULES.includes("useUnreadCountState('task',    mayOpenTask)"))
     assert.ok(MODULES.includes("useUnreadCountState('finance', mayOpenFinance)"))
     assert.ok(MODULES.includes("useUnreadCountState('order',   mayOpenOrders)"))

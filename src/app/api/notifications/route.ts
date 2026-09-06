@@ -6,6 +6,7 @@ import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificat
 import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
 import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
+import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
@@ -52,6 +53,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
   }
 
+  // ── WHOSE NOTIFICATIONS? ────────────────────────────────────────────────────
+  //
+  // The DISPLAY SUBJECT's. Normally that is the caller and every query below is
+  // scoped exactly as it always was. While an administrator previews an
+  // employee, the badge and the list must show THAT employee's notifications —
+  // an admin checking Dhruv's screen learns nothing from their own unread count
+  // sitting under Dhruv's name.
+  //
+  // `?subjectUserId=` names the employee; it is NOT authorization.
+  // resolveViewAsSubject reads the CALLER's own row from the database and
+  // refuses unless they are an active administrator and the employee is
+  // eligible. An invented id gets 403; an absent one resolves to the caller.
+  //
+  // The category gate above deliberately still asks about `user.id`: whether a
+  // feed like attendance_payroll may be read AT ALL is a question about the
+  // authenticated caller, not about whose screen is being drawn. An admin
+  // previewing an employee is still an admin, and an ordinary employee cannot
+  // use this parameter at all.
+  const subjectDecision = await resolveViewAsSubject(
+    supabase, user.id, req.nextUrl.searchParams.get('subjectUserId'),
+  )
+  if (!subjectDecision.allowed) {
+    return NextResponse.json({ error: subjectDecision.reason }, { status: subjectDecision.status })
+  }
+  const subjectId = subjectDecision.subjectId
+
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
   // Lightweight badge path: just the unread count.
@@ -59,7 +86,7 @@ export async function GET(req: NextRequest) {
     const { count, error } = await supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
-      .eq('user_id', user.id)
+      .eq('user_id', subjectId)
       .eq('is_read', false)
       .or(activityFilter)
       .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
@@ -83,7 +110,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await supabase
     .from('notifications')
     .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id')
-    .eq('user_id', user.id)
+    .eq('user_id', subjectId)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
     .order('created_at', { ascending: false })
@@ -184,6 +211,16 @@ export async function DELETE(req: NextRequest) {
   // read path refuses.
   if (!(await canReadNotificationCategory(supabase, user.id, categoryResult.category))) {
     return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
+  }
+
+  // A PREVIEW MAY NOT DELETE. The scope below is `user.id` — the ADMIN's own
+  // rows — so a preview could never have reached the employee's notifications;
+  // what this refuses is the other mistake, an administrator inspecting somebody
+  // else's inbox and silently emptying their own. Trusting the header is safe
+  // because it can only ever take authority away: a caller who omits it gets no
+  // more than they already had as themselves. See src/lib/viewAs.ts.
+  if (isPreviewRequest(req.headers)) {
+    return NextResponse.json({ error: PREVIEW_WRITE_REFUSED }, { status: 403 })
   }
 
   // Optional narrowing to one task. Validated before Postgres sees it: a

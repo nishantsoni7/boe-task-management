@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
 
 // TEAM PERFORMANCE'S OWN GATE, on top of the module gate.
@@ -38,7 +38,11 @@ import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
 // the half they do have.
 export default function PerformanceTeamLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  const { ready, userId, role, permissionsByModule } = usePermissionContext()
+  // The DISPLAY SUBJECT decides — see the note in ModuleGuard. Previewing Dhruv
+  // must show Dhruv's Team Performance if he has it and hide it if he does not;
+  // the admin's own `view_team` is not what is being previewed.
+  const { ready, actorUserId: userId, subjectRole: role, subjectPermissionsByModule: permissionsByModule }
+    = useDisplaySubject()
 
   const capabilities = derivePerformanceCapabilities(
     role,

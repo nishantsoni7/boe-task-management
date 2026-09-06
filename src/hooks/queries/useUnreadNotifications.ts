@@ -2,7 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { notificationKeys, type UnreadCountShape } from '@/lib/notificationCache'
 import type { NotificationCategory } from '@/lib/notifications'
-import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import {
   readPersistedUnreadCount,
   writePersistedUnreadCount,
@@ -55,17 +55,36 @@ export function useUnreadCountState(
   category: NotificationCategory,
   enabled = true,
 ): UnreadCountState {
-  const { data: userId } = useSignedInUserId()
+  // THE BADGE BELONGS TO THE DISPLAY SUBJECT. Outside View As that is the
+  // signed-in user and this is exactly what it was; while an administrator
+  // previews an employee it is that employee, because a count rendered under
+  // "Viewing as Dhruv" that shows the ADMIN's own unread total is the precise
+  // mixing this work exists to remove.
+  //
+  // The id is also the CACHE identity: it keys the persisted seed and the query
+  // below, so entering and leaving View As swaps counts rather than blending
+  // them, and one person's number is never persisted under another's name.
+  //
+  // It is NOT authorization. The request carries the id; the server decides from
+  // the session whether this caller may read that employee's feed — see
+  // resolveViewAsSubject in src/app/api/notifications/route.ts.
+  const { subjectUserId: userId, viewMode } = useDisplaySubject()
   const seed = readPersistedUnreadCount(userId, category)
 
   const { data, isPending, isError } = useQuery<UnreadCountShape>({
-    queryKey: notificationKeys.count(category),
+    // Keyed by the SUBJECT as well as the category. Without it, previewing an
+    // employee would overwrite the administrator's own cached badge and leave it
+    // wrong after Exit View Mode.
+    queryKey: [...notificationKeys.count(category), userId ?? null],
     // Waits for the id so the seed and the eventual write agree about whose
     // count this is. The request itself is authorised server-side from the
     // session, never from this value.
     enabled: enabled && !!userId,
     queryFn: async () => {
-      const res = await fetch(`/api/notifications?count=1&category=${category}`)
+      const res = await fetch(
+        `/api/notifications?count=1&category=${category}`
+        + (viewMode && userId ? `&subjectUserId=${encodeURIComponent(userId)}` : ''),
+      )
       // A failed count keeps the badge at its last known value rather than
       // flashing 0 — a badge is ambient decoration, and showing "nothing to
       // see" because of a network blip is worse than showing a stale number.

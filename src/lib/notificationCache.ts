@@ -203,8 +203,21 @@ export async function fetchNotificationPage(
   category: NotificationCategory,
   limit: number = NOTIFICATION_PAGE_SIZE,
   fetchFn: (input: string, init?: RequestInit) => Promise<Response> = fetch,
+  /**
+   * The DISPLAY SUBJECT, when an administrator is previewing an employee. The
+   * list must be that employee's, or "Viewing as Dhruv" shows the admin's own
+   * inbox under Dhruv's name.
+   *
+   * Not authorization: the server decides from the session whether this caller
+   * may read that feed (resolveViewAsSubject). Omitted for an ordinary session,
+   * so the request is byte-for-byte what it always was.
+   */
+  subjectUserId?: string | null,
 ): Promise<NotificationPage> {
-  const res = await fetchFn(`/api/notifications?category=${category}&limit=${limit}`)
+  const res = await fetchFn(
+    `/api/notifications?category=${category}&limit=${limit}`
+    + (subjectUserId ? `&subjectUserId=${encodeURIComponent(subjectUserId)}` : ''),
+  )
   if (!res.ok) throw new Error(await readApiError(res, 'Could not load notifications'))
   const body = await res.json()
   return {

@@ -381,7 +381,7 @@ describe('failures stay legible', () => {
     const ref   = HOOK_CODE.indexOf('limitRef.current = next')
     const write = HOOK_CODE.indexOf('qc.setQueryData<Notification[]>')
     assert.ok(ref > -1 && write > ref)
-    assert.ok(HOOK_CODE.includes('fetchNotificationPage(category, limitRef.current)'),
+    assert.ok(HOOK_CODE.includes('fetchNotificationPage(category, limitRef.current, fetch, previewSubjectId)'),
       'the query function reads the ref, not the render-time state')
   })
 

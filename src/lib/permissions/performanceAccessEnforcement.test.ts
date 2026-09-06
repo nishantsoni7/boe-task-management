@@ -184,12 +184,37 @@ describe('the screens ask the same question as the routes', () => {
       'View As on the personal page is no longer decided by a capability')
   })
 
-  test('the launcher destination follows the capability, not the role', () => {
+  test('the Performance card always opens the PERSONAL report', () => {
+    // Personal Performance and Team Performance are not alternatives, and a card
+    // that chose between them was the second half of the original defect: a
+    // Team Performance holder was routed to /performance/team and left with no
+    // route to their own score, month, history or EOD.
+    //
+    // Everybody lands on their own report because everybody is first an
+    // individual employee. A `view_team` holder crosses over by the Team View
+    // link the personal page renders, and comes back by "← My Report".
     const source = read('src/app/modules/page.tsx')
-    assert.ok(source.includes('performanceCapabilities.canAccessTeamPerformance'),
-      'the Performance card destination is no longer capability-derived')
-    assert.ok(!/effectiveProfile\?\.role === 'admin' \|\| effectiveProfile\?\.role === 'manager'\)\s*\n?\s*\? '\/performance\/team'/.test(source),
+    assert.match(source, /const performanceHref = '\/performance'/,
+      'the Performance card must open the personal report')
+    assert.ok(!/performanceHref\s*=[\s\S]{0,200}\?\s*'\/performance\/team'/.test(source),
+      'the either/or destination is back — Team Performance must not replace Personal')
+    // And neither half of the old role test may return.
+    assert.ok(!/effectiveProfile\?\.role === 'admin' \|\| effectiveProfile\?\.role === 'manager'/.test(source),
       'the role-derived Performance href is back')
+  })
+
+  test('both Performance surfaces stay reachable from each other', () => {
+    // The crossing points, in both directions. Each is gated on the DISPLAY
+    // SUBJECT's capability, so previewing an employee without `view_team` shows
+    // no Team View link — and previewing one who has it does.
+    const personal = read('src/app/performance/page.tsx')
+    assert.ok(personal.includes("canOpenTeamView = capabilities.canAccessTeamPerformance"),
+      'the personal page must offer Team View to a view_team holder')
+    assert.ok(personal.includes("href=\"/performance/team\""), 'the Team View link is gone')
+
+    const team = read('src/app/performance/team/page.tsx')
+    assert.ok(team.includes('← My Report'), 'Team Performance must link back to the personal report')
+    assert.ok(team.includes('href="/performance"'), 'the My Report link is gone')
   })
 
   test('Control Center names the three capabilities in Performance’s own words', () => {

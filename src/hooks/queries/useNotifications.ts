@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import type { Notification } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { notificationKeys, fetchNotificationPage, readApiErrorMessage } from '@/lib/notificationCache'
@@ -114,14 +115,20 @@ export function useNotifications(
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [olderError, setOlderError] = useState<string | null>(null)
 
+  // THE LIST BELONGS TO THE DISPLAY SUBJECT — see the note in
+  // useUnreadNotifications. The id also keys the cache, so previewing an
+  // employee cannot overwrite the administrator's own loaded page.
+  const { subjectUserId, viewMode } = useDisplaySubject()
+  const previewSubjectId = viewMode ? subjectUserId : null
+
   const qc = useQueryClient()
 
   const query = useQuery<Notification[]>({
-    queryKey: notificationKeys.list(category),
+    queryKey: [...notificationKeys.list(category), previewSubjectId],
     queryFn: async () => {
       const done = perfStart('notification.list.load')
       try {
-        const page = await fetchNotificationPage(category, limitRef.current)
+        const page = await fetchNotificationPage(category, limitRef.current, fetch, previewSubjectId)
         setServerHasMore(page.hasMore)
         setTaskHeaders(page.taskHeaders)
         setActivityDetails(page.activityDetails)
@@ -146,7 +153,7 @@ export function useNotifications(
         // Fetched directly rather than by bumping state and refetching: the
         // wider request must go out with the NEW ceiling, and a state update
         // does not reach the query function until the next render.
-        const page = await fetchNotificationPage(category, next)
+        const page = await fetchNotificationPage(category, next, fetch, previewSubjectId)
         // Same discipline the mutations use — an in-flight background GET for
         // the narrower page must not land on top of the wider result.
         await qc.cancelQueries({ queryKey: notificationKeys.list(category), exact: true })
@@ -165,7 +172,7 @@ export function useNotifications(
         setLoadingOlder(false)
       }
     })()
-  }, [category, loadingOlder, blocked, qc])
+  }, [category, loadingOlder, blocked, qc, previewSubjectId])
 
   return {
     data: query.data,

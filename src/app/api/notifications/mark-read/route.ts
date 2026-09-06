@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE_EXCLUSION } from '@/lib/notifications'
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
+import { isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 
 /** Ceiling on an explicit id list, matching /api/notifications/delete-selected. */
 const MAX_IDS = 200
@@ -35,6 +36,16 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // A PREVIEW MAY NOT WRITE. Every query in this file is scoped to
+  // `user_id = caller`, so an administrator previewing an employee could never
+  // have touched THAT employee's rows — the audit half was already safe. This
+  // refuses the other mistake: clicking what looks like the employee's control
+  // and silently mutating the administrator's own state. Trusting the header is
+  // safe because it only ever removes authority. See src/lib/viewAs.ts.
+  if (isPreviewRequest(req.headers)) {
+    return NextResponse.json({ error: PREVIEW_WRITE_REFUSED }, { status: 403 })
   }
 
   const body = await req.json().catch(() => null)

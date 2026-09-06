@@ -20,7 +20,7 @@ import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
@@ -116,12 +116,17 @@ export function DashboardLayout({
   // cache when the signed-in identity actually changes or the user signs out.
   // Ordinary token refreshes, and repeated SIGNED_IN events for the same person,
   // no longer throw the cache away — which is the whole gain.
+  const { userId: authUserId } = usePermissionContext()
+
+  // WHOSE NAVIGATION IS THIS? The DISPLAY SUBJECT's — the signed-in user
+  // normally, the viewed employee while previewing. See
+  // src/hooks/queries/useDisplaySubject.ts for the identity model.
   const {
-    ready: permsReady,
-    userId: authUserId,
-    role: signedInRole,
-    permissionsByModule,
-  } = usePermissionContext()
+    ready: subjectReady,
+    subjectUserId,
+    subjectRole,
+    subjectPermissionsByModule: subjectPermissions,
+  } = useDisplaySubject()
 
   // Getting back to the launcher should not begin with a chunk download.
   useEffect(() => { router.prefetch('/modules') }, [router])
@@ -129,7 +134,7 @@ export function DashboardLayout({
   // Effective user for nav counts: the viewed user in View As mode, otherwise
   // the real logged-in user. Used as the query key so counts are cached per
   // effective user instead of colliding across different logged-in users.
-  const effectiveNavUserId = viewAsUserId ?? authUserId
+  const effectiveNavUserId = subjectUserId ?? authUserId
 
   // Sidebar task counts for the effective user. Cached by effectiveNavUserId via
   // React Query so remounting on navigation reuses fresh-enough data instead of
@@ -175,47 +180,29 @@ export function DashboardLayout({
     gcTime: 5 * 60 * 1000,
   })
 
-  // Quotation permissions for the effective user — the same id the counts use,
-  // so "View As" shows the navigation that person would actually get.
+  // Quotation permissions for the DISPLAY SUBJECT — the same person the counts
+  // above belong to, so "View As" shows the navigation that employee would
+  // actually get.
   //
-  // Defaults to NO capabilities, so the quotation items stay hidden while the
-  // query is in flight and if it fails. Hiding is not the enforcement boundary
-  // — the two routes gate themselves — but a nav item that flashes on before a
-  // permission resolves is still a leak of what exists.
-  // In View As the navigation must show what the VIEWED employee would get, so
-  // that person's capabilities are still resolved on their own — this query is
-  // unchanged apart from now running only in view mode.
-  const { data: viewedQuotationCaps = NO_QUOTATION_CAPABILITIES } = useQuery({
-    queryKey: ['nav-quotation-caps', effectiveNavUserId],
-    queryFn: async () => {
-      const uid = effectiveNavUserId
-      if (!uid || !isValidUUID(uid)) return NO_QUOTATION_CAPABILITIES
-      const [{ data: me }, perms] = await Promise.all([
-        supabase.from('users').select('role').eq('id', uid).single(),
-        getEffectivePermissions(supabase, uid, 'task_management').catch(() => []),
-      ])
-      return deriveQuotationCapabilities(me?.role, perms)
-    },
-    enabled: inViewMode && effectiveNavUserId != null,
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000,
-  })
-
-  // Outside view mode the answer is already in the shared context — the same
-  // role and the same task_management permissions the query above would have
-  // fetched, from the same resolver. Deriving it here removes the duplicate
-  // users.role read and the duplicate resolve_effective_permissions call that
-  // ModuleGuard had just made on the very same navigation.
+  // WHAT THIS REPLACES. A local query that read `users.role` for an arbitrary id
+  // and called getEffectivePermissions(<that id>) straight from the browser. It
+  // produced the right answer, but it put "may this person preview that person"
+  // in the client — the resolver RPC is SECURITY DEFINER and takes any user id,
+  // so nothing but this component's own `enabled` flag stood between an
+  // authenticated employee and somebody else's permission tree. The subject is
+  // now resolved by /api/view-as/subject, which decides from the session.
+  //
+  // Outside View As the subject IS the signed-in user and this costs no request
+  // at all: useDisplaySubject hands back the session-scoped context that
+  // ModuleGuard and /modules already share.
   //
   // Still defaults to NO capabilities while unresolved, so the quotation items
   // stay hidden until the answer is known. Hiding is not the enforcement
   // boundary — the two routes gate themselves — but a nav item that flashes on
   // before a permission resolves is still a leak of what exists.
-  const quotationCaps = inViewMode
-    ? viewedQuotationCaps
-    : permsReady
-      ? deriveQuotationCapabilities(signedInRole, permissionsByModule.get('task_management') ?? [])
-      : NO_QUOTATION_CAPABILITIES
+  const quotationCaps = subjectReady
+    ? deriveQuotationCapabilities(subjectRole, subjectPermissions.get('task_management') ?? [])
+    : NO_QUOTATION_CAPABILITIES
 
   const navTo = (path: string) => {
     router.push(path)
