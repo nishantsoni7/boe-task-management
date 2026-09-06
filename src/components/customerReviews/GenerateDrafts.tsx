@@ -305,7 +305,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
 
   const trimmed = guidance.trim()
 
-  // ── The two uses of the active employee directory ────────────────────────
+  // ── The two people lists, and why they are two ────────────────────────────
   //
   // THE CANDIDATE FIELD IS GENERATION CONTEXT, NOT ASSIGNMENT. Naming somebody
   // here only records who the batch is intended for so their name can be
@@ -317,9 +317,15 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
   // customer_review_assignable_employees(), and assign_customer_review_batch()
   // resolves `use` again inside the database before writing assigned_to.
   //
-  // A TEAM MEMBER TO MENTION uses the same active directory. The Co-Founder and
-  // the Operations Manager are people a review may legitimately refer to even
-  // when they are not candidates for review work.
+  // A TEAM MEMBER TO MENTION is a different question with a different answer.
+  // The Co-Founder and the Operations Manager are people a review may
+  // legitimately refer to and are not candidates for review work, so this list
+  // is the active employee directory — the same `users` read the rest of the
+  // application does, under the same RLS.
+  //
+  // NEITHER IS A HARD-CODED STAFF LIST, deliberately. A name typed into a
+  // constant here would keep appearing in generated reviews for months after
+  // the person left.
   useEffect(() => {
     if (!open) return
     let active = true
@@ -378,9 +384,22 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
       })
       const body = await response.json().catch(() => null)
       if (!response.ok) {
+        // THE SHEET STAYS OPEN AND THE GUIDANCE STAYS TYPED. A failure that
+        // closes the dialog makes somebody rewrite a paragraph they already
+        // wrote, and the same request key is still held — so pressing the
+        // button again retries THIS submission rather than starting a new one.
         setPhase({ kind: 'failed', message: body?.error ?? 'That did not work. Please try again.' })
         return
       }
+      // The guidance and the key are both cleared on success, deliberately: the
+      // next batch must be described afresh rather than silently repeating this
+      // one, and it must be a new request rather than a repeat of this one.
+      //
+      // THE SETTINGS ARE NOT CLEARED, and that is a different judgement about a
+      // different field. The guidance is what this batch was about; the batch
+      // size, the word range and the factual context are how this team works,
+      // and retyping four cities for every batch would be busywork. They are
+      // never reused without being seen: the sheet opens on them.
       setGuidance('')
       requestKey.current = null
       setDone(body?.created ?? size)
@@ -435,6 +454,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           subtitle="They will wait for your approval. No candidate can see them until you approve."
           onClose={close}
           maxWidth="560px"
+          // A stray tap outside must never discard a paragraph somebody typed.
           dismissOnBackdrop={false}
           footer={
             confirming ? (
@@ -482,6 +502,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             )
           }
         >
+          {/* ══ BATCH ══════════════════════════════════════════════════════ */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
             <NumberField
               id="review-count"
@@ -516,6 +537,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             name for you at the assignment step, after you approve.
           </p>
 
+          {/* ══ CONTENT ════════════════════════════════════════════════════ */}
           <label htmlFor="review-guidance" style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
             Review guidance
           </label>
@@ -581,6 +603,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             remaining {100 - settings.hinglishPct}% are written in English.
           </p>
 
+          {/* ══ REFERENCES ═════════════════════════════════════════════════ */}
           <Section
             title="Real facts a review may use"
             summary={referenceSummary}
@@ -605,6 +628,10 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
                     placeholder={`City ${i + 1}`}
                     maxLength={60}
                     onChange={e => {
+                      // POSITIONAL WHILE TYPING, TIDIED WHEN VALIDATED. The
+                      // array is kept at full length so clearing box 2 does
+                      // not shuffle box 3 up into it under the cursor;
+                      // validateGenerationSettings() drops the empties.
                       const next = [...settings.locations]
                       while (next.length < MAX_LOCATIONS) next.push('')
                       next[i] = e.target.value
@@ -710,6 +737,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             />
           </Section>
 
+          {/* ══ REVIEW MIX ═════════════════════════════════════════════════ */}
           <Section
             title="Review mix"
             summary={mixSummary}
@@ -771,12 +799,25 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             </p>
           </Section>
 
+          {/*
+            THE VALIDATION MESSAGE, SAID ONCE AND IN THE FORM. Every combination
+            the route would refuse is refused here first, with the same sentence
+            the route would have sent — "40% mention a city" with no city typed
+            is an instruction to invent one, and it is better caught before the
+            button than after a round trip.
+          */}
           {!checked.ok && (
             <p role="alert" style={{ margin: 0, fontSize: '12px', color: '#991B1B', lineHeight: 1.55 }}>
               {checked.error}
             </p>
           )}
 
+          {/*
+            FRESH GUIDANCE, EVERY TIME. Nothing is remembered between batches and
+            nothing is prefilled: the route refuses an empty field rather than
+            reusing what was said last time, so a second batch is described
+            again or it does not happen.
+          */}
           {confirming && (
             <div style={{
               display: 'grid', gap: '8px', padding: '12px',
@@ -798,6 +839,14 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
                   {' '}· {settings.minWords}–{settings.maxWords} words
                 </p>
               )}
+              {/*
+                THIS SENTENCE USED TO OPEN "They cannot be edited by hand".
+                That stopped being true the moment a verifier could correct a
+                draft before approving it, and a promise the very next screen
+                breaks is worse than no promise at all. What replaces it is the
+                thing that IS still true and is the thing the reader needs:
+                nobody outside BOE sees any of this until they approve.
+              */}
               <p style={{ margin: 0, fontSize: '12px', color: '#4C1D95', lineHeight: 1.55 }}>
                 No candidate can see any of them until you approve. You can edit a draft&rsquo;s
                 words yourself, regenerate the whole set from new feedback, or approve them
