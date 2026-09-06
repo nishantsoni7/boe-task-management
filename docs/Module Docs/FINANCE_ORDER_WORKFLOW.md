@@ -1497,4 +1497,66 @@ Repository tests: `src/lib/orders/piReviewGateSchema.test.ts`, `reviewDecision.t
 `piRevisionApproveRoute.test.ts`, `src/app/orders/[id]/orderPiHistory.render.test.tsx`.
 
 Against a migrated database: `supabase/tests/order_pi_review_gate_and_versions_assertions.sql`
-(one transaction, rolls back; five user ids to replace). **Not yet executed.**
+(one transaction, rolls back; five user ids to replace). **Executed and green:**
+all six sections pass against a database carrying the full migration chain.
+
+---
+
+## 14. Two post-approval PI edits, through the amendment door (`20261117000000`)
+
+> **VERIFIED, NOT YET APPLIED TO PRODUCTION.**
+> `20261117000000_order_submission_post_approval_edits_use_the_amendment_context.sql`
+
+### 14.1 What was wrong
+
+`orders_guard_amendable_columns()` freezes a Confirmed Order's commercial terms
+— `client_name`, `confirm_date`, `due_date`, `total_value`, `total_product_value`
+and the rest — unless the writer is inside `in_order_amendment()`. Two admin
+paths carried corrected figures onto the Order from **outside** that context:
+
+| Function | Last defined by | What it writes on the Order |
+| --- | --- | --- |
+| `replace_order_submission_parse()` | `20261003000000` | the mirrored figures, after a "Change PI" on an approved PI |
+| `update_order_submission_client_details()` | `20260928000000` | `client_name`, when the client's name is corrected |
+
+Both were refused by the database:
+
+```
+ORDER_AMENDMENT_REQUIRED: The terms of Order NNNN can only be changed through
+an order amendment, which records who changed what and why
+```
+
+The guard is right. Only the callers were wrong.
+
+**Why it had not bitten.** Both paths need `orders.id`, which exists only once a
+PI becomes a Confirmed Order. Production held no Confirmed Orders, so neither
+path was reachable — until the Order + Finance workflow made it so.
+
+### 14.2 The fix
+
+Each function opens the **existing** transaction-local amendment context
+immediately before its own authorised `update public.orders` and closes it
+immediately after — the same door `amend_order()` has used since
+`20260816000000`, and the one `approve_order_pi_revision()` uses for the
+revised-PI path.
+
+The guard is **not** weakened: no column leaves its frozen list, no exemption is
+widened, no grant or permission changes, and neither function is redesigned. The
+window is exactly one statement wide in each.
+
+### 14.3 What is proven
+
+Through the real RPCs, on a database carrying the whole chain:
+
+* replacing the PI after approval succeeds and carries the revised total onto
+  the Order;
+* correcting the client's name succeeds and carries it across;
+* a direct write to a frozen Order column is still refused;
+* an unguarded write outside the context still raises `ORDER_AMENDMENT_REQUIRED`;
+* production alignment still requires `set_order_production_alignment()`;
+* both amendments remain in the Order and PI activity trails.
+
+Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
+`the post-approval PI edits amend the Order through the amendment context`
+suite — the restated bodies must equal the prior ones plus the context, and
+nothing else.

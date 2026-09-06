@@ -737,3 +737,130 @@ describe('the verification context is restored, and only that', () => {
     }
   })
 })
+
+// ── 20261117000000: the two post-approval PI edits reach the Order legally ───
+//
+// orders_guard_amendable_columns() freezes the Order's commercial terms unless
+// the writer is inside in_order_amendment(). Two admin paths wrote those
+// columns from outside it and were refused at the database:
+//
+//   replace_order_submission_parse()         "Change PI" after approval
+//   update_order_submission_client_details() correcting the client's name
+//
+// Both were reproduced against the live guard. The guard is right; the callers
+// were wrong. This suite proves the migration opens the EXISTING context around
+// exactly one statement in each function and changes nothing else.
+
+const AMEND_FIX = '20261117000000_order_submission_post_approval_edits_use_the_amendment_context.sql'
+const amendFixText = lf(readFileSync(join(MIGRATIONS, AMEND_FIX), 'utf8'))
+
+const CTX_OPEN = "perform set_config('boe.amendment_context', 'order_amendment', true);"
+const CTX_CLOSE = "perform set_config('boe.amendment_context', '', true);"
+
+/** The last definition of `fnName` strictly before the amendment-context fix. */
+function definitionBeforeAmendFix(fnName: string): { text: string; file: string } {
+  const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < AMEND_FIX).sort()
+  const needle = `create or replace function public.${fnName}(`
+  let best: { text: string; file: string } | null = null
+  for (const file of all) {
+    const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+    const lower = source.toLowerCase()
+    let from = 0
+    for (;;) {
+      const start = lower.indexOf(needle, from)
+      if (start === -1) break
+      from = start + needle.length
+      const tag = /\$[A-Za-z_]*\$/.exec(source.slice(start))?.[0]
+      if (!tag) continue
+      const bodyOpen = source.indexOf(tag, start)
+      const bodyClose = source.indexOf(tag, bodyOpen + tag.length)
+      if (bodyClose === -1) continue
+      const semi = source.indexOf(';', bodyClose + tag.length)
+      if (semi === -1) continue
+      best = { text: source.slice(start, semi + 1), file }
+    }
+  }
+  assert.ok(best, `no prior definition found for ${fnName}`)
+  return best
+}
+
+describe('the post-approval PI edits amend the Order through the amendment context', () => {
+  const FUNCTIONS = ['replace_order_submission_parse', 'update_order_submission_client_details']
+
+  test('the regression is real: neither prior definition opened the context', () => {
+    for (const fn of FUNCTIONS) {
+      const prior = definitionBeforeAmendFix(fn)
+      assert.ok(prior.text.includes('update public.orders'),
+        `${fn} is expected to write public.orders`)
+      assert.ok(!prior.text.includes('boe.amendment_context'),
+        `${fn} in ${prior.file} is expected to be the definition that wrote the Order from outside the context`)
+    }
+  })
+
+  test('each function gains only the context — the rest of the body is unchanged', () => {
+    const strip = (t: string) =>
+      t.replace(/^ *--.*\n/gm, '')
+       .replace(/^ *perform set_config\('boe\.amendment_context'.*\n/gm, '')
+       .replace(/\n{2,}/g, '\n')
+    for (const fn of FUNCTIONS) {
+      const prior = definitionBeforeAmendFix(fn)
+      assert.ok(
+        strip(amendFixText).includes(strip(bodyOf(prior.text))),
+        `${fn}: the restated body differs from ${prior.file} by more than the amendment context`,
+      )
+    }
+  })
+
+  test('the context is opened and closed exactly once per function', () => {
+    assert.equal((amendFixText.match(/set_config\('boe\.amendment_context', 'order_amendment', true\)/g) ?? []).length, 2)
+    assert.equal((amendFixText.match(/set_config\('boe\.amendment_context', '', true\)/g) ?? []).length, 2)
+  })
+
+  test('the context is transaction-local on every call', () => {
+    for (const call of [CTX_OPEN, CTX_CLOSE]) {
+      assert.ok(call.endsWith('true);'), `${call} must set is_local = true`)
+    }
+    assert.ok(!/set_config\('boe\.amendment_context'[^)]*false\)/.test(amendFixText),
+      'the amendment context must never be set beyond the transaction')
+  })
+
+  test('the guard is not restated, and no exemption is widened', () => {
+    assert.ok(!/create or replace function public\.orders_guard_amendable_columns/i.test(amendFixText),
+      'this migration must not restate the Order column guard')
+    assert.ok(!/create or replace function public\.in_order_amendment/i.test(amendFixText),
+      'this migration must not restate the amendment predicate')
+    assert.ok(!/drop policy|create policy|alter table/i.test(amendFixText),
+      'the fix touches no policy and no table')
+  })
+
+  test('it restates exactly the two functions it names', () => {
+    const defs = (amendFixText.match(/create or replace function public\.[a-z_]+\(/gi) ?? [])
+      .map(d => d.toLowerCase().replace('create or replace function public.', '').replace('(', ''))
+    assert.deepEqual(defs.sort(), [...FUNCTIONS].sort())
+  })
+
+  test('authorization and actor derivation are unchanged', () => {
+    assert.ok(amendFixText.includes('assert_order_submission_workbook_editor'),
+      'the Change-PI path keeps its editor check')
+    assert.ok(amendFixText.includes('auth.uid()'),
+      'the client-details path keeps its server-side actor')
+    assert.ok(!/grant[^\n]*to (anon|public)\b/.test(amendFixText),
+      'the fix grants nothing to anon or PUBLIC')
+    assert.ok(amendFixText.includes(
+      'grant  execute on function public.replace_order_submission_parse(uuid, uuid, jsonb)\n  to service_role;'),
+      'the Change-PI RPC stays service-role only')
+  })
+
+  test('it asserts the context on the deployed bodies', () => {
+    assert.ok(amendFixText.includes('pg_get_functiondef'),
+      'the migration must read back what it installed')
+    assert.ok(/ASSERTION FAILED: the Order column guard lost a rule it had/.test(amendFixText))
+    assert.ok(/ASSERTION FAILED: A opens the context after the statement it must cover/.test(amendFixText))
+  })
+
+  test('it sorts after the migrations it depends on', () => {
+    for (const stamp of ['20260816000000', '20260928000000', '20261003000000', '20261116000000']) {
+      assert.ok(AMEND_FIX > stamp, `${AMEND_FIX} must sort after ${stamp}`)
+    }
+  })
+})

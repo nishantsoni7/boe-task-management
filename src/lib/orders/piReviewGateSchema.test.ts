@@ -50,16 +50,23 @@ const codeOf = (name: string) => body(name).split('\n').filter(l => !l.trimStart
 // ── Lineage ───────────────────────────────────────────────────────────────────
 
 describe('lineage', () => {
-  test('it is the newest migration, and follows the applied ledger', () => {
+  // NOT "it is the newest migration": later, unrelated migrations are expected
+  // and say nothing about this one. What must hold is the order it applies in.
+  //
+  // This file was written as 20261113000000 and renumbered on integration:
+  // main gave 20261113000000 to the Minop webhook table, 20261114000000 is the
+  // Review Workflow body-length change, and 20261115000000 is the Finance
+  // verification-context fix. It applies after all three.
+  test('it follows the applied ledger, in order', () => {
     const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
-    assert.equal(files[files.length - 1], FILE)
-    // This file was written as 20261113000000 and renumbered on integration:
-    // main gave 20261113000000 to the Minop webhook table, 20261114000000 is
-    // the Review Workflow body-length change, and 20261115000000 is the
-    // Finance verification-context fix. It applies after all three.
-    assert.equal(files[files.length - 2], '20261115000000_restore_finance_payment_verification_context.sql')
-    assert.equal(files[files.length - 3], '20261114000000_review_generation_word_range_and_body_length.sql')
-    assert.equal(files[files.length - 4], '20261113000000_create_minop_webhook_deliveries.sql')
+    const at = files.indexOf(FILE)
+    assert.ok(at > 0, `${FILE} is not in supabase/migrations`)
+    assert.deepEqual(files.slice(at - 3, at + 1), [
+      '20261113000000_create_minop_webhook_deliveries.sql',
+      '20261114000000_review_generation_word_range_and_body_length.sql',
+      '20261115000000_restore_finance_payment_verification_context.sql',
+      FILE,
+    ])
   })
 
   test('it refuses to apply over a missing dependency', () => {
