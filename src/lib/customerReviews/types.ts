@@ -207,9 +207,11 @@ export type TestPhotoKind = 'test_screenshot' | 'review_image'
  * be inferred from whether images happen to be attached to something — a
  * derivation would be a price that changes when an unrelated row does.
  *
- * A generated batch is EXACTLY eight text and four image, and the DATABASE
- * counts them: create_customer_review_draft_batch() refuses any other
- * composition. See REVIEWS_PER_BATCH in ./reviewTypes.
+ * A generated batch is EXACTLY one image review in three — eight text and four
+ * image at the default size of twelve — and the DATABASE derives the same two
+ * numbers from the batch size and refuses any other composition:
+ * create_customer_review_draft_batch() in 20261108000000. See
+ * imageReviewsFor() and textReviewsFor() in ./reviewTypes.
  *
  * IT CANNOT BE CHANGED AFTER APPROVAL. set_customer_review_draft_type() refuses
  * anything but a pending draft, because by the time a review is approved and

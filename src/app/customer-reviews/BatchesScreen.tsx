@@ -211,7 +211,7 @@ export function BatchesScreen() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px' }}>
 
         {/* 1. GENERATE */}
-        <GenerateDrafts onGenerated={() => { void load() }} />
+        <GenerateDrafts supabase={supabase} onGenerated={() => { void load() }} />
 
         {notice && (
           <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>{notice}</p>

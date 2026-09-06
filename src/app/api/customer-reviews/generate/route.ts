@@ -1,4 +1,4 @@
-// POST /api/customer-reviews/generate — one batch of twelve review drafts.
+// POST /api/customer-reviews/generate — one batch of six to twenty review drafts.
 //
 // THE ONLY PLACE A MODEL IS CALLED FOR THIS MODULE, together with its revision
 // twin, and both are server routes for one reason: ANTHROPIC_API_KEY. The
@@ -40,12 +40,16 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import {
-  DRAFTS_PER_BATCH,
   GENERATION_MODEL,
   buildSystemPrompt,
   buildUserPrompt,
+  maxTokensFor,
   validateGuidance,
 } from '@/lib/customerReviews/draftGeneration'
+import {
+  validateGenerationSettings,
+  type GenerationSettings,
+} from '@/lib/customerReviews/generationSettings'
 import {
   ProviderRefusedError,
   runGeneration,
@@ -61,6 +65,7 @@ const MESSAGES = {
   bad_request:     'That request could not be read.',
   not_configured:  'Review generation is not configured on this deployment.',
   unavailable:     'The generator is unavailable right now. Please try again in a moment.',
+  bad_candidate:   'That employee cannot be given Review Workflow batches, so a batch cannot be generated for them.',
 } as const
 
 const fail = (status: number, error: string) =>
@@ -68,18 +73,6 @@ const fail = (status: number, error: string) =>
 
 const ok = (body: Record<string, unknown>) =>
   NextResponse.json(body, { status: 200, headers: { 'Cache-Control': 'no-store, private' } })
-
-/**
- * Twelve reviews plus JSON scaffolding, with room to spare.
- *
- * SIZED PER DRAFT, NOT PICKED. Five hundred tokens each is what eight drafts
- * were given, and twelve get the same, because the failure this number guards
- * against is not a dull batch — it is a reply cut off mid-array. A truncated
- * reply is invalid JSON, validateDrafts refuses the whole batch, and the
- * provider call has already been paid for. Raising the count without raising
- * this would have made that the ordinary outcome rather than a rare one.
- */
-const MAX_TOKENS = 6000
 
 /**
  * How long a claim is held before another caller may take it over.
@@ -117,13 +110,29 @@ export async function POST(req: Request) {
   if (allowed !== true) return fail(403, MESSAGES.forbidden)
 
   // ── 2. What they asked for ────────────────────────────────────────────────
+  //
+  // THE SETTINGS ARE VALIDATED HERE, ON THE SERVER, BEFORE ANYTHING IS SPENT.
+  // The form applies the same bounds, and that is a convenience for the person
+  // typing rather than a control: a caller posting straight to this route with
+  // a batch size of five hundred, a location percentage and no city, or an
+  // issue percentage and no issue, is refused by validateGenerationSettings()
+  // before a claim is taken. The database then checks the batch size and the
+  // text/image composition a third time inside
+  // create_customer_review_draft_batch(), which is the one that actually
+  // decides.
   let guidance: string
   let requestKey: string
+  let settings: GenerationSettings
   try {
-    const body = await req.json() as { guidance?: unknown; requestKey?: unknown } | null
+    const body = await req.json() as
+      { guidance?: unknown; requestKey?: unknown; settings?: unknown } | null
     const checked = validateGuidance(body?.guidance)
     if (!checked.ok) return fail(400, checked.error)
     guidance = checked.guidance
+
+    const checkedSettings = validateGenerationSettings(body?.settings)
+    if (!checkedSettings.ok) return fail(400, checkedSettings.error)
+    settings = checkedSettings.settings
 
     if (typeof body?.requestKey !== 'string' || !UUID.test(body.requestKey)) {
       return fail(400, MESSAGES.bad_request)
@@ -131,6 +140,38 @@ export async function POST(req: Request) {
     requestKey = body.requestKey
   } catch {
     return fail(400, MESSAGES.bad_request)
+  }
+
+  // ── 2b. The candidate, checked against the real employee source ──────────
+  //
+  // A UUID THAT PARSES IS NOT AN EMPLOYEE. validateGenerationSettings() only
+  // proves the shape of the string; this proves that the person exists, is
+  // active, is not deleted, and resolves `use` on the module — and it proves it
+  // through customer_review_assignable_employees(), which is the SAME source
+  // the assignment step picks from. There is no second employee directory here
+  // and no list maintained in this file.
+  //
+  // IT RUNS ON THE CALLER'S OWN CLIENT, NOT THE SERVICE ROLE, and that is the
+  // half that answers "may THIS actor select THAT candidate": the function is
+  // itself verify-gated and raises for anybody who does not hold the
+  // permission, so a caller who could not list employees cannot name one
+  // either.
+  //
+  // AND IT RUNS BEFORE THE CLAIM. The database checks the same thing again
+  // inside create_customer_review_draft_batch(), but that check happens after
+  // the provider has been called and paid for — so a mistyped candidate would
+  // have cost a generation before anybody was told. This one costs a query.
+  if (settings.intendedFor) {
+    const { data: selectable, error: employeeError } = await caller
+      .rpc('customer_review_assignable_employees')
+    if (employeeError) {
+      console.error('[customer-reviews:generate] employee list failed:', employeeError.code)
+      return fail(503, MESSAGES.unavailable)
+    }
+    const eligible = (selectable ?? []) as { id: string }[]
+    if (!eligible.some(person => person.id === settings.intendedFor)) {
+      return fail(400, MESSAGES.bad_candidate)
+    }
   }
 
   const admin = adminClient()
@@ -221,25 +262,27 @@ export async function POST(req: Request) {
     {
       requestKey,
       guidance,
+      settings,
       model: GENERATION_MODEL,
       buildSystem: buildSystemPrompt,
       buildUser: buildUserPrompt,
-      maxTokens: MAX_TOKENS,
+      maxTokens: maxTokensFor(settings.batchSize),
       insertBatch: async (drafts) => {
         // ── THE COMPOSITION IS STAMPED HERE, NOT ASKED FOR ─────────────────
         //
-        // Eight text and four image, decided by position, on whatever the model
-        // returned. There is no `type` field in the schema the model is given,
-        // no branch below that reads one, and no fallback that trusts one — so
-        // a reply cannot influence the mix however it was talked into
-        // answering. The prompt TELLS the model what the last four are for,
+        // Two thirds text and one third image, decided by position, on whatever
+        // the model returned. There is no `type` field in the schema the model
+        // is given, no branch below that reads one, and no fallback that trusts
+        // one — so a reply cannot influence the mix however it was talked into
+        // answering. The prompt TELLS the model what the last few are for,
         // which makes them better-matched drafts; it does not let the model
         // decide how many there are.
         //
         // AND IT IS NOT THE LAST WORD EITHER. create_customer_review_draft_batch()
-        // counts the two types again and refuses any batch that is not 8 and 4,
-        // so a bug in this line produces a failed generation rather than a
-        // silently wrong batch that somebody is paid the wrong amount for.
+        // derives the same two numbers from the batch size and refuses any
+        // other composition, so a bug in this line produces a failed generation
+        // rather than a silently wrong batch that somebody is paid the wrong
+        // amount for.
         const typed = assignReviewTypes(drafts)
 
         const { data: batchId, error } = await admin.client.rpc(
@@ -250,6 +293,20 @@ export async function POST(req: Request) {
             p_drafts:      typed,
             p_actor_id:    user.id,
             p_request_key: requestKey,
+            // WHAT WAS ASKED FOR, SENT SEPARATELY FROM WHAT CAME BACK. The
+            // function compares the two and refuses a mismatch, so a reply that
+            // slipped past validateDrafts() with the wrong length still cannot
+            // become a batch of a size nobody requested.
+            p_card_count:  settings.batchSize,
+            // The controls, stored for auditing a batch after the fact and for
+            // reading back beside it. NOT read by any policy and NOT authority
+            // for anything — see the column comment in 20261108000000.
+            p_settings:    settings,
+            // A target, not an assignment. It prefills the picker at the
+            // assignment step; `assigned_to` — the column candidate visibility
+            // is actually decided by — is written only by
+            // assign_customer_review_batch().
+            p_intended_for: settings.intendedFor,
           },
         )
         // supabase-js never throws; the error arrives in the result, and a route
@@ -266,5 +323,3 @@ export async function POST(req: Request) {
   if (result.kind === 'in_progress') return fail(result.status, result.message)
   return fail(result.status, result.message)
 }
-
-export const GENERATE_BATCH_SIZE = DRAFTS_PER_BATCH

@@ -131,6 +131,13 @@ describe('the migration is one file, correctly sequenced', () => {
       // extends. The current policy shape is asserted in
       // src/lib/customerReviews/reviewTypes.test.ts.
       '20261107000000_review_types_assignment_and_image_groups.sql',
+      // Variable batch size: 6 to 20 reviews a batch, chosen per generation.
+      // It widens CHECKs on customer_review_draft_batches and redefines the
+      // generator, the multi-select approval and the batch assignment. IT
+      // CREATES NONE OF THE THREE TABLES ASSERTED BELOW and touches no policy,
+      // so every claim in this file is unaffected. The current range is asserted
+      // in src/lib/customerReviews/batchSize.test.ts.
+      '20261108000000_review_workflow_variable_batch_size.sql',
       // Performance: Personal Performance and Team Performance become separately
       // configurable capabilities. It registers two actions on the existing
       // `performance` permission module and seeds the admin/manager role grants

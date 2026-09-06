@@ -26,10 +26,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  IMAGE_REVIEWS_PER_BATCH,
-  REVIEWS_PER_BATCH,
-  TEXT_REVIEWS_PER_BATCH,
   assignReviewTypes,
+  imageReviewsFor,
+  textReviewsFor,
   countByType,
   countReviews,
   countReviewsByType,
@@ -40,7 +39,11 @@ import {
 import { canBookCard } from './status'
 import { isShareableReview } from './sharing'
 import { nextStepFor } from './nextStep'
-import { DRAFTS_PER_BATCH } from './draftGeneration'
+import {
+  DEFAULT_BATCH_SIZE,
+  MAX_BATCH_SIZE,
+  MIN_BATCH_SIZE,
+} from './generationSettings'
 import { REVIEW_TYPES, type ReviewType, type TestCardStatus } from './types'
 import {
   DEFAULT_BOE_CREDIT_SETTINGS,
@@ -102,49 +105,72 @@ const card = (over: Partial<{
   ...over,
 })
 
-// ══ 1. THE GENERATOR PRODUCES EXACTLY 8 TEXT AND 4 IMAGE ════════════════════
+// ══ 1. THE GENERATOR PRODUCES ONE IMAGE REVIEW IN THREE ═════════════════════
 
-describe('a batch is eight text and four image, and the model does not decide it', () => {
-  test('the constants add up to the batch size the rest of the module already uses', () => {
-    assert.equal(TEXT_REVIEWS_PER_BATCH, 8)
-    assert.equal(IMAGE_REVIEWS_PER_BATCH, 4)
-    assert.equal(REVIEWS_PER_BATCH, 12)
-    // The split cannot drift from the count. DRAFTS_PER_BATCH is what the
-    // prompt, the validator and the batch CHECK are all written against.
-    assert.equal(REVIEWS_PER_BATCH, DRAFTS_PER_BATCH)
+describe('a batch is two thirds text and one third image, and the model does not decide it', () => {
+  test('TWELVE IS STILL EXACTLY EIGHT AND FOUR', () => {
+    // The pair of constants became a ratio when the batch size became a choice.
+    // This assertion is what makes that a refactor rather than a change: the
+    // one size that existed before still produces exactly what it produced.
+    assert.equal(textReviewsFor(DEFAULT_BATCH_SIZE), 8)
+    assert.equal(imageReviewsFor(DEFAULT_BATCH_SIZE), 4)
   })
 
-  test('the sequence is eight text then four image', () => {
-    const seq = reviewTypeSequence()
-    assert.equal(seq.length, REVIEWS_PER_BATCH)
-    assert.equal(seq.filter(t => t === 'text').length, TEXT_REVIEWS_PER_BATCH)
-    assert.equal(seq.filter(t => t === 'image').length, IMAGE_REVIEWS_PER_BATCH)
+  test('the two counts always add up to the batch, at every legal size', () => {
+    for (let n = MIN_BATCH_SIZE; n <= MAX_BATCH_SIZE; n++) {
+      assert.equal(textReviewsFor(n) + imageReviewsFor(n), n, `${n} does not add up`)
+      // AND NEITHER SIDE IS EVER EMPTY. A batch with no image review would pay
+      // nobody the image rate; a batch with no text review is not a batch this
+      // workflow describes. Six is the floor precisely so both stay true.
+      assert.ok(textReviewsFor(n) > 0, `${n} has no text review`)
+      assert.ok(imageReviewsFor(n) > 0, `${n} has no image review`)
+    }
   })
 
-  test('assignReviewTypes stamps that composition on twelve drafts', () => {
-    const drafts = Array.from({ length: REVIEWS_PER_BATCH }, (_, i) => ({ title: `t${i}`, body: `b${i}` }))
-    const typed = assignReviewTypes(drafts)
-    assert.deepEqual(countByType(typed.map(d => ({ review_type: d.type }))), { text: 8, image: 4 })
-    // The drafts themselves are untouched apart from the added field.
-    assert.equal(typed[0].title, 't0')
+  test('the sequence is the text reviews and then the image ones', () => {
+    for (const n of [MIN_BATCH_SIZE, 7, DEFAULT_BATCH_SIZE, 17, MAX_BATCH_SIZE]) {
+      const seq = reviewTypeSequence(n)
+      assert.equal(seq.length, n)
+      assert.equal(seq.filter(t => t === 'text').length, textReviewsFor(n))
+      assert.equal(seq.filter(t => t === 'image').length, imageReviewsFor(n))
+      // Text first, then image, with no interleaving.
+      assert.equal(seq.indexOf('image') > seq.lastIndexOf('text'), true, `${n} interleaves`)
+    }
+  })
+
+  test('assignReviewTypes stamps that composition, whatever the batch size', () => {
+    for (const n of [MIN_BATCH_SIZE, DEFAULT_BATCH_SIZE, 17, MAX_BATCH_SIZE]) {
+      const drafts = Array.from({ length: n }, (_, i) => ({ title: `t${i}`, body: `b${i}` }))
+      const typed = assignReviewTypes(drafts)
+      assert.deepEqual(
+        countByType(typed.map(d => ({ review_type: d.type }))),
+        { text: textReviewsFor(n), image: imageReviewsFor(n) },
+      )
+      // The drafts themselves are untouched apart from the added field.
+      assert.equal(typed[0].title, 't0')
+    }
   })
 
   test('A TYPE THE MODEL SUPPLIED IS IGNORED, whatever it says', () => {
     // The failure this guards against is a model that has been talked into
-    // returning `"type": "image"` on all twelve — which would be twelve image
-    // rewards for a batch that is meant to be eight text ones.
-    const hostile = Array.from({ length: REVIEWS_PER_BATCH }, (_, i) => ({
+    // returning `"type": "image"` on every draft — which would be a batch of
+    // image rewards for work that is mostly text reviews.
+    const hostile = Array.from({ length: DEFAULT_BATCH_SIZE }, (_, i) => ({
       title: `t${i}`, body: `b${i}`, type: 'image' as const,
     }))
     const typed = assignReviewTypes(hostile)
     assert.deepEqual(countByType(typed.map(d => ({ review_type: d.type }))), { text: 8, image: 4 })
   })
 
-  test('a list that is not exactly twelve is refused rather than typed', () => {
-    assert.throws(() => assignReviewTypes([{ title: 'a', body: 'b' }]), /12 reviews/)
+  test('a list outside the legal batch range is refused rather than typed', () => {
+    assert.throws(() => assignReviewTypes([{ title: 'a', body: 'b' }]), /6 to 20 reviews/)
     assert.throws(
-      () => assignReviewTypes(Array.from({ length: 13 }, () => ({ title: 'a', body: 'b' }))),
-      /13 were supplied/,
+      () => assignReviewTypes(Array.from({ length: 5 }, () => ({ title: 'a', body: 'b' }))),
+      /5 were supplied/,
+    )
+    assert.throws(
+      () => assignReviewTypes(Array.from({ length: 21 }, () => ({ title: 'a', body: 'b' }))),
+      /21 were supplied/,
     )
   })
 

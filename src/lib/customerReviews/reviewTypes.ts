@@ -14,42 +14,61 @@
 // conditional UPDATE that claims the row. A screen and a database that disagree
 // here produce a disabled button and a refusal, never a wrong booking.
 
+import { MAX_BATCH_SIZE, MIN_BATCH_SIZE } from './generationSettings'
 import type { ReviewType, TestCard } from './types'
 
 // ─── The composition of a batch ───────────────────────────────────────────────
 
 /**
- * EIGHT TEXT AND FOUR IMAGE. Twelve, as before, split.
+ * ONE IMAGE REVIEW IN THREE, WHATEVER THE BATCH SIZE.
+ *
+ * It used to be the pair of constants 8 and 4, which was the same ratio written
+ * down for the one batch size that existed. A batch is now anything from six to
+ * twenty reviews, and a pair of constants cannot describe a batch of seven —
+ * so the ratio is what is stored and the two counts are derived from it.
+ *
+ * TWELVE STILL GIVES EXACTLY EIGHT AND FOUR. That is the point of choosing a
+ * third rather than a nicer-looking number: nothing about a batch generated
+ * before this change, or a batch of twelve generated after it, moves.
  *
  * THE SPLIT IS NOT THE MODEL'S CHOICE, and that is the requirement rather than
- * an implementation preference. The model is asked to write twelve reviews; the
+ * an implementation preference. The model is asked to write N reviews; the
  * types are assigned by assignReviewTypes() before the batch is sent to SQL,
- * and create_customer_review_draft_batch() counts them again and refuses any
- * other composition. A model that decided to produce eleven text reviews would
- * change nothing: the eleventh through twelfth are typed here regardless.
+ * and create_customer_review_draft_batch() derives the same two numbers from
+ * the batch size and refuses any other composition. A model that decided to
+ * produce eleven text reviews would change nothing: they are typed here
+ * regardless.
  *
- * The numbers live in three places that must agree — this constant, the count
- * guard inside the generator function, and the tests that pin both. That is one
- * fewer place than the count of twelve lives in, because the batch size is also
- * a column CHECK and the split is not.
+ * THE ROUNDING HAS TO MATCH THE DATABASE'S, and it does: `round(n / 3)` in both
+ * places, and no batch size between six and twenty divides by three to a
+ * halfway value, so there is no tie for the two languages to break differently.
  */
-export const TEXT_REVIEWS_PER_BATCH = 8
-export const IMAGE_REVIEWS_PER_BATCH = 4
-export const REVIEWS_PER_BATCH = TEXT_REVIEWS_PER_BATCH + IMAGE_REVIEWS_PER_BATCH
+export const IMAGE_REVIEW_DIVISOR = 3
+
+export function imageReviewsFor(batchSize: number): number {
+  const size = Math.max(0, Math.trunc(batchSize))
+  return Math.min(size, Math.round(size / IMAGE_REVIEW_DIVISOR))
+}
+
+export function textReviewsFor(batchSize: number): number {
+  const size = Math.max(0, Math.trunc(batchSize))
+  return size - imageReviewsFor(size)
+}
 
 /**
- * The type of the draft at each position in a batch, as a fixed list.
+ * The type of the draft at each position in a batch, as a list.
  *
  * TEXT FIRST, THEN IMAGE, and the order is deliberate rather than arbitrary: a
- * verifier reading twelve drafts reads the eight of one kind together and then
- * the four of the other, instead of switching context twelve times. Nothing
- * downstream depends on the order — the database counts, it does not check
- * positions — so this is a readability decision and is free to change.
+ * verifier reading a batch reads the ones of one kind together and then the
+ * others, instead of switching context on every card. Nothing downstream
+ * depends on the order — the database counts, it does not check positions — so
+ * this is a readability decision and is free to change.
  */
-export function reviewTypeSequence(): ReviewType[] {
+export function reviewTypeSequence(batchSize: number): ReviewType[] {
+  const size = Math.max(0, Math.trunc(batchSize))
   return [
-    ...Array<ReviewType>(TEXT_REVIEWS_PER_BATCH).fill('text'),
-    ...Array<ReviewType>(IMAGE_REVIEWS_PER_BATCH).fill('image'),
+    ...Array<ReviewType>(textReviewsFor(size)).fill('text'),
+    ...Array<ReviewType>(imageReviewsFor(size)).fill('image'),
   ]
 }
 
@@ -61,17 +80,20 @@ export function reviewTypeSequence(): ReviewType[] {
  * count is a business rule about what an employee is asked to do and what they
  * are paid; it is not a thing to negotiate with a language model.
  *
- * Refuses a list that is not exactly REVIEWS_PER_BATCH long, because a shorter
- * one would silently produce a batch with the wrong composition and the caller
- * has already validated the length by the time it gets here.
+ * THE SIZE COMES FROM THE LIST, NOT FROM A PARAMETER, so this cannot be handed
+ * a length and a different set of drafts and quietly type the wrong number of
+ * them. A list outside the legal batch range is refused rather than typed: the
+ * caller has already validated the length against what it asked the model for
+ * by the time it gets here, so a list of the wrong size means something further
+ * up went wrong and inventing a composition for it would hide that.
  */
 export function assignReviewTypes<T>(drafts: readonly T[]): (T & { type: ReviewType })[] {
-  if (drafts.length !== REVIEWS_PER_BATCH) {
+  if (drafts.length < MIN_BATCH_SIZE || drafts.length > MAX_BATCH_SIZE) {
     throw new Error(
-      `a batch is ${REVIEWS_PER_BATCH} reviews; ${drafts.length} were supplied`,
+      `a batch is ${MIN_BATCH_SIZE} to ${MAX_BATCH_SIZE} reviews; ${drafts.length} were supplied`,
     )
   }
-  const sequence = reviewTypeSequence()
+  const sequence = reviewTypeSequence(drafts.length)
   return drafts.map((draft, i) => ({ ...draft, type: sequence[i] }))
 }
 

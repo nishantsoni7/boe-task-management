@@ -70,6 +70,11 @@ describe('the file, and where it sits', () => {
       // The current shape is asserted in
       // src/lib/customerReviews/reviewTypes.test.ts.
       '20261107000000_review_types_assignment_and_image_groups.sql',
+      // Variable batch size. It does NOT reach this work: it touches no reward,
+      // no ledger and no transition function, and the price of a review is still
+      // read from its review_type. A batch simply holds a different number of
+      // them.
+      '20261108000000_review_workflow_variable_batch_size.sql',
       // Performance: Personal Performance and Team Performance become separately
       // configurable capabilities. It registers two actions on the existing
       // `performance` permission module and seeds the admin/manager role grants

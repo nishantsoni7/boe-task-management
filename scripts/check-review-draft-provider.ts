@@ -41,13 +41,19 @@
  */
 
 import {
-  DRAFTS_PER_BATCH,
   GENERATION_MODEL,
   buildSystemPrompt,
   buildUserPrompt,
+  maxTokensFor,
   validateDrafts,
   validateGuidance,
 } from '../src/lib/customerReviews/draftGeneration'
+import {
+  DEFAULT_GENERATION_SETTINGS,
+  MAX_BATCH_SIZE,
+  MIN_BATCH_SIZE,
+  validateGenerationSettings,
+} from '../src/lib/customerReviews/generationSettings'
 
 async function main(): Promise<number> {
   const apiKey = process.env.ANTHROPIC_API_KEY
@@ -67,9 +73,24 @@ async function main(): Promise<number> {
     return 2
   }
 
+  // THE COUNT IS NOW A CHOICE, so the script takes one too. It goes through the
+  // same validator the route uses, so `--count 25` is refused here for exactly
+  // the reason it would be refused there.
+  const countAt = process.argv.indexOf('--count')
+  const requested = countAt > -1 ? Number(process.argv[countAt + 1]) : DEFAULT_GENERATION_SETTINGS.batchSize
+  const checkedSettings = validateGenerationSettings({
+    ...DEFAULT_GENERATION_SETTINGS,
+    batchSize: requested,
+  })
+  if (!checkedSettings.ok) {
+    console.error(`${checkedSettings.error} (--count takes ${MIN_BATCH_SIZE} to ${MAX_BATCH_SIZE})`)
+    return 2
+  }
+  const settings = checkedSettings.settings
+
   console.log(`model     ${GENERATION_MODEL}`)
   console.log(`guidance  ${checked.guidance.slice(0, 100)}${checked.guidance.length > 100 ? '…' : ''}`)
-  console.log(`asking for ${DRAFTS_PER_BATCH} drafts — ONE call, no retry\n`)
+  console.log(`asking for ${settings.batchSize} drafts — ONE call, no retry\n`)
 
   let response
   try {
@@ -82,9 +103,9 @@ async function main(): Promise<number> {
       },
       body: JSON.stringify({
         model:      GENERATION_MODEL,
-        max_tokens: 8000,
+        max_tokens: maxTokensFor(settings.batchSize),
         system:     buildSystemPrompt(),
-        messages:   [{ role: 'user', content: buildUserPrompt(checked.guidance) }],
+        messages:   [{ role: 'user', content: buildUserPrompt(checked.guidance, settings) }],
       }),
     })
   } catch (error) {
@@ -111,7 +132,7 @@ async function main(): Promise<number> {
     .map(block => block.text ?? '')
     .join('')
 
-  const result = validateDrafts(text)
+  const result = validateDrafts(text, settings.batchSize)
 
   if (!result.ok) {
     console.error(`REFUSED by validateDrafts: ${result.error}`)

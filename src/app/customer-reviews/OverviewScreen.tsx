@@ -8,7 +8,6 @@ import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { fetchAllRows } from '@/lib/supabasePaging'
-import { REVIEWS_PER_BATCH } from '@/lib/customerReviews/reviewTypes'
 import { StackSkeleton, StatSkeleton } from '@/components/customerReviews/ReviewSkeletons'
 
 // ── "What needs my attention?" ───────────────────────────────────────────────
@@ -23,9 +22,19 @@ import { StackSkeleton, StatSkeleton } from '@/components/customerReviews/Review
 // charts, no percentages, no trends, no employee ranking. Every line is
 // clickable and lands on the workspace that fixes it.
 //
-// ONE QUERY. Four narrow columns over the live cards — no review text, no
-// joins, no signed URLs, no employee progress and no image thumbnails. This
-// page must be cheap, because it is the page every visit starts on.
+// TWO QUERIES. Four narrow columns over the live cards — no review text, no
+// joins, no signed URLs, no employee progress and no image thumbnails — plus
+// one id-and-size read of the batches those cards belong to. This page must be
+// cheap, because it is the page every visit starts on.
+//
+// THE SECOND QUERY IS WHAT A VARIABLE BATCH SIZE COSTS. "Ready to assign" means
+// every live review in a batch is approved and unassigned AND there are as many
+// of them as the batch was generated with. That last number used to be the
+// constant twelve; it is now a column, and the honest way to compare against it
+// is to read it. Comparing against the number of live rows instead would call a
+// batch ready when three of its reviews had been deleted — which the database
+// then refuses, leaving a count on this page that promises work the next screen
+// will not let anybody do.
 
 type Row = {
   status: string
@@ -66,10 +75,25 @@ export function OverviewScreen() {
     if (!result.ok) { setFailed(true); setCounts(EMPTY); return }
 
     const rows = result.rows
+
+    // The size each batch was generated with. Only the batches these cards
+    // belong to, so the read is bounded by what is already on screen.
+    const batchIds = [...new Set(rows.map(r => r.batch_id).filter((id): id is string => !!id))]
+    const sizeOf = new Map<string, number>()
+    if (batchIds.length > 0) {
+      const { data: batches } = await supabase
+        .from('customer_review_draft_batches')
+        .select('id, card_count')
+        .in('id', batchIds)
+      for (const b of (batches ?? []) as { id: string; card_count: number }[]) {
+        sizeOf.set(b.id, b.card_count)
+      }
+    }
     // A BATCH IS READY TO ASSIGN when every one of its live reviews is approved
-    // and unassigned, and there are twelve of them — the same rule
-    // assign_customer_review_batch() enforces. Counted here so the line says
-    // something the Batches page will actually let them do.
+    // and unassigned, and there are as many of them as the batch was generated
+    // with — the same rule assign_customer_review_batch() enforces. Counted
+    // here so the line says something the Batches page will actually let them
+    // do.
     const byBatch = new Map<string, { eligible: number; live: number }>()
     for (const r of rows) {
       if (!r.batch_id) continue
@@ -85,7 +109,9 @@ export function OverviewScreen() {
       toVerify: rows.filter(r => r.status === 'submitted').length,
       waitingImages: rows.filter(r =>
         r.review_type === 'image' && r.status === 'available' && r.image_group_id === null).length,
-      batchesReady: [...byBatch.values()].filter(v => v.eligible === REVIEWS_PER_BATCH).length,
+      batchesReady: [...byBatch.entries()].filter(
+        ([id, v]) => sizeOf.has(id) && v.eligible === sizeOf.get(id) && v.eligible === v.live,
+      ).length,
       // Counted from the rows already in hand — no extra request.
       mine: profile ? rows.filter(r => r.assigned_to === profile.id).length : 0,
     })

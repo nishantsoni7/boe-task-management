@@ -41,10 +41,10 @@
 // below goes through `fail()` rather than returning directly.
 
 import {
-  DRAFTS_PER_BATCH,
   validateDrafts,
   type GeneratedDraft,
 } from './draftGeneration'
+import type { GenerationSettings } from './generationSettings'
 
 /** What the claim function answered. Mirrors its `outcome` column exactly. */
 export type ClaimOutcome =
@@ -116,9 +116,18 @@ export const RUN_MESSAGES = {
 export type GenerationInput = {
   requestKey: string
   guidance: string
+  /**
+   * HOW MANY, AND WHAT KIND.
+   *
+   * The batch size lives here rather than in a module constant, so this
+   * orchestrator ASKS FOR, VALIDATES AGAINST and REPORTS the same number — the
+   * one the caller requested — instead of three separate references to a global
+   * that used to happen to agree because there was only ever one value.
+   */
+  settings: GenerationSettings
   model: string
   buildSystem: () => string
-  buildUser: (guidance: string, count: number) => string
+  buildUser: (guidance: string, settings: GenerationSettings) => string
   maxTokens: number
   /** Writes the batch atomically. Returns the new batch id. */
   insertBatch: (drafts: GeneratedDraft[]) => Promise<{ ok: true; batchId: string } | { ok: false; code: string; message: string }>
@@ -139,7 +148,7 @@ export async function runGeneration(
     return {
       kind: 'completed',
       batchId: claimed.batchId,
-      created: claimed.resultCount ?? DRAFTS_PER_BATCH,
+      created: claimed.resultCount ?? input.settings.batchSize,
       repeated: true,
     }
   }
@@ -165,7 +174,7 @@ export async function runGeneration(
   try {
     text = await deps.provider({
       system: input.buildSystem(),
-      user: input.buildUser(input.guidance, DRAFTS_PER_BATCH),
+      user: input.buildUser(input.guidance, input.settings),
       maxTokens: input.maxTokens,
     })
   } catch (err) {
@@ -178,7 +187,10 @@ export async function runGeneration(
   }
 
   // ── 4. Validate before anything is written ────────────────────────────────
-  const checked = validateDrafts(text, DRAFTS_PER_BATCH)
+  // AGAINST WHAT WAS ASKED FOR, never against a constant. A provider that
+  // returned nineteen drafts for a batch of twenty is refused here, before
+  // anything is written — the same rule at every size.
+  const checked = validateDrafts(text, input.settings.batchSize)
   if (!checked.ok) {
     deps.log('[customer-reviews:generate] rejected batch:', checked.error)
     return fail(422, `${RUN_MESSAGES.model_failed} (${checked.error})`)
@@ -197,7 +209,7 @@ export async function runGeneration(
   }
 
   // ── 6. Finish ─────────────────────────────────────────────────────────────
-  await deps.finish(input.requestKey, 'completed', written.batchId, DRAFTS_PER_BATCH)
+  await deps.finish(input.requestKey, 'completed', written.batchId, input.settings.batchSize)
     .catch(err => {
       // The batch EXISTS; a lost completion only means a repeat of this key
       // would be answered by the batch table's own unique index instead of by
@@ -205,7 +217,7 @@ export async function runGeneration(
       deps.log('[customer-reviews:generate] claim completion failed:', (err as Error)?.name)
     })
 
-  return { kind: 'completed', batchId: written.batchId, created: DRAFTS_PER_BATCH, repeated: false }
+  return { kind: 'completed', batchId: written.batchId, created: input.settings.batchSize, repeated: false }
 }
 
 // ─── Revision ─────────────────────────────────────────────────────────────────
