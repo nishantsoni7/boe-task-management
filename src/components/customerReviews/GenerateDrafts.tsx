@@ -418,7 +418,6 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
   const blocked = trimmed.length === 0 || !checked.ok
 
   const referenceSummary = [
-    settings.locations.filter(Boolean).length ? `${settings.locations.filter(Boolean).length} cities` : null,
     settings.projects.filter(Boolean).length ? `${settings.projects.filter(Boolean).length} projects` : null,
     settings.products.length ? `${settings.products.length} products` : null,
     settings.staff.length ? `${settings.staff.length} people` : null,
@@ -603,6 +602,52 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
             remaining {100 - settings.hinglishPct}% are written in English.
           </p>
 
+          {/*
+            CITIES ARE ALWAYS ON SCREEN, DELIBERATELY NOT INSIDE THE COLLAPSIBLE
+            SECTION BELOW. They were the one reference fact people actually fill in
+            on most batches, and folded away under "Real facts" they were easy to
+            miss even with that section open by default. Projects, products and
+            team members stay collapsed — they are answered occasionally.
+          */}
+          <div>
+            <span style={labelStyle}>Cities (up to {MAX_LOCATIONS}, optional)</span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {Array.from({ length: MAX_LOCATIONS }, (_, i) => (
+                <input
+                  key={i}
+                  className="boe-input"
+                  aria-label={`City ${i + 1}`}
+                  value={settings.locations[i] ?? ''}
+                  disabled={working}
+                  placeholder={`City ${i + 1}`}
+                  maxLength={60}
+                  onChange={e => {
+                    // POSITIONAL WHILE TYPING, TIDIED WHEN VALIDATED. The
+                    // array is kept at full length so clearing box 2 does
+                    // not shuffle box 3 up into it under the cursor;
+                    // validateGenerationSettings() drops the empties.
+                    const next = [...settings.locations]
+                    while (next.length < MAX_LOCATIONS) next.push('')
+                    next[i] = e.target.value
+                    patch({ locations: next })
+                  }}
+                  style={{ flex: '1 1 110px', minWidth: 0, minHeight: '40px' }}
+                />
+              ))}
+            </div>
+          </div>
+          <PercentField
+            id="review-location-pct"
+            label="Reviews mentioning a city"
+            value={settings.locationPct}
+            batchSize={size}
+            disabled={working}
+            onChange={next => patch({ locationPct: next })}
+          />
+          <p style={helpStyle}>
+            Left empty, a review writes around the question instead of naming a city.
+          </p>
+
           {/* ══ REFERENCES ═════════════════════════════════════════════════ */}
           <Section
             title="Real facts a review may use"
@@ -612,44 +657,8 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
           >
             <p style={helpStyle}>
               Only what you put here can be named. Anything you leave empty is never
-              invented — a review with no city writes around the question instead.
+              invented.
             </p>
-
-            <div>
-              <span style={labelStyle}>Cities (up to {MAX_LOCATIONS})</span>
-              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                {Array.from({ length: MAX_LOCATIONS }, (_, i) => (
-                  <input
-                    key={i}
-                    className="boe-input"
-                    aria-label={`City ${i + 1}`}
-                    value={settings.locations[i] ?? ''}
-                    disabled={working}
-                    placeholder={`City ${i + 1}`}
-                    maxLength={60}
-                    onChange={e => {
-                      // POSITIONAL WHILE TYPING, TIDIED WHEN VALIDATED. The
-                      // array is kept at full length so clearing box 2 does
-                      // not shuffle box 3 up into it under the cursor;
-                      // validateGenerationSettings() drops the empties.
-                      const next = [...settings.locations]
-                      while (next.length < MAX_LOCATIONS) next.push('')
-                      next[i] = e.target.value
-                      patch({ locations: next })
-                    }}
-                    style={{ flex: '1 1 110px', minWidth: 0, minHeight: '40px' }}
-                  />
-                ))}
-              </div>
-            </div>
-            <PercentField
-              id="review-location-pct"
-              label="Reviews mentioning a city"
-              value={settings.locationPct}
-              batchSize={size}
-              disabled={working}
-              onChange={next => patch({ locationPct: next })}
-            />
 
             <div>
               <span style={labelStyle}>Projects (up to {MAX_PROJECTS})</span>
