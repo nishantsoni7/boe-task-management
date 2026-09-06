@@ -231,17 +231,27 @@ registerModule({
 // Review Workflow Test (Internal) owns its own capability file
 // (src/lib/permissions/customerReviewOutreach.ts), but the registration stays
 // here with the rest of the catalog so `npm run permissions:check` still sees
-// one complete list. Mirrors the seed in
-// supabase/migrations/20261017000000_customer_review_outreach.sql.
+// one complete list. The row it mirrors was seeded by
+// supabase/migrations/20261017000000_customer_review_outreach.sql and was moved
+// onto the display text below by
+// supabase/migrations/20261111000000_permission_module_labels_follow_the_registry.sql.
 //
 // THE KEY AND BOTH ACTION KEYS ARE DELIBERATELY UNCHANGED. This module's
 // purpose changed — it is now an internal rehearsal of a workflow whose
 // recipient the tester chooses — but `customer_review_requests`, `use` and
 // `verify` are the identifiers every existing Control Center grant is written
 // against, and renaming them would silently revoke all of them. The DISPLAY
-// name is what a human reads and is what changed. The ACTION display names stay
-// as well, because Control Center shows them against grants already made and a
-// relabelled action reads as a different one.
+// name is what a human reads, and it has been reworded twice: to "Review
+// Workflow Test (Internal)" when the module became a rehearsal, and back to
+// "Review Workflow" when it stopped describing itself to its users that way.
+//
+// The ACTION display names below were reworded with it, and the corresponding
+// permission_actions rows still read "Use Customer Review Outreach" and
+// "Verify & Close Review Requests". They are deliberately left that way: that
+// column is global per action key rather than per module, nothing in the
+// application or in SQL reads it, and Control Center carries its own labels.
+// There is no drift a person can see, and no sync could fix it here without
+// also rewriting `view_all` for Members, Finance and Orders from one another.
 //
 // TWO ACTIONS, AND NO `view`. Unlike every other module here, entry is `use`:
 // there is no read-only audience for a tester's own booked cards, so a third

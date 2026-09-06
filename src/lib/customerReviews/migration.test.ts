@@ -150,6 +150,11 @@ describe('the migration is one file, correctly sequenced', () => {
       // employee_permission_overrides rows. It creates no table, alters no table
       // and defines no function, so it reaches nothing asserted here.
       '20261110000000_performance_team_visibility_is_granted_not_inherited.sql',
+      // The two permission_modules rows whose display_name and description had
+      // drifted from src/lib/permissions/modules.ts, moved onto the registry text.
+      // Two UPDATE statements against display text. It creates no table, alters no
+      // table and defines no function, so it reaches nothing asserted here.
+      '20261111000000_permission_module_labels_follow_the_registry.sql',
     ])
   })
 
