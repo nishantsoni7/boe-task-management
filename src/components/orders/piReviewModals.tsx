@@ -66,6 +66,11 @@ import {
   APPROVE_ORDER_DIALOG_TITLE,
   APPROVE_ORDER_FINAL_NOTE,
   APPROVE_ORDER_NOT_A_PAYMENT,
+  APPROVE_PI_CONFIRM_LABEL,
+  APPROVE_PI_DIALOG_TITLE,
+  APPROVE_PI_NOTE,
+  CREATE_ORDER_CONFIRM_LABEL,
+  CREATE_ORDER_DIALOG_TITLE,
   VERIFY_FINANCE_BUSY_LABEL,
   VERIFY_FINANCE_BUTTON_LABEL,
   VERIFY_FINANCE_CONFIRM,
@@ -106,6 +111,8 @@ import {
   PAYMENT_NOT_A_DECLARATION,
   PAYMENT_POSITION_UNKNOWN,
   PAYMENT_UNVERIFIED_DOES_NOT_COUNT,
+  asSubmissionPosition,
+  submissionReasonPrompt,
   asPaymentPosition,
   paymentPositionLines,
   submissionTermsUntouched,
@@ -262,15 +269,31 @@ function PaymentPositionPanel({
   onTerms: (key: keyof PiSubmissionTerms, value: string) => void
 }) {
   const position = asPaymentPosition(summary?.approval_position)
+  // THE ATTACHED FIGURES, when the server reports them (20261116000000): the
+  // submission rule reads verified + awaiting verification, and the dialog
+  // must show the same total it is about to be judged on.
+  const reportsAttached = summary !== null
+    && summary.attached_amount !== undefined && summary.attached_amount !== null
   const lines = summary === null ? [] : paymentPositionLines({
     grandTotal:        summary.grand_total,
     verifiedAmount:    summary.verified_amount,
     verifiedPercent:   summary.verified_percent,
     unverifiedAmount:  summary.unverified_amount,
-    neededForStandard: summary.needed_for_standard,
+    ...(reportsAttached ? {
+      unverifiedPercent: summary.unverified_percent,
+      attachedAmount:    summary.attached_amount,
+      attachedPercent:   summary.attached_percent,
+    } : {}),
+    neededForStandard: reportsAttached
+      ? (summary.needed_attached_for_submission ?? summary.needed_for_standard)
+      : summary.needed_for_standard,
     formatFigure:      formatMoney,
     formatPercentage:  formatPercent,
   })
+  const submissionPosition = asSubmissionPosition(summary?.submission_position)
+  const reasonPrompt = meetsStandard === false && submissionPosition !== null
+    ? submissionReasonPrompt(submissionPosition, formatPercent(summary?.attached_percent))
+    : null
 
   const field = (
     key: keyof PiSubmissionTerms,
@@ -372,6 +395,14 @@ function PaymentPositionPanel({
           padding: '10px 11px', borderRadius: '7px',
           border: `1px solid ${colors.border}`, background: colors.raised,
         }}>
+          {/* The sentence that names the figure the reason is about — "Only 27%
+              payment is currently attached" — so the employee is told what
+              management will see before they explain it. */}
+          {reasonPrompt && (
+            <div style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5 }}>
+              {reasonPrompt}
+            </div>
+          )}
           {field('reason', PAYMENT_REASON_LABEL, PAYMENT_REASON_PLACEHOLDER, PAYMENT_REASON_MAX_LENGTH, 3)}
           {field('paymentTerms', PAYMENT_TERMS_LABEL, PAYMENT_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
           {field('billingTerms', BILLING_TERMS_LABEL, BILLING_TERMS_PLACEHOLDER, PAYMENT_TERMS_MAX_LENGTH, 2)}
@@ -481,12 +512,18 @@ export function PiSubmitConfirmModal({
   const remaining = RESUBMIT_NOTE_MAX_LENGTH - reply.trim().length
 
   /**
-   * WHETHER THE STANDARD REQUIREMENT IS MET IS THE DATABASE'S ANSWER, not a
-   * comparison made here. `meets_standard` arrives on the summary already
-   * decided in numeric; the browser never divides money.
+   * WHETHER THE SUBMISSION REQUIREMENT IS MET IS THE DATABASE'S ANSWER, not a
+   * comparison made here. Since 20261116000000 that is `attached_meets_standard`
+   * — verified plus awaiting verification — and it arrives on the summary
+   * already decided in numeric; a summary from before the migration still
+   * carries `meets_standard`, which is read as the fallback. The browser never
+   * divides money.
    */
   const meetsStandard: boolean | null =
-    payment == null || payment.meets_standard == null ? null : payment.meets_standard === true
+    payment == null ? null
+    : payment.attached_meets_standard != null ? payment.attached_meets_standard === true
+    : payment.meets_standard == null ? null
+    : payment.meets_standard === true
 
   const checked = validateSubmissionTerms({ meetsStandard, terms })
   /**
@@ -959,6 +996,42 @@ export function PiFinanceVerifyModal({
  * the status, the finance verification, the advance requirement, the diagnostics
  * and the stored files, under a row lock, before it creates anything.
  */
+/**
+ * The three doors one dialog serves (20261116000000). The words change; the
+ * rows, the shape and the guards do not.
+ *
+ *   approve_and_create   the one-press path: PI approved AND Order created
+ *   approve_pi           the PI only — the Order waits for the payment condition
+ *   create_order         the PI already stands approved; this creates the Order
+ */
+export type ApproveDialogMode = 'approve_and_create' | 'approve_pi' | 'create_order'
+
+const APPROVE_DIALOG_COPY: Record<ApproveDialogMode, {
+  title: string
+  confirm: string
+  note: string
+  notAPayment: string | null
+}> = {
+  approve_and_create: {
+    title: APPROVE_ORDER_DIALOG_TITLE,
+    confirm: APPROVE_ORDER_CONFIRM_LABEL,
+    note: APPROVE_ORDER_FINAL_NOTE,
+    notAPayment: APPROVE_ORDER_NOT_A_PAYMENT,
+  },
+  approve_pi: {
+    title: APPROVE_PI_DIALOG_TITLE,
+    confirm: APPROVE_PI_CONFIRM_LABEL,
+    note: APPROVE_PI_NOTE,
+    notAPayment: APPROVE_ORDER_NOT_A_PAYMENT,
+  },
+  create_order: {
+    title: CREATE_ORDER_DIALOG_TITLE,
+    confirm: CREATE_ORDER_CONFIRM_LABEL,
+    note: APPROVE_ORDER_FINAL_NOTE,
+    notAPayment: APPROVE_ORDER_NOT_A_PAYMENT,
+  },
+}
+
 export function PiApproveOrderModal({
   client,
   rows,
@@ -966,6 +1039,7 @@ export function PiApproveOrderModal({
   failure,
   onCancel,
   onConfirm,
+  mode = 'approve_and_create',
 }: {
   client: string
   /** buildApprovalSummary's rows. This component chooses no wording of its own. */
@@ -974,6 +1048,7 @@ export function PiApproveOrderModal({
   failure: string | null
   onCancel: () => void
   onConfirm: () => void
+  mode?: ApproveDialogMode
 }) {
   useScrollLock(true)
 
@@ -983,11 +1058,13 @@ export function PiApproveOrderModal({
   }
   useEscapeDismiss(dismiss, !saving)
 
+  const copy = APPROVE_DIALOG_COPY[mode]
+
   return (
-    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={APPROVE_ORDER_DIALOG_TITLE}>
+    <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={copy.title}>
       <div style={PANEL}>
         <ModalHeader
-          title={APPROVE_ORDER_DIALOG_TITLE}
+          title={copy.title}
           subtitle={client}
           onClose={() => dismiss('close-icon')}
           disabled={saving}
@@ -1021,9 +1098,13 @@ export function PiApproveOrderModal({
           }}>
             <AlertTriangle size={14} strokeWidth={2} style={{ flexShrink: 0, marginTop: '1px' }} />
             <span>
-              {APPROVE_ORDER_FINAL_NOTE}
-              {' '}
-              <strong>{APPROVE_ORDER_NOT_A_PAYMENT}</strong>
+              {copy.note}
+              {copy.notAPayment && (
+                <>
+                  {' '}
+                  <strong>{copy.notAPayment}</strong>
+                </>
+              )}
             </span>
           </div>
 
@@ -1040,7 +1121,7 @@ export function PiApproveOrderModal({
               style={{ ...confirmStyle('#2F7A52', saving), display: 'inline-flex', alignItems: 'center', gap: '7px' }}
             >
               <CheckCircle2 size={13} strokeWidth={2} />
-              {saving ? APPROVE_ORDER_BUSY_LABEL : APPROVE_ORDER_CONFIRM_LABEL}
+              {saving ? APPROVE_ORDER_BUSY_LABEL : copy.confirm}
             </button>
           </Footer>
         </div>

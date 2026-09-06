@@ -399,6 +399,11 @@ describe('the detail page renders only what it fetched', () => {
     assert.deepEqual(rpcs, [
       'approve_order_submission',
       'approve_pi_advance_exception',
+      // The PI decision on its own (20261116000000): management approves the
+      // document while the payment condition is still unresolved. Creates no
+      // Order, allocates no number, moves no money — the id alone, and the
+      // same orders.approve_order authority re-derived under a row lock.
+      'approve_pi_review',
       'reject_order_submission',
       'reject_pi_advance_exception',
       // The order the product lines are printed in (20261002000000). One write
@@ -1967,7 +1972,13 @@ describe('the submit dialog states the payment position and asks only what is un
 
   test('an unreadable position fails CLOSED rather than guessing a route', () => {
     assert.ok(source.includes('{PAYMENT_POSITION_UNKNOWN}'))
-    assert.ok(source.includes('payment == null || payment.meets_standard == null ? null'))
+    // Since 20261116000000 the submission rule reads ATTACHED payment, and the
+    // dialog reads the server's `attached_meets_standard` first, falling back
+    // to `meets_standard` for a summary produced before the migration. Either
+    // way an absent answer is null, and null fails closed.
+    assert.ok(source.includes('payment == null ? null'))
+    assert.ok(source.includes('payment.attached_meets_standard != null ? payment.attached_meets_standard === true'))
+    assert.ok(source.includes('payment.meets_standard == null ? null'))
   })
 
   test('submit is disabled while the terms are invalid or in flight', () => {

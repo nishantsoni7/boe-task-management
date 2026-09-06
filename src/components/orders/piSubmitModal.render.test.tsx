@@ -378,3 +378,59 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
     assert.ok(page.includes("notifyPiSubmission({ event: 'pi_exception_requested'"))
   })
 })
+
+// ── The submission rule reads ATTACHED payment (20261116000000) ───────────────
+//
+// Verified plus awaiting verification decides whether a reason is owed. The
+// dialog reads the server's `attached_meets_standard` first and the older
+// `meets_standard` only when the server did not report the attached answer.
+
+describe('the submission rule reads attached payment', () => {
+  test('approved AND pending money together reach 40%: no reason is asked, even though verified alone is short', () => {
+    const html = render({ payment: below({
+      unverified_amount: '37200.00', unverified_percent: '31.52',
+      attached_amount: '47200.00', attached_percent: '40.00',
+      attached_meets_standard: true, submission_position: 'attached_met',
+    }) })
+    assert.ok(!html.includes(PAYMENT_REASON_LABEL))
+    assert.ok(html.includes(PAYMENT_POSITION_LABEL.standard_met))
+    assert.equal(submitDisabled(html), false)
+  })
+
+  test('below 40% attached the dialog names the attached figure and asks for the reason', () => {
+    const html = render({ payment: below({
+      unverified_amount: '20000.00', unverified_percent: '16.94',
+      attached_amount: '30000.00', attached_percent: '25.42',
+      attached_meets_standard: false, submission_position: 'attached_partial',
+    }) })
+    assert.ok(html.includes('Only 25.42% payment is currently attached'))
+    assert.ok(html.includes(PAYMENT_REASON_LABEL))
+    assert.equal(submitDisabled(html), true)
+  })
+
+  test('no payment at all says so, and still asks', () => {
+    const html = render({ payment: below({
+      verified_amount: '0.00', verified_percent: '0.00',
+      attached_amount: '0.00', attached_percent: '0.00',
+      attached_meets_standard: false, submission_position: 'no_payment',
+    }) })
+    assert.ok(html.includes('No payment is attached to this PI'))
+    assert.ok(html.includes(PAYMENT_REASON_LABEL))
+  })
+
+  test('the attached pair is printed as the database\'s own figures', () => {
+    const html = render({ payment: below({
+      attached_amount: '30000.00', attached_percent: '25.42',
+      attached_meets_standard: false, submission_position: 'attached_partial',
+    }) })
+    assert.ok(html.includes('Total attached payment'))
+    assert.ok(html.includes('₹30,000.00'))
+    assert.ok(html.includes('25.42%'))
+  })
+
+  test('a summary from before the migration still behaves exactly as it did', () => {
+    // No attached fields at all: `meets_standard` decides, as before.
+    assert.equal(submitDisabled(render({ payment: summary() })), false)
+    assert.equal(submitDisabled(render({ payment: below() })), true)
+  })
+})
