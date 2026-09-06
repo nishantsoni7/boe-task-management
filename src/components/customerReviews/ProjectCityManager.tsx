@@ -24,27 +24,37 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
   const [error, setError] = useState('')
   const [savedId, setSavedId] = useState<string | null>(null)
 
-  const load = useCallback(async () => {
-    setError('')
-    const { data, error: loadError } = await supabase
-      .from('customer_review_image_groups')
-      .select('id, label, city, archived_at')
-      .order('created_at', { ascending: false })
-
-    if (loadError) {
-      setProjects([])
-      setError('Project details could not be loaded. Refresh and try again.')
-      return
-    }
-
-    const rows = (data ?? []) as ProjectRow[]
-    setProjects(rows)
-    setDrafts(Object.fromEntries(rows.map(row => [row.id, row.city ?? ''])))
-  }, [supabase])
+  // A TICK RATHER THAN A CALLABLE FUNCTION, so the fetch lives inside the
+  // effect that actually needs it instead of being called into from one.
+  // Calling a `useCallback`-memoized function directly from an effect is the
+  // thing the lint rule below is refusing: the effect cannot prove that
+  // function sets no state synchronously, because the function is opaque to
+  // it. Reloading is now "the input changed," which is what an effect is for;
+  // the Refresh button just changes the input.
+  const [reloadTick, setReloadTick] = useState(0)
 
   useEffect(() => {
-    void load()
-  }, [load])
+    let active = true
+    void (async () => {
+      setError('')
+      const { data, error: loadError } = await supabase
+        .from('customer_review_image_groups')
+        .select('id, label, city, archived_at')
+        .order('created_at', { ascending: false })
+      if (!active) return
+
+      if (loadError) {
+        setProjects([])
+        setError('Project details could not be loaded. Refresh and try again.')
+        return
+      }
+
+      const rows = (data ?? []) as ProjectRow[]
+      setProjects(rows)
+      setDrafts(Object.fromEntries(rows.map(row => [row.id, row.city ?? ''])))
+    })()
+    return () => { active = false }
+  }, [supabase, reloadTick])
 
   const save = useCallback(async (project: ProjectRow) => {
     if (savingId) return
@@ -92,7 +102,7 @@ export function ProjectCityManager({ supabase }: { supabase: SupabaseClient }) {
         </div>
         <button
           type="button"
-          onClick={() => { void load() }}
+          onClick={() => setReloadTick(t => t + 1)}
           className="boe-btn boe-btn-ghost"
           style={{ minHeight: '36px', fontSize: '12px' }}
         >

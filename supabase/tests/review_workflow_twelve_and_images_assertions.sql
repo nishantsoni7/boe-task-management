@@ -391,9 +391,10 @@ begin
 
   -- THE LENGTH BOUNDS ARE THE COLUMN'S, NOT THE FUNCTION'S, and the refusal
   -- names the column constraint rather than one of the function's own markers.
-  -- That is deliberate: edit_customer_review_draft() does not restate 40 and
-  -- 900, so there is exactly one copy of each number and this is what enforcing
-  -- it looks like from outside.
+  -- That is deliberate: edit_customer_review_draft() does not restate the
+  -- column's minimum and maximum (40 and, as of 20261114000000, 1800), so
+  -- there is exactly one copy of each number and this is what enforcing it
+  -- looks like from outside.
   perform pg_temp.must_refuse(
     format('select public.edit_customer_review_draft(%L::uuid, %L, %L, %L::uuid)',
            v_card, 'A title', 'too short', pg_temp.who('verifier')),
