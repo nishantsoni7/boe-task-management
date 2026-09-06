@@ -282,7 +282,7 @@ export function GenerateDrafts({ supabase, onGenerated }: Props) {
   const [settings, setSettings] = useState<GenerationSettings>(DEFAULT_GENERATION_SETTINGS)
   const [phase, setPhase] = useState<Phase>({ kind: 'writing' })
   const [done, setDone] = useState<number | null>(null)
-  const [showReferences, setShowReferences] = useState(false)
+  const [showReferences, setShowReferences] = useState(true)
   const [showMix, setShowMix] = useState(false)
 
   const [candidates, setCandidates] = useState<Employee[]>([])
