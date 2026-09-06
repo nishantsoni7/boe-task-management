@@ -355,6 +355,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Stage 2 of the Minop biometric integration: processing-outcome columns on
+      // the raw delivery table, plus attendance_records.source. Two ALTER TABLEs,
+      // both additive; it creates no table, drops nothing and defines no function,
+      // so it reaches nothing asserted here.
+      '20261115000000_minop_attendance_processing.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

@@ -386,6 +386,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Stage 2 of the Minop biometric integration: processing-outcome columns on
+      // the raw delivery table, plus attendance_records.source. Two ALTER TABLEs,
+      // both additive; it creates no table, drops nothing and defines no function,
+      // so it reaches nothing asserted here.
+      '20261115000000_minop_attendance_processing.sql',
     ])
   })
 

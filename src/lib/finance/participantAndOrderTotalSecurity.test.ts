@@ -845,6 +845,11 @@ describe('the applied migrations are frozen', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Stage 2 of the Minop biometric integration: processing-outcome columns on
+      // the raw delivery table, plus attendance_records.source. Two ALTER TABLEs,
+      // both additive; it creates no table, drops nothing and defines no function,
+      // so it reaches nothing asserted here.
+      '20261115000000_minop_attendance_processing.sql',
     ])
   })
 
@@ -956,6 +961,11 @@ describe('the applied migrations are frozen', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Stage 2 of the Minop biometric integration: processing-outcome columns on
+      // the raw delivery table, plus attendance_records.source. Two ALTER TABLEs,
+      // both additive; it creates no table, drops nothing and defines no function,
+      // so it reaches nothing asserted here.
+      '20261115000000_minop_attendance_processing.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

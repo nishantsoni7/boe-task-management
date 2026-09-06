@@ -128,6 +128,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // table, alters no other table and defines no function, so it reaches
     // nothing asserted here.
     '20261114000000_review_generation_word_range_and_body_length.sql',
+    // Stage 2 of the Minop biometric integration: processing-outcome columns on
+    // the raw delivery table, plus attendance_records.source. Two ALTER TABLEs,
+    // both additive; it creates no table, drops nothing and defines no function,
+    // so it reaches nothing asserted here.
+    '20261115000000_minop_attendance_processing.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
