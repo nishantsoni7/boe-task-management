@@ -160,6 +160,11 @@ describe('the migration is one file, correctly sequenced', () => {
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // Widens the test_body column CHECK from 900 to 1800 characters, so the
+      // 200-word generation ceiling (MAX_WORDS_CEILING) is not silently capped
+      // by storage. One constraint dropped and re-added, wider; no table
+      // created or altered otherwise, so it reaches nothing else asserted here.
+      '20261114000000_review_generation_word_range_and_body_length.sql',
     ])
   })
 

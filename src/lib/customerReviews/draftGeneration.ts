@@ -98,22 +98,27 @@ export const GENERATION_MODEL = 'claude-opus-5'
 /**
  * The reply budget for a batch of `count` drafts.
  *
- * SIZED PER DRAFT, NOT PICKED. Five hundred tokens each is what eight drafts
- * were given and what twelve were given after them, because the failure this
+ * SIZED PER DRAFT, NOT PICKED, AND SIZED FOR THE CEILING. The failure this
  * number guards against is not a dull batch — it is a reply cut off mid-array.
  * A truncated reply is invalid JSON, validateDrafts() refuses the whole batch,
- * and the provider call has already been paid for. Now that the count is chosen
- * per generation, the budget has to be chosen with it: a fixed 6000 would have
- * made a truncated batch the ORDINARY outcome at twenty rather than a rare one.
+ * and the provider call has already been paid for. The count is chosen per
+ * generation, so the budget has to be chosen with it: a fixed budget would make
+ * a truncated batch the ORDINARY outcome at the largest size rather than a rare
+ * one.
  *
- * THE FLOOR MATTERS AS MUCH AS THE RATE. A batch of six at 500 a draft is 3000
- * tokens, which is enough for six long bodies but leaves nothing spare for the
- * JSON scaffolding and a model that runs a little over; the floor buys that
- * back without making a small batch expensive.
+ * 500 TOKENS PER DRAFT WAS SIZED FOR A 100-WORD CEILING. Now that
+ * MAX_WORDS_CEILING is 200, the same generous margin this module has always
+ * used — roughly five tokens per word of ceiling, which comfortably covers the
+ * title, the JSON scaffolding and a model that runs a little over — doubles the
+ * rate too. This is not a token-per-word measurement of English or Hinglish
+ * prose; it is the same deliberately generous multiple applied to the new
+ * ceiling.
  *
- * Twelve still comes out at exactly 6000, so nothing about today's batch moves.
+ * THE FLOOR IS A BACKSTOP, NOT THE BINDING CASE. At today's rate even the
+ * smallest allowed batch (MIN_BATCH_SIZE, six) clears the floor on the rate
+ * alone; it exists for a hypothetically small count, not for six.
  */
-export const TOKENS_PER_DRAFT = 500
+export const TOKENS_PER_DRAFT = 1000
 export const MIN_REPLY_TOKENS = 4000
 
 export function maxTokensFor(count: number): number {
