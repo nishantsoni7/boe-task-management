@@ -113,6 +113,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // Two UPDATE statements against display text. It creates no table, alters no
     // table and defines no function, so it reaches nothing asserted here.
     '20261111000000_permission_module_labels_follow_the_registry.sql',
+    // Performance participation: one UPDATE holding a partner out of the
+    // measured population, via users.performance_tracking_enabled (20260719000000).
+    // A DATA migration — it creates no table, alters no table, defines no
+    // function and deletes nothing, so it reaches nothing asserted here.
+    '20261112000000_exclude_partner_from_performance_population.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

@@ -553,6 +553,11 @@ describe('the migration is placed correctly', () => {
       // Two UPDATE statements against display text. It creates no table, alters no
       // table and defines no function, so it reaches nothing asserted here.
       '20261111000000_permission_module_labels_follow_the_registry.sql',
+      // Performance participation: one UPDATE holding a partner out of the
+      // measured population, via users.performance_tracking_enabled (20260719000000).
+      // A DATA migration — it creates no table, alters no table, defines no
+      // function and deletes nothing, so it reaches nothing asserted here.
+      '20261112000000_exclude_partner_from_performance_population.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

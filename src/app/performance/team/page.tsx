@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { DashboardLayout } from '@/components/layout/DashboardLayout'
+import { PerformanceLayout } from '@/components/layout/PerformanceLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile, StuckTask } from '@/lib/types'
 import { istToday } from '@/lib/istDate'
@@ -1640,8 +1640,9 @@ export default function TeamPerformancePage() {
   }
 
   return (
-    <DashboardLayout
+    <PerformanceLayout
       profile={profile}
+      canViewTeam
       title="Team Performance"
       subtitle={data ? data.period.label : 'Loading…'}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
@@ -1816,6 +1817,6 @@ export default function TeamPerformancePage() {
       )}
 
       {showRankingHelp && <HowRankingWorks onClose={() => setShowRankingHelp(false)} />}
-    </DashboardLayout>
+    </PerformanceLayout>
   )
 }
