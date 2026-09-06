@@ -368,6 +368,12 @@ describe('34/35. no regression into suppressed territory', () => {
       // submit_pi_for_review_internal, pi_submission_payment_summary and
       // orders_guard_amendable_columns. It touches nothing asserted here.
       '20261116000000_order_submission_pi_review_gate_versions_and_production.sql',
+      // The two post-approval PI edits — Change PI and the client-details
+      // correction — now open the EXISTING order-amendment context around their
+      // own Order UPDATE, which orders_guard_amendable_columns() requires. Two
+      // function bodies re-emitted; no table, policy, trigger or grant changes,
+      // so it reaches nothing asserted here.
+      '20261117000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
