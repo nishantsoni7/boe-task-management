@@ -83,6 +83,13 @@ function fakeSvc(opts: {
       select: () => self(),
       eq:     () => self(),
       neq:    () => self(),
+      // `is` is not decoration. buildSettlement reads the previous month's BOE
+      // credit application, and that read ends `.is('reversal_transaction_id',
+      // null)`. Without it the chain threw a TypeError which the caller's
+      // `.catch` swallowed into "no prior application" — so these tests were
+      // quietly exercising the degraded branch and printing a stack for every
+      // one of them, while still reporting green.
+      is:     () => self(),
       order:  () => self(),
       insert(payload: Record<string, unknown>) {
         writes.push({ table, op: 'insert', payload })
