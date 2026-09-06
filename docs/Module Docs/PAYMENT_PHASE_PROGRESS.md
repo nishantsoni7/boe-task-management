@@ -485,6 +485,32 @@ already on an Order).
 
 ---
 
+## Phase 4 — the PI decision, the Confirmed-Order gate, PI versions and production alignment
+
+| | |
+|---|---|
+| Status | **Implemented in the repository. Migration NOT applied. Not merged.** |
+| Migration | `20261116000000_order_submission_pi_review_gate_versions_and_production.sql` |
+
+**What it delivers.** Submission judged on **attached** payment (verified +
+awaiting), with the reason owed below 40% including zero; `approve_pi_review()`
+so the PI can be approved while the money is unresolved; the Confirmed Order
+created by an explicit `approve_order_submission()` once both gates clear;
+`orders.production_alignment` born `not_aligned` and moved only under the new
+protected `orders.align_production`; `order_pi_versions` with one current and
+at most one pending version per Order, approval through the existing parser;
+the Order side reading its source PI's trail, Finance decisions echoed onto
+the PI and the Order. Full rules in FINANCE_ORDER_WORKFLOW.md §13.
+
+**Not changed:** the Order gate (verified or approved exception), Finance
+verification, numbering, allocation movement, the exception RPCs.
+
+**Found, not fixed:** the post-approval `orders` updates inside
+`replace_order_submission_parse()` and `update_order_submission_client_details()`
+run outside the amendment context and would be refused by
+`orders_guard_amendable_columns` on the live database (§13.4).
+
+---
 ## What remains
 
 **Phase 4 and beyond, in no fixed order:** payment splitting across several

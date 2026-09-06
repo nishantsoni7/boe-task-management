@@ -749,6 +749,36 @@ export type ApprovalSummaryRow = {
  * ("Standard advance (40%)", "No advance (0%)") and the rupee value stays on the
  * page, where it is derived once from the current grand total.
  */
+/**
+ * THE PAYMENT SUMMARY the approver evaluates the PI beside (20261116000000).
+ *
+ * Every string is already formatted by the page from the database's own
+ * figures. `attached` is null on a summary produced before the migration, and
+ * the row is simply not printed; the exception reason appears only while an
+ * exception exists, headed by its state so the approver knows whether it is
+ * still theirs to decide.
+ */
+export type ApprovalPaymentSummary = {
+  orderValue: string
+  /** "₹X · Y%" — verified money. */
+  approved: string
+  /** "₹X · Y%" — money awaiting Finance verification. */
+  pending: string
+  /** "₹X · Y%" — the two together, or null when the server did not report it. */
+  attached: string | null
+  exceptionReason: string | null
+  exceptionStatus: string | null
+}
+
+export const APPROVE_PAYMENT_LABEL = {
+  orderValue: 'Order value',
+  approved: 'Approved payment',
+  pending: 'Pending / unapproved payment',
+  attached: 'Total attached payment',
+  exception: 'Exception reason',
+  piDecision: 'PI decision',
+} as const
+
 export function buildApprovalSummary(input: {
   client: string
   grandTotal: string
@@ -756,8 +786,12 @@ export function buildApprovalSummary(input: {
   advanceLabel: string
   financeVerified: boolean
   productCount: number
+  /** The payment position, when the page has read it. */
+  payment?: ApprovalPaymentSummary | null
+  /** "PI approved by X · date", when the PI decision already stands. */
+  piApprovedLine?: string | null
 }): ApprovalSummaryRow[] {
-  return [
+  const rows: ApprovalSummaryRow[] = [
     { key: 'client', label: APPROVE_SUMMARY_LABEL.client, value: input.client },
     { key: 'total', label: APPROVE_SUMMARY_LABEL.grandTotal, value: input.grandTotal, strong: true },
     { key: 'advance', label: APPROVE_SUMMARY_LABEL.advance, value: input.advanceLabel },
@@ -772,6 +806,22 @@ export function buildApprovalSummary(input: {
       value: `${input.productCount} line${input.productCount === 1 ? '' : 's'}`,
     },
   ]
+  const payment = input.payment ?? null
+  if (payment) {
+    rows.push({ key: 'approved_payment', label: APPROVE_PAYMENT_LABEL.approved, value: payment.approved })
+    rows.push({ key: 'pending_payment', label: APPROVE_PAYMENT_LABEL.pending, value: payment.pending })
+    if (payment.attached !== null) {
+      rows.push({ key: 'attached_payment', label: APPROVE_PAYMENT_LABEL.attached, value: payment.attached, strong: true })
+    }
+    if (payment.exceptionReason) {
+      const state = payment.exceptionStatus ? ` (${payment.exceptionStatus})` : ''
+      rows.push({ key: 'exception', label: `${APPROVE_PAYMENT_LABEL.exception}${state}`, value: payment.exceptionReason })
+    }
+  }
+  if (input.piApprovedLine) {
+    rows.push({ key: 'pi_decision', label: APPROVE_PAYMENT_LABEL.piDecision, value: input.piApprovedLine })
+  }
+  return rows
 }
 
 /**
