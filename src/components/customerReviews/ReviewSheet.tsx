@@ -126,6 +126,7 @@ export function ReviewSheet({
         className="boe-modal-sheet"
         style={{
           maxWidth,
+          maxHeight: 'calc(100vh - 24px)',
           display: 'flex',
           flexDirection: 'column',
           // The sheet scrolls its BODY rather than itself, so a sticky footer
