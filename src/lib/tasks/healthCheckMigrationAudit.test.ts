@@ -574,6 +574,13 @@ describe('the migration is placed correctly', () => {
       // alters no table, touches no policy and adds no grant, so it reaches
       // nothing asserted here.
       '20261115000000_restore_finance_payment_verification_context.sql',
+      // PI review gate, PI versions and production alignment (20261116000000):
+      // order_submissions gains the PI-decision columns, orders the production
+      // alignment columns, order_pi_versions is created, and the Order-side
+      // activity policy is added. It re-emits approve_order_submission,
+      // submit_pi_for_review_internal, pi_submission_payment_summary and
+      // orders_guard_amendable_columns. It touches nothing asserted here.
+      '20261116000000_order_submission_pi_review_gate_versions_and_production.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

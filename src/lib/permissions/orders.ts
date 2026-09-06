@@ -82,6 +82,14 @@ export type OrdersCapabilities = {
    * the RPC will allow.
    */
   canApproveAdvanceException: boolean
+  /**
+   * Align a Confirmed Order for production, or take that alignment back.
+   * Backed by the protected `align_production` action, which 20261116000000
+   * registers, and required by set_order_production_alignment() in the
+   * database. Independent of every other capability here: it is the Head of
+   * Manufacturing's decision, not a reviewer's and not a manager's.
+   */
+  canAlignProduction: boolean
   canExportOrders: boolean
   canDeleteOrder: boolean
   /** Administrative control of the module. */
@@ -95,6 +103,7 @@ export const NO_ORDERS_CAPABILITIES: OrdersCapabilities = {
   canEditOrder: false,
   canApproveOrderSubmission: false,
   canApproveAdvanceException: false,
+  canAlignProduction: false,
   canExportOrders: false,
   canDeleteOrder: false,
   canManageOrders: false,
@@ -121,6 +130,8 @@ export function deriveOrdersCapabilities(
       // exactly as actor_has_module_permission's admin branch does in the
       // database. Reported true so the screen matches the RPC.
       canApproveAdvanceException: true,
+      // The same admin branch set_order_production_alignment() takes.
+      canAlignProduction: true,
       canExportOrders: true,
       canDeleteOrder: true,
       canManageOrders: true,
@@ -140,6 +151,7 @@ export function deriveOrdersCapabilities(
     // Resolved from its OWN action. approve_order does not imply it, and it
     // does not imply approve_order.
     canApproveAdvanceException: withEntry('approve_advance_exception'),
+    canAlignProduction: withEntry('align_production'),
     canExportOrders: withEntry('export'),
     canDeleteOrder: withEntry('delete'),
     canManageOrders: withEntry('manage'),

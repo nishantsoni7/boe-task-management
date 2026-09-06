@@ -102,6 +102,11 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   pi_exception_requested:    { label: 'Needs approval',  color: colors.amber, bg: colors.amberTint },
   pi_exception_approved:     { label: 'Approved',        color: colors.green, bg: colors.greenTint },
   pi_exception_rejected:     { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
+  // A revised PI on a Confirmed Order (20261116000000). Amber for the proposal,
+  // because an administrator must decide it before it changes anything.
+  pi_revision_proposed:      { label: 'Needs approval',  color: colors.amber, bg: colors.amberTint },
+  pi_revision_approved:      { label: 'Approved',        color: colors.green, bg: colors.greenTint },
+  pi_revision_rejected:      { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   // Assets & Access
   asset_request_submitted:      { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },
   asset_edit_request_submitted: { label: 'Needs review',   color: colors.amber, bg: colors.amberTint },

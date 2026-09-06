@@ -141,6 +141,32 @@ export async function POST(req: NextRequest) {
     push(owner, `Your correction request for ${clientName} was actioned.`)
   } else if (event === 'pi_correction_rejected') {
     push(owner, `Your correction request for ${clientName} was not actioned.`)
+  } else if (event === 'pi_revision_proposed') {
+    // WHO MAY DECIDE A REVISED PI: an active admin, the same authority the
+    // deployed rule gives the only person who may move a submitted PI's figures
+    // (20261003000000 §1, 20261116000000). Nobody else is told.
+    const { data: admins } = await supabase
+      .from('users').select('id')
+      .eq('role', 'admin').eq('is_active', true).neq('is_deleted', true)
+    for (const row of (admins ?? []) as { id: string }[]) {
+      push(row.id, `${clientName}: a revised PI is waiting for approval.`)
+    }
+  } else if (event === 'pi_revision_approved' || event === 'pi_revision_rejected') {
+    // The person who proposed the newest decided revision, and the PI's owner —
+    // the two who are waiting on the answer. Resolved from the version table,
+    // never named by the browser.
+    const { data: latest } = await supabase
+      .from('order_pi_versions')
+      .select('uploaded_by')
+      .eq('submission_id', submissionId)
+      .in('status', ['approved', 'rejected', 'superseded'])
+      .order('version_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const verb = event === 'pi_revision_approved' ? 'approved' : 'rejected'
+    push((latest as { uploaded_by?: string | null } | null)?.uploaded_by,
+      `The revised PI for ${clientName} was ${verb}.`)
+    push(owner, `The revised PI for ${clientName} was ${verb}.`)
   } else {
     return NextResponse.json({ error: 'Unknown event' }, { status: 400 })
   }
