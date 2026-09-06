@@ -558,6 +558,10 @@ describe('the migration is placed correctly', () => {
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // Minop Stage 1: raw authenticated webhook audit/quarantine only.
+      // It creates one isolated Minop delivery table and does not touch the
+      // schema, functions or data asserted by this older migration test.
+      '20261113000000_create_minop_webhook_deliveries.sql',
       // Widens the Review Workflow test_body column CHECK from 900 to 1800
       // characters, so a 200-word generation ceiling is not silently capped by
       // storage. One constraint dropped and re-added, wider. It creates no

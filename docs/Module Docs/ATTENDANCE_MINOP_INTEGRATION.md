@@ -23,12 +23,13 @@ Stage 1 adds only the transport/audit boundary:
 
 The route fails closed unless server environment variable `MINOP_WEBHOOK_SECRET` exists.
 
-It can validate the configured secret from either:
+It can validate the configured secret from any of:
 
-1. `Authorization: Bearer <secret>`; or
-2. `x-minop-webhook-secret: <secret>`.
+1. `Authorization: Bearer <secret>`;
+2. `x-minop-webhook-secret: <secret>`; or
+3. the payload's own `AuthToken` — either top-level or, as Minop's published real-time callback shape carries it, `RealTime.AuthToken`.
 
-Which mechanism the physical Minop service will use is **not yet confirmed**. This dual support is BOE's receiving contract for testing until Minop documentation or one real delivery proves what the vendor can send.
+Which mechanism the physical Minop service will use is **not yet confirmed**. Header-based auth is BOE's receiving contract for testing; the payload `AuthToken` path matches Minop's published real-time callback documentation and is the most likely real-device mechanism until one genuine delivery proves what the vendor actually sends.
 
 The secret itself is never stored.
 
@@ -77,7 +78,7 @@ Stage 1 does **not**:
 - process locked payroll months;
 - provision users or biometrics to a Minop device.
 
-The endpoint returning HTTP `202` means only that BOE accepted and stored the transport delivery. It does not mean attendance changed.
+The endpoint acknowledging with HTTP `200` and body `{"status":"1"}` — Minop's documented success shape — means only that BOE accepted and stored the transport delivery. It does not mean attendance changed.
 
 ## Required environment configuration
 
