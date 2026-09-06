@@ -48,7 +48,11 @@ import {
   type ClaimOutcome,
   type RunDeps,
 } from './generationRun'
-import { DRAFTS_PER_BATCH, buildRevisionPrompt, buildSystemPrompt, buildUserPrompt } from './draftGeneration'
+import { buildRevisionPrompt, buildSystemPrompt, buildUserPrompt } from './draftGeneration'
+import {
+  DEFAULT_BATCH_SIZE,
+  DEFAULT_GENERATION_SETTINGS,
+} from './generationSettings'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -56,14 +60,14 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g,
 const KEY = '11111111-2222-4333-8444-555555555555'
 
 /** A batch the validator accepts, so the negative cases mean something. */
-const goodDrafts = (n = DRAFTS_PER_BATCH) =>
+const goodDrafts = (n = DEFAULT_BATCH_SIZE) =>
   Array.from({ length: n }, (_, i) => ({
     title: `Draft number ${i + 1}`,
     body: `We ordered seating for a small dining room and the fit was right first time. Draft ${i + 1} exists to be long enough to pass the minimum length check comfortably.`,
     category: 'restaurant_test',
   }))
 
-const goodJson = (n = DRAFTS_PER_BATCH) => JSON.stringify(goodDrafts(n))
+const goodJson = (n = DEFAULT_BATCH_SIZE) => JSON.stringify(goodDrafts(n))
 
 /**
  * The claim table, modelled.
@@ -145,6 +149,10 @@ function makeDeps(opts: {
 const genInput = (over: Partial<Parameters<typeof runGeneration>[1]> = {}) => ({
   requestKey: KEY,
   guidance: 'Cafe seating, plain and specific.',
+  // THE SIZE TRAVELS WITH THE REQUEST NOW. The default settings are a batch of
+  // twelve, so every assertion below means exactly what it meant before the
+  // count became a choice; batchSize.test.ts drives the other sizes.
+  settings: DEFAULT_GENERATION_SETTINGS,
   model: 'claude-opus-5',
   buildSystem: buildSystemPrompt,
   buildUser: buildUserPrompt,
@@ -198,7 +206,7 @@ describe('two simultaneous requests with one key make ONE provider call', () => 
 
     const winner = a.kind === 'completed' ? a : b
     const loser = a.kind === 'completed' ? b : a
-    assert.equal(winner.kind === 'completed' && winner.created, DRAFTS_PER_BATCH)
+    assert.equal(winner.kind === 'completed' && winner.created, DEFAULT_BATCH_SIZE)
     assert.equal(winner.kind === 'completed' && winner.repeated, false)
     assert.equal(loser.kind === 'in_progress' && loser.status, 409)
     assert.equal(loser.kind === 'in_progress' && loser.message, RUN_MESSAGES.in_progress_generate)

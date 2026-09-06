@@ -45,7 +45,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { adminClient } from '@/lib/supabase/admin'
 import {
-  DRAFTS_PER_BATCH,
+  MAX_BATCH_SIZE,
+  maxTokensFor,
   GENERATION_MODEL,
   MISSING_FEEDBACK,
   buildRevisionPrompt,
@@ -74,7 +75,14 @@ const fail = (status: number, error: string) =>
 const ok = (body: Record<string, unknown>) =>
   NextResponse.json(body, { status: 200, headers: { 'Cache-Control': 'no-store, private' } })
 
-const MAX_TOKENS = 4000
+// A REVISION REWRITES AT MOST A WHOLE BATCH, so it is budgeted for one. It
+// used to be a flat 4000, which was sized for the eight-draft era and was
+// already generous for twelve because most revisions rewrite a handful. A batch
+// is now up to twenty, and a rewrite of all twenty at 4000 tokens would be cut
+// off mid-array — refused whole, after the call had been paid for. The exact
+// pending count is not known until readBatch() runs, which is after the budget
+// has to be fixed, so the ceiling is what is budgeted.
+const MAX_TOKENS = maxTokensFor(MAX_BATCH_SIZE)
 const CLAIM_TTL_SECONDS = 300
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -237,9 +245,10 @@ export async function POST(req: Request) {
 
         const rows = pending ?? []
         if (rows.length === 0) return { ok: false as const, reason: 'nothing_pending' as const }
-        if (rows.length > DRAFTS_PER_BATCH) {
-          // Not reachable through the product — a batch holds twelve — but a
-          // bounded prompt is a bounded prompt whatever put the rows there.
+        if (rows.length > MAX_BATCH_SIZE) {
+          // Not reachable through the product — a batch holds at most
+          // MAX_BATCH_SIZE — but a bounded prompt is a bounded prompt whatever
+          // put the rows there.
           console.error('[customer-reviews:revise] batch holds', rows.length, 'pending drafts')
           return { ok: false as const, reason: 'unavailable' as const }
         }

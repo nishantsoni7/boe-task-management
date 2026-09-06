@@ -91,6 +91,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // tables of its own, columns on customer_review_test_cards and one on
     // boe_credit_settings. It reaches nothing here.
     '20261107000000_review_types_assignment_and_image_groups.sql',
+    // Variable Review Workflow batch size: three CHECKs on its own batch and
+    // claim tables widened from 12 to a 6-20 range, two nullable columns added
+    // to customer_review_draft_batches, and three of its own functions
+    // redefined. It creates no table and reaches nothing here.
+    '20261108000000_review_workflow_variable_batch_size.sql',
     // Performance: Personal Performance and Team Performance become separately
     // configurable capabilities. It registers two actions on the existing
     // `performance` permission module and seeds the admin/manager role grants

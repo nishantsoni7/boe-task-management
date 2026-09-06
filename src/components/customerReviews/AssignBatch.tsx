@@ -4,22 +4,29 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Loader2, UserPlus } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
-import { IMAGE_REVIEWS_PER_BATCH, REVIEWS_PER_BATCH } from '@/lib/customerReviews/reviewTypes'
+import { imageReviewsFor } from '@/lib/customerReviews/reviewTypes'
 import { StackSkeleton } from './ReviewSkeletons'
 
 // ── Giving one batch to one employee ─────────────────────────────────────────
 //
 // A BATCH IS ASSIGNED WHOLE, and that is the workflow rather than a limitation
-// of this control. Twelve reviews are what one employee is asked to do — eight
-// text and four image — so "assign this batch" is one decision with one
-// consequence, and there is no partial form of it to get wrong.
+// of this control. A batch is what one employee is asked to do — between six
+// and twenty reviews, one in three of them an image review — so "assign this
+// batch" is one decision with one consequence, and there is no partial form of
+// it to get wrong.
+//
+// HOW MANY IS A PROPERTY OF THE BATCH, NOT OF THIS FILE. The size comes from
+// customer_review_draft_batches.card_count, which is what
+// assign_customer_review_batch() compares against too, so a batch of seventeen
+// reads "Assign all 17" and a batch of twelve generated last month still reads
+// "Assign all 12".
 //
 // WHAT THIS COMPONENT DECIDES: nothing. It draws a picker and calls
 // assign_customer_review_batch(), which resolves `verify` for the caller from
 // the permission engine, checks that the employee can actually use the module,
-// LOCKS all twelve rows and rechecks that every one of them is an unassigned
-// approved review before writing. A stale screen produces a refusal naming the
-// review that moved, not a half-assigned batch.
+// LOCKS every row and rechecks that each one is an unassigned approved review
+// before writing. A stale screen produces a refusal naming the review that
+// moved, not a half-assigned batch.
 //
 // THE EMPLOYEE LIST COMES FROM THE DATABASE, not from a role filter here.
 // customer_review_assignable_employees() asks the permission engine about each
@@ -36,10 +43,22 @@ export type AssignOutcome = {
 }
 
 export function AssignBatch({
-  supabase, batchId, eligible, onAssigned,
+  supabase, batchId, eligible, size, intendedFor, onAssigned,
 }: {
   supabase: SupabaseClient
   batchId: string
+  /** How many reviews this batch was generated with. Its card_count. */
+  size: number
+  /**
+   * The employee the batch was generated FOR, if one was named.
+   *
+   * A PREFILL AND NOTHING MORE. It selects a name in the picker so the common
+   * case is one press instead of two; the verifier can change it, and the
+   * database decides who may actually be assigned to. Nobody can see a review
+   * because of this value — visibility follows `assigned_to`, which only the
+   * assignment below writes.
+   */
+  intendedFor: string | null
   /**
    * How many reviews in this batch are approved and unassigned right now.
    *
@@ -66,12 +85,21 @@ export function AssignBatch({
         // silent picker with nothing in it. The two look identical otherwise,
         // and one of them is a bug.
         if (rpcError) { setPeople([]); setError('The employee list could not be loaded. Refresh to try again.'); return }
-        setPeople((data ?? []) as Employee[])
+        const rows = (data ?? []) as Employee[]
+        setPeople(rows)
+        // PREFILLED HERE, WITH THE LIST, AND ONLY IF THE NAME IS STILL
+        // OFFERABLE. An employee the batch was generated for who has since lost
+        // the permission is not in `rows`, and selecting an id the picker
+        // cannot show would leave a control that looks ready and refuses. It
+        // happens as the list arrives rather than in a second effect watching
+        // the first one's state, which would be a cascading render for a value
+        // that is knowable at the moment the list is known.
+        if (intendedFor && rows.some(p => p.id === intendedFor)) setChoice(intendedFor)
       })()
     }
     startFetch()
     return () => { active = false }
-  }, [supabase])
+  }, [supabase, intendedFor])
 
   const assign = useCallback(async () => {
     if (inFlight.current || !choice) return
@@ -108,10 +136,10 @@ export function AssignBatch({
   // NOT READY IS EXPLAINED RATHER THAN DISABLED SILENTLY. A verifier looking at
   // a batch they have only half approved needs to be told that is why, not
   // shown a grey rectangle.
-  if (eligible !== REVIEWS_PER_BATCH) {
+  if (eligible !== size) {
     return (
       <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
-        A batch is assigned whole. Approve all {REVIEWS_PER_BATCH} reviews in this batch
+        A batch is assigned whole. Approve all {size} reviews in this batch
         {eligible > 0 ? ` (${eligible} are ready)` : ''} before assigning it to an employee.
       </p>
     )
@@ -151,13 +179,13 @@ export function AssignBatch({
           }}
         >
           {busy ? <Loader2 size={14} className="boe-spin" /> : <UserPlus size={14} />}
-          Assign all {REVIEWS_PER_BATCH}
+          Assign all {size}
         </button>
       </div>
 
       <p style={{ fontSize: '11px', color: colors.secondary, margin: 0, lineHeight: 1.6 }}>
-        All {REVIEWS_PER_BATCH} go to one employee, and only they see them. The
-        {' '}{IMAGE_REVIEWS_PER_BATCH} image reviews get different projects where enough are ready.
+        All {size} go to one employee, and only they see them. The
+        {' '}{imageReviewsFor(size)} image reviews get different projects where enough are ready.
       </p>
 
       {people !== null && people.length === 0 && !error && (
@@ -181,15 +209,24 @@ export function AssignBatch({
 // when it becomes assignable. Putting the control there would mean drawing it
 // for rows that have just disappeared from the list it belongs to.
 //
-// A BATCH IS THE UNIT, so this reads batches rather than reviews: twelve rows
+// A BATCH IS THE UNIT, so this reads batches rather than reviews: the rows
 // grouped by batch_id, and a batch appears here only while every one of its
 // live reviews is approved and unassigned. Once assigned it leaves this list,
 // because a batch has one owner and there is nothing further to decide.
+//
+// THE BATCH ROWS THEMSELVES ARE READ TOO, for two facts the cards do not carry:
+// how many reviews the batch was generated with, and who it was generated for.
+// Both used to be constants — twelve, and nobody.
 
 type BatchRow = {
   batchId: string
   eligible: number
   live: number
+  /** card_count: how many this batch was generated with. */
+  size: number
+  intendedFor: string | null
+  /** The intended employee's display name, when they are still assignable. */
+  intendedName: string | null
   generatedAt: string | null
   /** The composition of the reviews that are ready. Counted from rows already read. */
   text: number
@@ -202,6 +239,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
 }) {
   const [rows, setRows] = useState<BatchRow[] | null>(null)
   const [error, setError] = useState('')
+  const [names, setNames] = useState<Map<string, string>>(new Map())
 
   const load = useCallback(async () => {
     // THE COLUMNS ARE THE MINIMUM THAT ANSWERS THE QUESTION — a batch id, a
@@ -240,18 +278,63 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
       byBatch.set(row.batch_id, entry)
     }
 
+    // HOW BIG EACH BATCH IS, AND WHO IT WAS FOR. Two columns, for the batches
+    // already in hand. A batch whose row cannot be read is not listed: without
+    // its size there is no honest "N of M ready" to show and no way to know
+    // whether the assignment would be refused.
+    const ids = [...byBatch.keys()]
+    const meta = new Map<string, { size: number; intendedFor: string | null }>()
+    if (ids.length > 0) {
+      const { data: batches, error: batchError } = await supabase
+        .from('customer_review_draft_batches')
+        .select('id, card_count, intended_for')
+        .in('id', ids)
+      if (batchError) {
+        setError('The batch list could not be loaded. Refresh to try again.')
+        setRows([])
+        return
+      }
+      for (const b of (batches ?? []) as { id: string; card_count: number; intended_for: string | null }[]) {
+        meta.set(b.id, { size: b.card_count, intendedFor: b.intended_for })
+      }
+    }
+
     setError('')
     setRows(
       [...byBatch.entries()]
         // A batch with nothing eligible has either been assigned already or has
         // not been approved at all; neither is something to act on here.
-        .filter(([, v]) => v.eligible > 0)
+        .filter(([id, v]) => v.eligible > 0 && meta.has(id))
         .map(([batchId, v]) => ({
           batchId, eligible: v.eligible, live: v.live, generatedAt: v.at,
+          size: meta.get(batchId)!.size,
+          intendedFor: meta.get(batchId)!.intendedFor,
+          // Resolved from the assignable list, so a name only appears for
+          // somebody the assignment would actually accept. An employee who has
+          // since lost the permission shows no badge rather than a stale one.
+          intendedName: meta.get(batchId)!.intendedFor
+            ? (names.get(meta.get(batchId)!.intendedFor as string) ?? null)
+            : null,
           text: v.text, image: v.image,
         }))
         .sort((a, b) => (b.generatedAt ?? '').localeCompare(a.generatedAt ?? '')),
     )
+  }, [supabase, names])
+
+  // The display names behind `intended_for`, from the same verify-gated source
+  // the picker uses. Read once; the batch list re-renders when it arrives.
+  useEffect(() => {
+    let active = true
+    const startFetch = () => {
+      void (async () => {
+        const { data } = await supabase.rpc('customer_review_assignable_employees')
+        if (!active) return
+        const rowsIn = (data ?? []) as { id: string; full_name: string | null }[]
+        setNames(new Map(rowsIn.map(p => [p.id, p.full_name ?? 'Unnamed'])))
+      })()
+    }
+    startFetch()
+    return () => { active = false }
   }, [supabase])
 
   useEffect(() => {
@@ -271,7 +354,7 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
         margin: 0, padding: '18px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
         border: `1px dashed ${colors.border}`, color: colors.muted,
       }}>
-        No batch is ready to assign. Approve all {REVIEWS_PER_BATCH} reviews above first.
+        No batch is ready to assign. Approve every review in a batch above first.
       </p>
     )
   }
@@ -291,11 +374,27 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
           */}
           <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
-              {row.eligible} of {REVIEWS_PER_BATCH} ready
+              {row.eligible} of {row.size} ready
             </span>
             <span style={{ fontSize: '11.5px', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
               {row.text} Text · {row.image} Image
             </span>
+            {/*
+              WHO IT WAS GENERATED FOR, SAID OUT LOUD. The intent used to be
+              invisible — it only prefilled the picker, so a verifier assigning
+              a batch somebody else generated had no way to know a candidate had
+              been named. Showing it makes the prefill explicable rather than
+              mysterious, and makes a deliberate change away from it deliberate.
+            */}
+            {row.intendedName && (
+              <span style={{
+                padding: '2px 8px', borderRadius: '5px',
+                background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
+                fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+              }}>
+                Generated for {row.intendedName}
+              </span>
+            )}
             <span style={{
               marginLeft: 'auto', fontFamily: 'var(--font-mono)',
               fontSize: '10.5px', color: colors.muted, whiteSpace: 'nowrap',
@@ -308,6 +407,8 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             supabase={supabase}
             batchId={row.batchId}
             eligible={row.eligible}
+            size={row.size}
+            intendedFor={row.intendedFor}
             onAssigned={outcome => { onAssigned(outcome); void load() }}
           />
         </li>

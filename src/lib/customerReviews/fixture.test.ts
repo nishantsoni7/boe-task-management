@@ -128,6 +128,13 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
       // asserts that review_type DEFAULTS to text rather than that any row was
       // written, precisely because it writes none.
       '20261107000000_review_types_assignment_and_image_groups.sql',
+      // Variable batch size. It appears here for the same reason 20261031000000
+      // and 20261107000000 do: it REDEFINES
+      // create_customer_review_draft_batch(), whose body contains an insert into
+      // customer_review_test_cards. The migration itself writes no card — the
+      // insert is inside a function definition and runs only when a verifier
+      // generates a batch.
+      '20261108000000_review_workflow_variable_batch_size.sql',
     ])
   })
 
