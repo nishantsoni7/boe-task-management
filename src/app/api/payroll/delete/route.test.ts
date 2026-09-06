@@ -10,7 +10,7 @@
  *
  * TEST DATA
  * ---------
- * Every payroll row these tests create lives in year 2999 — outside any real
+ * Every payroll row these tests create lives in year 2996 — outside any real
  * payroll data, and outside the month filters of every screen. No production
  * period, result, deduction line, settlement or attendance record is created,
  * modified or deleted by this file. Two guards enforce that:
@@ -28,7 +28,7 @@
  * Requires NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local.
  */
 
-import { test, before, after, afterEach, describe } from 'node:test'
+import { test, before, after, beforeEach, afterEach, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient } from '@supabase/supabase-js'
 import { config } from 'dotenv'
@@ -80,10 +80,17 @@ const REAL_YEAR_MAX = 2100
 /** A uuid no row has, so an `in`/`not in` list is never empty. */
 const NO_UUID = '00000000-0000-0000-0000-000000000000'
 
-/** Every payroll period this file could have created, found by its year. */
+/**
+ * Every payroll period this file could have created, found by its year.
+ *
+ * The error is raised rather than returned. A dropped read here used to read as
+ * "there is nothing to clean up", so the cleanup deleted nothing, the period
+ * survived, and the NEXT run failed on a duplicate key it had no way to explain.
+ */
 async function fixturePeriodIdList(): Promise<string[]> {
-  const { data } = await svc
+  const { data, error } = await svc
     .from('payroll_periods').select('id').eq('payroll_year', FIXTURE_YEAR)
+  if (error) throw new Error(`fixture cleanup could not list the periods: ${error.message}`)
   return (data ?? []).map(p => (p as { id: string }).id)
 }
 
@@ -365,7 +372,7 @@ async function buildFixture(opts: {
 }
 
 /**
- * Removes every year-2999 row, in FK-safe order. Never touches real data.
+ * Removes every year-2996 row, in FK-safe order. Never touches real data.
  *
  * Scoped by YEAR rather than by the ids a fixture remembers, because a test that
  * fails part-way leaves rows no fixture object knows about, and a leftover
@@ -378,40 +385,81 @@ async function buildFixture(opts: {
 async function destroyFixtures() {
   created.length = 0
 
-  // These two are cleaned FIRST and by YEAR, because both deliberately outlive
-  // the period they belong to: a successful deletion clears an adjustment's
-  // period pointer, and the audit row has no foreign key at all. Scoping them by
-  // period id would leave both behind for good.
-  await svc.from('payroll_pending_adjustments').delete().eq('payroll_year', FIXTURE_YEAR)
-  await svc.from('payroll_deletion_audit').delete().eq('payroll_year', FIXTURE_YEAR)
+  /**
+   * One delete, with its error raised rather than dropped.
+   *
+   * Every delete below used to discard its error object. A cleanup that fails
+   * quietly is worse than one that fails loudly: the rows stay, the period they
+   * belong to cannot be removed, and the run that finally notices is the NEXT
+   * one — which fails on a duplicate key that names none of this.
+   */
+  const purge = async (
+    table: string,
+    // The same shape collectDeletionFacts uses to compose its own filters.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    apply: (q: any) => any,
+  ) => {
+    const { error } = await apply(svc.from(table).delete())
+    if (error) throw new Error(`fixture cleanup ${table}: ${error.message}`)
+  }
 
-  const periodIds = await fixturePeriodIdList()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const inFixtureYear = (q: any) =>
+    q.gte('attendance_date', `${FIXTURE_YEAR}-01-01`).lte('attendance_date', `${FIXTURE_YEAR}-12-31`)
+
+  // These four are scoped by YEAR or by DATE and run before anything else is
+  // known, because each of them deliberately outlives the period it belongs to:
+  // a successful deletion clears an adjustment's period pointer, the audit row
+  // has no foreign key at all, and attendance is never owned by a payroll month.
+  // Scoping them by period id would leave all four behind for good — and running
+  // them ahead of the early return below is what stops a run that created
+  // attendance but no period from tripping the whole-suite guard in `after`.
+  //
+  // The adjustment sweep is by payroll_year alone, and that is the whole story:
+  // every adjustment buildFixture creates carries payroll_year = FIXTURE_YEAR,
+  // so this clears the payroll_result_id foreign key too, without needing to
+  // read back which results exist.
+  //
+  // They are independent of one another and of the period read, so they go out
+  // together. Cleanup used to be eighteen sequential round trips — over half of
+  // this file's total runtime, and eighteen chances to be interrupted part-way.
+  const [, , , , periodIds] = await Promise.all([
+    purge('payroll_pending_adjustments', q => q.eq('payroll_year', FIXTURE_YEAR)),
+    purge('payroll_deletion_audit',      q => q.eq('payroll_year', FIXTURE_YEAR)),
+    purge('attendance_day_corrections',  inFixtureYear),
+    purge('attendance_records',          inFixtureYear),
+    fixturePeriodIdList(),
+  ])
+
   if (periodIds.length === 0) return
 
-  // 1. Unlock, so the settlement lock guard lets the cleanup through.
-  await svc.from('payroll_periods').update({ status: 'generated' }).in('id', periodIds)
+  // Unlock first, so the settlement lock guard lets the rest through.
+  const { error: unlockError } = await svc
+    .from('payroll_periods').update({ status: 'generated' }).in('id', periodIds)
+  if (unlockError) throw new Error(`fixture cleanup could not unlock the periods: ${unlockError.message}`)
 
-  const { data: rs } = await svc.from('payroll_results').select('id').in('payroll_period_id', periodIds)
-  const resultIds = (rs ?? []).map(r => (r as { id: string }).id)
-  const safeResultIds = resultIds.length > 0 ? resultIds : [NO_UUID]
+  // Everything that points AT a period and nothing else points at.
+  await Promise.all([
+    purge('payroll_deletion_audit',         q => q.in('payroll_period_id', periodIds)),
+    purge('payroll_pending_adjustments',    q => q.in('applied_in_period_id', periodIds)),
+    purge('attendance_day_corrections',     q => q.in('payroll_period_id', periodIds)),
+    purge('payroll_settlements',            q => q.in('payroll_period_id', periodIds)),
+    purge('payroll_settlements',            q => q.in('carry_forward_source_period_id', periodIds)),
+    purge('payroll_period_status_events',   q => q.in('payroll_period_id', periodIds)),
+  ])
 
-  await svc.from('payroll_deletion_audit').delete().in('payroll_period_id', periodIds)
-  await svc.from('payroll_pending_adjustments').delete().in('applied_in_period_id', periodIds)
-  await svc.from('payroll_pending_adjustments').delete().in('payroll_result_id', safeResultIds)
-  await svc.from('attendance_day_corrections').delete().in('payroll_period_id', periodIds)
-  await svc.from('attendance_day_corrections').delete()
-    .gte('attendance_date', `${FIXTURE_YEAR}-01-01`).lte('attendance_date', `${FIXTURE_YEAR}-12-31`)
-  await svc.from('attendance_records').delete()
-    .gte('attendance_date', `${FIXTURE_YEAR}-01-01`).lte('attendance_date', `${FIXTURE_YEAR}-12-31`)
-  await svc.from('payroll_settlements').delete().in('payroll_period_id', periodIds)
-  await svc.from('payroll_settlements').delete().in('carry_forward_source_period_id', periodIds)
-  await svc.from('payroll_deduction_lines').delete().in('payroll_result_id', safeResultIds)
-  await svc.from('payroll_results').delete().in('id', safeResultIds)
-  await svc.from('payroll_generation').delete().in('payroll_period_id', periodIds)
-  await svc.from('payroll_period_status_events').delete().in('payroll_period_id', periodIds)
+  // By the period they belong to, NOT by a list of ids read back first. The read
+  // was the weak link: one dropped response turned "delete these two results"
+  // into "delete nothing", and the period delete then failed on the foreign key
+  // from the results still sitting there. payroll_deduction_lines cascades from
+  // payroll_results, so the lines go with them.
+  await purge('payroll_results', q => q.in('payroll_period_id', periodIds))
 
-  const { error } = await svc.from('payroll_periods').delete().in('id', periodIds)
-  if (error) throw new Error(`fixture cleanup could not remove the periods: ${error.message}`)
+  // After the results, which reference it.
+  await purge('payroll_generation', q => q.in('payroll_period_id', periodIds))
+
+  // By year, so a period created after the read above is still swept up.
+  await purge('payroll_periods', q => q.eq('payroll_year', FIXTURE_YEAR))
 }
 
 /** Call the deletion RPC exactly as the route does. */
@@ -462,18 +510,31 @@ before(async () => {
     member2: members[1].id,
   }
 
-  // Defensive: a prior interrupted run must not leave year-2999 rows behind.
+  // Defensive: a prior interrupted run must not leave year-2996 rows behind.
   await destroyFixtures()
 
   productionBefore = await snapshotProduction()
 })
+
+/**
+ * Cleaned before every test as well as after it.
+ *
+ * `afterEach` alone assumes the run reaches it. An interrupted run — a cancelled
+ * parent, a killed process, a Ctrl-C — never does, and the period it leaves
+ * behind fails the NEXT run's first fixture on the unique (month, year), which
+ * fails ITS cleanup, which leaves the period again. That loop is self-sustaining
+ * and needs a manual database edit to break; cleaning on the way in breaks it
+ * automatically. On a healthy run there is nothing to remove, so this costs one
+ * round trip's worth of empty deletes.
+ */
+beforeEach(async () => { await destroyFixtures() })
 
 afterEach(async () => { await destroyFixtures() })
 
 after(async () => {
   await destroyFixtures()
 
-  // Belt and braces: nothing in year 2999 may survive this file, in ANY table.
+  // Belt and braces: nothing in year 2996 may survive this file, in ANY table.
   // The two that outlive their period are named explicitly because they are the
   // two that once did survive it.
   for (const table of ['payroll_periods', 'payroll_pending_adjustments', 'payroll_deletion_audit']) {
@@ -1045,7 +1106,7 @@ describe('existing payroll behaviour', () => {
   })
 
   test('BOE-030’s July result and the July totals are unchanged by this suite', async () => {
-    // Read straight from production. This suite never writes outside year 2999,
+    // Read straight from production. This suite never writes outside year 2996,
     // so any difference here is a defect that escaped the fixture boundary.
     const { data: july } = await svc
       .from('payroll_periods').select('id')
