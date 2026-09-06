@@ -40,10 +40,8 @@ import { PI_ADVANCE_COLUMNS, type PersistedAdvance } from './advanceRequirement'
 import { PI_RESERVATION_COLUMNS, type PiReservationFields } from './orderNumberReservation'
 import {
   PI_APPROVAL_COLUMNS,
-  PI_DECISION_COLUMNS,
   PI_FINANCE_COLUMNS,
   type PersistedFinanceVerification,
-  type PersistedPiDecision,
 } from './finalApproval'
 
 // ── Status ────────────────────────────────────────────────────────────────────
@@ -165,7 +163,7 @@ const text = (value: unknown): string | null => {
 export type PersistedCostMeaning = 'numeric' | 'not_applicable' | 'included' | 'text'
 
 /** One row of public.order_submissions, as the drafts pages read it. */
-export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PersistedPiDecision & PiReservationFields & {
+export type PersistedSubmission = PersistedAdvance & PersistedFinanceVerification & PiReservationFields & {
   id: string
   status: string
   client_name: string | null
@@ -402,9 +400,6 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // the modules that read them cannot drift apart.
   ...PI_APPROVAL_COLUMNS,
   ...PI_FINANCE_COLUMNS,
-  // The PI decision taken on its own (20261116000000). Named in
-  // finalApproval.ts beside the finance check it is shaped like.
-  ...PI_DECISION_COLUMNS,
   'deletion_claim_token',
   // The advance requirement this PI was submitted under, and the exception
   // decision if it carries one. Named in advanceRequirement.ts so the columns

@@ -107,28 +107,8 @@ export type PiPaymentSummary = {
   grand_total: string | number | null
   verified_amount: string | number
   unverified_amount: string | number
-  /**
-   * verified + awaiting verification, summed by the database (20261116000000).
-   * The figure the SUBMISSION rule reads; it gates no Order. Optional so a
-   * summary produced before the migration still types.
-   */
-  attached_amount?: string | number | null
   verified_percent: string | number | null
   unverified_percent: string | number | null
-  attached_percent?: string | number | null
-  /** Whether attached payment reaches the requirement. Server-decided. */
-  attached_meets_standard?: boolean | null
-  /** How much MORE attached payment the submission rule would need. */
-  needed_attached_for_submission?: string | number | null
-  /** attached_met | attached_partial | no_payment — see paymentGate.ts. */
-  submission_position?: string | null
-  /** The verified-or-approved-exception answer the Order gate would give now. */
-  order_gate_cleared?: boolean | null
-  /** Whether the PI ITSELF has been approved against the current submission. */
-  pi_approved?: boolean | null
-  pi_approved_at?: string | null
-  pi_approved_by?: string | null
-  pi_approved_by_name?: string | null
   /**
    * How much MORE verified payment is needed, rounded UP to whole paise by the
    * database so the figure shown is always one that actually closes the gate.
@@ -211,7 +191,7 @@ export type PiPaymentTile = { key: string; label: string; value: string; hint?: 
 export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[] {
   if (!summary) return []
   const standard = summary.standard_percent ?? 40
-  const tiles: PiPaymentTile[] = [
+  return [
     // THE GRAND TOTAL LEADS, because every other figure on the card is a part of
     // it and a reader who cannot see the whole cannot judge the parts.
     { key: 'grand',      label: 'Grand total',           value: formatMoney(summary.grand_total) },
@@ -223,16 +203,6 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
       hint: `to reach the standard ${standard}%` },
     { key: 'balance',    label: 'Pending balance',       value: formatMoney(summary.pending_balance) },
   ]
-  // THE ATTACHED PAIR, when the server reports it (20261116000000). What
-  // management is shown as "appears to have been received" — verified plus
-  // awaiting verification — beside the verified figures, never in place of them.
-  if (summary.attached_amount !== undefined && summary.attached_amount !== null) {
-    tiles.push({ key: 'attached', label: 'Total attached payment',
-      value: formatMoney(summary.attached_amount), hint: 'verified + awaiting verification' })
-    tiles.push({ key: 'attached_percent', label: 'Total attached %',
-      value: formatPercent(summary.attached_percent), hint: 'of grand total, attached' })
-  }
-  return tiles
 }
 
 export type PiPaymentTermLine = { key: 'payment_terms' | 'billing_terms'; label: string; value: string }

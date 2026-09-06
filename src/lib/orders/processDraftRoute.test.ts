@@ -534,19 +534,9 @@ describe('the phase boundary holds', () => {
   })
 
   test('no approval or rejection happens', () => {
-    // The draft path approves and rejects nothing. The ONE mention of an
-    // approval is the revised-PI door (20261116000000), reached only when a
-    // caller hands the pipeline a pending version id — and that door approves a
-    // REVISION of an already-approved PI, never the PI and never an Order.
-    for (const forbidden of ['approve_order_submission', 'reject_order_submission',
-                             'approve_pi_review', 'approved_by', 'rejected_by', 'reject']) {
+    for (const forbidden of ['approve', 'reject', 'approved_by', 'rejected_by']) {
       assert.ok(!route.includes(forbidden), `${forbidden} is not this phase`)
     }
-    const mentions = [...route.matchAll(/approve\w*/g)].map(m => m[0])
-    assert.deepEqual([...new Set(mentions)], ['approve_order_pi_revision'],
-      'the only approval named is the revision door')
-    assert.match(route, /ctx\.revisionVersionId\s*\?\s*await service\.rpc\('approve_order_pi_revision'/,
-      'and it is reached only with a version id in hand')
   })
 
   test('no payment is touched', () => {
@@ -742,8 +732,7 @@ describe('the route mirrors the database’s workbook authority', () => {
     assert.ok(branch.includes("fail(400, 'CHANGE_REASON_TOO_LONG'"))
     // Holding orders.approve_order, or being the finance verifier, grants
     // nothing here. Neither is consulted at all.
-    assert.ok(!branch.includes("'approve_order'"), 'approval rights are not editing rights')
-    assert.ok(!branch.includes('approve_order_submission'), 'approval rights are not editing rights')
+    assert.ok(!branch.includes('approve_order'), 'approval rights are not editing rights')
     assert.ok(!branch.includes('finance_verified'), 'verifying is not editing')
   })
 

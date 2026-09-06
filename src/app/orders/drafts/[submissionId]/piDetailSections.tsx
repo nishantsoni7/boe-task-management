@@ -40,7 +40,6 @@ import {
   OPEN_ORDER_BUTTON_LABEL,
   VERIFY_FINANCE_BUTTON_LABEL,
   type FinanceStatusView,
-  type ReviewDecision,
 } from '@/lib/orders/finalApproval'
 import {
   APPROVE_EXCEPTION_BUTTON_LABEL,
@@ -673,8 +672,6 @@ export function PiWorkflowPanel({
   finance,
   approvalBlocker,
   approvalReady,
-  decision = null,
-  piApprovedLine = null,
   approvedOrder,
   onChangePi,
   onSubmit,
@@ -728,15 +725,6 @@ export function PiWorkflowPanel({
    */
   approvalBlocker: string | null
   approvalReady: boolean
-  /**
-   * WHICH DOOR this reviewer is offered (20261116000000): approve-and-create,
-   * approve the PI only, or create the Order the PI already earned — with the
-   * one sentence that goes beside it. When absent the panel falls back to the
-   * single approve-and-create control the two props above describe.
-   */
-  decision?: ReviewDecision | null
-  /** "PI approved by X · date", once the PI decision stands. */
-  piApprovedLine?: string | null
   /** The Order this PI became, once it exists and this viewer can see it. */
   approvedOrder: ApprovedOrderView | null
   onChangePi: () => void
@@ -766,17 +754,9 @@ export function PiWorkflowPanel({
   const submitTitle = blockingCount > 0
     ? 'Fix the issues in the PI first'
     : (readinessSummary ?? undefined)
-  // The primary control: the decision's door when the page resolved one, the
-  // plain approve-and-create control otherwise. `decision.rpc === null` means
-  // no door is open — the PI is approved and the money is somebody else's
-  // move, or something other than payment blocks it.
-  const primaryLabel = decision?.label ?? APPROVE_BUTTON_LABEL
-  const primaryDisabled = decision ? decision.rpc === null : !approvalReady
-  const primaryNote = decision ? decision.note : approvalBlocker
-
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || advanceRefusal
-    || finance || approvedOrder || piApprovedLine || (isReviewer && primaryNote),
+    || finance || approvedOrder || (isReviewer && approvalBlocker),
   )
 
   /**
@@ -912,12 +892,12 @@ export function PiWorkflowPanel({
                 <button
                   className="boe-btn boe-btn-primary"
                   onClick={onApprove}
-                  disabled={acting || primaryDisabled}
-                  title={primaryNote ?? undefined}
+                  disabled={acting || !approvalReady}
+                  title={approvalBlocker ?? undefined}
                   style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
                 >
                   <CheckCircle2 size={13} strokeWidth={2} />
-                  {primaryLabel}
+                  {APPROVE_BUTTON_LABEL}
                 </button>
               </>
             )}
@@ -941,22 +921,11 @@ export function PiWorkflowPanel({
           {finance && (
             <PiFinanceLine finance={finance} acting={acting} onVerify={onVerifyFinance} />
           )}
-          {/* THE PI DECISION, once it stands: one line, the same weight as the
-              finance line above it, for every viewer who can read the PI. */}
-          {piApprovedLine && (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap',
-              fontSize: '12px', color: TONE_STYLE.green.color, lineHeight: 1.5,
-            }}>
-              <ShieldCheck size={13} strokeWidth={2} />
-              <span>{piApprovedLine}</span>
-            </div>
-          )}
-          {/* Why the primary action cannot be pressed yet, or what it will and
-              will not do — for the reviewer it is addressed to, and nobody else. */}
-          {isReviewer && primaryNote && (
+          {/* Why the primary action cannot be pressed yet — for the reviewer it
+              is addressed to, and nobody else. */}
+          {isReviewer && approvalBlocker && (
             <div style={{ fontSize: '12px', color: colors.secondary, lineHeight: 1.5 }}>
-              {primaryNote}
+              {approvalBlocker}
             </div>
           )}
           {panel.instruction && (
