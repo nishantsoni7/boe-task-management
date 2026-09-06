@@ -31,6 +31,7 @@ import {
   type NotificationCacheSnapshot,
 } from '@/lib/notificationCache'
 import { perfStart, type PerfAction } from '@/lib/perf'
+import { VIEW_AS_HEADER } from '@/lib/viewAs'
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 
@@ -43,6 +44,11 @@ export type NotificationMutationDeps = {
   fetchFn?: FetchLike
   /** Called after a single delete settles, so the caller can release its lock. */
   releasePending?: (id: string) => void
+  /**
+   * True while an administrator is previewing another employee. Adds the preview
+   * header to every request so the server refuses it — see doFetch below.
+   */
+  readOnly?: boolean
 }
 
 export type OptimisticContext = { snapshot: NotificationCacheSnapshot }
@@ -60,8 +66,22 @@ export type TaskGroupResult = {
   unreadAffected?: number
 }
 
+/**
+ * The one place every notification mutation issues its request.
+ *
+ * DEFENCE IN DEPTH FOR VIEW AS. When `deps.readOnly` is set the request carries
+ * the preview header and the four /api/notifications routes refuse it with 403.
+ * useNotificationMutations already returns no-ops in that state, so this path is
+ * not normally reached at all — it exists so that a future call site which
+ * bypasses the hook still cannot write from inside a preview.
+ *
+ * Trusting a client header is safe here BECAUSE IT ONLY EVER REMOVES AUTHORITY.
+ * A caller who omits it gains nothing they did not already have as themselves.
+ */
 const doFetch = (deps: NotificationMutationDeps): FetchLike =>
-  deps.fetchFn ?? ((input, init) => fetch(input, init))
+  deps.fetchFn ?? ((input, init) => fetch(input, deps.readOnly
+    ? { ...init, headers: { ...(init?.headers ?? {}), [VIEW_AS_HEADER]: '1' } }
+    : init))
 
 /**
  * Time one request round-trip. Inert unless NEXT_PUBLIC_BOE_PERF_DEBUG=true,

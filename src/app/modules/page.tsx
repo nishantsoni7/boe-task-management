@@ -8,7 +8,6 @@ import type { UserProfile } from '@/lib/types'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeOsLayout } from '@/components/layout/BoeOsLayout'
 import DailyQuoteLoader from '@/components/DailyQuoteLoader'
-import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
 import {
   usePermissionContext,
@@ -18,7 +17,7 @@ import {
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
-import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { Image as ImageIcon } from 'lucide-react'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -122,7 +121,6 @@ export default function BoeOsHomePage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
-  const { viewAsUserId, viewAsProfile } = useViewAs()
 
   // ── PHASE 1: who are you, and what may you open ─────────────────────────────
   //
@@ -136,13 +134,23 @@ export default function BoeOsHomePage() {
   // — fail-closed for non-admins, while an admin still short-circuits on role
   // alone and so is unaffected by a permissions RPC failure. Both behaviours are
   // preserved inside usePermissionContext.
+  // The AUTHENTICATED ACTOR. `userId` is the session check below and the key the
+  // notification counts are tagged with; `profile` is the account menu at the
+  // foot of the sidebar, which must keep naming the real signed-in person even
+  // while they preview somebody else.
+  const { userId, profile } = usePermissionContext()
+
+  // WHOSE LAUNCHER IS THIS? Outside View As the subject is the signed-in user
+  // and nothing below changes. While previewing, every card decision reads the
+  // viewed employee's own role and effective permissions — resolved server-side
+  // by /api/view-as/subject, which decides from the session whether this caller
+  // may preview at all. See src/hooks/queries/useDisplaySubject.ts.
   const {
     ready: permsReady,
-    userId,
-    profile,
-    role: signedInRole,
-    permissionsByModule: permsByModule,
-  } = usePermissionContext()
+    subjectRole,
+    subjectProfile,
+    subjectPermissionsByModule: subjectPermissions,
+  } = useDisplaySubject()
 
   // Counts belong to the user they were fetched for. If the signed-in user has
   // changed, the previous user's numbers are discarded in this very render —
@@ -181,19 +189,29 @@ export default function BoeOsHomePage() {
   }
 
   // In View Mode use the viewed user's profile for card visibility; fall back to actual profile.
-  const effectiveProfile = (viewAsUserId && viewAsProfile) ? viewAsProfile : profile
+  // The subject's own profile — the viewed employee while previewing, the
+  // signed-in user otherwise. Used by the app_modules visibility rule, which is
+  // profile-shaped rather than permission-shaped.
+  const effectiveProfile = subjectProfile
 
   // THE PARENT GATE. `view` on the module, or admin. Nothing else opens a
   // module: a leftover `dispatch` or `manage` grant with view = false is a
   // dormant permission, not an entry ticket.
+  //
+  // ASKED OF THE DISPLAY SUBJECT, which outside View As is the signed-in user
+  // and is unchanged. While previewing it is the viewed employee, so the card
+  // grid is the one THEY would see — an admin's Finance card must not appear on
+  // a screen labelled "Viewing as Dhruv" when Dhruv has no Finance. This is a
+  // DISPLAY decision; entering any of these routes is still authorized against
+  // the real caller by that route's own guard and by RLS.
   const canOpenModule = (moduleKey: string): boolean =>
     canAccessManagementModule({
-      role: signedInRole,
+      role: subjectRole,
       moduleKey,
       // The resolver returns no rows at all for an inactive or unregistered
       // module, so the `view` test inside fails on its own.
       isModuleActive: true,
-      permissions: permsByModule.get(moduleKey) ?? [],
+      permissions: subjectPermissions.get(moduleKey) ?? [],
     })
 
   // THE ONE MODULE canOpenModule CANNOT ANSWER FOR.
@@ -211,8 +229,8 @@ export default function BoeOsHomePage() {
   const canOpenCustomerReviews =
     permsReady &&
     deriveCustomerReviewCapabilities(
-      signedInRole,
-      permsByModule.get('customer_review_requests') ?? [],
+      subjectRole,
+      subjectPermissions.get('customer_review_requests') ?? [],
     ).canAccessModule
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
@@ -240,13 +258,17 @@ export default function BoeOsHomePage() {
   // destination is unchanged for everyone who holds Team Performance today,
   // because 20261109000000 grants view_team at role level to exactly the admins
   // and managers this test used to name.
-  const performanceCapabilities = derivePerformanceCapabilities(
-    signedInRole,
-    permsByModule.get('performance') ?? [],
-  )
-  const performanceHref = performanceCapabilities.canAccessTeamPerformance
-    ? '/performance/team'
-    : '/performance'
+  //
+  // AND THE DESTINATION IS ALWAYS THE PERSONAL REPORT. Personal Performance and
+  // Team Performance are not alternatives — a manager needs both — so a card
+  // that chose between them was the second half of the same defect: routing a
+  // Team Performance holder to /performance/team left them with no route to
+  // their own score, month, history or EOD, which is exactly what "Dhruv cannot
+  // reach his own Performance" meant. Everybody lands on their own report
+  // because everybody is first an individual employee, and the Team View link
+  // the personal page already renders for a `view_team` holder is the way
+  // across. /performance/team keeps its own "← My Report" link back.
+  const performanceHref = '/performance'
 
   // ── Attendance & Payroll — one card for what used to be two ────────────────
   //

@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { NotificationCategory } from '@/lib/notifications'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import {
   deleteSingleOptions,
   deleteSelectedOptions,
@@ -61,8 +62,27 @@ export type NotificationMutations = {
   clearError: () => void
 }
 
+/** Every mutation this hook exposes, as a no-op. Returned while previewing. */
+const NO_MUTATIONS: Omit<NotificationMutations, 'error' | 'clearError'> = {
+  markRead: () => {},
+  markManyRead: () => {},
+  markTaskGroupRead: () => {},
+  deleteTaskGroup: () => {},
+  groupBusy: false,
+  busyTaskId: null,
+  markAllRead: () => {},
+  deleteSingle: () => {},
+  deleteSelected: () => {},
+  deleteAll: () => {},
+  pendingDeletes: new Set<string>(),
+  markingAll: false,
+  deletingBulk: false,
+  deletingAll: false,
+}
+
 export function useNotificationMutations(category: NotificationCategory): NotificationMutations {
   const qc = useQueryClient()
+  const { readOnly } = useDisplaySubject()
 
   const [error, setError] = useState<string | null>(null)
   const clearError = useCallback(() => setError(null), [])
@@ -84,11 +104,12 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
     qc,
     category,
     reportError: setError,
+    readOnly,
     releasePending: (id: string) => {
       guard.release(id)
       syncPending()
     },
-  }), [qc, category, guard, syncPending])
+  }), [qc, category, guard, syncPending, readOnly])
 
   const deleteSingleMutation   = useMutation(deleteSingleOptions(deps))
   const deleteSelectedMutation = useMutation(deleteSelectedOptions(deps))
@@ -149,6 +170,29 @@ export function useNotificationMutations(category: NotificationCategory): Notifi
     setError(null)
     markAllReadMutation.mutate()
   }, [markAllReadMutation])
+
+  // ── WHILE PREVIEWING, NOTHING MUTATES ───────────────────────────────────────
+  //
+  // Returned as no-ops rather than as failing requests, deliberately. The
+  // requirement is that opening a notification does not mark it read and that
+  // Mark as read, delete and bulk delete do nothing — so there must be no
+  // optimistic write, no request and no error banner, because all three are
+  // things "nothing happened" is not.
+  //
+  // WHOSE STATE WAS AT RISK. Not the employee's: every notification endpoint
+  // scopes its write to `user_id = <the token's own user>` and none accepts a
+  // user id from the client, so an admin previewing Dhruv could never have
+  // marked DHRUV's notification read — the audit-integrity half was already
+  // structurally safe. What this prevents is the admin silently mutating THEIR
+  // OWN inbox by clicking a control that, by design, looks like the employee's.
+  //
+  // The server refuses the same requests independently — see
+  // isPreviewRequest in src/lib/viewAs.ts and the guards in the four
+  // /api/notifications routes. This is the UX half; that is the boundary.
+  //
+  // `error` and `clearError` stay real so the banner still clears if one was
+  // showing when View As was entered.
+  if (readOnly) return { ...NO_MUTATIONS, error, clearError }
 
   return {
     markRead,

@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 
 // THE PARENT GATE, as a route guard.
@@ -30,9 +30,12 @@ import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 //      redirect lands, and the redirect target appearing before the check
 //      finishes. A child that fetches on mount cannot start early because it
 //      has not mounted.
-//   2. The check reads the SIGNED-IN user, never the View As target. View As
-//      shows an administrator what somebody else sees; it must not lend that
-//      person's authority, and it must not take the administrator's away.
+//   2. The check reads the DISPLAY SUBJECT — the signed-in user normally, the
+//      viewed employee while View As is active. View As exists to show an
+//      administrator what somebody else sees, so a module that employee does
+//      not hold must not be reachable inside the preview. This lends the admin
+//      nothing and takes nothing from them: authority is decided on the server
+//      from their own session, and Exit View Mode returns their screen.
 //   3. A failed profile read denies. An unidentified caller holding a stale
 //      permission row is exactly the case that must not be admitted, which is
 //      also why canAccessManagementModule fails closed on a null role.
@@ -49,13 +52,22 @@ export default function ModuleGuard({
 }) {
   const router = useRouter()
 
-  // The two reads this used to make itself — users.role, then
-  // resolve_effective_permissions for one module — are now resolved once per
-  // session for every module at a time and shared with /modules and
-  // DashboardLayout. The decision below is unchanged: same inputs, same
-  // function, same fail-closed defaults. What changed is that returning to this
-  // route inside the cache window costs no round trip at all.
-  const { ready, userId, role, permissionsByModule } = usePermissionContext()
+  // WHOSE MODULE LIST DECIDES? The DISPLAY SUBJECT's — which outside View As is
+  // the signed-in user, so nothing changes for an ordinary session.
+  //
+  // While previewing, this answers the employee's question ("would Dhruv have
+  // this module?") rather than the admin's, so a module the employee does not
+  // hold is not silently reachable just because the person previewing them is an
+  // administrator. The admin's own authority is not lost either: they are one
+  // click of Exit View Mode away from their own screen, and the SERVER never
+  // consulted this component in the first place.
+  //
+  // This is the UI half of the boundary and it stays the UI half. RLS and each
+  // route's own server checks refuse the DATA, and they read the real caller —
+  // so narrowing a preview here cannot weaken anything, and widening it could
+  // not have granted anything.
+  const { ready, actorUserId: userId, subjectRole: role, subjectPermissionsByModule: permissionsByModule }
+    = useDisplaySubject()
 
   // An inactive or unregistered module makes the resolver return no rows at
   // all, so `permissions` is empty and the `view` test inside fails. That is

@@ -479,7 +479,7 @@ describe('the launcher card', () => {
     // canAccessManagementModule asks strictly for `view`; asking it here would
     // hide the card from everybody who actually holds the module.
     assert.ok(launcher.includes('deriveCustomerReviewCapabilities('))
-    assert.ok(launcher.includes("permsByModule.get('customer_review_requests')"))
+    assert.ok(launcher.includes("subjectPermissions.get('customer_review_requests')"))
     assert.ok(launcher.includes('.canAccessModule'))
   })
 
@@ -488,13 +488,20 @@ describe('the launcher card', () => {
     assert.ok(launcher.includes("href: '/customer-reviews',"))
   })
 
-  test('it reads the SIGNED-IN role, so View As lends no authority', () => {
+  test('it reads the DISPLAY SUBJECT, so the preview shows the employee’s card', () => {
+    // INVERTED DELIBERATELY. The card used to follow the signed-in role even
+    // while previewing, so an administrator who holds Review Workflow saw the
+    // card on a screen labelled with an employee who does not — the preview
+    // described the admin, not the employee. Authority is unaffected:
+    // /customer-reviews gates itself server-side against the real caller, and a
+    // launcher card grants nothing.
     const block = launcher.slice(
       launcher.indexOf('const canOpenCustomerReviews'),
       launcher.indexOf('.canAccessModule'),
     )
-    assert.ok(block.includes('signedInRole'))
+    assert.ok(block.includes('subjectRole'))
     assert.equal(block.includes('effectiveProfile'), false)
+    assert.equal(block.includes('viewAsProfile'), false)
   })
 })
 

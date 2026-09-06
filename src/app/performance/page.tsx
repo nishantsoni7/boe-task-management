@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/client'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { useViewAs } from '@/hooks/useViewAs'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
+import { PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import { derivePerformanceCapabilities } from '@/lib/permissions/performance'
 import type {
   UserProfile, PerformanceData, PerformanceAudit, TrendDay,
@@ -423,10 +425,23 @@ function ScoreGuide({ compact = false }: { compact?: boolean }) {
 // ─── EOD Log form ─────────────────────────────────────────────────────────────
 type EodSaveState = 'idle' | 'saving' | 'saved' | 'error'
 
-function EodLogForm({ existing, token, onSaved }: {
+function EodLogForm({ existing, token, onSaved, readOnly }: {
   existing: { summary: string; highlights: string | null; self_score: number | null } | null
   token: string
   onSaved: (log: { summary: string; self_score: number | null }) => void
+  /**
+   * READ-ONLY PREVIEW. The form still RENDERS. An administrator using View As is
+   * here to check that the employee's interface is right, and a screen with the
+   * EOD form deleted is not that employee's screen — "same interface, no writes"
+   * is the whole requirement. What is removed is the write: submit returns
+   * immediately, the fields do not accept input, and the button says why.
+   *
+   * This is the UX half only. The refusal that matters is server-side: POST
+   * /api/daily-log attributes the log to the bearer token's own user — so it
+   * could never have written Dhruv's EOD — and refuses outright when the request
+   * declares itself a preview. See src/lib/viewAs.ts.
+   */
+  readOnly?: boolean
 }) {
   const [summary,   setSummary]   = useState(existing?.summary ?? '')
   const [selfScore, setSelfScore] = useState<number>(existing?.self_score ?? 0)
@@ -434,6 +449,7 @@ function EodLogForm({ existing, token, onSaved }: {
   const [errorMsg,  setErrorMsg]  = useState('')
 
   const submit = async () => {
+    if (readOnly) return
     if (!summary.trim()) return
     setSaveState('saving')
     setErrorMsg('')
@@ -485,6 +501,7 @@ function EodLogForm({ existing, token, onSaved }: {
             onChange={e => { setSummary(e.target.value); if (saveState !== 'saving') setSaveState('idle'); setErrorMsg('') }}
             placeholder="Briefly write the important work you completed today..."
             rows={5}
+            readOnly={readOnly}
             style={{
               width: '100%', resize: 'vertical',
               fontSize: 13, color: '#111318', lineHeight: 1.5,
@@ -502,6 +519,8 @@ function EodLogForm({ existing, token, onSaved }: {
             {[1, 2, 3, 4, 5].map(n => (
               <button
                 key={n}
+                disabled={readOnly}
+                title={readOnly ? PREVIEW_WRITE_REFUSED : undefined}
                 onClick={() => { setSelfScore(n); if (saveState !== 'saving') setSaveState('idle') }}
                 style={{
                   width: 32, height: 32, borderRadius: 8,
@@ -521,16 +540,17 @@ function EodLogForm({ existing, token, onSaved }: {
       )}
       <button
         onClick={submit}
-        disabled={isSaving || !summary.trim()}
+        disabled={readOnly || isSaving || !summary.trim()}
+        title={readOnly ? PREVIEW_WRITE_REFUSED : undefined}
         style={{
           alignSelf: 'flex-start',
           fontSize: 13, fontWeight: 600,
           background: '#111318', color: '#fff',
           border: 'none', borderRadius: 8,
-          padding: '9px 20px', cursor: isSaving || !summary.trim() ? 'not-allowed' : 'pointer',
-          opacity: isSaving || !summary.trim() ? 0.5 : 1,
+          padding: '9px 20px', cursor: readOnly || isSaving || !summary.trim() ? 'not-allowed' : 'pointer',
+          opacity: readOnly || isSaving || !summary.trim() ? 0.5 : 1,
         }}
-      >{btnLabel}</button>
+      >{readOnly ? 'Update Log (read only)' : btnLabel}</button>
     </div>
   )
 }
@@ -1007,12 +1027,34 @@ export default function PerformancePage() {
   // authorizes every read against the caller's own token and refuses a target
   // outside their scope, so honouring View As here discloses nothing the team
   // screen did not already show that caller.
-  const { ready: permissionsReady, role: callerRole, permissionsByModule } = usePermissionContext()
+  // TWO IDENTITIES, TWO QUESTIONS.
+  //
+  // `capabilities` describes the DISPLAY SUBJECT, so previewing Dhruv renders
+  // the Performance page Dhruv would get — his Team View link, his EOD form —
+  // rather than the administrator's. Outside View As the subject is the caller
+  // and this is exactly what it was.
+  //
+  // `mayViewOthers` is the ACTOR's authority, and it must stay the actor's: it
+  // decides whether this caller may hold a View As target at all, and reading
+  // the subject's own capability there would be circular — the target would be
+  // authorising itself.
+  const { role: actorRole, permissionsByModule: actorPermissions } = usePermissionContext()
+  const {
+    ready: permissionsReady,
+    subjectRole,
+    subjectPermissionsByModule,
+    readOnly,
+  } = useDisplaySubject()
+
   const capabilities = derivePerformanceCapabilities(
-    callerRole,
-    permissionsByModule.get('performance') ?? [],
+    subjectRole,
+    subjectPermissionsByModule.get('performance') ?? [],
   )
-  const mayViewOthers = permissionsReady && capabilities.canAccessTeamPerformance
+  const actorCapabilities = derivePerformanceCapabilities(
+    actorRole,
+    actorPermissions.get('performance') ?? [],
+  )
+  const mayViewOthers = permissionsReady && actorCapabilities.canAccessTeamPerformance
 
   useEffect(() => {
     // Wait for the permission context: `ready` false reports a null role and an
@@ -1345,8 +1387,13 @@ export default function PerformancePage() {
                     EOD from a page showing another employee's name. It is also
                     absent for anyone whose Personal Performance is switched off,
                     matching what that route will now accept. */}
-                {!viewAsUserId && capabilities.canSubmitOwnEod && (
-                  <EodLogForm existing={perfTodayData.eodLog} token={token} onSaved={handleEodSaved} />
+                {capabilities.canSubmitOwnEod && (
+                  <EodLogForm
+                    existing={perfTodayData.eodLog}
+                    token={token}
+                    onSaved={handleEodSaved}
+                    readOnly={readOnly}
+                  />
                 )}
               </div>
 

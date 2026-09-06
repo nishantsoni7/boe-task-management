@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { isValidUUID } from '@/lib/ui'
+import { isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import { perfTrack } from '@/lib/perf'
 
 // Hard-deletes a single notification owned by the authenticated user.
@@ -24,13 +25,23 @@ import { perfTrack } from '@/lib/perf'
 // really deleted a row. The client had no way to tell a genuine deletion from a
 // silent no-op.
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const perf = perfTrack('notification.delete.single')
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+  // A PREVIEW MAY NOT WRITE. Every query in this file is scoped to
+  // `user_id = caller`, so an administrator previewing an employee could never
+  // have touched THAT employee's rows — the audit half was already safe. This
+  // refuses the other mistake: clicking what looks like the employee's control
+  // and silently mutating the administrator's own state. Trusting the header is
+  // safe because it only ever removes authority. See src/lib/viewAs.ts.
+  if (isPreviewRequest(req.headers)) {
+    return NextResponse.json({ error: PREVIEW_WRITE_REFUSED }, { status: 403 })
+  }
 
   const { id } = await params
   // Validated before it reaches Postgres: a malformed id would otherwise come
