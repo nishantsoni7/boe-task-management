@@ -835,6 +835,13 @@ describe('the applied migrations are frozen', () => {
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // PI review gate, PI versions and production alignment (20261113000000):
+      // order_submissions gains the PI-decision columns, orders the production
+      // alignment columns, order_pi_versions is created, and the Order-side
+      // activity policy is added. It re-emits approve_order_submission,
+      // submit_pi_for_review_internal, pi_submission_payment_summary and
+      // orders_guard_amendable_columns. It touches nothing asserted here.
+      '20261113000000_order_submission_pi_review_gate_versions_and_production.sql',
     ])
   })
 
@@ -936,6 +943,13 @@ describe('the applied migrations are frozen', () => {
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // PI review gate, PI versions and production alignment (20261113000000):
+      // order_submissions gains the PI-decision columns, orders the production
+      // alignment columns, order_pi_versions is created, and the Order-side
+      // activity policy is added. It re-emits approve_order_submission,
+      // submit_pi_for_review_internal, pi_submission_payment_summary and
+      // orders_guard_amendable_columns. It touches nothing asserted here.
+      '20261113000000_order_submission_pi_review_gate_versions_and_production.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

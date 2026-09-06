@@ -376,6 +376,13 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // A DATA migration — it creates no table, alters no table, defines no
       // function and deletes nothing, so it reaches nothing asserted here.
       '20261112000000_exclude_partner_from_performance_population.sql',
+      // PI review gate, PI versions and production alignment (20261113000000):
+      // order_submissions gains the PI-decision columns, orders the production
+      // alignment columns, order_pi_versions is created, and the Order-side
+      // activity policy is added. It re-emits approve_order_submission,
+      // submit_pi_for_review_internal, pi_submission_payment_summary and
+      // orders_guard_amendable_columns. It touches nothing asserted here.
+      '20261113000000_order_submission_pi_review_gate_versions_and_production.sql',
     ])
   })
 
