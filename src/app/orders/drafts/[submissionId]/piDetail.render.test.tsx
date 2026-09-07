@@ -2504,7 +2504,7 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     assert.deepEqual([...new Set(rpcs)].sort(), [
       'approve_order_submission',
       'approve_pi_advance_exception',
-      // The PI decision on its own (20261116000000): the same authority as
+      // The PI decision on its own (20261119000000): the same authority as
       // approve_order_submission, taken while the payment condition is still
       // unresolved. Writes three columns and one event; creates no Order.
       'approve_pi_review',

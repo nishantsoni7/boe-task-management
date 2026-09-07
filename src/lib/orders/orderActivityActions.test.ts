@@ -151,13 +151,13 @@ describe('the closed action set', () => {
     // a NEW action extends the set in the same migration, so whichever file did
     // that most recently is the one this must name.
     //
-    // 20261009000000 did that for the Order-number events. 20261116000000 does
+    // 20261009000000 did that for the Order-number events. 20261119000000 does
     // it again for the PI decision, the two payment-decision echoes and the
     // three PI-revision events, and re-emits the whole set in full, which is
     // exactly what 20261001000000 asks of it.
     assert.ok(file.length > 0, 'no migration defines the action constraint')
     assert.equal(file,
-      '20261116000000_order_submission_pi_review_gate_versions_and_production.sql')
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql')
   })
 
   test('still admits every action the earlier phases wrote', () => {
@@ -220,7 +220,7 @@ describe('every action a migration logs', () => {
     }
   })
 
-  test('and the six 20261116000000 added', () => {
+  test('and the six 20261119000000 added', () => {
     // The PI decision on its own; Finance's decision on a payment echoed onto
     // the PI it is allocated to; and a revised PI's three outcomes. Each is
     // written by a function the migration installs, and each is declared in

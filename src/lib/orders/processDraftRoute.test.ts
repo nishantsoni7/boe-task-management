@@ -535,7 +535,7 @@ describe('the phase boundary holds', () => {
 
   test('no approval or rejection happens', () => {
     // The draft path approves and rejects nothing. The ONE mention of an
-    // approval is the revised-PI door (20261116000000), reached only when a
+    // approval is the revised-PI door (20261119000000), reached only when a
     // caller hands the pipeline a pending version id — and that door approves a
     // REVISION of an already-approved PI, never the PI and never an Order.
     for (const forbidden of ['approve_order_submission', 'reject_order_submission',

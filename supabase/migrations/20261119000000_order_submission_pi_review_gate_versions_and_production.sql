@@ -282,7 +282,7 @@ alter table public.order_submission_activity
     'order_number_revised_pi_verified',
     'order_number_used',
 
-    -- ── 20261116000000 ──
+    -- ── 20261119000000 ──
     -- The PI decision, taken on its own. 'approved' remains the event that
     -- creates the Order — this is the decision that may precede it.
     'pi_approved',
@@ -702,7 +702,7 @@ revoke execute on function public.submit_pi_for_review_internal(uuid, text, text
   from public, anon, authenticated, service_role;
 
 comment on function public.submit_pi_for_review_internal(uuid, text, text, text, text) is
-  'The implementation of submitting a PI for review. Since 20261116000000 the route is chosen on ATTACHED payment (verified + awaiting verification): at or above 40% no reason is owed; below it — zero included — a reason and Payment Terms are mandatory and the existing reduced-payment exception is raised. Gates no Order. Executable by no role: reached only by its door, as the definer.';
+  'The implementation of submitting a PI for review. Since 20261119000000 the route is chosen on ATTACHED payment (verified + awaiting verification): at or above 40% no reason is owed; below it — zero included — a reason and Payment Terms are mandatory and the existing reduced-payment exception is raised. Gates no Order. Executable by no role: reached only by its door, as the definer.';
 
 
 -- ═══ 5. The summary the screens read: the attached figures and the PI decision
@@ -2319,7 +2319,7 @@ revoke all on function public.approve_order_submission(uuid) from public;
 grant execute on function public.approve_order_submission(uuid) to authenticated;
 
 comment on function public.approve_order_submission(uuid) is
-  'Creates exactly one Confirmed Order from a submitted PI, in one transaction, for a caller holding orders.approve_order. Requires a CURRENT finance check, FINANCE-VERIFIED payment of at least 40% of the grand total or a CURRENT approved reduced-payment exception, and every completeness rule, all re-derived under row locks. Since 20261116000000 it also records the PI decision itself (stamping it when this is the first press), writes V1 of the Order''s PI history, and the Order is born production_alignment = not_aligned. Records no payment of any kind.';
+  'Creates exactly one Confirmed Order from a submitted PI, in one transaction, for a caller holding orders.approve_order. Requires a CURRENT finance check, FINANCE-VERIFIED payment of at least 40% of the grand total or a CURRENT approved reduced-payment exception, and every completeness rule, all re-derived under row locks. Since 20261119000000 it also records the PI decision itself (stamping it when this is the first press), writes V1 of the Order''s PI history, and the Order is born production_alignment = not_aligned. Records no payment of any kind.';
 
 
 -- ═══ 10. History ════════════════════════════════════════════════════════════
@@ -2631,5 +2631,5 @@ begin
     raise exception 'ASSERTION FAILED: the revision upload policy is missing';
   end if;
 
-  raise notice '20261116000000 applied: PI decision, attached-payment submission rule, PI versions, production alignment.';
+  raise notice '20261119000000 applied: PI decision, attached-payment submission rule, PI versions, production alignment.';
 end $$;

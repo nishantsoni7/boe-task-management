@@ -1,7 +1,7 @@
 // Production alignment of a Confirmed Order, as words and as a rule.
 //
 // COMMERCIAL APPROVAL IS NOT PRODUCTION ACCEPTANCE. An Order is born
-// `not_aligned` (20261116000000): management has agreed the deal, and the Head
+// `not_aligned` (20261119000000): management has agreed the deal, and the Head
 // of Manufacturing has not yet said the factory can make it on these terms and
 // in this time. Aligning it is that second, explicit decision, taken through
 // set_order_production_alignment() under orders.align_production.

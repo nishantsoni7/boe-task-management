@@ -379,7 +379,7 @@ describe('this is the dialog the PI detail page opens, and the RPC it sends to',
   })
 })
 
-// ── The submission rule reads ATTACHED payment (20261116000000) ───────────────
+// ── The submission rule reads ATTACHED payment (20261119000000) ───────────────
 //
 // Verified plus awaiting verification decides whether a reason is owed. The
 // dialog reads the server's `attached_meets_standard` first and the older

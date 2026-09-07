@@ -211,7 +211,7 @@ begin
 end;
 $$;
 comment on function public.approve_finance_payment_request(uuid, text) is
-  'Verifies a pending payment for a caller holding finance.approve, links it to its Order where one is named, and applies its allocation intents. Since 20261115000000 it again marks the payment it is deciding (boe.finance_payment_verification) for the duration of its own decision UPDATE, which is the only way the pending-decision guard admits a non-admin approver stamping approved_by and approved_at.';
+  'Verifies a pending payment for a caller holding finance.approve, links it to its Order where one is named, and applies its allocation intents. Since 20261118000000 it again marks the payment it is deciding (boe.finance_payment_verification) for the duration of its own decision UPDATE, which is the only way the pending-decision guard admits a non-admin approver stamping approved_by and approved_at.';
 
 revoke execute on function public.approve_finance_payment_request(uuid, text) from public, anon;
 grant  execute on function public.approve_finance_payment_request(uuid, text) to authenticated;
@@ -298,5 +298,5 @@ begin
     raise exception 'ASSERTION FAILED: anon can call the approval RPC';
   end if;
 
-  raise notice '20261115000000 applied: the payment-approval guard context is restored.';
+  raise notice '20261118000000 applied: the payment-approval guard context is restored.';
 end $$;

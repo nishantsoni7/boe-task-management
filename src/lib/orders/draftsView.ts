@@ -402,7 +402,7 @@ export const PI_DRAFT_DETAIL_COLUMNS = [
   // the modules that read them cannot drift apart.
   ...PI_APPROVAL_COLUMNS,
   ...PI_FINANCE_COLUMNS,
-  // The PI decision taken on its own (20261116000000). Named in
+  // The PI decision taken on its own (20261119000000). Named in
   // finalApproval.ts beside the finance check it is shaped like.
   ...PI_DECISION_COLUMNS,
   'deletion_claim_token',

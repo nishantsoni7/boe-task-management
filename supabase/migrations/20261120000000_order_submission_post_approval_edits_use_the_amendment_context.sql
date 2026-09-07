@@ -411,7 +411,7 @@ grant  execute on function public.replace_order_submission_parse(uuid, uuid, jso
   to service_role;
 
 comment on function public.replace_order_submission_parse(uuid, uuid, jsonb) is
-  'SERVICE ROLE ONLY. Writes the parsed commercial snapshot, every product line and every normalized product image of a PI submission. Not callable by anon or authenticated, because these values must come from parsing the uploaded workbook server-side and never from a browser. p_actor_id is re-validated against the database, not trusted. Since 20261003000000 an ACTIVE ADMIN may also run it after submission, with a reason in payload.change_reason: that clears any finance verification, carries the corrected figures onto the linked Order without touching its identity, and supersedes the current confirmed documents. Since 20261117000000 that one Order UPDATE runs inside the amendment context, which is what orders_guard_amendable_columns() requires of every writer of those columns.';
+  'SERVICE ROLE ONLY. Writes the parsed commercial snapshot, every product line and every normalized product image of a PI submission. Not callable by anon or authenticated, because these values must come from parsing the uploaded workbook server-side and never from a browser. p_actor_id is re-validated against the database, not trusted. Since 20261003000000 an ACTIVE ADMIN may also run it after submission, with a reason in payload.change_reason: that clears any finance verification, carries the corrected figures onto the linked Order without touching its identity, and supersedes the current confirmed documents. Since 20261120000000 that one Order UPDATE runs inside the amendment context, which is what orders_guard_amendable_columns() requires of every writer of those columns.';
 
 
 -- ─── B. update_order_submission_client_details, as 20260928000000 left it ───
@@ -685,7 +685,7 @@ begin
 end;
 $$;
 comment on function public.update_order_submission_client_details(uuid, jsonb, integer, text) is
-  'Edits a PI''s client and party details — the ten named text fields and nothing else. The OWNER may do so in draft/needs_changes; an ACTIVE ADMIN at any stage, with a reason once the PI has been submitted. Optimistic concurrency through p_expected_version, a monotonic counter rather than a timestamp. Touches no derived value, no status, no payment and no document file. A change to a printed field supersedes the linked Order''s ready documents. Since 20261117000000 the one Order UPDATE that carries the client''s name across runs inside the amendment context, which is what orders_guard_amendable_columns() requires.';
+  'Edits a PI''s client and party details — the ten named text fields and nothing else. The OWNER may do so in draft/needs_changes; an ACTIVE ADMIN at any stage, with a reason once the PI has been submitted. Optimistic concurrency through p_expected_version, a monotonic counter rather than a timestamp. Touches no derived value, no status, no payment and no document file. A change to a printed field supersedes the linked Order''s ready documents. Since 20261120000000 the one Order UPDATE that carries the client''s name across runs inside the amendment context, which is what orders_guard_amendable_columns() requires.';
 
 revoke all    on function public.update_order_submission_client_details(uuid, jsonb, integer, text) from public, anon;
 grant  execute on function public.update_order_submission_client_details(uuid, jsonb, integer, text) to authenticated;
@@ -761,5 +761,5 @@ begin
     raise exception 'ASSERTION FAILED: anon can call update_order_submission_client_details';
   end if;
 
-  raise notice '20261117000000 applied: the two post-approval PI edits now amend the Order through the amendment context.';
+  raise notice '20261120000000 applied: the two post-approval PI edits now amend the Order through the amendment context.';
 end $$;

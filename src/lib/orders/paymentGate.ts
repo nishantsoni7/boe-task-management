@@ -122,7 +122,7 @@ export const PAYMENT_POSITION_HINT: Record<PaymentPosition, string> = {
 //
 // A SECOND, NARROWER QUESTION than the approval position above, and deliberately
 // a separate vocabulary: the Order gate asks how much VERIFIED money there is;
-// the submission rule (20261116000000) asks how much is ATTACHED — verified plus
+// the submission rule (20261119000000) asks how much is ATTACHED — verified plus
 // reported-but-undecided — because an employee whose client has paid should not
 // have to argue for an exception while Finance has not yet looked. Below 40%
 // attached, zero included, a reason is owed before management is asked.
@@ -241,7 +241,7 @@ export type SubmissionTermsValidation =
  *
  * `meetsStandard` is whether ATTACHED payment (verified + awaiting verification)
  * reaches the requirement — `attached_meets_standard` on the summary, since
- * 20261116000000 — and NULL when the payment position could not be read at all.
+ * 20261119000000 — and NULL when the payment position could not be read at all.
  * A null FAILS CLOSED: nobody submits a PI whose payment position nobody knows,
  * because the route — and therefore which fields are mandatory — is exactly what
  * is unknown.

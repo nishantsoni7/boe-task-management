@@ -94,7 +94,7 @@ describe('every action reads as English', () => {
     // closed and grows only in a migration, so the NEWEST one that rewrites it
     // is the one to read — the same rule orderActivityActions.test.ts applies.
     //
-    // THE DEFECT THIS NOW CATCHES. Until 20261116000000 this read Phase B's
+    // THE DEFECT THIS NOW CATCHES. Until 20261119000000 this read Phase B's
     // constraint alone and pinned the map at eight words, so every action a
     // later phase admitted — the finance check, the payments, the approval, the
     // Order number — was silently DROPPED from every PI's timeline. The map now

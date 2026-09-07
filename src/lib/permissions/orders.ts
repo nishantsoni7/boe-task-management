@@ -84,7 +84,7 @@ export type OrdersCapabilities = {
   canApproveAdvanceException: boolean
   /**
    * Align a Confirmed Order for production, or take that alignment back.
-   * Backed by the protected `align_production` action, which 20261116000000
+   * Backed by the protected `align_production` action, which 20261119000000
    * registers, and required by set_order_production_alignment() in the
    * database. Independent of every other capability here: it is the Head of
    * Manufacturing's decision, not a reviewer's and not a manager's.

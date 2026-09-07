@@ -274,7 +274,7 @@ export async function POST(req: NextRequest) {
  * Everything that happens while this request owns the submission.
  *
  * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
- * applies a REVISED PI to an approved Order (20261116000000). It runs the very
+ * applies a REVISED PI to an approved Order (20261119000000). It runs the very
  * same download, parse, image upload and cleanup — there is one parser path in
  * this product — and differs only at step 17, where `revisionVersionId` sends
  * the payload through approve_order_pi_revision() so the parse, the version

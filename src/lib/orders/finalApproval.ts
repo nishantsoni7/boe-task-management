@@ -80,7 +80,7 @@ export const PI_APPROVAL_COLUMNS: readonly string[] = [
   'order_id',
 ]
 
-// ── The PI decision, separate from the Order (20261116000000) ─────────────────
+// ── The PI decision, separate from the Order (20261119000000) ─────────────────
 //
 // WHAT IT IS. Management approving the DOCUMENT — its figures, its terms, its
 // product lines — recorded on its own, so a PI can be approved while the money

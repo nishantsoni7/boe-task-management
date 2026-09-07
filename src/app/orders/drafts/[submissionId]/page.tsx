@@ -280,7 +280,7 @@ type Draft = {
   advanceDeciderName: string | null
   /** Who verified the figures for finance, when there is a verification. */
   financeVerifierName: string | null
-  /** Who approved the PI itself (20261116000000), resolved the same way. */
+  /** Who approved the PI itself (20261119000000), resolved the same way. */
   piApproverName: string | null
   /**
    * The official number of the Order this PI became, or null.
@@ -1241,7 +1241,7 @@ function PiDraftDetailPageInner() {
   }), [runAction, supabase, submissionId])
 
   /**
-   * The PI decision ON ITS OWN (20261116000000).
+   * The PI decision ON ITS OWN (20261119000000).
    *
    * Pressed only when the payment condition is what stands between this PI and
    * a Confirmed Order. approve_pi_review() records that management approves

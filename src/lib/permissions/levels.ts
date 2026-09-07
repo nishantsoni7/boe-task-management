@@ -145,7 +145,7 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // Aligning a Confirmed Order for production: the Head of Manufacturing's
   // statement that the factory can make it. Protected because it is the gate
   // between a commercial approval and work starting, and a preset must not
-  // hand it to everyone who can manage the module. Registered by 20261116000000.
+  // hand it to everyone who can manage the module. Registered by 20261119000000.
   'align_production',
   // Saying that a customer really did publish a review, and closing the request
   // on the strength of it. Protected because it is the module's only claim

@@ -565,7 +565,7 @@ describe('the verification hotfix restates its two functions faithfully', () => 
   })
 })
 
-// ── 20261115000000: the marker, restored after a silent regression ───────────
+// ── 20261118000000: the marker, restored after a silent regression ───────────
 //
 // 20260920000000 opened one hole in finance_payment_requests_guard_pending_decision
 // and had approve_finance_payment_request mark the payment it was deciding, so a
@@ -583,7 +583,7 @@ describe('the verification hotfix restates its two functions faithfully', () => 
 // must be 20261013000000's body plus the marker and nothing else, and the
 // marker must BRACKET the decision UPDATE rather than merely appear somewhere.
 
-const CONTEXT_FIX = '20261115000000_restore_finance_payment_verification_context.sql'
+const CONTEXT_FIX = '20261118000000_restore_finance_payment_verification_context.sql'
 const contextFixText = lf(readFileSync(join(MIGRATIONS, CONTEXT_FIX), 'utf8'))
 
 const MARKER_SET = "perform set_config('boe.finance_payment_verification', p_request_id::text, true);"
@@ -738,7 +738,7 @@ describe('the verification context is restored, and only that', () => {
   })
 })
 
-// ── 20261117000000: the two post-approval PI edits reach the Order legally ───
+// ── 20261120000000: the two post-approval PI edits reach the Order legally ───
 //
 // orders_guard_amendable_columns() freezes the Order's commercial terms unless
 // the writer is inside in_order_amendment(). Two admin paths wrote those
@@ -751,7 +751,7 @@ describe('the verification context is restored, and only that', () => {
 // were wrong. This suite proves the migration opens the EXISTING context around
 // exactly one statement in each function and changes nothing else.
 
-const AMEND_FIX = '20261117000000_order_submission_post_approval_edits_use_the_amendment_context.sql'
+const AMEND_FIX = '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql'
 const amendFixText = lf(readFileSync(join(MIGRATIONS, AMEND_FIX), 'utf8'))
 
 const CTX_OPEN = "perform set_config('boe.amendment_context', 'order_amendment', true);"
@@ -859,7 +859,7 @@ describe('the post-approval PI edits amend the Order through the amendment conte
   })
 
   test('it sorts after the migrations it depends on', () => {
-    for (const stamp of ['20260816000000', '20260928000000', '20261003000000', '20261116000000']) {
+    for (const stamp of ['20260816000000', '20260928000000', '20261003000000', '20261119000000']) {
       assert.ok(AMEND_FIX > stamp, `${AMEND_FIX} must sort after ${stamp}`)
     }
   })

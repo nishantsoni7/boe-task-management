@@ -1,6 +1,6 @@
 /**
  * The PI decision, the Confirmed-Order gate, and the attached-payment submission
- * rule, as the browser understands them (20261116000000).
+ * rule, as the browser understands them (20261119000000).
  *
  * WHAT THIS FILE PROVES
  * ---------------------

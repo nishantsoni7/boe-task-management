@@ -80,7 +80,7 @@ export const PI_ACTIVITY_LABEL: Record<string, string> = {
   //
   // These were admitted by the constraint long before they had words here, so
   // every PI's timeline silently DROPPED its finance check, its payments and
-  // its approval. 20261116000000 asks the Order to show the whole chronology,
+  // its approval. 20261119000000 asks the Order to show the whole chronology,
   // which is not possible while the trail cannot name half of it.
   finance_verified: 'Finance check verified',
   approved: 'Confirmed Order created',
@@ -103,7 +103,7 @@ export const PI_ACTIVITY_LABEL: Record<string, string> = {
   order_number_reserved: 'Order number reserved',
   order_number_revised_pi_verified: 'Revised PI carries the Order number',
   order_number_used: 'Order number assigned',
-  // ── The PI decision, payment decisions and revisions (20261116000000) ──
+  // ── The PI decision, payment decisions and revisions (20261119000000) ──
   pi_approved: 'PI approved',
   payment_verified: 'Payment verified by Finance',
   payment_rejected: 'Payment rejected by Finance',

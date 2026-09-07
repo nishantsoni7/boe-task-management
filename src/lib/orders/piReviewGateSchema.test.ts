@@ -1,5 +1,5 @@
 /**
- * 20261116000000 — the PI decision, the attached-payment submission rule, PI
+ * 20261119000000 — the PI decision, the attached-payment submission rule, PI
  * versions and production alignment, as the DATABASE states them.
  *
  * WHAT THIS FILE IS FOR
@@ -31,7 +31,7 @@ const MIGRATIONS = join(process.cwd(), 'supabase', 'migrations')
 const lf = (s: string) => s.replace(/\r\n/g, '\n')
 const migration = (file: string) => lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
 
-const FILE = '20261116000000_order_submission_pi_review_gate_versions_and_production.sql'
+const FILE = '20261119000000_order_submission_pi_review_gate_versions_and_production.sql'
 const sql = migration(FILE)
 /** Executable SQL only — a comment explains, it does not run. */
 const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
@@ -55,7 +55,7 @@ describe('lineage', () => {
   //
   // This file was written as 20261113000000 and renumbered on integration:
   // main gave 20261113000000 to the Minop webhook table, 20261114000000 is the
-  // Review Workflow body-length change, and 20261115000000 is the Finance
+  // Review Workflow body-length change, and 20261118000000 is the Finance
   // verification-context fix. It applies after all three.
   test('it follows the applied ledger, in order', () => {
     const files = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
@@ -64,7 +64,7 @@ describe('lineage', () => {
     assert.deepEqual(files.slice(at - 3, at + 1), [
       '20261113000000_create_minop_webhook_deliveries.sql',
       '20261114000000_review_generation_word_range_and_body_length.sql',
-      '20261115000000_restore_finance_payment_verification_context.sql',
+      '20261118000000_restore_finance_payment_verification_context.sql',
       FILE,
     ])
   })
@@ -478,6 +478,6 @@ describe('the migration checks itself at apply time', () => {
     ]) {
       assert.ok(code.includes(check), check)
     }
-    assert.ok(code.includes("raise notice '20261116000000 applied"))
+    assert.ok(code.includes("raise notice '20261119000000 applied"))
   })
 })

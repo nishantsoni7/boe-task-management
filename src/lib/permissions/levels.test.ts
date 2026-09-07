@@ -235,7 +235,7 @@ describe('Manager never receives a protected action', () => {
     // this list, is what widens it from the caller's own department to the
     // whole company.
     //
-    // And by one more in 20261116000000: `orders.align_production`, the Head
+    // And by one more in 20261119000000: `orders.align_production`, the Head
     // of Manufacturing's statement that the factory can make a Confirmed Order
     // — the gate between commercial approval and work starting. Every Order is
     // born Not Aligned, and a preset must not hand out the decision that moves

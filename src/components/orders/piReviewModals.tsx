@@ -269,7 +269,7 @@ function PaymentPositionPanel({
   onTerms: (key: keyof PiSubmissionTerms, value: string) => void
 }) {
   const position = asPaymentPosition(summary?.approval_position)
-  // THE ATTACHED FIGURES, when the server reports them (20261116000000): the
+  // THE ATTACHED FIGURES, when the server reports them (20261119000000): the
   // submission rule reads verified + awaiting verification, and the dialog
   // must show the same total it is about to be judged on.
   const reportsAttached = summary !== null
@@ -513,7 +513,7 @@ export function PiSubmitConfirmModal({
 
   /**
    * WHETHER THE SUBMISSION REQUIREMENT IS MET IS THE DATABASE'S ANSWER, not a
-   * comparison made here. Since 20261116000000 that is `attached_meets_standard`
+   * comparison made here. Since 20261119000000 that is `attached_meets_standard`
    * — verified plus awaiting verification — and it arrives on the summary
    * already decided in numeric; a summary from before the migration still
    * carries `meets_standard`, which is read as the fallback. The browser never
@@ -997,7 +997,7 @@ export function PiFinanceVerifyModal({
  * and the stored files, under a row lock, before it creates anything.
  */
 /**
- * The three doors one dialog serves (20261116000000). The words change; the
+ * The three doors one dialog serves (20261119000000). The words change; the
  * rows, the shape and the guards do not.
  *
  *   approve_and_create   the one-press path: PI approved AND Order created

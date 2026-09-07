@@ -4,7 +4,7 @@
 // created. Everything before that — the draft, the submission, the payments
 // attached, Finance's decisions, the exception, the PI decision — lives on the
 // PI's trail (order_submission_activity), which the Order side may read since
-// 20261116000000. This module merges the two into one list, newest first, so a
+// 20261119000000. This module merges the two into one list, newest first, so a
 // reader of the Order sees the whole story without a second screen.
 //
 // NOTHING IS COPIED between tables. Both trails are read as they are and
@@ -42,7 +42,7 @@ export type OrderHistoryEntry = {
 
 /**
  * The Order-side events this module can name, beyond the ones the page already
- * labels. Kept here so the new events introduced by 20261116000000 have their
+ * labels. Kept here so the new events introduced by 20261119000000 have their
  * words in one place.
  */
 export const ORDER_EVENT_LABEL: Record<string, string> = {

@@ -1448,9 +1448,9 @@ itself and rolling back completely — so nothing after it can be vacuous.
 
 ---
 
-## 13. The PI decision, the Confirmed-Order gate, PI versions and production alignment (`20261116000000`)
+## 13. The PI decision, the Confirmed-Order gate, PI versions and production alignment (`20261119000000`)
 
-> **NOT APPLIED.** `20261116000000_order_submission_pi_review_gate_versions_and_production.sql`
+> **NOT APPLIED.** `20261119000000_order_submission_pi_review_gate_versions_and_production.sql`
 > exists in the repository and has **not** been run against the linked database.
 > **The migration goes first, then the code**: the PI detail read spreads the
 > new columns into its select.
@@ -1502,10 +1502,10 @@ all six sections pass against a database carrying the full migration chain.
 
 ---
 
-## 14. Two post-approval PI edits, through the amendment door (`20261117000000`)
+## 14. Two post-approval PI edits, through the amendment door (`20261120000000`)
 
 > **VERIFIED, NOT YET APPLIED TO PRODUCTION.**
-> `20261117000000_order_submission_post_approval_edits_use_the_amendment_context.sql`
+> `20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql`
 
 ### 14.1 What was wrong
 

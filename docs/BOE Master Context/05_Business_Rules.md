@@ -762,7 +762,7 @@ not merged and not applied.*
 
 ## Approval
 
-* **The PI decision and the Confirmed Order are two acts** (20261116000000).
+* **The PI decision and the Confirmed Order are two acts** (20261119000000).
   `approve_pi_review()` records that management approves the document —
   `orders.approve_order`, a current finance check, no blocking issues — and
   creates nothing. `approve_order_submission()` creates exactly one Confirmed
