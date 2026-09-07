@@ -169,10 +169,7 @@ describe('the migration is one file, correctly sequenced', () => {
       // by storage. One constraint dropped and re-added, wider; no table
       // created or altered otherwise, so it reaches nothing else asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
-      // Three Orders/Finance migrations from an unrelated branch: a payment-
-      // approval guard fix, the PI review gate and Confirmed-Order production
-      // alignment, and post-approval PI edits routed through the amendment
-      // context. None creates, alters or drops anything this file asserts.
+      '20261115000000_minop_attendance_processing.sql',
       '20261118000000_restore_finance_payment_verification_context.sql',
       '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
       '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',

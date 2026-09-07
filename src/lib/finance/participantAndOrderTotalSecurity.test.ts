@@ -666,8 +666,8 @@ describe('the applied migrations are frozen', () => {
     // This says nothing about whether any of them is applied — 106, 107 and 108
     // all are, and a future 109 may be by the time it is read. What it protects
     // is that a new file cannot appear unnoticed beside four frozen ones.
-    const later = execSync('ls supabase/migrations', { encoding: 'utf8' })
-      .split('\n').filter(Boolean)
+    const later = execSync('dir /b supabase\\migrations', { encoding: 'utf8' })
+      .split('\n').map(s => s.trim()).filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
       .sort()
     assert.deepEqual(later, [
@@ -845,6 +845,10 @@ describe('the applied migrations are frozen', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      '20261115000000_minop_attendance_processing.sql',
+      '20261118000000_restore_finance_payment_verification_context.sql',
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
+      '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
     ])
   })
 
@@ -853,8 +857,8 @@ describe('the applied migrations are frozen', () => {
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
     const frozenFiles = new Set(FROZEN.map(([file]) => file.split('/').pop()))
-    const pending = execSync('ls supabase/migrations', { encoding: 'utf8' })
-      .split('\n').filter(Boolean)
+    const pending = execSync('dir /b supabase\\migrations', { encoding: 'utf8' })
+      .split('\n').map(s => s.trim()).filter(Boolean)
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .filter(f => !frozenFiles.has(f))
       .sort()
@@ -956,6 +960,10 @@ describe('the applied migrations are frozen', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      '20261115000000_minop_attendance_processing.sql',
+      '20261118000000_restore_finance_payment_verification_context.sql',
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
+      '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
