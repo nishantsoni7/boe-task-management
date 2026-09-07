@@ -30,21 +30,12 @@ import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
-import { config } from 'dotenv'
 
+import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
 import { PATCH as settlement } from '@/app/api/payroll/settlement/route'
 import { GET as resultDetail } from '@/app/api/payroll/results/detail/route'
 
-config({ path: '.env.local' })
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const ANON_KEY     = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
-  console.error('Missing Supabase environment variables in .env.local')
-  process.exit(1)
-}
+const { url: SUPABASE_URL, anonKey: ANON_KEY, serviceRoleKey: SERVICE_KEY } = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -159,17 +150,32 @@ before(async () => {
 })
 
 after(async () => {
-  if (created.result) await svc.from('payroll_results').delete().eq('id', created.result)
-  for (const periodId of [created.openPeriod, created.lockedPeriod].filter(Boolean)) {
-    // Events cascade from the settlement row; the settlements are deleted
-    // before the period so no foreign key holds the period back.
-    await svc.from('payroll_settlements').delete().eq('payroll_period_id', periodId)
-    await svc.from('payroll_periods').delete().eq('id', periodId)
-  }
-  for (const id of createdAuthUserIds) {
-    await svc.from('users').delete().eq('id', id)
-    await svc.auth.admin.deleteUser(id)
-  }
+  const periodIds = [created.openPeriod, created.lockedPeriod].filter(Boolean)
+  await runCleanupSteps([
+    // payroll_settlements.payroll_result_id references payroll_results with
+    // no ON DELETE clause (NO ACTION), and this suite's own before() stamps
+    // every settlement it creates with that exact result — so settlements
+    // must be deleted before the result, not after. Getting this backwards
+    // used to fail the results delete on a foreign-key violation, silently,
+    // which could leave the period and the actors behind too.
+    ...periodIds.map(periodId => ({
+      label: `payroll_settlements (period ${periodId})`,
+      run: () => svc.from('payroll_settlements').delete().eq('payroll_period_id', periodId),
+    })),
+    ...(created.result
+      ? [{ label: 'payroll_results', run: () => svc.from('payroll_results').delete().eq('id', created.result) }]
+      : []),
+    // Events cascade from the settlement row; the settlements are already
+    // gone above, so no foreign key holds the period back here.
+    ...periodIds.map(periodId => ({
+      label: `payroll_periods ${periodId}`,
+      run: () => svc.from('payroll_periods').delete().eq('id', periodId),
+    })),
+    ...createdAuthUserIds.flatMap(id => [
+      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
+      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
+    ]),
+  ])
 })
 
 // ─── 1 & 2. Unauthenticated is not the same as unauthorised ───────────────────

@@ -30,8 +30,8 @@ import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
-import { config } from 'dotenv'
 
+import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
 import { GET as employeeList }     from '@/app/api/employee-list/route'
 import { GET as adminProfile }     from '@/app/api/admin/employee-profile/route'
 import { GET as myResult }         from '@/app/api/payroll/my-result/route'
@@ -40,16 +40,7 @@ import { PATCH as updateEmployee } from '@/app/api/update-employee/route'
 import { USER_PROFILE_COLUMNS, USER_PRIVATE_COLUMNS } from '@/lib/users/safeColumns'
 import { fetchAllPayrollActiveEmployees } from '@/lib/payroll/store'
 
-config({ path: '.env.local' })
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const ANON_KEY     = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
-  console.error('Missing Supabase environment variables in .env.local')
-  process.exit(1)
-}
+const { url: SUPABASE_URL, anonKey: ANON_KEY, serviceRoleKey: SERVICE_KEY } = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -130,10 +121,12 @@ before(async () => {
 })
 
 after(async () => {
-  for (const id of createdAuthUserIds) {
-    await svc.from('users').delete().eq('id', id)
-    await svc.auth.admin.deleteUser(id)
-  }
+  await runCleanupSteps(
+    createdAuthUserIds.flatMap(id => [
+      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
+      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
+    ]),
+  )
 })
 
 // ─── 1–4. The four shapes a column privilege must refuse ─────────────────────

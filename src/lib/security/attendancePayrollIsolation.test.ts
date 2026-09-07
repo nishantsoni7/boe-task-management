@@ -39,18 +39,9 @@
 import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
-import { config } from 'dotenv'
+import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
 
-config({ path: '.env.local' })
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const ANON_KEY     = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY in .env.local')
-  process.exit(1)
-}
+const { url: SUPABASE_URL, anonKey: ANON_KEY, serviceRoleKey: SERVICE_KEY } = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -295,19 +286,42 @@ before(async () => {
 })
 
 after(async () => {
-  // Child rows first, then parents, then the auth users themselves.
-  await svc.from('attendance_correction_log').delete().in('id', [created.logA, created.logB].filter(Boolean))
-  await svc.from('attendance_day_corrections').delete().in('id', [created.correctionA, created.correctionB].filter(Boolean))
-  await svc.from('attendance_records').delete().in('id', [created.attendanceA, created.attendanceB].filter(Boolean))
-  await svc.from('payroll_pending_adjustments').delete().in('id', [created.adjustmentA, created.adjustmentB].filter(Boolean))
-  await svc.from('payroll_deduction_lines').delete().in('id', [created.lineA, created.lineB].filter(Boolean))
-  await svc.from('payroll_results').delete().in('id', [created.resultA, created.resultB].filter(Boolean))
-  if (created.periodId) await svc.from('payroll_periods').delete().eq('id', created.periodId)
-
-  for (const id of createdAuthUserIds) {
-    await svc.from('users').delete().eq('id', id)
-    await svc.auth.admin.deleteUser(id)
-  }
+  // Child rows first, then parents, then the auth users themselves. Every
+  // step's error is inspected (never discarded) and the whole list runs to
+  // completion regardless of an earlier failure — see runCleanupSteps.
+  await runCleanupSteps([
+    {
+      label: 'attendance_correction_log',
+      run: () => svc.from('attendance_correction_log').delete().in('id', [created.logA, created.logB].filter(Boolean)),
+    },
+    {
+      label: 'attendance_day_corrections',
+      run: () => svc.from('attendance_day_corrections').delete().in('id', [created.correctionA, created.correctionB].filter(Boolean)),
+    },
+    {
+      label: 'attendance_records',
+      run: () => svc.from('attendance_records').delete().in('id', [created.attendanceA, created.attendanceB].filter(Boolean)),
+    },
+    {
+      label: 'payroll_pending_adjustments',
+      run: () => svc.from('payroll_pending_adjustments').delete().in('id', [created.adjustmentA, created.adjustmentB].filter(Boolean)),
+    },
+    {
+      label: 'payroll_deduction_lines',
+      run: () => svc.from('payroll_deduction_lines').delete().in('id', [created.lineA, created.lineB].filter(Boolean)),
+    },
+    {
+      label: 'payroll_results',
+      run: () => svc.from('payroll_results').delete().in('id', [created.resultA, created.resultB].filter(Boolean)),
+    },
+    ...(created.periodId
+      ? [{ label: 'payroll_periods', run: () => svc.from('payroll_periods').delete().eq('id', created.periodId) }]
+      : []),
+    ...createdAuthUserIds.flatMap(id => [
+      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
+      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
+    ]),
+  ])
 })
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
