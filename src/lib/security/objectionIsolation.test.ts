@@ -23,20 +23,11 @@ import { test, before, after, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
-import { config } from 'dotenv'
 import { GET as objectionsGET } from '@/app/api/objections/route'
 import { payrollObjectionHref } from '@/lib/objections'
+import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
 
-config({ path: '.env.local' })
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const ANON_KEY     = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !ANON_KEY || !SERVICE_KEY) {
-  console.error('Missing Supabase environment variables in .env.local')
-  process.exit(1)
-}
+const { url: SUPABASE_URL, anonKey: ANON_KEY, serviceRoleKey: SERVICE_KEY } = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -138,14 +129,28 @@ before(async () => {
 })
 
 after(async () => {
-  if (!seeded) return
-  await svc.from(TABLE).delete().in('employee_id', createdAuthUserIds)
-  await svc.from('payroll_results').delete().in('id', [created.resultA, created.resultB].filter(Boolean))
-  if (created.periodId) await svc.from('payroll_periods').delete().eq('id', created.periodId)
-  for (const id of createdAuthUserIds) {
-    await svc.from('users').delete().eq('id', id)
-    await svc.auth.admin.deleteUser(id)
-  }
+  // Deliberately not gated on the `seeded` flag: it only turns true once
+  // every before() step succeeds, so a throw partway through (the period
+  // insert, a payroll_results insert) used to skip this whole block and
+  // leave the actors already created above as permanent orphans. Every id
+  // here was recorded the instant it was created, so cleanup is safe to run
+  // unconditionally — with nothing created, every step below is a no-op.
+  await runCleanupSteps([
+    ...(tableExists
+      ? [{ label: TABLE, run: () => svc.from(TABLE).delete().in('employee_id', createdAuthUserIds) }]
+      : []),
+    {
+      label: 'payroll_results',
+      run: () => svc.from('payroll_results').delete().in('id', [created.resultA, created.resultB].filter(Boolean)),
+    },
+    ...(created.periodId
+      ? [{ label: 'payroll_periods', run: () => svc.from('payroll_periods').delete().eq('id', created.periodId) }]
+      : []),
+    ...createdAuthUserIds.flatMap(id => [
+      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
+      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
+    ]),
+  ])
 })
 
 // ─── Employee A may act on A ──────────────────────────────────────────────────
