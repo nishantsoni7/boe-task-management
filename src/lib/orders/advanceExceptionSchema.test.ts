@@ -779,8 +779,8 @@ describe('orders.approve_advance_exception is its own protected authority', () =
     assert.ok(orders, 'the Orders module must be registered')
     const action = orders.actions.find(a => a.actionKey === 'approve_advance_exception')
     assert.ok(action, 'the action must be registered in code as well as in SQL')
-    assert.equal(action.displayName, 'Approve Advance Exceptions',
-      'and with the same display name the migration inserts')
+    assert.equal(action.displayName, 'Approve Advance Exception',
+      'renamed by 20261122000000_order_approval_capability_labels.sql from the label this migration originally inserted')
   })
 
   test('it is PROTECTED, so no preset can reach it', () => {
