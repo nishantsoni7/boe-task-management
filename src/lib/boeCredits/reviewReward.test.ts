@@ -122,6 +122,11 @@ describe('the file, and where it sits', () => {
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only — record_customer_review_test_card_share_opened(),
+      // the native-share equivalent of record_customer_review_test_card_
+      // whatsapp_opened(). It writes the same two columns that function
+      // writes and reaches nothing this file asserts about the reward.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
   })
 

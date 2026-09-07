@@ -696,6 +696,10 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only, the native-share equivalent of the phone-number
+      // WhatsApp-opened writer. It creates no table and touches no task, so
+      // it reaches nothing asserted here.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

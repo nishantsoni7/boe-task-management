@@ -860,6 +860,11 @@ describe('the applied migrations are frozen', () => {
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only — the native-share equivalent of
+      // record_customer_review_test_card_whatsapp_opened(). It creates no
+      // table, alters no table and touches nothing Finance or Orders, so it
+      // reaches nothing asserted here.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
   })
 
@@ -986,6 +991,11 @@ describe('the applied migrations are frozen', () => {
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only — the native-share equivalent of
+      // record_customer_review_test_card_whatsapp_opened(). It creates no
+      // table, alters no table and touches nothing Finance or Orders, so it
+      // reaches nothing asserted here.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

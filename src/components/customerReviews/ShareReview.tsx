@@ -91,6 +91,7 @@ export function ShareReviewButton({
   images,
   bucket,
   groupUsable,
+  onShared,
 }: {
   supabase: SupabaseClient
   card: TestCard
@@ -113,6 +114,14 @@ export function ShareReviewButton({
    * must not admit a review it cannot actually deliver.
    */
   groupUsable?: boolean
+  /**
+   * Called after a real hand-off is recorded — a native share that returned
+   * normally, or the manual fallback completing. NOT called on cancellation or
+   * error: this is what lets the caller re-read the card and unlock Confirm
+   * Sent, and a cancelled share unlocking it would be exactly the false claim
+   * this module exists to refuse.
+   */
+  onShared?: () => void
 }) {
   const [state, setState] = useState<ShareState>({ kind: 'idle' })
   const inFlight = useRef(false)
@@ -194,11 +203,14 @@ export function ShareReviewButton({
             capability.kind === 'files' ? { title, text, files } : { title, text },
           )
           setState({ kind: 'opened' })
+          await recordShareOpened(supabase, card.id, onShared)
           return
         } catch (err) {
           // A DISMISSED SHEET IS NOT A FAILURE. The user closing the share sheet
           // rejects with AbortError, and reporting that as an error would tell
-          // somebody their deliberate choice went wrong.
+          // somebody their deliberate choice went wrong. NOTHING IS RECORDED —
+          // a cancelled share is not a hand-off, and Confirm Sent must not
+          // unlock for a sheet the person closed without choosing anything.
           if (err instanceof DOMException && err.name === 'AbortError') {
             setState({ kind: 'idle' })
             return
@@ -209,12 +221,16 @@ export function ShareReviewButton({
 
       await copyAndDownload(text, files)
       setState({ kind: 'manual' })
+      // THE FALLBACK IS ALSO A REAL HAND-OFF, in the same sense opening a wa.me
+      // link always was: the review left this screen, ready for the candidate
+      // to finish sending it by hand. Recorded the same way as a native share.
+      await recordShareOpened(supabase, card.id, onShared)
     } catch {
       setState({ kind: 'error', message: 'That review could not be prepared for sharing. Try again.' })
     } finally {
       inFlight.current = false
     }
-  }, [supabase, card, images, bucket, groupUsable])
+  }, [supabase, card, images, bucket, groupUsable, onShared])
 
   if (!shareable) return null
 
@@ -233,7 +249,7 @@ export function ShareReviewButton({
           {working
             ? <Loader2 size={13} strokeWidth={2.4} style={{ animation: 'boe-spin 0.8s linear infinite' }} />
             : <Share2 size={13} strokeWidth={2} />}
-          {working ? 'Preparing…' : 'Share review'}
+          {working ? 'Preparing…' : 'Share on WhatsApp'}
         </button>
         <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.45 }}>
           {/*
@@ -265,6 +281,38 @@ export function ShareReviewButton({
       </span>
     </div>
   )
+}
+
+/**
+ * Records that a hand-off happened, so Confirm Sent can unlock.
+ *
+ * CALLED ONLY AFTER A REAL HAND-OFF — a native share that returned normally,
+ * or the manual fallback completing. Never after a cancelled or failed share.
+ * Mirrors the phone-number tool's own record call in effect
+ * (whatsapp_opened_at, the counter, an event row) but through
+ * record_customer_review_test_card_share_opened(), which needs no phone
+ * number and is safe to call directly from the browser because it resolves
+ * the actor from auth.uid() rather than trusting a caller-supplied id.
+ *
+ * A FAILURE HERE IS NOT SHOWN AS A SHARE FAILURE. The share itself already
+ * happened from the candidate's point of view; if the record write fails —
+ * the card's status changed underneath them, say — the honest outcome is
+ * simply that Confirm Sent stays locked until they refresh, not a scary error
+ * about a share that, as far as they can tell, already went out.
+ */
+async function recordShareOpened(
+  supabase: SupabaseClient,
+  cardId: string,
+  onShared?: () => void,
+): Promise<void> {
+  try {
+    const { error } = await supabase.rpc('record_customer_review_test_card_share_opened', {
+      p_card_id: cardId,
+    })
+    if (!error) onShared?.()
+  } catch {
+    // Silently left unrecorded — see the note above.
+  }
 }
 
 /**

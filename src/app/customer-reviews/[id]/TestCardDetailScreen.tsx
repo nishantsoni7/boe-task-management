@@ -643,37 +643,50 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
               images={isImageReview ? projectImages.images : reviewImages}
               bucket={isImageReview ? GROUP_IMAGE_BUCKET : REVIEW_IMAGE_BUCKET}
               groupUsable={isImageReview ? projectImages.usable : undefined}
+              // A REAL HAND-OFF UNLOCKS Confirm Sent BELOW, the same way opening
+              // WhatsApp with a typed number always did — reloading the card is
+              // what picks up the whatsapp_opened_at the share just recorded.
+              onShared={load}
             />
           </div>
         </Section>
       )}
 
-        {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
+        {/*
+          ── Confirm Sent ──────────────────────────────────────────────────
+
+          FOR A REAL CANDIDATE, THIS IS ONE STEP: Share on WhatsApp above
+          records the hand-off itself now (record_customer_review_test_card_
+          share_opened, called from ShareReviewButton's onShared), so
+          Confirm Sent is already unlockable by the time anyone sees this
+          section — no second control, no phone number, nothing shaped for
+          rehearsal in their path.
+
+          THE PHONE-NUMBER TOOL STILL EXISTS, for exactly one audience: a
+          verifier or admin rehearsing this flow end-to-end on a card they
+          themselves booked. caps.canVerify is the same gate the rest of this
+          screen already uses for admin-only sections — not a new permission,
+          not a new role, just not shown to a real employee's own review.
+        */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
           <Section title="Confirm you sent it" id="review-send">
             {canWorkOnIt ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                {/*
-                  WHY THIS EXISTS SEPARATELY FROM "Share review" ABOVE. A real
-                  employee shares the review however they actually post it —
-                  Share review handles that. This step exists only to RECORD
-                  that a send happened, which is what unlocks the screenshot
-                  and submit steps below. It is a real WhatsApp open, to any
-                  number — the candidate's own is fine — not a second posting
-                  action, and saying so here is what stops it reading as one.
-                */}
-                <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.55 }}>
-                  You already shared the review above, however you actually post it. This step is
-                  separate: it opens WhatsApp once more — any number works, your own is fine — so
-                  the app can record that you sent it. That record is what unlocks the screenshot
-                  and submit steps below.
-                </p>
-                <WhatsAppTestPanel
-                  cardId={card.id}
-                  enabled={canWorkOnIt}
-                  onOpened={load}
-                  onError={setError}
-                />
+                {caps.canVerify && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <p style={{ fontSize: '11px', color: colors.tertiary, margin: 0, lineHeight: 1.5 }}>
+                      Verifier rehearsal only — a real employee never sees this control. Share on
+                      WhatsApp above already records the hand-off; this is a second way to rehearse
+                      the same flow without a real share.
+                    </p>
+                    <WhatsAppTestPanel
+                      cardId={card.id}
+                      enabled={canWorkOnIt}
+                      onOpened={load}
+                      onError={setError}
+                    />
+                  </div>
+                )}
                 <ConfirmSentControl
                   alreadyConfirmed={!!card.sent_confirmed_at}
                   canConfirm={!!card.whatsapp_opened_at}
