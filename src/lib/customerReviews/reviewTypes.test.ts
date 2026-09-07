@@ -660,7 +660,7 @@ describe('an image review with no project waits, and cannot be used', () => {
     }
     const candidate = nextStepFor(waiting, { userId: ME, canUse: true, canVerify: false })
     assert.equal(candidate.tone, 'wait')
-    assert.match(candidate.headline, /Waiting for admin images/)
+    assert.match(candidate.headline, /Waiting for project images/)
 
     const verifier = nextStepFor(waiting, { userId: OTHER, canUse: false, canVerify: true })
     assert.equal(verifier.tone, 'attention')

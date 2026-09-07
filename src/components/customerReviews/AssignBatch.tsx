@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Loader2, UserPlus } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
@@ -43,7 +43,7 @@ export type AssignOutcome = {
 }
 
 export function AssignBatch({
-  supabase, batchId, eligible, size, intendedFor, onAssigned,
+  supabase, batchId, eligible, size, intendedFor, people, peopleError, onAssigned,
 }: {
   supabase: SupabaseClient
   batchId: string
@@ -67,39 +67,29 @@ export function AssignBatch({
    * somebody presses a button, that the batch is not in a state to be assigned.
    */
   eligible: number
+  /**
+   * The assignable-employee list, fetched ONCE by the panel and shared across
+   * every row. `customer_review_assignable_employees()` returns the same
+   * answer for every row on this screen, so fetching it per-row was pure
+   * repeated network cost, not per-row-different data.
+   */
+  people: Employee[] | null
+  /** Set by the panel if the shared employee-list fetch failed. */
+  peopleError: string
   onAssigned: (outcome: AssignOutcome) => void
 }) {
-  const [people, setPeople] = useState<Employee[] | null>(null)
   const [choice, setChoice] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inFlight = useRef(false)
 
   useEffect(() => {
-    let active = true
-    const startFetch = () => {
-      void (async () => {
-        const { data, error: rpcError } = await supabase.rpc('customer_review_assignable_employees')
-        if (!active) return
-        // A LIST THAT FAILED TO LOAD IS AN EMPTY LIST WITH A SENTENCE, not a
-        // silent picker with nothing in it. The two look identical otherwise,
-        // and one of them is a bug.
-        if (rpcError) { setPeople([]); setError('The employee list could not be loaded. Refresh to try again.'); return }
-        const rows = (data ?? []) as Employee[]
-        setPeople(rows)
-        // PREFILLED HERE, WITH THE LIST, AND ONLY IF THE NAME IS STILL
-        // OFFERABLE. An employee the batch was generated for who has since lost
-        // the permission is not in `rows`, and selecting an id the picker
-        // cannot show would leave a control that looks ready and refuses. It
-        // happens as the list arrives rather than in a second effect watching
-        // the first one's state, which would be a cascading render for a value
-        // that is knowable at the moment the list is known.
-        if (intendedFor && rows.some(p => p.id === intendedFor)) setChoice(intendedFor)
-      })()
-    }
-    startFetch()
-    return () => { active = false }
-  }, [supabase, intendedFor])
+    // PREFILLED HERE, WITH THE LIST, AND ONLY IF THE NAME IS STILL OFFERABLE.
+    // An employee the batch was generated for who has since lost the
+    // permission is not in `people`, and selecting an id the picker cannot
+    // show would leave a control that looks ready and refuses.
+    if (people && intendedFor && people.some(p => p.id === intendedFor)) setChoice(intendedFor)
+  }, [people, intendedFor])
 
   const assign = useCallback(async () => {
     if (inFlight.current || !choice) return
@@ -189,10 +179,14 @@ export function AssignBatch({
       </p>
 
       {people !== null && people.length === 0 && !error && (
-        <p role="status" style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.6 }}>
-          No employee currently holds the permission to use the Review Workflow, so there is
-          nobody to assign this batch to. Grant it in Control Center first.
-        </p>
+        peopleError
+          ? <p role="alert" style={{ fontSize: '12px', color: colors.red, margin: 0, lineHeight: 1.6 }}>{peopleError}</p>
+          : (
+            <p role="status" style={{ fontSize: '12px', color: '#92400E', margin: 0, lineHeight: 1.6 }}>
+              No employee currently holds the permission to use the Review Workflow, so there is
+              nobody to assign this batch to. Grant it in Control Center first.
+            </p>
+          )
       )}
 
       {error && (
@@ -225,8 +219,6 @@ type BatchRow = {
   /** card_count: how many this batch was generated with. */
   size: number
   intendedFor: string | null
-  /** The intended employee's display name, when they are still assignable. */
-  intendedName: string | null
   generatedAt: string | null
   /** The composition of the reviews that are ready. Counted from rows already read. */
   text: number
@@ -239,7 +231,17 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
 }) {
   const [rows, setRows] = useState<BatchRow[] | null>(null)
   const [error, setError] = useState('')
-  const [names, setNames] = useState<Map<string, string>>(new Map())
+  // THE ASSIGNABLE-EMPLOYEE LIST, FETCHED ONCE HERE AND SHARED. It used to be
+  // fetched a second time (for display names) by this panel and a third time
+  // by every individual <AssignBatch> row — four identical RPC calls for one
+  // batch list. One fetch now backs the picker in every row and the "Generated
+  // for" name badge below.
+  const [people, setPeople] = useState<Employee[] | null>(null)
+  const [peopleError, setPeopleError] = useState('')
+  const names = useMemo(
+    () => new Map((people ?? []).map(p => [p.id, p.full_name ?? 'Unnamed'])),
+    [people],
+  )
 
   const load = useCallback(async () => {
     // THE COLUMNS ARE THE MINIMUM THAT ANSWERS THE QUESTION — a batch id, a
@@ -309,28 +311,27 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
           batchId, eligible: v.eligible, live: v.live, generatedAt: v.at,
           size: meta.get(batchId)!.size,
           intendedFor: meta.get(batchId)!.intendedFor,
-          // Resolved from the assignable list, so a name only appears for
-          // somebody the assignment would actually accept. An employee who has
-          // since lost the permission shows no badge rather than a stale one.
-          intendedName: meta.get(batchId)!.intendedFor
-            ? (names.get(meta.get(batchId)!.intendedFor as string) ?? null)
-            : null,
           text: v.text, image: v.image,
         }))
         .sort((a, b) => (b.generatedAt ?? '').localeCompare(a.generatedAt ?? '')),
     )
-  }, [supabase, names])
+    // NOT DEPENDENT ON `names`. The display name is resolved at render time
+    // from `intendedFor` instead of being baked into the row here — otherwise
+    // this callback's identity changes the instant the employee-list RPC
+    // resolves, and the mount effect below (which only depends on `load`)
+    // re-fires the whole batch+meta fetch a second time for no new data.
+  }, [supabase])
 
-  // The display names behind `intended_for`, from the same verify-gated source
-  // the picker uses. Read once; the batch list re-renders when it arrives.
+  // The assignable-employee list: backs the picker in every row below AND the
+  // "Generated for" name badge. Read once; the panel re-renders when it lands.
   useEffect(() => {
     let active = true
     const startFetch = () => {
       void (async () => {
-        const { data } = await supabase.rpc('customer_review_assignable_employees')
+        const { data, error: rpcError } = await supabase.rpc('customer_review_assignable_employees')
         if (!active) return
-        const rowsIn = (data ?? []) as { id: string; full_name: string | null }[]
-        setNames(new Map(rowsIn.map(p => [p.id, p.full_name ?? 'Unnamed'])))
+        if (rpcError) { setPeople([]); setPeopleError('The employee list could not be loaded. Refresh to try again.'); return }
+        setPeople((data ?? []) as Employee[])
       })()
     }
     startFetch()
@@ -386,13 +387,13 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
               been named. Showing it makes the prefill explicable rather than
               mysterious, and makes a deliberate change away from it deliberate.
             */}
-            {row.intendedName && (
+            {row.intendedFor && names.get(row.intendedFor) && (
               <span style={{
                 padding: '2px 8px', borderRadius: '5px',
                 background: '#F5F3FF', color: '#5B21B6', border: '1px solid #DDD6FE',
                 fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
               }}>
-                Generated for {row.intendedName}
+                Generated for {names.get(row.intendedFor)}
               </span>
             )}
             <span style={{
@@ -409,6 +410,8 @@ export function AssignBatchPanel({ supabase, onAssigned }: {
             eligible={row.eligible}
             size={row.size}
             intendedFor={row.intendedFor}
+            people={people}
+            peopleError={peopleError}
             onAssigned={outcome => { onAssigned(outcome); void load() }}
           />
         </li>

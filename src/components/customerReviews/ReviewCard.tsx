@@ -121,7 +121,7 @@ export function ReviewCard({
       }}>
         {waiting ? (
           <span style={{ fontSize: '12px', color: '#92400E', fontWeight: 600 }}>
-            Waiting for admin images
+            Waiting for project images
           </span>
         ) : actionLabel && onAction ? (
           <button

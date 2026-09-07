@@ -221,11 +221,12 @@ export function ScreenshotManager({
                       onClick={() => remove(shot)}
                       disabled={busy}
                       aria-label={`Remove ${shot.file_name}`}
-                      // 32px square. The icon is 13px; the padding is what makes
-                      // it hittable with a thumb rather than only with a mouse.
+                      // 44px square, the module's minimum touch target. The
+                      // icon is 13px; the rest is what makes it hittable with
+                      // a thumb rather than only with a mouse.
                       style={{
                         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        width: '32px', height: '32px', margin: '-6px -6px -6px 0',
+                        width: '44px', height: '44px', margin: '0 -8px 0 0',
                         borderRadius: '6px', border: 'none', background: 'transparent',
                         color: colors.red, cursor: busy ? 'not-allowed' : 'pointer',
                       }}
@@ -255,7 +256,7 @@ export function ScreenshotManager({
             className="boe-btn boe-btn-ghost"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
-              padding: '7px 14px', fontSize: '12px', minHeight: '36px',
+              padding: '7px 14px', fontSize: '12px', minHeight: '44px',
               cursor: busy ? 'not-allowed' : 'pointer', opacity: busy ? 0.6 : 1,
             }}
           >
@@ -263,9 +264,8 @@ export function ScreenshotManager({
             {busy ? 'Checking and uploading…' : 'Attach screenshot'}
           </label>
           <p style={{ fontSize: '11px', color: colors.muted, marginTop: '6px', lineHeight: 1.5 }}>
-            {TEST_SCREENSHOT_TYPES_LABEL}, up to 5 MB. Each file is checked on the server,
-            re-encoded, and stripped of camera metadata before it is stored. It is kept in a private
-            bucket that only you and a verifier can read.
+            {TEST_SCREENSHOT_TYPES_LABEL}, up to 5 MB. Kept in a private bucket that
+            only you and a verifier can read.
           </p>
         </>
       )}

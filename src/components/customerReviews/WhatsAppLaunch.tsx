@@ -268,7 +268,7 @@ export function WhatsAppTestPanel({
           type="button"
           onClick={loadPreview}
           disabled={!enabled || !normalized.ok || !confirmed || previewing}
-          className="boe-btn boe-btn-secondary"
+          className="boe-btn boe-btn-ghost"
           style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
         >
           <RefreshCw size={13} strokeWidth={2} />
@@ -366,7 +366,7 @@ export function ConfirmSentControl({
         type="button"
         onClick={onConfirm}
         disabled={!canConfirm || busy}
-        className="boe-btn boe-btn-secondary"
+        className="boe-btn boe-btn-ghost"
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '7px', fontSize: '13px',
           opacity: canConfirm && !busy ? 1 : 0.5,
