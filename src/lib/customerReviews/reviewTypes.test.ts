@@ -324,9 +324,14 @@ describe('the common pool is gone, and the policy is what removed it', () => {
     assert.ok(body.includes('and assigned_to is null'),
       'a replacement still displaces assigned reviews')
     // ...and the number the confirmation shows matches what would happen.
-    const list = executable(read('src/app/customer-reviews/TestCardListScreen.tsx'))
-    assert.ok(list.includes(".is('assigned_to', null)"),
+    // BatchesScreen and TestCardListScreen both show this confirmation and
+    // both read it from the one shared query rather than each computing it.
+    const queries = executable(read('src/lib/customerReviews/queries.ts'))
+    assert.ok(queries.includes(".is('assigned_to', null)"),
       'the Replace count includes reviews a replacement would not touch')
+    const list = executable(read('src/app/customer-reviews/TestCardListScreen.tsx'))
+    assert.ok(list.includes('fetchAvailableUnassignedCount'),
+      'the list screen no longer reads this count through the shared query')
   })
 
   test('a candidate cannot book somebody else’s review, or an unassigned one', () => {

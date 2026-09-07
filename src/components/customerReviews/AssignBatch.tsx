@@ -83,13 +83,20 @@ export function AssignBatch({
   const [error, setError] = useState('')
   const inFlight = useRef(false)
 
-  useEffect(() => {
-    // PREFILLED HERE, WITH THE LIST, AND ONLY IF THE NAME IS STILL OFFERABLE.
-    // An employee the batch was generated for who has since lost the
-    // permission is not in `people`, and selecting an id the picker cannot
-    // show would leave a control that looks ready and refuses.
+  // PREFILLED DURING RENDER, NOT IN AN EFFECT. This is the "adjust state when
+  // a prop changes" case React's own docs call out: comparing `people` against
+  // its previous render value here fires the prefill the moment the shared
+  // list arrives, without a second effect-driven render pass. It happens at
+  // most once — `people` goes from null to an array exactly once per mount —
+  // and only if the name is still offerable. An employee the batch was
+  // generated for who has since lost the permission is not in `people`, and
+  // selecting an id the picker cannot show would leave a control that looks
+  // ready and refuses.
+  const [prevPeople, setPrevPeople] = useState(people)
+  if (people !== prevPeople) {
+    setPrevPeople(people)
     if (people && intendedFor && people.some(p => p.id === intendedFor)) setChoice(intendedFor)
-  }, [people, intendedFor])
+  }
 
   const assign = useCallback(async () => {
     if (inFlight.current || !choice) return

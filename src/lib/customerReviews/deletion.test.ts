@@ -392,14 +392,23 @@ describe('a deleted review is gone from the frontend', () => {
     const code = executable(LIST)
     assert.ok(code.includes(".is('deleted_at', null)"),
       'the list query does not exclude deleted reviews')
-    // The two head counts as well, or a verifier would see a pending badge for
-    // drafts that no longer exist and a Replace would promise the wrong number.
+    // The pending head count too, or a verifier would see a pending badge for
+    // drafts that no longer exist. The other head count — how many are
+    // available and unassigned, so a Replace promises the right number — moved
+    // into fetchAvailableUnassignedCount(), shared with BatchesScreen, and is
+    // checked there instead of here.
     const counts = code.split("count: 'exact'")
-    assert.ok(counts.length >= 3, 'the two head counts are gone')
+    assert.ok(counts.length >= 2, 'the pending head count is gone')
     for (let i = 1; i < counts.length; i++) {
       assert.ok(counts[i].slice(0, 400).includes(".is('deleted_at', null)"),
         'a head count still includes deleted reviews')
     }
+
+    const queries = executable(read('src/lib/customerReviews/queries.ts'))
+    const queryCounts = queries.split("count: 'exact'")
+    assert.ok(queryCounts.length >= 2, 'the shared available-unassigned head count is gone')
+    assert.ok(queryCounts[1].slice(0, 400).includes(".is('deleted_at', null)"),
+      'the shared head count still includes deleted reviews')
   })
 
   test('the direct URL becomes unavailable, the same way a verified one does', () => {

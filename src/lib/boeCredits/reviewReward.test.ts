@@ -107,6 +107,13 @@ describe('the file, and where it sits', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Three Orders/Finance migrations from an unrelated branch: a payment-
+      // approval guard fix, the PI review gate and Confirmed-Order production
+      // alignment, and post-approval PI edits routed through the amendment
+      // context. None creates, alters or drops anything this file asserts.
+      '20261118000000_restore_finance_payment_verification_context.sql',
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
+      '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
     ])
   })
 
