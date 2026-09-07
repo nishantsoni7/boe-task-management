@@ -1,15 +1,16 @@
 /**
  * The boundary between the deterministic test run and the live-database one.
  *
- * Five suites create genuine Supabase `auth.users` and `public.users` rows to
- * prove RLS with real authenticated sessions. They cannot run as part of
+ * Eight suites talk to a real Supabase database — four proving RLS with
+ * genuine authenticated sessions, and three payroll route suites that create
+ * and delete real payroll periods. They cannot run as part of
  * ordinary `npm test`: the standard `.env.local` points at production, so the
  * environment guard refuses the target and calls `process.exit(1)`. Under
  * `tsx --test` each file is its own process, so that refusal is reported as a
  * FAILING test file — not a skipped one. Ordinary `npm test` was red for
  * anyone with the standard local configuration.
  *
- * The fix is discovery, not skipping. The five files carry a `.livedb-test.ts`
+ * The fix is discovery, not skipping. Those files carry a `.livedb-test.ts`
  * suffix, which the default `src/**\/*.test.ts` glob does not match — the
  * character before `test.ts` is a hyphen, not a dot — so `npm test` never
  * loads them, and `npm run test:live-db` selects exactly them. Nothing is
@@ -24,6 +25,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { callsFunction } from '@/lib/security/testSourceScan'
 
 /** Repo root: this file sits at <root>/src/lib/security. */
 const ROOT = join(import.meta.dirname, '..', '..', '..')
@@ -31,13 +33,16 @@ const ROOT = join(import.meta.dirname, '..', '..', '..')
 const LIVE_DB_SUFFIX = '.livedb-test.ts'
 
 /**
- * The five suites, by repo-relative path with forward slashes.
+ * Every live-DB suite, by repo-relative path with forward slashes.
  *
  * Listed literally rather than discovered, so that adding a live-DB suite
  * without deciding where it runs fails this test instead of passing quietly.
  */
 const EXPECTED_LIVE_DB_SUITES = [
+  'src/app/api/payroll/delete/route.livedb-test.ts',
+  'src/app/api/payroll/periods/route.livedb-test.ts',
   'src/app/api/payroll/settlementAuth.livedb-test.ts',
+  'src/app/api/payroll/unlock/route.livedb-test.ts',
   'src/lib/security/attendancePayrollApiIsolation.livedb-test.ts',
   'src/lib/security/attendancePayrollIsolation.livedb-test.ts',
   'src/lib/security/objectionIsolation.livedb-test.ts',
@@ -61,7 +66,7 @@ const scripts = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).scr
   Record<string, string>
 
 describe('live-DB suites are separated from the default test run', () => {
-  test('exactly the five known suites carry the live-DB suffix', () => {
+  test('exactly the known suites carry the live-DB suffix', () => {
     const found = sourceFiles.filter(f => f.endsWith(LIVE_DB_SUFFIX)).sort()
     assert.deepEqual(found, EXPECTED_LIVE_DB_SUITES)
   })
@@ -100,12 +105,13 @@ describe('live-DB suites are separated from the default test run', () => {
     // this separation exists to prevent. The two helper unit tests import the
     // guard to test it with an injected environment, so they are excluded by
     // requiring an actual resolveLiveDbTestEnv() call site.
-    const self = repoRelative(import.meta.filename)
-    const guarded = sourceFiles.filter(file => {
-      if (file === self) return false // this file names the call in a comment
-      if (!file.endsWith('.test.ts')) return false
-      return /resolveLiveDbTestEnv\(\)/.test(readFileSync(join(ROOT, file), 'utf8'))
-    })
+    // callsFunction scrubs comments and string literals first, so a file that
+    // merely names the guard in prose is not mistaken for one that invokes it.
+    const guarded = sourceFiles.filter(
+      file =>
+        file.endsWith('.test.ts') &&
+        callsFunction(readFileSync(join(ROOT, file), 'utf8'), 'resolveLiveDbTestEnv'),
+    )
     assert.deepEqual(guarded, [], `these run in npm test but call the live-DB guard: ${guarded}`)
   })
 })

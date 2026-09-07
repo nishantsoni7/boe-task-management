@@ -31,6 +31,7 @@
 import { test, before, after, beforeEach, afterEach, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { createClient } from '@supabase/supabase-js'
+import { resolveLiveDbTestEnv } from '@/lib/security/liveDbTestSupport'
 import { config } from 'dotenv'
 import { NextRequest } from 'next/server'
 import { collectDeletionFacts, GET as deleteGET, POST as deletePOST } from './route'
@@ -39,13 +40,14 @@ import { buildResultDetailPayload } from '@/lib/payroll/resultDetailPayload'
 
 config({ path: '.env.local' })
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in .env.local')
-  process.exit(1)
-}
+// Resolved through the shared guard, which refuses production outright and
+// every other hosted project unless the shell names it — before the client
+// below exists, so a refused run opens no connection at all.
+const {
+  url: SUPABASE_URL,
+  serviceRoleKey: SERVICE_ROLE_KEY,
+  anonKey: ANON_KEY,
+} = resolveLiveDbTestEnv()
 
 const svc = createClient(SUPABASE_URL, SERVICE_ROLE_KEY)
 
@@ -645,7 +647,7 @@ describe('authorization', () => {
   })
 
   test('the RPC is not executable by anon or authenticated — a direct PostgREST call cannot reach it', async () => {
-    const anon = createClient(SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '')
+    const anon = createClient(SUPABASE_URL, ANON_KEY)
     const f = await buildFixture()
     const { error } = await anon.rpc('delete_payroll_period', {
       p_period_id: f.targetPeriodId, p_month: TARGET_MONTH, p_year: FIXTURE_YEAR,
