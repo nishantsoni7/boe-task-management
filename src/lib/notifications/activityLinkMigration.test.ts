@@ -231,6 +231,11 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // creates no table, alters no table, writes no row, adds no trigger
       // and grants nothing, so it reaches nothing asserted here.
       '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql',
+      // Control Center label wording for the three order-approval
+      // capabilities: three permission_actions.display_name UPDATEs. It
+      // creates no table, alters no table and defines no function, so it
+      // reaches nothing asserted here.
+      '20261122000000_order_approval_capability_labels.sql',
     ])
   })
 

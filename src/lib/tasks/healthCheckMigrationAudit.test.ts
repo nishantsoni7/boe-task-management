@@ -573,6 +573,11 @@ describe('the migration is placed correctly', () => {
       '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
       '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
       '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql',
+      // Control Center label wording for the three order-approval
+      // capabilities: three permission_actions.display_name UPDATEs. It
+      // creates no table, alters no table and defines no function, so it
+      // reaches nothing asserted here.
+      '20261122000000_order_approval_capability_labels.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
