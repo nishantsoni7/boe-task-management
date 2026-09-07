@@ -156,7 +156,7 @@ describe('the closed action set', () => {
     // what 20261001000000 asks of it.
     assert.ok(file.length > 0, 'no migration defines the action constraint')
     assert.equal(file,
-      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql')
+  '20261119000000_order_submission_pi_review_gate_versions_and_production.sql')
   })
 
   test('still admits every action the earlier phases wrote', () => {
