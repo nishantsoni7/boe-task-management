@@ -221,6 +221,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      '20261115000000_minop_attendance_processing.sql',
       '20261118000000_restore_finance_payment_verification_context.sql',
       '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
       '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',

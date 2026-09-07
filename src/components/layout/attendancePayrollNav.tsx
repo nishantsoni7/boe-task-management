@@ -23,7 +23,7 @@
 
 import {
   Banknote, BookOpen, CalendarDays, CalendarX, ClipboardList, FileBarChart,
-  LayoutDashboard, MessageSquareWarning, SlidersHorizontal, Upload, Users, Coins,
+  LayoutDashboard, MessageSquareWarning, Radio, SlidersHorizontal, Upload, Users, Coins,
 } from 'lucide-react'
 import { PAYROLL_GUIDE_PATH } from '@/lib/payroll/guidePath'
 import { MY_CREDITS_PATH } from '@/lib/boeCredits/paths'
@@ -81,6 +81,7 @@ export const ATTENDANCE_PAYROLL_ADMIN_NAV: AttendancePayrollNavItem[] = [
   { label: 'Attendance Upload',         path: '/attendance/upload',         icon: <Upload size={15} strokeWidth={1.8} /> },
   { label: 'Attendance Records',        path: '/attendance/records',        icon: <ClipboardList size={15} strokeWidth={1.8} /> },
   { label: 'Monthly Attendance Review', path: '/attendance/monthly-review', icon: <CalendarDays size={15} strokeWidth={1.8} /> },
+  { label: 'Minop Diagnostics',         path: '/attendance/minop',          icon: <Radio size={15} strokeWidth={1.8} /> },
   {
     label: 'Payroll Runs',
     path: '/payroll',
