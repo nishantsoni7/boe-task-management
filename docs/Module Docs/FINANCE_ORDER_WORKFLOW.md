@@ -1488,7 +1488,7 @@ itself and rolling back completely — so nothing after it can be vacuous.
 
 ### 13.4 A latent defect found, not fixed
 
-`replace_order_submission_parse()` (20261003000000) and `update_order_submission_client_details()` (20260928000000) update `public.orders` **outside** the amendment context, so on the live database `orders_guard_amendable_columns` would refuse their post-approval branches with `ORDER_AMENDMENT_REQUIRED`. No harness ever included that guard. The revision-approval RPC opens the context around its own call to the parser; the other paths are unchanged and are reported here for a separate fix.
+`replace_order_submission_parse()` (20261003000000) and `update_order_submission_client_details()` (20260928000000) update `public.orders` **outside** the amendment context, so on the live database `orders_guard_amendable_columns` would refuse their post-approval branches with `ORDER_AMENDMENT_REQUIRED`. No harness ever included that guard. The revision-approval RPC opens the context around its own call to the parser; the other two paths are fixed separately, in section 14 below (`20261120000000`).
 
 ### 13.5 Verifying it
 
