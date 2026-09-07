@@ -236,7 +236,7 @@ describe('no Order screen waits more than it must', () => {
     // and a fourth independent call in a group that already waits for the
     // slowest costs no latency.
     //
-    // DETAIL 19 -> 27 (20261116000000). Three READS inside the handoff's
+    // DETAIL 19 -> 27 (20261119000000). Three READS inside the handoff's
     // existing Promise.all — order_pi_versions, the source PI's
     // order_submission_activity, and the one users read that names both — so
     // the startup wait count is unchanged (the test above still requires
@@ -276,7 +276,7 @@ describe('no Order screen waits more than it must', () => {
       // because its columns are spread into PI_DRAFT_DETAIL_COLUMNS. So the
       // count grew and the startup path did not: the wait test above is
       // unchanged.
-      // PI_DETAIL 26 -> 27: approve_pi_review (20261116000000), the PI decision
+      // PI_DETAIL 26 -> 27: approve_pi_review (20261119000000), the PI decision
       // taken on its own. A SAVE that runs when the reviewer presses Approve
       // PI; the decision itself arrives with the record, because its three
       // columns are spread into PI_DRAFT_DETAIL_COLUMNS. The startup path is

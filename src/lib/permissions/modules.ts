@@ -331,7 +331,7 @@ registerModule({
     { actionKey: 'approve_advance_exception', displayName: 'Approve Advance Exceptions' },
     // Authority to ALIGN a Confirmed Order for production — to say the factory
     // can make it, in the time and at the cost the deal assumes. Registered by
-    // 20261116000000. Every Order is born Not Aligned; this is the Head of
+    // 20261119000000. Every Order is born Not Aligned; this is the Head of
     // Manufacturing's decision and nobody else's, which is why it is neither
     // approve_order (commercial approval) nor manage. Confers no order
     // visibility of its own.

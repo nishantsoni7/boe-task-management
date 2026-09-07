@@ -490,7 +490,7 @@ already on an Order).
 | | |
 |---|---|
 | Status | **Implemented in the repository. Migration NOT applied. Not merged.** |
-| Migration | `20261116000000_order_submission_pi_review_gate_versions_and_production.sql` |
+| Migration | `20261119000000_order_submission_pi_review_gate_versions_and_production.sql` |
 
 **What it delivers.** Submission judged on **attached** payment (verified +
 awaiting), with the reason owed below 40% including zero; `approve_pi_review()`

@@ -157,7 +157,7 @@ type Order = {
   // 20260923000000. Read here only so the handoff can tell a declared
   // percentage from an undeclared one without a second read of the PI.
   billing_percentage?: number | string | null
-  // Production alignment (20261116000000). 'not_aligned' on every Order at
+  // Production alignment (20261119000000). 'not_aligned' on every Order at
   // creation; moved only by set_order_production_alignment().
   production_alignment?: string | null
   production_aligned_by?: string | null
@@ -694,7 +694,7 @@ export default function OrderDetailPage() {
   const [wbPath,      setWbPath]      = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
 
-  // ── The PI's versions and its trail (20261116000000) ──
+  // ── The PI's versions and its trail (20261119000000) ──
   //
   // Both read under the caller's own RLS beside the handoff: can_view_order
   // decides the versions, can_view_order_submission_via_order the trail. The
@@ -1169,7 +1169,7 @@ export default function OrderDetailPage() {
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
-  // ── PI versions (20261116000000) ──
+  // ── PI versions (20261119000000) ──
 
   /** Any version's file, signed on demand exactly as the current workbook is. */
   const openVersion = async (version: PiVersionView) => {
@@ -1262,7 +1262,7 @@ export default function OrderDetailPage() {
     }
   }
 
-  // ── Production alignment (20261116000000) ──
+  // ── Production alignment (20261119000000) ──
   const setAlignment = async (aligned: boolean, note: string | null) => {
     if (!order || alignBusy) return
     setAlignBusy(true)
@@ -1436,7 +1436,7 @@ export default function OrderDetailPage() {
   const mayGenerateDocuments = ordersCaps.canApproveOrderSubmission && !viewAsUserId
 
   /**
-   * THE PI HISTORY AND WHO MAY MOVE IT (20261116000000).
+   * THE PI HISTORY AND WHO MAY MOVE IT (20261119000000).
    *
    * Proposing: the PI's owner or an admin holding orders.create — the same
    * people who could upload the PI in the first place. Deciding: an active
@@ -1624,7 +1624,7 @@ export default function OrderDetailPage() {
               </button>
             )}
             {/* Production alignment: the Head of Manufacturing's door
-                (20261116000000). Drawn only for orders.align_production, never
+                (20261119000000). Drawn only for orders.align_production, never
                 lent by View As; the RPC decides again under a row lock. */}
             {production?.action && (
               <button
@@ -2014,7 +2014,7 @@ export default function OrderDetailPage() {
             indistinguishable from the outside, and the first reader of this
             screen read the silence as the second. The panel is read-only and
             offers no action, because there is no action to offer. */}
-        {/* THE PI HISTORY (20261116000000): the current PI, a pending revision
+        {/* THE PI HISTORY (20261119000000): the current PI, a pending revision
             and everything before, for every Order that came from a PI. */}
         {piHandoff.kind !== 'none' && (
           <OrderPiHistoryCard
@@ -2220,7 +2220,7 @@ export default function OrderDetailPage() {
         <PiClientDetailsModal client={piHandoff.client} onClose={() => setClientOpen(false)} />
       )}
 
-      {/* ── PI revision and production alignment dialogs (20261116000000) ── */}
+      {/* ── PI revision and production alignment dialogs (20261119000000) ── */}
       {revisionDialog?.kind === 'propose' && (
         <ProposeRevisionModal
           orderNumber={order.display_number}

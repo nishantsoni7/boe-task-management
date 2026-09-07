@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
   } else if (event === 'pi_revision_proposed') {
     // WHO MAY DECIDE A REVISED PI: an active admin, the same authority the
     // deployed rule gives the only person who may move a submitted PI's figures
-    // (20261003000000 §1, 20261116000000). Nobody else is told.
+    // (20261003000000 §1, 20261119000000). Nobody else is told.
     const { data: admins } = await supabase
       .from('users').select('id')
       .eq('role', 'admin').eq('is_active', true).neq('is_deleted', true)

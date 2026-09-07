@@ -69,7 +69,7 @@ describe('each capability maps to exactly one action', () => {
     ['create', 'canCreateOrder'],
     ['edit', 'canEditOrder'],
     ['approve_order', 'canApproveOrderSubmission'],
-    // The Head of Manufacturing's decision (20261116000000). Its own action,
+    // The Head of Manufacturing's decision (20261119000000). Its own action,
     // its own capability, and neither approve_order nor manage implies it.
     ['align_production', 'canAlignProduction'],
     ['export', 'canExportOrders'],

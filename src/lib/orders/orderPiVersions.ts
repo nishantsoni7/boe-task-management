@@ -3,7 +3,7 @@
 // WHAT THIS MODULE IS ABOUT
 // -------------------------
 // A Confirmed Order may receive another PI later. The rows come from
-// public.order_pi_versions (20261116000000): V1 is the document the Order was
+// public.order_pi_versions (20261119000000): V1 is the document the Order was
 // approved from; every later row is a REVISION that never overwrites the current
 // one. This module turns those rows into the three things the Order screen
 // draws — the current version, the pending revision if there is one, and the

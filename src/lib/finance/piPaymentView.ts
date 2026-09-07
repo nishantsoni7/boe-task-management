@@ -108,7 +108,7 @@ export type PiPaymentSummary = {
   verified_amount: string | number
   unverified_amount: string | number
   /**
-   * verified + awaiting verification, summed by the database (20261116000000).
+   * verified + awaiting verification, summed by the database (20261119000000).
    * The figure the SUBMISSION rule reads; it gates no Order. Optional so a
    * summary produced before the migration still types.
    */
@@ -223,7 +223,7 @@ export function piPaymentTiles(summary: PiPaymentSummary | null): PiPaymentTile[
       hint: `to reach the standard ${standard}%` },
     { key: 'balance',    label: 'Pending balance',       value: formatMoney(summary.pending_balance) },
   ]
-  // THE ATTACHED PAIR, when the server reports it (20261116000000). What
+  // THE ATTACHED PAIR, when the server reports it (20261119000000). What
   // management is shown as "appears to have been received" — verified plus
   // awaiting verification — beside the verified figures, never in place of them.
   if (summary.attached_amount !== undefined && summary.attached_amount !== null) {

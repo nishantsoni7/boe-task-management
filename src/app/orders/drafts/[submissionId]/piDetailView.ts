@@ -750,7 +750,7 @@ export type ApprovalSummaryRow = {
  * page, where it is derived once from the current grand total.
  */
 /**
- * THE PAYMENT SUMMARY the approver evaluates the PI beside (20261116000000).
+ * THE PAYMENT SUMMARY the approver evaluates the PI beside (20261119000000).
  *
  * Every string is already formatted by the page from the database's own
  * figures. `attached` is null on a summary produced before the migration, and

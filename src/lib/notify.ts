@@ -87,7 +87,7 @@ export type PiSubmissionNotifyEvent =
   | 'pi_correction_requested'
   | 'pi_correction_resolved'
   | 'pi_correction_rejected'
-  // A revised PI on a Confirmed Order (20261116000000): proposed → the people
+  // A revised PI on a Confirmed Order (20261119000000): proposed → the people
   // who may decide it; approved / rejected → whoever proposed it. Same contract.
   | 'pi_revision_proposed'
   | 'pi_revision_approved'

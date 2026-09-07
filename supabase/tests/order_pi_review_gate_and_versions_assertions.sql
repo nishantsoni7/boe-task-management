@@ -1,4 +1,4 @@
--- PI REVIEW GATE, PI VERSIONS AND PRODUCTION ALIGNMENT assertions (20261116000000)
+-- PI REVIEW GATE, PI VERSIONS AND PRODUCTION ALIGNMENT assertions (20261119000000)
 -- ===========================================================================
 -- Validates:
 --
@@ -23,7 +23,7 @@
 --
 -- Runs entirely inside ONE transaction that ends in ROLLBACK.
 --
--- PREREQUISITES (controlled environment, 20261116000000 applied):
+-- PREREQUISITES (controlled environment, 20261119000000 applied):
 --   * psql as a role that bypasses RLS and may SET the `role` GUC.
 --   * The Confirmed Order numbering cycle is configured (20260703000000).
 --   * The `order-files` storage bucket exists.

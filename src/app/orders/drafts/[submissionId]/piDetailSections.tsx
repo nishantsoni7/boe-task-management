@@ -729,7 +729,7 @@ export function PiWorkflowPanel({
   approvalBlocker: string | null
   approvalReady: boolean
   /**
-   * WHICH DOOR this reviewer is offered (20261116000000): approve-and-create,
+   * WHICH DOOR this reviewer is offered (20261119000000): approve-and-create,
    * approve the PI only, or create the Order the PI already earned — with the
    * one sentence that goes beside it. When absent the panel falls back to the
    * single approve-and-create control the two props above describe.
