@@ -104,8 +104,15 @@ describe('every delete inside a teardown is scoped to specific fixture ids', () 
     test(suite, () => {
       const source = read(suite)
       const afterBlock = extractAfterBlock(source)
+      // A teardown either deletes rows it owns inline, or delegates the whole
+      // per-account sequence to fixtureUserCleanupSteps — usersPrivateColumns
+      // creates nothing but the accounts, so it does only the latter and has
+      // no inline delete left to inspect.
       const deleteCalls = afterBlock.match(/\.delete\(\)/g) ?? []
-      assert.ok(deleteCalls.length > 0, 'expected at least one .delete() call in teardown')
+      assert.ok(
+        deleteCalls.length > 0 || /fixtureUserCleanupSteps\(/.test(afterBlock),
+        'a teardown must either delete its own rows or delegate to fixtureUserCleanupSteps',
+      )
 
       // Every .delete() must be immediately followed (allowing a line break,
       // as in the multi-line attendance_records call) by a .eq(/.in( filter —
@@ -115,6 +122,29 @@ describe('every delete inside a teardown is scoped to specific fixture ids', () 
         afterBlock,
         bareDelete,
         'a teardown .delete() must always be scoped by .eq(...) or .in(...) to this run\'s own fixture ids',
+      )
+    })
+  }
+})
+
+describe('no suite deletes an auth user outside the gated teardown', () => {
+  for (const suite of SUITES) {
+    test(suite, () => {
+      const afterBlock = extractAfterBlock(read(suite))
+
+      // The shape of the original defect: profile and auth deleted as two
+      // independent cleanup steps, so a failed profile delete still reached
+      // the auth delete and stranded the profile. Auth deletion must only
+      // happen inside purgeFixtureUser, which gates it on a verified absence.
+      assert.doesNotMatch(
+        afterBlock,
+        /auth\.admin\.deleteUser/,
+        'auth deletion must go through fixtureUserCleanupSteps, never inline in a teardown step',
+      )
+      assert.match(
+        afterBlock,
+        /fixtureUserCleanupSteps\(/,
+        'accounts must be torn down through the gated per-account sequence',
       )
     })
   }
