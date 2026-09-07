@@ -650,9 +650,24 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
 
         {/* ── Step 1 and 2: open WhatsApp, then say you sent it ── */}
         {(canWorkOnIt || card.whatsapp_opened_at) && (
-          <Section title="Send the review" id="review-send">
+          <Section title="Confirm you sent it" id="review-send">
             {canWorkOnIt ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {/*
+                  WHY THIS EXISTS SEPARATELY FROM "Share review" ABOVE. A real
+                  employee shares the review however they actually post it —
+                  Share review handles that. This step exists only to RECORD
+                  that a send happened, which is what unlocks the screenshot
+                  and submit steps below. It is a real WhatsApp open, to any
+                  number — the candidate's own is fine — not a second posting
+                  action, and saying so here is what stops it reading as one.
+                */}
+                <p style={{ fontSize: '12px', color: colors.secondary, margin: 0, lineHeight: 1.55 }}>
+                  You already shared the review above, however you actually post it. This step is
+                  separate: it opens WhatsApp once more — any number works, your own is fine — so
+                  the app can record that you sent it. That record is what unlocks the screenshot
+                  and submit steps below.
+                </p>
                 <WhatsAppTestPanel
                   cardId={card.id}
                   enabled={canWorkOnIt}

@@ -318,6 +318,18 @@ export function WhatsAppTestPanel({
           WhatsApp opens with this text ready, and nothing else — nothing is attached. You still
           have to press send there; BOE never sends it for you.
         </p>
+        {/*
+          ANDROID CHROME SOMETIMES OPENS WHATSAPP'S OWN WEB PAGE FIRST rather
+          than handing off to the installed app directly — a browser-level
+          quirk of how this link is opened, not a sign the app is missing. One
+          sentence here is cheaper and safer than reworking the navigation
+          timing, which exists to guarantee the permission check completes
+          before anything opens at all.
+        */}
+        <p style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
+          If this opens a WhatsApp web page instead of the app, look for "Open in the WhatsApp
+          app" or "Continue to chat" there — it is the same message, just one extra tap.
+        </p>
         <WhatsAppOpenedNote />
       </div>
     </div>
