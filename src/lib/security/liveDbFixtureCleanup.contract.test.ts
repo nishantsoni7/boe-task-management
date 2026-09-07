@@ -38,11 +38,11 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const repoRoot = path.resolve(here, '../../..')
 
 const SUITES = [
-  'src/lib/security/objectionIsolation.test.ts',
-  'src/lib/security/attendancePayrollIsolation.test.ts',
-  'src/lib/security/attendancePayrollApiIsolation.test.ts',
-  'src/lib/security/usersPrivateColumns.test.ts',
-  'src/app/api/payroll/settlementAuth.test.ts',
+  'src/lib/security/objectionIsolation.livedb-test.ts',
+  'src/lib/security/attendancePayrollIsolation.livedb-test.ts',
+  'src/lib/security/attendancePayrollApiIsolation.livedb-test.ts',
+  'src/lib/security/usersPrivateColumns.livedb-test.ts',
+  'src/app/api/payroll/settlementAuth.livedb-test.ts',
 ]
 
 function read(relPath: string): string {
@@ -121,8 +121,8 @@ describe('every delete inside a teardown is scoped to specific fixture ids', () 
 })
 
 describe('objectionIsolation cleanup is not gated on before() having fully succeeded', () => {
-  test('src/lib/security/objectionIsolation.test.ts', () => {
-    const source = read('src/lib/security/objectionIsolation.test.ts')
+  test('src/lib/security/objectionIsolation.livedb-test.ts', () => {
+    const source = read('src/lib/security/objectionIsolation.livedb-test.ts')
     const afterBlock = extractAfterBlock(source)
     assert.doesNotMatch(
       afterBlock,
@@ -137,8 +137,8 @@ describe('objectionIsolation cleanup is not gated on before() having fully succe
 })
 
 describe('settlementAuth deletes payroll_settlements before payroll_results', () => {
-  test('src/app/api/payroll/settlementAuth.test.ts', () => {
-    const source = read('src/app/api/payroll/settlementAuth.test.ts')
+  test('src/app/api/payroll/settlementAuth.livedb-test.ts', () => {
+    const source = read('src/app/api/payroll/settlementAuth.livedb-test.ts')
     const afterBlock = extractAfterBlock(source)
 
     const settlementsIndex = afterBlock.indexOf(`svc.from('payroll_settlements').delete()`)
