@@ -160,8 +160,8 @@ export type ReservationView = {
  *
  * SO THIS IS A WORDING HINT, NOT A VERDICT. `false` means "a revised file has
  * arrived", never "you are ready" — and the panel says exactly that much. The
- * verdict is the server's, and it arrives as a refusal on submit
- * (revisedPiRefusalMessage below), which names both numbers because it can.
+ * verdict is the server's, and it arrives as a refusal when an Order would
+ * take the number (revisedPiRefusalMessage below), which names both numbers.
  *
  * A MISSING LIVE HASH COUNTS AS OUTSTANDING: it is not evidence that a revised
  * workbook exists, and order_submission_revised_pi_refusal() refuses it for
@@ -280,7 +280,7 @@ export function describeReservation(input: {
       // which — so this says what it can see and names when the answer comes.
       standing: outstanding
         ? `${number} is held for this PI. ${RESERVATION_INSTRUCTION}`
-        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. It is checked against ${number} when the PI is submitted for review.`,
+        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. It is checked against ${number} when the PI becomes a Confirmed Order.`,
       blockedReason: null,
       canCopy: true,
     }

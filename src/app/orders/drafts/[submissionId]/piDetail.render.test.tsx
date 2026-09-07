@@ -2504,6 +2504,10 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     assert.deepEqual([...new Set(rpcs)].sort(), [
       'approve_order_submission',
       'approve_pi_advance_exception',
+      // The PI decision on its own (20261119000000): the same authority as
+      // approve_order_submission, taken while the payment condition is still
+      // unresolved. Writes three columns and one event; creates no Order.
+      'approve_pi_review',
       // A read, not a write: the database's own answer to "may this viewer edit
       // this record", asked instead of being restated in the browser.
       // Two capability reads, not one. The second carries the revised rule that

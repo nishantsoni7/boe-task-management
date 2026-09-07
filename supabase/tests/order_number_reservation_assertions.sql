@@ -406,35 +406,76 @@ begin
   raise notice 'E pass — exact match only: whitespace and case normalized, 9 refusal cases held';
 end $$;
 
--- ── F. The workflow: submission is refused until the revised PI carries it ──
+-- ── F. Review is NOT the Order door: submission passes, Order creation does not
+--
+-- THE REPORTED DEFECT, as a fixture. Before 20261121000000 this PI could not be
+-- sent for review at all: §5b had stamped the reservation with the sha of the
+-- very workbook then on the record, so the revised-PI rule's first test — has a
+-- workbook been re-parsed since the number was issued — was false by
+-- construction for every new draft. The salesperson had to take the number,
+-- type it into the file and re-upload through Change PI before management could
+-- even look.
+--
+-- Submission now succeeds. The requirement did not disappear: it is asked at
+-- the Order door, which is where the document and the Order must first agree.
 do $$
 declare v_msg text; v_id uuid := '22222222-0000-4000-8000-00000000000b'; v_res text;
 begin
   select reserved_order_number into v_res from public.order_submissions where id = v_id;
+  if v_res is null then raise exception 'F FAILED: the fixture holds no reservation to test'; end if;
 
-  -- The initial upload carried no number at all (make_new_pi + upload_pi null).
+  -- The initial upload carried no number at all (make_new_pi + upload_pi null),
+  -- and nothing has been re-parsed since the number was issued.
   perform public.make_approvable(v_id);
+  perform public.submit_pi(v_id);
+
+  if (select status from public.order_submissions where id = v_id) <> 'submitted' then
+    raise exception 'F FAILED: a fully paid PI could not be sent for review';
+  end if;
+
+  -- AND SUBMISSION ALONE CREATED NOTHING. No Order, and the reservation is
+  -- still unspent.
+  if exists (select 1 from public.orders where source_order_submission_id = v_id) then
+    raise exception 'F FAILED: submitting a PI created an Order';
+  end if;
+  if (select reserved_order_number_used_at from public.order_submissions where id = v_id) is not null then
+    raise exception 'F FAILED: submitting a PI spent the reservation';
+  end if;
+
+  -- THE ORDER DOOR STILL REFUSES. Same rule, same words, later.
+  perform public.act_as('approver@test');
   begin
-    perform public.submit_pi(v_id);
-    raise exception 'F FAILED: a PI was submitted without its number on the revised file';
+    perform public.approve_order_submission(v_id);
+    raise exception 'F FAILED: an Order was created from a PI that does not carry its number';
   exception when others then
     get stacked diagnostics v_msg = message_text;
-    if v_msg not like 'ORDER_SUBMISSION_REVISED_PI_%' then raise; end if;
+    if v_msg not like 'ORDER_SUBMISSION_REVISED_PI_MISSING%' then raise; end if;
   end;
 
-  -- A revised file with the WRONG number is refused just as firmly.
+  if exists (select 1 from public.orders where source_order_submission_id = v_id) then
+    raise exception 'F FAILED: the refused approval left an Order behind';
+  end if;
+
+  -- A revised file with the WRONG number reaches review just as freely, and is
+  -- refused just as firmly at the Order door.
+  perform public.act_as('owner@test');
   perform public.upload_pi(v_id, repeat('7', 64), '0099');
+  perform public.act_as('approver@test');
   begin
-    perform public.submit_pi(v_id);
-    raise exception 'F FAILED: a PI carrying the wrong number was submitted';
+    perform public.approve_order_submission(v_id);
+    raise exception 'F FAILED: a PI carrying the wrong number became an Order';
   exception when others then
     get stacked diagnostics v_msg = message_text;
     if v_msg not like 'ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH%' then raise; end if;
   end;
 
-  raise notice 'F pass — submission refused twice: %', substr(v_msg, 1, 84);
-end $$;
+  if exists (select 1 from public.orders where source_order_submission_id = v_id) then
+    raise exception 'F FAILED: the mismatched PI left an Order behind';
+  end if;
 
+  perform public.act_as('owner@test');
+  raise notice 'F pass — review accepted the PI; the Order door refused it twice: %', substr(v_msg, 1, 72);
+end $$;
 -- ── G. With the number in the file: submitted, approved, and the Order is it ─
 do $$
 declare v_id uuid := '22222222-0000-4000-8000-00000000000b'; v_res text; v_display text;
@@ -542,17 +583,25 @@ begin
     raise exception 'J FAILED: a click was recorded as automatic';
   end if;
 
+  -- Reserving by hand does not close the review door either — the rule binds
+  -- this draft at the Order door, exactly as it binds an automatic one (F).
   perform public.make_approvable(v_id);
+  perform public.submit_pi(v_id);
+  if (select status from public.order_submissions where id = v_id) <> 'submitted' then
+    raise exception 'J FAILED: a legacy PI that reserved by hand could not be sent for review';
+  end if;
+
+  perform public.act_as('approver@test');
   begin
-    perform public.submit_pi(v_id);
-    raise exception 'J FAILED: a legacy PI that reserved was submitted without a revised file';
+    perform public.approve_order_submission(v_id);
+    raise exception 'J FAILED: a legacy PI became an Order without a revised file';
   exception when others then
     get stacked diagnostics v_msg = message_text;
     if v_msg not like 'ORDER_SUBMISSION_REVISED_PI_MISSING%' then raise; end if;
   end;
-  raise notice 'J pass — once a legacy draft reserves %, the revised-PI rule binds it', v_res;
+  perform public.act_as('owner@test');
+  raise notice 'J pass — once a legacy draft reserves %, the revised-PI rule binds it at the Order door', v_res;
 end $$;
-
 -- ── K. An unauthorized caller reserves nothing ─────────────────────────────
 do $$
 declare v_msg text; v_id uuid := '22222222-0000-4000-8000-00000000000d'; v_cycle bigint;
