@@ -27,8 +27,8 @@ import { testCategoryLabel, type TestCard } from '@/lib/customerReviews/types'
 export type ShareableImage = { storage_path: string; mime_type: string }
 
 const AWAITING_IMAGES_MESSAGE =
-  `${AWAITING_IMAGES_LABEL}. This image review cannot be shared until an administrator `
-  + 'attaches a project with photographs in it.'
+  `${AWAITING_IMAGES_LABEL}. This image review cannot be shared until a project `
+  + 'with photographs is attached to it.'
 
 // ── Handing an approved review to the share sheet ────────────────────────────
 //

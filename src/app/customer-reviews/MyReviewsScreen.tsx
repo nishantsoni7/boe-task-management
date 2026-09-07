@@ -64,7 +64,7 @@ export function MyReviewsScreen() {
   const [reading, setReading] = useState<TestCard | null>(null)
   const [bookingId, setBookingId] = useState<string | null>(null)
   const [bookError, setBookError] = useState<string | null>(null)
-  const [recentlyVerified, setRecentlyVerified] = useState<TestCard[]>([])
+  const [recentlyVerified, setRecentlyVerified] = useState<Pick<TestCard, 'card_ref'>[]>([])
   const booking = useRef(false)
 
   // A VERIFIED REVIEW IS ABSENT FROM THE LIST ABOVE, ON PURPOSE, BUT A CANDIDATE
@@ -84,15 +84,18 @@ export function MyReviewsScreen() {
   const loadRecentlyVerified = useCallback(async () => {
     if (!profile) return
     const since = new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
+    // ONLY card_ref: this feeds recentlyVerifiedNotice(), which names the
+    // card and nothing else. The full column set is TEST_CARD_COLUMNS wide —
+    // there is no reason this notice-only read should carry review text.
     const { data } = await supabase
       .from('customer_review_test_cards')
-      .select(TEST_CARD_COLUMNS)
+      .select('card_ref')
       .eq('booked_by', profile.id)
       .eq('status', 'verified')
       .is('deleted_at', null)
       .gte('verified_at', since)
       .order('verified_at', { ascending: false })
-    setRecentlyVerified((data ?? []) as TestCard[])
+    setRecentlyVerified((data ?? []) as Pick<TestCard, 'card_ref'>[])
   }, [supabase, profile])
 
   const load = useCallback(async () => {

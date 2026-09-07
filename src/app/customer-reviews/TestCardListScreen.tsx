@@ -25,6 +25,7 @@ import { fetchAllRows } from '@/lib/supabasePaging'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import { canBookCard, canDeleteCard, type ApprovalMode } from '@/lib/customerReviews/status'
 import { projectGroupUsable } from '@/lib/customerReviews/reviewTypes'
+import { fetchAvailableUnassignedCount } from '@/lib/customerReviews/queries'
 import {
   DRAFT_BATCH_COLUMNS,
   TEST_CARD_AVAILABLE_COLUMNS,
@@ -330,15 +331,12 @@ export function TestCardListScreen() {
       // IT IS A DISPLAY NUMBER, NOT A DECISION. Between this and the write
       // somebody can book a review; the database chooses and locks the set
       // inside the transaction and returns what it actually replaced.
-      supabase
-        .from('customer_review_test_cards')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'available')
-        .is('assigned_to', null)
-        .is('deleted_at', null),
+      //
+      // SHARED WITH BatchesScreen, which shows the same confirmation.
+      fetchAvailableUnassignedCount(supabase),
     ])
     setPendingTotal(pending.count ?? 0)
-    setAvailableTotal(available.count ?? 0)
+    setAvailableTotal(available)
   }, [supabase, caps.canVerify])
 
   // True until the rows in state are the ones this tab asked for.

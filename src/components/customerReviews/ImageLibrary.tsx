@@ -483,6 +483,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                           key={image.id}
                           src={urls[image.storage_path]}
                           alt=""
+                          loading="lazy"
                           style={{
                             width: '44px', height: '44px', objectFit: 'cover',
                             borderRadius: '6px', border: `1px solid ${colors.border}`,
@@ -528,6 +529,7 @@ export function ImageLibrary({ supabase }: { supabase: SupabaseClient }) {
                               <img
                                 src={urls[image.storage_path]}
                                 alt={image.file_name}
+                                loading="lazy"
                                 style={{ display: 'block', width: '100%', aspectRatio: '1 / 1', objectFit: 'cover' }}
                               />
                             ) : (

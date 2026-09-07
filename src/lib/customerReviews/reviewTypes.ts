@@ -185,7 +185,7 @@ export function projectGroupUsable(
 }
 
 /** The sentence a candidate reads beside an image review that is not ready. */
-export const AWAITING_IMAGES_LABEL = 'Waiting for admin images'
+export const AWAITING_IMAGES_LABEL = 'Waiting for project images'
 export const READY_LABEL = 'Ready'
 /**
  * WHAT A SURFACE SAYS WHILE THE PROJECT GROUP IS STILL BEING READ.

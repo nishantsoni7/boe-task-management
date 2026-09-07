@@ -11,6 +11,7 @@ import { AssignBatchPanel, assignmentNotice } from '@/components/customerReviews
 import { DeleteReviewsSheet } from '@/components/customerReviews/DeleteReviews'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { fetchAllRows } from '@/lib/supabasePaging'
+import { fetchAvailableUnassignedCount } from '@/lib/customerReviews/queries'
 import type { ApprovalMode } from '@/lib/customerReviews/status'
 import {
   DRAFT_BATCH_COLUMNS,
@@ -54,15 +55,21 @@ export function BatchesScreen() {
   const load = useCallback(async () => {
     if (!profile) return
 
-    const result = await fetchAllRows<TestCard>(
-      (from, to) => supabase
-        .from('customer_review_test_cards')
-        .select(TEST_CARD_PENDING_COLUMNS)
-        .eq('status', 'pending_approval')
-        .is('deleted_at', null)
-        .order('card_ref', { ascending: true })
-        .range(from, to),
-    )
+    // RUN TOGETHER, NOT IN SEQUENCE: the available-count depends on nothing
+    // the pending-drafts read produces, so awaiting them one after the other
+    // was pure added latency before the page could render.
+    const [result, availableCount] = await Promise.all([
+      fetchAllRows<TestCard>(
+        (from, to) => supabase
+          .from('customer_review_test_cards')
+          .select(TEST_CARD_PENDING_COLUMNS)
+          .eq('status', 'pending_approval')
+          .is('deleted_at', null)
+          .order('card_ref', { ascending: true })
+          .range(from, to),
+      ),
+      fetchAvailableUnassignedCount(supabase),
+    ])
     if (!result.ok) {
       setError('The pending drafts could not be loaded. Refresh to try again.')
       setCards([])
@@ -71,17 +78,7 @@ export function BatchesScreen() {
     }
     setError(null)
     setCards(result.rows)
-
-    // HOW MANY REVIEWS A REPLACE WOULD DISPLACE — unassigned only, matching
-    // what customer_review_replace_available() actually does. `head: true`
-    // fetches no rows.
-    const { count } = await supabase
-      .from('customer_review_test_cards')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'available')
-      .is('assigned_to', null)
-      .is('deleted_at', null)
-    setAvailableTotal(count ?? 0)
+    setAvailableTotal(availableCount)
 
     // TWO MORE REQUESTS, NOT ONE PER CARD: the batch ids collected from the
     // rows already in hand, then the people who generated them.
