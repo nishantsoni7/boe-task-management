@@ -72,10 +72,19 @@ export function useUnreadCountState(
   const seed = readPersistedUnreadCount(userId, category)
 
   const { data, isPending, isError } = useQuery<UnreadCountShape>({
-    // Keyed by the SUBJECT as well as the category. Without it, previewing an
-    // employee would overwrite the administrator's own cached badge and leave it
-    // wrong after Exit View Mode.
-    queryKey: [...notificationKeys.count(category), userId ?? null],
+    // Suffixed with the SUBJECT ONLY while actually previewing. Outside View As
+    // this MUST be the bare notificationKeys.count(category) — the exact key
+    // patchUnreadCount/setUnreadCount/reconcile in notificationMutations.ts
+    // read and write on every delete and mark-read. Appending `userId`
+    // unconditionally (it is never null once the actor is ready, viewMode or
+    // not) put every ordinary session's badge under a key its own mutations
+    // never addressed, so a successful delete's count patch silently missed
+    // the real cache entry and the badge sat stale until the next 30s
+    // revalidation. While previewing, the suffix still isolates the employee's
+    // count from the administrator's own cached badge; no mutation ever runs
+    // in that state (useNotificationMutations returns no-ops while readOnly),
+    // so there is nothing there for it to miss.
+    queryKey: viewMode ? [...notificationKeys.count(category), userId] : notificationKeys.count(category),
     // Waits for the id so the seed and the eventual write agree about whose
     // count this is. The request itself is authorised server-side from the
     // session, never from this value.

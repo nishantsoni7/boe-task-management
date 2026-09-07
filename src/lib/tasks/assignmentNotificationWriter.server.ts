@@ -144,13 +144,23 @@ export async function createAssignmentNotification(
   if (!task.assigned_to) return { status: 'skipped_self' }
   if (task.assigned_to === task.created_by) return { status: 'skipped_self' }
 
-  const dup = await store.hasAssignmentNotification(task.id, task.assigned_to)
-  if (dup.readable && dup.exists) return { status: 'skipped_duplicate' }
-
+  // Independent reads, run together: the duplicate check and the activity-log
+  // lookup each need only `task` (already in hand) and neither's answer
+  // depends on the other's. Sequencing them cost this route a full extra
+  // round trip on every task creation, since this operation sits on the
+  // AWAITED critical path of every creation screen. The activity-log lookup
+  // is occasionally wasted now — the rare duplicate-retry case runs it and
+  // then discards it — which is a fair trade for removing a guaranteed
+  // round trip from the overwhelmingly common first-time path.
+  //
   // Looked up BEFORE the write and never after: an id resolved afterwards
   // could only be found by matching a timestamp, which is exactly what
   // 20261016000000 exists to avoid.
-  const activityLogId = await store.findCreationActivityId(task.id)
+  const [dup, activityLogId] = await Promise.all([
+    store.hasAssignmentNotification(task.id, task.assigned_to),
+    store.findCreationActivityId(task.id),
+  ])
+  if (dup.readable && dup.exists) return { status: 'skipped_duplicate' }
 
   const row = buildTaskAssignmentNotification({
     assigneeId: task.assigned_to,

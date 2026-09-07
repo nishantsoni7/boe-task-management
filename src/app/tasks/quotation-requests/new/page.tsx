@@ -132,7 +132,11 @@ export default function NewQuotationRequestPage() {
       return
     }
 
-    const { error: prepErr } = await prepareFiles(attachFiles)
+    // Validate/compress once and reuse the result for the upload below —
+    // running prepareFiles twice would canvas-compress every image a second
+    // time for no reason, the single slowest step of task creation when
+    // attachments are involved (see /tasks/create for the same fix).
+    const { ready: readyAttachments, error: prepErr } = await prepareFiles(attachFiles)
     if (prepErr) { setAttachError(prepErr); setLoading(false); return }
 
     const autoTitle = `Quotation - ${customerName.trim()}`
@@ -165,14 +169,20 @@ export default function NewQuotationRequestPage() {
       return
     }
 
-    await supabase.from('task_activity_log').insert({
-      task_id: task.id, actor_id: session.user.id,
-      action: 'created', note: 'Quotation request submitted',
-    })
-    // Server-side write: a browser may not address a notifications row to
-    // somebody else. The route derives the recipient from tasks.assigned_to,
-    // which this screen has just set to the quotation owner.
-    const notified = await requestAssignmentNotification(task.id)
+    // The activity row and the assignee's notification depend only on
+    // `task.id`, which now exists, and neither depends on the other — running
+    // them together removes one full round-trip from every submission (same
+    // as /tasks/create). Server-side write: a browser may not address a
+    // notifications row to somebody else. The route derives the recipient from
+    // tasks.assigned_to, which this screen has just set to the quotation owner.
+    const [{ error: logErr }, notified] = await Promise.all([
+      supabase.from('task_activity_log').insert({
+        task_id: task.id, actor_id: session.user.id,
+        action: 'created', note: 'Quotation request submitted',
+      }),
+      requestAssignmentNotification(task.id),
+    ])
+    if (logErr) console.error('[quotation request] activity log insert failed:', logErr.message)
     // The request is KEPT — it was submitted successfully. What changes is that
     // the screen no longer claims the owner was told when they were not.
     // Outcome B. Deliberately NOT setSubmitError: the request was submitted,
@@ -183,9 +193,9 @@ export default function NewQuotationRequestPage() {
       setNotifyFailedFor(task.id)
     }
 
-    // Upload attachments
-    const { ready } = await prepareFiles(attachFiles)
-    for (const file of ready) {
+    // Upload attachments — `readyAttachments` is the already-compressed set
+    // from validation above, not a second compression pass.
+    for (const file of readyAttachments) {
       const ext  = getExt(file.name)
       const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
       const { error: upErr } = await supabase.storage

@@ -191,6 +191,26 @@ describe('unread count', () => {
   test('it cancels in-flight reads before widening, like the mutations do', () => {
     assert.ok(HOOK.includes('await qc.cancelQueries({ queryKey: notificationKeys.list(category), exact: true })'))
   })
+
+  test('REGRESSION — outside View As the list key has no subject suffix at all', () => {
+    // The reported production bug: the main query's key used to be
+    // `[...notificationKeys.list(category), previewSubjectId]` UNCONDITIONALLY,
+    // where `previewSubjectId` is `null` outside View As. So an ordinary
+    // session's list lived at ['notifications', category, null] while every
+    // optimistic delete/mark-read, its rollback and its reconcile() in
+    // notificationMutations.ts read and wrote the bare ['notifications',
+    // category] — the exact key "Load older" above already uses. A delete's
+    // onMutate removal and onSuccess re-removal both silently missed the real
+    // list, so the untouched row came back the instant `pendingDeletes`
+    // released it: "disappears, then reappears about a second later." A hard
+    // refresh looked correct only because it re-fetched from the server, which
+    // never had the row.
+    assert.equal(/queryKey:\s*\[\.\.\.notificationKeys\.list\(category\),\s*previewSubjectId\]/.test(HOOK), false,
+      'the list key must not unconditionally append previewSubjectId')
+    assert.ok(HOOK.includes(
+      'queryKey: viewMode ? [...notificationKeys.list(category), previewSubjectId] : notificationKeys.list(category)'),
+      'the list key must branch on whether an administrator is actually previewing')
+  })
 })
 
 // ── 3. Mutations still invalidate narrowly ──────────────────────────────────
