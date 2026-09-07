@@ -327,8 +327,8 @@ export function WhatsAppTestPanel({
           before anything opens at all.
         */}
         <p style={{ fontSize: '11px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
-          If this opens a WhatsApp web page instead of the app, look for "Open in the WhatsApp
-          app" or "Continue to chat" there — it is the same message, just one extra tap.
+          If this opens a WhatsApp web page instead of the app, look for “Open in the WhatsApp
+          app” or “Continue to chat” there — it is the same message, just one extra tap.
         </p>
         <WhatsAppOpenedNote />
       </div>
