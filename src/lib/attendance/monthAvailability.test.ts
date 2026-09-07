@@ -20,6 +20,7 @@ import {
   istToday,
   isFutureMonth,
   attendanceCoverageThrough,
+  effectiveLatestImportedDate,
   withinCoverage,
   selectableMonths,
   selectableMonthsInYear,
@@ -222,5 +223,35 @@ describe('the not-uploaded empty state names the month', () => {
     const msg = coverageNoticeMessage('05 Aug, Wed')
     assert.match(msg, /05 Aug, Wed/)
     assert.match(msg, /none of them count as an absence/i)
+  })
+})
+
+describe('effectiveLatestImportedDate — one employee live, the rest still CSV-only', () => {
+  test('neither source has anything: no coverage', () => {
+    assert.equal(effectiveLatestImportedDate(null, null), null)
+  })
+
+  test('CSV only, no live punch for this employee: the CSV date', () => {
+    assert.equal(effectiveLatestImportedDate('2026-08-05', null), '2026-08-05')
+  })
+
+  test('a live punch with no CSV import yet: the live date', () => {
+    assert.equal(effectiveLatestImportedDate(null, '2026-08-08'), '2026-08-08')
+  })
+
+  test('the live punch is AHEAD of the CSV import: the live date wins', () => {
+    // This is the whole point of the fix — one mapped employee punching today
+    // must extend THEIR OWN coverage without the company-wide CSV number
+    // moving, which is exactly what keeps every other employee's unprocessed
+    // today from reading as "covered".
+    assert.equal(effectiveLatestImportedDate('2026-08-05', '2026-08-08'), '2026-08-08')
+  })
+
+  test('the CSV import is AHEAD of this employee\'s live punch: the CSV date wins', () => {
+    assert.equal(effectiveLatestImportedDate('2026-08-08', '2026-08-05'), '2026-08-08')
+  })
+
+  test('the two sources agree: that date, not a duplicate or a range', () => {
+    assert.equal(effectiveLatestImportedDate('2026-08-05', '2026-08-05'), '2026-08-05')
   })
 })

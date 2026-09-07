@@ -4,6 +4,7 @@ import { monthRange, workingDatesInMonth } from '@/lib/attendance/monthCalendar'
 import {
   isFutureMonth,
   attendanceCoverageThrough,
+  effectiveLatestImportedDate,
   withinCoverage,
 } from '@/lib/attendance/monthAvailability'
 
@@ -96,11 +97,19 @@ export async function GET(req: NextRequest) {
   // for a day with a punch (see api/attendance/import), so there is no
   // per-date "processed" marker to read — the furthest day anyone in the
   // company was scanned on is how far the file reached.
+  //
+  // EXCLUDING Minop-sourced rows (attendance_records.source = 'minop') from
+  // this company-wide read. A live device punch is per-employee, not a batch
+  // upload — one mapped employee punching in today must not make every OTHER,
+  // still-CSV-only employee's unprocessed today read as "covered". The company
+  // signal therefore stays exactly what it always was: how far the CSV/manual
+  // side has got. See src/lib/minop/runProcessing.ts for the writer.
   const { data: latestRows, error: importErr } = await svc
     .from('attendance_records')
     .select('attendance_date')
     .gte('attendance_date', from)
     .lte('attendance_date', to)
+    .is('source', null)
     .order('attendance_date', { ascending: false })
     .limit(1)
 
@@ -108,7 +117,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: importErr.message }, { status: 500 })
   }
 
-  const latestImported  = latestRows?.[0]?.attendance_date ?? null
+  // This EMPLOYEE'S own live coverage, separately. A mapped employee's Minop
+  // punches are real processed data for THEM specifically, so their own
+  // coverage should reflect it even on a day the CSV side has not reached yet.
+  const { data: latestMinopRows, error: minopErr } = await svc
+    .from('attendance_records')
+    .select('attendance_date')
+    .eq('user_id', employeeId)
+    .eq('source', 'minop')
+    .gte('attendance_date', from)
+    .lte('attendance_date', to)
+    .order('attendance_date', { ascending: false })
+    .limit(1)
+
+  if (minopErr) {
+    return NextResponse.json({ error: minopErr.message }, { status: 500 })
+  }
+
+  const companyLatestCsv  = latestRows?.[0]?.attendance_date ?? null
+  const employeeLatestLive = latestMinopRows?.[0]?.attendance_date ?? null
+  const latestImported = effectiveLatestImportedDate(companyLatestCsv, employeeLatestLive)
   const monthImported   = latestImported !== null
   const coverageThrough = attendanceCoverageThrough(year, month, latestImported)
 

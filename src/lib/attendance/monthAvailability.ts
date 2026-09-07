@@ -112,6 +112,31 @@ export function attendanceCoverageThrough(
 }
 
 /**
+ * The `latestImportedDate` input to attendanceCoverageThrough(), when a live
+ * Minop punch feed exists alongside the CSV/manual import this file was
+ * written for.
+ *
+ * `companyLatestCsv` must stay scoped to CSV/manual rows only (the caller
+ * excludes attendance_records.source = 'minop') — that is what keeps ONE
+ * employee's live punch from making every OTHER, still-CSV-only employee's
+ * unprocessed today read as "covered". `employeeLatestLive` is that one
+ * employee's own latest Minop-sourced date, which is real processed data for
+ * THEM specifically even on a day the CSV side has not reached.
+ *
+ * The answer is simply the later of the two: whichever source got further for
+ * this employee is the one whose coverage they should see.
+ */
+export function effectiveLatestImportedDate(
+  companyLatestCsv: string | null,
+  employeeLatestLive: string | null,
+): string | null {
+  return [companyLatestCsv, employeeLatestLive]
+    .filter((d): d is string => d !== null)
+    .sort()
+    .at(-1) ?? null
+}
+
+/**
  * The dates of a month that may be classified, given that cut-off.
  *
  * A date past the cut-off is DROPPED rather than returned with some "unknown"

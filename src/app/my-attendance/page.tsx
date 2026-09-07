@@ -21,6 +21,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { istClockOf } from '@/lib/istDate'
 import { colors } from '@/lib/tokens'
+import { RefreshCw } from 'lucide-react'
 import { RaiseIssueModal } from '@/components/objections/RaiseIssueModal'
 import { IssueHistoryModal } from '@/components/objections/IssueHistoryModal'
 import {
@@ -241,6 +242,19 @@ export default function MyAttendancePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Same-day verification (Phase E): a Minop punch should be visible without
+  // an employee having to think to press Refresh. Polling only the CURRENT
+  // IST month, only while this page is open, at a modest interval — near
+  // enough to real-time for "did my punch register" without a websocket this
+  // product does not otherwise need. Older months never poll: nothing about
+  // a finished month changes on its own.
+  useEffect(() => {
+    const current = istCurrentYearMonth()
+    if (year !== current.year || month !== current.month) return
+    const id = setInterval(() => { void load(year, month) }, 45_000)
+    return () => clearInterval(id)
+  }, [year, month, load])
+
   /**
    * Changing the year can strand the selection in a future month — picking
    * this year while December is chosen, say. Clamp to the latest month that
@@ -301,6 +315,15 @@ export default function MyAttendancePage() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          <button
+            type="button"
+            onClick={() => void load(year, month)}
+            disabled={busy}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '8px 10px', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <RefreshCw size={13} className={busy ? 'boe-spin' : undefined} /> Refresh
+          </button>
         </div>
       }
     >
