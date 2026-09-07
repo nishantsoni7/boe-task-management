@@ -23,7 +23,7 @@ import type { EffectivePermission } from './types'
 
 const ORDERS_ACTIONS = [
   'view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order',
-  'align_production',
+  'approve_advance_exception', 'align_production',
 ]
 
 /** The two the module no longer registers. Never granted, never derived. */
@@ -69,6 +69,12 @@ describe('each capability maps to exactly one action', () => {
     ['create', 'canCreateOrder'],
     ['edit', 'canEditOrder'],
     ['approve_order', 'canApproveOrderSubmission'],
+    // Deciding an advance exception (20260913000000). Its own action, its own
+    // capability — independent of approve_order in both directions, which the
+    // loop below proves the same way it proves every other pair: granting
+    // this one must never leak into canApproveOrderSubmission, or into
+    // canAlignProduction, or vice versa.
+    ['approve_advance_exception', 'canApproveAdvanceException'],
     // The Head of Manufacturing's decision (20261119000000). Its own action,
     // its own capability, and neither approve_order nor manage implies it.
     ['align_production', 'canAlignProduction'],
@@ -116,6 +122,42 @@ describe('the retired Order Request authorities are gone, not merely unused', ()
     // anybody who reviews PIs today.
     const caps = deriveOrdersCapabilities('member', perms(['view', 'approve_order']))
     assert.equal(caps.canApproveOrderSubmission, true)
+  })
+})
+
+describe('revocation removes exactly what was granted, and nothing else', () => {
+  // getEffectivePermissionsForUser excludes any employee_permission_override
+  // row with revoked_at set (resolve_permission, 20260660, line 233), so a
+  // revoked grant and a grant that never existed produce the same
+  // EffectivePermission[] here — there is no third state for this function to
+  // get wrong. Naming the "before" and "after" explicitly, one action at a
+  // time, is the same proof the per-action independence tests above already
+  // give, made legible as revocation rather than inferred from it.
+  const PROTECTED_ORDERS = [
+    ['approve_order', 'canApproveOrderSubmission'],
+    ['approve_advance_exception', 'canApproveAdvanceException'],
+    ['align_production', 'canAlignProduction'],
+  ] as const
+
+  for (const [action, capability] of PROTECTED_ORDERS) {
+    test(`revoking ${action} takes ${capability} away and leaves the rest of the grant untouched`, () => {
+      const granted = deriveOrdersCapabilities('member', perms(['view', 'create', action]))
+      assert.equal(granted[capability], true, 'the grant must be effective before revocation')
+      assert.equal(granted.canCreateOrder, true, 'an unrelated grant made alongside it')
+
+      const revoked = deriveOrdersCapabilities('member', perms(['view', 'create']))
+      assert.equal(revoked[capability], false, 'revocation must remove exactly this authority')
+      assert.equal(revoked.canCreateOrder, true, 'and must not touch an unrelated grant the employee still holds')
+    })
+  }
+
+  test('an admin needs no grant, so revoking a non-admin employee override cannot touch admin authority', () => {
+    // Revocation writes to employee_permission_overrides, which the admin
+    // branch of actor_has_module_permission never consults.
+    const caps = deriveOrdersCapabilities('admin', [])
+    assert.equal(caps.canApproveOrderSubmission, true)
+    assert.equal(caps.canApproveAdvanceException, true)
+    assert.equal(caps.canAlignProduction, true)
   })
 })
 

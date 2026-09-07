@@ -33,7 +33,7 @@ export interface LiveDbTestEnv {
 }
 
 interface ResolveOptions {
-  env?: NodeJS.ProcessEnv
+  env?: Record<string, string | undefined>
   shellOverride?: string
 }
 

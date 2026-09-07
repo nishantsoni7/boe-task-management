@@ -316,7 +316,7 @@ registerModule({
     // uploads with no official order number — and to approve it into a numbered
     // Order. Registered by 20260908000000. This is now the ONLY approval
     // authority in the module's pre-Order workflow.
-    { actionKey: 'approve_order', displayName: 'Approve Order Submissions' },
+    { actionKey: 'approve_order', displayName: 'Approve PI / Confirm Order' },
     // Authority to decide an ADVANCE EXCEPTION on a submitted PI — whether BOE
     // will start the order on less than its standard 40% advance, zero
     // included. Registered by 20260913000000.
@@ -328,14 +328,14 @@ registerModule({
     // everybody who can already send a PI back. The two are independent in both
     // directions: holding this grants no PI review, no order visibility, no
     // Finance sight and no payment access.
-    { actionKey: 'approve_advance_exception', displayName: 'Approve Advance Exceptions' },
+    { actionKey: 'approve_advance_exception', displayName: 'Approve Advance Exception' },
     // Authority to ALIGN a Confirmed Order for production — to say the factory
     // can make it, in the time and at the cost the deal assumes. Registered by
     // 20261119000000. Every Order is born Not Aligned; this is the Head of
     // Manufacturing's decision and nobody else's, which is why it is neither
     // approve_order (commercial approval) nor manage. Confers no order
     // visibility of its own.
-    { actionKey: 'align_production', displayName: 'Align Production' },
+    { actionKey: 'align_production', displayName: 'Align Order for Production' },
     // Company-wide sight of every order. Until 20260903000000, plain 'view'
     // carried this through the blanket SELECT policies added by 20260685000000
     // and 20260686000000 — module entry and seeing the whole company were the

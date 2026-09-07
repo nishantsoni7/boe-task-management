@@ -427,7 +427,8 @@ describe('production alignment', () => {
     assert.ok(code.includes("values ('align_production', 'Align Production', false)"))
     assert.ok(code.includes("where pm.module_key = 'orders'"))
     const modules = readFileSync('src/lib/permissions/modules.ts', 'utf8')
-    assert.ok(modules.includes("{ actionKey: 'align_production', displayName: 'Align Production' }"))
+    assert.ok(modules.includes("{ actionKey: 'align_production', displayName: 'Align Order for Production' }"),
+      'display name renamed by 20261122000000_order_approval_capability_labels.sql')
     const levels = readFileSync('src/lib/permissions/levels.ts', 'utf8')
     assert.ok(levels.includes("'align_production',"))
     assert.ok(levels.includes("align_production: 'view'"))
