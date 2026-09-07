@@ -139,7 +139,7 @@ export function EmployeeProgress({ supabase }: { supabase: SupabaseClient }) {
         margin: 0, padding: '18px', borderRadius: '8px', fontSize: '12px', lineHeight: 1.6,
         border: `1px dashed ${colors.border}`, color: colors.muted,
       }}>
-        No batch has been assigned yet. Approve a batch of twelve and assign it to an employee
+        No batch has been assigned yet. Approve a batch and assign it to an employee
         from the Pending approval tab.
       </p>
     )

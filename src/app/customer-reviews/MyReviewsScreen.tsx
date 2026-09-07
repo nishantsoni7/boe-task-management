@@ -64,7 +64,36 @@ export function MyReviewsScreen() {
   const [reading, setReading] = useState<TestCard | null>(null)
   const [bookingId, setBookingId] = useState<string | null>(null)
   const [bookError, setBookError] = useState<string | null>(null)
+  const [recentlyVerified, setRecentlyVerified] = useState<TestCard[]>([])
   const booking = useRef(false)
+
+  // A VERIFIED REVIEW IS ABSENT FROM THE LIST ABOVE, ON PURPOSE, BUT A CANDIDATE
+  // WHO WAS NEVER TOLD IT WAS VERIFIED HAS NO WAY TO KNOW THEIR SUBMISSION
+  // WORKED. Verification is someone ELSE's action — a redirect-with-query-param
+  // (the pattern `verifiedNotice()` below reads) only ever reaches the person
+  // whose OWN click caused the redirect, which is the verifier, never the
+  // candidate. So this is a separate, time-windowed read: the row itself stays
+  // RLS-visible to `booked_by` after verification (the SELECT policy's second
+  // branch has no status restriction), so nothing here needs a policy change.
+  //
+  // NO EXACT REWARD AMOUNT IS SHOWN. VerifyPanel deliberately never lets a
+  // screen guess a credit figure — the ledger is the one place that number is
+  // authoritative — so this says WHICH reviews were verified and points to My
+  // Credits for the amount, rather than duplicating a number from a different
+  // module's table.
+  const loadRecentlyVerified = useCallback(async () => {
+    if (!profile) return
+    const since = new Date(Date.now() - 1000 * 60 * 60 * 48).toISOString()
+    const { data } = await supabase
+      .from('customer_review_test_cards')
+      .select(TEST_CARD_COLUMNS)
+      .eq('booked_by', profile.id)
+      .eq('status', 'verified')
+      .is('deleted_at', null)
+      .gte('verified_at', since)
+      .order('verified_at', { ascending: false })
+    setRecentlyVerified((data ?? []) as TestCard[])
+  }, [supabase, profile])
 
   const load = useCallback(async () => {
     if (!profile) return
@@ -94,6 +123,11 @@ export function MyReviewsScreen() {
     const startFetch = () => { void load() }
     startFetch()
   }, [load])
+
+  useEffect(() => {
+    const startFetch = () => { void loadRecentlyVerified() }
+    startFetch()
+  }, [loadRecentlyVerified])
 
   const book = useCallback(async (cardId: string) => {
     // State is too slow to stop a double click. The ref stops the second
@@ -170,7 +204,12 @@ export function MyReviewsScreen() {
 
   if (authLoading) return <LoadingScreen />
 
-  const verified = verifiedNotice(searchParams.get('verified'))
+  // The query-param notice is exact (it carries the amount that transaction
+  // actually posted) but only ever reaches a verifier's own redirect, never a
+  // candidate's. The recently-verified notice reaches a candidate but does not
+  // guess an amount. Either may apply; the query-param one wins when present
+  // because it is the more specific of the two.
+  const verified = verifiedNotice(searchParams.get('verified')) ?? recentlyVerifiedNotice(recentlyVerified)
 
   return (
     <CustomerReviewsLayout
@@ -344,4 +383,19 @@ export function verifiedNotice(flag: string | null): string | null {
   return credits > 0
     ? `Review verified · ${formatCredits(credits, { signed: true })} awarded.`
     : 'Review verified.'
+}
+
+/**
+ * The one line shown when this candidate's own submissions were verified in
+ * the last 48 hours — the only notice a candidate (as opposed to a verifier)
+ * can actually receive, since nothing redirects a candidate's browser at the
+ * moment someone else verifies their work. No amount is named here: My
+ * Credits is the one place a reward figure is authoritative, and this line
+ * only says what happened, not what it paid.
+ */
+export function recentlyVerifiedNotice(cards: readonly Pick<TestCard, 'card_ref'>[]): string | null {
+  if (cards.length === 0) return null
+  return cards.length === 1
+    ? `${cards[0].card_ref} was verified. See My Credits for the reward.`
+    : `${cards.length} of your reviews were verified. See My Credits for the rewards.`
 }

@@ -691,6 +691,25 @@ describe('the word range is a range', () => {
       assert.equal(/max=\{\d/.test(field), false, `${id} hard-codes a maximum`)
     }
   })
+
+  test('EXACTLY MAX_LOCATIONS CITY INPUTS ARE RENDERED, ALWAYS VISIBLE', () => {
+    // The form generates the city inputs from the constant rather than typing
+    // four literal boxes, so a future change to MAX_LOCATIONS cannot leave the
+    // form under- or over-supplied without this failing.
+    const panel = readFileSync(
+      join(process.cwd(), 'src/components/customerReviews/GenerateDrafts.tsx'), 'utf8',
+    ).replace(/\r\n/g, '\n')
+    assert.ok(panel.includes('Array.from({ length: MAX_LOCATIONS }'),
+      'the city inputs are not generated from MAX_LOCATIONS')
+    assert.ok(panel.includes('aria-label={`City ${i + 1}`}'))
+    // And they sit in the always-visible LOCATION group, not inside the
+    // collapsible "More generation options" section — the whole reason this
+    // form was reorganised was so cities are never one click away from view.
+    const locationAt = panel.indexOf('Cities to mention (optional)')
+    const moreOptionsAt = panel.indexOf('More generation options')
+    assert.ok(locationAt >= 0 && moreOptionsAt >= 0 && locationAt < moreOptionsAt,
+      'the city inputs no longer sit before the collapsible section')
+  })
 })
 
 // ══ 6b. THE LENGTH THAT IS ACTUALLY ENFORCED ════════════════════════════════
