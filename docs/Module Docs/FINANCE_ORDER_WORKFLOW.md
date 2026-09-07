@@ -1605,6 +1605,11 @@ which refusing costs nothing, and the first at which the document and the Order
 must agree. So a Confirmed Order still cannot exist unless the PI it was
 approved from prints its number.
 
+> **Superseded by §16.** This requirement was itself removed — from the Order
+> door, not merely moved again — once real production usage showed the PI
+> Excel does not need to carry the Order's operational identity at all. See
+> §16 for the current rule.
+
 Untouched: the allocator, the cycle rule, the immutability guard, the
 reservation audit row, `order_submission_revised_pi_refusal()` itself and all
 three of its refusals, every payment gate, every PI review gate, and the
@@ -1626,3 +1631,140 @@ Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
 `a PI reaches review without carrying its reserved Order number` suite — which
 asserts both halves, that the review door no longer asks the rule and that the
 Order door still does.
+
+---
+
+## 16. The PI Excel no longer needs the Order number, and BOE item codes (`20261124000000`)
+
+### 16.1 The business decision
+
+A submitted PI may already have a reserved Order number, but until this
+migration, `assign_order_display_number()` (§12, kept in force by §15) still
+refused to create the Confirmed Order unless Sales had put that reserved
+number into the PI Excel and re-uploaded it through Change PI. In real usage
+this meant editing and re-uploading a commercial document purely to print an
+internal numbering artifact.
+
+**The new rule:** the source PI is the commercial document; it does not need
+to carry the Confirmed Order's operational number. Once the Order is
+confirmed, BOE assigns the operational Order number and permanent per-item
+codes *inside the application*.
+
+```
+Order 524
+Item BE001
+Operational Product Code 524-BE001
+```
+
+### 16.2 What was removed, and what was not
+
+`assign_order_display_number()` is re-emitted without its call to
+`order_submission_revised_pi_refusal()` and the three refusals that call
+produced (`REVISED_PI_MISSING`, `REVISED_PI_NO_NUMBER`, `NUMBER_MISMATCH`).
+Everything else in that trigger is unchanged: a reservation must still exist
+(`ORDER_SUBMISSION_RESERVATION_REQUIRED`), a used reservation still cannot be
+taken twice (`ORDER_SUBMISSION_CONVERTED`), a number already in use still
+cannot be taken (`ORDER_NUMBER_RESERVATION_IN_USE`), and a PI with no
+reservation at all still falls back to the shared cycle.
+
+`order_submission_revised_pi_refusal()` itself is **not edited** — it is
+simply no longer called from either door (§15 already removed the submit-time
+call; this migration removes the Order-creation call). Its three refusals
+survive verbatim, in case a future need for a strict re-upload discipline
+returns.
+
+Untouched, as always: PI approval permission, payment verification, the 40%
+gate, the advance-exception path, their independence from each other,
+exactly-once Order creation, Order-number uniqueness/permanence/non-reuse,
+audit history, PI version history, server-side permissions, Production
+Alignment, the amendment guards.
+
+### 16.3 The operational Order number
+
+`orders.display_number` is **unchanged in storage** — still four-digit,
+zero-padded text (`'0524'`), still the value every allocator, index and
+CHECK constraint has always used. Rewriting the stored format was rejected:
+dozens of functions across ten weeks of migrations format, compare or restate
+`display_number`, and no Confirmed Order existed in production at the time
+this shipped, but a storage migration is still a strictly bigger, riskier
+change than the business requirement — "users should see and refer to Order
+524, not 0524" — actually calls for.
+
+Instead, a new pure function reads it out for display:
+
+```sql
+order_operational_number('0524') = '524'
+order_operational_number(null)   = null
+```
+
+Every user-facing surface — the Order detail title and header, the Orders
+list, the generated Confirmed Order PDF and workbook — shows this operational
+form. Internally, uniqueness, comparisons and the number cycle all still
+operate on the stored, padded value; nothing about the numbering architecture
+moved.
+
+### 16.4 BOE item codes and the Order Product Code
+
+A new table, `public.order_product_codes`, gives every product line of a
+Confirmed Order a permanent code the first time `assign_order_product_codes()`
+runs for that Order — at Confirmed Order creation, and again after any
+post-approval PI revision, for whichever lines do not have one yet.
+
+```
+524-BE001   524-BE002   524-BE003
+```
+
+**Why the code is anchored to the item row's own id, not to the workbook's
+column-A code or its column-J sequence.** `masterSheetParser.ts` documents
+both of those as *template row-position artifacts*: a workbook slot can carry
+a code while holding no product at all, because the template pre-fills every
+row whether it is used or not. Matching a revision's new rows back to old
+permanent codes by either field would risk silently attaching a previously
+issued code to an unrelated product. The item row's own `id` has no such
+problem for a **descriptive-only edit** — `update_order_submission_item_details`
+(`20261002000000`) updates `item_sequence`, `source_product_code`,
+`product_name`, `dimensions`, `material` and `customization` in place, and
+never touches the row's id, its position, or money — so reordering the table
+and correcting a description both leave every code exactly where it is.
+
+**The one honestly-reported limitation.** Changing quantity or price on an
+already-Confirmed Order has no such path: that RPC refuses money edits
+outright, and the only route is a full workbook re-parse
+(`replace_order_submission_parse`, reached through Change PI or
+`approve_order_pi_revision`), which deletes and reinserts every
+`order_submission_items` row with fresh ids. For that path this migration does
+**not** attempt to match new rows to old ones — doing so would need exactly
+the row-position fields shown above to be unreliable. Instead: a code whose
+row is gone is never deleted and never reassigned (`submission_item_id` is set
+to `null` by the foreign key, and the row survives as a permanently retired,
+orphaned entry); the reparsed rows receive fresh, never-before-issued
+sequence numbers. A code is never reused, and every one ever issued remains on
+the Order's permanent record — but a money-changing revision does not keep the
+old item's code visually attached to the reparsed row. This is a scope
+decision, not an oversight: the source document has no field that reliably
+answers "is this the same product" across a full re-parse.
+
+The source PI's own code is preserved for traceability, separately from the
+identity a code is matched on: `order_product_codes.source_product_code` and
+`.source_item_sequence` are a snapshot taken at the moment each code was
+issued.
+
+### 16.5 Verifying it
+
+Text tests: `src/lib/orders/orderReservedPiGateAndBoeItemCodes.test.ts` (the
+migration's own shape — the removed call, the new table's identity and RLS,
+both approval functions calling the assigner), `src/lib/orders/orderProductCodes.test.ts`
+(the TS formatting mirror), and the updated assertions in
+`src/lib/finance/splitPaymentAndReservationMigration.test.ts` and
+`src/lib/permissions/migrationContract.test.ts` (neither door asks the
+revised-PI rule any more).
+
+Functional verification against an isolated, disposable Postgres instance
+(schema replayed through `20261124000000`, not production): a PI reserved a
+number, was never re-uploaded, and its Order was created without error; the
+Order's operational number stripped its leading zero; a second Order could
+not take the same reservation; two product lines received `BE001`/`BE002` in
+document order; re-running the assigner was a no-op; a descriptive-only edit
+left an existing code untouched; a new line received `BE003`; reordering did
+not renumber; and a retired code was never reused by an unrelated new line at
+the same source row.

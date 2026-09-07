@@ -244,6 +244,11 @@ describe('no Order screen waits more than it must', () => {
     // propose_order_pi_revision, reject_order_pi_revision and
     // set_order_production_alignment. And two storage calls on a click: the
     // signer for any version's workbook, and the upload of a revised one.
+    //
+    // DETAIL 27 -> 28 (20261124000000): order_product_codes, one more READ
+    // inside the handoff's existing Promise.all, so the Order's permanent BOE
+    // item codes arrive alongside its PI items rather than in a fourth wait.
+    // The startup wait count is unchanged.
     const expected: Record<string, number> = {
       // DASHBOARD went 9 -> 11 when the Order Request card and its count were
       // replaced by the workflow the dashboard now describes: PI Drafts, the
@@ -251,7 +256,7 @@ describe('no Order screen waits more than it must', () => {
       // them are issued INSIDE the page's existing Promise.all, so the count
       // grew and the number of times the page waits did not — which is the whole
       // property this block exists to protect.
-      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 27,
+      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 28,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

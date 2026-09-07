@@ -147,6 +147,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // WhatsApp-opened writer. It creates no table and touches no task, so
     // it reaches nothing asserted here.
     '20261123000000_review_native_share_records_the_open.sql',
+    // The PI Excel no longer needs to carry the reserved Order number, and
+    // BOE item codes: re-emits assign_order_display_number() and the two PI
+    // approval functions, and adds one new table of its own,
+    // public.order_product_codes. It touches no task table or function.
+    '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

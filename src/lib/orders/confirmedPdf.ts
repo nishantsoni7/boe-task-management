@@ -194,6 +194,12 @@ export type ConfirmedPdfInput = {
     /** Money Finance has not decided. Never folded into the figure above. */
     awaitingCount: number
   } | null
+  /**
+   * The permanent Order Product Code (e.g. "524-BE001") for each item id, once
+   * assign_order_product_codes() has run. Missing or absent for an item falls
+   * back to its raw item_sequence — never a hole in the printed table.
+   */
+  productCodes?: ReadonlyMap<string, string>
 }
 
 const clean = (v: string | null | undefined): string => {
@@ -248,7 +254,7 @@ export function buildConfirmedPdfModel(input: ConfirmedPdfInput): ConfirmedPdfMo
     billTo: party(clean(sub.bill_to_name), clean(sub.billing_address), clean(sub.bill_to_phone)),
     shipTo: party(clean(sub.ship_to_name), clean(sub.shipping_address), clean(sub.ship_to_phone)),
     meta,
-    products: products.map(p => productRow(p, input.imageRows)),
+    products: products.map(p => productRow(p, input.imageRows, input.productCodes)),
     commercial: rows.map(commercialRow),
     payment: input.payment
       ? [
@@ -278,10 +284,14 @@ function party(name: string, address: string, phone: string): PdfField[] {
   return out
 }
 
-function productRow(p: PersistedProduct, imageRows?: ReadonlySet<number>): PdfProductRow {
+function productRow(
+  p: PersistedProduct,
+  imageRows?: ReadonlySet<number>,
+  productCodes?: ReadonlyMap<string, string>,
+): PdfProductRow {
   return {
     row: p.row,
-    code: toPdfText(orDash(p.itemSequence)),
+    code: toPdfText(orDash(productCodes?.get(p.id) ?? p.itemSequence)),
     name: toPdfText(orDash(p.productName)),
     quantity: p.quantity === null ? '—' : String(p.quantity),
     dimensions: toPdfText(orDash(p.dimensions)),

@@ -434,7 +434,7 @@ export function OrderPiProducts({
                 />
                 <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
                   <div style={{ fontSize: '10px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
-                    {orDash(p.itemSequence)}
+                    {orDash(p.orderProductCode ?? p.itemSequence)}
                   </div>
                   <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                     {orDash(p.productName)}
@@ -478,7 +478,7 @@ export function OrderPiProducts({
               {products.map(p => (
                 <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
                   <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
-                    {orDash(p.itemSequence)}
+                    {orDash(p.orderProductCode ?? p.itemSequence)}
                   </td>
                   <td style={{ padding: '10px 14px' }}>
                     <PiProductThumbnail {...representativeThumbnail(p.row)} />

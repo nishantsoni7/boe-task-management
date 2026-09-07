@@ -374,6 +374,12 @@ describe('34/35. no regression into suppressed territory', () => {
       // WhatsApp-opened writer. It creates no table and touches no
       // notification, so it reaches nothing asserted here.
       '20261123000000_review_native_share_records_the_open.sql',
+      // The PI Excel no longer needs to carry the reserved Order number, and
+      // BOE item codes: re-emits assign_order_display_number() and the two PI
+      // approval functions, and adds one new table of its own,
+      // public.order_product_codes. It touches no notification table or
+      // function, so it reaches nothing asserted here.
+      '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
