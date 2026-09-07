@@ -778,6 +778,14 @@ export type PersistedProduct = {
   customization: string | null
   costPerPiece: number | null
   lineTotal: number | null
+  /**
+   * The permanent Order Product Code (e.g. "524-BE001"), once a Confirmed
+   * Order exists — null on a PI Draft, which has none yet. Not populated by
+   * persistedProducts() itself: it comes from public.order_product_codes,
+   * which persistedProducts() has no submission_id to query. A caller that
+   * has both attaches it afterwards (see orderProductCodesByItemId).
+   */
+  orderProductCode?: string | null
 }
 
 /**

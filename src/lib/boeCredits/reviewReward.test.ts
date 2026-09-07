@@ -127,6 +127,11 @@ describe('the file, and where it sits', () => {
       // whatsapp_opened(). It writes the same two columns that function
       // writes and reaches nothing this file asserts about the reward.
       '20261123000000_review_native_share_records_the_open.sql',
+      // The PI Excel no longer needs to carry the reserved Order number, and
+      // BOE item codes: re-emits assign_order_display_number() and the two PI
+      // approval functions, and adds one new table of its own,
+      // public.order_product_codes. Touches no BOE Credits table or function.
+      '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     ])
   })
 

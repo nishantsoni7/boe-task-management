@@ -9,6 +9,7 @@ import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { formatOrderOperationalNumber } from '@/lib/orders/orderProductCodes'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -590,7 +591,7 @@ export default function AllOrdersPage() {
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
                     >
                       <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                        {o.display_number}
+                        {formatOrderOperationalNumber(o.display_number) ?? o.display_number}
                       </td>
                       <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.client_name}

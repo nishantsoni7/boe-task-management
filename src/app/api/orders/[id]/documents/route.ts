@@ -26,6 +26,11 @@ import { buildConfirmedPdfModel } from '@/lib/orders/confirmedPdf'
 import { renderConfirmedPdf } from '@/lib/orders/confirmedPdfRender'
 import { ORDER_FILES_BUCKET, PI_DRAFT_ITEM_COLUMNS, type PersistedItem } from '@/lib/orders/draftsView'
 import { ORDER_PI_HANDOFF_COLUMNS, type OrderPiRow } from '@/lib/orders/orderPiHandoff'
+import {
+  formatOrderOperationalNumber,
+  orderProductCodesByItemId,
+  type OrderProductCodeRecord,
+} from '@/lib/orders/orderProductCodes'
 
 // GENERATING A CONFIRMED ORDER'S DOCUMENTS.
 //
@@ -338,10 +343,13 @@ async function generate(input: {
 
   if (!order?.source_order_submission_id) return { ok: false, code: 'NO_SOURCE_PI' }
   const submissionId = order.source_order_submission_id
-  const orderNumber = String(order.display_number ?? '').trim()
+  // The stored display_number keeps its four-digit, zero-padded shape; the
+  // documents BOE hands to a client show the operational number (20261124000000).
+  const orderNumber = formatOrderOperationalNumber(String(order.display_number ?? '').trim())
+    ?? String(order.display_number ?? '').trim()
   if (orderNumber === '') return { ok: false, code: 'NO_SOURCE_PI' }
 
-  const [{ data: piRow }, { data: workbookRow }, { data: itemRows }, { data: imageRows }] =
+  const [{ data: piRow }, { data: workbookRow }, { data: itemRows }, { data: imageRows }, { data: codeRows }] =
     await Promise.all([
       service.from('order_submissions').select(ORDER_PI_HANDOFF_COLUMNS).eq('id', submissionId).maybeSingle(),
       service.from('order_submissions').select(WORKBOOK_COLUMNS).eq('id', submissionId).maybeSingle(),
@@ -349,7 +357,14 @@ async function generate(input: {
         .eq('submission_id', submissionId).order('sort_order', { ascending: true }),
       service.from('order_submission_item_images').select('item_id, role, position, storage_path')
         .eq('submission_id', submissionId).order('position', { ascending: true }),
+      service.from('order_product_codes')
+        .select('submission_item_id, boe_sequence, source_product_code, source_item_sequence')
+        .eq('order_id', orderId),
     ])
+  const productCodesByItemId = orderProductCodesByItemId(
+    String(order.display_number ?? '').trim(),
+    (codeRows ?? []) as unknown as OrderProductCodeRecord[],
+  )
 
   const pi = piRow as unknown as OrderPiRow | null
   if (!pi) return { ok: false, code: 'PI_UNREADABLE' }
@@ -432,6 +447,7 @@ async function generate(input: {
     submission: pi,
     items,
     imageRows: new Set(pathByRow.keys()),
+    productCodes: productCodesByItemId,
   })
 
   let pdf: Buffer

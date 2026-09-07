@@ -865,6 +865,13 @@ describe('the applied migrations are frozen', () => {
       // table, alters no table and touches nothing Finance or Orders, so it
       // reaches nothing asserted here.
       '20261123000000_review_native_share_records_the_open.sql',
+      // The PI Excel no longer needs to carry the reserved Order number, and
+      // BOE item codes: re-emits assign_order_display_number() and the two PI
+      // approval functions (unrelated to payment/participant total security),
+      // and adds one new table, public.order_product_codes, of its own. It
+      // touches no function or table this older migration's own assertions
+      // read, so it reaches nothing asserted here.
+      '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     ])
   })
 
@@ -996,6 +1003,13 @@ describe('the applied migrations are frozen', () => {
       // table, alters no table and touches nothing Finance or Orders, so it
       // reaches nothing asserted here.
       '20261123000000_review_native_share_records_the_open.sql',
+      // The PI Excel no longer needs to carry the reserved Order number, and
+      // BOE item codes: re-emits assign_order_display_number() and the two PI
+      // approval functions (unrelated to payment/participant total security),
+      // and adds one new table, public.order_product_codes, of its own. It
+      // touches no function or table this older migration's own assertions
+      // read, so it reaches nothing asserted here.
+      '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

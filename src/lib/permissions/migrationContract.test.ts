@@ -953,11 +953,22 @@ describe('a PI reaches review without carrying its reserved Order number', () =>
       'submitting a PI for review must not depend on the workbook carrying the number')
   })
 
-  test('the Order door still does — the requirement moved, it was not repealed', () => {
-    const orderGate = inForce(ORDER_GATE)
+  test('20261121000000 kept the requirement at the Order door — it moved, it was not yet repealed', () => {
+    const orderGate = definitionAt(ORDER_GATE, REVIEW_DOOR)
     assert.match(orderGate.text, new RegExp(`public\\.${RULE}\\(`),
-      'an Order must still refuse to take a number the document does not carry')
+      'at the time of 20261121000000, an Order still had to refuse a number the document did not carry')
     assert.notEqual(orderGate.file, REVIEW_DOOR, 'this migration must not restate the Order door')
+  })
+
+  test('20261124000000 removed it from the Order door too — the PI Excel never needs the number', () => {
+    // The business decision that ends this: the source PI is a commercial
+    // document, not the Order's operational-numbering mechanism. BOE assigns
+    // the Order number and its item codes once the Order is confirmed.
+    const orderGate = inForce(ORDER_GATE)
+    assert.doesNotMatch(orderGate.text, new RegExp(RULE),
+      'Order creation must no longer require the source PI to carry the reserved number')
+    assert.notEqual(orderGate.file, RESERVATION_MIGRATION,
+      'the current definition must be a later restatement, not the original one that still asked the rule')
   })
 
   test('and the rule itself keeps all three refusals', () => {

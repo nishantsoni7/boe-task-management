@@ -110,6 +110,11 @@ import {
   type PersistedActivity,
 } from '@/lib/orders/submissionActivity'
 import { mergeOrderHistory } from '@/lib/orders/orderHistory'
+import {
+  formatOrderOperationalNumber,
+  orderProductCodesByItemId,
+  type OrderProductCodeRecord,
+} from '@/lib/orders/orderProductCodes'
 import { notifyPiSubmission } from '@/lib/notify'
 import {
   ORDER_DOCUMENT_COLUMNS,
@@ -765,7 +770,7 @@ export default function OrderDetailPage() {
       return
     }
 
-    const [subRes, itemsRes, imagesRes, versionsRes, trailRes] = await Promise.all([
+    const [subRes, itemsRes, imagesRes, versionsRes, trailRes, codesRes] = await Promise.all([
       supabase
         .from('order_submissions')
         .select(ORDER_PI_HANDOFF_COLUMNS)
@@ -791,6 +796,10 @@ export default function OrderDetailPage() {
         .select(PI_ACTIVITY_COLUMNS)
         .eq('submission_id', submissionId)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('order_product_codes')
+        .select('submission_item_id, boe_sequence, source_product_code, source_item_sequence')
+        .eq('order_id', order.id),
     ])
 
     // THE HISTORY, whatever the handoff's own outcome: a viewer who may open
@@ -822,7 +831,12 @@ export default function OrderDetailPage() {
       return
     }
 
-    const products = persistedProducts((itemsRes.data ?? []) as unknown as PersistedItem[])
+    const rawProducts = persistedProducts((itemsRes.data ?? []) as unknown as PersistedItem[])
+    const codeByItemId = orderProductCodesByItemId(
+      order.display_number,
+      (codesRes.data ?? []) as unknown as OrderProductCodeRecord[],
+    )
+    const products = rawProducts.map(p => ({ ...p, orderProductCode: codeByItemId.get(p.id) ?? null }))
     const images = (imagesRes.data ?? []) as unknown as PersistedItemImage[]
 
     // THE BUCKET STAYS PRIVATE. Nothing here builds a public URL — there is none
@@ -1535,10 +1549,14 @@ export default function OrderDetailPage() {
     !['dispatched', 'cancelled'].includes(order.status) &&
     new Date(order.due_date) < new Date()
 
+  // The stored, permanent display_number keeps its four-digit, zero-padded
+  // shape; what BOE shows and refers to drops the leading zeros (20261124000000).
+  const operationalNumber = formatOrderOperationalNumber(order.display_number) ?? order.display_number
+
   return (
     <OrdersLayout
       profile={profile}
-      title={`Order ${order.display_number}`}
+      title={`Order ${operationalNumber}`}
       subtitle={order.client_name}
       onSignOut={handleSignOut}
       onRefresh={loadOrder}
@@ -1566,7 +1584,7 @@ export default function OrderDetailPage() {
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '22px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.02em' }}>
-                {order.display_number}
+                {operationalNumber}
               </span>
               <StatusBadge status={order.status} />
             </div>

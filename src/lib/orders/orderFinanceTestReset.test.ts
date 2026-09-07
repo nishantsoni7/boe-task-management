@@ -405,6 +405,12 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // WhatsApp-opened writer. It creates no table and touches no order or
       // finance data, so it reaches nothing asserted here.
       '20261123000000_review_native_share_records_the_open.sql',
+      // The PI Excel no longer needs to carry the reserved Order number, and
+      // BOE item codes: re-emits assign_order_display_number() and the two PI
+      // approval functions, and adds one new table of its own,
+      // public.order_product_codes. It does not touch the reset protocol, the
+      // deletion claim or the allocation ledger.
+      '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     ])
   })
 

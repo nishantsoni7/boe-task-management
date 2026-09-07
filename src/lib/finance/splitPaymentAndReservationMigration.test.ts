@@ -307,16 +307,20 @@ describe('the reservation cannot be taken twice, or taken back', () => {
     }
   })
 
-  test('but only the Order gate still asks it, because the review gate could never pass', () => {
-    // 20261121000000. §5b takes the number on the first parse and stamps the
+  test('and now neither door asks it: the PI Excel need not carry the Order number at all', () => {
+    // 20261121000000 moved the question from the review door to the Order
+    // door, because §5b takes the number on the first parse and stamps the
     // reservation with that same workbook's sha, so the rule's first test —
     // has anything been re-parsed since the number was issued — was false by
-    // construction for every new draft. The submit gate was therefore not
-    // strict but unsatisfiable: a PI could not be shown to management until
-    // somebody had typed the Order number into it and re-uploaded.
+    // construction for every new draft: the submit gate was unsatisfiable, not
+    // merely strict.
     //
-    // The requirement was moved to the Order door, not dropped, so this asserts
-    // BOTH halves: gone from the one, still present at the other.
+    // 20261124000000 removes the question from the door it was moved to as
+    // well: the business decision is that the source PI is a commercial
+    // document and never needs to print the Order's operational number — BOE
+    // assigns it, and the BOE item codes, once the Order is confirmed. This
+    // asserts BOTH doors are now clear, and that the rule function itself
+    // (order_submission_revised_pi_refusal) is untouched — simply unused.
     const dir = 'supabase/migrations'
     const later = readdirSync(dir).filter(f => f.endsWith('.sql') && f > MIGRATION.split('/').pop()!).sort()
     const current = (fn: string) => {
@@ -330,9 +334,14 @@ describe('the reservation cannot be taken twice, or taken back', () => {
     assert.doesNotMatch(current('order_submissions_require_revised_pi_on_submit'),
       /order_submission_revised_pi_refusal/,
       'review must not require the document to carry a number the review may decide never to issue')
-    assert.match(current('assign_order_display_number'),
-      /public\.order_submission_revised_pi_refusal\(/,
-      'the Order must still refuse to take a number its own document does not carry')
+    assert.doesNotMatch(current('assign_order_display_number'),
+      /order_submission_revised_pi_refusal/,
+      'Order creation must not require the source PI to carry the reserved Order number (20261124000000)')
+    // The rule itself is untouched — only unreferenced. A future migration
+    // that alters its three refusals would still be caught by the other tests
+    // in this file, which read it from THIS migration's own, unedited text.
+    assert.match(body(sql, 'order_submission_revised_pi_refusal').join('\n'),
+      /ORDER_SUBMISSION_REVISED_PI_MISSING/)
   })
   test('the reference it compares is the server-parsed cell, single-writer', () => {
     assert.match(sql, /function\(s\) other than replace_order_submission_parse write source_order_number/)
