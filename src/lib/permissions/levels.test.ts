@@ -35,7 +35,7 @@ const FINANCE = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manag
 // only for the retired Order Request workflow (20261007000000). The fixture
 // mirrors what production registers, so a preset applied to it produces exactly
 // what an administrator would see.
-const ORDERS = ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order', 'approve_advance_exception']
+const ORDERS = ['view', 'create', 'edit', 'delete', 'export', 'manage', 'approve_order', 'approve_advance_exception', 'align_production']
 const ASSETS = ['view', 'create', 'edit', 'delete', 'manage', 'assign']
 const SAMPLES = ['view', 'create', 'edit', 'delete', 'approve', 'export', 'manage', 'dispatch', 'receive', 'mark_lost', 'close']
 const PAYROLL = ['view', 'edit', 'approve', 'export', 'manage', 'admin']
@@ -234,8 +234,14 @@ describe('Manager never receives a protected action', () => {
     // exists to create would be undone by a dropdown. `view_all`, already on
     // this list, is what widens it from the caller's own department to the
     // whole company.
+    //
+    // And by one more in 20261119000000: `orders.align_production`, the Head
+    // of Manufacturing's statement that the factory can make a Confirmed Order
+    // — the gate between commercial approval and work starting. Every Order is
+    // born Not Aligned, and a preset must not hand out the decision that moves
+    // it; it is neither approve_order nor manage, and implies neither.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
-      'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
+      'admin', 'align_production', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
       'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
       'mark_lost', 'receive', 'verify', 'view_all', 'view_quotations',

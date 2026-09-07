@@ -76,6 +76,40 @@ export const PI_ACTIVITY_LABEL: Record<string, string> = {
   advance_exception_requested: 'Advance exception requested',
   advance_exception_approved: 'Advance exception approved',
   advance_exception_rejected: 'Advance exception rejected',
+  // ── Phase C and Phase 3 (20260915000000, 20260919000000, 20260921000000) ──
+  //
+  // These were admitted by the constraint long before they had words here, so
+  // every PI's timeline silently DROPPED its finance check, its payments and
+  // its approval. 20261119000000 asks the Order to show the whole chronology,
+  // which is not possible while the trail cannot name half of it.
+  finance_verified: 'Finance check verified',
+  approved: 'Confirmed Order created',
+  payment_recorded: 'Payment attached',
+  payment_allocations_moved: 'Payments moved onto the Order',
+  // ── Edits after submission (20260923000000 – 20261003000000) ──
+  billing_percentage_set: 'Billing percentage set',
+  billing_percentage_amended_by_admin: 'Billing percentage amended by admin',
+  client_details_updated: 'Client details updated',
+  client_details_amended_by_admin: 'Client details amended by admin',
+  schedule_terms_updated: 'Schedule and terms updated',
+  schedule_terms_amended_by_admin: 'Schedule and terms amended by admin',
+  correction_requested: 'Correction requested',
+  correction_resolved: 'Correction resolved',
+  correction_rejected: 'Correction refused',
+  product_details_updated: 'Product details updated',
+  product_details_amended_by_admin: 'Product details amended by admin',
+  workbook_replaced_by_admin: 'PI workbook replaced by admin',
+  // ── The Order number (20261009000000) ──
+  order_number_reserved: 'Order number reserved',
+  order_number_revised_pi_verified: 'Revised PI carries the Order number',
+  order_number_used: 'Order number assigned',
+  // ── The PI decision, payment decisions and revisions (20261119000000) ──
+  pi_approved: 'PI approved',
+  payment_verified: 'Payment verified by Finance',
+  payment_rejected: 'Payment rejected by Finance',
+  pi_revision_proposed: 'Revised PI uploaded',
+  pi_revision_approved: 'Revised PI approved',
+  pi_revision_rejected: 'Revised PI rejected',
 }
 
 /**
@@ -122,7 +156,43 @@ export const PI_ACTIVITY_TONE: Record<string, PiActivityTone> = {
   advance_exception_requested: 'amber',
   advance_exception_approved: 'green',
   advance_exception_rejected: 'red',
+  finance_verified: 'green',
+  approved: 'green',
+  payment_recorded: 'blue',
+  payment_allocations_moved: 'neutral',
+  billing_percentage_set: 'neutral',
+  billing_percentage_amended_by_admin: 'amber',
+  client_details_updated: 'neutral',
+  client_details_amended_by_admin: 'amber',
+  schedule_terms_updated: 'neutral',
+  schedule_terms_amended_by_admin: 'amber',
+  correction_requested: 'amber',
+  correction_resolved: 'green',
+  correction_rejected: 'red',
+  product_details_updated: 'neutral',
+  product_details_amended_by_admin: 'amber',
+  workbook_replaced_by_admin: 'amber',
+  order_number_reserved: 'neutral',
+  order_number_revised_pi_verified: 'neutral',
+  order_number_used: 'green',
+  pi_approved: 'green',
+  payment_verified: 'green',
+  payment_rejected: 'red',
+  pi_revision_proposed: 'amber',
+  pi_revision_approved: 'green',
+  pi_revision_rejected: 'red',
 }
+
+/**
+ * The two payment-decision events carry the share of the payment this PI holds.
+ *
+ * A NAMED SET, for the same reason PI_ADVANCE_ACTIONS is one: exactly one
+ * metadata key is read for these two actions and for nothing else.
+ */
+export const PI_PAYMENT_DECISION_ACTIONS: ReadonlySet<string> = new Set([
+  'payment_verified',
+  'payment_rejected',
+])
 
 export type ActivityEntry = {
   key: string
@@ -159,9 +229,22 @@ export type ActivityEntry = {
  * as a plain event rather than as a broken one.
  */
 function advanceFigures(row: PersistedActivity): string | null {
-  if (!PI_ADVANCE_ACTIONS.has(row.action)) return null
   const metadata = row.metadata
   if (!metadata || typeof metadata !== 'object') return null
+
+  // The payment decision: the rupees allocated to this PI, and the payment's
+  // human id when Finance has one. One key for the figure, one for the id.
+  if (PI_PAYMENT_DECISION_ACTIONS.has(row.action)) {
+    const allocated = toFiniteNumber(metadata['allocated_amount'])
+    const id = typeof metadata['human_payment_id'] === 'string' && metadata['human_payment_id'].trim() !== ''
+      ? metadata['human_payment_id'].trim()
+      : null
+    if (allocated === null && id === null) return null
+    return [id, allocated === null ? null : formatInr(allocated)]
+      .filter((s): s is string => s !== null).join(' · ')
+  }
+
+  if (!PI_ADVANCE_ACTIONS.has(row.action)) return null
 
   const percent = toFiniteNumber(metadata['advance_percent'])
   const amount = toFiniteNumber(metadata['advance_amount'])

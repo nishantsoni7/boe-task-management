@@ -564,3 +564,303 @@ describe('the verification hotfix restates its two functions faithfully', () => 
     }
   })
 })
+
+// ── 20261118000000: the marker, restored after a silent regression ───────────
+//
+// 20260920000000 opened one hole in finance_payment_requests_guard_pending_decision
+// and had approve_finance_payment_request mark the payment it was deciding, so a
+// non-admin finance.approve holder could stamp approved_by/approved_at without
+// tripping the guard. It asserted that marker on itself.
+//
+// 20261013000000 §5 then restated approve_finance_payment_request in full to
+// attach allocation intents, and did NOT carry the two set_config lines across.
+// Nothing failed at apply time; production simply stopped letting non-admin
+// Finance approvers approve anybody else's payment, with
+//
+//   Payment PAY-REQ-… may be approved or rejected, not edited
+//
+// This suite is the contract for the migration that puts them back: the body
+// must be 20261013000000's body plus the marker and nothing else, and the
+// marker must BRACKET the decision UPDATE rather than merely appear somewhere.
+
+const CONTEXT_FIX = '20261118000000_restore_finance_payment_verification_context.sql'
+const contextFixText = lf(readFileSync(join(MIGRATIONS, CONTEXT_FIX), 'utf8'))
+
+const MARKER_SET = "perform set_config('boe.finance_payment_verification', p_request_id::text, true);"
+const MARKER_CLEAR = "perform set_config('boe.finance_payment_verification', '', true);"
+
+/** The last definition of `fnName` strictly before the context fix. */
+function definitionBeforeContextFix(fnName: string): { text: string; file: string } {
+  const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < CONTEXT_FIX).sort()
+  const needle = `create or replace function public.${fnName}(`
+  let best: { text: string; file: string } | null = null
+  for (const file of all) {
+    const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+    const lower = source.toLowerCase()
+    let from = 0
+    for (;;) {
+      const start = lower.indexOf(needle, from)
+      if (start === -1) break
+      from = start + needle.length
+      const tag = /\$[A-Za-z_]*\$/.exec(source.slice(start))?.[0]
+      if (!tag) continue
+      const bodyOpen = source.indexOf(tag, start)
+      const bodyClose = source.indexOf(tag, bodyOpen + tag.length)
+      if (bodyClose === -1) continue
+      const semi = source.indexOf(';', bodyClose + tag.length)
+      if (semi === -1) continue
+      best = { text: source.slice(start, semi + 1), file }
+    }
+  }
+  assert.ok(best, `no prior definition found for ${fnName}`)
+  return best
+}
+
+describe('the verification context is restored, and only that', () => {
+  test('the regression is real: the immediately prior definition lost the marker', () => {
+    const prior = definitionBeforeContextFix('approve_finance_payment_request')
+    assert.equal(prior.file, '20261013000000_payment_entry_destination_model.sql')
+    assert.ok(
+      !prior.text.includes('boe.finance_payment_verification'),
+      'the prior definition is expected to be the one that dropped the marker',
+    )
+  })
+
+  test('the RPC gains only the marker — the rest of the body is unchanged', () => {
+    const prior = definitionBeforeContextFix('approve_finance_payment_request')
+    const strip = (t: string) =>
+      t.replace(/^ *--.*\n/gm, '')
+       .replace(/^ *perform set_config\('boe\.finance_payment_verification'.*\n/gm, '')
+       .replace(/\n{2,}/g, '\n')
+
+    assert.ok(
+      strip(contextFixText).includes(strip(bodyOf(prior.text))),
+      `approve_finance_payment_request: the restated body differs from ${prior.file} by more than the marker`,
+    )
+  })
+
+  test('the marker brackets the decision UPDATE', () => {
+    const set = contextFixText.indexOf(MARKER_SET)
+    const upd = contextFixText.indexOf('update public.finance_payment_requests')
+    const clear = contextFixText.indexOf(MARKER_CLEAR)
+    assert.ok(set > -1 && upd > -1 && clear > -1, 'marker and statement must all be present')
+    assert.ok(set < upd, 'the marker must be set before the statement it covers')
+    assert.ok(clear > upd, 'the marker must be cleared after the statement it covers')
+  })
+
+  test('the marker is pinned to the payment being decided, and cleared', () => {
+    // Pinned: the guard compares it to old.id, so a marker naming another
+    // payment opens nothing. A bare literal would be a real hole.
+    assert.ok(contextFixText.includes(MARKER_SET), 'the marker must carry p_request_id')
+    assert.ok(contextFixText.includes(MARKER_CLEAR), 'the marker must be cleared')
+    assert.equal(
+      (contextFixText.match(/set_config\('boe\.finance_payment_verification'/g) ?? []).length, 2,
+      'exactly two marker statements: one set, one clear',
+    )
+  })
+
+  test('the marker is transaction-local — is_local is true on both calls', () => {
+    for (const call of [MARKER_SET, MARKER_CLEAR]) {
+      assert.ok(call.endsWith('true);'), `${call} must set is_local = true`)
+    }
+  })
+
+  test('authorization is unchanged — approve, and nothing wider', () => {
+    assert.ok(contextFixText.includes("public.actor_has_module_permission('finance', 'approve')"),
+      'approval must still be gated on finance.approve')
+    for (const wider of ['view_all', 'manage', 'allocate']) {
+      assert.ok(!contextFixText.includes(`actor_has_module_permission('finance', '${wider}')`),
+        `approval must not become reachable through finance.${wider}`)
+    }
+  })
+
+  test('the actor is derived server-side, never passed in', () => {
+    assert.ok(/v_actor\s+uuid\s*:=\s*auth\.uid\(\)/.test(contextFixText),
+      'the acting employee must come from auth.uid()')
+    assert.ok(!/p_actor_id/.test(contextFixText),
+      'the approval RPC must not accept a caller-supplied actor')
+  })
+
+  test('the guard and the predicate are not touched, and no exemption is widened', () => {
+    assert.ok(!/create or replace function public\.finance_payment_requests_guard_pending_decision/i.test(contextFixText),
+      'this migration must not restate the guard')
+    assert.ok(!/create or replace function public\.in_finance_payment_verification/i.test(contextFixText),
+      'this migration must not restate the marker predicate')
+  })
+
+  test('it grants nothing wider than the function already had', () => {
+    assert.ok(contextFixText.includes(
+      'revoke execute on function public.approve_finance_payment_request(uuid, text) from public, anon;'))
+    assert.ok(contextFixText.includes(
+      'grant  execute on function public.approve_finance_payment_request(uuid, text) to authenticated;'))
+    assert.ok(!/grant[^\n]*to service_role/.test(contextFixText),
+      'no new service_role grant belongs in this fix')
+    assert.ok(!/alter table/i.test(contextFixText), 'the fix alters no table')
+    assert.ok(!/create policy|drop policy/i.test(contextFixText), 'the fix touches no policy')
+  })
+
+  test('it restates exactly one function', () => {
+    const defs = contextFixText.match(/create or replace function public\.[a-z_]+\(/gi) ?? []
+    assert.deepEqual(defs.map(d => d.toLowerCase()),
+      ['create or replace function public.approve_finance_payment_request('])
+  })
+
+  test('it asserts the marker on the deployed body, so it cannot be lost again', () => {
+    assert.ok(contextFixText.includes('pg_get_functiondef'),
+      'the migration must read back what it installed')
+    assert.ok(/ASSERTION FAILED: the RPC does not mark the payment it is deciding/.test(contextFixText))
+    assert.ok(/ASSERTION FAILED: the RPC does not clear its marker/.test(contextFixText))
+  })
+
+  test('it sorts after the migrations it depends on', () => {
+    for (const stamp of ['20260920000000', '20261013000000', '20261114000000']) {
+      assert.ok(CONTEXT_FIX > stamp, `${CONTEXT_FIX} must sort after ${stamp}`)
+    }
+  })
+
+  // NOT "it is the newest migration": later, unrelated migrations are expected
+  // and say nothing about this fix. What must hold is that nothing after it
+  // restates the function again — which is precisely how the marker was lost
+  // the first time, when 20261013000000 re-emitted what 20260920000000 had set.
+  test('no later migration restates the function and drops the marker again', () => {
+    const later = readdirSync(MIGRATIONS)
+      .filter(f => f.endsWith('.sql') && f > CONTEXT_FIX)
+      .sort()
+    for (const file of later) {
+      const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8')).toLowerCase()
+      if (!source.includes('create or replace function public.approve_finance_payment_request(')) continue
+      assert.ok(
+        source.includes("set_config('boe.finance_payment_verification', p_request_id::text, true)")
+        && source.includes("set_config('boe.finance_payment_verification', '', true)"),
+        `${file} restates approve_finance_payment_request without the verification marker`,
+      )
+    }
+  })
+})
+
+// ── 20261120000000: the two post-approval PI edits reach the Order legally ───
+//
+// orders_guard_amendable_columns() freezes the Order's commercial terms unless
+// the writer is inside in_order_amendment(). Two admin paths wrote those
+// columns from outside it and were refused at the database:
+//
+//   replace_order_submission_parse()         "Change PI" after approval
+//   update_order_submission_client_details() correcting the client's name
+//
+// Both were reproduced against the live guard. The guard is right; the callers
+// were wrong. This suite proves the migration opens the EXISTING context around
+// exactly one statement in each function and changes nothing else.
+
+const AMEND_FIX = '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql'
+const amendFixText = lf(readFileSync(join(MIGRATIONS, AMEND_FIX), 'utf8'))
+
+const CTX_OPEN = "perform set_config('boe.amendment_context', 'order_amendment', true);"
+const CTX_CLOSE = "perform set_config('boe.amendment_context', '', true);"
+
+/** The last definition of `fnName` strictly before the amendment-context fix. */
+function definitionBeforeAmendFix(fnName: string): { text: string; file: string } {
+  const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f < AMEND_FIX).sort()
+  const needle = `create or replace function public.${fnName}(`
+  let best: { text: string; file: string } | null = null
+  for (const file of all) {
+    const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+    const lower = source.toLowerCase()
+    let from = 0
+    for (;;) {
+      const start = lower.indexOf(needle, from)
+      if (start === -1) break
+      from = start + needle.length
+      const tag = /\$[A-Za-z_]*\$/.exec(source.slice(start))?.[0]
+      if (!tag) continue
+      const bodyOpen = source.indexOf(tag, start)
+      const bodyClose = source.indexOf(tag, bodyOpen + tag.length)
+      if (bodyClose === -1) continue
+      const semi = source.indexOf(';', bodyClose + tag.length)
+      if (semi === -1) continue
+      best = { text: source.slice(start, semi + 1), file }
+    }
+  }
+  assert.ok(best, `no prior definition found for ${fnName}`)
+  return best
+}
+
+describe('the post-approval PI edits amend the Order through the amendment context', () => {
+  const FUNCTIONS = ['replace_order_submission_parse', 'update_order_submission_client_details']
+
+  test('the regression is real: neither prior definition opened the context', () => {
+    for (const fn of FUNCTIONS) {
+      const prior = definitionBeforeAmendFix(fn)
+      assert.ok(prior.text.includes('update public.orders'),
+        `${fn} is expected to write public.orders`)
+      assert.ok(!prior.text.includes('boe.amendment_context'),
+        `${fn} in ${prior.file} is expected to be the definition that wrote the Order from outside the context`)
+    }
+  })
+
+  test('each function gains only the context — the rest of the body is unchanged', () => {
+    const strip = (t: string) =>
+      t.replace(/^ *--.*\n/gm, '')
+       .replace(/^ *perform set_config\('boe\.amendment_context'.*\n/gm, '')
+       .replace(/\n{2,}/g, '\n')
+    for (const fn of FUNCTIONS) {
+      const prior = definitionBeforeAmendFix(fn)
+      assert.ok(
+        strip(amendFixText).includes(strip(bodyOf(prior.text))),
+        `${fn}: the restated body differs from ${prior.file} by more than the amendment context`,
+      )
+    }
+  })
+
+  test('the context is opened and closed exactly once per function', () => {
+    assert.equal((amendFixText.match(/set_config\('boe\.amendment_context', 'order_amendment', true\)/g) ?? []).length, 2)
+    assert.equal((amendFixText.match(/set_config\('boe\.amendment_context', '', true\)/g) ?? []).length, 2)
+  })
+
+  test('the context is transaction-local on every call', () => {
+    for (const call of [CTX_OPEN, CTX_CLOSE]) {
+      assert.ok(call.endsWith('true);'), `${call} must set is_local = true`)
+    }
+    assert.ok(!/set_config\('boe\.amendment_context'[^)]*false\)/.test(amendFixText),
+      'the amendment context must never be set beyond the transaction')
+  })
+
+  test('the guard is not restated, and no exemption is widened', () => {
+    assert.ok(!/create or replace function public\.orders_guard_amendable_columns/i.test(amendFixText),
+      'this migration must not restate the Order column guard')
+    assert.ok(!/create or replace function public\.in_order_amendment/i.test(amendFixText),
+      'this migration must not restate the amendment predicate')
+    assert.ok(!/drop policy|create policy|alter table/i.test(amendFixText),
+      'the fix touches no policy and no table')
+  })
+
+  test('it restates exactly the two functions it names', () => {
+    const defs = (amendFixText.match(/create or replace function public\.[a-z_]+\(/gi) ?? [])
+      .map(d => d.toLowerCase().replace('create or replace function public.', '').replace('(', ''))
+    assert.deepEqual(defs.sort(), [...FUNCTIONS].sort())
+  })
+
+  test('authorization and actor derivation are unchanged', () => {
+    assert.ok(amendFixText.includes('assert_order_submission_workbook_editor'),
+      'the Change-PI path keeps its editor check')
+    assert.ok(amendFixText.includes('auth.uid()'),
+      'the client-details path keeps its server-side actor')
+    assert.ok(!/grant[^\n]*to (anon|public)\b/.test(amendFixText),
+      'the fix grants nothing to anon or PUBLIC')
+    assert.ok(amendFixText.includes(
+      'grant  execute on function public.replace_order_submission_parse(uuid, uuid, jsonb)\n  to service_role;'),
+      'the Change-PI RPC stays service-role only')
+  })
+
+  test('it asserts the context on the deployed bodies', () => {
+    assert.ok(amendFixText.includes('pg_get_functiondef'),
+      'the migration must read back what it installed')
+    assert.ok(/ASSERTION FAILED: the Order column guard lost a rule it had/.test(amendFixText))
+    assert.ok(/ASSERTION FAILED: A opens the context after the statement it must cover/.test(amendFixText))
+  })
+
+  test('it sorts after the migrations it depends on', () => {
+    for (const stamp of ['20260816000000', '20260928000000', '20261003000000', '20261119000000']) {
+      assert.ok(AMEND_FIX > stamp, `${AMEND_FIX} must sort after ${stamp}`)
+    }
+  })
+})

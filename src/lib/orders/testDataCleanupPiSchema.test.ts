@@ -734,7 +734,12 @@ describe('the Order Activity trail names the PI event in English', () => {
 
   test('the raw key never reaches the screen', () => {
     assert.ok(page.includes("order_created_from_pi_submission: 'Order created from PI submission'"))
-    assert.ok(page.includes('EVENT_TYPE_LABEL[entry.event_type] ?? entry.event_type'))
+    // Since 20261119000000 the Order's trail is merged with its source PI's by
+    // orderHistory.ts; the page hands it its own label map, and the fallback to
+    // the raw key lives there — a raw event_type still never renders unlabelled.
+    assert.ok(page.includes('orderLabel: eventType => EVENT_TYPE_LABEL[eventType] ?? null'))
+    const history = readFileSync(join(process.cwd(), 'src/lib/orders/orderHistory.ts'), 'utf8')
+    assert.ok(history.includes('?? ORDER_EVENT_LABEL[row.event_type] ?? row.event_type'))
   })
 
   test('it takes the same green as the other Order-created event', () => {

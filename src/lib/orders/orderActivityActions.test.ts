@@ -151,12 +151,13 @@ describe('the closed action set', () => {
     // a NEW action extends the set in the same migration, so whichever file did
     // that most recently is the one this must name.
     //
-    // 20261009000000 is that file. It adds order_number_reserved and
-    // order_number_used and re-emits the whole set in full, which is exactly
-    // what 20261001000000 asks of it.
+    // 20261009000000 did that for the Order-number events. 20261119000000 does
+    // it again for the PI decision, the two payment-decision echoes and the
+    // three PI-revision events, and re-emits the whole set in full, which is
+    // exactly what 20261001000000 asks of it.
     assert.ok(file.length > 0, 'no migration defines the action constraint')
     assert.equal(file,
-      '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql')
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql')
   })
 
   test('still admits every action the earlier phases wrote', () => {
@@ -213,6 +214,20 @@ describe('every action a migration logs', () => {
       'client_details_updated', 'client_details_amended_by_admin',
       'schedule_terms_updated', 'schedule_terms_amended_by_admin',
       'correction_requested', 'correction_resolved', 'correction_rejected',
+    ]) {
+      assert.ok(logged.has(a), `${a} is not logged by any migration`)
+      assert.ok(actions.has(a), `${a} is logged but not declared`)
+    }
+  })
+
+  test('and the six 20261119000000 added', () => {
+    // The PI decision on its own; Finance's decision on a payment echoed onto
+    // the PI it is allocated to; and a revised PI's three outcomes. Each is
+    // written by a function the migration installs, and each is declared in
+    // the same file.
+    for (const a of [
+      'pi_approved', 'payment_verified', 'payment_rejected',
+      'pi_revision_proposed', 'pi_revision_approved', 'pi_revision_rejected',
     ]) {
       assert.ok(logged.has(a), `${a} is not logged by any migration`)
       assert.ok(actions.has(a), `${a} is logged but not declared`)

@@ -270,8 +270,17 @@ export async function POST(req: NextRequest) {
   }
 }
 
-/** Everything that happens while this request owns the submission. */
-async function processUnderLease(ctx: {
+/**
+ * Everything that happens while this request owns the submission.
+ *
+ * EXPORTED for one other caller: /api/orders/pi-revisions/approve, which
+ * applies a REVISED PI to an approved Order (20261119000000). It runs the very
+ * same download, parse, image upload and cleanup — there is one parser path in
+ * this product — and differs only at step 17, where `revisionVersionId` sends
+ * the payload through approve_order_pi_revision() so the parse, the version
+ * decision and the previous version's supersession land in one transaction.
+ */
+export async function processUnderLease(ctx: {
   service: ServiceClient
   submissionId: string
   workbookPath: string
@@ -281,6 +290,8 @@ async function processUnderLease(ctx: {
   changeReason: string | null
   submissionStatus: string
   priorWorkbookPath: string | null
+  /** The pending order_pi_versions row this parse approves, if any. */
+  revisionVersionId?: string | null
 }): Promise<NextResponse> {
   const { service, submissionId, workbookPath, actorId, processingToken,
           afterSubmission, changeReason } = ctx
@@ -463,13 +474,35 @@ async function processUnderLease(ctx: {
   }
 
   // ── 17. Replace the snapshot atomically, as the service role ──
-  const { data: replaced, error: rpcErr } = await service.rpc('replace_order_submission_parse', {
-    p_submission_id: submissionId,
-    p_actor_id: actorId,
-    p_payload: plan.payload,
-  })
+  //
+  // A REVISION goes through approve_order_pi_revision(), which calls the same
+  // parser inside its own transaction and then decides the version rows; the
+  // draft path calls the parser directly. Either way one RPC, one transaction.
+  const { data: replaced, error: rpcErr } = ctx.revisionVersionId
+    ? await service.rpc('approve_order_pi_revision', {
+        p_version_id: ctx.revisionVersionId,
+        p_actor_id: actorId,
+        p_payload: plan.payload,
+      })
+    : await service.rpc('replace_order_submission_parse', {
+        p_submission_id: submissionId,
+        p_actor_id: actorId,
+        p_payload: plan.payload,
+      })
 
   if (rpcErr) {
+    // A revision refusal is a RULE, not a save failure, and it names itself:
+    // the version is no longer pending, an older revision cannot replace a
+    // newer one, the file is not this revision's. Those markers reach the
+    // screen as fixed sentences; nothing else about the error does.
+    if (ctx.revisionVersionId) {
+      const marker = String((rpcErr as { message?: unknown })?.message ?? '')
+        .match(/ORDER_PI_REVISION_[A-Z_]+|ORDER_SUBMISSION_REVISED_PI_[A-Z_]+/)?.[0]
+      if (marker) {
+        await rollbackCreated()
+        return fail(409, marker, 'The revised PI was not applied.')
+      }
+    }
     // ── 18. Remove only what THIS attempt created ──
     //
     // Everything else is untouched: an object that already existed was reused,
@@ -519,9 +552,23 @@ async function processUnderLease(ctx: {
   // entitled to know: whether a finance verification was cleared and how many
   // ready document versions stopped being current. Counts and booleans only —
   // no name, no figure, no path.
-  const result = (replaced ?? {}) as Record<string, unknown>
+  // A revision approval returns the version decision with the parse nested
+  // under `parse`; the counts below are read from whichever shape came back.
+  const outer = (replaced ?? {}) as Record<string, unknown>
+  const result = (ctx.revisionVersionId && outer.parse && typeof outer.parse === 'object'
+    ? outer.parse
+    : outer) as Record<string, unknown>
   const num = (v: unknown) => (typeof v === 'number' ? v : 0)
+  // The version decision, identifiers only, on the revision path alone.
+  const revision = ctx.revisionVersionId
+    ? {
+        versionId: ctx.revisionVersionId,
+        versionNumber: typeof outer.version_number === 'number' ? outer.version_number : null,
+        versionStatus: typeof outer.status === 'string' ? outer.status : null,
+      }
+    : {}
   return NextResponse.json({
+    ...revision,
     submissionId,
     // The real status, not an assumption. This route is no longer only a draft
     // path, and a caller that read 'draft' for an approved PI would be lied to.

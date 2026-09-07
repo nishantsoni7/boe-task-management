@@ -831,8 +831,13 @@ describe('the closed activity action set grows by exactly three', () => {
     }
     const admitted = [...constraint.matchAll(/'([a-z_]+)'/g)].map(m => m[1])
     assert.equal(admitted.length, 8, 'eight and no more')
-    assert.equal(Object.keys(PI_ACTIVITY_LABEL).length, 8,
-      'and the screen has words for each of them')
+    // The screen has words for each of them. The label map is no longer pinned
+    // at eight: later migrations extend the closed set (20261001000000,
+    // 20261009000000, 20261119000000) and the trail must be able to name every
+    // action it admits — submissionActivity.test.ts holds the two together.
+    for (const action of admitted) {
+      assert.ok(PI_ACTIVITY_LABEL[action], `${action} must have words on the screen`)
+    }
   })
 
   test('nothing about approval, numbering or payment is admitted', () => {

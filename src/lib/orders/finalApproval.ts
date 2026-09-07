@@ -80,6 +80,52 @@ export const PI_APPROVAL_COLUMNS: readonly string[] = [
   'order_id',
 ]
 
+// ── The PI decision, separate from the Order (20261119000000) ─────────────────
+//
+// WHAT IT IS. Management approving the DOCUMENT — its figures, its terms, its
+// product lines — recorded on its own, so a PI can be approved while the money
+// is still with Finance or with the exception approver, and the Confirmed Order
+// is created by a second, explicit press once both gates clear. Shaped exactly
+// like the finance check: a stamp, an actor, and the submitted_at it was made
+// against, so a resubmission makes it stale by itself.
+//
+// WHAT IT IS NOT. Not an Order, not a number, not moved money, and not a payment
+// decision of any kind. approve_pi_review() writes these three columns and
+// nothing else; approve_order_submission() stamps them itself when it is the
+// first press, so the one-click path a fully paid PI has today is unchanged.
+
+/** The PI-decision columns of one order_submissions row. */
+export type PersistedPiDecision = {
+  pi_approved_by?: string | null
+  pi_approved_at?: string | null
+  pi_approved_submission_at?: string | null
+}
+
+/** Named explicitly so `select('*')` is never needed. */
+export const PI_DECISION_COLUMNS: readonly string[] = [
+  'pi_approved_by',
+  'pi_approved_at',
+  'pi_approved_submission_at',
+]
+
+/**
+ * Whether the PI decision is CURRENT for the submission on screen.
+ *
+ * THE MIRROR OF public.order_submission_pi_approved(timestamptz, timestamptz,
+ * timestamptz): current ⇔ a decision exists AND it names THIS submitted_at.
+ * Compared as instants, for the same reason financeVerificationIsCurrent is.
+ */
+export function piDecisionIsCurrent(
+  decision: PersistedPiDecision,
+  submittedAtIso: string | null,
+): boolean {
+  const at = instant(decision.pi_approved_at ?? null)
+  const boundTo = instant(decision.pi_approved_submission_at ?? null)
+  const submitted = instant(submittedAtIso)
+  if (at === null || boundTo === null || submitted === null) return false
+  return boundTo === submitted
+}
+
 // ── The staleness rule, in the browser ────────────────────────────────────────
 
 /**
@@ -399,6 +445,126 @@ export function describeApprovalReadiness(input: ApprovalReadinessInput): Approv
   if (incomplete !== null) return blocked(approvalBlockedIncomplete(incomplete))
 
   return { ready: true, blocker: null }
+}
+
+// ── Which decision the reviewer is offered ────────────────────────────────────
+//
+// THREE DOORS, ONE AUTHORITY. orders.approve_order may:
+//
+//   approve_and_create   approve the PI and create the Order in one press —
+//                        approve_order_submission(); the path every fully paid
+//                        PI has always had
+//   approve_pi           approve the PI ONLY — approve_pi_review() — because
+//                        the payment condition is not cleared yet; the Order
+//                        follows once it is
+//   create_order         the PI is already approved and the payment condition
+//                        has since cleared — approve_order_submission() again,
+//                        which finds the decision current and creates the Order
+//
+// and sees:
+//
+//   awaiting_payment     the PI is approved and the money is still somebody
+//                        else's move — no control, one sentence saying whose
+//   blocked              something other than payment stands in the way
+//   none                 not a submitted record, or not this viewer's decision
+//
+// NONE OF THIS IS AUTHORIZATION. Both RPCs re-derive every rule under a row
+// lock; this decides which control is drawn and what it is called.
+
+export type ReviewDecisionMode =
+  | 'approve_and_create'
+  | 'approve_pi'
+  | 'create_order'
+  | 'awaiting_payment'
+  | 'blocked'
+  | 'none'
+
+export type ReviewDecision = {
+  mode: ReviewDecisionMode
+  /** The primary control's label, or null when none is offered. */
+  label: string | null
+  /** Which RPC the control calls, or null. */
+  rpc: 'approve_order_submission' | 'approve_pi_review' | null
+  /**
+   * The one sentence beside the control (or in place of it): why the Order is
+   * not created yet, or what blocks the PI. Null when nothing needs saying.
+   */
+  note: string | null
+}
+
+export const APPROVE_PI_BUTTON_LABEL = 'Approve PI'
+export const CREATE_ORDER_BUTTON_LABEL = 'Create Confirmed Order'
+export const APPROVE_PI_DIALOG_TITLE = 'Approve PI'
+export const APPROVE_PI_CONFIRM_LABEL = 'Approve PI'
+export const CREATE_ORDER_DIALOG_TITLE = 'Create Confirmed Order'
+export const CREATE_ORDER_CONFIRM_LABEL = 'Create Order'
+
+/** What the PI-only dialog says instead of the final note. */
+export const APPROVE_PI_NOTE =
+  'This approves the PI only. No Order number is assigned and no Confirmed Order is created until the payment condition is cleared.'
+/** The sentence under an approved PI whose money is still unresolved. */
+export const awaitingPaymentNote = (blocker: string): string =>
+  `PI approved. The Confirmed Order will be created once the payment condition is cleared: ${blocker}`
+/** The sentence beside Approve PI, saying what will still be needed. */
+export const approvePiNote = (blocker: string): string =>
+  `The PI can be approved now; the Confirmed Order waits for the payment condition: ${blocker}`
+
+/** "PI approved by X · date", built once so the panel and its tests agree. */
+export function piApprovedLine(approverName: string | null, at: string | null): string {
+  const who = approverName && approverName.trim() !== '' ? approverName.trim() : 'a colleague'
+  const when = at && at.trim() !== '' ? at.trim() : 'an earlier date'
+  return `PI approved by ${who} · ${when}`
+}
+
+/**
+ * Which of the payment positions are the PAYMENT gate and nothing else — the
+ * ones a PI decision may precede. Everything else that blocks approval (finance
+ * check, diagnostics, missing lines, deletion) blocks the PI decision too.
+ */
+const PAYMENT_ONLY_POSITIONS: readonly PaymentPosition[] = [
+  'exception_pending', 'exception_rejected', 'exception_stale',
+  'verification_pending', 'payment_required',
+]
+
+export function describeReviewDecision(input: {
+  /** describeApprovalReadiness's own input, unchanged. */
+  readiness: ApprovalReadinessInput
+  /** Whether a CURRENT PI decision stands. */
+  piApproved: boolean
+  /** Whether this viewer holds the review authority at all. */
+  canApprove: boolean
+}): ReviewDecision {
+  const none: ReviewDecision = { mode: 'none', label: null, rpc: null, note: null }
+  if (!input.canApprove || input.readiness.status !== 'submitted') return none
+
+  const outcome = describeApprovalReadiness(input.readiness)
+  if (outcome.ready) {
+    return input.piApproved
+      ? { mode: 'create_order', label: CREATE_ORDER_BUTTON_LABEL, rpc: 'approve_order_submission', note: null }
+      : { mode: 'approve_and_create', label: APPROVE_ORDER_BUTTON_LABEL, rpc: 'approve_order_submission', note: null }
+  }
+
+  // Is the ONLY thing in the way the money? Everything the PI decision itself
+  // requires must hold, in the RPC's own order, and the payment position must
+  // be one of the payment-only ones.
+  const position = input.readiness.paymentPosition
+  const paymentOnly =
+    !input.readiness.deletionClaimed
+    && input.readiness.financeVerified
+    && position !== null
+    && PAYMENT_ONLY_POSITIONS.includes(position)
+    && !input.readiness.hasBlockingIssues
+    && input.readiness.productCount > 0
+    && (input.readiness.incompleteSummary ?? null) === null
+
+  const blocker = outcome.blocker ?? ''
+  if (!paymentOnly) {
+    return { mode: 'blocked', label: null, rpc: null, note: outcome.blocker }
+  }
+  if (input.piApproved) {
+    return { mode: 'awaiting_payment', label: null, rpc: null, note: awaitingPaymentNote(blocker) }
+  }
+  return { mode: 'approve_pi', label: APPROVE_PI_BUTTON_LABEL, rpc: 'approve_pi_review', note: approvePiNote(blocker) }
 }
 
 // ── The result the RPC hands back ─────────────────────────────────────────────

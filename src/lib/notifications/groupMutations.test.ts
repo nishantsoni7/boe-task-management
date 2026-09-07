@@ -355,6 +355,25 @@ describe('34/35. no regression into suppressed territory', () => {
       // table, alters no other table and defines no function, so it reaches
       // nothing asserted here.
       '20261114000000_review_generation_word_range_and_body_length.sql',
+      // Restores the transaction-local marker approve_finance_payment_request
+      // sets around its own decision UPDATE, which 20261013000000 dropped when it
+      // restated the function. One function body re-emitted; it creates no table,
+      // alters no table, touches no policy and adds no grant, so it reaches
+      // nothing asserted here.
+      '20261118000000_restore_finance_payment_verification_context.sql',
+      // PI review gate, PI versions and production alignment (20261119000000):
+      // order_submissions gains the PI-decision columns, orders the production
+      // alignment columns, order_pi_versions is created, and the Order-side
+      // activity policy is added. It re-emits approve_order_submission,
+      // submit_pi_for_review_internal, pi_submission_payment_summary and
+      // orders_guard_amendable_columns. It touches nothing asserted here.
+      '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
+      // The two post-approval PI edits — Change PI and the client-details
+      // correction — now open the EXISTING order-amendment context around their
+      // own Order UPDATE, which orders_guard_amendable_columns() requires. Two
+      // function bodies re-emitted; no table, policy, trigger or grant changes,
+      // so it reaches nothing asserted here.
+      '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

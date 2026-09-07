@@ -235,6 +235,15 @@ describe('no Order screen waits more than it must', () => {
     // times the page waits did NOT: the test above still requires exactly three,
     // and a fourth independent call in a group that already waits for the
     // slowest costs no latency.
+    //
+    // DETAIL 19 -> 27 (20261119000000). Three READS inside the handoff's
+    // existing Promise.all — order_pi_versions, the source PI's
+    // order_submission_activity, and the one users read that names both — so
+    // the startup wait count is unchanged (the test above still requires
+    // three). Three SAVES that run when somebody presses a control:
+    // propose_order_pi_revision, reject_order_pi_revision and
+    // set_order_production_alignment. And two storage calls on a click: the
+    // signer for any version's workbook, and the upload of a revised one.
     const expected: Record<string, number> = {
       // DASHBOARD went 9 -> 11 when the Order Request card and its count were
       // replaced by the workflow the dashboard now describes: PI Drafts, the
@@ -242,7 +251,7 @@ describe('no Order screen waits more than it must', () => {
       // them are issued INSIDE the page's existing Promise.all, so the count
       // grew and the number of times the page waits did not — which is the whole
       // property this block exists to protect.
-      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 19,
+      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 27,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -267,7 +276,12 @@ describe('no Order screen waits more than it must', () => {
       // because its columns are spread into PI_DRAFT_DETAIL_COLUMNS. So the
       // count grew and the startup path did not: the wait test above is
       // unchanged.
-      [DRAFTS]: 4, [PI_DETAIL]: 26, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
+      // PI_DETAIL 26 -> 27: approve_pi_review (20261119000000), the PI decision
+      // taken on its own. A SAVE that runs when the reviewer presses Approve
+      // PI; the decision itself arrives with the record, because its three
+      // columns are spread into PI_DRAFT_DETAIL_COLUMNS. The startup path is
+      // unchanged.
+      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
