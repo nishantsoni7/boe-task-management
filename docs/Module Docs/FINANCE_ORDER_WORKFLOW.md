@@ -1560,3 +1560,69 @@ Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
 `the post-approval PI edits amend the Order through the amendment context`
 suite — the restated bodies must equal the prior ones plus the context, and
 nothing else.
+
+---
+
+## 15. Review is not the Order door (`20261121000000`)
+
+### 15.1 What was wrong
+
+A PI Draft for Vittaazio, grand total ₹15,64,090, with ₹7,50,000 **verified** —
+47.95%, comfortably above the 40% requirement, and nothing awaiting Finance —
+could not be sent for management review at all:
+
+> Order number 0524 is reserved for this PI but no revised PI has been uploaded
+> since it was issued. Put 0524 into the PI and upload it with Change PI.
+
+This was not an edge case. §12's `order_submissions_auto_reserve_order_number()`
+takes a number the moment a workbook is first parsed onto a draft, and stamps
+`reserved_number_workbook_sha256` with the sha of *that same workbook*. The
+submit gate then asked `order_submission_revised_pi_refusal()`, whose first test
+is whether a workbook has been re-parsed since the number was issued. Straight
+after the reservation the two hashes are equal by construction, so the answer
+was always no — and `reservation_required` defaults TRUE for every draft created
+after §12 and is frozen. Every new PI was blocked.
+
+The salesperson was therefore obliged to take an Order number, type it into the
+workbook and re-upload it through Change PI **before management could even look
+at the PI** — an Order-numbering step standing in front of the review that
+decides whether there will be an Order.
+
+### 15.2 The fix
+
+`order_submissions_require_revised_pi_on_submit()` is re-emitted without the
+revised-PI question. One `create or replace function`; the file writes no row.
+
+What it still asks: that a reserved number **exists**
+(`ORDER_SUBMISSION_RESERVATION_REQUIRED`). The automatic reservation already
+guarantees that, so it costs the salesperson nothing.
+
+### 15.3 The requirement moved; it was not repealed
+
+`assign_order_display_number()` (§12) still asks the identical rule, from the
+same function, when an Order would take a reserved number — the last moment at
+which refusing costs nothing, and the first at which the document and the Order
+must agree. So a Confirmed Order still cannot exist unless the PI it was
+approved from prints its number.
+
+Untouched: the allocator, the cycle rule, the immutability guard, the
+reservation audit row, `order_submission_revised_pi_refusal()` itself and all
+three of its refusals, every payment gate, every PI review gate, and the
+version/revision rules.
+
+### 15.4 Verifying it
+
+`supabase/tests/order_number_reservation_assertions.sql` §F is the reproduction:
+a PI whose file does not carry its number is **accepted into review**, creates
+no Order and spends no reservation, and is then refused twice at the Order door
+— once as `REVISED_PI_MISSING`, once as `NUMBER_MISMATCH`. §G still takes the
+same PI through to a Confirmed Order once the file carries the number; §J holds
+the same line for a legacy draft that reserved by hand.
+
+Run against a shaped database carrying §12: **before** the fix §F fails at
+`submit_pi` with the exact message above; **after** it, sections A–P all pass.
+
+Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
+`a PI reaches review without carrying its reserved Order number` suite — which
+asserts both halves, that the review door no longer asks the rule and that the
+Order door still does.

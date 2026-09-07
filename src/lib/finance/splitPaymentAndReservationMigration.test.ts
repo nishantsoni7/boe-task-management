@@ -23,8 +23,9 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
+import { join } from 'node:path'
 
 const MIGRATION =
   'supabase/migrations/20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
@@ -299,13 +300,40 @@ describe('the reservation cannot be taken twice, or taken back', () => {
       'a partial, substring or numeric match would accept a document that says something else')
   })
 
-  test('and the same rule is asked at BOTH gates, from one function', () => {
+  test('and this file asked the same rule at BOTH gates, from one function', () => {
     for (const gate of ['assign_order_display_number', 'order_submissions_require_revised_pi_on_submit']) {
       assert.match(body(sql, gate).join('\n'), /public\.order_submission_revised_pi_refusal\(/,
         `${gate} must ask the one rule rather than restate it`)
     }
   })
 
+  test('but only the Order gate still asks it, because the review gate could never pass', () => {
+    // 20261121000000. §5b takes the number on the first parse and stamps the
+    // reservation with that same workbook's sha, so the rule's first test —
+    // has anything been re-parsed since the number was issued — was false by
+    // construction for every new draft. The submit gate was therefore not
+    // strict but unsatisfiable: a PI could not be shown to management until
+    // somebody had typed the Order number into it and re-uploaded.
+    //
+    // The requirement was moved to the Order door, not dropped, so this asserts
+    // BOTH halves: gone from the one, still present at the other.
+    const dir = 'supabase/migrations'
+    const later = readdirSync(dir).filter(f => f.endsWith('.sql') && f > MIGRATION.split('/').pop()!).sort()
+    const current = (fn: string) => {
+      let text = body(sql, fn).join('\n')
+      for (const f of later) {
+        const source = readFileSync(join(dir, f), 'utf8').replace(/\r\n/g, '\n')
+        if (source.includes(`create or replace function public.${fn}(`)) text = body(source, fn).join('\n')
+      }
+      return text
+    }
+    assert.doesNotMatch(current('order_submissions_require_revised_pi_on_submit'),
+      /order_submission_revised_pi_refusal/,
+      'review must not require the document to carry a number the review may decide never to issue')
+    assert.match(current('assign_order_display_number'),
+      /public\.order_submission_revised_pi_refusal\(/,
+      'the Order must still refuse to take a number its own document does not carry')
+  })
   test('the reference it compares is the server-parsed cell, single-writer', () => {
     assert.match(sql, /function\(s\) other than replace_order_submission_parse write source_order_number/)
     assert.match(sql, /replace_order_submission_parse is client-callable/)

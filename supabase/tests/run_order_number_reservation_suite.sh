@@ -105,6 +105,13 @@ echo "══ applying 20261009000000 ══"
 "${Q[@]}" -d "$DB" --single-transaction \
   -f "$REPO/supabase/migrations/20261009000000_split_payment_entry_and_order_submission_number_reservation.sql"
 
+
+# The review door is not the Order door (20261121000000). Applied here because
+# the assertions below describe the CURRENT rule: a PI reaches review without
+# carrying its reserved number, and the Order door refuses it instead.
+echo "══ applying 20261121000000 ══"
+"${Q[@]}" -d "$DB" --single-transaction \
+  -f "$REPO/supabase/migrations/20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql"
 echo "══ the assertions ══"
 "${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/order_number_reservation_assertions.sql"
 

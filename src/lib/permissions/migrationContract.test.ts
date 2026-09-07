@@ -864,3 +864,156 @@ describe('the post-approval PI edits amend the Order through the amendment conte
     }
   })
 })
+
+// ── 20261121000000: review is not the Order door ─────────────────────────────
+//
+// THE DEFECT, exactly as it was met in the browser. A PI Draft for Vittaazio,
+// ₹15,64,090, with ₹7,50,000 VERIFIED — 47.95%, above the 40% requirement, and
+// nothing awaiting Finance — could not be sent for management review:
+//
+//   Order number 0524 is reserved for this PI but no revised PI has been
+//   uploaded since it was issued. Put 0524 into the PI and upload it with
+//   Change PI.
+//
+// 20261009000000 §5b reserves a number as soon as a workbook is first parsed
+// onto a draft and stamps the reservation with THAT workbook's sha. Its §8
+// submit gate then asked order_submission_revised_pi_refusal(), whose first
+// test is whether a workbook has been re-parsed since the number was issued —
+// false by construction for every new draft, because reservation_required
+// defaults TRUE and is frozen. So the salesperson had to take a number, type it
+// into the file and re-upload through Change PI before management could look.
+//
+// The fix removes that question from the review door and leaves it at the Order
+// door, where the document and the Order must first agree.
+
+const REVIEW_DOOR = '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql'
+const reviewDoorText = lf(readFileSync(join(MIGRATIONS, REVIEW_DOOR), 'utf8'))
+
+const RESERVATION_MIGRATION =
+  '20261009000000_split_payment_entry_and_order_submission_number_reservation.sql'
+
+/** The last definition of `fnName` at or before `bound`, across every migration. */
+function definitionAt(fnName: string, bound: string): { text: string; file: string } {
+  const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql') && f <= bound).sort()
+  const needle = `create or replace function public.${fnName}(`
+  let best: { text: string; file: string } | null = null
+  for (const file of all) {
+    const source = lf(readFileSync(join(MIGRATIONS, file), 'utf8'))
+    const lower = source.toLowerCase()
+    let from = 0
+    for (;;) {
+      const start = lower.indexOf(needle, from)
+      if (start === -1) break
+      from = start + needle.length
+      const tag = /\$[A-Za-z_]*\$/.exec(source.slice(start))?.[0]
+      if (!tag) continue
+      const bodyOpen = source.indexOf(tag, start)
+      const bodyClose = source.indexOf(tag, bodyOpen + tag.length)
+      if (bodyClose === -1) continue
+      const semi = source.indexOf(';', bodyClose + tag.length)
+      if (semi === -1) continue
+      best = { text: source.slice(start, semi + 1), file }
+    }
+  }
+  assert.ok(best, `no definition found for ${fnName} at or before ${bound}`)
+  return best
+}
+
+/** The definition in force once every migration has been applied. */
+const inForce = (fn: string) => definitionAt(fn, '99999999999999_z.sql')
+
+describe('a PI reaches review without carrying its reserved Order number', () => {
+  const SUBMIT_GATE = 'order_submissions_require_revised_pi_on_submit'
+  const ORDER_GATE = 'assign_order_display_number'
+  const RULE = 'order_submission_revised_pi_refusal'
+
+  test('the regression is real: the review door used to ask the Order-door question', () => {
+    const before = definitionAt(SUBMIT_GATE, RESERVATION_MIGRATION)
+    assert.equal(before.file, RESERVATION_MIGRATION)
+    assert.match(before.text, new RegExp(`public\\.${RULE}\\(`),
+      'the submit gate is expected to be the definition that asked the revised-PI rule')
+  })
+
+  test('and it was unsatisfiable for a new draft, not merely strict', () => {
+    // Why every PI hit it: the number is taken on the first parse and stamped
+    // with the sha of the workbook that triggered it, so the rule's first test
+    // — "has anything been re-parsed since?" — is false the instant it is asked.
+    const reserve = definitionAt('order_submissions_auto_reserve_order_number', RESERVATION_MIGRATION)
+    assert.match(reserve.text, /new\.reserved_number_workbook_sha256\s*:=\s*new\.source_workbook_sha256/,
+      'the reservation stamps the sha of the workbook that triggered it')
+    const rule = definitionAt(RULE, RESERVATION_MIGRATION)
+    assert.match(rule.text, /p_current_sha\s+is\s+null\s+or\s+p_current_sha\s*=\s*p_reserved_sha/,
+      'and the rule refuses precisely that equality')
+  })
+
+  test('the review door no longer asks it', () => {
+    const now = inForce(SUBMIT_GATE)
+    assert.equal(now.file, REVIEW_DOOR, 'the migration under test must own the current definition')
+    assert.doesNotMatch(now.text, new RegExp(RULE),
+      'submitting a PI for review must not depend on the workbook carrying the number')
+  })
+
+  test('the Order door still does — the requirement moved, it was not repealed', () => {
+    const orderGate = inForce(ORDER_GATE)
+    assert.match(orderGate.text, new RegExp(`public\\.${RULE}\\(`),
+      'an Order must still refuse to take a number the document does not carry')
+    assert.notEqual(orderGate.file, REVIEW_DOOR, 'this migration must not restate the Order door')
+  })
+
+  test('and the rule itself keeps all three refusals', () => {
+    const rule = inForce(RULE)
+    assert.notEqual(rule.file, REVIEW_DOOR, 'this migration must not restate the rule')
+    for (const code of ['ORDER_SUBMISSION_REVISED_PI_MISSING',
+                        'ORDER_SUBMISSION_REVISED_PI_NO_NUMBER',
+                        'ORDER_SUBMISSION_REVISED_PI_NUMBER_MISMATCH']) {
+      assert.match(rule.text, new RegExp(code), `${code} must survive`)
+    }
+    assert.match(rule.text, /v_found <> v_expected/, 'exact equality, never a prefix or a substring')
+  })
+
+  test('a reservation is still required to exist at submission', () => {
+    const now = inForce(SUBMIT_GATE)
+    assert.match(now.text, /ORDER_SUBMISSION_RESERVATION_REQUIRED/)
+    assert.match(now.text, /new\.reservation_required and new\.reserved_order_number is null/)
+  })
+
+  test('the gate still limits itself to the move into review', () => {
+    const now = inForce(SUBMIT_GATE)
+    assert.match(now.text, /new\.status <> 'submitted' then return new/)
+    assert.match(now.text, /tg_op = 'UPDATE' and old\.status = 'submitted' then return new/,
+      'a PI already in review is not re-gated by an unrelated update')
+  })
+
+  test('it restates exactly one function and touches nothing else', () => {
+    const defs = (reviewDoorText.match(/create or replace function public\.[a-z_]+\(/gi) ?? [])
+      .map(d => d.toLowerCase().replace('create or replace function public.', '').replace('(', ''))
+    assert.deepEqual(defs, [SUBMIT_GATE])
+    // Numbering, permanence and non-reuse are all somebody else's machinery.
+    assert.doesNotMatch(reviewDoorText, /create trigger|drop trigger/i,
+      'replacing a function keeps its triggers; this file must not drop or recreate one')
+    assert.doesNotMatch(reviewDoorText, /alter table|create table|drop policy|create policy/i,
+      'no table and no policy changes')
+    assert.doesNotMatch(reviewDoorText, /\bgrant\b|\brevoke\b/i, 'no privilege changes')
+    assert.doesNotMatch(reviewDoorText, /allocate_confirmed_order_number|order_number_cycle|reserve_order_number/i,
+      'the allocator, the cycle and the reservation doors are untouched')
+    for (const forbidden of [/insert into public\./i, /update public\./i, /delete from public\./i]) {
+      assert.doesNotMatch(reviewDoorText, forbidden, 'this migration writes no row')
+    }
+  })
+
+  test('it proves itself against the deployed bodies, not against its own text', () => {
+    assert.match(reviewDoorText, /pg_get_functiondef/, 'the migration must read back what it installed')
+    assert.match(reviewDoorText, /ASSERTION FAILED: the submit gate still asks the revised-PI rule/)
+    assert.match(reviewDoorText,
+      /ASSERTION FAILED: assign_order_display_number\(\) no longer asks the revised-PI rule/)
+    assert.match(reviewDoorText, /pg_get_triggerdef/, 'and that the trigger is still bound')
+    assert.match(reviewDoorText, /PRECONDITION FAILED/,
+      'and refuse a database where the gate has already been edited by something else')
+  })
+
+  test('it sorts after everything it depends on', () => {
+    for (const stamp of ['20261009000000', '20261119000000', '20261120000000']) {
+      assert.ok(REVIEW_DOOR > stamp, `${REVIEW_DOOR} must apply after ${stamp}`)
+    }
+  })
+})
