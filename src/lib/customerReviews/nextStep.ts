@@ -107,7 +107,7 @@ export function nextStepFor(
         }
       }
       if (!card.whatsapp_opened_at) {
-        return { headline: 'Open WhatsApp and send it', hint: 'Enter the number, send the message, then come back and confirm you sent it.', tone: 'act' }
+        return { headline: 'Share on WhatsApp', hint: 'Send it, then come back and confirm you sent it.', tone: 'act' }
       }
       if (!card.sent_confirmed_at) {
         return { headline: 'Confirm you sent it', hint: 'Only after you actually pressed send in WhatsApp.', tone: 'act' }

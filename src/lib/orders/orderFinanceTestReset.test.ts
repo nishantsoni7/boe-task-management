@@ -401,6 +401,10 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only, the native-share equivalent of the phone-number
+      // WhatsApp-opened writer. It creates no table and touches no order or
+      // finance data, so it reaches nothing asserted here.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
   })
 

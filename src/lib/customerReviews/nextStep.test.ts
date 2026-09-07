@@ -25,10 +25,10 @@ const card = (over: Partial<Parameters<typeof nextStepFor>[0]> = {}) => ({
 })
 
 describe('the holder’s path, in order', () => {
-  test('booked, nothing done → open WhatsApp', () => {
+  test('booked, nothing done → share on WhatsApp', () => {
     const s = nextStepFor(card(), holder)
     assert.equal(s.tone, 'act')
-    assert.match(s.headline, /Open WhatsApp/)
+    assert.match(s.headline, /Share on WhatsApp/)
   })
   test('opened, not confirmed → confirm sent', () => {
     const s = nextStepFor(card({ whatsapp_opened_at: 't' }), holder)
@@ -75,7 +75,7 @@ describe('the verifier', () => {
   })
   test('a verifier holding a card is a holder on it — the tester path applies', () => {
     const s = nextStepFor(card({ booked_by: OTHER }), both)
-    assert.match(s.headline, /Open WhatsApp/)
+    assert.match(s.headline, /Share on WhatsApp/)
   })
   test('a pending draft asks the verifier to approve it', () => {
     assert.match(nextStepFor(card({ status: 'pending_approval', booked_by: null }), verifier).headline, /Approve/)

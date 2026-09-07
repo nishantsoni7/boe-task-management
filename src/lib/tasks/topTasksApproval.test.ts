@@ -143,6 +143,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // creates no table, alters no table and defines no function, so it
     // reaches nothing asserted here.
     '20261122000000_order_approval_capability_labels.sql',
+    // A new RPC only, the native-share equivalent of the phone-number
+    // WhatsApp-opened writer. It creates no table and touches no task, so
+    // it reaches nothing asserted here.
+    '20261123000000_review_native_share_records_the_open.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

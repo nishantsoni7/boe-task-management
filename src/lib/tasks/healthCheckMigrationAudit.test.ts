@@ -578,6 +578,10 @@ describe('the migration is placed correctly', () => {
       // creates no table, alters no table and defines no function, so it
       // reaches nothing asserted here.
       '20261122000000_order_approval_capability_labels.sql',
+      // A new RPC only, the native-share equivalent of the phone-number
+      // WhatsApp-opened writer. It creates no table and touches no task, so
+      // it reaches nothing asserted here.
+      '20261123000000_review_native_share_records_the_open.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
