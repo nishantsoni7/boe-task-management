@@ -138,6 +138,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // no table, alters no table, writes no row and adds no trigger, so it
     // reaches nothing asserted here.
     '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql',
+    // Control Center label wording for the three order-approval
+    // capabilities: three permission_actions.display_name UPDATEs. It
+    // creates no table, alters no table and defines no function, so it
+    // reaches nothing asserted here.
+    '20261122000000_order_approval_capability_labels.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
