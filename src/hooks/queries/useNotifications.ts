@@ -123,8 +123,24 @@ export function useNotifications(
 
   const qc = useQueryClient()
 
+  // Suffixed with the subject ONLY while actually previewing. Outside View As
+  // this MUST be the bare notificationKeys.list(category) — the exact key
+  // every optimistic delete/mark-read, its snapshot, its rollback and its
+  // reconcile() in notificationMutations.ts read and write. Appending
+  // `previewSubjectId` unconditionally (even as `null`) put every ordinary
+  // session's list under a DIFFERENT key than its own mutations addressed: the
+  // optimistic removal and the post-success removal both silently missed the
+  // real cache entry, so the untouched list reappeared the moment
+  // `pendingDeletes` released the row — the "delete then reappears a second
+  // later" symptom. A hard refresh looked correct because it re-fetched from
+  // the server, which never had the row to begin with.
+  //
+  // While previewing, the suffix still isolates the employee's list from the
+  // administrator's own cached page; no mutation ever runs in that state
+  // (useNotificationMutations returns no-ops while readOnly), so there is
+  // nothing there for it to miss.
   const query = useQuery<Notification[]>({
-    queryKey: [...notificationKeys.list(category), previewSubjectId],
+    queryKey: viewMode ? [...notificationKeys.list(category), previewSubjectId] : notificationKeys.list(category),
     queryFn: async () => {
       const done = perfStart('notification.list.load')
       try {

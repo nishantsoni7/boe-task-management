@@ -255,11 +255,15 @@ describe('one key, one request, mutations included', () => {
   })
 
   test('12. the launcher card and both navs read ONE query key', () => {
-    // Still ONE key per category — now suffixed with the DISPLAY SUBJECT, so an
+    // ONE key per category outside View As — the bare notificationKeys.count(category),
+    // which is also exactly what patchUnreadCount/setUnreadCount/reconcile in
+    // notificationMutations.ts address on every delete and mark-read. Suffixed
+    // with the DISPLAY SUBJECT only while actually previewing, so an
     // administrator previewing an employee reads that employee's count instead
-    // of overwriting their own cached badge with it. Outside View As the suffix
-    // is the signed-in user and all three surfaces still share one entry.
-    assert.ok(HOOK.includes('queryKey: [...notificationKeys.count(category), userId ?? null]'))
+    // of overwriting their own cached badge with it — see the key-parity test
+    // below for why the suffix cannot be unconditional.
+    assert.ok(HOOK.includes(
+      'queryKey: viewMode ? [...notificationKeys.count(category), userId] : notificationKeys.count(category)'))
     assert.ok(MODULES.includes("useUnreadCountState('task',    mayOpenTask)"))
     assert.ok(MODULES.includes("useUnreadCountState('finance', mayOpenFinance)"))
     assert.ok(MODULES.includes("useUnreadCountState('order',   mayOpenOrders)"))
@@ -279,6 +283,25 @@ describe('one key, one request, mutations included', () => {
     assert.equal((MODULES.match(/^\s*load\(/gm) ?? []).length, 1,
       'exactly one raw count fetch call remains')
     assert.ok(MODULES.includes("'/api/samples/notifications?count=1'"))
+  })
+
+  test('15. REGRESSION — outside View As the count key has no subject suffix at all', () => {
+    // The reported production bug: this hook used to append `userId ?? null`
+    // UNCONDITIONALLY. Outside View As, `userId` (the display subject) is never
+    // null — it equals the signed-in user — so the badge query lived at
+    // ['notifications', 'count', <realUserId>] while every mutation in
+    // notificationMutations.ts patched the bare ['notifications', 'count'].
+    // patchUnreadCount/setUnreadCount no-op when the key they're given holds no
+    // data (see notificationCache.ts), so a successful delete or mark-read
+    // silently failed to move the real badge, which only caught up on the next
+    // 30s revalidation. Asserting the conditional form directly (rather than
+    // just the previewing branch, covered in test 12) is what holds this shut:
+    // a regression that made the suffix unconditional again would still contain
+    // the test-12 substring as a sub-match of a broader always-suffixed key.
+    assert.equal(/queryKey:\s*\[\.\.\.notificationKeys\.count\(category\),\s*userId\s*\?\?\s*null\]/.test(HOOK), false,
+      'the count key must not unconditionally append the subject id')
+    assert.ok(HOOK.includes('queryKey: viewMode ?'),
+      'the count key must branch on whether an administrator is actually previewing')
   })
 
   test('14. Finance is not regressed — same endpoint, same gate, same shape', () => {

@@ -25,6 +25,7 @@ import {
 import { derivePerformanceCapabilities } from './permissions/performance'
 import { canAccessManagementModule } from './permissions/moduleVisibility'
 import type { EffectivePermission } from './permissions/types'
+import { notificationKeys } from './notificationCache'
 
 const read = (path: string) => readFileSync(path, 'utf8')
 
@@ -281,6 +282,71 @@ describe('nothing mutates while previewing', () => {
       assert.ok(!/user_id:\s*(body|payload)\./.test(source),
         `${path} accepts an actor id from the request body`)
     }
+  })
+})
+
+// ─── 5b. The notification cache key: parity outside preview, isolation inside ─
+//
+// A regression sat exactly on this boundary. The read hooks (useNotifications,
+// useUnreadNotifications) unconditionally appended a subject suffix to their
+// React Query key — including outside View As, where the suffix was `null`
+// (list) or the actor's own id (count). Every mutation in
+// notificationMutations.ts addresses the BARE key. Outside preview those two
+// were therefore different cache entries: a delete's optimistic removal and
+// its post-success reconciliation both silently missed the real list, and the
+// untouched row reappeared the instant the pending-delete lock released it —
+// "delete, then it comes back a second later." Fixed by branching the read
+// key on `viewMode`, so it degrades to the bare key exactly when there is
+// nobody to isolate FROM.
+
+describe('the notification cache key: parity outside preview, isolation inside', () => {
+  const listHook  = read('src/hooks/queries/useNotifications.ts')
+  const countHook = read('src/hooks/queries/useUnreadNotifications.ts')
+
+  test('a normal signed-in user: the list query addresses the exact key every delete/mark-read mutation writes', () => {
+    // notificationMutations.ts / notificationCache.ts read and write
+    // notificationKeys.list(category) — bare, no suffix — unconditionally.
+    // Outside View As this hook must resolve to that SAME key, not a
+    // suffixed sibling no mutation ever touches.
+    assert.match(listHook, /queryKey:\s*viewMode\s*\?\s*\[\.\.\.notificationKeys\.list\(category\), previewSubjectId\]\s*:\s*notificationKeys\.list\(category\)/)
+  })
+
+  test('a normal signed-in user: the unread-count query addresses the exact key patchUnreadCount/setUnreadCount write', () => {
+    assert.match(countHook, /queryKey:\s*viewMode\s*\?\s*\[\.\.\.notificationKeys\.count\(category\), userId\]\s*:\s*notificationKeys\.count\(category\)/)
+  })
+
+  test('an admin genuinely using View As: both queries still branch to an isolated, suffixed key', () => {
+    // The fix must not have simply deleted the suffix outright — that would
+    // silently reintroduce the ORIGINAL pre-View-As bug this feature closed:
+    // previewing an employee overwriting the admin's own cached list/badge.
+    // The `viewMode ? [...suffixed] : [...bare]` shape keeps both properties
+    // true at once, so this asserts the isolated branch is still reachable.
+    assert.match(listHook,  /viewMode \? \[\.\.\.notificationKeys\.list\(category\), previewSubjectId\]/)
+    assert.match(countHook, /viewMode \? \[\.\.\.notificationKeys\.count\(category\), userId\]/)
+  })
+
+  test('exiting View As: the normal-user key was never the preview key, so nothing needs to be reconciled on exit', () => {
+    // `viewMode` flips to false the instant exitViewMode() fires (it is
+    // derived synchronously from useViewAs(), not cached), so the very next
+    // render recomputes the bare key above — the SAME entry the admin's own
+    // notifications lived under before the preview began and that no preview
+    // mutation could have touched (readOnly forces every mutation to a
+    // no-op — see "nothing mutates while previewing" above). There is no
+    // stale preview data to flush because the two keys were never the same
+    // cache entry to begin with.
+    assert.ok(read('src/contexts/ViewAsContext.tsx').includes('exitViewMode'))
+    assert.match(listHook,  /const previewSubjectId = viewMode \? subjectUserId : null/,
+      'previewSubjectId — and therefore the resolved key — must recompute from the live viewMode/subjectUserId pair, not be cached from entry into preview')
+  })
+
+  test('the two branches are structurally different keys, not the same expression twice', () => {
+    // Guards against a fix that "branches" on viewMode but resolves to an
+    // identical key shape either way, which would look isolated in a diff
+    // while providing none.
+    const bare     = notificationKeys.list('task')
+    const suffixed = [...notificationKeys.list('task'), 'some-employee-id']
+    assert.notDeepEqual(bare, suffixed)
+    assert.deepEqual(bare, ['notifications', 'task'])
   })
 })
 
