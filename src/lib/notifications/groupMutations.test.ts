@@ -359,6 +359,12 @@ describe('34/35. no regression into suppressed territory', () => {
       '20261118000000_restore_finance_payment_verification_context.sql',
       '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
       '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
+      // Review is not the Order door: one trigger function on
+      // public.order_submissions re-emitted so a PI can be sent for review
+      // without its file already carrying the reserved Order number. It
+      // creates no table, alters no table, writes no row, adds no trigger
+      // and grants nothing, so it reaches nothing asserted here.
+      '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

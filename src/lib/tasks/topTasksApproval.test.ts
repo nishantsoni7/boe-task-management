@@ -132,6 +132,12 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     '20261118000000_restore_finance_payment_verification_context.sql',
     '20261119000000_order_submission_pi_review_gate_versions_and_production.sql',
     '20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql',
+    // Review is not the Order door: one trigger function on
+    // public.order_submissions re-emitted so a PI can be sent for review
+    // without its file already carrying the reserved Order number. It creates
+    // no table, alters no table, writes no row and adds no trigger, so it
+    // reaches nothing asserted here.
+    '20261121000000_order_submission_does_not_require_the_reserved_number_before_review.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

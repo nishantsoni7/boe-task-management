@@ -131,12 +131,12 @@ describe('what the panel says', () => {
     // THE SENTENCE THAT USED TO OVERPROMISE. It said "The Confirmed Order will
     // be created as 0042", which is only true if the revised file actually
     // CARRIES 0042 — and this screen cannot see that: it reads the workbook
-    // hash, never the parsed cell. The server checks the number on submit and
-    // says so if it is wrong.
+    // hash, never the parsed cell. The server checks the number when an Order would
+    // take it, and says so if it is wrong.
     const view = describeReservation({ ...reserved, currentWorkbookSha256: 'b'.repeat(64) })
     assert.equal(view.state, 'revised_pi_uploaded')
     assert.match(view.standing, /revised file has been uploaded/)
-    assert.match(view.standing, /checked against 0042 when the PI is submitted/)
+    assert.match(view.standing, /checked against 0042 when the PI becomes a Confirmed Order/)
     assert.doesNotMatch(view.standing, /will be created as/)
   })
 

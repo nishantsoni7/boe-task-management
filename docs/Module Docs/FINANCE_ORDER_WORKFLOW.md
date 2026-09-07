@@ -1445,3 +1445,184 @@ files), applies `20261009000000`, and runs 24 assertion blocks plus a
 **two-connection race** proving concurrent reservations take different numbers.
 A negative case runs first — a retirement guard dropped, the migration refusing
 itself and rolling back completely — so nothing after it can be vacuous.
+
+---
+
+## 13. The PI decision, the Confirmed-Order gate, PI versions and production alignment (`20261119000000`)
+
+> **NOT APPLIED.** `20261119000000_order_submission_pi_review_gate_versions_and_production.sql`
+> exists in the repository and has **not** been run against the linked database.
+> **The migration goes first, then the code**: the PI detail read spreads the
+> new columns into its select.
+
+### 13.1 The finalized business rules
+
+| Rule | Where it is enforced |
+| --- | --- |
+| **Submission is judged on ATTACHED payment** = verified + awaiting verification (`pending_approval` / `needs_clarification`). At or above 40% of the grand total, no reason is owed. Below it — **zero included** — a reason and Payment Terms are mandatory and the existing reduced-payment exception is raised (`advance_exception_reason`, `advance_exception_status = 'pending'`). No new reason column. | `submit_pi_for_review_internal()` re-emitted; the route is `v_attached >= v_required`, decided under the same locks approval takes. `pi_submission_payment_summary()` reports `attached_amount`, `attached_percent`, `attached_meets_standard`, `submission_position` (`attached_met` / `attached_partial` / `no_payment`). |
+| **The Order gate does not move.** A Confirmed Order is created only on **verified** payment ≥ 40% or a **current approved exception**. Attached-but-unverified money clears no gate. | `approve_order_submission()` re-emitted with every refusal it had. |
+| **The PI decision is separable from the Order.** A reviewer may approve the PI itself while the payment condition is unresolved; the record stays `submitted`, Needs Changes and Reject remain available, Finance verifies money independently. | `approve_pi_review(uuid)` — `orders.approve_order`, submitted, finance check current, no blocking issues. Writes `pi_approved_by / _at / _submission_at` and one `pi_approved` event; creates nothing. Columns are guarded like the finance check: recorded only while submitted, bound to `submitted_at`, cleared by any move out of review except the move to `approved`. |
+| **The Confirmed Order is created by an explicit `approve_order_submission()` once both gates clear.** It stamps the PI decision itself when it is the first press, so a fully paid PI keeps its one-click path. Exactly once: row lock + `orders_source_order_submission_id_uidx` + `order_submissions_order_id_key`, unchanged. | `approve_order_submission()` §6b, §14b. |
+| **Independence in both directions.** Payment verified + PI held; PI approved + payment pending; both pending; both cleared — all representable. | Finance's `approve_finance_payment_request()` is untouched; the hold is `request_order_submission_changes()`, unchanged. |
+| **Every Order is born `production_alignment = 'not_aligned'`.** Commercial approval is not production acceptance. | `orders.production_alignment` (`not_aligned` / `aligned`), `production_aligned_by/_at`, `production_alignment_note`; moved only by `set_order_production_alignment(uuid, boolean, text)` under the new protected action **`orders.align_production`**; `orders_guard_amendable_columns` re-emitted to refuse any other writer, service role included. |
+| **One Order, many PI versions.** `order_pi_versions`: V1 = the PI the Order was approved from (backfilled for existing Orders, written by approval for new ones); a later upload is a **pending** revision that overwrites nothing; approval applies the revised workbook through the deployed `replace_order_submission_parse()` and marks the previous version `superseded`; rejection keeps the row, its file and its reason. | Partial unique indexes: exactly one `approved`, at most one `pending` per Order. Guard trigger: identity and document frozen; `pending → approved | rejected`, `approved → superseded`; DELETE only inside Test Data Cleanup. |
+| **Who may touch a revision.** Propose: the PI's owner or an active admin holding `orders.create`, with a reason (≤ 500). Approve / reject: an **active admin** — the deployed rule for moving a submitted PI's figures (`20261003000000` §1). | `propose_order_pi_revision()`, `reject_order_pi_revision()` (authenticated doors); `approve_order_pi_revision(uuid, uuid, jsonb)` (**service role only**, reached by `/api/orders/pi-revisions/approve`, which takes the processing lease and runs the ONE parser pipeline). |
+| **History.** The Order side may read the source PI's trail; a Finance decision on a payment is echoed onto every PI and Order its active allocations name (`payment_verified` / `payment_rejected`, deferred to commit); six new PI events; three new Order events. | Policy `order_submission_activity_confirmed_order_select`; constraint trigger `finance_payment_requests_echo_decision`; the action CHECK re-emitted. |
+
+### 13.2 Concurrency, in one table
+
+| Failure mode | Control |
+| --- | --- |
+| Two admins approving the same revision | processing lease on the PI + `FOR UPDATE` on the version + `status = 'pending'` check |
+| A stale browser approving an obsolete revision | `ORDER_PI_REVISION_NOT_PENDING`; `ORDER_PI_REVISION_STALE` when a newer version is already current |
+| Two versions both current | `order_pi_versions_one_current_per_order` |
+| A Confirmed Order produced twice / two numbers | unchanged: row lock, the two partial unique indexes, the number trigger |
+| Payment percentages stale between load and approval | unchanged: re-derived under `FOR UPDATE` on payments and allocations |
+| A candidate modifying a PI after submission without a revision | unchanged: the storage insert predicate admits the owner only while draft / returned; the revision insert policy admits an approved PI's `original/` folder only, and a stored file is never overwritten (no UPDATE policy) |
+
+### 13.3 What was deliberately NOT done
+
+* No automatic Order creation from a Finance RPC: the Order is created by an `orders.approve_order` holder, so the creating actor is always accountable.
+* No re-parse of a proposed revision at proposal time; the parse happens at approval, on the server, through the existing pipeline.
+* No Order-number check on a revised PI after approval (the reservation rule binds submission and Order creation, not later revisions).
+
+### 13.4 A latent defect found, not fixed
+
+`replace_order_submission_parse()` (20261003000000) and `update_order_submission_client_details()` (20260928000000) update `public.orders` **outside** the amendment context, so on the live database `orders_guard_amendable_columns` would refuse their post-approval branches with `ORDER_AMENDMENT_REQUIRED`. No harness ever included that guard. The revision-approval RPC opens the context around its own call to the parser; the other two paths are fixed separately, in section 14 below (`20261120000000`).
+
+### 13.5 Verifying it
+
+Repository tests: `src/lib/orders/piReviewGateSchema.test.ts`, `reviewDecision.test.ts`,
+`orderPiVersions.test.ts`, `productionAlignment.test.ts`, `orderHistory.test.ts`,
+`piRevisionApproveRoute.test.ts`, `src/app/orders/[id]/orderPiHistory.render.test.tsx`.
+
+Against a migrated database: `supabase/tests/order_pi_review_gate_and_versions_assertions.sql`
+(one transaction, rolls back; five user ids to replace). **Executed and green:**
+all six sections pass against a database carrying the full migration chain.
+
+---
+
+## 14. Two post-approval PI edits, through the amendment door (`20261120000000`)
+
+> **VERIFIED, NOT YET APPLIED TO PRODUCTION.**
+> `20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql`
+
+### 14.1 What was wrong
+
+`orders_guard_amendable_columns()` freezes a Confirmed Order's commercial terms
+— `client_name`, `confirm_date`, `due_date`, `total_value`, `total_product_value`
+and the rest — unless the writer is inside `in_order_amendment()`. Two admin
+paths carried corrected figures onto the Order from **outside** that context:
+
+| Function | Last defined by | What it writes on the Order |
+| --- | --- | --- |
+| `replace_order_submission_parse()` | `20261003000000` | the mirrored figures, after a "Change PI" on an approved PI |
+| `update_order_submission_client_details()` | `20260928000000` | `client_name`, when the client's name is corrected |
+
+Both were refused by the database:
+
+```
+ORDER_AMENDMENT_REQUIRED: The terms of Order NNNN can only be changed through
+an order amendment, which records who changed what and why
+```
+
+The guard is right. Only the callers were wrong.
+
+**Why it had not bitten.** Both paths need `orders.id`, which exists only once a
+PI becomes a Confirmed Order. Production held no Confirmed Orders, so neither
+path was reachable — until the Order + Finance workflow made it so.
+
+### 14.2 The fix
+
+Each function opens the **existing** transaction-local amendment context
+immediately before its own authorised `update public.orders` and closes it
+immediately after — the same door `amend_order()` has used since
+`20260816000000`, and the one `approve_order_pi_revision()` uses for the
+revised-PI path.
+
+The guard is **not** weakened: no column leaves its frozen list, no exemption is
+widened, no grant or permission changes, and neither function is redesigned. The
+window is exactly one statement wide in each.
+
+### 14.3 What is proven
+
+Through the real RPCs, on a database carrying the whole chain:
+
+* replacing the PI after approval succeeds and carries the revised total onto
+  the Order;
+* correcting the client's name succeeds and carries it across;
+* a direct write to a frozen Order column is still refused;
+* an unguarded write outside the context still raises `ORDER_AMENDMENT_REQUIRED`;
+* production alignment still requires `set_order_production_alignment()`;
+* both amendments remain in the Order and PI activity trails.
+
+Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
+`the post-approval PI edits amend the Order through the amendment context`
+suite — the restated bodies must equal the prior ones plus the context, and
+nothing else.
+
+---
+
+## 15. Review is not the Order door (`20261121000000`)
+
+### 15.1 What was wrong
+
+A PI Draft for Vittaazio, grand total ₹15,64,090, with ₹7,50,000 **verified** —
+47.95%, comfortably above the 40% requirement, and nothing awaiting Finance —
+could not be sent for management review at all:
+
+> Order number 0524 is reserved for this PI but no revised PI has been uploaded
+> since it was issued. Put 0524 into the PI and upload it with Change PI.
+
+This was not an edge case. §12's `order_submissions_auto_reserve_order_number()`
+takes a number the moment a workbook is first parsed onto a draft, and stamps
+`reserved_number_workbook_sha256` with the sha of *that same workbook*. The
+submit gate then asked `order_submission_revised_pi_refusal()`, whose first test
+is whether a workbook has been re-parsed since the number was issued. Straight
+after the reservation the two hashes are equal by construction, so the answer
+was always no — and `reservation_required` defaults TRUE for every draft created
+after §12 and is frozen. Every new PI was blocked.
+
+The salesperson was therefore obliged to take an Order number, type it into the
+workbook and re-upload it through Change PI **before management could even look
+at the PI** — an Order-numbering step standing in front of the review that
+decides whether there will be an Order.
+
+### 15.2 The fix
+
+`order_submissions_require_revised_pi_on_submit()` is re-emitted without the
+revised-PI question. One `create or replace function`; the file writes no row.
+
+What it still asks: that a reserved number **exists**
+(`ORDER_SUBMISSION_RESERVATION_REQUIRED`). The automatic reservation already
+guarantees that, so it costs the salesperson nothing.
+
+### 15.3 The requirement moved; it was not repealed
+
+`assign_order_display_number()` (§12) still asks the identical rule, from the
+same function, when an Order would take a reserved number — the last moment at
+which refusing costs nothing, and the first at which the document and the Order
+must agree. So a Confirmed Order still cannot exist unless the PI it was
+approved from prints its number.
+
+Untouched: the allocator, the cycle rule, the immutability guard, the
+reservation audit row, `order_submission_revised_pi_refusal()` itself and all
+three of its refusals, every payment gate, every PI review gate, and the
+version/revision rules.
+
+### 15.4 Verifying it
+
+`supabase/tests/order_number_reservation_assertions.sql` §F is the reproduction:
+a PI whose file does not carry its number is **accepted into review**, creates
+no Order and spends no reservation, and is then refused twice at the Order door
+— once as `REVISED_PI_MISSING`, once as `NUMBER_MISMATCH`. §G still takes the
+same PI through to a Confirmed Order once the file carries the number; §J holds
+the same line for a legacy draft that reserved by hand.
+
+Run against a shaped database carrying §12: **before** the fix §F fails at
+`submit_pi` with the exact message above; **after** it, sections A–P all pass.
+
+Contract tests: `src/lib/permissions/migrationContract.test.ts`, the
+`a PI reaches review without carrying its reserved Order number` suite — which
+asserts both halves, that the review door no longer asks the rule and that the
+Order door still does.
