@@ -1464,10 +1464,12 @@ export { draftStatusLabel }
 
 // ── The Order number, before there is an Order ────────────────────────────────
 //
-// THE PANEL THE PI-FIRST WORKFLOW NEEDED. The revised PI a customer signs has to
-// carry the Order number, and the number used to exist only after approval — by
-// which time the PI's own owner may no longer replace its workbook. So this
-// takes the number from the real cycle, early, and says what to do with it.
+// THE PANEL THE PI-FIRST WORKFLOW NEEDED. The number used to exist only after
+// approval — by which time the PI's own owner may no longer replace its
+// workbook — so this takes it from the real cycle early. 20261124000000
+// removed the requirement that the revised PI print it: the reserved number
+// becomes the Order's number regardless of what the PI file itself carries,
+// so what follows says what IS true, not what to do about it.
 //
 // THE NUMBERS ARE NAMED APART. The reserved Order number and — once approved —
 // the Confirmed Order number, each under its own label from NUMBER_LABEL rather
@@ -1507,10 +1509,14 @@ export function PiOrderNumberPanel({
   onCopy: (value: string) => void
   copied: boolean
 }) {
+  // Amber used to mark 'awaiting_revised_pi' as something to act on — it no
+  // longer is (20261124000000): a held reservation needs nothing from
+  // anybody until the PI is approved, whether or not the file has since
+  // changed, so both "held" states read the same calm blue.
   const tone =
     view.state === 'used' ? TONE_STYLE.green
     : view.state === 'revised_pi_uploaded' ? TONE_STYLE.blue
-    : view.state === 'awaiting_revised_pi' ? TONE_STYLE.amber
+    : view.state === 'awaiting_revised_pi' ? TONE_STYLE.blue
     : TONE_STYLE.neutral
 
   return (

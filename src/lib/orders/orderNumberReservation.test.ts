@@ -119,7 +119,7 @@ describe('what the panel says', () => {
     currentWorkbookSha256: 'a'.repeat(64),
   }
 
-  test('held, and the revised PI is still to come — with the instruction', () => {
+  test('held, no revised file yet — says the PI file does not need it', () => {
     const view = describeReservation(reserved)
     assert.equal(view.state, 'awaiting_revised_pi')
     assert.equal(view.number, '0042')
@@ -127,17 +127,17 @@ describe('what the panel says', () => {
     assert.ok(view.standing.includes(RESERVATION_INSTRUCTION))
   })
 
-  test('held, and a revised file has arrived — but nothing is promised by it', () => {
-    // THE SENTENCE THAT USED TO OVERPROMISE. It said "The Confirmed Order will
-    // be created as 0042", which is only true if the revised file actually
-    // CARRIES 0042 — and this screen cannot see that: it reads the workbook
-    // hash, never the parsed cell. The server checks the number when an Order would
-    // take it, and says so if it is wrong.
+  test('held, and a revised file has arrived — the PI file is still not required to carry it', () => {
+    // THE SENTENCE THAT USED TO OVERPROMISE A CHECK. It said the number "is
+    // checked against 0042 when the PI becomes a Confirmed Order" — a check
+    // 20261124000000 removed. Neither this state nor 'awaiting_revised_pi'
+    // gates Order creation any more, and neither sentence claims otherwise.
     const view = describeReservation({ ...reserved, currentWorkbookSha256: 'b'.repeat(64) })
     assert.equal(view.state, 'revised_pi_uploaded')
     assert.match(view.standing, /revised file has been uploaded/)
-    assert.match(view.standing, /checked against 0042 when the PI becomes a Confirmed Order/)
+    assert.ok(view.standing.includes(RESERVATION_INSTRUCTION))
     assert.doesNotMatch(view.standing, /will be created as/)
+    assert.doesNotMatch(view.standing, /checked against/)
   })
 
   test('used: the Confirmed Order came out carrying it', () => {
@@ -309,7 +309,9 @@ describe('the panel does not offer a decision that is not being made', () => {
     const view = describeReservation(newDraft)
     assert.equal(view.state, 'available')
     assert.match(view.standing, /issued for this PI as soon as its PI file is uploaded/)
-    assert.match(view.standing, /must carry it before the PI can be submitted/)
+    // Neither submission (20261121000000) nor Order creation (20261124000000)
+    // requires the PI file to carry the number, so nothing here claims either.
+    assert.doesNotMatch(view.standing, /must carry it/)
     // No invitation, and no suggestion that skipping it is possible.
     assert.doesNotMatch(view.standing, /Reserve one now|if the revised PI has to carry it/)
   })
