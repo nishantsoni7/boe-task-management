@@ -1,0 +1,157 @@
+/* ── Modules launcher grid + card ─────────────────────────────────────────────
+   Desktop values below are exactly what page.tsx used to set inline; nothing
+   about them changed. The only new behaviour is the max-width: 639px block,
+   which turns the launcher into a compact 2-up app-grid on phones. Colors,
+   hover states and anything that depends on a module's accent stay inline in
+   page.tsx — only the accent-independent layout numbers live here, because an
+   inline style always wins over a class rule and would otherwise block the
+   mobile override. */
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  color: #8C94A6;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px 22px 20px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 200px;
+}
+
+.iconWrap {
+  position: relative;
+  align-self: flex-start;
+}
+
+.iconBox {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: #D94F4F;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 800;
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+  border: 2px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  letter-spacing: 0.01em;
+}
+
+.titleWrap {
+  flex: 1;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111318;
+  letter-spacing: -0.02em;
+  margin-bottom: 5px;
+  line-height: 1.2;
+}
+
+.description {
+  font-size: 12px;
+  color: #6B7384;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  border-top: 1px solid #F3F4F6;
+  gap: 8px;
+}
+
+/* ── Mobile: compact app-launcher grid, < 640px ──────────────────────────── */
+@media (max-width: 639px) {
+  .sectionLabel {
+    margin-bottom: 10px;
+  }
+
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .card {
+    padding: 13px 12px;
+    border-radius: 13px;
+    min-height: 118px;
+    gap: 8px;
+  }
+
+  .iconBox {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+  }
+
+  .badge {
+    top: -4px;
+    right: -4px;
+    min-width: 16px;
+    height: 16px;
+    font-size: 8px;
+  }
+
+  .titleWrap {
+    display: flex;
+    align-items: center;
+  }
+
+  .title {
+    font-size: 13.5px;
+    margin-bottom: 0;
+    line-height: 1.25;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  /* Description, the notification-count line and "Open →" are desktop-only
+     furniture — the mobile card is identity + badge, nothing else. */
+  .description,
+  .footer {
+    display: none;
+  }
+}

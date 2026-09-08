@@ -19,6 +19,7 @@ import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { Image as ImageIcon } from 'lucide-react'
+import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
 
@@ -539,19 +540,12 @@ export default function BoeOsHomePage() {
           onSignOut={handleSignOut}
         >
           {/* Section label */}
-          <div style={{
-            fontSize: '11px', fontWeight: 700, letterSpacing: '0.07em',
-            color: '#8C94A6', textTransform: 'uppercase', marginBottom: '16px',
-          }}>
+          <div className={styles.sectionLabel}>
             Modules
           </div>
 
           {/* Responsive app-launcher grid */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))',
-            gap: '20px',
-          }}>
+          <div className={styles.grid}>
             {modules.map(mod => (
               <ModuleCard
                 key={mod.key}
@@ -582,80 +576,46 @@ function ModuleCard({ mod, onClick }: { mod: ModuleDef; onClick: () => void }) {
       role="button"
       tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && onClick()}
+      className={styles.card}
       style={{
-        background: '#fff',
         border: `1.5px solid ${hovered ? mod.accent : '#E8EBF0'}`,
-        borderRadius: '16px',
-        padding: '24px 22px 20px',
-        cursor: 'pointer',
-        transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.15s',
         boxShadow: hovered
           ? `0 8px 24px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06)`
           : '0 1px 4px rgba(0,0,0,0.05)',
         transform: hovered ? 'translateY(-2px)' : 'none',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '14px',
-        minHeight: '200px',
       }}
     >
       {/* ── Icon block with notification badge ── */}
-      <div style={{ position: 'relative', alignSelf: 'flex-start' }}>
-        <div style={{
-          width: 56, height: 56, borderRadius: '14px',
-          background: `${mod.accent}12`,
-          border: `1.5px solid ${mod.accent}22`,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          color: mod.accent,
-          transition: 'background 0.15s',
-          ...(hovered ? { background: `${mod.accent}1E` } : {}),
-        }}>
+      <div className={styles.iconWrap}>
+        <div
+          className={styles.iconBox}
+          style={{
+            background: hovered ? `${mod.accent}1E` : `${mod.accent}12`,
+            border: `1.5px solid ${mod.accent}22`,
+            color: mod.accent,
+          }}
+        >
           {mod.icon}
         </div>
         {hasNotif && (
-          <div style={{
-            position: 'absolute', top: '-5px', right: '-5px',
-            background: '#D94F4F', color: '#fff',
-            fontSize: '9px', fontWeight: 800,
-            borderRadius: '999px',
-            minWidth: '18px', height: '18px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 4px',
-            border: '2px solid #fff',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.18)',
-            letterSpacing: '0.01em',
-          }}>
+          <div className={styles.badge}>
             {count! > 99 ? '99+' : count}
           </div>
         )}
       </div>
 
       {/* ── Name + description ── */}
-      <div style={{ flex: 1 }}>
-        <div style={{
-          fontSize: '15px', fontWeight: 700, color: '#111318',
-          letterSpacing: '-0.02em', marginBottom: '5px', lineHeight: 1.2,
-        }}>
+      <div className={styles.titleWrap}>
+        <div className={styles.title}>
           {mod.title}
         </div>
-        <div style={{
-          fontSize: '12px', color: '#6B7384', lineHeight: 1.5,
-          display: '-webkit-box',
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: 'vertical',
-          overflow: 'hidden',
-        }}>
+        <div className={styles.description}>
           {mod.description}
         </div>
       </div>
 
       {/* ── Footer: notification line + open ── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        paddingTop: '12px',
-        borderTop: '1px solid #F3F4F6',
-        gap: '8px',
-      }}>
+      <div className={styles.footer}>
         {/* Left: notification signal. The status pill that used to sit here is
             gone — see the note on ModuleDef. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
