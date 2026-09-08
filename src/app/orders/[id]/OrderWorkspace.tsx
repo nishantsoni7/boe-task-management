@@ -75,22 +75,24 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
 export const ORDER_SUMMARY_COMMERCIAL_TITLE = 'Commercial'
 
 /**
- * ONE SECTION, EVERY IMPORTANT ORDER FACT.
+ * THE ORDER'S OPERATIONAL STATE, AND ONLY THAT.
  *
- * Operational state on the left — status, production, salesperson, the two
- * dates, lead source — and the money on the right: the two stored totals, with
- * the breakdown immediately beneath them. There is no second summary anywhere
- * on the page and no fact appears twice: the command header above carries the
- * identity and the actions and nothing else.
+ * Status, production, salesperson, the two dates and the lead source: the six
+ * facts somebody opening this Order needs before anything else. There is no
+ * second summary anywhere on the page and no fact appears twice — the command
+ * header above carries the identity and the actions and nothing else.
  *
- * THE COMMERCIAL SIDE IS WHATEVER IT IS HANDED. `commercial` is the caller's
- * own node, so which figures a reader may see stays exactly where that decision
- * already lives; this component draws what it is given and gates nothing.
+ * NO MONEY HERE. The commercial figures live in their own column on the right
+ * of the lower workspace, BELOW the product list they describe, which is where
+ * a reader looks once they know what the Order is. Payment has its own section
+ * for the same reason. `commercial` remains as an optional slot so a caller
+ * that genuinely wants the two side by side can still do it, but the Order
+ * screen deliberately passes nothing.
  */
 export function OrderSummary({ facts, commercial }: {
   facts: readonly OrderSummaryFact[]
-  /** The totals and the breakdown, or null when this reader gets neither. */
-  commercial: React.ReactNode
+  /** Optional, and unused by /orders/[id]: the money is its own column. */
+  commercial?: React.ReactNode
 }) {
   return (
     <section className="order-summary" aria-label="Order summary">

@@ -150,15 +150,46 @@ describe('no Order fact is stated twice', () => {
     }
   })
 
-  test('the commercial totals are stated in the summary, and not again below', () => {
+  test('the commercial figures are stated ONCE, in their own column below Products', () => {
+    // NOT in the Order Summary: that band is operational facts only, and the
+    // money belongs under the product list it describes.
     const summary = body.slice(body.indexOf('<OrderSummary'), body.indexOf('<OrderAttentionBar'))
-    assert.ok(summary.includes('total_product_value'))
-    assert.ok(summary.includes('total_value'))
-    assert.ok(summary.includes('<OrderCommercialBreakdown'))
-    // Record Information must not repeat them.
-    const info = body.slice(body.indexOf('aria-label="Record information"'))
+    for (const forbidden of ['total_product_value', 'total_value', 'OrderCommercialTotals', 'OrderCommercialBreakdown']) {
+      assert.equal(summary.includes(forbidden), false, `${forbidden} must not be in the Order Summary`)
+    }
+
+    // In the lower workspace's right column, and after the products.
+    const aside = body.slice(body.indexOf('order-lower-aside'))
+    assert.ok(aside.includes('<OrderCommercialTotals'))
+    assert.ok(aside.includes('total_product_value'))
+    assert.ok(aside.includes('total_value'))
+    assert.ok(aside.includes('<OrderCommercialBreakdown'))
+    assert.ok(body.indexOf('className="order-products"') < body.indexOf('order-lower-aside'),
+      'the money sits below the products it describes')
+
+    // Drawn once each.
+    assert.equal((body.match(/<OrderCommercialTotals/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderCommercialBreakdown/g) ?? []).length, 1)
+
+    // Record Information must not repeat them. Bounded at Activity, which is
+    // the next section: past that lies the commercial column, where these
+    // figures legitimately DO appear.
+    const info = body.slice(body.indexOf('aria-label="Record information"'), body.indexOf('<OrderActivityList'))
     for (const forbidden of ['total_product_value', 'total_value', 'lead_source', 'assigned_to_name']) {
       assert.equal(info.includes(forbidden), false, `${forbidden} must not be repeated in Record information`)
+    }
+  })
+
+  test('the lower workspace puts the record left and the money right', () => {
+    const lower = body.slice(body.indexOf('className="order-lower"'))
+    const main = lower.indexOf('order-lower-main')
+    const aside = lower.indexOf('order-lower-aside')
+    assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
+    // The four sections that belong on the left, in order, all before the aside.
+    const left = lower.slice(main, aside)
+    for (const section of ['PAYMENT_SECTION_TITLE', 'title="Order records"',
+                           'aria-label="Record information"', '<OrderActivityList']) {
+      assert.ok(left.includes(section), `${section} belongs in the left column`)
     }
   })
 
