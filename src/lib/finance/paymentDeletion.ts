@@ -93,10 +93,68 @@ export const PAYMENT_DELETE_BUSY_LABEL    = 'Deleting…'
 export const PAYMENT_DELETE_TITLE         = 'Delete Payment'
 
 export const PAYMENT_DELETE_REASON_LABEL = 'Reason for deletion'
-export const PAYMENT_DELETE_REASON_PLACEHOLDER = 'Why is this payment being deleted?'
+
+/**
+ * WHAT KIND OF ANSWER THE REASON BOX WANTS. The bare question it used to ask —
+ * "Why is this payment being deleted?" — left the shape of the answer open, on
+ * a dialog whose only other box wants a Payment ID typed back. An example of a
+ * real reason is what keeps the two boxes from being mistaken for one another.
+ */
+export const PAYMENT_DELETE_REASON_PLACEHOLDER =
+  'e.g. Duplicate payment entry, or payment recorded incorrectly'
 
 export function paymentDeleteConfirmIdLabel(humanPaymentId: string): string {
   return `Type ${humanPaymentId} to confirm`
+}
+
+/**
+ * Does the typed confirmation match this payment's Payment ID?
+ *
+ * THE SAME COMPARISON THE DATABASE MAKES, and deliberately no friendlier:
+ * begin_finance_payment_deletion (20261011000000 §3d) tests
+ * `coalesce(btrim(p_confirm_payment_id), '') <> v_pay.human_payment_id` —
+ * surrounding whitespace forgiven, everything else exact, case included. A
+ * client that accepted more than this would arm a button the server then
+ * refuses; one that accepted less would refuse an entry the server would take.
+ */
+export function paymentDeleteIdMatches(typed: string, humanPaymentId: string): boolean {
+  return typed.trim() === humanPaymentId
+}
+
+/**
+ * What is wrong with what has been typed so far — or null when nothing is.
+ *
+ * AN EMPTY BOX IS NOT A MISTAKE. Somebody who has not typed yet is reading the
+ * instruction, not failing a check, so the mismatch is stated only once there
+ * is something on screen that does not match. It repeats the exact ID rather
+ * than only saying "wrong", because the whole difficulty is that the ID being
+ * typed and the ID being deleted look alike: P-AA-0003 for P-AA-0001.
+ */
+export function paymentDeleteIdMismatchMessage(
+  typed: string,
+  humanPaymentId: string,
+): string | null {
+  if (typed.trim() === '') return null
+  if (paymentDeleteIdMatches(typed, humanPaymentId)) return null
+  return `Payment ID does not match. Type ${humanPaymentId} exactly.`
+}
+
+/**
+ * Whether the dialog may send the deletion at all — a reason, and the exact
+ * Payment ID.
+ *
+ * A DRAWING RULE, NEVER AN AUTHORITY. The route re-validates the reason
+ * (REASON_REQUIRED) and the typed ID (ID_MISMATCH), and the RPCs re-derive who
+ * the caller is, on every attempt. This exists only so the destructive button
+ * is not live while the form is unfinished; it grants nothing.
+ */
+export function canSubmitPaymentDeletion(input: {
+  reason: string
+  typedId: string
+  humanPaymentId: string
+}): boolean {
+  return input.reason.trim() !== ''
+    && paymentDeleteIdMatches(input.typedId, input.humanPaymentId)
 }
 
 export type PaymentDeletionResult =

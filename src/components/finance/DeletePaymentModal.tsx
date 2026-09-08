@@ -33,6 +33,8 @@ import {
   PAYMENT_DELETE_REASON_LABEL,
   PAYMENT_DELETE_REASON_PLACEHOLDER,
   paymentDeleteConfirmIdLabel,
+  paymentDeleteIdMismatchMessage,
+  canSubmitPaymentDeletion,
   isConfirmedPaymentStatus,
   deletePaymentEntry,
   type DeletablePayment,
@@ -54,6 +56,75 @@ function Row({ label, value }: { label: string; value: string }) {
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>{label}</span>
       <span style={{ fontSize: '13px', color: colors.primary, fontWeight: 600 }}>{value}</span>
+    </div>
+  )
+}
+
+const CONFIRM_ID_INPUT_ID = 'payment-delete-confirm-id'
+const CONFIRM_ID_ERROR_ID = 'payment-delete-confirm-id-error'
+
+/**
+ * The typed-Payment-ID box, and what it says when what is typed is not it.
+ *
+ * A DISABLED BUTTON EXPLAINS NOTHING. The previous version signalled a mismatch
+ * with a pale border and nothing else, so somebody who typed P-AA-0003 for
+ * P-AA-0001 saw a dead Delete button and no statement of what was wrong — the
+ * ID differs by one character and the two read alike at a glance. So the
+ * mismatch is now said in words, under the box, WHILE TYPING rather than on
+ * submit, and it names the ID that would be right.
+ *
+ * IT LOOSENS NOTHING. The comparison is still paymentDeleteIdMatches — exact,
+ * case-sensitive, trimmed exactly as begin_finance_payment_deletion trims — and
+ * this component neither pre-fills the box nor accepts a prefix of the ID.
+ *
+ * Separated from the dialog body so it can be rendered at each of its three
+ * states (untouched, mismatched, matched) by a test that has no DOM to type
+ * into; the dialog still owns the value.
+ */
+export function PaymentDeleteConfirmIdField({
+  humanPaymentId, value, onChange, disabled,
+}: {
+  humanPaymentId: string
+  value: string
+  onChange: (next: string) => void
+  disabled: boolean
+}) {
+  const mismatch = paymentDeleteIdMismatchMessage(value, humanPaymentId)
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      <label htmlFor={CONFIRM_ID_INPUT_ID} style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
+        {paymentDeleteConfirmIdLabel(humanPaymentId)}
+      </label>
+      <input
+        id={CONFIRM_ID_INPUT_ID}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        disabled={disabled}
+        placeholder={humanPaymentId}
+        aria-invalid={mismatch !== null}
+        aria-describedby={mismatch ? CONFIRM_ID_ERROR_ID : undefined}
+        style={{
+          fontSize: '13px', padding: '8px 10px', borderRadius: '8px',
+          border: `1px solid ${mismatch ? '#DC2626' : colors.border}`,
+          background: mismatch ? '#FEF2F2' : undefined,
+          fontFamily: 'monospace',
+        }}
+        // The one input on this dialog that is a code rather than prose: a phone
+        // keyboard that capitalised the first letter would type "P-aa-0001" and
+        // then be told of a mismatch the person did not make.
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {/* The BOE inline field error: 11px, #C13030, directly beneath the box —
+          the same shape OrderField draws, and gone the moment it stops being
+          true rather than at submit. */}
+      {mismatch && (
+        <div id={CONFIRM_ID_ERROR_ID} role="alert" style={{ fontSize: '11px', color: '#C13030', lineHeight: 1.5 }}>
+          {mismatch}
+        </div>
+      )}
     </div>
   )
 }
@@ -89,8 +160,9 @@ export function DeletePaymentModal({
   const [failure, setFailure]   = useState<{ message: string; retryable: boolean } | null>(null)
 
   const isConfirmed = isConfirmedPaymentStatus(payment.status)
-  const idMatches = typedId.trim() === payment.human_payment_id
-  const canSubmit = reason.trim() !== '' && idMatches
+  const canSubmit = canSubmitPaymentDeletion({
+    reason, typedId, humanPaymentId: payment.human_payment_id,
+  })
 
   // A RETRYABLE FAILURE IS NOT SETTLED. The claim is still standing and the
   // next press resumes from the frozen manifest, so the destructive button
@@ -180,22 +252,12 @@ export function DeletePaymentModal({
             />
           </label>
 
-          <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted }}>
-              {paymentDeleteConfirmIdLabel(payment.human_payment_id)}
-            </span>
-            <input
-              value={typedId}
-              onChange={e => setTypedId(e.target.value)}
-              disabled={deleting}
-              placeholder={payment.human_payment_id}
-              style={{
-                fontSize: '13px', padding: '8px 10px', borderRadius: '8px',
-                border: `1px solid ${idMatches || typedId === '' ? colors.border : '#FECACA'}`,
-                fontFamily: 'monospace',
-              }}
-            />
-          </label>
+          <PaymentDeleteConfirmIdField
+            humanPaymentId={payment.human_payment_id}
+            value={typedId}
+            onChange={setTypedId}
+            disabled={deleting}
+          />
         </div>
       )}
 
