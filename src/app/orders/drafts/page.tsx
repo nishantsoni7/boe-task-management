@@ -299,6 +299,19 @@ export default function PiDraftsPage() {
   }
 
   const openDraft = (entry: PiDraftListEntry) => router.push(entry.href)
+  /**
+   * HOVER IS THE EARLIEST HONEST SIGNAL that this draft is about to be opened,
+   * so the code for the PI detail route is already in hand when the click
+   * lands. The two Order lists have done this since their own performance
+   * pass; this list was the one that did not.
+   *
+   * It fetches the ROUTE, not the draft: no record, no permission and no file
+   * is read until that page mounts and asks under the reader's own session, so
+   * this can neither leak a row nor show a stale one. Next de-duplicates
+   * repeated prefetches, so moving down a list costs one fetch and then cache
+   * hits.
+   */
+  const prefetchDraft = (entry: PiDraftListEntry) => router.prefetch(entry.href)
 
   /**
    * Erase one PI, files and all.
@@ -536,7 +549,7 @@ export default function PiDraftsPage() {
                       Delete sits beside it, compact and last, so the destructive
                       control is never the one a hurried click lands on. */}
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
+                    <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)} onMouseEnter={() => prefetchDraft(entry)}>
                       {actionLabel}
                     </button>
                     {deleteAction(entry)}
@@ -610,7 +623,7 @@ export default function PiDraftsPage() {
                   : entry.uploadedAt}
               </span>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)}>
+                <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)} onMouseEnter={() => prefetchDraft(entry)}>
                   {actionLabel}
                 </button>
                 {deleteAction(entry)}

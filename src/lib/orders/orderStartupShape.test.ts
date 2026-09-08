@@ -432,6 +432,29 @@ describe('the Order lists prefetch what a hover says is coming', () => {
   }
 })
 
+describe('PI Drafts prefetches too — it was the one list that did not', () => {
+  // The two Order lists gained this in their own pass and the draft list was
+  // left behind, so a screen an approver opens constantly was the slowest to
+  // arrive. Same rule as theirs: the ROUTE, never the record. A prefetch that
+  // fetched DATA would be a cache of a private row.
+  const source = stripComments(read(DRAFTS))
+
+  test('a hover on a draft row prefetches the PI detail route', () => {
+    assert.ok(source.includes('router.prefetch(entry.href)'),
+      'the list must prefetch what a hover says is coming')
+    assert.ok(source.includes('onMouseEnter={() => prefetchDraft(entry)}'),
+      'and it must be wired to the control that opens the draft')
+  })
+
+  test('it prefetches the ROUTE and reads no record', () => {
+    const at = source.indexOf('router.prefetch(')
+    const around = source.slice(at, at + 200)
+    for (const read of ['.from(', '.rpc(']) {
+      assert.ok(!around.includes(read), 'a prefetch must not read a record')
+    }
+  })
+})
+
 describe('product photographs were deliberately LEFT ALONE', () => {
   const preview = 'src/components/orders/piPreview.tsx'
 
