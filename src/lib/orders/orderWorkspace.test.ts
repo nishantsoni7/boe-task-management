@@ -1,6 +1,7 @@
 /**
- * The Confirmed Order workspace rules: what needs attention, how the health
- * card reads, which header action is primary, and the relative day label.
+ * The Confirmed Order rules: the six Order Summary facts, what needs
+ * attention, which header action is primary, the activity window and the
+ * relative day label.
  *
  * Pure functions over state the page already holds. No database, no network.
  *
@@ -14,24 +15,22 @@ import {
   ACTIVITY_PREVIEW_COUNT,
   activityToggleLabel,
   activityWindow,
-  HEALTH_NO_PAYMENTS,
-  HEALTH_NOT_SET,
-  HEALTH_PAYMENT_LOADING,
-  HEALTH_UNASSIGNED,
+  SUMMARY_NOT_SET,
+  SUMMARY_UNASSIGNED,
   arrangeOrderActions,
   attentionHeading,
   isOrderClosed,
   orderAttentionItems,
-  orderHealthRows,
+  orderSummaryFacts,
   relativeDayLabel,
   type OrderAttentionInput,
-  type OrderHealthInput,
+  type OrderSummaryInput,
 } from './orderWorkspace'
 
 const quiet: OrderAttentionInput = {
   status: 'running',
   productionAligned: true,
-  hasAssignee: true,
+  hasSalesperson: true, hasLeadSource: true,
   hasDueDate: true,
   isOverdue: false,
   awaitingVerificationCount: 0,
@@ -47,9 +46,9 @@ describe('the attention bar', () => {
   })
 
   test('the three operational gaps are named, in a fixed order', () => {
-    const items = orderAttentionItems({ ...quiet, productionAligned: false, hasAssignee: false, hasDueDate: false })
-    assert.deepEqual(items.map(i => i.key), ['production', 'assignee', 'due_date'])
-    assert.deepEqual(items.map(i => i.label), ['Production not aligned', 'No assignee', 'Due date not set'])
+    const items = orderAttentionItems({ ...quiet, productionAligned: false, hasSalesperson: false, hasDueDate: false })
+    assert.deepEqual(items.map(i => i.key), ['production', 'salesperson', 'due_date'])
+    assert.deepEqual(items.map(i => i.label), ['Production not aligned', 'Salesperson not set', 'Due date not set'])
     assert.ok(items.every(i => i.tone === 'amber'))
   })
 
@@ -85,11 +84,28 @@ describe('the attention bar', () => {
       ['documents_failed'])
   })
 
+  test('lead source is listed when it is missing, and is amber like the rest', () => {
+    // Required at conversion since 20261201000000, so a NEW Order cannot arrive
+    // without one — the Orders that predate that rule legitimately can.
+    const items = orderAttentionItems({ ...quiet, hasLeadSource: false })
+    assert.deepEqual(items.map(i => i.key), ['lead_source'])
+    assert.equal(items[0].label, 'Lead source not set')
+    assert.equal(items[0].tone, 'amber')
+  })
+
+  test('the four mandatory-field gaps read in the order they are asked for', () => {
+    const items = orderAttentionItems({
+      ...quiet, productionAligned: false, hasSalesperson: false, hasDueDate: false, hasLeadSource: false,
+    })
+    assert.deepEqual(items.map(i => i.key),
+      ['production', 'salesperson', 'due_date', 'lead_source'])
+  })
+
   test('a closed Order carries no operational gaps, but money and decisions still show', () => {
     for (const status of ['dispatched', 'cancelled']) {
       const items = orderAttentionItems({
         ...quiet, status,
-        productionAligned: false, hasAssignee: false, hasDueDate: false, isOverdue: true,
+        productionAligned: false, hasSalesperson: false, hasDueDate: false, isOverdue: true,
         documentsFailed: true, documentsOutdated: true,
         awaitingVerificationCount: 1, pendingChangeRequests: 1,
       })
@@ -109,81 +125,76 @@ describe('the attention bar', () => {
   })
 })
 
-const healthy: OrderHealthInput = {
+const summary: OrderSummaryInput = {
   status: 'running',
   statusLabel: 'Running',
   statusTone: 'blue',
-  verifiedPercent: '47.95%',
-  verified: '₹7,50,000.00',
-  orderValue: '₹15,64,090.00',
-  fullyPaid: false,
-  paymentCount: 2,
-  paymentsLoaded: true,
   productionAligned: true,
   productionLabel: 'Aligned',
   productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
+  salespersonName: 'Nishant',
+  confirmDate: '8 Sep 2026',
   dueDate: '30 Oct 2026',
   isOverdue: false,
-  ownerName: 'Nishant',
-  confirmedDate: '8 Sep 2026',
+  leadSource: 'Reference',
 }
 
-describe('the health card', () => {
-  test('reads six lines in a fixed order', () => {
-    assert.deepEqual(orderHealthRows(healthy).map(r => r.key),
-      ['status', 'payment', 'production', 'due', 'owner', 'confirmed'])
+describe('the Order Summary facts', () => {
+  test('states the six management facts, in reading order', () => {
+    assert.deepEqual(orderSummaryFacts(summary).map(f => f.key),
+      ['status', 'production', 'salesperson', 'confirm_date', 'due_date', 'lead_source'])
+    assert.deepEqual(orderSummaryFacts(summary).map(f => f.label),
+      ['Status', 'Production', 'Salesperson', 'Confirm date', 'Due date', 'Lead source'])
   })
 
-  test('the payment line states the verified percentage over the money', () => {
-    const row = orderHealthRows(healthy)[1]
-    assert.equal(row.value, '47.95% verified')
-    assert.equal(row.detail, '₹7,50,000.00 of ₹15,64,090.00')
-    assert.equal(row.tone, 'neutral', 'a balance is not a warning')
+  test('carries NO payment figure — payment has its own section', () => {
+    const facts = orderSummaryFacts(summary)
+    for (const fact of facts) {
+      assert.ok(!/verified|₹|%|balance|awaiting/i.test(fact.value), fact.key)
+      assert.ok(!/verified|₹|balance|awaiting/i.test(fact.detail ?? ''), fact.key)
+    }
+    assert.ok(!facts.some(f => (f.key as string) === 'payment'))
   })
 
-  test('fully paid is green; nothing recorded says so and states what is outstanding', () => {
-    assert.equal(orderHealthRows({ ...healthy, fullyPaid: true, verifiedPercent: '100%' })[1].tone, 'green')
-    const none = orderHealthRows({ ...healthy, paymentCount: 0 })[1]
-    assert.equal(none.value, HEALTH_NO_PAYMENTS)
-    assert.equal(none.detail, '₹15,64,090.00 outstanding')
+  test('never says Owner or Assignee — the Order flow has one word', () => {
+    const said = orderSummaryFacts(summary).map(f => f.label).join(' ')
+    assert.ok(!/owner|assignee/i.test(said))
+    assert.ok(said.includes('Salesperson'))
   })
 
-  test('while the payment reads are in flight the line says so rather than showing zero', () => {
-    const row = orderHealthRows({ ...healthy, paymentsLoaded: false, paymentCount: 0 })[1]
-    assert.equal(row.value, HEALTH_PAYMENT_LOADING)
-    assert.ok(!/0/.test(row.value))
-  })
-
-  test('production, due date and owner are amber only when they are gaps on an open Order', () => {
-    const gaps = orderHealthRows({
-      ...healthy, productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-      dueDate: null, ownerName: null,
+  test('a gap on an OPEN Order is amber and names itself', () => {
+    const gaps = orderSummaryFacts({
+      ...summary, productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
+      salespersonName: null, confirmDate: null, dueDate: null, leadSource: null,
     })
+    assert.equal(gaps[1].tone, 'amber')
+    assert.equal(gaps[2].value, SUMMARY_UNASSIGNED)
     assert.equal(gaps[2].tone, 'amber')
-    assert.equal(gaps[3].value, HEALTH_NOT_SET)
-    assert.equal(gaps[3].tone, 'amber')
-    assert.equal(gaps[4].value, HEALTH_UNASSIGNED)
-    assert.equal(gaps[4].tone, 'amber')
-
-    const aligned = orderHealthRows(healthy)
-    assert.equal(aligned[2].tone, 'green')
-    assert.equal(aligned[3].tone, 'neutral')
-    assert.equal(aligned[4].tone, 'neutral')
+    assert.equal(gaps[3].value, SUMMARY_NOT_SET)
+    assert.equal(gaps[4].value, SUMMARY_NOT_SET)
+    assert.equal(gaps[5].value, SUMMARY_NOT_SET)
+    assert.ok(gaps.slice(2).every(f => f.tone === 'amber'))
   })
 
   test('the same gaps on a closed Order are neutral, not warnings', () => {
-    const rows = orderHealthRows({
-      ...healthy, status: 'dispatched', productionAligned: false, productionLabel: 'Not Aligned',
-      productionLine: null, dueDate: null, ownerName: null,
+    const facts = orderSummaryFacts({
+      ...summary, status: 'dispatched', productionAligned: false, productionLabel: 'Not Aligned',
+      productionLine: null, salespersonName: null, confirmDate: null, dueDate: null, leadSource: null,
     })
-    assert.ok(rows.slice(2, 5).every(r => r.tone === 'neutral'))
+    assert.ok(facts.slice(1).every(f => f.tone === 'neutral'))
+  })
+
+  test('a settled Order is quiet: production green, everything else neutral', () => {
+    const facts = orderSummaryFacts(summary)
+    assert.equal(facts[1].tone, 'green')
+    assert.ok(facts.slice(2).every(f => f.tone === 'neutral'))
   })
 
   test('overdue is the only red', () => {
-    const rows = orderHealthRows({ ...healthy, isOverdue: true })
-    assert.equal(rows[3].tone, 'red')
-    assert.equal(rows[3].detail, 'Overdue')
-    assert.equal(rows.filter(r => r.tone === 'red').length, 1)
+    const facts = orderSummaryFacts({ ...summary, isOverdue: true })
+    assert.equal(facts[4].tone, 'red')
+    assert.equal(facts[4].detail, 'Overdue')
+    assert.equal(facts.filter(f => f.tone === 'red').length, 1)
   })
 })
 

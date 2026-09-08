@@ -286,7 +286,15 @@ describe('no Order screen waits more than it must', () => {
       // PI; the decision itself arrives with the record, because its three
       // columns are spread into PI_DRAFT_DETAIL_COLUMNS. The startup path is
       // unchanged.
-      [DRAFTS]: 4, [PI_DETAIL]: 27, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
+      // PI_DETAIL 27 -> 28 (20261201000000): ONE users read, for the list of
+      // people who may be named as the SALESPERSON on the Order this PI
+      // becomes. Four fields are now required to create an Order — salesperson,
+      // confirm date, due date and lead source — and the first of them needs a
+      // list to choose from. It is issued INSIDE the page's existing
+      // Promise.all, beside the profile and the two permission resolves, so the
+      // count grew and the number of times the page waits did NOT: the wait
+      // test above still requires exactly three.
+      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

@@ -134,6 +134,12 @@ import type {
 import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
 import type { UserProfile } from '@/lib/types'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import {
+  describeConfirmationFailure,
+  validateOrderConfirmation,
+  type OrderConfirmationDraft,
+  type OrderConfirmationField,
+} from '@/lib/orders/orderConfirmation'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
@@ -455,6 +461,26 @@ function PiDraftDetailPageInner() {
   const [acting, setActing] = useState(false)
   const [actionFailure, setActionFailure] = useState<string | null>(null)
   /**
+   * THE FOUR FIELDS THE CONFIRMED ORDER IS BUILT FROM (20261201000000).
+   *
+   * Held by the page rather than the dialog so a refusal keeps what was
+   * already chosen — being sent back to an empty form because one field was
+   * missing is how people learn to distrust a dialog.
+   *
+   * The two dates START from what the PI itself states, so the approver
+   * confirms a date the document already carried rather than retyping it. Both
+   * are still editable and both are still required: order_confirmation_date is
+   * often absent, and due_date is null whenever the PI stated a commitment
+   * ("6 weeks from confirmation") rather than a calendar date — see
+   * src/lib/orders/dueDate.ts.
+   */
+  const [confirmation, setConfirmation] = useState<OrderConfirmationDraft>({
+    salesperson: null, confirmDate: null, dueDate: null, leadSource: null,
+  })
+  const [confirmationField, setConfirmationField] = useState<OrderConfirmationField | null>(null)
+  /** Who may be named as the salesperson. Read once, with the record. */
+  const [salespeople, setSalespeople] = useState<{ id: string; name: string }[]>([])
+  /**
    * What the approval RPC returned, kept ONLY so the number is on screen the
    * instant the call commits.
    *
@@ -637,6 +663,16 @@ function PiDraftDetailPageInner() {
     // The version this render is based on, for optimistic concurrency.
     setRowVersion(typeof row.row_version === 'number' ? row.row_version : null)
 
+    // THE TWO DATES THE PI ALREADY STATES, offered as the starting point for
+    // the confirmation dialog. `?? prev` and never an overwrite: a quiet
+    // re-read after some other action must not discard a date the approver has
+    // already chosen in the open dialog.
+    setConfirmation(prev => ({
+      ...prev,
+      confirmDate: prev.confirmDate ?? (row.order_confirmation_date ?? null),
+      dueDate:     prev.dueDate     ?? (row.due_date ?? null),
+    }))
+
     setLoad({
       kind: 'ready',
       draft: {
@@ -685,7 +721,7 @@ function PiDraftDetailPageInner() {
       // must not imply one another. A failure on either resolves to no
       // capabilities for that module alone, so a Finance outage cannot cost
       // somebody their PI review controls and vice versa.
-      const [{ data: me }, ordersPermissions, financePermissions] = await Promise.all([
+      const [{ data: me }, ordersPermissions, financePermissions, { data: people }] = await Promise.all([
         supabase
           .from('users')
           .select(USER_PROFILE_COLUMNS)
@@ -693,6 +729,16 @@ function PiDraftDetailPageInner() {
           .single(),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        // WHO MAY BE NAMED AS THE SALESPERSON on the Order this PI becomes.
+        // Two safe columns, named explicitly — `select('*')` on public.users is
+        // a permission error — and issued INSIDE the group the page already
+        // waits for, so it costs no extra latency. It decides what the control
+        // OFFERS; approve_order_submission re-checks the id it is given.
+        supabase
+          .from('users')
+          .select('id, full_name')
+          .eq('is_active', true)
+          .order('full_name', { ascending: true }),
       ])
       const role = (me as UserProfile | null)?.role
       const caps = deriveOrdersCapabilities(role, ordersPermissions)
@@ -713,6 +759,11 @@ function PiDraftDetailPageInner() {
       // (view, view_all, approve, manage) deliberately does not, which is the
       // same rule record_pi_submission_payment() enforces server-side.
       setCanAllocatePayment(financeCaps.canAllocatePayment)
+      setSalespeople(
+        ((people ?? []) as { id: string; full_name: string | null }[])
+          .filter(person => person.id && person.full_name)
+          .map(person => ({ id: person.id, name: person.full_name as string })),
+      )
       await loadDraft()
     }
 
@@ -746,6 +797,12 @@ function PiDraftDetailPageInner() {
   const runAction = useCallback(async (
     action: SubmissionAction,
     call: () => Promise<{ error: unknown }>,
+    /**
+     * A sentence this caller owns for refusals only it can name. Consulted
+     * FIRST and only for what it recognises: it returns null for everything
+     * else, which then takes the existing path unchanged.
+     */
+    describeError?: (error: unknown) => string | null,
   ) => {
     if (actingRef.current) return
     actingRef.current = true
@@ -762,7 +819,11 @@ function PiDraftDetailPageInner() {
         // instruction and a dead end. It claims nothing else: anything that is
         // not a reservation refusal returns null and takes the existing path.
         const reservationMessage = reservationApprovalMessage(error)
-        setActionFailure(reservationMessage ?? describeSubmissionFailure(error, action).message)
+        setActionFailure(
+          describeError?.(error)
+          ?? reservationMessage
+          ?? describeSubmissionFailure(error, action).message,
+        )
         return
       }
       setDialog(null)
@@ -1232,13 +1293,43 @@ function PiDraftDetailPageInner() {
    * database immediately afterwards, so what the screen ends up showing is the
    * persisted state rather than an optimistic guess.
    */
-  const approveSubmission = useCallback(() => runAction('approve', async () => {
-    const { data, error } = await supabase.rpc('approve_order_submission', {
-      p_submission_id: submissionId,
-    })
-    if (!error) setApproval(readApprovalOutcome(data))
-    return { error }
-  }), [runAction, supabase, submissionId])
+  /**
+   * THE FOUR FIELDS ARE CHECKED HERE AND AGAIN IN THE DATABASE.
+   *
+   * This check exists so the person filling the dialog in is told which field
+   * is missing, in a sentence that names it, without spending a round trip.
+   * It is NOT the control: approve_order_submission (20261201000000) validates
+   * all four before it reads or moves anything, so a stale tab, a replayed
+   * request and a hand-made call are refused there. A refusal from either side
+   * marks and focuses the same field.
+   */
+  const approveSubmission = useCallback(() => {
+    const check = validateOrderConfirmation(confirmation)
+    if (!check.ok) {
+      setConfirmationField(check.field)
+      setActionFailure(check.message)
+      return
+    }
+    setConfirmationField(null)
+    return runAction('approve', async () => {
+      const { data, error } = await supabase.rpc('approve_order_submission', {
+        p_submission_id: submissionId,
+        p_assigned_to:   check.values.salesperson,
+        p_confirm_date:  check.values.confirmDate,
+        p_due_date:      check.values.dueDate,
+        p_lead_source:   check.values.leadSource,
+      })
+      if (error) {
+        // A refusal that names one of the four marks that field; the sentence
+        // itself is chosen by the describeError argument below.
+        const named = describeConfirmationFailure(error)
+        if (named) setConfirmationField(named.field)
+      } else {
+        setApproval(readApprovalOutcome(data))
+      }
+      return { error }
+    }, error => describeConfirmationFailure(error)?.message ?? null)
+  }, [runAction, supabase, submissionId, confirmation])
 
   /**
    * The PI decision ON ITS OWN (20261119000000).
@@ -2377,6 +2468,12 @@ function PiDraftDetailPageInner() {
           failure={actionFailure}
           onCancel={closeDialog}
           onConfirm={dialog === 'approve_pi' ? approvePiReview : approveSubmission}
+          // The four fields the Order is built from. Not offered in
+          // `approve_pi`, which records a decision and creates no Order.
+          salespeople={salespeople}
+          confirmation={confirmation}
+          onConfirmationChange={next => { setConfirmationField(null); setConfirmation(next) }}
+          confirmationField={confirmationField}
         />
       )}
 

@@ -132,6 +132,7 @@ describe('the file, and where it sits', () => {
       // approval functions, and adds one new table of its own,
       // public.order_product_codes. Touches no BOE Credits table or function.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
+      '20261201000000_order_submission_confirmation_required_fields.sql',
     ])
   })
 

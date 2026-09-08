@@ -587,6 +587,7 @@ describe('the migration is placed correctly', () => {
       // approval functions, and adds one new table of its own,
       // public.order_product_codes. Touches nothing task-health-check-related.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
+      '20261201000000_order_submission_confirmation_required_fields.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

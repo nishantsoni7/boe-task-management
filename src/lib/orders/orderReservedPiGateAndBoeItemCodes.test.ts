@@ -258,11 +258,24 @@ describe('it proves itself against the deployed bodies, not against its own text
   })
 })
 
-describe('it sorts after everything currently on disk', () => {
-  test('its timestamp is the highest in the migrations directory', () => {
+describe('it sorts after everything that was on disk when it was written', () => {
+  test('nothing between it and the migration it re-emits was added later', () => {
+    // IT IS NO LONGER THE LAST FILE, and it does not need to be. What this
+    // guard is for is that this migration APPLIES AFTER everything it depends
+    // on — so what matters is that nothing sorts between it and the state it
+    // was written against. 20261201000000 (the four fields a Confirmed Order
+    // cannot be built without) sorts after it, re-emits
+    // approve_order_submission from THIS file's text, and is accounted for
+    // here by name.
     const files = readdirSync(join(process.cwd(), 'supabase/migrations'))
       .filter((f: string) => /^\d{14}_/.test(f))
       .sort()
-    assert.equal(files[files.length - 1], MIGRATION.split('/').pop())
+    const mine = MIGRATION.split('/').pop() as string
+    const at = files.indexOf(mine)
+    assert.ok(at >= 0, 'the migration is on disk')
+    assert.deepEqual(files.slice(at), [
+      mine,
+      '20261201000000_order_submission_confirmation_required_fields.sql',
+    ], 'every migration at or after this one is accounted for')
   })
 })

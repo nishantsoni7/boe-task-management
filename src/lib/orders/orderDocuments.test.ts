@@ -19,9 +19,13 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 import {
   ORDER_DOCUMENTS_GENERIC_FAILURE,
+  ORDER_DOCUMENTS_STALLED,
+  ORDER_DOCUMENT_CLAIM_TTL_MS,
   ORDER_DOCUMENT_COLUMNS,
   ORDER_DOCUMENT_FAILURES,
   ORDER_DOCUMENT_STATUSES,
@@ -29,6 +33,7 @@ import {
   ORDER_DOCUMENT_UNKNOWN_FAILURE,
   buildOrderDocumentsView,
   currentOrderDocument,
+  isOrderDocumentClaimStale,
   isOrderDocumentReady,
   isOrderDocumentStatus,
   latestOrderDocument,
@@ -330,5 +335,80 @@ describe('sanitizing a failure', () => {
       // Written for a person: a sentence, not a token.
       assert.ok(/^[A-Z]/.test(message) && message.endsWith('.'), message)
     }
+  })
+})
+
+// ══ A run that was claimed and never finished ═════════════════════════════════
+//
+// THE ROUTE IS THE WORKER: /api/orders/[id]/documents requests, claims,
+// renders, uploads and publishes inside one HTTP request. There is no cron and
+// no second caller of claim_order_document_generation, so when that request
+// dies mid-flight the row stays `claimed` and nothing will ever move it.
+//
+// The card read that as "Generating", hid the Generate control, and kept hiding
+// it — so the one action that could take the claim over was suppressed by the
+// state it would have cleared. The database has always allowed the takeover
+// after fifteen minutes; what was missing was a way to ask.
+
+describe('a stale claim gives the control back', () => {
+  const claimedAt = (minutesAgo: number) =>
+    new Date(Date.now() - minutesAgo * 60 * 1000).toISOString()
+
+  const claimed = (minutesAgo: number) => row({
+    status: 'claimed', claimed_at: claimedAt(minutesAgo),
+    excel_path: null, pdf_path: null, completed_at: null,
+  })
+
+  test('the lease is the one the database holds', () => {
+    assert.equal(ORDER_DOCUMENT_CLAIM_TTL_MS, 15 * 60 * 1000)
+    const sql = readFileSync(
+      join(process.cwd(), 'supabase/migrations/20260925000000_order_document_generation.sql'), 'utf8')
+    assert.match(sql, /order_document_claim_ttl\(\)[\s\S]{0,240}select interval '15 minutes'/)
+  })
+
+  test('a fresh claim is still work in progress, and offers no control', () => {
+    const view = buildOrderDocumentsView([claimed(2)])
+    assert.equal(view.working, true)
+    assert.equal(view.failure, null)
+  })
+
+  test('once the lease has expired the row stops claiming to be busy', () => {
+    const view = buildOrderDocumentsView([claimed(16)])
+    assert.equal(view.working, false, 'nothing is generating, so the control comes back')
+    assert.equal(view.failure, ORDER_DOCUMENTS_STALLED)
+    // The state itself is untouched: this changes what the SCREEN says, never
+    // what the database holds.
+    assert.equal(view.status, 'claimed')
+  })
+
+  test('exactly at the lease boundary it is stale, because the database would allow the takeover', () => {
+    assert.equal(isOrderDocumentClaimStale({ status: 'claimed', claimed_at: claimedAt(15) }), true)
+    assert.equal(isOrderDocumentClaimStale({ status: 'claimed', claimed_at: claimedAt(14) }), false)
+  })
+
+  test('only a CLAIMED row can be stale', () => {
+    for (const status of ['pending', 'ready', 'failed']) {
+      assert.equal(isOrderDocumentClaimStale({ status, claimed_at: claimedAt(60) }), false, status)
+    }
+  })
+
+  test('a claimed row with no timestamp cannot be judged, and stays working', () => {
+    // Guessing "stale" would offer a takeover the database will refuse.
+    assert.equal(isOrderDocumentClaimStale({ status: 'claimed', claimed_at: null }), false)
+    assert.equal(buildOrderDocumentsView([row({
+      status: 'claimed', claimed_at: null, excel_path: null, pdf_path: null, completed_at: null,
+    })]).working, true)
+  })
+
+  test('a stalled newer version does not take the older one\'s downloads away', () => {
+    const view = buildOrderDocumentsView([
+      row({ id: 'v1', version: 1 }),
+      row({ id: 'v2', version: 2, status: 'claimed', claimed_at: claimedAt(30),
+               excel_path: null, pdf_path: null, completed_at: null }),
+    ])
+    assert.equal(view.version, 1, 'the ready version is still what a person opens')
+    assert.equal(view.downloadable, true)
+    assert.equal(view.working, false)
+    assert.equal(view.failure, ORDER_DOCUMENTS_STALLED)
   })
 })

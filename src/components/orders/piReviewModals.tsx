@@ -35,6 +35,12 @@ import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { useScrollLock } from '@/hooks/useScrollLock'
 import {
+  ORDER_LEAD_SOURCES,
+  SALESPERSON_LABEL,
+  type OrderConfirmationDraft,
+  type OrderConfirmationField,
+} from '@/lib/orders/orderConfirmation'
+import {
   FOCUSABLE_SELECTOR,
   resolveTrapTarget,
   shouldCloseFormModal,
@@ -1040,6 +1046,10 @@ export function PiApproveOrderModal({
   onCancel,
   onConfirm,
   mode = 'approve_and_create',
+  salespeople,
+  confirmation,
+  onConfirmationChange,
+  confirmationField,
 }: {
   client: string
   /** buildApprovalSummary's rows. This component chooses no wording of its own. */
@@ -1049,6 +1059,17 @@ export function PiApproveOrderModal({
   onCancel: () => void
   onConfirm: () => void
   mode?: ApproveDialogMode
+  /**
+   * Who may be named as the salesperson. The page reads them; this list only
+   * decides what the control offers, and the database re-checks the id it is
+   * given. Omitted in the modes that create no Order.
+   */
+  salespeople?: readonly { id: string; name: string }[]
+  /** The four fields, owned by the page so a refusal can keep what was typed. */
+  confirmation?: OrderConfirmationDraft
+  onConfirmationChange?: (next: OrderConfirmationDraft) => void
+  /** Which field the last refusal named, so it can be focused and marked. */
+  confirmationField?: OrderConfirmationField | null
 }) {
   useScrollLock(true)
 
@@ -1059,6 +1080,26 @@ export function PiApproveOrderModal({
   useEscapeDismiss(dismiss, !saving)
 
   const copy = APPROVE_DIALOG_COPY[mode]
+
+  // ── THE FOUR FIELDS AN ORDER CANNOT BE BUILT WITHOUT ──
+  //
+  // Asked for only where an Order is actually created. `approve_pi` records a
+  // decision about the document and creates nothing, so it asks nothing.
+  const asksForOrderFields = mode !== 'approve_pi' && !!confirmation && !!onConfirmationChange
+  const draft = confirmation ?? { salesperson: null, confirmDate: null, dueDate: null, leadSource: null }
+  const set = (patch: Partial<OrderConfirmationDraft>) => onConfirmationChange?.({ ...draft, ...patch })
+  const fieldRefs = useRef<Partial<Record<OrderConfirmationField, HTMLElement | null>>>({})
+
+  // The refused field is focused, not merely reddened: a person who pressed
+  // Confirm is looking at the button, not at the control that is missing.
+  useEffect(() => {
+    if (confirmationField) fieldRefs.current[confirmationField]?.focus()
+  }, [confirmationField])
+
+  const fieldStyle = (field: OrderConfirmationField): React.CSSProperties => ({
+    width: '100%',
+    borderColor: confirmationField === field ? 'rgba(217,79,79,0.65)' : undefined,
+  })
 
   return (
     <div style={OVERLAY} role="dialog" aria-modal="true" aria-label={copy.title}>
@@ -1089,6 +1130,79 @@ export function PiApproveOrderModal({
               </div>
             ))}
           </div>
+
+          {/* ── The four fields the Order is built from ──
+              Required in the database by approve_order_submission
+              (20261201000000), which validates all four before it reads or
+              moves anything. These controls are the courtesy; the gate is
+              there. */}
+          {asksForOrderFields && (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '10px 12px' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
+                <span className="boe-input-label">{SALESPERSON_LABEL} *</span>
+                <select
+                  ref={el => { fieldRefs.current.salesperson = el }}
+                  className="boe-input"
+                  value={draft.salesperson ?? ''}
+                  disabled={saving}
+                  onChange={e => set({ salesperson: e.target.value || null })}
+                  style={fieldStyle('salesperson')}
+                  aria-invalid={confirmationField === 'salesperson' || undefined}
+                >
+                  <option value="">Select a salesperson…</option>
+                  {(salespeople ?? []).map(person => (
+                    <option key={person.id} value={person.id}>{person.name}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span className="boe-input-label">Confirm date *</span>
+                <input
+                  ref={el => { fieldRefs.current.confirm_date = el }}
+                  type="date"
+                  className="boe-input"
+                  value={draft.confirmDate ?? ''}
+                  disabled={saving}
+                  onChange={e => set({ confirmDate: e.target.value || null })}
+                  style={fieldStyle('confirm_date')}
+                  aria-invalid={confirmationField === 'confirm_date' || undefined}
+                />
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                <span className="boe-input-label">Due date *</span>
+                <input
+                  ref={el => { fieldRefs.current.due_date = el }}
+                  type="date"
+                  className="boe-input"
+                  value={draft.dueDate ?? ''}
+                  disabled={saving}
+                  onChange={e => set({ dueDate: e.target.value || null })}
+                  style={fieldStyle('due_date')}
+                  aria-invalid={confirmationField === 'due_date' || undefined}
+                />
+              </label>
+
+              <label style={{ display: 'flex', flexDirection: 'column', gap: '4px', gridColumn: '1 / -1' }}>
+                <span className="boe-input-label">Lead source *</span>
+                <select
+                  ref={el => { fieldRefs.current.lead_source = el }}
+                  className="boe-input"
+                  value={draft.leadSource ?? ''}
+                  disabled={saving}
+                  onChange={e => set({ leadSource: e.target.value || null })}
+                  style={fieldStyle('lead_source')}
+                  aria-invalid={confirmationField === 'lead_source' || undefined}
+                >
+                  <option value="">Select a lead source…</option>
+                  {ORDER_LEAD_SOURCES.map(source => (
+                    <option key={source.value} value={source.value}>{source.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          )}
 
           <div style={{
             display: 'flex', gap: '9px', alignItems: 'flex-start',

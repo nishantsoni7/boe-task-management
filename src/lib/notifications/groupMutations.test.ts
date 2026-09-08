@@ -380,6 +380,7 @@ describe('34/35. no regression into suppressed territory', () => {
       // public.order_product_codes. It touches no notification table or
       // function, so it reaches nothing asserted here.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
+      '20261201000000_order_submission_confirmation_required_fields.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
