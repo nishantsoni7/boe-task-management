@@ -23,6 +23,9 @@ import {
   isConfirmedPaymentStatus,
   isPaymentDeletableStatus,
   paymentDeleteConfirmIdLabel,
+  paymentDeleteIdMatches,
+  paymentDeleteIdMismatchMessage,
+  canSubmitPaymentDeletion,
 } from './paymentDeletion'
 import { REQUEST_STAGE_STATUSES } from '@/app/finance/paymentRouting'
 import { CONFIRMED_PAYMENT_STATUSES } from './paymentSurfaces'
@@ -183,6 +186,124 @@ describe('who the database lets delete a payment, and therefore who is offered i
 describe('paymentDeleteConfirmIdLabel', () => {
   test('names the exact Payment ID to type', () => {
     assert.equal(paymentDeleteConfirmIdLabel('P-AA-0047'), 'Type P-AA-0047 to confirm')
+  })
+})
+
+// ── The typed confirmation, and what a mismatch is told ──────────────────────
+//
+// THE COMPARISON IS THE DATABASE'S. begin_finance_payment_deletion
+// (20261011000000 §3d) refuses unless
+// `coalesce(btrim(p_confirm_payment_id), '') = human_payment_id` — trimmed,
+// then exact. paymentDeleteIdMatches must agree with that character for
+// character: looser and the dialog arms a button the server then refuses,
+// stricter and it refuses an entry the server would have taken.
+
+describe('paymentDeleteIdMatches agrees with the database, and is no friendlier', () => {
+  test('the exact ID matches', () => {
+    assert.equal(paymentDeleteIdMatches(HUMAN_ID, HUMAN_ID), true)
+  })
+
+  test('surrounding whitespace is forgiven, because btrim forgives it', () => {
+    assert.equal(paymentDeleteIdMatches(`  ${HUMAN_ID}\t`, HUMAN_ID), true)
+  })
+
+  test('a different Payment ID does not match — the reported case', () => {
+    assert.equal(paymentDeleteIdMatches('P-AA-0043', HUMAN_ID), false)
+  })
+
+  test('a prefix of the ID does not match', () => {
+    assert.equal(paymentDeleteIdMatches('P-AA-004', HUMAN_ID), false)
+    assert.equal(paymentDeleteIdMatches('P-AA', HUMAN_ID), false)
+  })
+
+  test('the ID with anything appended does not match', () => {
+    assert.equal(paymentDeleteIdMatches(`${HUMAN_ID}0`, HUMAN_ID), false)
+  })
+
+  test('case is not forgiven — the database compares case-sensitively', () => {
+    assert.equal(paymentDeleteIdMatches(HUMAN_ID.toLowerCase(), HUMAN_ID), false)
+  })
+
+  test('an empty box does not match', () => {
+    assert.equal(paymentDeleteIdMatches('', HUMAN_ID), false)
+    assert.equal(paymentDeleteIdMatches('   ', HUMAN_ID), false)
+  })
+})
+
+describe('what the dialog says about a Payment ID that is not this one', () => {
+  /**
+   * NOTHING TYPED IS NOT A MISTAKE. Somebody reading the instruction has not
+   * failed a check, and a dialog that accuses them the moment it opens is
+   * noise rather than help.
+   */
+  test('an untouched box is told nothing', () => {
+    assert.equal(paymentDeleteIdMismatchMessage('', HUMAN_ID), null)
+    assert.equal(paymentDeleteIdMismatchMessage('   ', HUMAN_ID), null)
+  })
+
+  /**
+   * THE MESSAGE NAMES THE RIGHT ID. The whole difficulty in the report was that
+   * P-AA-0003 and P-AA-0001 look alike, so "wrong ID" on its own would not have
+   * helped; the sentence has to carry the ID that would be right.
+   */
+  test('a mismatch is stated, and repeats the exact ID to type', () => {
+    assert.equal(
+      paymentDeleteIdMismatchMessage('P-AA-0043', HUMAN_ID),
+      `Payment ID does not match. Type ${HUMAN_ID} exactly.`)
+  })
+
+  test('the message carries whichever payment is being deleted, never a fixed one', () => {
+    const message = paymentDeleteIdMismatchMessage('P-ZZ-9999', 'P-CC-0007') ?? ''
+    assert.ok(message.includes('P-CC-0007'))
+    assert.ok(!message.includes(HUMAN_ID))
+    assert.ok(!message.includes('P-AA-0001'))
+  })
+
+  test('the exact ID clears it immediately, without anything being submitted', () => {
+    assert.equal(paymentDeleteIdMismatchMessage(HUMAN_ID, HUMAN_ID), null)
+    assert.equal(paymentDeleteIdMismatchMessage(`  ${HUMAN_ID} `, HUMAN_ID), null)
+  })
+
+  test('a prefix and a wrong case are both still mismatches, not near-misses', () => {
+    assert.ok(paymentDeleteIdMismatchMessage('P-AA-004', HUMAN_ID) !== null)
+    assert.ok(paymentDeleteIdMismatchMessage(HUMAN_ID.toLowerCase(), HUMAN_ID) !== null)
+  })
+})
+
+// ── What arms the destructive button ─────────────────────────────────────────
+
+describe('canSubmitPaymentDeletion — a drawing rule, unchanged and unweakened', () => {
+  const submittable = (reason: string, typedId: string) =>
+    canSubmitPaymentDeletion({ reason, typedId, humanPaymentId: HUMAN_ID })
+
+  test('a reason and the exact Payment ID arm it', () => {
+    assert.equal(submittable('Duplicate payment entry', HUMAN_ID), true)
+  })
+
+  test('a wrong Payment ID leaves it dead, however good the reason', () => {
+    assert.equal(submittable('Duplicate payment entry', 'P-AA-0043'), false)
+  })
+
+  test('no Payment ID at all leaves it dead', () => {
+    assert.equal(submittable('Duplicate payment entry', ''), false)
+  })
+
+  test('the right Payment ID with no reason leaves it dead — both gates, not either', () => {
+    assert.equal(submittable('', HUMAN_ID), false)
+    assert.equal(submittable('   ', HUMAN_ID), false)
+  })
+
+  test('neither given leaves it dead', () => {
+    assert.equal(submittable('', ''), false)
+  })
+
+  /**
+   * A CASE-INSENSITIVE OR PARTIAL MATCH WOULD ARM A BUTTON THE SERVER REFUSES.
+   * These two are the ways the confirmation could quietly be weakened.
+   */
+  test('neither wrong case nor a prefix arms it', () => {
+    assert.equal(submittable('reason', HUMAN_ID.toLowerCase()), false)
+    assert.equal(submittable('reason', 'P-AA-004'), false)
   })
 })
 
