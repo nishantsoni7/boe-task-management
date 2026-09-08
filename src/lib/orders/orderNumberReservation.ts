@@ -30,9 +30,18 @@
 // This file is the vocabulary and the gates of the panel that shows it. No
 // React, no network: every rule below is a function a test can pin.
 
-/** The one instruction the panel gives, in the product's own words. */
+/**
+ * What the panel says about a held-but-unused reservation, in the product's
+ * own words.
+ *
+ * FORMERLY AN INSTRUCTION TO RE-UPLOAD THE PI WITH THIS NUMBER PRINTED IN IT.
+ * 20261124000000 removed that requirement from Order creation itself — the
+ * source PI is a commercial document and does not need to carry the Order's
+ * operational number, which BOE now assigns inside the application. This
+ * says so, rather than asking for a step that no longer does anything.
+ */
 export const RESERVATION_INSTRUCTION =
-  'Add this Order number to the revised PI, then upload the revised file.'
+  'This does not need to be added to the PI file — BOE assigns it to the Order automatically when the PI is approved.'
 
 /**
  * The columns the reservation panel reads, named here so they and the module
@@ -273,14 +282,16 @@ export function describeReservation(input: {
   if (number) {
     const outstanding = revisedPiOutstanding(input)
     return {
+      // Still worth telling apart: whether a different workbook has been
+      // uploaded since the number was reserved. Neither half gates Order
+      // creation any more (20261124000000) — the reserved number becomes the
+      // Order's number regardless of what the PI file itself carries — so
+      // neither sentence promises a check that no longer happens.
       state: outstanding ? 'awaiting_revised_pi' : 'revised_pi_uploaded',
       number,
-      // THE SECOND SENTENCE PROMISES NOTHING. A revised file having arrived is
-      // not the same as it carrying the right number, and only the server knows
-      // which — so this says what it can see and names when the answer comes.
       standing: outstanding
         ? `${number} is held for this PI. ${RESERVATION_INSTRUCTION}`
-        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. It is checked against ${number} when the PI becomes a Confirmed Order.`,
+        : `${number} is held for this PI, and a revised file has been uploaded since it was issued. ${RESERVATION_INSTRUCTION}`,
       blockedReason: null,
       canCopy: true,
     }
@@ -300,7 +311,7 @@ export function describeReservation(input: {
       number: null,
       standing: blocked
         ? `No Order number has been reserved for this PI yet. ${NO_PI_NUMBER_NOTE}`
-        : `An Order number is issued for this PI as soon as its PI file is uploaded, and the revised PI must carry it before the PI can be submitted for review. ${NO_PI_NUMBER_NOTE}`,
+        : `An Order number is issued for this PI as soon as its PI file is uploaded. ${NO_PI_NUMBER_NOTE}`,
       blockedReason: blocked,
       canCopy: false,
     }
@@ -405,7 +416,7 @@ export function reservationApprovalMessage(error: unknown): string | null {
     return afterCode(m, 'ORDER_SUBMISSION_REVISED_PI_MISSING')
   }
   if (m.includes('ORDER_SUBMISSION_RESERVATION_REQUIRED')) {
-    return 'This PI has no Order number yet. Upload the PI file so a number can be issued, then put that number into the revised PI.'
+    return 'This PI has no Order number yet. Upload the PI file so a number can be issued.'
   }
   if (m.includes('ORDER_FROM_RESERVED_PI_REQUIRES_APPROVAL')) {
     return 'An Order for this PI can only be created by approving it.'
