@@ -2212,11 +2212,13 @@ body {
 .order-attention-item--red { color: #B42318; font-weight: 700; }
 
 /* ── The workspace grid ── */
+/* NO align-items: start here. The aside grid item must STRETCH to the row
+   height, because that stretch is exactly the room its sticky inner needs to
+   travel; with the item shrunk to its content, sticky has nowhere to go. */
 .order-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 400px;
   gap: 18px;
-  align-items: start;
 }
 .order-workspace-main {
   min-width: 0;
@@ -2236,6 +2238,47 @@ body {
   gap: 14px;
   max-height: calc(100vh - 92px);
   overflow-y: auto;
+}
+/* On a short viewport the rail SCROLLS; its cards never shrink to fit, which
+   is what used to clip the sixth health row and the foot of the position. */
+.order-workspace-aside-inner > * { flex-shrink: 0; }
+
+/* ── The products, full content width above the workspace ── */
+.order-products {
+  margin-bottom: 14px;
+}
+/* FIXED LAYOUT so nine columns always fit the card: the prose columns wrap
+   instead of widening the table, and nothing can push a horizontal scrollbar
+   onto the page. The narrow columns are sized for exactly what they hold —
+   an item code, an 84px photograph, a quantity, two money figures — and the
+   three descriptive columns take a share of what is left, with Customization
+   taking the remainder so an instruction has the most room to wrap. */
+.order-products-table {
+  table-layout: fixed;
+}
+.order-products-table col:nth-child(1) { width: 88px; }   /* 524-BE001 */
+.order-products-table col:nth-child(2) { width: 108px; }  /* the 84px photograph */
+.order-products-table col:nth-child(3) { width: 15%; }    /* product */
+.order-products-table col:nth-child(4) { width: 52px; }   /* qty */
+.order-products-table col:nth-child(5) { width: 12%; }    /* dimensions */
+.order-products-table col:nth-child(6) { width: 10%; }    /* material */
+.order-products-table col:nth-child(7) { width: auto; }   /* customization */
+/* Wide enough for the SHARED head’s own labels, which carry their own
+   14px padding and never wrap: "Cost / piece" and "Line total". */
+.order-products-table col:nth-child(8) { width: 104px; }  /* cost / piece */
+.order-products-table col:nth-child(9) { width: 100px; }  /* line total */
+
+.order-products-table td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+/* Tighter cells and narrower money columns where the content column is
+   smaller, so Customization keeps a readable measure. */
+@media (max-width: 1440px) {
+  .order-products-table td { padding: 7px 8px; }
+  .order-products-table col:nth-child(1) { width: 80px; }
+  .order-products-table col:nth-child(2) { width: 100px; }
 }
 
 /* At 1440 and below the record column would otherwise fall under 640px

@@ -601,47 +601,59 @@ export function OrderPiProducts({
         </div>
       ) : (
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+          {/* FIXED LAYOUT, so nine columns always fit the card and the prose
+              columns wrap rather than widening the table. The narrow columns
+              are sized in pixels for what they hold — an item code, an 84px
+              photograph, a quantity, two money figures under the shared
+              head's own labels — and the three descriptive columns take a
+              share of the rest, with Customization taking everything left
+              over so an instruction has the most room to wrap. */}
+          <table className="order-products-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            {/* The widths live in CSS (.order-products-table col:nth-child)
+                so they can tighten at 1440 and below with the cell padding. */}
+            <colgroup>
+              <col /><col /><col /><col /><col /><col /><col /><col /><col />
+            </colgroup>
             {/* The identical head both PI screens render. */}
             <PiProductTableHead />
             <tbody>
               {products.map(p => (
                 <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                  <td style={{ whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
                     {orDash(p.orderProductCode ?? p.itemSequence)}
                   </td>
-                  <td style={{ padding: '8px 12px' }}>
+                  <td>
                     <PiProductThumbnail {...representativeThumbnail(p.row)} />
                   </td>
-                  <td style={{ padding: '8px 12px', minWidth: '160px', maxWidth: '240px' }}>
-                    <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
+                  <td>
+                    <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.productName)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: colors.primary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ whiteSpace: 'nowrap', color: colors.primary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                     {p.quantity ?? '—'}
                   </td>
-                  <td style={{ padding: '8px 12px', minWidth: '130px', maxWidth: '200px' }}>
-                    <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
+                  <td>
+                    <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.dimensions)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '8px 12px', minWidth: '120px', maxWidth: '200px' }}>
-                    <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
+                  <td>
+                    <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0, overflowWrap: 'anywhere' }}>
                       {orDash(p.material)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '8px 12px', minWidth: '150px', maxWidth: '260px' }}>
+                  <td>
                     <OrderCustomizationCell
                       text={p.customization}
                       thumbnails={customizationThumbnails(p.row)}
                       compact={false}
                     />
                   </td>
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.costPerPiece)}
                   </td>
-                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+                  <td style={{ whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.lineTotal)}
                   </td>
                 </tr>
