@@ -245,7 +245,10 @@ describe('the trail runs both ways between an Order and its PI', () => {
     // reach its Order, and the Order could not reach its PI.
     const page = readFileSync(ORDER_PAGE, 'utf8')
     assert.ok(page.includes('piSubmissionHref(piHandoff.submissionId)'))
-    assert.ok(page.includes('onOpenPi={'))
+    // The control moved from the big Approved PI card into Order Records when
+    // that card was removed: the source relationship is a REFERENCE and an
+    // action, not a section that restates the Order's own facts. Same door.
+    assert.ok(page.includes('Open source PI'))
   })
 
   test('and offers it only for an Order that HAS one', () => {
@@ -253,13 +256,17 @@ describe('the trail runs both ways between an Order and its PI', () => {
     // Order Request has no source PI, and gets no door to a record that does not
     // exist — `none` renders nothing at all, exactly as before.
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    const readyBranch = page.slice(page.indexOf("piHandoff.kind === 'ready'"))
-    assert.ok(readyBranch.indexOf('onOpenPi={') < readyBranch.indexOf('<OrderPiProducts'),
-      'the PI door belongs to the summary card inside the ready branch')
-
-    const sections = readFileSync('src/app/orders/[id]/OrderPiSections.tsx', 'utf8')
-    assert.ok(sections.includes('right={onOpenPi && ('),
-      'no control is drawn when no PI was handed over')
+    // Order Records is drawn only for an Order that came from a PI, and the
+    // door itself only in the 'ready' branch inside it: an Order created from
+    // an Order Request has no source PI and gets no door to a record that does
+    // not exist.
+    const records = page.slice(page.indexOf('title="Order records"'))
+    const door = records.indexOf('Open source PI')
+    const readyGate = records.indexOf("piHandoff.kind === 'ready'")
+    assert.ok(readyGate > 0 && readyGate < door,
+      'the door sits inside the ready branch')
+    assert.ok(page.indexOf("piHandoff.kind !== 'none'") < page.indexOf('title="Order records"'),
+      'and Order Records itself is gated on the Order having a PI at all')
   })
 
   test('the PI already offered its Order, and that is unchanged', () => {

@@ -36,8 +36,9 @@ export type OrderAttentionItem = {
   key:
     | 'overdue'
     | 'production'
-    | 'assignee'
+    | 'salesperson'
     | 'due_date'
+    | 'lead_source'
     | 'pi_revision'
     | 'change_requests'
     | 'documents_failed'
@@ -51,8 +52,10 @@ export type OrderAttentionItem = {
 export type OrderAttentionInput = {
   status: string
   productionAligned: boolean
-  hasAssignee: boolean
+  /** orders.assigned_to — the SALESPERSON. One column, one word. */
+  hasSalesperson: boolean
   hasDueDate: boolean
+  hasLeadSource: boolean
   /** The page's existing overdue rule, already evaluated. */
   isOverdue: boolean
   /** Payments recorded against this Order that Finance has not yet decided. */
@@ -91,11 +94,17 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
   if (open && !input.productionAligned) {
     items.push({ key: 'production', label: 'Production not aligned', tone: 'amber' })
   }
-  if (open && !input.hasAssignee) {
-    items.push({ key: 'assignee', label: 'No assignee', tone: 'amber' })
+  if (open && !input.hasSalesperson) {
+    items.push({ key: 'salesperson', label: 'Salesperson not set', tone: 'amber' })
   }
   if (open && !input.hasDueDate) {
     items.push({ key: 'due_date', label: 'Due date not set', tone: 'amber' })
+  }
+  // THESE THREE ARE NOW REQUIRED AT CONVERSION (20261201000000), so a new Order
+  // cannot arrive missing one. They remain listed because the Orders that
+  // predate that rule legitimately do, and their gaps are still real.
+  if (open && !input.hasLeadSource) {
+    items.push({ key: 'lead_source', label: 'Lead source not set', tone: 'amber' })
   }
   if (input.pendingPiRevision) {
     items.push({ key: 'pi_revision', label: 'Revised PI awaiting decision', tone: 'amber' })
@@ -127,10 +136,21 @@ export function attentionHeading(count: number): string {
   return count === 1 ? '1 item needs attention' : `${count} items need attention`
 }
 
-// ── The health card ───────────────────────────────────────────────────────────
+// ── The Order Summary's operational facts ─────────────────────────────────────
+//
+// ONE FACT, ONE PLACE. These six are the Order's operational state, and this is
+// the only place on the screen that states any of them: the command header
+// carries the identity and the actions and nothing else, and there is no second
+// summary card underneath.
+//
+// PAYMENT IS NOT HERE. It has its own section, which holds every payment figure
+// on the page — the summary and the records together.
 
-export type OrderHealthRow = {
-  key: 'status' | 'payment' | 'production' | 'due' | 'owner' | 'confirmed'
+export type OrderSummaryFactKey =
+  | 'status' | 'production' | 'salesperson' | 'confirm_date' | 'due_date' | 'lead_source'
+
+export type OrderSummaryFact = {
+  key: OrderSummaryFactKey
   label: string
   value: string
   /** A quieter second line, or null. */
@@ -138,85 +158,66 @@ export type OrderHealthRow = {
   tone: WorkspaceTone
 }
 
-export type OrderHealthInput = {
+export type OrderSummaryInput = {
   status: string
   statusLabel: string
   statusTone: WorkspaceTone
-  /** Already formatted by the shared money/percent helpers, or null. */
-  verifiedPercent: string | null
-  verified: string
-  orderValue: string | null
-  fullyPaid: boolean
-  paymentCount: number
-  /** Null while the payment reads are still in flight. */
-  paymentsLoaded: boolean
   productionAligned: boolean
   productionLabel: string
   /** "Aligned by X · date", or null. */
   productionLine: string | null
-  /** Already formatted, or null when not set. */
+  /** orders.assigned_to's name, or null. */
+  salespersonName: string | null
+  /** Already formatted, or null. */
+  confirmDate: string | null
   dueDate: string | null
   isOverdue: boolean
-  ownerName: string | null
-  /** Already formatted, or null. */
-  confirmedDate: string | null
+  /** Already labelled by leadSourceLabel, or null. */
+  leadSource: string | null
 }
 
-export const HEALTH_PAYMENT_LOADING = 'Loading…'
-export const HEALTH_NO_PAYMENTS = 'No payments recorded'
-export const HEALTH_NOT_SET = 'Not set'
-export const HEALTH_UNASSIGNED = 'Unassigned'
+export const SUMMARY_NOT_SET = 'Not set'
+export const SUMMARY_UNASSIGNED = 'Not assigned'
 
 /**
- * The six lines a manager reads first, each with a tone that means something:
- * green is verified/complete, amber needs attention, red is genuinely overdue,
- * blue or neutral is an ordinary running state. The words carry the meaning on
- * their own; the tone only makes it faster.
+ * The six facts, in reading order. A gap on an OPEN Order is amber; the same
+ * gap on a dispatched or cancelled one is neutral, because nothing is waiting
+ * on it any more. Red is kept for a due date that has genuinely passed.
  */
-export function orderHealthRows(input: OrderHealthInput): OrderHealthRow[] {
+export function orderSummaryFacts(input: OrderSummaryInput): OrderSummaryFact[] {
   const closed = isOrderClosed(input.status)
-
-  const payment: OrderHealthRow = !input.paymentsLoaded
-    ? { key: 'payment', label: 'Payment', value: HEALTH_PAYMENT_LOADING, detail: null, tone: 'neutral' }
-    : input.paymentCount === 0
-      ? {
-          key: 'payment', label: 'Payment', value: HEALTH_NO_PAYMENTS,
-          detail: input.orderValue ? `${input.orderValue} outstanding` : null,
-          tone: 'neutral',
-        }
-      : {
-          key: 'payment', label: 'Payment',
-          value: input.verifiedPercent ? `${input.verifiedPercent} verified` : `${input.verified} verified`,
-          detail: input.orderValue ? `${input.verified} of ${input.orderValue}` : null,
-          tone: input.fullyPaid ? 'green' : 'neutral',
-        }
-
-  const production: OrderHealthRow = {
-    key: 'production', label: 'Production',
-    value: input.productionLabel,
-    detail: input.productionLine,
-    tone: input.productionAligned ? 'green' : closed ? 'neutral' : 'amber',
-  }
-
-  const due: OrderHealthRow = input.dueDate
-    ? {
-        key: 'due', label: 'Due date', value: input.dueDate,
-        detail: input.isOverdue ? 'Overdue' : null,
-        tone: input.isOverdue ? 'red' : 'neutral',
-      }
-    : { key: 'due', label: 'Due date', value: HEALTH_NOT_SET, detail: null, tone: closed ? 'neutral' : 'amber' }
-
-  const owner: OrderHealthRow = input.ownerName
-    ? { key: 'owner', label: 'Owner', value: input.ownerName, detail: null, tone: 'neutral' }
-    : { key: 'owner', label: 'Owner', value: HEALTH_UNASSIGNED, detail: null, tone: closed ? 'neutral' : 'amber' }
+  const gapTone: WorkspaceTone = closed ? 'neutral' : 'amber'
 
   return [
-    { key: 'status', label: 'Status', value: input.statusLabel, detail: null, tone: input.statusTone },
-    payment,
-    production,
-    due,
-    owner,
-    { key: 'confirmed', label: 'Confirmed', value: input.confirmedDate ?? HEALTH_NOT_SET, detail: null, tone: 'neutral' },
+    {
+      key: 'status', label: 'Status', value: input.statusLabel,
+      detail: null, tone: input.statusTone,
+    },
+    {
+      key: 'production', label: 'Production',
+      value: input.productionLabel,
+      detail: input.productionLine,
+      tone: input.productionAligned ? 'green' : gapTone,
+    },
+    input.salespersonName
+      ? { key: 'salesperson', label: 'Salesperson', value: input.salespersonName, detail: null, tone: 'neutral' }
+      : { key: 'salesperson', label: 'Salesperson', value: SUMMARY_UNASSIGNED, detail: null, tone: gapTone },
+    {
+      key: 'confirm_date', label: 'Confirm date',
+      value: input.confirmDate ?? SUMMARY_NOT_SET,
+      detail: null,
+      tone: input.confirmDate ? 'neutral' : gapTone,
+    },
+    input.dueDate
+      ? {
+          key: 'due_date', label: 'Due date', value: input.dueDate,
+          detail: input.isOverdue ? 'Overdue' : null,
+          tone: input.isOverdue ? 'red' : 'neutral',
+        }
+      : { key: 'due_date', label: 'Due date', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
+    input.leadSource
+      ? { key: 'lead_source', label: 'Lead source', value: input.leadSource, detail: null, tone: 'neutral' }
+      : { key: 'lead_source', label: 'Lead source', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
   ]
 }
 

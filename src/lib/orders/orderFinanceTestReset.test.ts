@@ -411,6 +411,7 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // public.order_product_codes. It does not touch the reset protocol, the
       // deletion claim or the allocation ledger.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
+      '20261201000000_order_submission_confirmation_required_fields.sql',
     ])
   })
 

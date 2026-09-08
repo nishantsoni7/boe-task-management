@@ -12,24 +12,25 @@ import {
 import { colors } from '@/lib/tokens'
 import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import {
-  CollapsibleHeader,
   MoreActionsMenu,
+  ORDER_SUMMARY_COMMERCIAL_TITLE,
   OrderActivityList,
   OrderAttentionBar,
+  OrderCommercialTotals,
   OrderDetailSkeleton,
-  OrderHealthCard,
-  PaymentPositionCard,
+  OrderSummary,
+  PAYMENT_SECTION_TITLE,
+  PaymentSummaryFigures,
   SECTION_HEADER_STYLE,
   SectionSkeleton,
-  ToneBadge,
+  SkeletonBlock,
   type MoreActionItem,
   type OrderActivityItem,
 } from './OrderWorkspace'
 import {
   arrangeOrderActions,
   orderAttentionItems,
-  orderHealthRows,
-  relativeDayLabel,
+  orderSummaryFacts,
   type OrderHeaderActionKey,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
@@ -43,7 +44,7 @@ import {
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
-import { formatMoney, formatPercent, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
+import { formatMoney, piPaymentStatusLabel } from '@/lib/finance/piPaymentView'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -72,6 +73,7 @@ import {
 } from '@/lib/orders/amendments'
 import {
   ORDER_PI_HANDOFF_COLUMNS,
+  ORDER_PI_UNAVAILABLE_BODY,
   ORDER_PI_WORKBOOK_URL_TTL_SECONDS,
   buildOrderPiHandoff,
   orderPiWorkbookPath,
@@ -100,8 +102,6 @@ import {
   OrderPiHistoryCard,
   OrderPiNoSource,
   OrderPiProducts,
-  OrderPiSummaryCard,
-  OrderPiUnavailable,
 } from './OrderPiSections'
 import {
   ApproveRevisionModal,
@@ -138,6 +138,7 @@ import {
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
 import { notifyPiSubmission } from '@/lib/notify'
+import { leadSourceLabel } from '@/lib/orders/orderConfirmation'
 import {
   ORDER_DOCUMENT_COLUMNS,
   ORDER_DOCUMENT_URL_TTL_SECONDS,
@@ -307,13 +308,6 @@ const WORKBOOK_UNAVAILABLE = 'That file is not available to you right now.'
  *  elaborating would confirm what the reader is not entitled to. */
 const DOCUMENTS_REFUSED = 'That could not be done just now.'
 
-const LEAD_SOURCE_LABEL: Record<string, string> = {
-  reference:       'Reference',
-  repeat_customer: 'Repeat Customer',
-  whatsapp:        'WhatsApp',
-  instagram:       'Instagram',
-  website:         'Website',
-}
 
 
 const EVENT_TYPE_LABEL: Record<string, string> = {
@@ -374,18 +368,6 @@ function fmtDateTime(iso: string) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: string }) {
-  const meta = STATUS_META[status] ?? { label: status, bg: '#F3F4F6', color: '#4B5563', border: '#E5E7EB' }
-  return (
-    <span style={{
-      display: 'inline-block', padding: '3px 10px', borderRadius: '6px',
-      background: meta.bg, color: meta.color, border: `1px solid ${meta.border}`,
-      fontSize: '12px', fontWeight: 600, whiteSpace: 'nowrap',
-    }}>
-      {meta.label}
-    </span>
-  )
-}
 
 function MetaField({ label, value }: { label: string; value: React.ReactNode }) {
   return (
@@ -683,10 +665,6 @@ export default function OrderDetailPage() {
   // blank a screen somebody is reading.
   const [recordsReady, setRecordsReady] = useState(false)
   const [handoffReady, setHandoffReady] = useState(false)
-  // The per-payment table is folded below the record; the sidebar states the
-  // position and "View payment details" unfolds and scrolls to it.
-  const [paymentsOpen, setPaymentsOpen] = useState(false)
-  const paymentsRef = useRef<HTMLDivElement | null>(null)
   const changeRequestsRef = useRef<HTMLDivElement | null>(null)
   // The startup gate's resolver, parked here by the startup path and released
   // by loadOrder once the Order row is in hand. See releaseShell below.
@@ -1600,21 +1578,37 @@ export default function OrderDetailPage() {
   // shape; what BOE shows and refers to drops the leading zeros (20261124000000).
   const operationalNumber = formatOrderOperationalNumber(order.display_number) ?? order.display_number
 
-  // ── What this screen says at a glance ──
+  // ── What this screen says, decided once ──
   //
-  // Three readings of the same state, each decided by orderWorkspace.ts: what
-  // needs attention, how the health card reads, and which control is primary.
-  // Nothing here is a new rule — see that module — and nothing here grants: the
-  // controls it arranges are exactly the ones the capabilities above allow.
+  // Three readings of the same state, each by orderWorkspace.ts: the six facts
+  // the Order Summary states, what needs attention, and which control is
+  // primary. Nothing here is a new rule, and nothing here grants: the controls
+  // it arranges are exactly the ones the capabilities above allow.
   const productionAligned = production?.value === 'aligned'
-  const orderClosed = order.status === 'dispatched' || order.status === 'cancelled'
   const statusTone: WorkspaceTone = STATUS_TONE[order.status] ?? 'neutral'
+  const salespersonName = order.assigned_to_name ?? null
+  const leadSource = leadSourceLabel(order.lead_source)
+
+  const summaryFacts = orderSummaryFacts({
+    status: order.status,
+    statusLabel: STATUS_META[order.status]?.label ?? order.status,
+    statusTone,
+    productionAligned,
+    productionLabel: production?.label ?? '—',
+    productionLine: production?.line ?? null,
+    salespersonName,
+    confirmDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
+    dueDate: order.due_date ? fmtDate(order.due_date) : null,
+    isOverdue: !!isOverdue,
+    leadSource,
+  })
 
   const attention = orderAttentionItems({
     status: order.status,
     productionAligned,
-    hasAssignee: !!order.assigned_to,
+    hasSalesperson: !!order.assigned_to,
     hasDueDate: !!order.due_date,
+    hasLeadSource: !!leadSource,
     isOverdue: !!isOverdue,
     // Money and documents are only known once their reads have landed; until
     // then they are not "fine", they are unknown, and the bar says nothing.
@@ -1623,25 +1617,6 @@ export default function OrderDetailPage() {
     pendingPiRevision: piHistory.pending !== null,
     documentsFailed: recordsReady && !!documentsView.failure,
     documentsOutdated: recordsReady && documentsView.outdated,
-  })
-
-  const healthRows = orderHealthRows({
-    status: order.status,
-    statusLabel: STATUS_META[order.status]?.label ?? order.status,
-    statusTone,
-    verifiedPercent: finance.verifiedPercent !== null ? formatPercent(finance.verifiedPercent) : null,
-    verified: formatMoney(finance.verified),
-    orderValue: finance.orderValue !== null ? formatMoney(finance.orderValue) : null,
-    fullyPaid: finance.fullyPaid,
-    paymentCount: finance.counts.total,
-    paymentsLoaded: recordsReady,
-    productionAligned,
-    productionLabel: production?.label ?? '—',
-    productionLine: production?.line ?? null,
-    dueDate: order.due_date ? fmtDate(order.due_date) : null,
-    isOverdue: !!isOverdue,
-    ownerName: order.assigned_to_name ?? null,
-    confirmedDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
   })
 
   // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
@@ -1717,44 +1692,12 @@ export default function OrderDetailPage() {
     title: actionTitle(key),
   }))
 
-  const openPayments = () => {
-    setPaymentsOpen(true)
-    // After the body has rendered, so there is something to scroll to.
-    requestAnimationFrame(() => paymentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-  }
-
-  // The quiet line under the identity: when it was confirmed, who asked for it,
-  // and how fresh the record is.
-  const updatedRelative = relativeDayLabel(order.updated_at)
-  const metaParts: string[] = []
-  if (order.confirm_date) metaParts.push(`Confirmed ${fmtDate(order.confirm_date)}`)
-  if (order.requested_by_name) metaParts.push(`Requested by ${order.requested_by_name}`)
-  metaParts.push(`Updated ${updatedRelative ?? fmtDate(order.updated_at)}`)
-
   // ── The approved PI's two cards ──
   //
   // Declared here, in this order, and RENDERED with the products first: what
   // BOE is manufacturing is the main content of this screen, and the PI band
   // that names the client, the dates and the pre-tax total follows it. The
   // door back to the PI belongs to the summary card and to nothing else.
-  const piSummaryCard = piHandoff.kind === 'ready' && (
-    <OrderPiSummaryCard
-      client={piHandoff.client}
-      onOpenClient={() => setClientOpen(true)}
-      dates={piHandoff.dates}
-      figures={piHandoff.figures}
-      billing={piHandoff.billing}
-      workbookName={wbPath ? piHandoff.workbookName : null}
-      onDownloadWorkbook={downloadWorkbook}
-      downloading={wbBusy}
-      downloadError={wbError}
-      // The way back to the PI this Order came from. The database has had
-      // this door since 20260924000000 — can_view_order_submission_via_order
-      // exists so that seeing the Order is a way onto its approved PI — and
-      // the PI screen still decides for itself under RLS.
-      onOpenPi={() => router.push(piSubmissionHref(piHandoff.submissionId))}
-    />
-  )
   const piProductsCard = piHandoff.kind === 'ready' && (
     <OrderPiProducts
       products={piProducts}
@@ -1778,29 +1721,14 @@ export default function OrderDetailPage() {
           <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back
         </button>
 
-        {/* ── The command header ──
-            ONE identity, its two states, one quiet line of provenance, and the
-            controls — with exactly one filled button. */}
+        {/* ══ 1. THE COMMAND HEADER ══
+            IDENTITY AND ACTIONS, AND NOTHING ELSE. Every Order FACT — the
+            status, the production state, the salesperson, the two dates, the
+            lead source — is stated once, in the Order Summary below. */}
         <header className="order-command-header">
           <div className="order-command-identity">
             <h1 className="order-command-title">Order {operationalNumber}</h1>
             <div className="order-command-client">{order.client_name}</div>
-            <div className="order-command-badges">
-              <StatusBadge status={order.status} />
-              {/* Production alignment, stated for every reader. 'Not aligned'
-                  is the default every Order is born with — commercial approval
-                  is not production acceptance — so the chip is always present. */}
-              {production && (
-                <ToneBadge
-                  tone={productionAligned ? 'green' : orderClosed ? 'neutral' : 'amber'}
-                  title={production.line ?? production.hint}
-                >
-                  Production {productionAligned ? 'aligned' : 'not aligned'}
-                </ToneBadge>
-              )}
-              {isOverdue && <ToneBadge tone="red">Overdue</ToneBadge>}
-            </div>
-            <div className="order-command-meta">{metaParts.join(' · ')}</div>
           </div>
 
           <div className="order-command-actions">
@@ -1851,15 +1779,40 @@ export default function OrderDetailPage() {
           </div>
         </header>
 
-        {/* ── What needs attention ── hidden entirely when nothing does. */}
+        {/* ══ 2. THE ORDER SUMMARY ══
+            The operational facts on the left; the money on the right, with the
+            breakdown directly beneath it. The commercial side is passed in, so
+            which figures a reader may see stays exactly where that decision
+            already lives. */}
+        <OrderSummary
+          facts={summaryFacts}
+          commercial={
+            <>
+              <div className="order-summary-commercial-head">{ORDER_SUMMARY_COMMERCIAL_TITLE}</div>
+              <OrderCommercialTotals
+                productValue={fmtAmount(order.total_product_value)}
+                orderValue={fmtAmount(order.total_value)}
+              />
+              {/* The stored figures, through the shared rows builder. Nothing
+                  on this page recomputes a total; these are literally the same
+                  strings the approved PI screen prints. */}
+              {piHandoff.kind === 'ready' && (
+                <OrderCommercialBreakdown rows={piHandoff.commercialRows} embedded />
+              )}
+              {!handoffReady && order.source_order_submission_id && (
+                <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
+              )}
+            </>
+          }
+        />
+
+        {/* ══ 3. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
 
-        {/* ── The products: what BOE is manufacturing ──
-            FULL CONTENT WIDTH, above the two-column workspace: nine columns
-            need the whole width to show every permitted column without a
-            horizontal scroll at ordinary desktop widths. While the handoff
-            reads are in flight the table draws its skeleton; an Order with no
-            PI is told so in the record column instead. */}
+        {/* ══ 4. PRODUCTS ══
+            FULL CONTENT WIDTH and the most prominent operational section: nine
+            columns need the whole width to show every permitted column without
+            a horizontal scroll at ordinary desktop widths. */}
         {(piProductsCard || (!handoffReady && order.source_order_submission_id)) && (
           <div className="order-products">
             {!handoffReady && order.source_order_submission_id && (
@@ -1869,349 +1822,352 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        <div className="order-workspace">
+        {/* ══ 5. PAYMENT ══
+            THE ONLY PAYMENT SURFACE ON THE PAGE. The six figures and the
+            per-payment records in one section, so nothing has to be clicked to
+            reach a second copy of the same money. Every figure is
+            buildOrderFinancePosition's and every word in the table is what it
+            always was. */}
+        <PiCard>
+          <PiCardHeader
+            title={PAYMENT_SECTION_TITLE}
+            style={SECTION_HEADER_STYLE}
+            right={recordsReady ? (
+              <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+                {payments.length === 0
+                  ? 'No payments recorded'
+                  : `${payments.length} payment${payments.length === 1 ? '' : 's'}`}
+              </span>
+            ) : undefined}
+          />
+          <div style={{ padding: '12px 16px 14px' }}>
+            <PaymentSummaryFigures finance={finance} loaded={recordsReady} />
 
-          {/* ══ THE RECORD ══ */}
-          <div className="order-workspace-main">
+            {/* ── The records ──
+                THE COLUMN THAT DID NOT RECONCILE. "Amount" printed each
+                payment's FULL ledger amount, while the summary counted only
+                this Order's ALLOCATED share of it. The leading figure is this
+                Order's share — the figure the summary is built from — and a
+                split payment states its full amount underneath, so nothing is
+                hidden and the two agree.
 
-            {/* ── The approved PI this Order came from ──
-                NOTHING IS RENDERED FOR AN ORDER WITH NO PI beyond the one-line
-                explanation below. AND THERE IS NO SECOND PAYMENT SURFACE: the
-                Order's own position is in the sidebar; a PI-side payment block
-                here would answer the same question a second time, with a
-                figure that stopped being the authority when the money moved
-                onto the Order. */}
-            {/* The PI band and its breakdown share one row — the stored
-                figures, through the shared rows builder. Nothing on this page
-                recomputes a total; these are literally the same strings the
-                approved PI screen prints. */}
-            {piHandoff.kind === 'ready' && (
-              <div className="order-record-row">
-                {piSummaryCard}
-                <div className="order-record-row-narrow">
-                  <OrderCommercialBreakdown rows={piHandoff.commercialRows} />
-                </div>
-              </div>
-            )}
-
-            {/* ── The confirmed documents ──
-                Rendered for every Order that came from a PI, including one
-                nobody has asked about yet: "no documents have been generated"
-                is the answer to a question somebody opening this page is
-                asking. An Order with no PI has no documents to generate and
-                gets no card — it gets the one-line explanation below instead. */}
-            {piHandoff.kind !== 'none' && (
-              <PiCard>
-                <PiCardHeader title="Order records" style={SECTION_HEADER_STYLE} />
-                {/* ONE CARD, TWO SECTIONS: the confirmed documents beside the
-                    PI history (20261119000000 — the current PI, a pending
-                    revision and everything before). Composition only: each
-                    section is the same component, with the same words,
-                    controls and gates, drawn without a card of its own. */}
-                <div className="order-records-body">
-                  <OrderDocumentsCard
-                    embedded
-                    view={documentsView}
-                    canGenerate={mayGenerateDocuments}
-                    onGenerate={requestDocuments}
-                    generating={docBusy}
-                    onDownload={downloadDocument}
-                    downloading={docDownload}
-                    error={docError}
-                  />
-                  <OrderPiHistoryCard
-                    embedded
-                    history={piHistory}
-                    canPropose={mayProposeRevision}
-                    canDecide={mayDecideRevision && piHistory.pending !== null}
-                    onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-                    onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-                    onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-                    onOpen={openVersion}
-                    opening={versionOpening}
-                    busy={revisionBusy}
-                    error={revisionDialog === null ? revisionError : null}
-                  />
-                </div>
-              </PiCard>
-            )}
-
-            {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI"
-                and "the feature is not deployed" are indistinguishable from
-                the outside, so the absence is stated rather than left silent.
-                Read-only: there is no action to offer. */}
-            {piHandoff.kind === 'none' && <OrderPiNoSource />}
-
-            {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
-
-            {/* ── Change requests ──
-                Rendered only when there is something to show. An admin sees
-                every request; everyone else sees their own — that split is
-                RLS's, not this component's. */}
-            {changeRequests.length > 0 && (
-              <div ref={changeRequestsRef}>
-                <PiCard>
-                  <PiCardHeader title={`Change requests (${pendingRequests.length} pending)`} style={SECTION_HEADER_STYLE} />
-                  <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {changeRequests.map(r => (
-                      <div
-                        key={r.id}
-                        style={{
-                          display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
-                          padding: '10px 12px', borderRadius: '8px',
-                          background: r.status === 'pending' ? colors.raised : 'transparent',
-                          border: `1px solid ${colors.border}`,
-                        }}
-                      >
-                        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                          <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
-                            {CHANGE_REQUEST_TYPE_LABEL[r.request_type]}
-                            <span style={{ fontWeight: 500, color: colors.muted }}>
-                              {' · '}{CHANGE_REQUEST_STATUS_LABEL[r.status]}
-                            </span>
-                          </div>
-                          <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
-                            {r.reason}
-                          </div>
-                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
-                            {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
-                          </div>
-                          {r.review_note && (
-                            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
-                              Review note: {r.review_note}
-                            </div>
-                          )}
-                        </div>
-                        {actingAsAdmin && r.status === 'pending' && (
-                          <button
-                            type="button"
-                            onClick={() => setReviewing(r)}
-                            className="boe-btn boe-btn-primary"
-                            style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
-                          >
-                            Review
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </PiCard>
-              </div>
-            )}
-
-            {/* ── Payments ──
-                THE POSITION IS IN THE SIDEBAR; this is the per-payment record
-                behind it, folded by default and opened by "View payment
-                details". Every figure and word here is unchanged: the leading
-                figure is this Order's SHARE — the figure the position is built
-                from — and a split payment states its full amount underneath.
-                Status wording is the PI card's own map, see PAYMENT_STATUS_COLOR. */}
-            <div ref={paymentsRef} style={{ scrollMarginTop: '80px' }}>
-              <PiCard>
-                <CollapsibleHeader
-                  title={`Payments (${payments.length})`}
-                  meta={!recordsReady
-                    ? 'Loading…'
-                    : payments.length === 0
-                      ? 'None recorded'
-                      : `${formatMoney(finance.verified)} verified`}
-                  open={paymentsOpen}
-                  onToggle={() => setPaymentsOpen(o => !o)}
-                  controls="order-payments-body"
-                />
-                {paymentsOpen && (
-                  <div id="order-payments-body" style={{ padding: '2px 16px 14px', borderTop: `1px solid ${colors.border}` }}>
-                    {payments.length === 0 ? (
-                      <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6, paddingTop: '10px' }}>
-                        No payment has been recorded against this Order yet.
-                        {order.total_value != null && (
-                          <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
-                        )}
-                      </div>
-                    ) : (
-                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingTop: '10px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
-                          <caption style={{
-                            captionSide: 'top', textAlign: 'left', fontSize: '11px',
-                            color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
-                          }}>
-                            Amounts are this Order&apos;s share. Where a payment has been
-                            allocated, the allocation decides the share; where it has not,
-                            a payment linked to this Order counts in full.
-                            {finance.splitPayments.length > 0 && (
-                              <> {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
-                              {' '}allocated across more than one record; the complete allocation
-                              history is in each one&apos;s Finance record.</>
-                            )}
-                          </caption>
-                          <thead>
-                            <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                              {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
-                                <th key={h || `action-${i}`} scope="col" style={{
-                                  padding: '6px 12px',
-                                  textAlign: h === 'This Order' ? 'right' : 'left',
-                                  fontSize: '10px', fontWeight: 600, color: colors.muted,
-                                  textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                                }}>{h}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {payments.map(p => {
-                              // One vocabulary, from the PI card's own map. An
-                              // unrecognised status says what it is rather than being
-                              // relabelled as something friendlier that might be untrue.
-                              const statusLabel = piPaymentStatusLabel(p.status)
-                              const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
-                              return (
-                                <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                                  <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
-                                    {/* A payment with no customer says so, from the one
-                                        shared formatter. An em dash would read as
-                                        missing data rather than as a Suspense payment. */}
-                                    {customerDisplayName(p.client_name)}
-                                  </td>
-                                  <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                                    <div style={{ fontWeight: 600, color: colors.primary }}>
-                                      {formatMoney(p.exactAllocatedAmount)}
-                                    </div>
-                                    {/* Only when the two genuinely differ. Saying "of
-                                        ₹X" under every row would be noise on the ordinary
-                                        case, where the whole payment is this Order's. */}
-                                    {p.isPartialShare && (
-                                      <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
-                                        allocated from {formatMoney(p.exactAmount)} received
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                                    {fmtDate(p.payment_date)}
-                                  </td>
-                                  <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                                    {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
-                                  </td>
-                                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
-                                    {statusLabel}
-                                  </td>
-                                  {/* THE FINANCE RECORD — a payment's proof, its verification
-                                      history and its complete allocation across every target
-                                      live in Finance, and this is the door to them. Offered
-                                      only to a reader who holds Finance module entry, so
-                                      nobody is shown a door that shuts in their face; the
-                                      Finance page still re-reads the row under that reader's
-                                      own RLS and refuses anything they may not open. */}
-                                  <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                                    {financeCaps.canAccessFinanceModule && (
-                                      <button
-                                        type="button"
-                                        onClick={() => router.push(financePaymentHref(p.id))}
-                                        className="boe-btn boe-btn-ghost"
-                                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                                        title={`Open this payment's full record in Finance`}
-                                      >
-                                        Finance record
-                                      </button>
-                                    )}
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                STATUS WORDING MATCHES THE PI — see PAYMENT_STATUS_COLOR above
+                for the three labels that disagreed and why each was wrong. */}
+            {recordsReady && (
+              <div className="order-pay-records">
+                <div className="order-pay-records-head">Payment records</div>
+                {payments.length === 0 ? (
+                  <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
+                    No payment has been recorded against this Order yet.
+                    {order.total_value != null && (
+                      <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
                     )}
                   </div>
-                )}
-              </PiCard>
-            </div>
-
-            {/* ── Details ──
-                The record's own fields that are not decisions: provenance,
-                the two stored values, the two timestamps, the notes. Grouped
-                here instead of spread across the top of the page. */}
-            <section className="order-details" aria-label="Details">
-              <div>
-                <div className="order-details-grid">
-                  <MetaField label="Requested By" value={order.requested_by_name} />
-                  <MetaField label="Assignee"     value={order.assigned_to_name} />
-                  <MetaField
-                    label="Lead Source"
-                    value={order.lead_source ? LEAD_SOURCE_LABEL[order.lead_source] ?? order.lead_source : undefined}
-                  />
-                  <MetaField label="Total Product Value" value={fmtAmount(order.total_product_value)} />
-                  <MetaField label="Total Order Value"   value={fmtAmount(order.total_value)} />
-                  <MetaField label="Created"       value={fmtDate(order.created_at)} />
-                  <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
-                  {/* Read-only provenance. Rendered only for an Order that
-                      actually came from a request. Deliberately not a link:
-                      converted requests are gone from the Order Requests
-                      module, so there is nowhere to navigate to. The internal
-                      request id rides along as a title attribute for
-                      support/audit lookups without adding UI noise. */}
-                  {order.source_request_number && (
-                    <MetaField
-                      label="Source Request"
-                      value={
-                        <span title={order.source_order_request_id ?? undefined}>
-                          {order.source_request_number}
-                        </span>
-                      }
-                    />
-                  )}
-                </div>
-                {order.notes && (
-                  <div style={{
-                    marginTop: '10px', paddingTop: '9px', borderTop: `1px solid ${colors.border}`,
-                    fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap',
-                  }}>
-                    <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '3px' }}>
-                      Notes
-                    </span>
-                    {order.notes}
+                ) : (
+                  <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
+                      <caption style={{
+                        captionSide: 'top', textAlign: 'left', fontSize: '11px',
+                        color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
+                      }}>
+                        Amounts are this Order&apos;s share. Where a payment has been
+                        allocated, the allocation decides the share; where it has not,
+                        a payment linked to this Order counts in full.
+                      </caption>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                          {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
+                            <th key={h || `action-${i}`} scope="col" style={{
+                              padding: '6px 12px',
+                              textAlign: h === 'This Order' ? 'right' : 'left',
+                              fontSize: '10px', fontWeight: 600, color: colors.muted,
+                              textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                            }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {payments.map(p => {
+                          // One vocabulary, from the PI card's own map. An
+                          // unrecognised status says what it is rather than being
+                          // relabelled as something friendlier that might be untrue.
+                          const statusLabel = piPaymentStatusLabel(p.status)
+                          const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
+                          return (
+                            <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                              <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
+                                {/* A payment with no customer says so, from the one
+                                    shared formatter. An em dash would read as
+                                    missing data rather than as a Suspense payment. */}
+                                {customerDisplayName(p.client_name)}
+                              </td>
+                              <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                                <div style={{ fontWeight: 600, color: colors.primary }}>
+                                  {formatMoney(p.exactAllocatedAmount)}
+                                </div>
+                                {/* Only when the two genuinely differ. Saying "of
+                                    ₹X" under every row would be noise on the ordinary
+                                    case, where the whole payment is this Order's. */}
+                                {p.isPartialShare && (
+                                  <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
+                                    allocated from {formatMoney(p.exactAmount)} received
+                                  </div>
+                                )}
+                              </td>
+                              <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                                {fmtDate(p.payment_date)}
+                              </td>
+                              <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                                {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
+                              </td>
+                              <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
+                                {statusLabel}
+                              </td>
+                              {/* THE FINANCE RECORD — a payment's proof, its verification
+                                  history and its complete allocation across every target
+                                  live in Finance, and this is the door to them. Offered
+                                  only to a reader who holds Finance module entry, so
+                                  nobody is shown a door that shuts in their face; the
+                                  Finance page still re-reads the row under that reader's
+                                  own RLS and refuses anything they may not open. */}
+                              <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                {financeCaps.canAccessFinanceModule && (
+                                  <button
+                                    type="button"
+                                    onClick={() => router.push(financePaymentHref(p.id))}
+                                    className="boe-btn boe-btn-ghost"
+                                    style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                                    title={`Open this payment's full record in Finance`}
+                                  >
+                                    Finance record
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>
-            </section>
-
-            {/* ── Activity ── the complete trail, last: the current state is
-                understood before the history that produced it. */}
-            {!recordsReady ? (
-              <SectionSkeleton rows={3} label="Loading activity" />
-            ) : (
-              /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
-                 source PI's, interleaved newest first — draft, submission,
-                 payments, Finance's decisions, the exception, the PI decision,
-                 the Order, its number, revisions and alignment. Every entry is
-                 worded HERE, exactly as before; the list only decides how many
-                 are on screen — the latest five until it is expanded. */
-              <OrderActivityList items={history.map((entry): OrderActivityItem => {
-                const orderEntry = entry.source === 'order'
-                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-                  : null
-                return {
-                  key: entry.key,
-                  label: entry.label,
-                  detail: entry.detail,
-                  lines: orderEntry ? amendmentLines(orderEntry) : [],
-                  actor: entry.actor,
-                  when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
-                  dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
-                  fromPi: entry.source === 'pi',
-                }
-              })} />
             )}
-
           </div>
+        </PiCard>
 
-          {/* ══ THE HEALTH RAIL ══ sticky on desktop, first on a phone. */}
-          <aside className="order-workspace-aside" aria-label="Order health and payment position">
-            <div className="order-workspace-aside-inner">
-              <OrderHealthCard rows={healthRows} />
-              <PaymentPositionCard finance={finance} loaded={recordsReady} onViewDetails={openPayments} />
+        {/* ══ 6. ORDER RECORDS ══
+            The documents, the source PI this Order was created from, and the
+            PI's version history. The source PI is a REFERENCE and an action,
+            not a summary: the client, the dates and the pre-tax total it used
+            to restate are the Order's own facts and are stated above. */}
+        {piHandoff.kind !== 'none' && (
+          <PiCard>
+            <PiCardHeader title="Order records" style={SECTION_HEADER_STYLE} />
+            <div className="order-records-body">
+              <OrderDocumentsCard
+                embedded
+                view={documentsView}
+                canGenerate={mayGenerateDocuments}
+                onGenerate={requestDocuments}
+                generating={docBusy}
+                onDownload={downloadDocument}
+                downloading={docDownload}
+                error={docError}
+              />
+              <div className="order-record-section">
+                <div className="order-record-head">
+                  <h3 className="order-record-title">Source PI</h3>
+                </div>
+                {piHandoff.kind === 'ready' ? (
+                  <div className="order-source-pi">
+                    <div style={{ minWidth: 0 }}>
+                      <div className="order-doc-name">
+                        {piHandoff.workbookName ?? 'The approved PI'}
+                      </div>
+                      <div className="order-doc-meta">The PI this Order was created from</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                      {wbPath && (
+                        <button
+                          type="button"
+                          onClick={downloadWorkbook}
+                          disabled={wbBusy}
+                          className="boe-btn boe-btn-ghost"
+                          style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600 }}
+                        >
+                          {wbBusy ? 'Preparing…' : 'Download'}
+                        </button>
+                      )}
+                      {/* The way back to the PI. The database has had this door
+                          since 20260924000000 — can_view_order_submission_via_order
+                          exists so that seeing the Order is a way onto its approved
+                          PI — and the PI screen still decides for itself under RLS. */}
+                      <button
+                        type="button"
+                        onClick={() => router.push(piSubmissionHref(piHandoff.submissionId))}
+                        className="boe-btn boe-btn-ghost"
+                        style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600 }}
+                      >
+                        Open source PI
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
+                    {ORDER_PI_UNAVAILABLE_BODY}
+                  </div>
+                )}
+                {wbError && (
+                  <div style={{ fontSize: '11.5px', color: colors.red, lineHeight: 1.45, marginTop: '6px' }}>
+                    {wbError}
+                  </div>
+                )}
+              </div>
+              {/* THE PI HISTORY (20261119000000): the current PI, a pending
+                  revision and everything before. */}
+              <OrderPiHistoryCard
+                embedded
+                history={piHistory}
+                canPropose={mayProposeRevision}
+                canDecide={mayDecideRevision && piHistory.pending !== null}
+                onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+                onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
+                onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
+                onOpen={openVersion}
+                opening={versionOpening}
+                busy={revisionBusy}
+                error={revisionDialog === null ? revisionError : null}
+              />
             </div>
-          </aside>
+          </PiCard>
+        )}
 
-        </div>
+        {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI" and
+            "the feature is not deployed" are indistinguishable from the
+            outside, so the absence is stated rather than left silent. */}
+        {piHandoff.kind === 'none' && <OrderPiNoSource />}
+
+        {/* ── Change requests ──
+            Rendered only when there is something to show. An admin sees every
+            request; everyone else sees their own — that split is RLS's. */}
+        {changeRequests.length > 0 && (
+          <div ref={changeRequestsRef}>
+            <PiCard>
+              <PiCardHeader title={`Change requests (${pendingRequests.length} pending)`} style={SECTION_HEADER_STYLE} />
+              <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {changeRequests.map(r => (
+                  <div
+                    key={r.id}
+                    style={{
+                      display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
+                      padding: '10px 12px', borderRadius: '8px',
+                      background: r.status === 'pending' ? colors.raised : 'transparent',
+                      border: `1px solid ${colors.border}`,
+                    }}
+                  >
+                    <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                      <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
+                        {CHANGE_REQUEST_TYPE_LABEL[r.request_type]}
+                        <span style={{ fontWeight: 500, color: colors.muted }}>
+                          {' · '}{CHANGE_REQUEST_STATUS_LABEL[r.status]}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
+                        {r.reason}
+                      </div>
+                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                        {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
+                      </div>
+                      {r.review_note && (
+                        <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
+                          Review note: {r.review_note}
+                        </div>
+                      )}
+                    </div>
+                    {actingAsAdmin && r.status === 'pending' && (
+                      <button
+                        type="button"
+                        onClick={() => setReviewing(r)}
+                        className="boe-btn boe-btn-primary"
+                        style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
+                      >
+                        Review
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </PiCard>
+          </div>
+        )}
+
+        {/* ══ 7. RECORD INFORMATION ══
+            SECONDARY AUDIT METADATA ONLY. The salesperson, the lead source and
+            the two commercial totals used to be repeated here; each is stated
+            once, in the Order Summary. What is left is what nothing else on
+            the page says: who raised it, when it was created, when it last
+            moved, and where it came from. */}
+        <section className="order-details" aria-label="Record information">
+          <div className="order-details-head">Record information</div>
+          <div className="order-details-grid">
+            <MetaField label="Requested By" value={order.requested_by_name} />
+            <MetaField label="Created"       value={fmtDate(order.created_at)} />
+            <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
+            {/* Read-only provenance. Rendered only for an Order that actually
+                came from a request. Deliberately not a link: converted requests
+                are gone from the Order Requests module, so there is nowhere to
+                navigate to. The internal request id rides along as a title
+                attribute for support/audit lookups without adding UI noise. */}
+            {order.source_request_number && (
+              <MetaField
+                label="Source Request"
+                value={
+                  <span title={order.source_order_request_id ?? undefined}>
+                    {order.source_request_number}
+                  </span>
+                }
+              />
+            )}
+          </div>
+          {order.notes && (
+            <div style={{
+              marginTop: '10px', paddingTop: '9px', borderTop: `1px solid ${colors.border}`,
+              fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap',
+            }}>
+              <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '3px' }}>
+                Notes
+              </span>
+              {order.notes}
+            </div>
+          )}
+        </section>
+
+        {/* ══ 8. ACTIVITY ══ the complete trail, last: the current state is
+            understood before the history that produced it. */}
+        {!recordsReady ? (
+          <SectionSkeleton rows={3} label="Loading activity" />
+        ) : (
+          /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
+             PI's, interleaved newest first. Every entry is worded HERE,
+             exactly as before; the list only decides how many are on screen —
+             the latest five until it is expanded. */
+          <OrderActivityList items={history.map((entry): OrderActivityItem => {
+            const orderEntry = entry.source === 'order'
+              ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+              : null
+            return {
+              key: entry.key,
+              label: entry.label,
+              detail: entry.detail,
+              lines: orderEntry ? amendmentLines(orderEntry) : [],
+              actor: entry.actor,
+              when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
+              dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
+              fromPi: entry.source === 'pi',
+            }
+          })} />
+        )}
+
       </div>
 
       {/* ── Amendment dialogs ──

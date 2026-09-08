@@ -447,11 +447,14 @@ export const ORDER_COMMERCIAL_TITLE = 'Commercial breakdown'
  * .pi-commercial-grand-total ground so it reads as the same figure it is on
  * the PI screen.
  */
-export function OrderCommercialBreakdown({ rows }: { rows: readonly PiAmountRow[] }) {
-  return (
-    <PiCard style={{ height: '100%' }}>
-      <PiCardHeader title={ORDER_COMMERCIAL_TITLE} style={SECTION_HEADER_STYLE} />
-      <div style={{ padding: '4px 0 6px' }}>
+export function OrderCommercialBreakdown({ rows, embedded = false }: {
+  rows: readonly PiAmountRow[]
+  /** Drawn INSIDE the Order Summary's commercial column: a titled block with
+   *  no card of its own, because the summary is already one surface. */
+  embedded?: boolean
+}) {
+  const body = (
+      <div style={{ padding: embedded ? 0 : '4px 0 6px' }}>
         {rows.map(row => {
           const total = row.emphasis === 'total'
           return (
@@ -490,6 +493,21 @@ export function OrderCommercialBreakdown({ rows }: { rows: readonly PiAmountRow[
           )
         })}
       </div>
+  )
+
+  if (embedded) {
+    return (
+      <section className="order-breakdown" aria-label={ORDER_COMMERCIAL_TITLE}>
+        <h3 className="order-record-title">{ORDER_COMMERCIAL_TITLE}</h3>
+        {body}
+      </section>
+    )
+  }
+
+  return (
+    <PiCard style={{ height: '100%' }}>
+      <PiCardHeader title={ORDER_COMMERCIAL_TITLE} style={SECTION_HEADER_STYLE} />
+      {body}
     </PiCard>
   )
 }

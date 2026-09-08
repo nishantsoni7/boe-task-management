@@ -1,6 +1,7 @@
 /**
- * The Confirmed Order workspace pieces, rendered: the attention bar, the health
- * card, the payment position, the overflow menu and the loading shell.
+ * The Confirmed Order pieces, rendered: the attention bar, the Order Summary,
+ * the payment figures, the records sections, the activity trail, the overflow
+ * menu and the loading shell.
  *
  * Every component is a function of its props; these check what they SAY, that
  * nothing depends on colour alone, and that no URL or storage key reaches the
@@ -16,14 +17,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ACTIVITY_EMPTY,
   MoreActionsMenu,
-  ORDER_HEALTH_TITLE,
   OrderActivityList,
   OrderAttentionBar,
+  OrderCommercialTotals,
   OrderDetailSkeleton,
-  OrderHealthCard,
-  PAYMENT_POSITION_TITLE,
-  PaymentPositionCard,
-  VIEW_PAYMENT_DETAILS_LABEL,
+  OrderSummary,
+  PaymentSummaryFigures,
   type OrderActivityItem,
 } from './OrderWorkspace'
 import {
@@ -34,9 +33,10 @@ import {
   OrderDocumentsCard,
 } from './OrderPiSections'
 import {
-  HEALTH_PAYMENT_LOADING,
+  SUMMARY_NOT_SET,
+  SUMMARY_UNASSIGNED,
   orderAttentionItems,
-  orderHealthRows,
+  orderSummaryFacts,
 } from '@/lib/orders/orderWorkspace'
 import { buildOrderFinancePosition, type OrderFinancePaymentRow } from '@/lib/finance/orderFinancePosition'
 import {
@@ -63,7 +63,7 @@ describe('the attention bar', () => {
 
   test('names the count and every item, as words', () => {
     const items = orderAttentionItems({
-      status: 'running', productionAligned: false, hasAssignee: false, hasDueDate: false,
+      status: 'running', productionAligned: false, hasSalesperson: false, hasDueDate: false, hasLeadSource: true,
       isOverdue: false, awaitingVerificationCount: 0, pendingChangeRequests: 0,
       pendingPiRevision: false, documentsFailed: false, documentsOutdated: false,
     })
@@ -71,7 +71,7 @@ describe('the attention bar', () => {
     const body = text(html)
     assert.ok(body.includes('3 items need attention'))
     assert.ok(body.includes('Production not aligned'))
-    assert.ok(body.includes('No assignee'))
+    assert.ok(body.includes('Salesperson not set'))
     assert.ok(body.includes('Due date not set'))
     assert.match(html, /<ul/, 'a list, so a screen reader counts it')
     assert.match(html, /aria-label="3 items need attention"/)
@@ -80,7 +80,7 @@ describe('the attention bar', () => {
 
   test('the overdue item is marked by a class as well as by its words', () => {
     const items = orderAttentionItems({
-      status: 'running', productionAligned: true, hasAssignee: true, hasDueDate: true,
+      status: 'running', productionAligned: true, hasSalesperson: true, hasDueDate: true, hasLeadSource: true,
       isOverdue: true, awaitingVerificationCount: 0, pendingChangeRequests: 0,
       pendingPiRevision: false, documentsFailed: false, documentsOutdated: false,
     })
@@ -90,55 +90,72 @@ describe('the attention bar', () => {
   })
 })
 
-// ── The health card ───────────────────────────────────────────────────────────
+// ── The Order Summary ─────────────────────────────────────────────────────────
 
-const rows = (over: Partial<Parameters<typeof orderHealthRows>[0]> = {}) => orderHealthRows({
+const facts = (over: Partial<Parameters<typeof orderSummaryFacts>[0]> = {}) => orderSummaryFacts({
   status: 'running', statusLabel: 'Running', statusTone: 'blue',
-  verifiedPercent: '47.95%', verified: '₹7,50,000.00', orderValue: '₹15,64,090.00',
-  fullyPaid: false, paymentCount: 2, paymentsLoaded: true,
   productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-  dueDate: null, isOverdue: false, ownerName: null, confirmedDate: '8 Sep 2026',
+  salespersonName: null, confirmDate: '8 Sep 2026', dueDate: null, isOverdue: false,
+  leadSource: null,
   ...over,
 })
 
-describe('the health card', () => {
-  test('is a definition list of the six lines, headed Order health', () => {
-    const html = renderToStaticMarkup(<OrderHealthCard rows={rows()} />)
-    const body = text(html)
-    assert.ok(body.includes(ORDER_HEALTH_TITLE))
-    assert.match(html, /<dl/)
-    assert.equal((html.match(/<dt/g) ?? []).length, 6)
-    for (const word of ['Running', '47.95% verified', '₹7,50,000.00 of ₹15,64,090.00', 'Not Aligned', 'Not set', 'Unassigned', '8 Sep 2026']) {
-      assert.ok(body.includes(word), word)
+function summaryMarkup(over: Parameters<typeof facts>[0] = {}, commercial: React.ReactNode = null) {
+  return renderToStaticMarkup(<OrderSummary facts={facts(over)} commercial={commercial} />)
+}
+
+describe('the Order Summary', () => {
+  test('states all six management facts, and names the salesperson as such', () => {
+    const body = text(summaryMarkup({
+      salespersonName: 'Nishant', dueDate: '30 Sep 2026', leadSource: 'Reference',
+    }))
+    for (const s of ['Status', 'Running', 'Production', 'Not Aligned',
+                     'Salesperson', 'Nishant', 'Confirm date', '8 Sep 2026',
+                     'Due date', '30 Sep 2026', 'Lead source', 'Reference']) {
+      assert.ok(body.includes(s), s)
     }
   })
 
-  test('every tone is also a word, never a colour alone', () => {
-    // The dot is decorative; the value beside it carries the meaning.
-    const html = renderToStaticMarkup(<OrderHealthCard rows={rows({ isOverdue: true, dueDate: '1 Sep 2026' })} />)
-    assert.match(html, /class="order-health-dot"[^>]*aria-hidden="true"/)
-    assert.ok(text(html).includes('Overdue'))
+  test('says neither Owner nor Assignee anywhere', () => {
+    const html = summaryMarkup({ salespersonName: 'Nishant' })
+    assert.ok(!/owner|assignee/i.test(text(html)))
   })
 
-  test('only a warning row is marked; ordinary rows stay quiet', () => {
-    const html = renderToStaticMarkup(<OrderHealthCard rows={rows()} />)
-    // production, due date and owner are gaps; status, payment and confirmed are not
-    assert.equal((html.match(/order-health-row--amber/g) ?? []).length, 3)
-    assert.equal((html.match(/order-health-row--red/g) ?? []).length, 0)
-    const settled = renderToStaticMarkup(<OrderHealthCard rows={rows({
-      productionAligned: true, productionLabel: 'Aligned', dueDate: '30 Oct 2026', ownerName: 'Nishant',
-    })} />)
-    assert.ok(!settled.includes('order-health-row--'))
+  test('shows NO payment figure — payment is its own section', () => {
+    const body = text(summaryMarkup({ salespersonName: 'Nishant' }))
+    assert.ok(!/verified|awaiting|balance|₹/i.test(body))
   })
 
-  test('says Loading… while the payment reads are in flight, and never a zero', () => {
-    const html = renderToStaticMarkup(<OrderHealthCard rows={rows({ paymentsLoaded: false, paymentCount: 0 })} />)
-    assert.ok(text(html).includes(HEALTH_PAYMENT_LOADING))
-    assert.ok(!text(html).includes('No payments recorded'))
+  test('a gap is marked by a class as well as by its words', () => {
+    const html = summaryMarkup()
+    // production, salesperson, due date and lead source are all missing here
+    assert.equal((html.match(/order-fact--amber/g) ?? []).length, 4)
+    assert.ok(text(html).includes(SUMMARY_UNASSIGNED))
+    assert.ok(text(html).includes(SUMMARY_NOT_SET))
+  })
+
+  test('the dot is decorative; the words carry the meaning', () => {
+    assert.match(summaryMarkup(), /class="order-fact-dot"[^>]*aria-hidden="true"/)
+  })
+
+  test('the commercial column is whatever the page hands it, and nothing when it hands none', () => {
+    const withMoney = summaryMarkup({}, <div>Product value ₹12,53,000</div>)
+    assert.ok(text(withMoney).includes('₹12,53,000'))
+    assert.ok(withMoney.includes('order-summary-commercial'))
+    assert.ok(!summaryMarkup().includes('order-summary-commercial'),
+      'a reader who may see no commercial figure gets no empty column')
+  })
+
+  test('the two stored totals read as label and figure', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderCommercialTotals productValue="₹12,53,000.00" orderValue="₹15,64,090.00" />,
+    ))
+    assert.ok(body.includes('Product value ₹12,53,000.00'))
+    assert.ok(body.includes('Order value ₹15,64,090.00'))
   })
 })
 
-// ── The payment position ──────────────────────────────────────────────────────
+// ── The payment section ───────────────────────────────────────────────────────
 
 const payment = (over: Partial<OrderFinancePaymentRow>): OrderFinancePaymentRow => ({
   id: over.id ?? 'p1',
@@ -150,66 +167,41 @@ const payment = (over: Partial<OrderFinancePaymentRow>): OrderFinancePaymentRow 
   ...over,
 } as OrderFinancePaymentRow)
 
-function positionMarkup(payments: OrderFinancePaymentRow[], orderValue: number | null, loaded = true) {
+function paymentMarkup(payments: OrderFinancePaymentRow[], orderValue: number | null, loaded = true) {
   return renderToStaticMarkup(
-    <PaymentPositionCard
-      finance={buildOrderFinancePosition(payments, orderValue)}
-      loaded={loaded}
-      onViewDetails={() => {}}
-    />,
+    <PaymentSummaryFigures finance={buildOrderFinancePosition(payments, orderValue)} loaded={loaded} />,
   )
 }
 
-describe('the payment position', () => {
-  test('leads with the verified money, the percentage beside its bar, then what it is measured against', () => {
-    const html = positionMarkup([payment({})], 1564090)
-    const body = text(html)
-    assert.ok(body.includes(PAYMENT_POSITION_TITLE))
-    assert.ok(body.includes('₹7,50,000.00 Verified'))
-    assert.ok(body.includes('47.95%'))
-    assert.ok(body.includes('of ₹15,64,090.00 order value'))
-    assert.ok(body.includes('Remaining ₹8,14,090.00'))
+describe('the payment summary figures', () => {
+  test('states all six figures the business reads', () => {
+    const body = text(paymentMarkup([payment({})], 1564090))
+    assert.ok(body.includes('Order value ₹15,64,090.00'))
+    assert.ok(body.includes('Verified ₹7,50,000.00'))
     assert.ok(body.includes('Awaiting verification ₹0.00'))
     assert.ok(body.includes('Received ₹7,50,000.00'))
-    assert.ok(body.includes('1 payment'))
-    assert.ok(body.includes(VIEW_PAYMENT_DETAILS_LABEL))
-    // Reading order: the amount, then the percentage, then the order value.
-    assert.ok(body.indexOf('₹7,50,000.00') < body.indexOf('47.95%'))
-    assert.ok(body.indexOf('47.95%') < body.indexOf('order value'))
-    assert.match(html, /class="order-pay-bar"/, 'the bar is drawn')
+    assert.ok(body.includes('Balance ₹8,14,090.00'))
+    assert.ok(body.includes('Verified % 47.95%'))
+    assert.match(paymentMarkup([payment({})], 1564090), /class="order-pay-bar"/)
   })
 
-  test('money awaiting Finance is stated with its count', () => {
-    const body = text(positionMarkup([
+  test('money awaiting Finance is counted', () => {
+    const body = text(paymentMarkup([
       payment({}),
       payment({ id: 'p2', status: 'pending_approval', amount: 100000, allocatedAmount: 100000, exactAmount: '100000.00', exactAllocatedAmount: '100000.00' }),
     ], 1564090))
-    assert.ok(body.includes('Awaiting verification ₹1,00,000.00 1 with Finance'))
+    assert.ok(body.includes('Awaiting verification ₹1,00,000.00 1 payment with Finance'))
     assert.ok(body.includes('Received ₹8,50,000.00'))
   })
 
-  test('an Order with no payments says so', () => {
-    const html = positionMarkup([], 1564090)
-    assert.ok(text(html).includes('No payments'))
-    assert.ok(text(html).includes('₹0.00 Verified'))
-    assert.ok(text(html).includes('Remaining ₹15,64,090.00'))
-  })
-
-  test('an Order with no value states that rather than a percentage', () => {
-    const body = text(positionMarkup([payment({})], null))
-    assert.ok(body.includes('Order value not recorded'))
-    assert.ok(!body.includes('%'))
-    assert.ok(!body.includes('Remaining'))
-  })
-
   test('draws a skeleton, not zeros, until the reads land', () => {
-    const html = positionMarkup([], 1564090, false)
+    const html = paymentMarkup([], 1564090, false)
     assert.match(html, /role="status"/)
     assert.ok(!text(html).includes('₹'))
   })
 
-  test('no URL and no identifier reaches the markup', () => {
-    const html = positionMarkup([payment({})], 1564090)
+  test('no URL and no payment id reaches the markup', () => {
+    const html = paymentMarkup([payment({})], 1564090)
     assert.ok(!/href=/.test(html))
     assert.ok(!html.includes('p1'))
   })
@@ -365,8 +357,8 @@ describe('the loading shell', () => {
     assert.match(html, /role="status"/)
     assert.match(html, /aria-busy="true"/)
     assert.ok(html.includes('order-command-header'))
-    assert.ok(html.includes('order-workspace-main'))
-    assert.ok(html.includes('order-workspace-aside'))
+    assert.ok(html.includes('order-summary'))
+    assert.ok(html.includes('order-products'))
     assert.ok(!/\d/.test(text(html)), 'no figure is invented while loading')
   })
 })

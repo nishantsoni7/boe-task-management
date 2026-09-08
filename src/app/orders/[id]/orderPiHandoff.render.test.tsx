@@ -441,9 +441,16 @@ describe('/orders/[id] itself', () => {
    */
   test('an Order with no source PI is TOLD it has none, not left silent', () => {
     assert.ok(page.includes("piHandoff.kind === 'ready'"))
-    assert.ok(page.includes("piHandoff.kind === 'unavailable'"))
     assert.ok(page.includes("piHandoff.kind === 'none' && <OrderPiNoSource />"))
     assert.ok(page.includes('OrderPiNoSource,'), 'the component must be imported')
+    // AND A PI THAT COULD NOT BE READ still says so. The big Approved PI card
+    // that used to carry that sentence is gone — the Order's own facts are
+    // stated once, in the Order Summary — so the absence is now reported where
+    // the source PI is referenced, inside Order Records.
+    const records = page.slice(page.indexOf('title="Order records"'))
+    assert.ok(records.includes('ORDER_PI_UNAVAILABLE_BODY'),
+      'an unreadable PI is reported where the PI reference lives')
+    assert.ok(page.includes('  ORDER_PI_UNAVAILABLE_BODY,'), 'and the sentence is the shared one')
   })
 
   test('the no-PI panel still gets NO documents card — there is nothing to generate', () => {

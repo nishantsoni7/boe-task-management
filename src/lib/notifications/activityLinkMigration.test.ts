@@ -246,6 +246,7 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // public.order_product_codes. It touches no notification table or
       // function, so it reaches nothing asserted here.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
+      '20261201000000_order_submission_confirmation_required_fields.sql',
     ])
   })
 

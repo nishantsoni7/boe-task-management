@@ -181,6 +181,12 @@ export const orderDocumentsOutdatedNote = (reason: string | null): string =>
   `These documents are no longer current: ${
     ORDER_DOCUMENTS_OUTDATED_REASON[reason ?? ''] ?? ORDER_DOCUMENTS_OUTDATED_FALLBACK
   }. They are still the files that were generated and can still be downloaded.`
+/** What a run that was claimed and never finished says. One sentence: the
+ *  reader does not need to know about leases, only that nothing is coming and
+ *  that trying again will start it. */
+export const ORDER_DOCUMENTS_STALLED =
+  'The last attempt stopped before it finished. Nothing is generating now — try again.'
+
 export const ORDER_DOCUMENTS_RETRY_LABEL = 'Try again'
 export const ORDER_DOCUMENTS_EXCEL_LABEL = 'Confirmed Excel'
 export const ORDER_DOCUMENTS_PDF_LABEL = 'Confirmed PDF'
@@ -276,7 +282,48 @@ export function latestOrderDocument(rows: readonly OrderDocumentRow[]): OrderDoc
   return [...rows].sort((a, b) => b.version - a.version)[0]
 }
 
-export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): OrderDocumentsView {
+/**
+ * THE LEASE THE DATABASE ACTUALLY HOLDS — order_document_claim_ttl() in
+ * 20260925000000, which is `interval '15 minutes'`.
+ *
+ * Restated here for ONE purpose: to know when a claim has gone stale, so the
+ * screen offers the control that can take it over. It decides nothing else, and
+ * it is not the rule — claim_order_document_generation() re-derives the same
+ * fifteen minutes against the database's own clock and refuses a takeover that
+ * is not yet due.
+ */
+export const ORDER_DOCUMENT_CLAIM_TTL_MS = 15 * 60 * 1000
+
+/**
+ * A generation that was claimed and never finished.
+ *
+ * THE DEFECT THIS CLOSES. The route that generates the documents IS the worker:
+ * it requests, claims, renders, uploads and publishes inside one request. When
+ * that request dies mid-flight — a function timeout, a cold-start kill, a
+ * deploy landing on top of it — the row stays `claimed`, and the card read that
+ * as "Generating", hid the Generate control, and kept hiding it forever.
+ * Nothing reaps stale claims: there is no cron and no second caller.
+ *
+ * The database has always allowed the takeover after fifteen minutes. What was
+ * missing was any way to ASK for it, because the only control that sends the
+ * request was suppressed by the very state it would clear.
+ */
+export function isOrderDocumentClaimStale(
+  row: Pick<OrderDocumentRow, 'status' | 'claimed_at'>,
+  now: Date = new Date(),
+): boolean {
+  if (row.status !== 'claimed') return false
+  const claimedAt = row.claimed_at ? Date.parse(row.claimed_at) : NaN
+  // A claimed row with no timestamp cannot be judged, and guessing "stale"
+  // would offer a takeover the database will refuse. It stays working.
+  if (Number.isNaN(claimedAt)) return false
+  return now.getTime() - claimedAt >= ORDER_DOCUMENT_CLAIM_TTL_MS
+}
+
+export function buildOrderDocumentsView(
+  rows: readonly OrderDocumentRow[],
+  now: Date = new Date(),
+): OrderDocumentsView {
   const shown = currentOrderDocument(rows)
   const latest = latestOrderDocument(rows)
 
@@ -295,7 +342,13 @@ export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): Orde
   // WORKING IS A FACT ABOUT THE NEWEST ROW, not about the one being shown: while
   // version 2 generates, version 1 is still what a person can open, and both
   // things are true at once.
-  const working = latest.status === 'pending' || latest.status === 'claimed'
+  //
+  // A STALE CLAIM IS NOT WORK IN PROGRESS. Once the lease has expired nothing
+  // is generating and nothing ever will be on its own, so the row stops
+  // reporting itself as busy and the control that can take the claim over
+  // comes back. See isOrderDocumentClaimStale.
+  const stalled = isOrderDocumentClaimStale(latest, now)
+  const working = (latest.status === 'pending' || latest.status === 'claimed') && !stalled
 
   // AND SO IS THE FAILURE. A failed version 2 must be reported even while
   // version 1 remains downloadable, or somebody waits for documents that are
@@ -316,7 +369,9 @@ export function buildOrderDocumentsView(rows: readonly OrderDocumentRow[]): Orde
     excelPath: downloadable ? shown.excel_path : null,
     pdfPath: downloadable ? shown.pdf_path : null,
     working,
-    failure: failed ? failureText(latest) : null,
+    // A stalled run is reported like any other interruption: one sentence, and
+    // the control below it says "Try again" rather than "Generate documents".
+    failure: failed ? failureText(latest) : stalled ? ORDER_DOCUMENTS_STALLED : null,
     attempts: latest.attempt_count > 1 ? latest.attempt_count : null,
     // A FACT ABOUT THE VERSION BEING SHOWN, not about the newest row — the
     // opposite of `working` and `failure` above, and for the opposite reason.

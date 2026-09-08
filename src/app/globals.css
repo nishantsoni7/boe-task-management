@@ -2062,24 +2062,28 @@ body {
 
 
 /* ─────────────────────────────────────────────────────
-   CONFIRMED ORDER WORKSPACE  (/orders/[id])
+   CONFIRMED ORDER DETAIL  (/orders/[id])
 
-   One command header, an attention strip, then a 70/30
-   workspace: the record (products, PI, documents,
-   history, payments, details, activity) on the left and
-   the management rail (order health, payment position)
-   on the right. The same idiom as
-   .payroll-detail-workspace; the rail is sticky on
-   desktop and moves ABOVE the record below 1100px,
-   because on a phone the answer comes before the
-   evidence.
+   ONE FACT, ONE PLACE. The page reads:
 
-   Density is the point: 9px section headers, 8px table
-   cells, one hairline between rows, and as few
-   independent boxes as the content allows.
+     command header   identity + actions, nothing else
+     order summary    operational facts left, money right
+     attention        only when something needs it
+     products         full width
+     payment          every payment figure and record
+     order records    documents, source PI, PI history
+     record info      secondary audit metadata
+     activity         latest five, expandable
+
+   There is no sidebar and no second summary: every
+   section is full width and states its facts once.
 ───────────────────────────────────────────────────── */
 .order-detail-page {
   max-width: 1480px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 24px;
 }
 
 /* ── The command header ── */
@@ -2089,7 +2093,6 @@ body {
   justify-content: space-between;
   gap: 12px 24px;
   flex-wrap: wrap;
-  margin-bottom: 14px;
 }
 
 .order-command-identity {
@@ -2097,7 +2100,7 @@ body {
   flex: 1 1 320px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 
 .order-command-title {
@@ -2119,20 +2122,6 @@ body {
   overflow-wrap: anywhere;
 }
 
-.order-command-badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
-.order-command-meta {
-  font-size: 12px;
-  color: #6B7384;
-  line-height: 1.5;
-}
-
 .order-command-actions {
   display: flex;
   align-items: center;
@@ -2147,7 +2136,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-bottom: 8px;
+  margin-bottom: -4px;
   padding: 4px 6px 4px 2px;
   border: none;
   background: none;
@@ -2156,9 +2145,144 @@ body {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
+  align-self: flex-start;
 }
 .order-back:hover { color: #111318; background: rgba(0,0,0,0.04); }
 .order-back:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+
+/* ── The Order Summary ──
+   Operational facts on the left, the money on the extreme right. One surface,
+   split by a hairline rather than by two cards. */
+.order-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+  align-items: stretch;
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.order-summary-facts {
+  margin: 0;
+  padding: 4px 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.order-fact {
+  padding: 10px 16px;
+  border-left: 3px solid transparent;
+  min-width: 0;
+}
+/* A gap on an open Order is marked by its rule as well as by its words. */
+.order-fact--amber { border-left-color: #E8A030; background: rgba(232,160,48,0.05); }
+.order-fact--red   { border-left-color: #D94F4F; background: rgba(217,79,79,0.05); }
+
+.order-fact-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 3px;
+}
+.order-fact-value {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 13.5px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.order-fact-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  top: -1px;
+}
+.order-fact-detail {
+  flex-basis: 100%;
+  padding-left: 14px;
+  font-size: 11.5px;
+  color: #6B7384;
+}
+
+/* The commercial column: the two totals, then the breakdown. */
+.order-summary-commercial {
+  border-left: 1px solid #F0F2F5;
+  background: #FAFBFC;
+  padding: 11px 16px 13px;
+  min-width: 0;
+}
+.order-summary-commercial-head {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 8px;
+}
+.order-commercial-totals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(0,0,0,0.07);
+}
+.order-commercial-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.order-commercial-total dt {
+  font-size: 12px;
+  color: #6B7384;
+}
+.order-commercial-total dd {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.order-commercial-total--lead dd {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* The breakdown, inside the summary rather than in a card of its own. */
+.order-breakdown { margin-top: 10px; }
+.order-breakdown .order-record-title { margin-bottom: 5px; }
+.order-commercial-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 3px 0;
+}
+.order-commercial-row.pi-commercial-grand-total {
+  padding: 7px 8px;
+  margin-top: 5px;
+  border-radius: 5px;
+}
+
+@media (max-width: 1100px) {
+  .order-summary { grid-template-columns: minmax(0, 1fr); }
+  .order-summary-commercial {
+    border-left: none;
+    border-top: 1px solid #F0F2F5;
+  }
+  .order-summary-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 /* ── The attention strip ──
    One line: the count in bold, then each condition separated by a middle
@@ -2169,7 +2293,6 @@ body {
   gap: 4px 12px;
   flex-wrap: wrap;
   padding: 8px 13px;
-  margin-bottom: 14px;
   border-radius: 8px;
   background: rgba(232,160,48,0.10);
   border: 1px solid rgba(190,140,40,0.34);
@@ -2211,48 +2334,10 @@ body {
 }
 .order-attention-item--red { color: #B42318; font-weight: 700; }
 
-/* ── The workspace grid ── */
-/* NO align-items: start here. The aside grid item must STRETCH to the row
-   height, because that stretch is exactly the room its sticky inner needs to
-   travel; with the item shrunk to its content, sticky has nowhere to go. */
-.order-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
-  gap: 18px;
-}
-.order-workspace-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  padding-bottom: 24px;
-}
-.order-workspace-aside { min-width: 0; }
-/* Sticky lives on the inner node — the grid item stretches to the row height,
-   which is what gives the sticky child room to travel. */
-.order-workspace-aside-inner {
-  position: sticky;
-  top: 76px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  max-height: calc(100vh - 92px);
-  overflow-y: auto;
-}
-/* On a short viewport the rail SCROLLS; its cards never shrink to fit, which
-   is what used to clip the sixth health row and the foot of the position. */
-.order-workspace-aside-inner > * { flex-shrink: 0; }
-
-/* ── The products, full content width above the workspace ── */
-.order-products {
-  margin-bottom: 14px;
-}
-/* FIXED LAYOUT so nine columns always fit the card: the prose columns wrap
+/* ── Products ──
+   FIXED LAYOUT so nine columns always fit the card: the prose columns wrap
    instead of widening the table, and nothing can push a horizontal scrollbar
-   onto the page. The narrow columns are sized for exactly what they hold —
-   an item code, an 84px photograph, a quantity, two money figures — and the
-   three descriptive columns take a share of what is left, with Customization
-   taking the remainder so an instruction has the most room to wrap. */
+   onto the page. */
 .order-products-table {
   table-layout: fixed;
 }
@@ -2273,277 +2358,19 @@ body {
   vertical-align: middle;
 }
 
-/* Tighter cells and narrower money columns where the content column is
-   smaller, so Customization keeps a readable measure. */
 @media (max-width: 1440px) {
   .order-products-table td { padding: 7px 8px; }
   .order-products-table col:nth-child(1) { width: 80px; }
   .order-products-table col:nth-child(2) { width: 100px; }
 }
 
-/* At 1440 and below the record column would otherwise fall under 640px
-   beside the sidebar; the rail gives up 32px and keeps every line legible. */
-@media (max-width: 1440px) {
-  .order-workspace { grid-template-columns: minmax(0, 1fr) 368px; }
+/* BELOW THE WIDTH NINE COLUMNS CAN HOLD, the table keeps a floor and scrolls
+   inside its own card rather than crushing Customization to a few pixels. The
+   page itself still never scrolls sideways — the floor is under the width the
+   record column has at 1366, so no ordinary desktop ever reaches it. */
+@media (max-width: 1200px) {
+  .order-products-table { min-width: 920px; }
 }
-
-@media (max-width: 1100px) {
-  .order-workspace { grid-template-columns: minmax(0, 1fr); }
-  .order-workspace-aside { order: -1; }
-  .order-workspace-aside-inner {
-    position: static;
-    max-height: none;
-    overflow-y: visible;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-  }
-}
-@media (max-width: 640px) {
-  .order-workspace-aside-inner { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* ── A row of two record cards (the Approved PI beside its breakdown). Flex
-   wrapping, so the pair stacks on its own when the column is too narrow for
-   both to read. ── */
-.order-record-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: stretch;
-}
-.order-record-row > * { flex: 1 1 420px; min-width: 0; }
-.order-record-row > .order-record-row-narrow { flex: 1 1 300px; }
-
-/* ── Titled sections inside ONE card (documents beside PI history),
-   separated by space rather than by card chrome. ── */
-.order-records-body {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 24px;
-  padding: 10px 16px 12px;
-}
-.order-record-section { min-width: 0; }
-.order-record-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-.order-record-title {
-  margin: 0;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #6B7384;
-}
-@media (max-width: 900px) {
-  .order-records-body { grid-template-columns: minmax(0, 1fr); gap: 12px 0; }
-  .order-records-body > .order-record-section + .order-record-section {
-    border-top: 1px solid #F0F2F5;
-    padding-top: 12px;
-  }
-}
-
-/* ── The health card ── */
-.order-health {
-  margin: 0;
-  padding: 3px 0 4px;
-}
-.order-health-row {
-  display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
-  gap: 2px 10px;
-  align-items: baseline;
-  padding: 8px 16px 8px 13px;
-  border-top: 1px solid #F0F2F5;
-  border-left: 3px solid transparent;
-}
-.order-health-row:first-child { border-top: none; }
-/* A warning row is marked by its rule as well as by its words. */
-.order-health-row--amber { border-left-color: #E8A030; background: rgba(232,160,48,0.05); }
-.order-health-row--red   { border-left-color: #D94F4F; background: rgba(217,79,79,0.05); }
-.order-health-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8C94A6;
-  padding-top: 2px;
-}
-.order-health-value {
-  margin: 0;
-  min-width: 0;
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-  font-size: 13.5px;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
-}
-.order-health-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  position: relative;
-  top: -1px;
-}
-.order-health-detail {
-  flex-basis: 100%;
-  padding-left: 15px;
-  font-size: 11.5px;
-  color: #6B7384;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── The payment position ── */
-.order-pay {
-  padding: 12px 16px 13px;
-  display: flex;
-  flex-direction: column;
-}
-.order-pay-amount {
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.015em;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-}
-.order-pay-amount-label {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: #8C94A6;
-  margin-top: 3px;
-}
-.order-pay-progress {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 10px;
-}
-.order-pay-bar {
-  flex: 1 1 auto;
-  height: 6px;
-  border-radius: 3px;
-  background: #EEF0F4;
-  overflow: hidden;
-}
-.order-pay-bar-fill {
-  height: 100%;
-  border-radius: 3px;
-  transition: width 0.3s;
-}
-.order-pay-percent {
-  flex-shrink: 0;
-  font-size: 13px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  min-width: 52px;
-  text-align: right;
-}
-.order-pay-of {
-  font-size: 12px;
-  color: #6B7384;
-  margin-top: 5px;
-  font-variant-numeric: tabular-nums;
-}
-.order-money-lines {
-  margin: 10px 0 0;
-  padding-top: 8px;
-  border-top: 1px solid #F0F2F5;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.order-money-line {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 12.5px;
-}
-.order-money-line dt { color: #6B7384; }
-.order-money-line dd {
-  margin: 0;
-  font-weight: 600;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.order-money-note {
-  display: block;
-  font-size: 11px;
-  font-weight: 500;
-  color: #8C94A6;
-}
-.order-pay .order-inline-link { margin-top: 10px; }
-
-.order-inline-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  align-self: flex-start;
-  padding: 4px 0;
-  border: none;
-  background: none;
-  color: #2F5BB7;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
-  border-radius: 4px;
-}
-.order-inline-link:hover { text-decoration: underline; }
-.order-inline-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
-
-/* ── Collapsible section header (payments) ── */
-.order-collapsible-trigger {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 16px;
-  background: none;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  font-family: inherit;
-}
-.order-collapsible-trigger:hover { background: #F8F9FB; }
-.order-collapsible-trigger:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
-
-/* ── Overflow menu items ── */
-.order-menu-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 9px 14px;
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: 13px;
-  cursor: pointer;
-}
-.order-menu-item:hover:not(:disabled) { background: #F8F9FB; }
-.order-menu-item:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
-.order-menu-item:disabled { cursor: not-allowed; opacity: 0.5; }
-
-/* ── The documents rows ── */
-.order-doc-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 0;
-  border-top: 1px solid #F0F2F5;
-}
-.order-doc-row:first-child { border-top: none; padding-top: 0; }
-.order-doc-icon { color: #6B7384; flex-shrink: 0; }
-.order-doc-name { font-size: 13px; font-weight: 600; color: #111318; }
 
 /* ── The customization cell ──
    Dark words on a pale ground with a red rule: found at a glance, read like
@@ -2577,22 +2404,142 @@ body {
   line-height: 1;
 }
 
-/* ── The commercial breakdown rows ── */
-.order-commercial-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 14px;
-  padding: 4px 16px;
+/* ── The payment section ──
+   Six figures, then the records. The only payment surface on the page. */
+.order-pay-figures {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px 18px;
 }
-.order-commercial-row.pi-commercial-grand-total { padding: 8px 16px; margin-top: 4px; }
+.order-pay-figure { min-width: 0; }
+.order-pay-figure-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-bottom: 4px;
+}
+.order-pay-figure-value {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.order-pay-figure-hint {
+  font-size: 10.5px;
+  color: #8C94A6;
+  margin-top: 2px;
+  line-height: 1.4;
+}
 
-/* ── The details strip: secondary metadata in one quiet band ── */
+.order-pay-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: #EEF0F4;
+  overflow: hidden;
+  margin-top: 12px;
+}
+.order-pay-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.order-pay-split {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #F0F2F5;
+  font-size: 12px;
+  color: #4A5261;
+  line-height: 1.5;
+}
+
+.order-pay-records {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #F0F2F5;
+}
+.order-pay-records-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 1100px) {
+  .order-pay-figures { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ── Order records: three titled sections in one card ── */
+.order-records-body {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 24px;
+  padding: 10px 16px 12px;
+}
+.order-record-section { min-width: 0; }
+.order-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.order-record-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+}
+.order-source-pi {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+@media (max-width: 1100px) {
+  .order-records-body { grid-template-columns: minmax(0, 1fr); gap: 12px 0; }
+  .order-records-body > .order-record-section + .order-record-section {
+    border-top: 1px solid #F0F2F5;
+    padding-top: 12px;
+  }
+}
+
+/* ── The documents rows ── */
+.order-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid #F0F2F5;
+}
+.order-doc-row:first-child { border-top: none; padding-top: 0; }
+.order-doc-icon { color: #6B7384; flex-shrink: 0; }
+.order-doc-name { font-size: 13px; font-weight: 600; color: #111318; }
+.order-doc-meta { font-size: 11.5px; color: #8C94A6; }
+
+/* ── Record information: secondary audit metadata, one quiet band ── */
 .order-details {
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.07);
   border-radius: 10px;
   padding: 10px 16px 11px;
+}
+.order-details-head {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+  margin-bottom: 8px;
 }
 .order-details-grid {
   display: grid;
@@ -2602,6 +2549,39 @@ body {
 @media (max-width: 1100px) {
   .order-details-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* ── Overflow menu items ── */
+.order-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.order-menu-item:hover:not(:disabled) { background: #F8F9FB; }
+.order-menu-item:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.order-menu-item:disabled { cursor: not-allowed; opacity: 0.5; }
+
+.order-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  align-self: flex-start;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: #2F5BB7;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.order-inline-link:hover { text-decoration: underline; }
+.order-inline-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
 
 /* ── The activity trail ── */
 .order-activity {
@@ -2644,7 +2624,10 @@ body {
   .order-command-actions > * { flex: 1 1 auto; }
   .order-command-actions .boe-record-action { min-height: 44px; }
   .order-command-actions .boe-record-action--icon { flex: 0 0 44px; width: 44px; min-width: 44px; }
-  .order-health-row { grid-template-columns: 86px minmax(0, 1fr); }
+  .order-summary-facts { grid-template-columns: minmax(0, 1fr); }
+  .order-fact { border-top: 1px solid #F0F2F5; }
+  .order-fact:first-child { border-top: none; }
+  .order-pay-figures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .order-details-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

@@ -533,15 +533,38 @@ describe('the detail page renders only what it fetched', () => {
     }
     assert.ok(!source.includes('replace_order_submission_parse'),
       'the parsed-data writer is service-role only and unreachable from here')
-    // The approval door takes an ID AND NOTHING ELSE. Every value it decides on
-    // is re-derived from the locked row, so there is no payload for a browser to
-    // shape — no total, no client name, no status, and above all no number.
+    // THE APPROVAL DOOR TAKES THE ID AND THE FOUR FIELDS AN ORDER IS BUILT
+    // FROM — and nothing else.
+    //
+    // It used to take the id alone, because every value the conversion decided
+    // on was re-derived from the locked row. Four of them could not be: the
+    // salesperson (which nothing in the system ever wrote), the lead source
+    // (which the conversion never set), and the two dates (which came from the
+    // PI, where the confirm date silently defaulted to the day of approval and
+    // the due date is null whenever the document stated a commitment rather
+    // than a calendar date). 20261201000000 makes all four required inputs and
+    // validates them in the database before it reads or moves anything.
+    //
+    // WHAT IS STILL NOT IN THE PAYLOAD is the point: no total, no client name,
+    // no status, and above all no number. Everything the browser may not be
+    // trusted with is still re-derived from the locked row.
     const approvalCall = source.slice(
       source.indexOf("supabase.rpc('approve_order_submission'"),
-      source.indexOf("supabase.rpc('approve_order_submission'") + 220,
+      source.indexOf("supabase.rpc('approve_order_submission'") + 420,
     )
-    assert.ok(/p_submission_id: submissionId,\s*\}\)/.test(approvalCall),
-      'approve_order_submission is called with the submission id alone')
+    for (const allowed of ['p_submission_id: submissionId,', 'p_assigned_to:', 'p_confirm_date:',
+                           'p_due_date:', 'p_lead_source:']) {
+      assert.ok(approvalCall.includes(allowed), `the approval call must carry ${allowed}`)
+    }
+    for (const forbidden of ['p_total', 'p_grand_total', 'p_client_name', 'p_status',
+                             'p_display_number', 'p_order_number']) {
+      assert.ok(!approvalCall.includes(forbidden),
+        `${forbidden} must never be shaped by a browser`)
+    }
+    // And the four are the browser's OWN validated values, not free text swept
+    // off the record.
+    assert.ok(source.includes('const check = validateOrderConfirmation(confirmation)'),
+      'the page checks all four before it calls, so the reader is told which is missing')
   })
 
   test('the PI itself is still never edited on this screen', () => {
