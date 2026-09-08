@@ -1543,7 +1543,10 @@ export default function OrderDetailPage() {
    * admin, matching the deployed rule for moving a submitted PI's figures. Both
    * are re-derived by the database; both are suppressed under View As.
    */
-  const piHistory = describePiVersionHistory(piVersions, piNames, iso => (iso ? fmtDateTime(iso) : '—'))
+  const piHistory = useMemo(
+    () => describePiVersionHistory(piVersions, piNames, iso => (iso ? fmtDateTime(iso) : '—')),
+    [piVersions, piNames],
+  )
   // THE PI'S OWNER, as this page can know it: approve_order_submission() writes
   // the PI's submitter into orders.requested_by. The RPC re-derives the full
   // rule (creator OR submitter OR admin) under a row lock; this only decides
@@ -1576,19 +1579,30 @@ export default function OrderDetailPage() {
    * The page keeps its own words for the Order events it already labelled;
    * everything else is named by the two shared modules.
    */
-  const history = mergeOrderHistory({
-    orderRows: activity,
-    orderLabel: eventType => EVENT_TYPE_LABEL[eventType] ?? null,
-    orderDetail: row => activityDescription(row) || null,
-    piRows: piActivity,
-    namesById: piNames,
-    formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
-  })
-  const orderEntryById = new Map(activity.map(entry => [entry.id, entry]))
+  // MERGED AND SORTED ONCE PER LOAD, not once per render. Opening the image
+  // viewer, expanding the trail or opening a menu re-renders this component;
+  // without these the whole chronology was rebuilt and re-sorted for a state
+  // change that touched none of it. Each depends only on data a loader
+  // replaces wholesale, so the memo can never hold a half-updated answer.
+  const history = useMemo(
+    () => mergeOrderHistory({
+      orderRows: activity,
+      orderLabel: eventType => EVENT_TYPE_LABEL[eventType] ?? null,
+      orderDetail: row => activityDescription(row) || null,
+      piRows: piActivity,
+      namesById: piNames,
+      formatWhen: iso => (iso ? fmtDateTime(iso) : '—'),
+    }),
+    [activity, piActivity, piNames],
+  )
+  const orderEntryById = useMemo(
+    () => new Map(activity.map(entry => [entry.id, entry])),
+    [activity],
+  )
 
   /** ONE ANSWER about the documents, so the card, the buttons and the tests
    *  cannot disagree about whether there is anything to download. */
-  const documentsView = buildOrderDocumentsView(documents)
+  const documentsView = useMemo(() => buildOrderDocumentsView(documents), [documents])
 
   const amendableOrder = order && {
     id: order.id,
@@ -1640,6 +1654,11 @@ export default function OrderDetailPage() {
   // split payment's whole ledger amount beside a tile counting only this Order's
   // share, and the arithmetic itself could disagree with the same money summed
   // in `numeric` on the PI. Nothing on this screen adds money any more.
+  //
+  // DELIBERATELY NOT MEMOISED. It sits after the early returns, where a hook
+  // may not go, and hoisting it to memoise a few decimal additions would move
+  // the one expression two Finance tests pin as proof that this screen adds no
+  // money of its own. The guarantee is worth more than the microseconds.
   const finance = buildOrderFinancePosition(payments, order.total_value)
 
   const isOverdue = order.due_date &&
