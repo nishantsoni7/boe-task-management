@@ -1784,27 +1784,7 @@ export default function OrderDetailPage() {
             breakdown directly beneath it. The commercial side is passed in, so
             which figures a reader may see stays exactly where that decision
             already lives. */}
-        <OrderSummary
-          facts={summaryFacts}
-          commercial={
-            <>
-              <div className="order-summary-commercial-head">{ORDER_SUMMARY_COMMERCIAL_TITLE}</div>
-              <OrderCommercialTotals
-                productValue={fmtAmount(order.total_product_value)}
-                orderValue={fmtAmount(order.total_value)}
-              />
-              {/* The stored figures, through the shared rows builder. Nothing
-                  on this page recomputes a total; these are literally the same
-                  strings the approved PI screen prints. */}
-              {piHandoff.kind === 'ready' && (
-                <OrderCommercialBreakdown rows={piHandoff.commercialRows} embedded />
-              )}
-              {!handoffReady && order.source_order_submission_id && (
-                <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
-              )}
-            </>
-          }
-        />
+        <OrderSummary facts={summaryFacts} />
 
         {/* ══ 3. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
@@ -1821,6 +1801,13 @@ export default function OrderDetailPage() {
             {piProductsCard}
           </div>
         )}
+
+        {/* ══ THE LOWER WORKSPACE ══
+            Everything that follows the product list: the record on the left,
+            the money on the extreme right. The commercial column is the ONLY
+            place on the page any of these figures appear. */}
+        <div className="order-lower">
+        <div className="order-lower-main">
 
         {/* ══ 5. PAYMENT ══
             THE ONLY PAYMENT SURFACE ON THE PAGE. The six figures and the
@@ -2167,6 +2154,35 @@ export default function OrderDetailPage() {
             }
           })} />
         )}
+
+        </div>
+
+        {/* ══ 9. COMMERCIAL ══
+            THE EXTREME RIGHT, BELOW PRODUCTS, and the only place any of these
+            figures appear. The two stored totals, then the breakdown: the
+            stored figures through the shared rows builder. Nothing on this
+            page recomputes a total — these are literally the same strings the
+            approved PI screen prints, and which of them a reader may see is
+            still decided where that decision already lives. */}
+        <aside className="order-lower-aside" aria-label={ORDER_SUMMARY_COMMERCIAL_TITLE}>
+          <div className="order-lower-aside-inner">
+            <div className="order-commercial">
+              <div className="order-summary-commercial-head">{ORDER_SUMMARY_COMMERCIAL_TITLE}</div>
+              <OrderCommercialTotals
+                productValue={fmtAmount(order.total_product_value)}
+                orderValue={fmtAmount(order.total_value)}
+              />
+              {piHandoff.kind === 'ready' && (
+                <OrderCommercialBreakdown rows={piHandoff.commercialRows} embedded />
+              )}
+              {!handoffReady && order.source_order_submission_id && (
+                <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        </div>
 
       </div>
 

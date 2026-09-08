@@ -2153,10 +2153,10 @@ body {
 /* ── The Order Summary ──
    Operational facts on the left, the money on the extreme right. One surface,
    split by a hairline rather than by two cards. */
+/* OPERATIONAL FACTS ONLY, and compact because of it: six across at desktop,
+   one band rather than a two-column card. The money moved to its own column
+   below the products it describes. */
 .order-summary {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
-  align-items: stretch;
   background: #FFFFFF;
   border: 1px solid rgba(0,0,0,0.08);
   border-radius: 10px;
@@ -2167,7 +2167,7 @@ body {
   margin: 0;
   padding: 4px 0;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .order-fact {
@@ -2213,10 +2213,36 @@ body {
   color: #6B7384;
 }
 
-/* The commercial column: the two totals, then the breakdown. */
-.order-summary-commercial {
-  border-left: 1px solid #F0F2F5;
-  background: #FAFBFC;
+/* ── The lower workspace ──
+   The record on the left, the money on the extreme right, both BELOW the
+   full-width product list. */
+.order-lower {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+  gap: 14px;
+}
+.order-lower-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.order-lower-aside { min-width: 0; }
+/* Sticky lives on the inner node — the grid item stretches to the row height,
+   which is what gives the sticky child room to travel. The block is short, so
+   it rarely needs to scroll; when the viewport is shorter than it is, it
+   scrolls INSIDE itself rather than clipping. */
+.order-lower-aside-inner {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+}
+
+.order-commercial {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
   padding: 11px 16px 13px;
   min-width: 0;
 }
@@ -2275,13 +2301,21 @@ body {
   border-radius: 5px;
 }
 
+@media (max-width: 1400px) {
+  .order-summary-facts { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
 @media (max-width: 1100px) {
-  .order-summary { grid-template-columns: minmax(0, 1fr); }
-  .order-summary-commercial {
-    border-left: none;
-    border-top: 1px solid #F0F2F5;
-  }
   .order-summary-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* The money goes UNDER the record rather than beside it: at this width a
+     280px column would squeeze both. */
+  .order-lower { grid-template-columns: minmax(0, 1fr); }
+  .order-lower-aside-inner {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+  }
+  .order-commercial { max-width: 520px; }
 }
 
 /* ── The attention strip ──
