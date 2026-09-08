@@ -553,9 +553,11 @@ export function OrderDetailSkeleton() {
           <SkeletonBlock w={150} h={34} radius={8} />
         </div>
       </div>
+      <div className="order-products">
+        <SectionSkeleton rows={4} label="Loading products" />
+      </div>
       <div className="order-workspace">
         <div className="order-workspace-main">
-          <SectionSkeleton rows={4} label="Loading products" />
           <SectionSkeleton rows={2} label="Loading documents" />
         </div>
         <div className="order-workspace-aside">

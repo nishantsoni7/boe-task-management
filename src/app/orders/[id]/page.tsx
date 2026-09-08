@@ -1854,18 +1854,25 @@ export default function OrderDetailPage() {
         {/* ── What needs attention ── hidden entirely when nothing does. */}
         <OrderAttentionBar items={attention} />
 
-        <div className="order-workspace">
-
-          {/* ══ THE RECORD ══ */}
-          <div className="order-workspace-main">
-
-            {/* ── The products: what BOE is manufacturing ──
-                While the handoff reads are in flight the table draws its
-                skeleton; an Order with no PI is told so below instead. */}
+        {/* ── The products: what BOE is manufacturing ──
+            FULL CONTENT WIDTH, above the two-column workspace: nine columns
+            need the whole width to show every permitted column without a
+            horizontal scroll at ordinary desktop widths. While the handoff
+            reads are in flight the table draws its skeleton; an Order with no
+            PI is told so in the record column instead. */}
+        {(piProductsCard || (!handoffReady && order.source_order_submission_id)) && (
+          <div className="order-products">
             {!handoffReady && order.source_order_submission_id && (
               <SectionSkeleton rows={4} label="Loading products" />
             )}
             {piProductsCard}
+          </div>
+        )}
+
+        <div className="order-workspace">
+
+          {/* ══ THE RECORD ══ */}
+          <div className="order-workspace-main">
 
             {/* ── The approved PI this Order came from ──
                 NOTHING IS RENDERED FOR AN ORDER WITH NO PI beyond the one-line
