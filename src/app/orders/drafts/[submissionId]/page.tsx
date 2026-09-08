@@ -537,7 +537,15 @@ function PiDraftDetailPageInner() {
     // not distinguish them, and neither does this branch.
     if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
-    const [itemsResult, imagesResult, editableResult, adminEditResult] = await Promise.all([
+    // ── EVERY READ THAT NEEDS ONLY THE SUBMISSION ID, IN ONE TRIP ──
+    //
+    // The history used to be awaited far below this group: after the item
+    // rows, after the pictures were signed, behind two things it does not read.
+    // It needs the submission id and nothing else, and this function has that
+    // before it reads anything at all — so it joins the group rather than
+    // queueing behind it, and every name that follows from it resolves a whole
+    // round trip sooner.
+    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -572,6 +580,23 @@ function PiDraftDetailPageInner() {
       // actor test sits behind the state test. An active admin may correct a PI
       // at any stage, and only can_admin_edit_order_submission knows that.
       supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId }),
+
+      /**
+       * THE HISTORY, PAGED, because a submission that goes back and forth a few
+       * times accumulates rows and PostgREST silently caps a response at 1000.
+       * A truncated history is worse than none: it looks complete.
+       *
+       * Ordered by id for paging — a deterministic unique column is what makes
+       * range paging return each row exactly once — and re-ordered by time for
+       * display, which describeActivityEntries does.
+       */
+      fetchAllRows<PersistedActivity>((from, to) =>
+        supabase
+          .from('order_submission_activity')
+          .select(PI_ACTIVITY_COLUMNS)
+          .eq('submission_id', submissionId)
+          .order('id', { ascending: true })
+          .range(from, to)),
     ])
 
     if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
@@ -582,45 +607,14 @@ function PiDraftDetailPageInner() {
 
     const products = persistedProducts((itemsResult.data ?? []) as unknown as PersistedItem[])
     const images = (imagesResult.data ?? []) as unknown as PersistedItemImage[]
-
-    const signedByPath = new Map<string, string>()
-    const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
-    if (paths.length > 0) {
-      const { data: signed } = await supabase
-        .storage
-        .from(ORDER_FILES_BUCKET)
-        .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
-      for (const row of signed ?? []) {
-        if (row?.path && row.signedUrl && !row.error) signedByPath.set(row.path, row.signedUrl)
-      }
-    }
-
-    const urls = persistedImageUrlMaps(products, images, signedByPath)
     const row = submission as unknown as PersistedSubmission
-
-    // ── The history, and the names it refers to ──
-    //
-    // PAGED, because a submission that goes back and forth a few times
-    // accumulates rows and PostgREST silently caps a response at 1000. A
-    // truncated history is worse than none: it looks complete.
-    //
-    // Ordered by id for paging — a deterministic unique column is what makes
-    // range paging return each row exactly once — and re-ordered by time for
-    // display, which describeActivityEntries does.
-    const activityRows = await fetchAllRows<PersistedActivity>((from, to) =>
-      supabase
-        .from('order_submission_activity')
-        .select(PI_ACTIVITY_COLUMNS)
-        .eq('submission_id', submissionId)
-        .order('id', { ascending: true })
-        .range(from, to))
-
     const history = activityRows.ok ? activityRows.rows : []
+
+    const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
 
     // ONE users read for every name on the page: the actors in the history, the
     // submitter and the reviewer who rejected it. A query per row would be a
     // dozen round trips to print four names.
-    const namesById = new Map<string, string>()
     const actorIds = activityActorIds(history, [
       row.submitted_by,
       row.rejected_by,
@@ -630,35 +624,71 @@ function PiDraftDetailPageInner() {
       row.approved_by,
       row.pi_approved_by,
     ])
-    if (actorIds.length > 0) {
-      // Two safe columns, named explicitly: `select('*')` on public.users is a
-      // permission error, and a display name is all this page needs.
-      const { data: people } = await supabase
-        .from('users')
-        .select('id, full_name')
-        .in('id', actorIds)
-      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
-        if (person?.id && person.full_name) namesById.set(person.id, person.full_name)
-      }
-    }
 
     // ── The Order this PI became ──
     //
-    // One read, only when the record actually names an Order, and under the
-    // CALLER'S OWN RLS: a viewer who may not see the Order gets no row, no
-    // number and no link, rather than a number they were not entitled to. A
-    // failure here is not a page failure — the PI is still readable and still
-    // says it was approved.
-    let orderDisplayNumber: string | null = null
-    if (row.order_id) {
-      const { data: order } = await supabase
+    // ONE READ OF ONE NAMED COLUMN, issued only when the record actually
+    // names an Order, and under the CALLER'S OWN RLS: a viewer who may not
+    // see the Order gets no row, no number and no link, rather than a number
+    // they were not entitled to. A failure here is not a page failure — the
+    // PI is still readable and still says it was approved.
+    const approvedOrderQuery = (orderId: string) =>
+      supabase
         .from('orders')
         .select('display_number')
-        .eq('id', row.order_id)
+        .eq('id', orderId)
         .maybeSingle()
-      const number = (order as { display_number?: string | null } | null)?.display_number
-      orderDisplayNumber = typeof number === 'string' && number.trim() !== '' ? number.trim() : null
+
+    // ── THE THREE READS THAT FOLLOW FROM THAT GROUP, ALSO TOGETHER ──
+    //
+    //   the pictures  signed from the image rows
+    //   the names     resolved from the history and the record's own actors
+    //   the Order     the one this PI became, named by the record itself
+    //
+    // Not one of them reads another's answer, and they ran one after the next —
+    // so a PI with pictures, a history and an Order spent three round trips
+    // where one does. Each is still the same read under the same RLS, and all
+    // three are awaited before the page is marked ready, so nothing draws from
+    // a half-loaded state.
+    const [signedResult, peopleResult, orderResult] = await Promise.all([
+      // THE BUCKET STAYS PRIVATE. Nothing here builds a public URL — there is
+      // none to build. Each object is signed through the caller's own session,
+      // so the storage policies decide again, per object, whether this person
+      // may see this picture. A refusal yields no URL and the row shows its
+      // honest "No image" box rather than a broken one.
+      paths.length > 0
+        ? supabase
+            .storage
+            .from(ORDER_FILES_BUCKET)
+            .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
+        : Promise.resolve({ data: [] as { path?: string | null; signedUrl?: string; error?: unknown }[] }),
+
+      // Two safe columns, named explicitly: `select('*')` on public.users is a
+      // permission error, and a display name is all this page needs.
+      actorIds.length > 0
+        ? supabase.from('users').select('id, full_name').in('id', actorIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+
+      row.order_id ? approvedOrderQuery(row.order_id) : Promise.resolve({ data: null }),
+    ])
+
+    const signedByPath = new Map<string, string>()
+    for (const row of (signedResult.data ?? []) as { path?: string | null; signedUrl?: string; error?: unknown }[]) {
+      if (row?.path && row.signedUrl && !row.error) signedByPath.set(row.path, row.signedUrl)
     }
+
+    const urls = persistedImageUrlMaps(products, images, signedByPath)
+
+    const namesById = new Map<string, string>()
+    for (const person of (peopleResult.data ?? []) as { id: string; full_name: string | null }[]) {
+      if (person?.id && person.full_name) namesById.set(person.id, person.full_name)
+    }
+
+    const approvedOrderNumber = (orderResult.data as { display_number?: string | null } | null)?.display_number
+    const orderDisplayNumber: string | null =
+      typeof approvedOrderNumber === 'string' && approvedOrderNumber.trim() !== ''
+        ? approvedOrderNumber.trim()
+        : null
 
     // The version this render is based on, for optimistic concurrency.
     setRowVersion(typeof row.row_version === 'number' ? row.row_version : null)
