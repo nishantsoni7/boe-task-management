@@ -11,6 +11,9 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  ACTIVITY_PREVIEW_COUNT,
+  activityToggleLabel,
+  activityWindow,
   HEALTH_NO_PAYMENTS,
   HEALTH_NOT_SET,
   HEALTH_PAYMENT_LOADING,
@@ -233,6 +236,28 @@ describe('the header actions', () => {
     for (const key of ['align', 'amend', 'request_change', 'request_cancel', 'review_change_request', 'cleanup']) {
       assert.ok(placed.includes(key as typeof all.primary), `${key} must be placed somewhere`)
     }
+  })
+})
+
+describe('the activity window', () => {
+  test('five or fewer events are shown whole, with nothing hidden', () => {
+    for (const total of [0, 1, 5]) {
+      assert.deepEqual(activityWindow(total, false), { shown: total, hidden: 0 }, String(total))
+    }
+  })
+
+  test('a longer trail shows the latest five and says how many are hidden', () => {
+    assert.deepEqual(activityWindow(13, false), { shown: 5, hidden: 8 })
+    assert.equal(ACTIVITY_PREVIEW_COUNT, 5)
+  })
+
+  test('expanded shows everything — nothing is ever dropped', () => {
+    assert.deepEqual(activityWindow(13, true), { shown: 13, hidden: 0 })
+  })
+
+  test('the control names the whole count, then offers the way back', () => {
+    assert.equal(activityToggleLabel(13, false), 'View all 13 events')
+    assert.equal(activityToggleLabel(13, true), 'Show latest 5')
   })
 })
 

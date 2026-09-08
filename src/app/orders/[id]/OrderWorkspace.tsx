@@ -5,9 +5,10 @@
 // PAGE-OWNED, like OrderPiSections.tsx beside it: nothing else renders these.
 // EVERY COMPONENT BELOW IS A FUNCTION OF ITS PROPS. Nothing here fetches,
 // writes, authorizes or decides. What needs attention, how the health card
-// reads and which action is primary are decided by
-// ../../../lib/orders/orderWorkspace; the page decides which controls exist
-// from the capabilities the database resolved. These draw the answers.
+// reads, which action is primary and how much of the trail is shown are
+// decided by ../../../lib/orders/orderWorkspace; the page decides which
+// controls exist from the capabilities the database resolved. These draw the
+// answers.
 //
 // THE VISUAL LANGUAGE IS THE EXISTING ONE. Cards are the shared PiCard the PI
 // sections already use, buttons are the record-header actions the Assets and
@@ -20,11 +21,18 @@ import { colors } from '@/lib/tokens'
 import { formatMoney, formatPercent } from '@/lib/finance/piPaymentView'
 import { progressWidth, type OrderFinancePosition } from '@/lib/finance/orderFinancePosition'
 import {
+  activityToggleLabel,
+  activityWindow,
   attentionHeading,
   type OrderAttentionItem,
   type OrderHealthRow,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
+
+// ── Shared chrome ─────────────────────────────────────────────────────────────
+
+/** The compact header every section on this page uses: one line, no slack. */
+export const SECTION_HEADER_STYLE: React.CSSProperties = { padding: '9px 16px' }
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
@@ -71,26 +79,25 @@ export function ToneBadge({ tone, children, title }: {
 // ── The attention bar ─────────────────────────────────────────────────────────
 
 /**
- * What needs somebody's attention, in one restrained line. Rendered only when
- * there is something to say; the page hides it otherwise. Amber ground, red
- * text only for the genuinely overdue item — and the words carry the meaning,
- * so nothing here depends on colour alone.
+ * What needs somebody's attention, in one restrained strip: the count, then
+ * the conditions separated so each reads on its own. Rendered only when there
+ * is something to say; the page hides it otherwise. Amber ground, red text
+ * only for the genuinely overdue item — and the words carry the meaning, so
+ * nothing here depends on colour alone.
  */
 export function OrderAttentionBar({ items }: { items: readonly OrderAttentionItem[] }) {
   if (items.length === 0) return null
   return (
     <section className="order-attention" aria-label={attentionHeading(items.length)}>
-      <AlertTriangle size={15} strokeWidth={2} aria-hidden="true" className="order-attention-icon" />
-      <div className="order-attention-body">
-        <span className="order-attention-heading">{attentionHeading(items.length)}</span>
-        <ul className="order-attention-list">
-          {items.map(item => (
-            <li key={item.key} className={item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'}>
-              {item.label}
-            </li>
-          ))}
-        </ul>
-      </div>
+      <AlertTriangle size={15} strokeWidth={2.2} aria-hidden="true" className="order-attention-icon" />
+      <span className="order-attention-heading">{attentionHeading(items.length)}</span>
+      <ul className="order-attention-list">
+        {items.map(item => (
+          <li key={item.key} className={item.tone === 'red' ? 'order-attention-item order-attention-item--red' : 'order-attention-item'}>
+            {item.label}
+          </li>
+        ))}
+      </ul>
     </section>
   )
 }
@@ -99,19 +106,28 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
 
 export const ORDER_HEALTH_TITLE = 'Order health'
 
+/**
+ * The page's operational summary: six facts, label quiet on the left, value
+ * carrying the weight on the right. A warning row (amber, red) is marked by a
+ * class as well as by its words, so it stands out without every value being
+ * coloured.
+ */
 export function OrderHealthCard({ rows }: { rows: readonly OrderHealthRow[] }) {
   return (
     <PiCard>
-      <PiCardHeader title={ORDER_HEALTH_TITLE} style={{ padding: '11px 16px' }} />
+      <PiCardHeader title={ORDER_HEALTH_TITLE} style={SECTION_HEADER_STYLE} />
       <dl className="order-health">
         {rows.map(row => {
           const tone = TONE[row.tone]
+          const warning = row.tone === 'amber' || row.tone === 'red'
           return (
-            <div key={row.key} className="order-health-row">
+            <div key={row.key} className={warning ? `order-health-row order-health-row--${row.tone}` : 'order-health-row'}>
               <dt className="order-health-label">{row.label}</dt>
               <dd className="order-health-value">
                 <span className="order-health-dot" style={{ background: tone.dot }} aria-hidden="true" />
-                <span style={{ color: tone.text, fontWeight: row.tone === 'neutral' ? 600 : 700 }}>{row.value}</span>
+                <span className="order-health-text" style={{ color: tone.text, fontWeight: warning ? 700 : 600 }}>
+                  {row.value}
+                </span>
                 {row.detail && <span className="order-health-detail">{row.detail}</span>}
               </dd>
             </div>
@@ -128,9 +144,11 @@ export const PAYMENT_POSITION_TITLE = 'Payment position'
 export const VIEW_PAYMENT_DETAILS_LABEL = 'View payment details'
 
 /**
- * The Order's finance position, compressed to the sidebar. Every figure is the
- * shared builder's; nothing here adds money. The full per-payment table stays
- * in the main column behind "View payment details".
+ * The Order's finance position, compressed to the sidebar: the verified money
+ * first, the percentage beside its bar, what it is measured against, then the
+ * three lines that complete the picture. Every figure is the shared builder's;
+ * nothing here adds money. The full per-payment table stays in the main
+ * column behind "View payment details".
  */
 export function PaymentPositionCard({ finance, loaded, onViewDetails }: {
   finance: OrderFinancePosition
@@ -139,11 +157,12 @@ export function PaymentPositionCard({ finance, loaded, onViewDetails }: {
   onViewDetails: () => void
 }) {
   const hasValue = finance.orderValue !== null
+  const leadColor = finance.fullyPaid ? '#2F7A52' : colors.primary
   return (
     <PiCard>
       <PiCardHeader
         title={PAYMENT_POSITION_TITLE}
-        style={{ padding: '11px 16px' }}
+        style={SECTION_HEADER_STYLE}
         right={loaded ? (
           <span style={{ fontSize: '11.5px', color: colors.muted, whiteSpace: 'nowrap' }}>
             {finance.counts.total === 0 ? 'No payments' : `${finance.counts.total} payment${finance.counts.total === 1 ? '' : 's'}`}
@@ -152,42 +171,33 @@ export function PaymentPositionCard({ finance, loaded, onViewDetails }: {
       />
       {!loaded ? (
         <div style={{ padding: '14px 16px' }} role="status" aria-label="Loading payment position">
-          <SkeletonBlock w="55%" h={20} />
-          <div style={{ marginTop: 8 }}><SkeletonBlock w="80%" h={11} /></div>
-          <div style={{ marginTop: 12 }}><SkeletonBlock w="100%" h={4} /></div>
+          <SkeletonBlock w="55%" h={22} />
+          <div style={{ marginTop: 8 }}><SkeletonBlock w="40%" h={11} /></div>
+          <div style={{ marginTop: 12 }}><SkeletonBlock w="100%" h={5} /></div>
+          <div style={{ marginTop: 12 }}><SkeletonBlock w="80%" h={11} /></div>
         </div>
       ) : (
-        <div style={{ padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
-              <span style={{
-                fontSize: '19px', fontWeight: 700, letterSpacing: '-0.01em',
-                color: finance.fullyPaid ? '#2F7A52' : colors.primary,
-                fontVariantNumeric: 'tabular-nums',
-              }}>
-                {formatMoney(finance.verified)}
-              </span>
-              <span style={{ fontSize: '12px', color: colors.secondary }}>verified</span>
-            </div>
-            <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px', fontVariantNumeric: 'tabular-nums' }}>
-              {hasValue
-                ? <>of {formatMoney(finance.orderValue)} · {formatPercent(finance.verifiedPercent)}</>
-                : 'Order value not recorded'}
-            </div>
-          </div>
+        <div className="order-pay">
+          <div className="order-pay-amount" style={{ color: leadColor }}>{formatMoney(finance.verified)}</div>
+          <div className="order-pay-amount-label">Verified</div>
 
           {/* A PIXEL QUANTITY only — clamped to 0–100 and never used in a
-              decision. The figure above is the truth and is not capped. */}
+              decision. The figure beside it is the truth and is not capped. */}
           {finance.verifiedPercent !== null && (
-            <div role="presentation" style={{ height: '5px', borderRadius: '3px', background: colors.float, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%', borderRadius: '3px',
-                width: `${progressWidth(finance.verifiedPercent)}%`,
-                background: finance.fullyPaid ? colors.green : colors.blue,
-                transition: 'width 0.3s',
-              }} />
+            <div className="order-pay-progress">
+              <div role="presentation" className="order-pay-bar">
+                <div className="order-pay-bar-fill" style={{
+                  width: `${progressWidth(finance.verifiedPercent)}%`,
+                  background: finance.fullyPaid ? colors.green : colors.blue,
+                }} />
+              </div>
+              <div className="order-pay-percent" style={{ color: leadColor }}>{formatPercent(finance.verifiedPercent)}</div>
             </div>
           )}
+
+          <div className="order-pay-of">
+            {hasValue ? <>of {formatMoney(finance.orderValue)} order value</> : 'Order value not recorded'}
+          </div>
 
           <dl className="order-money-lines">
             {hasValue && (
@@ -203,12 +213,14 @@ export function PaymentPositionCard({ finance, loaded, onViewDetails }: {
               <dd style={{ color: finance.counts.awaiting > 0 ? '#9A6A12' : colors.secondary }}>
                 {formatMoney(finance.awaitingVerification)}
                 {finance.counts.awaiting > 0 && (
-                  <span style={{ fontWeight: 500, color: colors.muted }}>
-                    {' '}· {finance.counts.awaiting} with Finance
-                  </span>
+                  <span className="order-money-note">{finance.counts.awaiting} with Finance</span>
                 )}
               </dd>
             </div>
+            {/* Received is verified + awaiting — a distinct figure whenever
+                money is waiting on Finance, and the same as Verified when
+                nothing is. Kept because it is the honest answer to "what has
+                come in". */}
             <div className="order-money-line">
               <dt>Received</dt>
               <dd style={{ color: colors.secondary }}>{formatMoney(finance.received)}</dd>
@@ -222,11 +234,7 @@ export function PaymentPositionCard({ finance, loaded, onViewDetails }: {
             </div>
           )}
 
-          <button
-            type="button"
-            onClick={onViewDetails}
-            className="order-inline-link"
-          >
+          <button type="button" onClick={onViewDetails} className="order-inline-link">
             {VIEW_PAYMENT_DETAILS_LABEL}
             <ChevronRight size={13} strokeWidth={2.2} aria-hidden="true" />
           </button>
@@ -263,6 +271,106 @@ export function CollapsibleHeader({ title, meta, open, onToggle, controls }: {
         style={{ marginLeft: 'auto', color: colors.muted, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}
       />
     </button>
+  )
+}
+
+// ── The activity trail ────────────────────────────────────────────────────────
+
+/** One event, already worded by the page: the label maps, the amendment lines
+ *  and the date formatting all stay where they were. */
+export type OrderActivityItem = {
+  key: string
+  label: string
+  detail: string | null
+  /** An amendment's before/after pairs; empty for every other event. */
+  lines: readonly string[]
+  actor: string | null
+  when: string
+  /** The page's own marker for this event, already coloured by its kind. */
+  dot: React.ReactNode
+  /** Written by the source PI's trail rather than the Order's own. */
+  fromPi: boolean
+}
+
+export const ACTIVITY_TITLE = 'Activity'
+export const ACTIVITY_EMPTY = 'No activity recorded yet.'
+
+/**
+ * The complete trail, newest first, showing the latest five until asked for
+ * the rest. Every entry, timestamp and actor is exactly what the page handed
+ * over; this only decides how many are on screen at once.
+ */
+export function OrderActivityList({ items }: { items: readonly OrderActivityItem[] }) {
+  const [expanded, setExpanded] = useState(false)
+  const { shown, hidden } = activityWindow(items.length, expanded)
+  const visible = items.slice(0, shown)
+  const collapsible = items.length > shown || expanded
+
+  return (
+    <PiCard>
+      <PiCardHeader
+        title={ACTIVITY_TITLE}
+        style={SECTION_HEADER_STYLE}
+        right={items.length > 0 ? (
+          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
+            {hidden > 0 ? `Latest ${shown} of ${items.length}` : `${items.length} event${items.length === 1 ? '' : 's'}`}
+          </span>
+        ) : undefined}
+      />
+      <div style={{ padding: '12px 16px 12px' }}>
+        {items.length === 0 ? (
+          <div style={{ color: colors.muted, fontSize: '13px' }}>{ACTIVITY_EMPTY}</div>
+        ) : (
+          <ol id="order-activity-list" className="order-activity">
+            {visible.map((entry, idx) => (
+              <li key={entry.key} className="order-activity-item">
+                <div className="order-activity-rail">
+                  {entry.dot}
+                  {idx < visible.length - 1 && <span className="order-activity-line" aria-hidden="true" />}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '12.5px', fontWeight: 600, color: colors.primary }}>
+                    {entry.label}
+                    {entry.fromPi && (
+                      <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, marginLeft: '6px' }}>PI</span>
+                    )}
+                  </div>
+                  {entry.detail && (
+                    <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '1px' }}>{entry.detail}</div>
+                  )}
+                  {entry.lines.length > 0 && (
+                    <ul style={{ margin: '3px 0 0', paddingLeft: '16px', fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
+                      {entry.lines.map(line => <li key={line}>{line}</li>)}
+                    </ul>
+                  )}
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
+                    {entry.actor ? `${entry.actor} · ` : ''}{entry.when}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ol>
+        )}
+        {collapsible && (
+          <button
+            type="button"
+            onClick={() => setExpanded(e => !e)}
+            aria-expanded={expanded}
+            aria-controls="order-activity-list"
+            className="order-inline-link"
+            style={{ marginTop: '8px' }}
+          >
+            {activityToggleLabel(items.length, expanded)}
+            <ChevronDown
+              size={13}
+              strokeWidth={2.2}
+              aria-hidden="true"
+              style={{ transform: expanded ? 'rotate(180deg)' : 'none' }}
+            />
+          </button>
+        )}
+      </div>
+    </PiCard>
   )
 }
 
@@ -401,12 +509,12 @@ export function SectionSkeleton({ rows = 3, label = 'Loading' }: { rows?: number
     <div role="status" aria-busy="true" aria-label={label} style={{
       background: colors.base, border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden',
     }}>
-      <div style={{ padding: '12px 16px', borderBottom: `1px solid ${colors.border}` }}>
+      <div style={{ padding: '10px 16px', borderBottom: `1px solid ${colors.border}` }}>
         <SkeletonBlock w={140} h={12} />
       </div>
       {Array.from({ length: rows }, (_, i) => (
         <div key={i} style={{
-          display: 'flex', alignItems: 'center', gap: 14, padding: '12px 16px',
+          display: 'flex', alignItems: 'center', gap: 14, padding: '11px 16px',
           borderBottom: i < rows - 1 ? '1px solid #F0F2F5' : 'none',
         }}>
           <SkeletonBlock w={36} h={36} radius={6} />
@@ -428,16 +536,14 @@ export function SectionSkeleton({ rows = 3, label = 'Loading' }: { rows?: number
 export function OrderDetailSkeleton() {
   return (
     <div className="order-detail-page" role="status" aria-busy="true" aria-label="Loading order">
-      <div style={{ marginBottom: 12 }}><SkeletonBlock w={54} h={12} /></div>
-      <div className="order-command-header" style={{ marginBottom: 18 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <SkeletonBlock w={150} h={24} />
-            <SkeletonBlock w={200} h={16} />
-          </div>
+      <div style={{ marginBottom: 10 }}><SkeletonBlock w={54} h={12} /></div>
+      <div className="order-command-header" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <SkeletonBlock w={160} h={26} />
+          <SkeletonBlock w={200} h={14} />
           <div style={{ display: 'flex', gap: 8 }}>
             <SkeletonBlock w={70} h={22} radius={6} />
-            <SkeletonBlock w={110} h={22} radius={6} />
+            <SkeletonBlock w={130} h={22} radius={6} />
           </div>
           <SkeletonBlock w={300} h={11} />
         </div>

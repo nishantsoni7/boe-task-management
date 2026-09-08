@@ -2064,26 +2064,32 @@ body {
 /* ─────────────────────────────────────────────────────
    CONFIRMED ORDER WORKSPACE  (/orders/[id])
 
-   One command header, an attention bar, then a 70/30
-   workspace: the record (products, documents, PI,
-   payments, activity) on the left and the health rail
-   (order health, payment position) on the right. The
-   same idiom as .payroll-detail-workspace; the rail is
-   sticky on desktop and moves ABOVE the record below
-   1100px, because on a phone the answer comes before
-   the evidence.
+   One command header, an attention strip, then a 70/30
+   workspace: the record (products, PI, documents,
+   history, payments, details, activity) on the left and
+   the management rail (order health, payment position)
+   on the right. The same idiom as
+   .payroll-detail-workspace; the rail is sticky on
+   desktop and moves ABOVE the record below 1100px,
+   because on a phone the answer comes before the
+   evidence.
+
+   Density is the point: 9px section headers, 8px table
+   cells, one hairline between rows, and as few
+   independent boxes as the content allows.
 ───────────────────────────────────────────────────── */
 .order-detail-page {
   max-width: 1480px;
 }
 
+/* ── The command header ── */
 .order-command-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px 24px;
+  gap: 12px 24px;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .order-command-identity {
@@ -2091,32 +2097,24 @@ body {
   flex: 1 1 320px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-}
-
-.order-command-title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  flex-wrap: wrap;
-  min-width: 0;
+  gap: 6px;
 }
 
 .order-command-title {
   font-family: var(--font-display);
-  font-size: 22px;
+  font-size: 25px;
   font-weight: 700;
   letter-spacing: -0.02em;
   color: #111318;
-  line-height: 1.15;
+  line-height: 1.1;
   margin: 0;
-  white-space: nowrap;
 }
 
 .order-command-client {
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 500;
   color: #4A5261;
+  line-height: 1.3;
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2126,6 +2124,7 @@ body {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  margin-top: 2px;
 }
 
 .order-command-meta {
@@ -2141,13 +2140,14 @@ body {
   gap: 8px;
   flex-wrap: wrap;
   flex: 0 1 auto;
+  padding-top: 2px;
 }
 
 .order-back {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   padding: 4px 6px 4px 2px;
   border: none;
   background: none;
@@ -2160,24 +2160,25 @@ body {
 .order-back:hover { color: #111318; background: rgba(0,0,0,0.04); }
 .order-back:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
 
-/* ── The attention bar ── */
+/* ── The attention strip ──
+   One line: the count in bold, then each condition separated by a middle
+   dot, so three items read as three and not as a sentence. */
 .order-attention {
   display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 10px 14px;
-  margin-bottom: 16px;
-  border-radius: 9px;
-  background: rgba(232,160,48,0.09);
-  border: 1px solid rgba(190,140,40,0.32);
-}
-.order-attention-icon { color: #B77A12; flex-shrink: 0; margin-top: 1px; }
-.order-attention-body {
-  display: flex;
   align-items: baseline;
-  gap: 4px 14px;
+  gap: 4px 12px;
   flex-wrap: wrap;
-  min-width: 0;
+  padding: 8px 13px;
+  margin-bottom: 14px;
+  border-radius: 8px;
+  background: rgba(232,160,48,0.10);
+  border: 1px solid rgba(190,140,40,0.34);
+}
+.order-attention-icon {
+  color: #B77A12;
+  flex-shrink: 0;
+  align-self: center;
+  margin-right: -4px;
 }
 .order-attention-heading {
   font-size: 12.5px;
@@ -2188,41 +2189,40 @@ body {
 .order-attention-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 2px 14px;
+  align-items: baseline;
+  gap: 2px 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
 .order-attention-item {
   font-size: 12.5px;
-  color: #4A5261;
+  font-weight: 500;
+  color: #4A3A16;
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: baseline;
 }
-.order-attention-item::before {
-  content: '';
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: #C98A1E;
-  flex-shrink: 0;
+.order-attention-item + .order-attention-item::before {
+  content: '·';
+  margin: 0 9px;
+  color: #B08A3A;
+  font-weight: 700;
 }
-.order-attention-item--red { color: #B42318; font-weight: 600; }
-.order-attention-item--red::before { background: #D94F4F; }
+.order-attention-item--red { color: #B42318; font-weight: 700; }
 
 /* ── The workspace grid ── */
 .order-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) 400px;
+  gap: 18px;
   align-items: start;
 }
 .order-workspace-main {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   padding-bottom: 24px;
 }
 .order-workspace-aside { min-width: 0; }
@@ -2236,6 +2236,12 @@ body {
   gap: 14px;
   max-height: calc(100vh - 92px);
   overflow-y: auto;
+}
+
+/* At 1440 and below the record column would otherwise fall under 640px
+   beside the sidebar; the rail gives up 32px and keeps every line legible. */
+@media (max-width: 1440px) {
+  .order-workspace { grid-template-columns: minmax(0, 1fr) 368px; }
 }
 
 @media (max-width: 1100px) {
@@ -2254,26 +2260,76 @@ body {
   .order-workspace-aside-inner { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* ── A row of two record cards (the Approved PI beside its breakdown). Flex
+   wrapping, so the pair stacks on its own when the column is too narrow for
+   both to read. ── */
+.order-record-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: stretch;
+}
+.order-record-row > * { flex: 1 1 420px; min-width: 0; }
+.order-record-row > .order-record-row-narrow { flex: 1 1 300px; }
+
+/* ── Titled sections inside ONE card (documents beside PI history),
+   separated by space rather than by card chrome. ── */
+.order-records-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  padding: 10px 16px 12px;
+}
+.order-record-section { min-width: 0; }
+.order-record-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.order-record-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6B7384;
+}
+@media (max-width: 900px) {
+  .order-records-body { grid-template-columns: minmax(0, 1fr); gap: 12px 0; }
+  .order-records-body > .order-record-section + .order-record-section {
+    border-top: 1px solid #F0F2F5;
+    padding-top: 12px;
+  }
+}
+
 /* ── The health card ── */
 .order-health {
   margin: 0;
-  padding: 4px 0;
+  padding: 3px 0 4px;
 }
 .order-health-row {
   display: grid;
-  grid-template-columns: 88px minmax(0, 1fr);
-  gap: 4px 10px;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 2px 10px;
   align-items: baseline;
-  padding: 8px 16px;
+  padding: 8px 16px 8px 13px;
   border-top: 1px solid #F0F2F5;
+  border-left: 3px solid transparent;
 }
 .order-health-row:first-child { border-top: none; }
+/* A warning row is marked by its rule as well as by its words. */
+.order-health-row--amber { border-left-color: #E8A030; background: rgba(232,160,48,0.05); }
+.order-health-row--red   { border-left-color: #D94F4F; background: rgba(217,79,79,0.05); }
 .order-health-label {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: #8C94A6;
+  padding-top: 2px;
 }
 .order-health-value {
   margin: 0;
@@ -2282,8 +2338,8 @@ body {
   align-items: baseline;
   gap: 8px;
   flex-wrap: wrap;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 13.5px;
+  line-height: 1.3;
   overflow-wrap: anywhere;
 }
 .order-health-dot {
@@ -2303,8 +2359,62 @@ body {
 }
 
 /* ── The payment position ── */
+.order-pay {
+  padding: 12px 16px 13px;
+  display: flex;
+  flex-direction: column;
+}
+.order-pay-amount {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+.order-pay-amount-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+  margin-top: 3px;
+}
+.order-pay-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+}
+.order-pay-bar {
+  flex: 1 1 auto;
+  height: 6px;
+  border-radius: 3px;
+  background: #EEF0F4;
+  overflow: hidden;
+}
+.order-pay-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+.order-pay-percent {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+  text-align: right;
+}
+.order-pay-of {
+  font-size: 12px;
+  color: #6B7384;
+  margin-top: 5px;
+  font-variant-numeric: tabular-nums;
+}
 .order-money-lines {
-  margin: 0;
+  margin: 10px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid #F0F2F5;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -2314,7 +2424,7 @@ body {
   justify-content: space-between;
   align-items: baseline;
   gap: 12px;
-  font-size: 12px;
+  font-size: 12.5px;
 }
 .order-money-line dt { color: #6B7384; }
 .order-money-line dd {
@@ -2323,6 +2433,13 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+.order-money-note {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: #8C94A6;
+}
+.order-pay .order-inline-link { margin-top: 10px; }
 
 .order-inline-link {
   display: inline-flex;
@@ -2347,7 +2464,7 @@ body {
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 13px 20px;
+  padding: 10px 16px;
   background: none;
   border: none;
   text-align: left;
@@ -2377,32 +2494,114 @@ body {
 .order-doc-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 0;
+  gap: 10px;
+  padding: 7px 0;
   border-top: 1px solid #F0F2F5;
 }
 .order-doc-row:first-child { border-top: none; padding-top: 0; }
 .order-doc-icon { color: #6B7384; flex-shrink: 0; }
 .order-doc-name { font-size: 13px; font-weight: 600; color: #111318; }
-.order-doc-meta { font-size: 11.5px; color: #8C94A6; }
 
-/* ── Secondary details grid ── */
+/* ── The customization cell ──
+   Dark words on a pale ground with a red rule: found at a glance, read like
+   text. The strong red is kept for the CUSTOM mark alone. */
+.order-custom {
+  padding: 5px 8px 6px 9px;
+  border-left: 2px solid rgba(217,79,79,0.55);
+  background: rgba(217,79,79,0.05);
+  border-radius: 0 5px 5px 0;
+}
+.order-custom-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.order-custom-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8C94A6;
+}
+.order-custom-mark {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #B3222E;
+  line-height: 1;
+}
+
+/* ── The commercial breakdown rows ── */
+.order-commercial-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  padding: 4px 16px;
+}
+.order-commercial-row.pi-commercial-grand-total { padding: 8px 16px; margin-top: 4px; }
+
+/* ── The details strip: secondary metadata in one quiet band ── */
+.order-details {
+  background: #FFFFFF;
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 10px;
+  padding: 10px 16px 11px;
+}
 .order-details-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px 20px;
+  gap: 8px 18px;
 }
 @media (max-width: 1100px) {
   .order-details-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
+/* ── The activity trail ── */
+.order-activity {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.order-activity-item {
+  display: flex;
+  gap: 12px;
+  padding-bottom: 12px;
+}
+.order-activity-item:last-child { padding-bottom: 0; }
+.order-activity-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  width: 16px;
+}
+.order-activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 5px;
+}
+.order-activity-line {
+  flex: 1;
+  width: 1px;
+  background: rgba(0,0,0,0.08);
+  margin-top: 4px;
+}
+
 @media (max-width: 767px) {
-  .order-command-title { font-size: 20px; }
-  .order-command-actions { width: 100%; justify-content: stretch; }
+  .order-command-title { font-size: 22px; }
+  .order-command-actions { width: 100%; justify-content: stretch; padding-top: 0; }
   .order-command-actions > * { flex: 1 1 auto; }
   .order-command-actions .boe-record-action { min-height: 44px; }
   .order-command-actions .boe-record-action--icon { flex: 0 0 44px; width: 44px; min-width: 44px; }
-  .order-health-row { grid-template-columns: 82px minmax(0, 1fr); }
+  .order-health-row { grid-template-columns: 86px minmax(0, 1fr); }
   .order-details-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
