@@ -282,3 +282,110 @@ describe('the business rules this pass must not touch', () => {
     }
   })
 })
+
+// ══ 6. What the page must not go back to doing ════════════════════════════════
+//
+// STRUCTURAL, NOT TIMED. These pin the shape of the work — how many times the
+// page waits, and how much it re-reads after a small write — because that is
+// the property that changed and the one a later edit would quietly undo.
+
+describe('the critical path to the product table', () => {
+  test('the names and the signed URLs are asked for TOGETHER, not one after the other', () => {
+    // Both depend on the handoff group above them and NEITHER depends on the
+    // other: the names belong to PI History and Activity, both below the fold,
+    // and the signed URLs are the photographs in the table under the summary.
+    // Run in series, the most prominent section on the screen waited a whole
+    // round trip for an enrichment it never reads.
+    const handoff = page.slice(page.indexOf('const loadPiHandoff'), page.indexOf('const activityQuery'))
+    const group = handoff.slice(handoff.indexOf('const [peopleRes, signedRes] = await Promise.all(['))
+    assert.ok(group.length > 0, 'the two reads share one Promise.all')
+    const namesAt = group.indexOf("from('users')")
+    const signAt = group.indexOf('createSignedUrls(')
+    const closeAt = group.indexOf('])')
+    assert.ok(namesAt > 0 && signAt > 0, 'both reads are inside it')
+    assert.ok(namesAt < closeAt && signAt < closeAt, 'and both before it closes')
+
+    // The serial form is gone: no await on the users read on its own.
+    assert.equal(/await supabase\s*\n?\s*\.from\('users'\)/.test(handoff), false,
+      'the actor names must not be awaited before the signing')
+  })
+
+  test('the images are signed in ONE batched call, never one per row', () => {
+    assert.ok(page.includes('createSignedUrls('), 'the plural, batched signer')
+    const handoff = page.slice(page.indexOf('const loadPiHandoff'), page.indexOf('const activityQuery'))
+    assert.equal((handoff.match(/createSignedUrl\(/g) ?? []).length, 0,
+      'no single-object signer runs while loading the table')
+  })
+
+  test('the workbook and each document are signed ON THE CLICK, not at load', () => {
+    // A page that signed every version's file up front would spend a request
+    // per archived PI for something nobody opened.
+    for (const handler of ['const downloadWorkbook', 'const openVersion', 'const downloadDocument']) {
+      const at = page.indexOf(handler)
+      assert.ok(at > 0, handler)
+      assert.ok(page.slice(at, at + 900).includes('createSignedUrl('), `${handler} signs on demand`)
+    }
+  })
+})
+
+describe('a narrow write does not re-read the whole page', () => {
+  const bodyOf = (name: string) => {
+    const at = page.indexOf(name)
+    assert.ok(at > 0, `${name} not found`)
+    const rest = page.slice(at)
+    return rest.slice(0, rest.indexOf('\n  }\n'))
+  }
+
+  test('production alignment re-reads the Order row and the trail, and nothing else', () => {
+    // It moves four columns on `orders` and appends one activity entry. The
+    // full load re-read fourteen things and re-signed every photograph.
+    const fn = bodyOf('const setAlignment')
+    assert.ok(fn.includes('await reloadOrderRow()'))
+    assert.equal(fn.includes('loadOrder()'), false,
+      'alignment must not fall back to the full page load')
+  })
+
+  test('asking for documents re-reads the register and the trail, and nothing else', () => {
+    const fn = bodyOf('const requestDocuments')
+    assert.ok(fn.includes('await reloadDocuments()'))
+    assert.equal(fn.includes('loadOrder()'), false,
+      'document generation must not fall back to the full page load')
+  })
+
+  test('a status change is still the narrowest of all — the trail alone', () => {
+    assert.match(page, /onStatusChanged=\{updated => \{[\s\S]{0,900}?reloadActivity\(\)/)
+  })
+
+  test('each narrow refresh reads through the SHARED query, so it cannot drift', () => {
+    // One definition each, used by the full load and by the narrow refresh.
+    assert.equal((page.match(/orderRowQuery\(\)/g) ?? []).length, 2,
+      'the Order row query: the full load and the narrow refresh')
+    assert.equal((page.match(/documentsQuery\(\)/g) ?? []).length, 2,
+      'the documents query: the full load and the narrow refresh')
+    assert.equal((page.match(/activityQuery\(\)/g) ?? []).length, 2,
+      'the activity query: the full load and the narrow refresh')
+    // And each of those tables is SELECTed from in exactly one place: the
+    // register and the trail have one read each, and the Order row's single
+    // read sits beside the one UPDATE a status change performs.
+    assert.equal((page.match(/\.from\('order_document_versions'\)/g) ?? []).length, 1)
+    assert.equal((page.match(/\.select\(ORDER_DOCUMENT_COLUMNS\)/g) ?? []).length, 1)
+    assert.equal((page.match(/\.from\('order_activity_log'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
+    assert.equal((page.match(/\.from\('orders'\)\s*\n?\s*\.select\(/g) ?? []).length, 1)
+  })
+
+  test('every path that CAN move commercial data still reloads everything', () => {
+    // The narrowing is deliberately confined to writes whose blast radius is
+    // known. An amendment, a cancellation and a change-request decision all
+    // rewrite columns the rest of the page reports.
+    const after = page.slice(page.indexOf('const afterChange'))
+    const fn = after.slice(0, after.indexOf('\n  }\n'))
+    assert.ok(fn.includes('loadOrder()'))
+    assert.equal(fn.includes('reloadOrderRow()'), false)
+  })
+
+  test('nothing on this page reloads the browser', () => {
+    for (const forbidden of ['window.location.reload', 'location.href =', 'router.refresh()']) {
+      assert.equal(page.includes(forbidden), false, `${forbidden} must not appear`)
+    }
+  })
+})

@@ -781,19 +781,58 @@ export default function OrderDetailPage() {
     const trailRows = (trailRes.data ?? []) as unknown as PersistedActivity[]
     setPiVersions(versionRows)
     setPiActivity(trailRows)
+
+    // ── THE PRODUCTS NO LONGER WAIT FOR A NAME THEY DO NOT USE ──
+    //
+    // Two reads depend on the group above, and NEITHER depends on the other:
+    //
+    //   the names   who uploaded and who decided each PI version, and who
+    //               wrote each event on the source PI's trail. Both belong to
+    //               sections BELOW the fold — PI History inside Order Records,
+    //               and Activity at the foot of the page.
+    //   the URLs    the signed links for the product photographs, which are in
+    //               the table directly under the Order Summary.
+    //
+    // They used to run one after the other, names first, so the most prominent
+    // section on the screen waited a whole round trip for an enrichment it
+    // never reads. Issued together, the product table arrives one network trip
+    // sooner on every Order that came from a PI.
+    //
+    // NOTHING ELSE MOVED. Both reads are the same reads, under the same RLS,
+    // and both are still awaited before this function reports the handoff
+    // ready — so no section draws from a half-loaded state.
     const actorIds = [...new Set([
       ...versionActorIds(versionRows),
       ...activityActorIds(trailRows),
     ])]
+    const images = (imagesRes.data ?? []) as unknown as PersistedItemImage[]
+    const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
+
+    // THE BUCKET STAYS PRIVATE. Nothing here builds a public URL — there is none
+    // to build. Each object is signed on demand through the caller's own
+    // session, so the storage policies decide again, per object, whether this
+    // person may see this picture. A refusal yields no URL and the table shows
+    // its honest "No image" box rather than a broken one.
+    const [peopleRes, signedRes] = await Promise.all([
+      actorIds.length > 0
+        ? supabase.from('users').select('id, full_name').in('id', actorIds)
+        : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
+      paths.length > 0
+        ? supabase.storage.from(ORDER_FILES_BUCKET)
+            .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
+        : Promise.resolve({ data: [] as { path?: string | null; signedUrl?: string; error?: unknown }[] }),
+    ])
+
     const names = new Map<string, string>()
-    if (actorIds.length > 0) {
-      const { data: people } = await supabase
-        .from('users').select('id, full_name').in('id', actorIds)
-      for (const person of (people ?? []) as { id: string; full_name: string | null }[]) {
-        if (person?.id && person.full_name) names.set(person.id, person.full_name)
-      }
+    for (const person of (peopleRes.data ?? []) as { id: string; full_name: string | null }[]) {
+      if (person?.id && person.full_name) names.set(person.id, person.full_name)
     }
     setPiNames(names)
+
+    const signedByPath = new Map<string, string>()
+    for (const entry of (signedRes.data ?? []) as { path?: string | null; signedUrl?: string; error?: unknown }[]) {
+      if (entry?.path && entry.signedUrl && !entry.error) signedByPath.set(entry.path, entry.signedUrl)
+    }
 
     const row = subRes.data as unknown as OrderPiRow | null
     if (subRes.error || !row) {
@@ -810,24 +849,6 @@ export default function OrderDetailPage() {
       (codesRes.data ?? []) as unknown as OrderProductCodeRecord[],
     )
     const products = rawProducts.map(p => ({ ...p, orderProductCode: codeByItemId.get(p.id) ?? null }))
-    const images = (imagesRes.data ?? []) as unknown as PersistedItemImage[]
-
-    // THE BUCKET STAYS PRIVATE. Nothing here builds a public URL — there is none
-    // to build. Each object is signed on demand through the caller's own
-    // session, so the storage policies decide again, per object, whether this
-    // person may see this picture. A refusal yields no URL and the table shows
-    // its honest "No image" box rather than a broken one.
-    const signedByPath = new Map<string, string>()
-    const paths = [...new Set(images.map(i => i.storage_path).filter(Boolean))]
-    if (paths.length > 0) {
-      const { data: signed } = await supabase
-        .storage
-        .from(ORDER_FILES_BUCKET)
-        .createSignedUrls(paths, PI_DRAFT_IMAGE_URL_TTL_SECONDS)
-      for (const entry of signed ?? []) {
-        if (entry?.path && entry.signedUrl && !entry.error) signedByPath.set(entry.path, entry.signedUrl)
-      }
-    }
 
     const urls = persistedImageUrlMaps(products, images, signedByPath)
 
@@ -903,9 +924,12 @@ export default function OrderDetailPage() {
     shellSignal.current = null
   }
 
-  /** The full load. A refresh calls this and replaces data in place. */
-  const loadOrder = async () => {
-    const { data: o } = await supabase
+  /**
+   * The Order's own row, as one query and one mapping — named once so the full
+   * load and the narrow refreshes below cannot read or shape it differently.
+   */
+  const orderRowQuery = () =>
+    supabase
       .from('orders')
       .select(`
         id, display_number, client_name,
@@ -923,21 +947,71 @@ export default function OrderDetailPage() {
       .eq('id', id)
       .single()
 
+  /** The embeds flattened onto the row, said once for both callers. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapOrderRow = (raw: any): Order => ({
+    ...raw,
+    requested_by_name: raw.requested_by_user?.full_name ?? undefined,
+    assigned_to_name:  raw.assigned_to_user?.full_name  ?? undefined,
+    created_by_name:   raw.created_by_user?.full_name   ?? undefined,
+    production_aligned_by_name: raw.production_aligned_by_user?.full_name ?? undefined,
+    production_aligned_by_user: undefined,
+    requested_by_user: undefined,
+    assigned_to_user:  undefined,
+    created_by_user:   undefined,
+  })
+
+  /**
+   * WHAT A WRITE TO THE ORDER ROW ACTUALLY CHANGED, and nothing else.
+   *
+   * Production alignment moves four columns on `orders` and appends one
+   * activity entry. It touches no payment, no allocation, no document, no
+   * change request and no PI — so re-running the whole page load to see it
+   * re-read fourteen things and re-signed every product photograph, on the
+   * control this screen exists to prompt.
+   *
+   * Two reads instead, and the same two the trail and the row come from
+   * everywhere else on this page.
+   */
+  const reloadOrderRow = async () => {
+    const { data: o } = await orderRowQuery()
+    if (o) setOrder(mapOrderRow(o))
+    await reloadActivity()
+  }
+
+  /**
+   * The Order's document register, as one query — named once so the full load
+   * and the narrow refresh below cannot read or shape it differently.
+   */
+  const documentsQuery = () =>
+    supabase
+      .from('order_document_versions')
+      .select(ORDER_DOCUMENT_COLUMNS)
+      .eq('order_id', id)
+      .order('version', { ascending: false })
+
+  /**
+   * WHAT ASKING FOR DOCUMENTS ACTUALLY CHANGED.
+   *
+   * The route writes one row in order_document_versions, and that table's own
+   * trigger appends the matching activity entry. It touches no Order column,
+   * no payment, no change request and no PI — so re-running the whole page
+   * load to see a new version re-read fourteen things and re-signed every
+   * product photograph.
+   */
+  const reloadDocuments = async () => {
+    const { data } = await documentsQuery()
+    setDocuments((data ?? []) as unknown as OrderDocumentRow[])
+    await reloadActivity()
+  }
+
+  /** The full load. A refresh calls this and replaces data in place. */
+  const loadOrder = async () => {
+    const { data: o } = await orderRowQuery()
+
     if (!o) { setNotFound(true); releaseShell(); return }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const raw = o as any
-    const mapped: Order = {
-      ...raw,
-      requested_by_name: raw.requested_by_user?.full_name ?? undefined,
-      assigned_to_name:  raw.assigned_to_user?.full_name  ?? undefined,
-      created_by_name:   raw.created_by_user?.full_name   ?? undefined,
-      production_aligned_by_name: raw.production_aligned_by_user?.full_name ?? undefined,
-      production_aligned_by_user: undefined,
-      requested_by_user: undefined,
-      assigned_to_user:  undefined,
-      created_by_user:   undefined,
-    }
+    const mapped = mapOrderRow(o)
     setOrder(mapped)
     // THE SHELL CAN DRAW NOW. The identity, the status, the production state,
     // the dates and the owner are all on this one row.
@@ -991,11 +1065,7 @@ export default function OrderDetailPage() {
 
       activityQuery(),
 
-      supabase
-        .from('order_document_versions')
-        .select(ORDER_DOCUMENT_COLUMNS)
-        .eq('order_id', id)
-        .order('version', { ascending: false }),
+      documentsQuery(),
 
       supabase
         .from('order_change_requests')
@@ -1303,7 +1373,9 @@ export default function OrderDetailPage() {
       })
       if (error) { setAlignError(describeAlignmentFailure(error)); return }
       setAlignDialog(null)
-      await loadOrder()
+      // The RPC moved four columns on `orders` and appended one activity
+      // entry. Nothing else on this page changed, so nothing else is re-read.
+      await reloadOrderRow()
     } finally {
       setAlignBusy(false)
     }
@@ -1349,8 +1421,8 @@ export default function OrderDetailPage() {
     }
     setDocBusy(false)
     // Re-read either way: a refusal may still have moved the register, and a
-    // success certainly did.
-    await loadOrder()
+    // success certainly did. The register and the trail, and nothing else.
+    await reloadDocuments()
   }
 
   /**
