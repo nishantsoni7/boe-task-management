@@ -9,8 +9,27 @@ import {
   NO_ORDERS_CAPABILITIES,
   type OrdersCapabilities,
 } from '@/lib/permissions/orders'
-import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
+import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
+import {
+  CollapsibleHeader,
+  MoreActionsMenu,
+  OrderAttentionBar,
+  OrderDetailSkeleton,
+  OrderHealthCard,
+  PaymentPositionCard,
+  SectionSkeleton,
+  ToneBadge,
+  type MoreActionItem,
+} from './OrderWorkspace'
+import {
+  arrangeOrderActions,
+  orderAttentionItems,
+  orderHealthRows,
+  relativeDayLabel,
+  type OrderHeaderActionKey,
+  type WorkspaceTone,
+} from '@/lib/orders/orderWorkspace'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import {
   mergeOrderPayments,
@@ -18,7 +37,6 @@ import {
 } from '@/lib/orders/orderPayments'
 import {
   buildOrderFinancePosition,
-  progressWidth,
   withExactAmounts,
   type OrderFinancePaymentRow,
 } from '@/lib/finance/orderFinancePosition'
@@ -227,6 +245,16 @@ const STATUS_META: Record<string, { label: string; bg: string; color: string; bo
   cancelled:          { label: 'Cancelled',           bg: '#FEF2F2', color: '#991B1B', border: '#FECACA' },
 }
 
+/** The same five states as the health card reads them: ordinary running states
+ *  are blue, a hold is amber, dispatched is complete, cancelled is red. */
+const STATUS_TONE: Record<string, WorkspaceTone> = {
+  running:            'blue',
+  on_hold:            'amber',
+  ready_for_dispatch: 'blue',
+  dispatched:         'green',
+  cancelled:          'red',
+}
+
 /**
  * THE COLOUR of a payment status. The WORDS come from piPaymentStatusLabel, the
  * same map the PI payment card reads, so one state cannot be called two things
@@ -364,64 +392,6 @@ function MetaField({ label, value }: { label: string; value: React.ReactNode }) 
       <span style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.4 }}>
         {value ?? '—'}
       </span>
-    </div>
-  )
-}
-
-// The Payment Summary's label and figure, said once so six tiles cannot word or
-// space themselves differently. `hint` carries the one thing a money figure on
-// this card cannot say for itself — what it is measured against.
-function FigureLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize: '10px', fontWeight: 600, color: colors.muted,
-      textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px',
-    }}>
-      {children}
-    </div>
-  )
-}
-
-function SummaryFigure({ label, value, color, hint }: {
-  label: string
-  value: string
-  color?: string
-  hint?: string
-}) {
-  return (
-    <div style={{ minWidth: 0 }}>
-      <FigureLabel>{label}</FigureLabel>
-      <div style={{
-        fontSize: '18px', fontWeight: 700, color: color ?? colors.primary,
-        fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word',
-      }}>
-        {value}
-      </div>
-      {hint && (
-        <div style={{ fontSize: '10px', color: colors.muted, marginTop: '2px', lineHeight: 1.4 }}>
-          {hint}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div style={{
-      background: colors.base, border: `1px solid ${colors.border}`,
-      borderRadius: '10px', overflow: 'hidden',
-    }}>
-      <div style={{
-        padding: '12px 20px', borderBottom: `1px solid ${colors.border}`,
-        fontSize: '12px', fontWeight: 700, color: colors.primary,
-        textTransform: 'uppercase', letterSpacing: '0.04em',
-      }}>
-        {title}
-      </div>
-      <div style={{ padding: '16px 20px' }}>
-        {children}
-      </div>
     </div>
   )
 }
@@ -590,24 +560,22 @@ function StatusControl({
     <>
       <div style={{ position: 'relative', display: 'inline-block' }}>
         <button
+          type="button"
           onClick={() => setOpen(o => !o)}
+          onKeyDown={e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false) } }}
           disabled={saving}
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
-            background: 'transparent', border: `1px solid ${colors.border}`,
-            color: colors.secondary, cursor: saving ? 'not-allowed' : 'pointer',
-            opacity: saving ? 0.6 : 1,
-          }}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className="boe-record-action"
         >
           {saving ? 'Updating…' : 'Change Status'}
-          <ChevronDown size={13} strokeWidth={2} />
+          <ChevronDown size={13} strokeWidth={2} aria-hidden="true" />
         </button>
 
         {open && (
           <>
             <div style={{ position: 'fixed', inset: 0, zIndex: 99 }} onClick={() => setOpen(false)} />
-            <div style={{
+            <div role="menu" aria-label="Change status" onKeyDown={e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) } }} style={{
               position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 100,
               background: colors.base, border: `1px solid ${colors.border}`,
               borderRadius: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
@@ -619,6 +587,8 @@ function StatusControl({
                 return (
                   <button
                     key={s}
+                    type="button"
+                    role="menuitem"
                     onClick={() => handleSelect(s)}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '8px',
@@ -699,6 +669,25 @@ export default function OrderDetailPage() {
   const [wbPath,      setWbPath]      = useState<string | null>(null)
   const [isMobile,    setIsMobile]    = useState(false)
 
+  // ── What has landed ──
+  //
+  // The page draws as soon as the Order ROW is in hand; the anchored reads and
+  // the PI handoff resolve into it section by section. These two say which
+  // sections are still on their way, so a health line reads "Loading…" rather
+  // than a false zero and a table draws its skeleton rather than "no lines".
+  // Set once and never cleared: a refresh replaces data in place and must not
+  // blank a screen somebody is reading.
+  const [recordsReady, setRecordsReady] = useState(false)
+  const [handoffReady, setHandoffReady] = useState(false)
+  // The per-payment table is folded below the record; the sidebar states the
+  // position and "View payment details" unfolds and scrolls to it.
+  const [paymentsOpen, setPaymentsOpen] = useState(false)
+  const paymentsRef = useRef<HTMLDivElement | null>(null)
+  const changeRequestsRef = useRef<HTMLDivElement | null>(null)
+  // The startup gate's resolver, parked here by the startup path and released
+  // by loadOrder once the Order row is in hand. See releaseShell below.
+  const shellSignal = useRef<(() => void) | null>(null)
+
   // ── The PI's versions and its trail (20261119000000) ──
   //
   // Both read under the caller's own RLS beside the handoff: can_view_order
@@ -767,6 +756,7 @@ export default function OrderDetailPage() {
       setWbPath(null)
       setPiVersions([])
       setPiActivity([])
+      setHandoffReady(true)
       return
     }
 
@@ -828,6 +818,7 @@ export default function OrderDetailPage() {
       setPiHandoff({ kind: 'unavailable' })
       setPiProducts([])
       setWbPath(null)
+      setHandoffReady(true)
       return
     }
 
@@ -872,6 +863,7 @@ export default function OrderDetailPage() {
       totalProductValue: order.total_product_value,
       totalValue: order.total_value,
     }))
+    setHandoffReady(true)
   }
 
   /**
@@ -917,6 +909,19 @@ export default function OrderDetailPage() {
     setActivity(mapActivityRows(data))
   }
 
+  /**
+   * Releases the startup gate. The startup path parks a resolver in
+   * `shellSignal` and waits on it; the full load below calls this the moment
+   * the Order ROW is in hand, and the page draws while every other read is
+   * still settling into it. A refresh finds no resolver parked and this is a
+   * no-op.
+   */
+  const releaseShell = () => {
+    shellSignal.current?.()
+    shellSignal.current = null
+  }
+
+  /** The full load. A refresh calls this and replaces data in place. */
   const loadOrder = async () => {
     const { data: o } = await supabase
       .from('orders')
@@ -936,7 +941,7 @@ export default function OrderDetailPage() {
       .eq('id', id)
       .single()
 
-    if (!o) { setNotFound(true); return }
+    if (!o) { setNotFound(true); releaseShell(); return }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const raw = o as any
@@ -952,6 +957,9 @@ export default function OrderDetailPage() {
       created_by_user:   undefined,
     }
     setOrder(mapped)
+    // THE SHELL CAN DRAW NOW. The identity, the status, the production state,
+    // the dates and the owner are all on this one row.
+    releaseShell()
 
     // The approved PI, started HERE rather than awaited later: it depends only
     // on the Order row just read, so it overlaps the four reads below instead
@@ -1084,6 +1092,7 @@ export default function OrderDetailPage() {
       requested_by_name: c.requester?.full_name ?? undefined,
       requester: undefined,
     })) as OrderChangeRequest[])
+    setRecordsReady(true)
 
     await handoff
   }
@@ -1111,6 +1120,23 @@ export default function OrderDetailPage() {
       // made three. It decides only whether a payment row draws a link into its
       // Finance record — see crossModuleLinks.ts on why a link is a drawing
       // question and never an authorization one.
+      // ── THE SHELL FIRST ──
+      //
+      // loadOrder() still runs in full — the payments, the allocation totals,
+      // the documents, the activity, the change requests, the PI handoff and
+      // its signed URLs — but the page no longer waits for ALL of it before it
+      // draws anything. It resolves `shell` the moment the Order row itself has
+      // landed, and that is what this group waits on beside the profile and
+      // the two permission resolves. Everything else settles section by
+      // section into a page that is already on screen, each section drawing
+      // its own skeleton until its read answers.
+      //
+      // Started here and NOT awaited as a whole: its own paths settle their
+      // sections, and a rejection must not become an unhandled promise on a
+      // page that is already drawn. `finally` releases the shell even if the
+      // Order read itself threw, so the gate can never hang.
+      const shell = new Promise<void>(resolve => { shellSignal.current = resolve })
+
       const [{ data: me }, ordersPerms, financePerms] = await Promise.all([
         supabase
           .from('users')
@@ -1119,22 +1145,28 @@ export default function OrderDetailPage() {
           .single(),
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
-        loadOrder(),
+        // loadOrder() starts HERE, beside the resolves, and runs to completion
+        // on its own. The group settles on whichever comes first: the shell
+        // (the Order row is in hand) or the whole load (it ended early — no
+        // row, or a thrown read) — so the gate can never hang on a failure.
+        Promise.race([shell, loadOrder().catch(() => {})]),
       ])
 
       setProfile(me as UserProfile)
       setOrdersCaps(deriveOrdersCapabilities(me?.role, ordersPerms))
       setFinanceCaps(deriveFinanceCapabilities(me?.role, financePerms))
+      setPageLoading(false)
 
       // This one genuinely depends on the profile, and is asked only of an
       // admin — for whom it decides a single temporary, testing-phase control.
+      // It used to sit BEFORE the loading gate cleared, so every admin paid one
+      // more round trip before the Order drew; it now lands into the overflow
+      // menu after the page is on screen.
       if ((me as UserProfile | null)?.role === 'admin') {
         const { data: s } = await supabase.rpc('get_test_data_cleanup_settings')
         const settings = s as { enabled?: boolean; permanently_disabled?: boolean } | null
         setCleanupEnabled(!!settings?.enabled && !settings?.permanently_disabled)
       }
-
-      setPageLoading(false)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1522,7 +1554,18 @@ export default function OrderDetailPage() {
     loadOrder()
   }
 
-  if (pageLoading) return <LoadingScreen />
+  // ── THE SHELL, before the Order row has landed ──
+  //
+  // Not the 100vh spinner: the Orders sidebar and header are already up, and a
+  // full-screen spinner inside them reads as "leaving the page". This is the
+  // workspace in the shape of what is about to appear, so nothing jumps.
+  if (pageLoading) {
+    return (
+      <OrdersLayout profile={profile} title="Confirmed Order" onSignOut={handleSignOut} showRefresh={false}>
+        <OrderDetailSkeleton />
+      </OrdersLayout>
+    )
+  }
 
   if (notFound || !order) {
     return (
@@ -1553,46 +1596,212 @@ export default function OrderDetailPage() {
   // shape; what BOE shows and refers to drops the leading zeros (20261124000000).
   const operationalNumber = formatOrderOperationalNumber(order.display_number) ?? order.display_number
 
+  // ── What this screen says at a glance ──
+  //
+  // Three readings of the same state, each decided by orderWorkspace.ts: what
+  // needs attention, how the health card reads, and which control is primary.
+  // Nothing here is a new rule — see that module — and nothing here grants: the
+  // controls it arranges are exactly the ones the capabilities above allow.
+  const productionAligned = production?.value === 'aligned'
+  const orderClosed = order.status === 'dispatched' || order.status === 'cancelled'
+  const statusTone: WorkspaceTone = STATUS_TONE[order.status] ?? 'neutral'
+
+  const attention = orderAttentionItems({
+    status: order.status,
+    productionAligned,
+    hasAssignee: !!order.assigned_to,
+    hasDueDate: !!order.due_date,
+    isOverdue: !!isOverdue,
+    // Money and documents are only known once their reads have landed; until
+    // then they are not "fine", they are unknown, and the bar says nothing.
+    awaitingVerificationCount: recordsReady ? finance.counts.awaiting : 0,
+    pendingChangeRequests: pendingRequests.length,
+    pendingPiRevision: piHistory.pending !== null,
+    documentsFailed: recordsReady && !!documentsView.failure,
+    documentsOutdated: recordsReady && documentsView.outdated,
+  })
+
+  const healthRows = orderHealthRows({
+    status: order.status,
+    statusLabel: STATUS_META[order.status]?.label ?? order.status,
+    statusTone,
+    verifiedPercent: finance.verifiedPercent !== null ? formatPercent(finance.verifiedPercent) : null,
+    verified: formatMoney(finance.verified),
+    orderValue: finance.orderValue !== null ? formatMoney(finance.orderValue) : null,
+    fullyPaid: finance.fullyPaid,
+    paymentCount: finance.counts.total,
+    paymentsLoaded: recordsReady,
+    productionAligned,
+    productionLabel: production?.label ?? '—',
+    productionLine: production?.line ?? null,
+    dueDate: order.due_date ? fmtDate(order.due_date) : null,
+    isOverdue: !!isOverdue,
+    ownerName: order.assigned_to_name ?? null,
+    confirmedDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
+  })
+
+  // WHICH CONTROLS EXIST is decided above from the resolved capabilities; this
+  // only decides where each one sits. The cleanup gate is the existing one,
+  // unchanged: an active admin, not under View As, on a testing-phase Order
+  // while cleanup is still enabled.
+  const actions = arrangeOrderActions({
+    alignAction: production?.action ? (productionAligned ? 'unalign' : 'align') : null,
+    canAmend,
+    canRequest,
+    canReviewChangeRequests: actingAsAdmin && pendingRequests.length > 0,
+    canCleanUp: profile?.role === 'admin' && !viewAsUserId && canCleanUp,
+  })
+
+  const actionLabel = (key: OrderHeaderActionKey): string => {
+    switch (key) {
+      case 'align':
+      case 'unalign':             return production?.action ?? ''
+      case 'amend':               return 'Amend Order'
+      case 'request_change':      return myPendingEdit ? 'Change Requested' : 'Request a Change'
+      case 'request_cancel':      return myPendingCancel ? 'Cancellation Requested' : 'Request Cancellation'
+      case 'review_change_request':
+        return pendingRequests.length === 1 ? 'Review change request' : `Review ${pendingRequests.length} change requests`
+      case 'cleanup':             return 'Clean Up Test Transaction'
+    }
+  }
+
+  const actionDisabled = (key: OrderHeaderActionKey): boolean =>
+    (key === 'request_change' && myPendingEdit) || (key === 'request_cancel' && myPendingCancel)
+
+  const actionTitle = (key: OrderHeaderActionKey): string | undefined => {
+    if (key === 'request_change' && myPendingEdit) return 'You already have a change request awaiting review'
+    if (key === 'request_cancel' && myPendingCancel) return 'You already have a cancellation request awaiting review'
+    if (key === 'cleanup') return 'This Order was created during system testing'
+    return undefined
+  }
+
+  const runAction = (key: OrderHeaderActionKey) => {
+    switch (key) {
+      // Production alignment: the Head of Manufacturing's door (20261119000000).
+      // Drawn only for orders.align_production, never lent by View As; the RPC
+      // decides again under a row lock.
+      case 'align':               setAlignDialog(true); return
+      case 'unalign':             setAlignDialog(false); return
+      // The amendment door. An admin gets Amend Order; everyone else who can
+      // see the Order gets Request a Change, disabled once they already have
+      // one open — the partial unique index would refuse a second, and saying
+      // so before the click beats a constraint violation after it.
+      case 'amend':               setAmendOpen(true); return
+      case 'request_change':      setRequestOpen(true); return
+      case 'request_cancel':      setCancelOpen(true); return
+      case 'review_change_request':
+        if (pendingRequests.length === 1) setReviewing(pendingRequests[0])
+        else changeRequestsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        return
+      // A Confirmed Order has no destructive action. It is permanent business
+      // history, enforced by the database (20260705000000): public.orders
+      // carries no DELETE policy and orders_prevent_delete refuses every path,
+      // including the service role. While the system is in its testing phase,
+      // an Order created during testing offers a route to the separate cleanup
+      // flow instead — a page that then requires a reason, a typed
+      // confirmation, and a chain where every record is verified test data.
+      case 'cleanup':
+        router.push(`/admin/control-center/test-data-cleanup?type=order&id=${order.id}`)
+        return
+    }
+  }
+
+  const overflowItems: MoreActionItem<OrderHeaderActionKey>[] = actions.overflow.map(key => ({
+    key,
+    label: actionLabel(key),
+    disabled: actionDisabled(key),
+    title: actionTitle(key),
+  }))
+
+  const openPayments = () => {
+    setPaymentsOpen(true)
+    // After the body has rendered, so there is something to scroll to.
+    requestAnimationFrame(() => paymentsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+  }
+
+  // The quiet line under the identity: when it was confirmed, who asked for it,
+  // and how fresh the record is.
+  const updatedRelative = relativeDayLabel(order.updated_at)
+  const metaParts: string[] = []
+  if (order.confirm_date) metaParts.push(`Confirmed ${fmtDate(order.confirm_date)}`)
+  if (order.requested_by_name) metaParts.push(`Requested by ${order.requested_by_name}`)
+  metaParts.push(`Updated ${updatedRelative ?? fmtDate(order.updated_at)}`)
+
+  // ── The approved PI's two cards ──
+  //
+  // Declared here, in this order, and RENDERED with the products first: what
+  // BOE is manufacturing is the main content of this screen, and the PI band
+  // that names the client, the dates and the pre-tax total follows it. The
+  // door back to the PI belongs to the summary card and to nothing else.
+  const piSummaryCard = piHandoff.kind === 'ready' && (
+    <OrderPiSummaryCard
+      client={piHandoff.client}
+      onOpenClient={() => setClientOpen(true)}
+      dates={piHandoff.dates}
+      figures={piHandoff.figures}
+      billing={piHandoff.billing}
+      workbookName={wbPath ? piHandoff.workbookName : null}
+      onDownloadWorkbook={downloadWorkbook}
+      downloading={wbBusy}
+      downloadError={wbError}
+      // The way back to the PI this Order came from. The database has had
+      // this door since 20260924000000 — can_view_order_submission_via_order
+      // exists so that seeing the Order is a way onto its approved PI — and
+      // the PI screen still decides for itself under RLS.
+      onOpenPi={() => router.push(piSubmissionHref(piHandoff.submissionId))}
+    />
+  )
+  const piProductsCard = piHandoff.kind === 'ready' && (
+    <OrderPiProducts
+      products={piProducts}
+      isMobile={isMobile}
+      representativeThumbnail={representativeThumbnail}
+      customizationThumbnails={customizationThumbnails}
+      unresolvedImages={piImages.unresolved}
+    />
+  )
+
   return (
     <OrdersLayout
       profile={profile}
-      title={`Order ${operationalNumber}`}
-      subtitle={order.client_name}
+      title="Confirmed Order"
       onSignOut={handleSignOut}
       onRefresh={loadOrder}
     >
-      {/* ── Back ── */}
-      <button
-        onClick={() => router.back()}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '6px',
-          marginBottom: '20px', padding: '6px 12px', borderRadius: '7px',
-          background: 'transparent', border: `1px solid ${colors.border}`,
-          color: colors.secondary, fontSize: '12px', cursor: 'pointer',
-        }}
-      >
-        <ArrowLeft size={13} strokeWidth={2} /> Back
-      </button>
+      <div className="order-detail-page">
 
-      {/* ── Header ── */}
-      <div style={{ marginBottom: '24px' }}>
-        {/* Title row */}
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-          gap: '12px', flexWrap: 'wrap', marginBottom: '16px',
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '22px', fontWeight: 700, color: colors.primary, letterSpacing: '-0.02em' }}>
-                {operationalNumber}
-              </span>
+        <button type="button" onClick={() => router.back()} className="order-back">
+          <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back
+        </button>
+
+        {/* ── The command header ──
+            ONE identity, its two states, one quiet line of provenance, and the
+            controls — with exactly one filled button. */}
+        <header className="order-command-header">
+          <div className="order-command-identity">
+            <div className="order-command-title-row">
+              <h1 className="order-command-title">Order {operationalNumber}</h1>
+              <span className="order-command-client">{order.client_name}</span>
+            </div>
+            <div className="order-command-badges">
               <StatusBadge status={order.status} />
+              {/* Production alignment, stated for every reader. 'Not aligned'
+                  is the default every Order is born with — commercial approval
+                  is not production acceptance — so the chip is always present. */}
+              {production && (
+                <ToneBadge
+                  tone={productionAligned ? 'green' : orderClosed ? 'neutral' : 'amber'}
+                  title={production.line ?? production.hint}
+                >
+                  Production {productionAligned ? 'aligned' : 'not aligned'}
+                </ToneBadge>
+              )}
+              {isOverdue && <ToneBadge tone="red">Overdue</ToneBadge>}
             </div>
-            <div style={{ fontSize: '14px', color: colors.secondary, marginTop: '4px' }}>
-              {order.client_name}
-            </div>
+            <div className="order-command-meta">{metaParts.join(' · ')}</div>
           </div>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+
+          <div className="order-command-actions">
             {profile && (
               <StatusControl
                 order={order}
@@ -1615,592 +1824,421 @@ export default function OrderDetailPage() {
                 onOutOfDate={() => { loadOrder() }}
               />
             )}
-
-            {/* The amendment door. An admin gets Amend Order; everyone else who
-                can see the Order gets Request a Change, disabled once they
-                already have one open — the partial unique index would refuse a
-                second, and saying so before the click beats a constraint
-                violation after it. */}
-            {canAmend && (
+            {actions.secondary.map(key => (
               <button
-                onClick={() => setAmendOpen(true)}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
+                key={key}
+                type="button"
+                onClick={() => runAction(key)}
+                disabled={actionDisabled(key)}
+                title={actionTitle(key)}
+                className="boe-record-action"
               >
-                Amend Order
+                {actionLabel(key)}
+              </button>
+            ))}
+            {actions.primary && (
+              <button
+                type="button"
+                onClick={() => runAction(actions.primary as OrderHeaderActionKey)}
+                className="boe-record-action boe-record-action--primary"
+              >
+                {actionLabel(actions.primary)}
               </button>
             )}
-            {canRequest && (
-              <button
-                onClick={() => setRequestOpen(true)}
-                disabled={myPendingEdit}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, opacity: myPendingEdit ? 0.55 : 1 }}
-                title={myPendingEdit ? 'You already have a change request awaiting review' : undefined}
-              >
-                {myPendingEdit ? 'Change Requested' : 'Request a Change'}
-              </button>
-            )}
-            {/* Production alignment: the Head of Manufacturing's door
-                (20261119000000). Drawn only for orders.align_production, never
-                lent by View As; the RPC decides again under a row lock. */}
-            {production?.action && (
-              <button
-                onClick={() => setAlignDialog(production.value !== 'aligned')}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600 }}
-              >
-                {production.action}
-              </button>
-            )}
-            {canRequest && (
-              <button
-                onClick={() => setCancelOpen(true)}
-                disabled={myPendingCancel}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, opacity: myPendingCancel ? 0.55 : 1 }}
-                title={myPendingCancel ? 'You already have a cancellation request awaiting review' : undefined}
-              >
-                {myPendingCancel ? 'Cancellation Requested' : 'Request Cancellation'}
-              </button>
-            )}
-            {/* A Confirmed Order has no destructive action. It is permanent
-                business history, enforced by the database (20260705000000):
-                public.orders carries no DELETE policy and orders_prevent_delete
-                refuses every path, including the service role.
-
-                While the system is in its testing phase, an Order that was
-                created during testing offers a route to the separate cleanup
-                flow instead. Deliberately not styled or worded as a delete: it
-                navigates to a page that then requires a reason, a typed
-                confirmation, and a chain where every record is verified test
-                data. It disappears on its own once cleanup is permanently
-                disabled, because canCleanUp then stays false. */}
-            {profile?.role === 'admin' && !viewAsUserId && canCleanUp && (
-              <button
-                onClick={() => router.push(
-                  `/admin/control-center/test-data-cleanup?type=order&id=${order.id}`
-                )}
-                style={{
-                  padding: '6px 12px', borderRadius: '7px', fontSize: '12px', fontWeight: 600,
-                  background: 'transparent', border: `1px solid ${colors.border}`,
-                  color: colors.secondary, cursor: 'pointer',
-                }}
-                title="This Order was created during system testing"
-              >
-                Clean Up Test Transaction
-              </button>
-            )}
+            <MoreActionsMenu items={overflowItems} onSelect={runAction} />
           </div>
-        </div>
+        </header>
 
-        {/* ── Summary strip ── */}
-        <div style={{
-          borderTop: `1px solid ${colors.border}`,
-          borderBottom: `1px solid ${colors.border}`,
-          padding: '16px 0',
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))',
-          gap: '16px 24px',
-        }}>
-          <MetaField label="Requested By" value={order.requested_by_name} />
-          <MetaField label="Assignee"     value={order.assigned_to_name} />
-          {/* Production alignment, stated for every reader. 'Not Aligned' is the
-              default every Order is born with — commercial approval is not
-              production acceptance — so the field is always present. */}
-          {production && (
-            <MetaField
-              label="Production"
-              value={
-                <span
-                  title={production.line ?? production.hint}
-                  style={{
-                    display: 'inline-flex', alignItems: 'center', padding: '2px 9px', borderRadius: '5px',
-                    fontSize: '11px', fontWeight: 700,
-                    background: production.value === 'aligned' ? colors.greenTint : colors.amberTint,
-                    color: production.value === 'aligned' ? colors.green : colors.amber,
-                    border: `1px solid ${production.value === 'aligned' ? 'rgba(69,168,112,0.3)' : 'rgba(190,140,40,0.28)'}`,
-                  }}
-                >
-                  {production.label}
-                </span>
-              }
-            />
-          )}
-          <MetaField
-            label="Confirm Date"
-            value={fmtDate(order.confirm_date)}
-          />
-          <MetaField
-            label="Due Date"
-            value={
-              <span style={{ color: isOverdue ? colors.red : 'inherit', fontWeight: isOverdue ? 600 : 400 }}>
-                {fmtDate(order.due_date)}
-                {isOverdue && <span style={{ fontSize: '10px', marginLeft: '4px' }}>overdue</span>}
-              </span>
-            }
-          />
-          <MetaField
-            label="Lead Source"
-            value={order.lead_source ? LEAD_SOURCE_LABEL[order.lead_source] ?? order.lead_source : undefined}
-          />
-          <MetaField label="Total Product Value" value={fmtAmount(order.total_product_value)} />
-          <MetaField label="Total Order Value"   value={fmtAmount(order.total_value)} />
-          <MetaField label="Created"       value={fmtDate(order.created_at)} />
-          <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
-          {/* Read-only provenance. Rendered only for an Order that actually came
-              from a request, so Orders created by other paths don't show an
-              empty field. Deliberately not a link: converted requests are being
-              removed from the Order Requests module, so there is nowhere to
-              navigate to. The internal request id rides along as a title
-              attribute for support/audit lookups without adding UI noise. */}
-          {order.source_request_number && (
-            <MetaField
-              label="Source Request"
-              value={
-                <span title={order.source_order_request_id ?? undefined}>
-                  {order.source_request_number}
-                </span>
-              }
-            />
-          )}
-        </div>
+        {/* ── What needs attention ── hidden entirely when nothing does. */}
+        <OrderAttentionBar items={attention} />
 
-        {/* Notes (if any) */}
-        {order.notes && (
-          <div style={{
-            marginTop: '14px', paddingBottom: '4px',
-            fontSize: '13px', color: colors.secondary, lineHeight: 1.6,
-            whiteSpace: 'pre-wrap',
-          }}>
-            <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>
-              Notes
-            </span>
-            {order.notes}
-          </div>
-        )}
-      </div>
+        <div className="order-workspace">
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {/* ══ THE RECORD ══ */}
+          <div className="order-workspace-main">
 
-        {/* ── Payment summary ──
+            {/* ── The products: what BOE is manufacturing ──
+                While the handoff reads are in flight the table draws its
+                skeleton; an Order with no PI is told so below instead. */}
+            {!handoffReady && order.source_order_submission_id && (
+              <SectionSkeleton rows={4} label="Loading products" />
+            )}
+            {piProductsCard}
 
-            SIX FIGURES, and the three money states are three of them.
-
-            The card used to show four: Order Value, "Received", Pending and
-            Completion — where "Received" was in fact VERIFIED money. A payment
-            the client had genuinely made and Finance had not yet reached was
-            therefore invisible here, and a salesperson chasing a client for
-            money already sent had no way to see it on this screen.
-
-            The three are now named separately and never stand in for each
-            other. Verified is what Finance has confirmed and is the figure the
-            business treats as paid; Awaiting is money recorded and not yet
-            decided; Received is the two together — what has come in, whatever
-            Finance has done about it yet. The BALANCE is measured against
-            verified money alone, because unverified money does not reduce what
-            is owed. */}
-        <SectionCard title="Payment Summary">
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '16px' }}>
-            <SummaryFigure label="Order Value" value={formatMoney(finance.orderValue)} />
-            <SummaryFigure
-              label="Verified"
-              value={formatMoney(finance.verified)}
-              color={colors.green}
-              hint="confirmed by Finance"
-            />
-            <SummaryFigure
-              label="Awaiting Verification"
-              value={formatMoney(finance.awaitingVerification)}
-              color={finance.counts.awaiting > 0 ? colors.amber : colors.muted}
-              hint={finance.counts.awaiting > 0
-                ? `${finance.counts.awaiting} payment${finance.counts.awaiting === 1 ? '' : 's'} with Finance`
-                : 'nothing with Finance'}
-            />
-            <SummaryFigure
-              label="Received"
-              value={formatMoney(finance.received)}
-              hint="verified + awaiting"
-            />
-            <SummaryFigure
-              label="Balance"
-              value={formatMoney(finance.pendingBalance)}
-              color={finance.pendingBalance && finance.pendingBalance !== '0.00' && !finance.fullyPaid
-                ? colors.amber
-                : colors.muted}
-              hint="against verified"
-            />
-            <div>
-              <FigureLabel>Verified %</FigureLabel>
-              <div style={{ fontSize: '18px', fontWeight: 700, color: finance.fullyPaid ? colors.green : colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-                {formatPercent(finance.verifiedPercent)}
-              </div>
-              {/* A PIXEL QUANTITY and nothing else — clamped to 0–100, never
-                  shown as a figure and never used in a decision. The figure
-                  above it is the truth and is deliberately not capped, so an
-                  overpaid Order reads over 100%. */}
-              {finance.verifiedPercent !== null && (
-                <div
-                  role="presentation"
-                  style={{ marginTop: '6px', height: '4px', borderRadius: '2px', background: colors.float, overflow: 'hidden' }}
-                >
-                  <div style={{
-                    height: '100%', borderRadius: '2px',
-                    width: `${progressWidth(finance.verifiedPercent)}%`,
-                    background: finance.fullyPaid ? colors.green : colors.blue,
-                    transition: 'width 0.3s',
-                  }} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* MONEY THAT IS ONLY PARTLY THIS ORDER'S.
-
-              A payment may legitimately be split across targets, and every
-              figure above counts only this Order's share. Said out loud, because
-              a reader comparing the Balance here against a bank statement needs
-              to know the difference is a split and not a missing payment.
-
-              DELIBERATELY NOT CALLED "UNALLOCATED": the rest of that money may
-              be on another Order, on a PI, or on nothing at all, and this screen
-              reads only THIS Order's allocations. Finance answers that question,
-              from the payment's own record — which is where the link goes. */}
-          {finance.splitPayments.length > 0 && (
-            <div style={{
-              marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`,
-              fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-            }}>
-              {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
-              {' '}allocated across more than one record. Once a payment is allocated, the
-              allocations decide what each Order receives — so only this Order&apos;s allocated
-              share is counted above, even where the payment also names this Order directly.
-              The full amount of each is shown beneath its share, and the complete allocation
-              history is in its Finance record.
-            </div>
-          )}
-        </SectionCard>
-
-        {/* ── Payments ──
-
-            THE COLUMN THAT DID NOT RECONCILE. "Amount" printed each payment's
-            FULL ledger amount, while the summary above counted only this
-            Order's ALLOCATED share of it. For a payment split across two Orders
-            those are different numbers, so a reader adding the column by eye got
-            a total that did not match the tile. The leading figure is now this
-            Order's share — the figure the summary is built from — and a split
-            payment states its full amount underneath, so nothing is hidden and
-            the two agree.
-
-            STATUS WORDING NOW MATCHES THE PI — see PAYMENT_STATUS_COLOR above
-            for the three labels that disagreed and why each was wrong here. The
-            colours are this screen's existing ones, unchanged. */}
-        <SectionCard title={`Payments (${payments.length})`}>
-          {payments.length === 0 ? (
-            <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
-              No payment has been recorded against this Order yet.
-              {order.total_value != null && (
-                <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
-              )}
-            </div>
-          ) : (
-            <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
-                <caption style={{
-                  captionSide: 'top', textAlign: 'left', fontSize: '11px',
-                  color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
-                }}>
-                  Amounts are this Order&apos;s share. Where a payment has been
-                  allocated, the allocation decides the share; where it has not,
-                  a payment linked to this Order counts in full.
-                </caption>
-                <thead>
-                  <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                    {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
-                      <th key={h || `action-${i}`} scope="col" style={{
-                        padding: '6px 12px',
-                        textAlign: h === 'This Order' ? 'right' : 'left',
-                        fontSize: '10px', fontWeight: 600, color: colors.muted,
-                        textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
-                      }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {payments.map(p => {
-                    // One vocabulary, from the PI card's own map. An
-                    // unrecognised status says what it is rather than being
-                    // relabelled as something friendlier that might be untrue.
-                    const statusLabel = piPaymentStatusLabel(p.status)
-                    const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
-                    return (
-                      <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                        <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
-                          {/* A payment with no customer says so, from the one
-                              shared formatter. An em dash would read as
-                              missing data rather than as a Suspense payment. */}
-                          {customerDisplayName(p.client_name)}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-                          <div style={{ fontWeight: 600, color: colors.primary }}>
-                            {formatMoney(p.exactAllocatedAmount)}
-                          </div>
-                          {/* Only when the two genuinely differ. Saying "of
-                              ₹X" under every row would be noise on the ordinary
-                              case, where the whole payment is this Order's. */}
-                          {p.isPartialShare && (
-                            <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
-                              allocated from {formatMoney(p.exactAmount)} received
-                            </div>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                          {fmtDate(p.payment_date)}
-                        </td>
-                        <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
-                          {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
-                        </td>
-                        <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
-                          {statusLabel}
-                        </td>
-                        {/* THE FINANCE RECORD — a payment's proof, its verification
-                            history and its complete allocation across every target
-                            live in Finance, and this is the door to them. Offered
-                            only to a reader who holds Finance module entry, so
-                            nobody is shown a door that shuts in their face; the
-                            Finance page still re-reads the row under that reader's
-                            own RLS and refuses anything they may not open. */}
-                        <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                          {financeCaps.canAccessFinanceModule && (
-                            <button
-                              onClick={() => router.push(financePaymentHref(p.id))}
-                              className="boe-btn boe-btn-ghost"
-                              style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
-                              title={`Open this payment's full record in Finance`}
-                            >
-                              Finance record
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </SectionCard>
-
-        {/* ── The approved PI this Order came from ──
-
-            ADDITIVE, AND PLACED WITHOUT MOVING ANYTHING. Every Order-owned
-            section above and below keeps its position: this is what the Order
-            gains, not a rearrangement of what it had.
-
-            NOTHING IS RENDERED FOR AN ORDER WITH NO PI. `none` is the state of
-            an Order created from an Order Request or by any other path, and the
-            screen is then exactly what it has always been — no empty card, and
-            no panel explaining the absence of a thing that was never there.
-
-            AND THERE IS NO SECOND PAYMENT SURFACE. The Order's own Payment
-            Summary above states the verified position from the Order's
-            allocations; a PI-side payment block here would answer the same
-            question a second time, with a figure that stopped being the
-            authority when the money moved onto the Order. */}
-        {/* ── The confirmed documents ──
-            Rendered for every Order that came from a PI, including one nobody
-            has asked about yet: "no documents have been generated" is the
-            answer to a question somebody opening this page is asking. An Order
-            with no PI has no documents to generate and gets no card — it gets
-            the one-line explanation below instead. */}
-        {piHandoff.kind !== 'none' && (
-          <OrderDocumentsCard
-            view={documentsView}
-            canGenerate={mayGenerateDocuments}
-            onGenerate={requestDocuments}
-            generating={docBusy}
-            onDownload={downloadDocument}
-            downloading={docDownload}
-            error={docError}
-          />
-        )}
-
-        {/* EVERY ORDER NOW SAYS SOMETHING ABOUT ITS PI, and that is a
-            correction. This originally rendered nothing at all for an Order
-            with no linked PI, reasoning that an absence needs no explanation.
-            But "this Order has no PI" and "the feature is not deployed" are
-            indistinguishable from the outside, and the first reader of this
-            screen read the silence as the second. The panel is read-only and
-            offers no action, because there is no action to offer. */}
-        {/* THE PI HISTORY (20261119000000): the current PI, a pending revision
-            and everything before, for every Order that came from a PI. */}
-        {piHandoff.kind !== 'none' && (
-          <OrderPiHistoryCard
-            history={piHistory}
-            canPropose={mayProposeRevision}
-            canDecide={mayDecideRevision && piHistory.pending !== null}
-            onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-            onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-            onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-            onOpen={openVersion}
-            opening={versionOpening}
-            busy={revisionBusy}
-            error={revisionDialog === null ? revisionError : null}
-          />
-        )}
-
-        {piHandoff.kind === 'none' && <OrderPiNoSource />}
-
-        {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
-
-        {piHandoff.kind === 'ready' && (
-          <>
-            <OrderPiSummaryCard
-              client={piHandoff.client}
-              onOpenClient={() => setClientOpen(true)}
-              dates={piHandoff.dates}
-              figures={piHandoff.figures}
-              billing={piHandoff.billing}
-              workbookName={wbPath ? piHandoff.workbookName : null}
-              onDownloadWorkbook={downloadWorkbook}
-              downloading={wbBusy}
-              downloadError={wbError}
-              // The way back to the PI this Order came from. The database has
-              // had this door since 20260924000000 — can_view_order_submission_via_order
-              // exists so that seeing the Order is a way onto its approved PI —
-              // and nothing in the interface used it, so the trail ran one way
-              // only. The PI screen still decides for itself under RLS.
-              onOpenPi={() => router.push(piSubmissionHref(piHandoff.submissionId))}
-            />
-
-            <OrderPiProducts
-              products={piProducts}
-              isMobile={isMobile}
-              representativeThumbnail={representativeThumbnail}
-              customizationThumbnails={customizationThumbnails}
-              unresolvedImages={piImages.unresolved}
-            />
+            {/* ── The approved PI this Order came from ──
+                NOTHING IS RENDERED FOR AN ORDER WITH NO PI beyond the one-line
+                explanation below. AND THERE IS NO SECOND PAYMENT SURFACE: the
+                Order's own position is in the sidebar; a PI-side payment block
+                here would answer the same question a second time, with a
+                figure that stopped being the authority when the money moved
+                onto the Order. */}
+            {piSummaryCard}
 
             {/* The stored figures, through the shared rows builder. Nothing on
                 this page recomputes a total; these are literally the same
                 strings the approved PI screen prints. */}
-            <PiCommercialSummary
-              rows={piHandoff.commercialRows}
-              title="Commercial breakdown"
-              variant="detail"
-            />
-          </>
-        )}
+            {piHandoff.kind === 'ready' && (
+              <PiCommercialSummary
+                rows={piHandoff.commercialRows}
+                title="Commercial breakdown"
+                variant="detail"
+              />
+            )}
 
-        {/* ── Change requests ──
-            Rendered only when there is something to show, so an Order nobody
-            has ever asked to change carries no empty card. An admin sees every
-            request; everyone else sees their own — that split is RLS's, not
-            this component's. */}
-        {changeRequests.length > 0 && (
-          <SectionCard title={`Change Requests (${pendingRequests.length} pending)`}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {changeRequests.map(r => (
-                <div
-                  key={r.id}
-                  style={{
-                    display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
-                    padding: '10px 12px', borderRadius: '8px',
-                    background: r.status === 'pending' ? colors.raised : 'transparent',
-                    border: `1px solid ${colors.border}`,
-                  }}
-                >
-                  <div style={{ flex: '1 1 240px', minWidth: 0 }}>
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
-                      {CHANGE_REQUEST_TYPE_LABEL[r.request_type]}
-                      <span style={{ fontWeight: 500, color: colors.muted }}>
-                        {' · '}{CHANGE_REQUEST_STATUS_LABEL[r.status]}
-                      </span>
-                    </div>
-                    <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
-                      {r.reason}
-                    </div>
-                    <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
-                      {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
-                    </div>
-                    {r.review_note && (
-                      <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
-                        Review note: {r.review_note}
+            {/* ── The confirmed documents ──
+                Rendered for every Order that came from a PI, including one
+                nobody has asked about yet: "no documents have been generated"
+                is the answer to a question somebody opening this page is
+                asking. An Order with no PI has no documents to generate and
+                gets no card — it gets the one-line explanation below instead. */}
+            {piHandoff.kind !== 'none' && (
+              <OrderDocumentsCard
+                view={documentsView}
+                canGenerate={mayGenerateDocuments}
+                onGenerate={requestDocuments}
+                generating={docBusy}
+                onDownload={downloadDocument}
+                downloading={docDownload}
+                error={docError}
+              />
+            )}
+
+            {/* THE PI HISTORY (20261119000000): the current PI, a pending
+                revision and everything before, for every Order from a PI. */}
+            {piHandoff.kind !== 'none' && (
+              <OrderPiHistoryCard
+                history={piHistory}
+                canPropose={mayProposeRevision}
+                canDecide={mayDecideRevision && piHistory.pending !== null}
+                onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+                onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
+                onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
+                onOpen={openVersion}
+                opening={versionOpening}
+                busy={revisionBusy}
+                error={revisionDialog === null ? revisionError : null}
+              />
+            )}
+
+            {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI"
+                and "the feature is not deployed" are indistinguishable from
+                the outside, so the absence is stated rather than left silent.
+                Read-only: there is no action to offer. */}
+            {piHandoff.kind === 'none' && <OrderPiNoSource />}
+
+            {piHandoff.kind === 'unavailable' && <OrderPiUnavailable />}
+
+            {/* ── Change requests ──
+                Rendered only when there is something to show. An admin sees
+                every request; everyone else sees their own — that split is
+                RLS's, not this component's. */}
+            {changeRequests.length > 0 && (
+              <div ref={changeRequestsRef}>
+                <PiCard>
+                  <PiCardHeader title={`Change requests (${pendingRequests.length} pending)`} />
+                  <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {changeRequests.map(r => (
+                      <div
+                        key={r.id}
+                        style={{
+                          display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
+                          padding: '10px 12px', borderRadius: '8px',
+                          background: r.status === 'pending' ? colors.raised : 'transparent',
+                          border: `1px solid ${colors.border}`,
+                        }}
+                      >
+                        <div style={{ flex: '1 1 240px', minWidth: 0 }}>
+                          <div style={{ fontSize: '12px', fontWeight: 700, color: colors.primary }}>
+                            {CHANGE_REQUEST_TYPE_LABEL[r.request_type]}
+                            <span style={{ fontWeight: 500, color: colors.muted }}>
+                              {' · '}{CHANGE_REQUEST_STATUS_LABEL[r.status]}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '12.5px', color: colors.secondary, marginTop: '3px', whiteSpace: 'pre-wrap' }}>
+                            {r.reason}
+                          </div>
+                          <div style={{ fontSize: '11px', color: colors.muted, marginTop: '4px' }}>
+                            {r.requested_by_name ? `${r.requested_by_name} · ` : ''}{fmtDateTime(r.created_at)}
+                          </div>
+                          {r.review_note && (
+                            <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '4px', fontStyle: 'italic' }}>
+                              Review note: {r.review_note}
+                            </div>
+                          )}
+                        </div>
+                        {actingAsAdmin && r.status === 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => setReviewing(r)}
+                            className="boe-btn boe-btn-primary"
+                            style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
+                          >
+                            Review
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </PiCard>
+              </div>
+            )}
+
+            {/* ── Payments ──
+                THE POSITION IS IN THE SIDEBAR; this is the per-payment record
+                behind it, folded by default and opened by "View payment
+                details". Every figure and word here is unchanged: the leading
+                figure is this Order's SHARE — the figure the position is built
+                from — and a split payment states its full amount underneath.
+                Status wording is the PI card's own map, see PAYMENT_STATUS_COLOR. */}
+            <div ref={paymentsRef} style={{ scrollMarginTop: '80px' }}>
+              <PiCard>
+                <CollapsibleHeader
+                  title={`Payments (${payments.length})`}
+                  meta={!recordsReady
+                    ? 'Loading…'
+                    : payments.length === 0
+                      ? 'None recorded'
+                      : `${formatMoney(finance.verified)} verified`}
+                  open={paymentsOpen}
+                  onToggle={() => setPaymentsOpen(o => !o)}
+                  controls="order-payments-body"
+                />
+                {paymentsOpen && (
+                  <div id="order-payments-body" style={{ padding: '4px 20px 16px', borderTop: `1px solid ${colors.border}` }}>
+                    {payments.length === 0 ? (
+                      <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6, paddingTop: '10px' }}>
+                        No payment has been recorded against this Order yet.
+                        {order.total_value != null && (
+                          <> The full order value of {formatMoney(finance.orderValue)} is outstanding.</>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch', paddingTop: '10px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', minWidth: '640px' }}>
+                          <caption style={{
+                            captionSide: 'top', textAlign: 'left', fontSize: '11px',
+                            color: colors.muted, paddingBottom: '8px', lineHeight: 1.5,
+                          }}>
+                            Amounts are this Order&apos;s share. Where a payment has been
+                            allocated, the allocation decides the share; where it has not,
+                            a payment linked to this Order counts in full.
+                            {finance.splitPayments.length > 0 && (
+                              <> {finance.splitPayments.length === 1 ? 'One payment below is' : `${finance.splitPayments.length} payments below are`}
+                              {' '}allocated across more than one record; the complete allocation
+                              history is in each one&apos;s Finance record.</>
+                            )}
+                          </caption>
+                          <thead>
+                            <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
+                              {['Client', 'This Order', 'Date', 'Mode', 'Status', ''].map((h, i) => (
+                                <th key={h || `action-${i}`} scope="col" style={{
+                                  padding: '6px 12px',
+                                  textAlign: h === 'This Order' ? 'right' : 'left',
+                                  fontSize: '10px', fontWeight: 600, color: colors.muted,
+                                  textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap',
+                                }}>{h}</th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payments.map(p => {
+                              // One vocabulary, from the PI card's own map. An
+                              // unrecognised status says what it is rather than being
+                              // relabelled as something friendlier that might be untrue.
+                              const statusLabel = piPaymentStatusLabel(p.status)
+                              const statusColor = PAYMENT_STATUS_COLOR[p.status] ?? colors.muted
+                              return (
+                                <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
+                                  <td style={{ padding: '10px 12px', color: colors.primary, wordBreak: 'break-word', minWidth: '140px' }}>
+                                    {/* A payment with no customer says so, from the one
+                                        shared formatter. An em dash would read as
+                                        missing data rather than as a Suspense payment. */}
+                                    {customerDisplayName(p.client_name)}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
+                                    <div style={{ fontWeight: 600, color: colors.primary }}>
+                                      {formatMoney(p.exactAllocatedAmount)}
+                                    </div>
+                                    {/* Only when the two genuinely differ. Saying "of
+                                        ₹X" under every row would be noise on the ordinary
+                                        case, where the whole payment is this Order's. */}
+                                    {p.isPartialShare && (
+                                      <div style={{ fontSize: '10.5px', color: colors.muted, marginTop: '2px' }}>
+                                        allocated from {formatMoney(p.exactAmount)} received
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                                    {fmtDate(p.payment_date)}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                                    {PAYMENT_MODE_LABEL[p.payment_mode] ?? p.payment_mode ?? '—'}
+                                  </td>
+                                  <td style={{ padding: '10px 12px', whiteSpace: 'nowrap', fontWeight: 600, fontSize: '12px', color: statusColor }}>
+                                    {statusLabel}
+                                  </td>
+                                  {/* THE FINANCE RECORD — a payment's proof, its verification
+                                      history and its complete allocation across every target
+                                      live in Finance, and this is the door to them. Offered
+                                      only to a reader who holds Finance module entry, so
+                                      nobody is shown a door that shuts in their face; the
+                                      Finance page still re-reads the row under that reader's
+                                      own RLS and refuses anything they may not open. */}
+                                  <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                                    {financeCaps.canAccessFinanceModule && (
+                                      <button
+                                        type="button"
+                                        onClick={() => router.push(financePaymentHref(p.id))}
+                                        className="boe-btn boe-btn-ghost"
+                                        style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
+                                        title={`Open this payment's full record in Finance`}
+                                      >
+                                        Finance record
+                                      </button>
+                                    )}
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
                       </div>
                     )}
                   </div>
-                  {actingAsAdmin && r.status === 'pending' && (
-                    <button
-                      onClick={() => setReviewing(r)}
-                      className="boe-btn boe-btn-primary"
-                      style={{ padding: '6px 14px', fontSize: '12px', flexShrink: 0 }}
-                    >
-                      Review
-                    </button>
+                )}
+              </PiCard>
+            </div>
+
+            {/* ── Details ──
+                The record's own fields that are not decisions: provenance,
+                the two stored values, the two timestamps, the notes. Grouped
+                here instead of spread across the top of the page. */}
+            <PiCard>
+              <PiCardHeader title="Details" />
+              <div style={{ padding: '14px 20px' }}>
+                <div className="order-details-grid">
+                  <MetaField label="Requested By" value={order.requested_by_name} />
+                  <MetaField label="Assignee"     value={order.assigned_to_name} />
+                  <MetaField
+                    label="Lead Source"
+                    value={order.lead_source ? LEAD_SOURCE_LABEL[order.lead_source] ?? order.lead_source : undefined}
+                  />
+                  <MetaField label="Total Product Value" value={fmtAmount(order.total_product_value)} />
+                  <MetaField label="Total Order Value"   value={fmtAmount(order.total_value)} />
+                  <MetaField label="Created"       value={fmtDate(order.created_at)} />
+                  <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
+                  {/* Read-only provenance. Rendered only for an Order that
+                      actually came from a request. Deliberately not a link:
+                      converted requests are gone from the Order Requests
+                      module, so there is nowhere to navigate to. The internal
+                      request id rides along as a title attribute for
+                      support/audit lookups without adding UI noise. */}
+                  {order.source_request_number && (
+                    <MetaField
+                      label="Source Request"
+                      value={
+                        <span title={order.source_order_request_id ?? undefined}>
+                          {order.source_request_number}
+                        </span>
+                      }
+                    />
                   )}
                 </div>
-              ))}
-            </div>
-          </SectionCard>
-        )}
-
-        {/* ── Activity timeline ── */}
-        <SectionCard title="Activity">
-          {history.length === 0 ? (
-            <div style={{ color: colors.muted, fontSize: '13px' }}>No activity recorded yet.</div>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              {/* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
-                  source PI's, interleaved newest first — draft, submission,
-                  payments, Finance's decisions, the exception, the PI decision,
-                  the Order, its number, revisions and alignment. A PI event is
-                  marked as such so a reader knows which record wrote it. */}
-              {history.map((entry, idx) => {
-                const orderEntry = entry.source === 'order'
-                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-                  : null
-                const lines = orderEntry ? amendmentLines(orderEntry) : []
-                return (
-                  <div key={entry.key} style={{ display: 'flex', gap: '12px', paddingBottom: idx < history.length - 1 ? '16px' : '0' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
-                      {orderEntry
-                        ? <ActivityDot event_type={orderEntry.event_type} />
-                        : <HistoryDot tone={entry.tone} />}
-                      {idx < history.length - 1 && (
-                        <div style={{ flex: 1, width: 1, background: colors.border, marginTop: '4px' }} />
-                      )}
-                    </div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                        {entry.label}
-                        {entry.source === 'pi' && (
-                          <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, marginLeft: '6px' }}>PI</span>
-                        )}
-                      </div>
-                      {entry.detail && (
-                        <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
-                          {entry.detail}
-                        </div>
-                      )}
-                      {lines.length > 0 && (
-                        <ul style={{
-                          margin: '4px 0 0', paddingLeft: '16px',
-                          fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
-                        }}>
-                          {lines.map(line => <li key={line}>{line}</li>)}
-                        </ul>
-                      )}
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
-                        {entry.actor ? `${entry.actor} · ` : ''}{entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—'}
-                      </div>
-                    </div>
+                {order.notes && (
+                  <div style={{
+                    marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`,
+                    fontSize: '13px', color: colors.secondary, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                  }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>
+                      Notes
+                    </span>
+                    {order.notes}
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </SectionCard>
+                )}
+              </div>
+            </PiCard>
 
+            {/* ── Activity ── the complete trail, last: the current state is
+                understood before the history that produced it. */}
+            {!recordsReady ? (
+              <SectionSkeleton rows={3} label="Loading activity" />
+            ) : (
+              <PiCard>
+                <PiCardHeader
+                  title="Activity"
+                  right={history.length > 0 ? (
+                    <span style={{ fontSize: '12px', color: colors.muted }}>{history.length} event{history.length === 1 ? '' : 's'}</span>
+                  ) : undefined}
+                />
+                <div style={{ padding: '16px 20px' }}>
+                  {history.length === 0 ? (
+                    <div style={{ color: colors.muted, fontSize: '13px' }}>No activity recorded yet.</div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {/* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
+                          source PI's, interleaved newest first — draft, submission,
+                          payments, Finance's decisions, the exception, the PI decision,
+                          the Order, its number, revisions and alignment. A PI event is
+                          marked as such so a reader knows which record wrote it. */}
+                      {history.map((entry, idx) => {
+                        const orderEntry = entry.source === 'order'
+                          ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+                          : null
+                        const lines = orderEntry ? amendmentLines(orderEntry) : []
+                        return (
+                          <div key={entry.key} style={{ display: 'flex', gap: '12px', paddingBottom: idx < history.length - 1 ? '14px' : '0' }}>
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
+                              {orderEntry
+                                ? <ActivityDot event_type={orderEntry.event_type} />
+                                : <HistoryDot tone={entry.tone} />}
+                              {idx < history.length - 1 && (
+                                <div style={{ flex: 1, width: 1, background: colors.border, marginTop: '4px' }} />
+                              )}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
+                                {entry.label}
+                                {entry.source === 'pi' && (
+                                  <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, marginLeft: '6px' }}>PI</span>
+                                )}
+                              </div>
+                              {entry.detail && (
+                                <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
+                                  {entry.detail}
+                                </div>
+                              )}
+                              {lines.length > 0 && (
+                                <ul style={{
+                                  margin: '4px 0 0', paddingLeft: '16px',
+                                  fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
+                                }}>
+                                  {lines.map(line => <li key={line}>{line}</li>)}
+                                </ul>
+                              )}
+                              <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
+                                {entry.actor ? `${entry.actor} · ` : ''}{entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—'}
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              </PiCard>
+            )}
+
+          </div>
+
+          {/* ══ THE HEALTH RAIL ══ sticky on desktop, first on a phone. */}
+          <aside className="order-workspace-aside" aria-label="Order health and payment position">
+            <div className="order-workspace-aside-inner">
+              <OrderHealthCard rows={healthRows} />
+              <PaymentPositionCard finance={finance} loaded={recordsReady} onViewDetails={openPayments} />
+            </div>
+          </aside>
+
+        </div>
       </div>
 
       {/* ── Amendment dialogs ──

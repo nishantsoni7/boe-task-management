@@ -19,7 +19,7 @@
 // approved PI screen. This adds no new design; it puts the agreed treatment on
 // a second screen so the two cannot look like two different products.
 
-import { ChevronRight, Download, FileSpreadsheet, Upload } from 'lucide-react'
+import { ChevronRight, Download, FileSpreadsheet, FileText, Upload } from 'lucide-react'
 import {
   APPROVE_REVISION_BUTTON_LABEL,
   OPEN_VERSION_LABEL,
@@ -600,7 +600,11 @@ export function OrderDocumentsCard({
         }
       />
 
-      <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      {/* COMPACT ROWS, not a band of buttons. One line per file when the pair
+          is downloadable — its name, its version and state, and the download —
+          and one quiet sentence otherwise. The card is only as tall as what it
+          has to say. */}
+      <div style={{ padding: '12px 18px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {view.version === null && (
           <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
             {ORDER_DOCUMENTS_NONE}
@@ -638,27 +642,27 @@ export function OrderDocumentsCard({
         )}
 
         {view.downloadable && (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              type="button"
-              onClick={() => onDownload('xlsx')}
-              disabled={downloading !== null}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '7px' }}
-            >
-              <FileSpreadsheet size={13} strokeWidth={1.9} />
-              {downloading === 'xlsx' ? 'Preparing…' : ORDER_DOCUMENTS_EXCEL_LABEL}
-            </button>
-            <button
-              type="button"
-              onClick={() => onDownload('pdf')}
-              disabled={downloading !== null}
-              className="boe-btn boe-btn-ghost"
-              style={{ padding: '6px 12px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '7px' }}
-            >
-              <Download size={13} strokeWidth={2} />
-              {downloading === 'pdf' ? 'Preparing…' : ORDER_DOCUMENTS_PDF_LABEL}
-            </button>
+          <div>
+            {([
+              { kind: 'xlsx' as const, label: ORDER_DOCUMENTS_EXCEL_LABEL, icon: <FileSpreadsheet size={16} strokeWidth={1.8} className="order-doc-icon" aria-hidden="true" /> },
+              { kind: 'pdf' as const,  label: ORDER_DOCUMENTS_PDF_LABEL,   icon: <FileText size={16} strokeWidth={1.8} className="order-doc-icon" aria-hidden="true" /> },
+            ]).map(file => (
+              <div key={file.kind} className="order-doc-row">
+                {file.icon}
+                <div className="order-doc-name" style={{ minWidth: 0, flex: 1 }}>{file.label}</div>
+                <button
+                  type="button"
+                  onClick={() => onDownload(file.kind)}
+                  disabled={downloading !== null}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}
+                  aria-label={`Download ${file.label}`}
+                >
+                  <Download size={13} strokeWidth={2} aria-hidden="true" />
+                  {downloading === file.kind ? 'Preparing…' : 'Download'}
+                </button>
+              </div>
+            ))}
           </div>
         )}
 
