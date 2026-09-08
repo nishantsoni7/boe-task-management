@@ -38,7 +38,6 @@ import { MultilineText } from '@/components/ui/MultilineText'
 import {
   PiCard,
   PiCardHeader,
-  PiCustomizationCell,
   PiFieldRow,
   PiProductTableHead,
   PiProductThumbnail,
@@ -46,7 +45,8 @@ import {
   type PiThumbnailProps,
 } from '@/components/orders/piPreview'
 import { colors } from '@/lib/tokens'
-import { formatInr, orDash } from '@/lib/pi/previewView'
+import { formatCustomization, formatInr, orDash, type PiAmountRow } from '@/lib/pi/previewView'
+import { SECTION_HEADER_STYLE } from './OrderWorkspace'
 import type { PersistedProduct } from '@/lib/orders/draftsView'
 import {
   BILLING_LABEL,
@@ -188,9 +188,10 @@ export function OrderPiSummaryCard({
   downloadError: string | null
 }) {
   return (
-    <PiCard>
+    <PiCard style={{ height: '100%' }}>
       <PiCardHeader
         title={ORDER_PI_SECTION_TITLE}
+        style={SECTION_HEADER_STYLE}
         right={onOpenPi && (
           <button
             type="button"
@@ -203,9 +204,13 @@ export function OrderPiSummaryCard({
           </button>
         )}
       />
-      <div className="pi-detail-summary">
+      {/* The approved treatment, one notch denser: this band shares a row with
+          the commercial breakdown on the Order, so it keeps to the height its
+          facts need. Inline, because the .pi-detail-* rules are the PI
+          screen's own and are pinned there. */}
+      <div className="pi-detail-summary" style={{ padding: '10px 14px 12px', gap: '10px', gridTemplateColumns: 'minmax(0, 1fr)' }}>
 
-        <div className="pi-detail-summary-left">
+        <div className="pi-detail-summary-left" style={{ gap: '12px' }}>
 
           {/* THE NAME IS THE CONTROL, and it still looks like the name — the
               approved treatment, unchanged. The contact number and both
@@ -309,7 +314,7 @@ export function OrderPiSummaryCard({
         {/* ── The commercial surface ──
             The pre-GST total and the billing declaration measured against it.
             Label over value, in the approved figure treatment. */}
-        <section className="pi-detail-summary-paycard">
+        <section className="pi-detail-summary-paycard" style={{ padding: '11px 14px' }}>
           <div className="pi-detail-summary-paybody">
             <div className="pi-detail-summary-values">
               {figures.map(figure => (
@@ -365,6 +370,130 @@ export function OrderPiSummaryCard({
   )
 }
 
+// ── The customization cell, as the Order shows it ─────────────────────────────
+
+/**
+ * WHAT THE FACTORY MUST DO DIFFERENTLY on this line, in dark readable text on
+ * a pale ground with a red left rule and a small CUSTOM mark.
+ *
+ * The PI screens print the instruction itself in dark red, which is right
+ * where a reviewer is hunting for the lines that carry one. On the Order the
+ * table is read all day beside the product, the quantity and the dimensions,
+ * and a paragraph of red outshouts all three; red here is kept for the mark
+ * and the rule, so the line is still found at a glance and the words are
+ * still the words. Pictures keep the shared thumbnail's red accent, unchanged.
+ *
+ * Page-owned because piPreview.tsx is shared with both PI screens and pinned.
+ */
+export const CUSTOMIZATION_MARK = 'Custom'
+
+export function OrderCustomizationCell({ text, thumbnails, compact, label }: {
+  text: string | null
+  thumbnails: readonly { key: string; props: PiThumbnailProps }[]
+  compact: boolean
+  /** Rendered above the value in the stacked (mobile) layout. */
+  label?: string
+}) {
+  const hasText = !!text && text.trim() !== ''
+  const hasImages = thumbnails.length > 0
+  const marked = hasText || hasImages
+
+  if (!marked) {
+    return (
+      <div style={{ minWidth: 0 }}>
+        {label && <div className="order-custom-label">{label}</div>}
+        <MultilineText style={{ fontSize: '12px', color: colors.muted, fontStyle: 'italic', margin: 0 }}>
+          {formatCustomization(text)}
+        </MultilineText>
+      </div>
+    )
+  }
+
+  return (
+    <div className="order-custom" style={{ minWidth: 0 }}>
+      <div className="order-custom-head">
+        {label && <span className="order-custom-label">{label}</span>}
+        <span className="order-custom-mark">{CUSTOMIZATION_MARK}</span>
+      </div>
+      {hasText && (
+        <MultilineText style={{ fontSize: '12px', margin: 0, color: colors.primary, fontWeight: 500, lineHeight: 1.45 }}>
+          {text}
+        </MultilineText>
+      )}
+      {hasImages && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: hasText ? '6px' : 0 }}>
+          {thumbnails.map(t => (
+            <PiProductThumbnail
+              key={t.key}
+              {...t.props}
+              accent="customization"
+              size={compact ? PI_THUMBNAIL_SIZE.customizationCompact : PI_THUMBNAIL_SIZE.customization}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── The commercial breakdown, as the Order shows it ───────────────────────────
+
+export const ORDER_COMMERCIAL_TITLE = 'Commercial breakdown'
+
+/**
+ * THE SAME ROWS THE PI PRINTS — literally the strings the shared row builder
+ * produced; nothing here recomputes a total — in a denser column that shares
+ * a row with the Approved PI band. The grand total keeps the shared
+ * .pi-commercial-grand-total ground so it reads as the same figure it is on
+ * the PI screen.
+ */
+export function OrderCommercialBreakdown({ rows }: { rows: readonly PiAmountRow[] }) {
+  return (
+    <PiCard style={{ height: '100%' }}>
+      <PiCardHeader title={ORDER_COMMERCIAL_TITLE} style={SECTION_HEADER_STYLE} />
+      <div style={{ padding: '4px 0 6px' }}>
+        {rows.map(row => {
+          const total = row.emphasis === 'total'
+          return (
+            <div
+              key={row.key}
+              className={total ? 'order-commercial-row pi-commercial-grand-total' : 'order-commercial-row'}
+              style={{
+                borderTop: !total && row.groupStart ? `1px solid ${colors.borderSoft}` : undefined,
+                marginTop: !total && row.groupStart ? '3px' : undefined,
+                paddingTop: !total && row.groupStart ? '7px' : undefined,
+                background: row.emphasis === 'advance' ? colors.amberTint : undefined,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{
+                  fontSize: row.emphasis ? '12.5px' : '12px',
+                  fontWeight: row.emphasis ? 700 : 400,
+                  color: row.emphasis ? colors.primary : colors.secondary,
+                }}>
+                  {row.label}
+                </div>
+                {row.note && <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>{row.note}</div>}
+              </div>
+              <div style={{
+                whiteSpace: row.kind === 'text' ? 'normal' : 'nowrap',
+                textAlign: 'right',
+                fontVariantNumeric: 'tabular-nums',
+                fontSize: total ? '14px' : row.emphasis ? '13px' : '12.5px',
+                fontWeight: row.emphasis ? 700 : 500,
+                color: row.kind === 'text' || row.kind === 'missing' ? colors.secondary : colors.primary,
+                fontStyle: row.kind === 'amount' || row.kind === 'missing' ? 'normal' : 'italic',
+              }}>
+                {row.value}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </PiCard>
+  )
+}
+
 // ── The products ──────────────────────────────────────────────────────────────
 
 /**
@@ -392,6 +521,7 @@ export function OrderPiProducts({
     <PiCard>
       <PiCardHeader
         title={ORDER_PI_PRODUCTS_TITLE}
+        style={SECTION_HEADER_STYLE}
         right={
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {unresolvedImages > 0 && (
@@ -450,7 +580,7 @@ export function OrderPiProducts({
                 <PiFieldRow label="Material" value={orDash(p.material)} />
               </div>
 
-              <PiCustomizationCell
+              <OrderCustomizationCell
                 label="Customization"
                 text={p.customization}
                 thumbnails={customizationThumbnails(p.row)}
@@ -477,41 +607,41 @@ export function OrderPiProducts({
             <tbody>
               {products.map(p => (
                 <tr key={p.id} style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: colors.muted, fontFamily: 'var(--font-mono)', fontSize: '11px' }}>
                     {orDash(p.orderProductCode ?? p.itemSequence)}
                   </td>
-                  <td style={{ padding: '10px 14px' }}>
+                  <td style={{ padding: '8px 12px' }}>
                     <PiProductThumbnail {...representativeThumbnail(p.row)} />
                   </td>
-                  <td style={{ padding: '10px 14px', minWidth: '160px', maxWidth: '240px' }}>
+                  <td style={{ padding: '8px 12px', minWidth: '160px', maxWidth: '240px' }}>
                     <MultilineText style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, margin: 0 }}>
                       {orDash(p.productName)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', color: colors.secondary }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: colors.primary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
                     {p.quantity ?? '—'}
                   </td>
-                  <td style={{ padding: '10px 14px', minWidth: '130px', maxWidth: '200px' }}>
+                  <td style={{ padding: '8px 12px', minWidth: '130px', maxWidth: '200px' }}>
                     <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
                       {orDash(p.dimensions)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '10px 14px', minWidth: '120px', maxWidth: '200px' }}>
+                  <td style={{ padding: '8px 12px', minWidth: '120px', maxWidth: '200px' }}>
                     <MultilineText style={{ fontSize: '12px', color: colors.secondary, margin: 0 }}>
                       {orDash(p.material)}
                     </MultilineText>
                   </td>
-                  <td style={{ padding: '10px 14px', minWidth: '140px', maxWidth: '240px' }}>
-                    <PiCustomizationCell
+                  <td style={{ padding: '8px 12px', minWidth: '150px', maxWidth: '260px' }}>
+                    <OrderCustomizationCell
                       text={p.customization}
                       thumbnails={customizationThumbnails(p.row)}
                       compact={false}
                     />
                   </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right', color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.costPerPiece)}
                   </td>
-                  <td style={{ padding: '10px 14px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary }}>
+                  <td style={{ padding: '8px 12px', whiteSpace: 'nowrap', textAlign: 'right', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
                     {formatInr(p.lineTotal)}
                   </td>
                 </tr>
@@ -550,7 +680,7 @@ const DOCUMENT_TONE: Record<OrderDocumentTone, { bg: string; color: string; bord
  * Hiding the button is a courtesy to everybody who would only be refused.
  */
 export function OrderDocumentsCard({
-  view, canGenerate, onGenerate, generating, onDownload, downloading, error,
+  view, canGenerate, onGenerate, generating, onDownload, downloading, error, embedded = false,
 }: {
   view: OrderDocumentsView
   canGenerate: boolean
@@ -561,14 +691,16 @@ export function OrderDocumentsCard({
   downloading: 'xlsx' | 'pdf' | null
   /** One quiet line. Never a stack trace, never a storage message. */
   error: string | null
+  /**
+   * Drawn as a titled section inside a shared "Order records" card rather
+   * than as a card of its own. Composition only: every word, control and gate
+   * is identical in both forms.
+   */
+  embedded?: boolean
 }) {
   const tone = view.tone ? DOCUMENT_TONE[view.tone] : null
 
-  return (
-    <PiCard>
-      <PiCardHeader
-        title={ORDER_DOCUMENTS_TITLE}
-        right={
+  const status = (
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             {view.statusLabel && tone && (
               <span style={{
@@ -597,14 +729,13 @@ export function OrderDocumentsCard({
               </span>
             )}
           </div>
-        }
-      />
+  )
 
-      {/* COMPACT ROWS, not a band of buttons. One line per file when the pair
-          is downloadable — its name, its version and state, and the download —
-          and one quiet sentence otherwise. The card is only as tall as what it
-          has to say. */}
-      <div style={{ padding: '12px 18px 14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+  // COMPACT ROWS, not a band of buttons. One line per file when the pair is
+  // downloadable — its name and the download — and one quiet sentence
+  // otherwise. The section is only as tall as what it has to say.
+  const body = (
+      <div style={{ padding: embedded ? 0 : '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {view.version === null && (
           <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
             {ORDER_DOCUMENTS_NONE}
@@ -693,6 +824,24 @@ export function OrderDocumentsCard({
           </div>
         )}
       </div>
+  )
+
+  if (embedded) {
+    return (
+      <section className="order-record-section" aria-label={ORDER_DOCUMENTS_TITLE}>
+        <div className="order-record-head">
+          <h3 className="order-record-title">{ORDER_DOCUMENTS_TITLE}</h3>
+          {status}
+        </div>
+        {body}
+      </section>
+    )
+  }
+
+  return (
+    <PiCard>
+      <PiCardHeader title={ORDER_DOCUMENTS_TITLE} style={SECTION_HEADER_STYLE} right={status} />
+      {body}
     </PiCard>
   )
 }
@@ -788,7 +937,7 @@ function PiVersionRow({
 
 export function OrderPiHistoryCard({
   history, canPropose, canDecide, onPropose, onApprove, onReject, onOpen,
-  opening, busy, error,
+  opening, busy, error, embedded = false,
 }: {
   history: PiVersionHistory
   canPropose: boolean
@@ -802,15 +951,13 @@ export function OrderPiHistoryCard({
   busy: boolean
   /** One quiet line. Never a stack trace. */
   error: string | null
+  /** Drawn as a titled section inside a shared "Order records" card. Composition only. */
+  embedded?: boolean
 }) {
   const { current, pending, history: past } = history
   const empty = !current && !pending && past.length === 0
 
-  return (
-    <PiCard>
-      <PiCardHeader
-        title={PI_HISTORY_TITLE}
-        right={canPropose ? (
+  const upload = canPropose ? (
           <button
             type="button"
             className="boe-btn boe-btn-ghost"
@@ -820,9 +967,10 @@ export function OrderPiHistoryCard({
             <Upload size={13} strokeWidth={2} />
             {UPLOAD_REVISION_BUTTON_LABEL}
           </button>
-        ) : undefined}
-      />
-      <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        ) : undefined
+
+  const body = (
+      <div style={{ padding: embedded ? 0 : '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {empty && (
           <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55 }}>
             {PI_HISTORY_EMPTY}
@@ -889,6 +1037,24 @@ export function OrderPiHistoryCard({
           <div style={{ fontSize: '12px', color: colors.red, lineHeight: 1.5 }} role="alert">{error}</div>
         )}
       </div>
+  )
+
+  if (embedded) {
+    return (
+      <section className="order-record-section" aria-label={PI_HISTORY_TITLE}>
+        <div className="order-record-head">
+          <h3 className="order-record-title">{PI_HISTORY_TITLE}</h3>
+          {upload}
+        </div>
+        {body}
+      </section>
+    )
+  }
+
+  return (
+    <PiCard>
+      <PiCardHeader title={PI_HISTORY_TITLE} style={SECTION_HEADER_STYLE} right={upload} />
+      {body}
     </PiCard>
   )
 }

@@ -14,13 +14,16 @@ import { PiCard, PiCardHeader } from '@/components/orders/piPreview'
 import {
   CollapsibleHeader,
   MoreActionsMenu,
+  OrderActivityList,
   OrderAttentionBar,
   OrderDetailSkeleton,
   OrderHealthCard,
   PaymentPositionCard,
+  SECTION_HEADER_STYLE,
   SectionSkeleton,
   ToneBadge,
   type MoreActionItem,
+  type OrderActivityItem,
 } from './OrderWorkspace'
 import {
   arrangeOrderActions,
@@ -87,11 +90,12 @@ import {
   type PersistedProduct,
 } from '@/lib/orders/draftsView'
 import { buildImageViewerItems, viewerNav, type PiViewerItem } from '@/lib/pi/previewView'
-import { PiCommercialSummary, PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
+import { PiImageViewer, type PiThumbnailProps } from '@/components/orders/piPreview'
 import { PiClientDetailsModal } from '@/components/orders/piReviewModals'
 // ONE payment-mode source for Order and Finance (20261013000000).
 import { PAYMENT_MODE_LABEL, customerDisplayName } from '@/lib/finance/paymentEntry'
 import {
+  OrderCommercialBreakdown,
   OrderDocumentsCard,
   OrderPiHistoryCard,
   OrderPiNoSource,
@@ -410,7 +414,7 @@ function ActivityDot({ event_type }: { event_type: string }) {
     order_amended:    colors.amber,
   }
   const c = colorMap[event_type] ?? colors.muted
-  return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
+  return <span className="order-activity-dot" style={{ background: c }} aria-hidden="true" />
 }
 
 /** The same marker for an event from the source PI's trail, by its tone. */
@@ -420,7 +424,7 @@ function HistoryDot({ tone }: { tone: 'neutral' | 'blue' | 'amber' | 'green' | '
     : tone === 'red' ? colors.red
     : tone === 'blue' ? colors.blue
     : colors.muted
-  return <div style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0, marginTop: 5 }} />
+  return <span className="order-activity-dot" style={{ background: c }} aria-hidden="true" />
 }
 
 // An amendment is the one event whose detail is a LIST, not a sentence: it can
@@ -1779,10 +1783,8 @@ export default function OrderDetailPage() {
             controls — with exactly one filled button. */}
         <header className="order-command-header">
           <div className="order-command-identity">
-            <div className="order-command-title-row">
-              <h1 className="order-command-title">Order {operationalNumber}</h1>
-              <span className="order-command-client">{order.client_name}</span>
-            </div>
+            <h1 className="order-command-title">Order {operationalNumber}</h1>
+            <div className="order-command-client">{order.client_name}</div>
             <div className="order-command-badges">
               <StatusBadge status={order.status} />
               {/* Production alignment, stated for every reader. 'Not aligned'
@@ -1872,17 +1874,17 @@ export default function OrderDetailPage() {
                 here would answer the same question a second time, with a
                 figure that stopped being the authority when the money moved
                 onto the Order. */}
-            {piSummaryCard}
-
-            {/* The stored figures, through the shared rows builder. Nothing on
-                this page recomputes a total; these are literally the same
-                strings the approved PI screen prints. */}
+            {/* The PI band and its breakdown share one row — the stored
+                figures, through the shared rows builder. Nothing on this page
+                recomputes a total; these are literally the same strings the
+                approved PI screen prints. */}
             {piHandoff.kind === 'ready' && (
-              <PiCommercialSummary
-                rows={piHandoff.commercialRows}
-                title="Commercial breakdown"
-                variant="detail"
-              />
+              <div className="order-record-row">
+                {piSummaryCard}
+                <div className="order-record-row-narrow">
+                  <OrderCommercialBreakdown rows={piHandoff.commercialRows} />
+                </div>
+              </div>
             )}
 
             {/* ── The confirmed documents ──
@@ -1892,32 +1894,39 @@ export default function OrderDetailPage() {
                 asking. An Order with no PI has no documents to generate and
                 gets no card — it gets the one-line explanation below instead. */}
             {piHandoff.kind !== 'none' && (
-              <OrderDocumentsCard
-                view={documentsView}
-                canGenerate={mayGenerateDocuments}
-                onGenerate={requestDocuments}
-                generating={docBusy}
-                onDownload={downloadDocument}
-                downloading={docDownload}
-                error={docError}
-              />
-            )}
-
-            {/* THE PI HISTORY (20261119000000): the current PI, a pending
-                revision and everything before, for every Order from a PI. */}
-            {piHandoff.kind !== 'none' && (
-              <OrderPiHistoryCard
-                history={piHistory}
-                canPropose={mayProposeRevision}
-                canDecide={mayDecideRevision && piHistory.pending !== null}
-                onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
-                onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
-                onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
-                onOpen={openVersion}
-                opening={versionOpening}
-                busy={revisionBusy}
-                error={revisionDialog === null ? revisionError : null}
-              />
+              <PiCard>
+                <PiCardHeader title="Order records" style={SECTION_HEADER_STYLE} />
+                {/* ONE CARD, TWO SECTIONS: the confirmed documents beside the
+                    PI history (20261119000000 — the current PI, a pending
+                    revision and everything before). Composition only: each
+                    section is the same component, with the same words,
+                    controls and gates, drawn without a card of its own. */}
+                <div className="order-records-body">
+                  <OrderDocumentsCard
+                    embedded
+                    view={documentsView}
+                    canGenerate={mayGenerateDocuments}
+                    onGenerate={requestDocuments}
+                    generating={docBusy}
+                    onDownload={downloadDocument}
+                    downloading={docDownload}
+                    error={docError}
+                  />
+                  <OrderPiHistoryCard
+                    embedded
+                    history={piHistory}
+                    canPropose={mayProposeRevision}
+                    canDecide={mayDecideRevision && piHistory.pending !== null}
+                    onPropose={() => { setRevisionError(null); setRevisionDialog({ kind: 'propose' }) }}
+                    onApprove={version => { setRevisionError(null); setRevisionDialog({ kind: 'approve', version }) }}
+                    onReject={version => { setRevisionError(null); setRevisionDialog({ kind: 'reject', version }) }}
+                    onOpen={openVersion}
+                    opening={versionOpening}
+                    busy={revisionBusy}
+                    error={revisionDialog === null ? revisionError : null}
+                  />
+                </div>
+              </PiCard>
             )}
 
             {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI"
@@ -1935,8 +1944,8 @@ export default function OrderDetailPage() {
             {changeRequests.length > 0 && (
               <div ref={changeRequestsRef}>
                 <PiCard>
-                  <PiCardHeader title={`Change requests (${pendingRequests.length} pending)`} />
-                  <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  <PiCardHeader title={`Change requests (${pendingRequests.length} pending)`} style={SECTION_HEADER_STYLE} />
+                  <div style={{ padding: '10px 16px 12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {changeRequests.map(r => (
                       <div
                         key={r.id}
@@ -2004,7 +2013,7 @@ export default function OrderDetailPage() {
                   controls="order-payments-body"
                 />
                 {paymentsOpen && (
-                  <div id="order-payments-body" style={{ padding: '4px 20px 16px', borderTop: `1px solid ${colors.border}` }}>
+                  <div id="order-payments-body" style={{ padding: '2px 16px 14px', borderTop: `1px solid ${colors.border}` }}>
                     {payments.length === 0 ? (
                       <div style={{ color: colors.muted, fontSize: '13px', lineHeight: 1.6, paddingTop: '10px' }}>
                         No payment has been recorded against this Order yet.
@@ -2113,9 +2122,8 @@ export default function OrderDetailPage() {
                 The record's own fields that are not decisions: provenance,
                 the two stored values, the two timestamps, the notes. Grouped
                 here instead of spread across the top of the page. */}
-            <PiCard>
-              <PiCardHeader title="Details" />
-              <div style={{ padding: '14px 20px' }}>
+            <section className="order-details" aria-label="Details">
+              <div>
                 <div className="order-details-grid">
                   <MetaField label="Requested By" value={order.requested_by_name} />
                   <MetaField label="Assignee"     value={order.assigned_to_name} />
@@ -2146,86 +2154,44 @@ export default function OrderDetailPage() {
                 </div>
                 {order.notes && (
                   <div style={{
-                    marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`,
-                    fontSize: '13px', color: colors.secondary, lineHeight: 1.6, whiteSpace: 'pre-wrap',
+                    marginTop: '10px', paddingTop: '9px', borderTop: `1px solid ${colors.border}`,
+                    fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap',
                   }}>
-                    <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '3px' }}>
                       Notes
                     </span>
                     {order.notes}
                   </div>
                 )}
               </div>
-            </PiCard>
+            </section>
 
             {/* ── Activity ── the complete trail, last: the current state is
                 understood before the history that produced it. */}
             {!recordsReady ? (
               <SectionSkeleton rows={3} label="Loading activity" />
             ) : (
-              <PiCard>
-                <PiCardHeader
-                  title="Activity"
-                  right={history.length > 0 ? (
-                    <span style={{ fontSize: '12px', color: colors.muted }}>{history.length} event{history.length === 1 ? '' : 's'}</span>
-                  ) : undefined}
-                />
-                <div style={{ padding: '16px 20px' }}>
-                  {history.length === 0 ? (
-                    <div style={{ color: colors.muted, fontSize: '13px' }}>No activity recorded yet.</div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      {/* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
-                          source PI's, interleaved newest first — draft, submission,
-                          payments, Finance's decisions, the exception, the PI decision,
-                          the Order, its number, revisions and alignment. A PI event is
-                          marked as such so a reader knows which record wrote it. */}
-                      {history.map((entry, idx) => {
-                        const orderEntry = entry.source === 'order'
-                          ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-                          : null
-                        const lines = orderEntry ? amendmentLines(orderEntry) : []
-                        return (
-                          <div key={entry.key} style={{ display: 'flex', gap: '12px', paddingBottom: idx < history.length - 1 ? '14px' : '0' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
-                              {orderEntry
-                                ? <ActivityDot event_type={orderEntry.event_type} />
-                                : <HistoryDot tone={entry.tone} />}
-                              {idx < history.length - 1 && (
-                                <div style={{ flex: 1, width: 1, background: colors.border, marginTop: '4px' }} />
-                              )}
-                            </div>
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ fontSize: '12px', fontWeight: 600, color: colors.primary }}>
-                                {entry.label}
-                                {entry.source === 'pi' && (
-                                  <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, marginLeft: '6px' }}>PI</span>
-                                )}
-                              </div>
-                              {entry.detail && (
-                                <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '2px' }}>
-                                  {entry.detail}
-                                </div>
-                              )}
-                              {lines.length > 0 && (
-                                <ul style={{
-                                  margin: '4px 0 0', paddingLeft: '16px',
-                                  fontSize: '12px', color: colors.secondary, lineHeight: 1.65,
-                                }}>
-                                  {lines.map(line => <li key={line}>{line}</li>)}
-                                </ul>
-                              )}
-                              <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
-                                {entry.actor ? `${entry.actor} · ` : ''}{entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—'}
-                              </div>
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-              </PiCard>
+              /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the
+                 source PI's, interleaved newest first — draft, submission,
+                 payments, Finance's decisions, the exception, the PI decision,
+                 the Order, its number, revisions and alignment. Every entry is
+                 worded HERE, exactly as before; the list only decides how many
+                 are on screen — the latest five until it is expanded. */
+              <OrderActivityList items={history.map((entry): OrderActivityItem => {
+                const orderEntry = entry.source === 'order'
+                  ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+                  : null
+                return {
+                  key: entry.key,
+                  label: entry.label,
+                  detail: entry.detail,
+                  lines: orderEntry ? amendmentLines(orderEntry) : [],
+                  actor: entry.actor,
+                  when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
+                  dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
+                  fromPi: entry.source === 'pi',
+                }
+              })} />
             )}
 
           </div>

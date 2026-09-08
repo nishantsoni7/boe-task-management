@@ -279,6 +279,27 @@ export function arrangeOrderActions(input: OrderActionInput): OrderActionLayout 
   return { primary, secondary, overflow }
 }
 
+// ── The activity trail ────────────────────────────────────────────────────────
+
+/** How many events the trail shows before it asks to be expanded. */
+export const ACTIVITY_PREVIEW_COUNT = 5
+
+/**
+ * How many of `total` events are on screen. A trail of five or fewer is shown
+ * whole and offers no control; a longer one shows the latest five until it is
+ * expanded. Nothing is ever dropped — `hidden` is what the control promises.
+ */
+export function activityWindow(total: number, expanded: boolean): { shown: number; hidden: number } {
+  if (expanded || total <= ACTIVITY_PREVIEW_COUNT) return { shown: total, hidden: 0 }
+  return { shown: ACTIVITY_PREVIEW_COUNT, hidden: total - ACTIVITY_PREVIEW_COUNT }
+}
+
+export function activityToggleLabel(total: number, expanded: boolean): string {
+  return expanded
+    ? `Show latest ${ACTIVITY_PREVIEW_COUNT}`
+    : `View all ${total} events`
+}
+
 // ── The quiet metadata line ───────────────────────────────────────────────────
 
 /**
