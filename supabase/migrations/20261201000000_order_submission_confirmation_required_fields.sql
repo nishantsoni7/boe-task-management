@@ -18,8 +18,53 @@
 --                 stated a commitment ("6 weeks from confirmation") rather than
 --                 a calendar date. See src/lib/orders/dueDate.ts.
 --
--- So the four are now REQUIRED INPUTS to the one function that creates an
--- Order, validated before anything is read or moved, and written into the row.
+-- So the four are now REQUIRED INPUTS to the function that creates an Order.
+-- They are validated BEFORE ANY CONVERSION-SIDE STATE CHANGE OR ORDER CREATION
+-- — after the actor is authorized and the submission row is locked and read,
+-- which is what the checks are judged against, and before the payment position
+-- is read, before any allocation moves, and before the Order exists.
+--
+-- ── DATABASE-FIRST ROLLOUT: NOTHING HERE BREAKS THE DEPLOYED FRONTEND ───────
+--
+-- This migration is applied BEFORE the new frontend ships, and the currently
+-- deployed frontend must not be able to hurt anybody in the window between the
+-- two. So BOTH signatures exist after it:
+--
+--   approve_order_submission(uuid)
+--       KEPT, and turned into a REFUSAL (§1). It creates nothing. A tab that
+--       was loaded before the release calls it, is told to refresh, and cannot
+--       create an Order without the four fields. That is the entire point of
+--       keeping it: a dropped function would answer PGRST202 "function not
+--       found", which is not something a person can act on, and every stale tab
+--       in the company would show it as an unexplained failure.
+--
+--   approve_order_submission(uuid, uuid, date, date, text)
+--       NEW, and the only thing that creates an Order (§2).
+--
+-- WHY THE OVERLOAD IS NOT AMBIGUOUS, and this is the part that must not be
+-- guessed at: NEITHER SIGNATURE TAKES A DEFAULT. PostgREST picks an overload by
+-- matching the SET OF ARGUMENT NAMES in the request body against each
+-- candidate's parameters, and a candidate is only eligible when every parameter
+-- without a default was supplied. So {p_submission_id} can satisfy the
+-- one-argument function alone, and {p_submission_id, p_assigned_to,
+-- p_confirm_date, p_due_date, p_lead_source} can satisfy the five-argument one
+-- alone. Giving any of the four a DEFAULT would make BOTH eligible for the
+-- one-key body and produce PGRST203 "could not choose the best candidate
+-- function" for every approval. §3 asserts pronargdefaults = 0 on both, which
+-- is the single most likely way a later edit breaks this.
+--
+-- The same rule, the same reasoning and the same assertion are already
+-- deployed for accept_employee_asset — see 20261029000000 §6c(ii).
+--
+-- ── FOLLOW-UP CLEANUP, TO BE DONE IN A LATER MIGRATION ──────────────────────
+--
+--   Once the new frontend is in production and no client is calling the
+--   one-argument form any more:
+--
+--       DROP FUNCTION IF EXISTS public.approve_order_submission(uuid);
+--
+--   Do NOT do it here, and do not do it in the same release as the frontend.
+--   Nothing is lost by leaving it: it refuses every call.
 --
 -- WHAT THIS DELIBERATELY DOES NOT DO
 -- ----------------------------------
@@ -29,15 +74,16 @@
 -- rule belongs to the act of CREATING an Order, so it lives in the function
 -- that creates one.
 --
--- NO SECOND CONVERSION PATH. approve_order_submission() remains the only way an
--- Order comes into existence: no client role holds INSERT on public.orders
--- (20260819000000 §1), and the Order Request conversion functions were revoked
--- from every client role when that workflow was retired (20261007000000).
+-- NO SECOND CONVERSION PATH. approve_order_submission(uuid, uuid, date, date,
+-- text) remains the only way an Order comes into existence: no client role
+-- holds INSERT on public.orders (20260819000000 §1), and the Order Request
+-- conversion functions were revoked from every client role when that workflow
+-- was retired (20261007000000).
 --
--- THE OLD SIGNATURE IS DROPPED, NOT KEPT ALONGSIDE. Two overloads would let a
--- stale browser tab keep calling the one-argument form and keep creating
--- incomplete Orders, and PostgREST would have to guess between them. Dropping
--- it means an out-of-date client gets a clear failure instead.
+-- AND THE BLOCKER GUESSES NOTHING. It does not call the new function with
+-- defaults, does not derive a salesperson, does not invent a lead source, does
+-- not fall back to today, and does not read a due date out of prose. There is
+-- no such thing as a nearly-complete Order: it refuses.
 --
 -- NOTHING ELSE IN THE FUNCTION MOVES. The body below is the deployed text of
 -- 20261124000000 with three edits: the signature, the validation block, and the
@@ -49,11 +95,37 @@
 
 begin;
 
--- ── 1. The one-argument form goes ────────────────────────────────────────────
+-- ── 1. The one-argument form STAYS, and refuses ──────────────────────────────
 --
--- Dropped before the new one is created, so the catalog never holds both.
+-- CREATE OR REPLACE, never DROP: replacing the body keeps the function's OID,
+-- its grants and its resolvability, so a deployed tab gets a sentence it can
+-- act on instead of a missing-function error.
+--
+-- It is no longer SECURITY DEFINER. It reads nothing, writes nothing and
+-- decides nothing, so it needs no privileges of its own — and a definer
+-- function that does nothing is a privilege nobody should have to reason about
+-- again.
 
-drop function if exists public.approve_order_submission(uuid);
+create or replace function public.approve_order_submission(p_submission_id uuid)
+returns jsonb
+language plpgsql
+set search_path = public, pg_temp
+as $blocker$
+begin
+  -- p_submission_id is deliberately unread. There is no submission this can
+  -- legitimately approve, and looking one up would only invite somebody to
+  -- "just default the missing fields from it" later.
+  raise exception
+    'ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED: Refresh this page before confirming the Order. Salesperson, confirm date, due date and lead source are now required.'
+    using errcode = 'P0001';
+end;
+$blocker$;
+
+comment on function public.approve_order_submission(uuid) is
+  'COMPATIBILITY BLOCKER, not a conversion. Creates nothing and refuses every call with ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED. It exists only so a browser tab loaded before 20261201000000 gets an actionable sentence instead of a missing-function error, and cannot create an Order without a salesperson, a confirm date, a due date and a lead source. Drop it in a later migration once the new frontend is in production.';
+
+revoke execute on function public.approve_order_submission(uuid) from public, anon;
+grant  execute on function public.approve_order_submission(uuid) to authenticated;
 
 -- ── 2. The conversion, with the four fields it now requires ──────────────────
 
@@ -552,7 +624,7 @@ end;
 $$;
 
 comment on function public.approve_order_submission(uuid, uuid, date, date, text) is
-  'THE ONLY way a Confirmed Order comes into existence. Requires a salesperson, a confirm date, a due date and a lead source, validated before any state is read or moved; the four are written onto the Order. Historical Orders keep their nulls — public.orders has no NOT NULL constraint on any of them. Every other rule (authorization, the row lock, finance verification, the payment routes, diagnostics, the workbook and image checks, the moved allocations, the PI version and both trails) is unchanged from 20261124000000.';
+  'THE ONLY way a Confirmed Order comes into existence. Requires a salesperson, a confirm date, a due date and a lead source, validated before any conversion-side state change or Order creation — after the actor is authorized and the submission row is locked and read, and before the payment position is read, before any allocation moves and before the Order exists. The four are written onto the Order. Historical Orders keep their nulls: public.orders has no NOT NULL constraint on any of them. Every other rule (authorization, the row lock, finance verification, the payment routes, diagnostics, the workbook and image checks, the moved allocations, the PI version and both trails) is unchanged from 20261124000000. The one-argument overload still exists and refuses every call — see §1.';
 
 revoke execute on function public.approve_order_submission(uuid, uuid, date, date, text) from public, anon;
 grant  execute on function public.approve_order_submission(uuid, uuid, date, date, text) to authenticated;
@@ -564,37 +636,90 @@ grant  execute on function public.approve_order_submission(uuid, uuid, date, dat
 
 do $assert$
 declare
-  v_def text := pg_get_functiondef(
+  v_new text := pg_get_functiondef(
     to_regprocedure('public.approve_order_submission(uuid, uuid, date, date, text)'));
+  v_old text := pg_get_functiondef(
+    to_regprocedure('public.approve_order_submission(uuid)'));
+  v_n   integer;
 begin
-  if v_def is null then
+  -- 3a. BOTH signatures exist. This is the whole rollout: the new one converts,
+  --     the old one refuses, and neither is missing.
+  if v_new is null then
     raise exception 'ASSERTION FAILED: approve_order_submission(uuid, uuid, date, date, text) does not exist';
   end if;
-
-  if to_regprocedure('public.approve_order_submission(uuid)') is not null then
-    raise exception 'ASSERTION FAILED: the one-argument approve_order_submission still exists';
+  if v_old is null then
+    raise exception 'ASSERTION FAILED: the one-argument approve_order_submission is missing — a tab loaded before this release would get a missing-function error instead of being told to refresh';
   end if;
 
-  if v_def !~ 'ORDER_CONFIRMATION_SALESPERSON_REQUIRED' then
+  -- 3b. AND THERE ARE ONLY THOSE TWO. A third overload would be another way to
+  --     create an Order, or another candidate for PostgREST to choose between.
+  select count(*) into v_n
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'approve_order_submission';
+  if v_n <> 2 then
+    raise exception 'ASSERTION FAILED: approve_order_submission has % overloads, expected exactly 2', v_n;
+  end if;
+
+  -- 3c. NEITHER DECLARES A DEFAULT. This is what keeps the overload resolvable:
+  --     a default on any of the four would make the five-argument function
+  --     eligible for a {p_submission_id} body as well, and PostgREST would
+  --     answer PGRST203 "could not choose the best candidate function" for
+  --     every approval instead of picking one. The same guard 20261029000000
+  --     §6c(ii) already runs for accept_employee_asset.
+  select count(*) into v_n
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname = 'approve_order_submission'
+    and p.pronargdefaults > 0;
+  if v_n <> 0 then
+    raise exception 'ASSERTION FAILED: % approve_order_submission overload(s) declare a DEFAULT; that makes the PostgREST call ambiguous (PGRST203)', v_n;
+  end if;
+
+  -- 3d. THE BLOCKER REFUSES, AND CREATES NOTHING.
+  if v_old !~ 'ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED' then
+    raise exception 'ASSERTION FAILED: the one-argument form does not carry the update-required refusal';
+  end if;
+  if v_old ~* 'insert\s+into' then
+    raise exception 'ASSERTION FAILED: the one-argument form can still create a row';
+  end if;
+  if v_old ~* 'delete\s+from' or v_old ~* '\mupdate\M\s+\w' then
+    raise exception 'ASSERTION FAILED: the one-argument form writes something; it must only refuse';
+  end if;
+  -- It must not quietly hand the work to the new function with invented values,
+  -- and must not read a submission in order to invent them. It has no SELECT
+  -- and no PERFORM at all: there is nothing it needs to know. A name match is
+  -- NOT the test — the CREATE header names the function itself — but a call or
+  -- a lookup would need one of these two keywords.
+  if v_old ~* '\mselect\M' or v_old ~* '\mperform\M' then
+    raise exception 'ASSERTION FAILED: the one-argument form reads or delegates; it must only refuse';
+  end if;
+
+  -- 3e. THE FOUR GATES ARE IN THE FUNCTION THAT CREATES AN ORDER.
+  if v_new !~ 'ORDER_CONFIRMATION_SALESPERSON_REQUIRED' then
     raise exception 'ASSERTION FAILED: the salesperson gate is missing';
   end if;
-  if v_def !~ 'ORDER_CONFIRMATION_CONFIRM_DATE_REQUIRED' then
+  if v_new !~ 'ORDER_CONFIRMATION_CONFIRM_DATE_REQUIRED' then
     raise exception 'ASSERTION FAILED: the confirm-date gate is missing';
   end if;
-  if v_def !~ 'ORDER_CONFIRMATION_DUE_DATE_REQUIRED' then
+  if v_new !~ 'ORDER_CONFIRMATION_DUE_DATE_REQUIRED' then
     raise exception 'ASSERTION FAILED: the due-date gate is missing';
   end if;
-  if v_def !~ 'ORDER_CONFIRMATION_LEAD_SOURCE_REQUIRED' then
+  if v_new !~ 'ORDER_CONFIRMATION_LEAD_SOURCE_REQUIRED' then
     raise exception 'ASSERTION FAILED: the lead-source gate is missing';
   end if;
-  if v_def !~ 'assigned_to' then
+
+  -- 3f. AND THE FOUR VALUES REACH THE ROW.
+  if v_new !~ 'assigned_to' then
     raise exception 'ASSERTION FAILED: the INSERT does not carry the salesperson';
   end if;
-  if v_def ~ 'coalesce\(v_sub\.order_confirmation_date' then
+  if v_new !~ 'p_assigned_to' or v_new !~ 'p_confirm_date'
+     or v_new !~ 'p_due_date' or v_new !~ 'v_lead_source' then
+    raise exception 'ASSERTION FAILED: the INSERT does not carry all four given values';
+  end if;
+  if v_new ~ 'coalesce\(v_sub\.order_confirmation_date' then
     raise exception 'ASSERTION FAILED: the confirm date still falls back to today';
   end if;
 
-  -- The Orders table must NOT have been tightened: historical rows keep nulls.
+  -- 3g. HISTORICAL ORDERS ARE NOT BROKEN: the table was not tightened.
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'orders'

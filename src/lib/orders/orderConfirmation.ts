@@ -3,7 +3,10 @@
 // Salesperson, confirm date, due date and lead source. The rule lives here so
 // the approval dialog, the page that calls the RPC and the tests all state it
 // once; the AUTHORITY is approve_order_submission() (20261201000000), which
-// re-derives every one of them before it reads or moves anything.
+// re-derives every one of them BEFORE ANY CONVERSION-SIDE STATE CHANGE OR
+// ORDER CREATION: after the actor is authorized and the submission row is
+// locked and read, and before the payment position is read, before any
+// allocation moves and before the Order exists.
 //
 // NOTHING HERE AUTHORIZES AND NOTHING HERE IS A CONTROL. A screen that refuses
 // to submit is a courtesy to the person filling it in. A stale tab, a replayed
@@ -136,7 +139,25 @@ function fail(field: OrderConfirmationField): OrderConfirmationCheck {
 // owns. The server's own message is never rendered — an unrecognised code
 // degrades to the generic answer rather than printing a token from the wire.
 
+/**
+ * WHAT A TAB LOADED BEFORE THE RELEASE IS TOLD.
+ *
+ * During the rollout window — the migration applied, this frontend not yet
+ * deployed — a browser tab that is still open calls the one-argument
+ * approve_order_submission. That signature is kept alive precisely so it can
+ * say this instead of answering "function not found", which nobody can act on.
+ * It creates nothing.
+ *
+ * The code is mapped here because this bundle owns every sentence it renders,
+ * and because a tab left open ACROSS the deploy would be running this code
+ * against that function.
+ */
+export const CLIENT_UPDATE_REQUIRED_MESSAGE =
+  'This page is out of date. Refresh it before confirming the Order — a salesperson, a confirm date, a due date and a lead source are now required.'
+
 const SERVER_FAILURES: readonly { code: string; field: OrderConfirmationField | null; message: string }[] = [
+  // Not about one field: the whole call is from a client that predates them.
+  { code: 'ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED', field: null, message: CLIENT_UPDATE_REQUIRED_MESSAGE },
   { code: 'ORDER_CONFIRMATION_SALESPERSON_REQUIRED',  field: 'salesperson',  message: ORDER_CONFIRMATION_MESSAGE.salesperson },
   { code: 'ORDER_CONFIRMATION_SALESPERSON_UNKNOWN',   field: 'salesperson',  message: 'That salesperson is no longer a BOE user. Choose another before confirming this Order.' },
   { code: 'ORDER_CONFIRMATION_CONFIRM_DATE_REQUIRED', field: 'confirm_date', message: ORDER_CONFIRMATION_MESSAGE.confirm_date },

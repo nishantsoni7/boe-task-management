@@ -543,7 +543,10 @@ describe('the detail page renders only what it fetched', () => {
     // PI, where the confirm date silently defaulted to the day of approval and
     // the due date is null whenever the document stated a commitment rather
     // than a calendar date). 20261201000000 makes all four required inputs and
-    // validates them in the database before it reads or moves anything.
+    // validates them in the database before any conversion-side state change or Order creation — after
+    // the actor is authorized and the submission row is locked and read, and
+    // before the payment position is read, before any allocation moves and
+    // before the Order exists.
     //
     // WHAT IS STILL NOT IN THE PAYLOAD is the point: no total, no client name,
     // no status, and above all no number. Everything the browser may not be
