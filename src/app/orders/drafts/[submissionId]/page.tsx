@@ -1299,7 +1299,7 @@ function PiDraftDetailPageInner() {
    * This check exists so the person filling the dialog in is told which field
    * is missing, in a sentence that names it, without spending a round trip.
    * It is NOT the control: approve_order_submission (20261201000000) validates
-   * all four before it reads or moves anything, so a stale tab, a replayed
+   * all four before any conversion-side state change or Order creation, so a stale tab, a replayed
    * request and a hand-made call are refused there. A refusal from either side
    * marks and focuses the same field.
    */

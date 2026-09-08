@@ -6,8 +6,8 @@
  *   the rule      validateOrderConfirmation, which the dialog runs so the
  *                 person filling it in is told which field is missing
  *   the authority approve_order_submission (20261201000000), which re-derives
- *                 all four before it reads or moves anything — read here from
- *                 the migration's own text
+ *                 all four before any conversion-side state change or Order
+ *                 creation — read here from the migration's own text
  *
  * Reads repository files only. No database, no network.
  *
@@ -23,6 +23,7 @@ import {
   ORDER_CONFIRMATION_MESSAGE,
   ORDER_LEAD_SOURCES,
   SALESPERSON_LABEL,
+  CLIENT_UPDATE_REQUIRED_MESSAGE,
   describeConfirmationFailure,
   isOrderLeadSource,
   leadSourceLabel,
@@ -153,6 +154,19 @@ describe('a refusal from the database is said in the same words', () => {
     }
   })
 
+  test('a stale client is told to refresh, and that refusal names no field', () => {
+    // The rollout window: the migration applied, this frontend not yet
+    // deployed. A tab that was already open calls the one-argument form, which
+    // exists only to refuse. It is not about one field — the whole call comes
+    // from a client that predates all four.
+    const named = describeConfirmationFailure(
+      'ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED: Refresh this page before confirming the Order.')
+    assert.ok(named)
+    assert.equal(named?.field, null)
+    assert.equal(named?.message, CLIENT_UPDATE_REQUIRED_MESSAGE)
+    assert.match(named?.message ?? '', /[Rr]efresh/)
+  })
+
   test('the server\'s own prose never reaches the screen', () => {
     const named = describeConfirmationFailure('ORDER_CONFIRMATION_DUE_DATE_REQUIRED: raw server text 42')
     assert.ok(named && !named.message.includes('raw server text'))
@@ -171,10 +185,72 @@ describe('the conversion RPC refuses an incomplete Order itself', () => {
       'exactly one Order is created, by the one function')
   })
 
-  test('the one-argument form is DROPPED, so a stale client cannot keep calling it', () => {
-    assert.match(sql, /drop function if exists public\.approve_order_submission\(uuid\);/)
-    // And the migration proves it, on apply.
-    assert.match(sql, /ASSERTION FAILED: the one-argument approve_order_submission still exists/)
+  test('BOTH signatures exist after it — the rollout is database-first and safe', () => {
+    // CASE A, which this prevents: the migration is applied first and the
+    // DEPLOYED frontend still calls the one-argument form. Dropping it would
+    // break every approval in the window between the two deploys.
+    assert.equal(/drop function if exists public\.approve_order_submission\(uuid\)/.test(sql), false,
+      'the one-argument form must NOT be dropped by this migration')
+    assert.match(sql, /create or replace function public\.approve_order_submission\(p_submission_id uuid\)/)
+    assert.match(sql, /create or replace function public\.approve_order_submission\(\s*\n\s*p_submission_id uuid,/)
+    // Both are proved to exist when it applies, and only those two.
+    assert.match(sql, /ASSERTION FAILED: approve_order_submission\(uuid, uuid, date, date, text\) does not exist/)
+    assert.match(sql, /ASSERTION FAILED: the one-argument approve_order_submission is missing/)
+    assert.match(sql, /expected exactly 2/)
+  })
+
+  test('the one-argument form REFUSES, and creates nothing', () => {
+    // It is kept only so a stale tab is told what to do. It must never become a
+    // second, laxer way to create an Order.
+    assert.match(sql, /ORDER_CONFIRMATION_CLIENT_UPDATE_REQUIRED: Refresh this page before confirming the Order/)
+    const blocker = sql.slice(
+      sql.indexOf('create or replace function public.approve_order_submission(p_submission_id uuid)'),
+      sql.indexOf('$blocker$;') + 10)
+    assert.match(blocker, /raise exception/)
+    for (const forbidden of [/insert\s+into/i, /delete\s+from/i, /\bselect\b/i, /\bperform\b/i, /coalesce/i]) {
+      assert.equal(forbidden.test(blocker), false, `the blocker must not match ${forbidden}`)
+    }
+  })
+
+  test('and the migration proves the blocker cannot write or delegate, on apply', () => {
+    assert.match(sql, /ASSERTION FAILED: the one-argument form does not carry the update-required refusal/)
+    assert.match(sql, /ASSERTION FAILED: the one-argument form can still create a row/)
+    assert.match(sql, /ASSERTION FAILED: the one-argument form reads or delegates/)
+  })
+
+  test('NEITHER overload declares a DEFAULT — this is what keeps PostgREST unambiguous', () => {
+    // PostgREST picks an overload by matching the SET OF ARGUMENT NAMES in the
+    // request body, and a candidate is eligible only when every parameter
+    // without a default was supplied. A DEFAULT on any of the four would make
+    // the five-argument function eligible for a {p_submission_id} body too, and
+    // every approval would answer PGRST203 instead of resolving. The same rule
+    // and the same guard are already deployed for accept_employee_asset.
+    const firstBody = sql.indexOf('  -- ── 1. Authorization, server-side, before anything is read ──')
+    assert.ok(firstBody > 0, 'the five-argument body is where this expects it')
+    // DECLARATIONS ONLY: the prose in between legitimately uses the word
+    // "default", and a comment is not a parameter.
+    const signatures = sql
+      .slice(sql.indexOf('create or replace function public.approve_order_submission(p_submission_id uuid)'), firstBody)
+      .split('\n').map(line => line.replace(/--.*$/, '')).join('\n')
+    assert.equal(/\bdefault\b/i.test(signatures), false, 'no parameter may carry a DEFAULT')
+    assert.match(sql, /p\.pronargdefaults > 0/)
+    assert.match(sql, /PGRST203/)
+    // The precedent it follows, so a reader can check the claim.
+    const precedent = read('supabase/migrations/20261029000000_asset_handover_acknowledgement.sql')
+    assert.match(precedent, /pronargdefaults > 0/)
+    assert.match(precedent, /PGRST203/)
+  })
+
+  test('the frontend calls the FIVE-argument signature, by name', () => {
+    const page = read(PI_PAGE)
+    const call = page.slice(page.indexOf("supabase.rpc('approve_order_submission'"),
+                            page.indexOf("supabase.rpc('approve_order_submission'") + 420)
+    for (const key of ['p_submission_id:', 'p_assigned_to:', 'p_confirm_date:', 'p_due_date:', 'p_lead_source:']) {
+      assert.ok(call.includes(key), `the call must send ${key}`)
+    }
+    // Five keys resolve to the five-argument candidate alone; the one-argument
+    // candidate cannot satisfy a body carrying four parameters it does not have.
+    assert.equal((call.match(/p_[a-z_]+:/g) ?? []).length, 5, 'exactly the five it declares')
   })
 
   test('all four are validated, each with its own code', () => {
