@@ -383,6 +383,26 @@ describe('a narrow write does not re-read the whole page', () => {
     assert.equal(fn.includes('reloadOrderRow()'), false)
   })
 
+  test('the chronology and the register are derived once per load, not per render', () => {
+    // Opening the image viewer, expanding the trail or opening a menu
+    // re-renders this component. Without these the whole merged chronology was
+    // rebuilt and re-sorted for a state change that touched none of it.
+    for (const memo of [
+      'const history = useMemo(',
+      'const orderEntryById = useMemo(',
+      'const piHistory = useMemo(',
+      'const documentsView = useMemo(',
+    ]) {
+      assert.ok(page.includes(memo), memo + ' must be memoised')
+    }
+  })
+
+  test('and the finance position is still the one expression Finance pins', () => {
+    // Deliberately NOT memoised: it sits after the early returns where a hook
+    // may not go, and moving it would move the expression two Finance tests
+    // read as proof that this screen adds no money of its own.
+    assert.ok(page.includes('buildOrderFinancePosition(payments, order.total_value)'))
+  })
   test('nothing on this page reloads the browser', () => {
     for (const forbidden of ['window.location.reload', 'location.href =', 'router.refresh()']) {
       assert.equal(page.includes(forbidden), false, `${forbidden} must not appear`)
