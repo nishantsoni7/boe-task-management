@@ -2060,6 +2060,352 @@ body {
   margin: 16px 0;
 }
 
+
+/* ─────────────────────────────────────────────────────
+   CONFIRMED ORDER WORKSPACE  (/orders/[id])
+
+   One command header, an attention bar, then a 70/30
+   workspace: the record (products, documents, PI,
+   payments, activity) on the left and the health rail
+   (order health, payment position) on the right. The
+   same idiom as .payroll-detail-workspace; the rail is
+   sticky on desktop and moves ABOVE the record below
+   1100px, because on a phone the answer comes before
+   the evidence.
+───────────────────────────────────────────────────── */
+.order-detail-page {
+  max-width: 1480px;
+}
+
+.order-command-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.order-command-identity {
+  min-width: 0;
+  flex: 1 1 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-command-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.order-command-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #111318;
+  line-height: 1.15;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.order-command-client {
+  font-size: 15px;
+  font-weight: 500;
+  color: #4A5261;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.order-command-badges {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.order-command-meta {
+  font-size: 12px;
+  color: #6B7384;
+  line-height: 1.5;
+}
+
+.order-command-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 1 auto;
+}
+
+.order-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 10px;
+  padding: 4px 6px 4px 2px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  color: #6B7384;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.order-back:hover { color: #111318; background: rgba(0,0,0,0.04); }
+.order-back:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+
+/* ── The attention bar ── */
+.order-attention {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  border-radius: 9px;
+  background: rgba(232,160,48,0.09);
+  border: 1px solid rgba(190,140,40,0.32);
+}
+.order-attention-icon { color: #B77A12; flex-shrink: 0; margin-top: 1px; }
+.order-attention-body {
+  display: flex;
+  align-items: baseline;
+  gap: 4px 14px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.order-attention-heading {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #7A5510;
+  white-space: nowrap;
+}
+.order-attention-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.order-attention-item {
+  font-size: 12.5px;
+  color: #4A5261;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.order-attention-item::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #C98A1E;
+  flex-shrink: 0;
+}
+.order-attention-item--red { color: #B42318; font-weight: 600; }
+.order-attention-item--red::before { background: #D94F4F; }
+
+/* ── The workspace grid ── */
+.order-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 20px;
+  align-items: start;
+}
+.order-workspace-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding-bottom: 24px;
+}
+.order-workspace-aside { min-width: 0; }
+/* Sticky lives on the inner node — the grid item stretches to the row height,
+   which is what gives the sticky child room to travel. */
+.order-workspace-aside-inner {
+  position: sticky;
+  top: 76px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - 92px);
+  overflow-y: auto;
+}
+
+@media (max-width: 1100px) {
+  .order-workspace { grid-template-columns: minmax(0, 1fr); }
+  .order-workspace-aside { order: -1; }
+  .order-workspace-aside-inner {
+    position: static;
+    max-height: none;
+    overflow-y: visible;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+}
+@media (max-width: 640px) {
+  .order-workspace-aside-inner { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ── The health card ── */
+.order-health {
+  margin: 0;
+  padding: 4px 0;
+}
+.order-health-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 4px 10px;
+  align-items: baseline;
+  padding: 8px 16px;
+  border-top: 1px solid #F0F2F5;
+}
+.order-health-row:first-child { border-top: none; }
+.order-health-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8C94A6;
+}
+.order-health-value {
+  margin: 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.order-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  top: -1px;
+}
+.order-health-detail {
+  flex-basis: 100%;
+  padding-left: 15px;
+  font-size: 11.5px;
+  color: #6B7384;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The payment position ── */
+.order-money-lines {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.order-money-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+}
+.order-money-line dt { color: #6B7384; }
+.order-money-line dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.order-inline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  align-self: flex-start;
+  padding: 4px 0;
+  border: none;
+  background: none;
+  color: #2F5BB7;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 4px;
+}
+.order-inline-link:hover { text-decoration: underline; }
+.order-inline-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+
+/* ── Collapsible section header (payments) ── */
+.order-collapsible-trigger {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 20px;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+.order-collapsible-trigger:hover { background: #F8F9FB; }
+.order-collapsible-trigger:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+
+/* ── Overflow menu items ── */
+.order-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.order-menu-item:hover:not(:disabled) { background: #F8F9FB; }
+.order-menu-item:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.order-menu-item:disabled { cursor: not-allowed; opacity: 0.5; }
+
+/* ── The documents rows ── */
+.order-doc-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid #F0F2F5;
+}
+.order-doc-row:first-child { border-top: none; padding-top: 0; }
+.order-doc-icon { color: #6B7384; flex-shrink: 0; }
+.order-doc-name { font-size: 13px; font-weight: 600; color: #111318; }
+.order-doc-meta { font-size: 11.5px; color: #8C94A6; }
+
+/* ── Secondary details grid ── */
+.order-details-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 20px;
+}
+@media (max-width: 1100px) {
+  .order-details-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 767px) {
+  .order-command-title { font-size: 20px; }
+  .order-command-actions { width: 100%; justify-content: stretch; }
+  .order-command-actions > * { flex: 1 1 auto; }
+  .order-command-actions .boe-record-action { min-height: 44px; }
+  .order-command-actions .boe-record-action--icon { flex: 0 0 44px; width: 44px; min-width: 44px; }
+  .order-health-row { grid-template-columns: 82px minmax(0, 1fr); }
+  .order-details-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* ─────────────────────────────────────────────────────
    RESPONSIVE
 ───────────────────────────────────────────────────── */
