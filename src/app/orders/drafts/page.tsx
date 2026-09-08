@@ -165,25 +165,39 @@ export default function PiDraftsPage() {
   }, [])
 
   /**
-   * Load the list.
-   *
-   * TWO READS, BOTH UNDER THE CALLER'S OWN POLICIES. The submissions, then the
-   * display names of the people named on them.
+   * The submissions read, named so the first load can START it beside the
+   * profile and the permissions rather than after them. It reads no
+   * capability: which rows come back is RLS's answer, not a role's.
    *
    * THE PRODUCT-LINE COUNT IS NO LONGER READ. The list used to page every item
    * row of every draft through a paged read purely to print "9" in a column —
    * a second, unbounded read on every page load for a number nobody makes a
    * decision on. The column went; the query went with it.
    */
-  const load = useCallback(async () => {
-    setFailed(false)
-
-    const { data, error } = await supabase
+  const draftsQuery = useCallback(() =>
+    supabase
       .from('order_submissions')
       .select(PI_DRAFT_LIST_COLUMNS)
       .in('status', PI_DRAFT_LIST_STATUSES)
       .order('updated_at', { ascending: false })
-      .limit(LIST_LIMIT)
+      .limit(LIST_LIMIT), [supabase])
+
+  /**
+   * Load the list.
+   *
+   * TWO READS, BOTH UNDER THE CALLER'S OWN POLICIES. The submissions, then the
+   * display names of the people named on them.
+   *
+   * `preloaded` is that first read, already in flight before this runs — the
+   * first load hands its answer in rather than issuing a second one. Every
+   * later refresh passes nothing and reads afresh.
+   */
+  const load = useCallback(async (
+    preloaded?: Awaited<ReturnType<ReturnType<typeof draftsQuery>['then']>> | null,
+  ) => {
+    setFailed(false)
+
+    const { data, error } = preloaded ?? await draftsQuery()
 
     if (error || !data) { setEntries(null); setFailed(true); return }
 
@@ -223,7 +237,7 @@ export default function PiDraftsPage() {
       uploader: row.created_by ? names.get(row.created_by) ?? null : null,
       submitter: row.submitted_by ? names.get(row.submitted_by) ?? null : null,
     })))
-  }, [supabase])
+  }, [draftsQuery, supabase])
 
   useEffect(() => {
     let active = true
@@ -238,10 +252,12 @@ export default function PiDraftsPage() {
       // Awaiting them in turn made the page wait for the sum of two latencies
       // before it could even start reading the drafts.
       //
-      // The DRAFT LIST still comes after, and has to: which ids it resolves
-      // names for depends on whether this viewer is a reviewer, which is what
-      // the permissions answer.
-      const [{ data: me }, permissions] = await Promise.all([
+      // THE DRAFT LIST TRAVELS WITH THEM. It reads no capability — the rows it
+      // gets back are RLS's answer — so waiting for the permissions to resolve
+      // bought nothing and cost a whole round trip. Only WHICH NAMES are then
+      // resolved depends on being a reviewer, and that is decided below, after
+      // both have landed.
+      const [{ data: me }, permissions, drafts] = await Promise.all([
         supabase
           .from('users')
           .select(USER_PROFILE_COLUMNS)
@@ -251,6 +267,7 @@ export default function PiDraftsPage() {
         // visibility by RLS below it. What is resolved here is only whether to
         // offer the "New Order" button — an entry point, not an authority.
         getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        draftsQuery(),
       ])
       const caps = deriveOrdersCapabilities((me as UserProfile | null)?.role, permissions)
 
@@ -268,7 +285,7 @@ export default function PiDraftsPage() {
       // callback — sees the answer rather than the initial false.
       reviewerRef.current = caps.canApproveOrderSubmission
       setCanReview(caps.canApproveOrderSubmission)
-      await load()
+      await load(drafts)
     }
 
     run()

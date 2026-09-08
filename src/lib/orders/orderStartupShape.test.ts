@@ -305,13 +305,30 @@ describe('no Order screen waits more than it must', () => {
 // ══ 3. The two that legitimately still wait ══════════════════════════════════
 
 describe('where an ordering IS load-bearing, it is kept', () => {
-  test('PI Drafts reads its list AFTER the permissions', () => {
-    // Which ids the list resolves names for depends on whether this viewer is a
-    // reviewer, which is what the permissions answer. Starting the list early
-    // would mean reading it twice or resolving the wrong names.
+  test('PI Drafts resolves its NAMES after the permissions — the rows travel with them', () => {
+    // THE LOAD-BEARING PART IS THE NAMES, NOT THE ROWS. Which ids the list
+    // resolves names for depends on whether this viewer is a reviewer, which is
+    // what the permissions answer — so that read must stay downstream of them.
+    //
+    // The ROWS never depended on it: which submissions come back is RLS's
+    // answer, not a role's. This test used to pin the rows behind the
+    // permissions as a proxy for the names, which cost a whole round trip on
+    // every open of the screen for a dependency that was not there. The query
+    // now travels WITH the profile and the permissions and its answer is handed
+    // to the loader, so nothing is read twice and no name is resolved early.
     const body = startup(DRAFTS)
-    assert.ok(body.indexOf('getEffectivePermissions') < body.indexOf('load()'),
-      'the draft list depends on the reviewer answer')
+    assert.ok(body.indexOf('getEffectivePermissions') < body.indexOf('reviewerRef.current ='),
+      'the reviewer answer must be written before the loader reads it')
+    assert.ok(body.indexOf('reviewerRef.current =') < body.indexOf('load(drafts)'),
+      'and written before the names are resolved')
+
+    const page = read(DRAFTS)
+    assert.ok(page.includes('draftsQuery(),'),
+      'the rows are issued in the group, not after it')
+    assert.equal((page.match(/draftsQuery\(\)/g) ?? []).length, 2,
+      'one definition site and one early call: a third would mean a double read')
+    assert.ok(page.indexOf('reviewerRef.current') < page.indexOf("from('users')"),
+      'the names are still chosen by the reviewer answer, not before it')
   })
 
   test('the PI detail reads its draft AFTER the permissions, for the same reason', () => {
