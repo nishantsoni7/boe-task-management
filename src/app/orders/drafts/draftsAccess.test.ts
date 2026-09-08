@@ -2059,3 +2059,66 @@ describe('the submit dialog states the payment position and asks only what is un
       'and the boundary is stated where the position is shown')
   })
 })
+
+// ── The shape of the load ─────────────────────────────────────────────────────
+//
+// WHAT THIS PAGE MUST NOT GO BACK TO DOING. Every read below is the same read,
+// under the same RLS, returning the same rows — what these assertions protect is
+// the ORDER they are issued in. The history, the names and the Order number were
+// each awaited on their own line, one after the next, behind data they never
+// read; a refactor that reintroduces a lone `await supabase` puts a whole round
+// trip back on the critical path without changing a single visible behaviour,
+// which is exactly the kind of regression no rendering test would catch.
+
+describe('the draft loads in three waves, not six', () => {
+  const source = read(DETAIL_PAGE)
+  // The loader alone: from its opening to the line that closes the useCallback.
+  // Slicing to some later declaration would swallow the auth effect, whose own
+  // awaits have nothing to do with how the draft loads.
+  const start = source.indexOf('const loadDraft = useCallback')
+  const body = source.slice(start, source.indexOf('\n  }, [', start))
+
+  test('loadDraft was found', () => {
+    assert.ok(body.length > 500, 'the slice must actually contain the loader')
+  })
+
+  test('exactly one read is awaited on its own: the submission itself', () => {
+    // Everything else belongs to a group. This count is the whole guarantee:
+    // one lone await is the record this page cannot start without, and a second
+    // one would mean some read is queueing behind an answer it does not use.
+    assert.equal((body.match(/await supabase/g) ?? []).length, 1,
+      'only the submission row may be awaited alone')
+    assert.ok(body.includes(".from('order_submissions')"),
+      'and that one read is the submission')
+  })
+
+  test('two waves follow it, and only two', () => {
+    assert.equal((body.match(/await Promise\.all\(\[/g) ?? []).length, 2,
+      'the reads travel in exactly two groups')
+  })
+
+  test('the history rides in the first wave, with the reads that share its key', () => {
+    assert.ok(body.includes(
+      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await Promise.all(['),
+      'the history needs only the submission id, so it must not wait for the items')
+    const first = body.indexOf('await Promise.all([')
+    const second = body.indexOf('await Promise.all([', first + 1)
+    assert.ok(body.indexOf('fetchAllRows<PersistedActivity>') < second,
+      'the paged history read belongs to the first group')
+  })
+
+  test('the pictures, the names and the Order number ride in the second', () => {
+    assert.ok(body.includes('const [signedResult, peopleResult, orderResult] = await Promise.all(['),
+      'all three depend on the first wave and on nothing else, so they go together')
+    const second = body.lastIndexOf('await Promise.all([')
+    for (const read of ['createSignedUrls', "supabase.from('users')", 'approvedOrderQuery(']) {
+      assert.ok(body.indexOf(read, second) > second, `${read} must sit inside the second group`)
+    }
+  })
+
+  test('the Order number is still one column, read only when there is one to read', () => {
+    assert.ok(body.includes('row.order_id ? approvedOrderQuery(row.order_id)'),
+      'a PI that never became an Order issues no query at all')
+    assert.ok(body.includes(".select('display_number')"))
+  })
+})
