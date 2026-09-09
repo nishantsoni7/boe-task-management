@@ -117,9 +117,26 @@ export async function GET(
     }
   })
 
+  // ── 6. Who owns this inquiry ────────────────────────────────────────────────
+  //
+  // Resolved here rather than on the client, for the same reason the list route
+  // resolves it here: ownership is a property of the inquiry, and the only
+  // identity this query can possibly use is `inquiry.salesperson_id`. The page
+  // previously looked the name up itself and, for a non-admin caller, short-cut
+  // to the SESSION USER — correct only for as long as a non-admin can never see
+  // anyone else's inquiry, and silently wrong the day that changes.
+  //
+  // Null rather than a dash: the display decides how an unresolved name reads.
+  const { data: owner } = await caller.client
+    .from('users')
+    .select('full_name')
+    .eq('id', inquiry.salesperson_id)
+    .maybeSingle()
+
   return NextResponse.json({
     inquiry: {
       ...inquiry,
+      salesperson_name: (owner as { full_name: string } | null)?.full_name ?? null,
       showroom_inquiry_items: mergedItems,
     },
   })
