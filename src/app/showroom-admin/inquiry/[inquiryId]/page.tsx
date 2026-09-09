@@ -7,9 +7,17 @@ import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save, Eye } from 'lucide-react'
+import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, UserCheck, Phone, CalendarDays, Save, Eye } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
+import { SALES_CANDIDATE_LABEL, salesCandidateLabel } from '@/lib/showroom/salesCandidate'
+import {
+  applyConfirmedQuantity,
+  effectiveQuantity,
+  hasInvalidQuantity,
+  parseQuantityInput,
+  pendingQuantityWrites,
+} from '@/lib/showroom/quantity'
 
 const teamFallback = (team?: string | null) =>
   !!team && (team.toLowerCase().includes('sales') || team.toLowerCase().includes('showroom'))
@@ -38,6 +46,12 @@ type InquiryItem = {
 type InquiryDetail = {
   id: string
   salesperson_id: string
+  /**
+   * Full name of the salesperson the inquiry is assigned to, resolved by the
+   * detail route from `salesperson_id`. Null when the profile cannot be read —
+   * the display turns that into "Not assigned" rather than hiding the field.
+   */
+  salesperson_name: string | null
   customer_name: string
   customer_mobile: string
   company: string | null
@@ -100,13 +114,15 @@ export default function InquiryDetailPage() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [copied,          setCopied]          = useState(false)
   const [token,           setToken]           = useState('')
-  const [salespersonName, setSalespersonName] = useState('')
 
   const [status,          setStatus]          = useState<InquiryStatus>('new')
   const [discountPercent, setDiscountPercent] = useState('0')
   const [notes,           setNotes]           = useState('')
 
   const [pendingQty,   setPendingQty]   = useState<Record<string, string>>({})
+  // A quantity save that failed. Shown next to the lines, and deliberately not
+  // cleared by the failure path — the typed value stays on screen with it.
+  const [qtyError,     setQtyError]     = useState('')
   const [removingId,   setRemovingId]   = useState<string | null>(null)
 
   const [itemEdits,    setItemEdits]    = useState<Record<string, { rate: string; note: string }>>({})
@@ -156,13 +172,9 @@ export default function InquiryDetailPage() {
         inqUrl.searchParams.set('viewAs', viewAsUserId)
       }
 
-      // Salesperson name only depends on inquiry.salesperson_id, which we don't have
-      // yet — but non-admin callers are always looking at their own inquiry, so we
-      // can resolve it from the session profile without waiting on the inquiry fetch.
-      const salespersonPromise = profile.role === 'admin'
-        ? null
-        : supabase.from('users').select('full_name').eq('id', session.user.id).single()
-
+      // The inquiry's owner is NOT looked up here. It arrives on the inquiry as
+      // `salesperson_name`, resolved server-side from `salesperson_id`, so this
+      // screen has no path by which a viewer's identity could stand in for it.
       const [inqRes, prodRes] = await Promise.all([
         fetch(inqUrl.toString(), {
           headers: { 'Authorization': `Bearer ${session.access_token}` },
@@ -182,20 +194,6 @@ export default function InquiryDetailPage() {
       setDiscountPercent(String(inq.discount_percent))
       setNotes(inq.notes ?? '')
       setItemEdits(initItemEdits(inq.showroom_inquiry_items, {}))
-
-      if (salespersonPromise) {
-        // Non-admin: already resolved above in parallel with the inquiry fetch.
-        const sp = (await salespersonPromise).data as { full_name: string } | null
-        setSalespersonName(sp?.full_name ?? '—')
-      } else {
-        // Admin viewing someone else's inquiry — salesperson_id only known now.
-        const { data: sp } = await supabase
-          .from('users')
-          .select('full_name')
-          .eq('id', inq.salesperson_id)
-          .single()
-        setSalespersonName((sp as { full_name: string } | null)?.full_name ?? '—')
-      }
 
       if (prodRes.ok) {
         const prodData = await prodRes.json()
@@ -222,7 +220,13 @@ export default function InquiryDetailPage() {
       const data = await res.json()
       setInquiry(data.inquiry)
       setItemEdits(prev => initItemEdits(data.inquiry.showroom_inquiry_items, prev))
+      return true
     }
+    // A silent failure here used to be indistinguishable from a save that did
+    // not happen: state kept the pre-edit values, so a change that WAS written
+    // looked like it had been rejected.
+    setSaveError('Could not refresh this inquiry. What you see may be out of date — reload the page.')
+    return false
   }
 
   // ── Save status / discount / notes ────────────────────────────────────────────
@@ -279,20 +283,97 @@ export default function InquiryDetailPage() {
 
   // ── Quantity update ───────────────────────────────────────────────────────────
 
+  /** Drop a line's in-flight edit, so the input falls back to the saved value. */
+  const clearPending = (itemId: string) =>
+    setPendingQty(p => { const n = { ...p }; delete n[itemId]; return n })
+
+  /**
+   * Persist one line's quantity and fold the CONFIRMED value back into state.
+   *
+   * Three things were wrong here and each one could revert an edit:
+   *
+   *   - the PATCH response was never checked, so a rejected save cleared the
+   *     typed value anyway and the box silently snapped back to the old number;
+   *   - the pending value was cleared BEFORE the re-fetch, so between the two
+   *     the input fell back to the pre-edit snapshot — a visible revert for the
+   *     length of a round-trip, and a permanent one if the re-fetch failed;
+   *   - it re-fetched the whole inquiry to learn something the PATCH had
+   *     already returned.
+   *
+   * Now: nothing changes until the server confirms, and what it confirms is
+   * what state takes. A failure keeps the typed value and says so, so the
+   * number on screen is always either saved or visibly unsaved — never quietly
+   * replaced by an older one.
+   */
+  const saveQuantity = async (itemId: string, quantity: number): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/showroom/inquiry-items/${itemId}`, {
+        method: 'PATCH', headers: authHeader,
+        body: JSON.stringify({ quantity }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setQtyError(d.error ?? 'Could not save the quantity. Your change is still shown — try again.')
+        return false
+      }
+      const { item: saved } = await res.json() as { item: { quantity: number } }
+      setInquiry(prev => prev && {
+        ...prev,
+        showroom_inquiry_items: applyConfirmedQuantity(
+          prev.showroom_inquiry_items, itemId, saved.quantity,
+        ),
+      })
+      clearPending(itemId)
+      return true
+    } catch {
+      setQtyError('Could not save the quantity. Your change is still shown — try again.')
+      return false
+    }
+  }
+
+  /**
+   * Persist every quantity the user has typed but not yet blurred.
+   *
+   * Preview and Generate call this first. Nothing else flushed quantity —
+   * handleSaveItemEdits writes only the rate and the note — so a quantity typed
+   * and then sent straight to the PDF was simply not there: the document was
+   * built from the last saved value while the screen showed the new one.
+   * Clicking those buttons also blurs the input, which started a save racing
+   * the request; doing it here, awaited, removes the race.
+   */
+  const flushPendingQuantities = async (): Promise<boolean> => {
+    const currentItems = inquiry?.showroom_inquiry_items ?? []
+
+    if (hasInvalidQuantity(currentItems, pendingQty)) {
+      setQtyError('One line has an invalid quantity. Enter a whole number of 1 or more.')
+      return false
+    }
+
+    const writes = pendingQuantityWrites(currentItems, pendingQty)
+    if (writes.length === 0) return true
+
+    setQtyError('')
+    // Sequential: these are a handful of rows, and one failure should not be
+    // obscured by another request's error overwriting the message.
+    for (const write of writes) {
+      if (!(await saveQuantity(write.id, write.quantity))) return false
+    }
+    return true
+  }
+
   const handleQtyBlur = async (item: InquiryItem) => {
-    const raw = pendingQty[item.id]
-    if (raw === undefined) return
-    const qty = parseInt(raw, 10)
-    if (!qty || qty < 1 || qty === item.quantity) {
-      setPendingQty(p => { const n = { ...p }; delete n[item.id]; return n })
+    const parsed = parseQuantityInput(pendingQty[item.id], item.quantity)
+
+    // Nothing typed, retyped the same number, or the box was left holding
+    // something that is not a quantity: resolve to this line's own last saved
+    // value. That is a fallback to what it was, never to an unrelated number.
+    if (!parsed.valid || !parsed.changed) {
+      clearPending(item.id)
       return
     }
-    await fetch(`/api/showroom/inquiry-items/${item.id}`, {
-      method: 'PATCH', headers: authHeader,
-      body: JSON.stringify({ quantity: qty }),
-    })
-    setPendingQty(p => { const n = { ...p }; delete n[item.id]; return n })
-    await reloadInquiry()
+
+    setQtyError('')
+    await saveQuantity(item.id, parsed.value)
   }
 
   // ── Remove item ───────────────────────────────────────────────────────────────
@@ -336,6 +417,10 @@ export default function InquiryDetailPage() {
     setPreviewLoading(true)
     setPdfError('')
 
+    // Quantities first: preview reads the DATABASE, so anything typed and not
+    // yet saved would simply not appear in the document.
+    if (!(await flushPendingQuantities())) { setPreviewLoading(false); return }
+
     const saved = await handleSaveItemEdits()
     if (!saved) { setPreviewLoading(false); return }
 
@@ -370,6 +455,11 @@ export default function InquiryDetailPage() {
     setPdfLoading(true)
     setPdfError('')
 
+    if (!(await flushPendingQuantities())) {
+      setPdfLoading(false)
+      return
+    }
+
     const saved = await handleSaveItemEdits()
     if (!saved) {
       setPdfLoading(false)
@@ -381,8 +471,11 @@ export default function InquiryDetailPage() {
       items: (inquiry?.showroom_inquiry_items ?? []).map(i => {
         const rate = parseFloat(itemEdits[i.id]?.rate ?? '')
         return {
-          id:                 i.id,
-          quantity:           i.quantity,
+          id: i.id,
+          // Same quantity the screen is showing and charging for. After the
+          // flush above this equals the saved value; reading it through the
+          // same helper keeps the document and the screen from ever disagreeing.
+          quantity:           effectiveQuantity(i.quantity, pendingQty[i.id]),
           rate:               (isNaN(rate) || rate <= 0) ? i.mrp_at_time : rate,
           customization_note: itemEdits[i.id]?.note?.trim() || null,
         }
@@ -435,7 +528,8 @@ export default function InquiryDetailPage() {
       `Quotation No: ${inquiry.quotation_no ?? 'Pending'}`,
       '',
       'Regards,',
-      `${salespersonName || 'Your Salesperson'}`,
+      // The inquiry's owner signs the message, not whoever pressed the button.
+      `${inquiry.salesperson_name || 'Your Salesperson'}`,
       'Best of Exports',
     ].join('\n')
 
@@ -481,10 +575,13 @@ export default function InquiryDetailPage() {
   // ── Derived totals ────────────────────────────────────────────────────────────
 
   const items = inquiry?.showroom_inquiry_items ?? []
+  // Totals follow the number in the box, not the last value the server sent.
+  // Previously the input showed 5 while every figure below it was still priced
+  // at 1 until a round-trip landed.
   const subtotal = items.reduce((s, i) => {
     const rate = parseFloat(itemEdits[i.id]?.rate ?? '')
     const effectiveRate = (isNaN(rate) || rate <= 0) ? i.mrp_at_time : rate
-    return s + effectiveRate * i.quantity
+    return s + effectiveRate * effectiveQuantity(i.quantity, pendingQty[i.id])
   }, 0)
   const discPct        = parseFloat(discountPercent) || 0
   const discountAmount = subtotal * discPct / 100
@@ -571,7 +668,8 @@ export default function InquiryDetailPage() {
                   const prod = item.showroom_products
                   const rateVal = parseFloat(itemEdits[item.id]?.rate ?? '')
                   const effectiveRate = (isNaN(rateVal) || rateVal <= 0) ? item.mrp_at_time : rateVal
-                  const lineTotal = effectiveRate * item.quantity
+                  const lineQty   = effectiveQuantity(item.quantity, pendingQty[item.id])
+                  const lineTotal = effectiveRate * lineQty
                   const isRemoving = removingId === item.id
                   const primaryImg = prod?.images?.[0] ?? prod?.image_url ?? null
                   const hasCustomNote = (itemEdits[item.id]?.note ?? '').trim().length > 0
@@ -1046,9 +1144,9 @@ export default function InquiryDetailPage() {
                 </div>
 
                 {/* Alerts */}
-                {(saveError || saveEditsErr) && (
+                {(saveError || saveEditsErr || qtyError) && (
                   <div style={{ marginTop: '16px' }}>
-                    <AlertBanner variant="red">{saveError || saveEditsErr}</AlertBanner>
+                    <AlertBanner variant="red">{qtyError || saveError || saveEditsErr}</AlertBanner>
                   </div>
                 )}
                 {(saveOk && saveEditsOk) && (
@@ -1112,6 +1210,15 @@ export default function InquiryDetailPage() {
                 icon={<User size={13} color="#94A3B8" strokeWidth={1.8} />}
                 label="Customer"
                 value={inquiry.customer_name}
+              />
+              {/* Who the inquiry belongs to. Sits with the customer because
+                  "whose customer is this" is one question, and it is the first
+                  thing an admin looking at someone else's inquiry needs. The
+                  value is the inquiry's own salesperson — never the viewer. */}
+              <IconDetailRow
+                icon={<UserCheck size={13} color="#94A3B8" strokeWidth={1.8} />}
+                label={SALES_CANDIDATE_LABEL}
+                value={salesCandidateLabel(inquiry.salesperson_name)}
               />
               <IconDetailRow
                 icon={<Phone size={13} color="#94A3B8" strokeWidth={1.8} />}

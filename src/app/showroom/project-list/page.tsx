@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, font } from '@/lib/tokens'
 import { Trash2 } from 'lucide-react'
@@ -29,6 +29,25 @@ export default function ProjectListPage() {
 
   const router = useRouter()
 
+  /**
+   * The latest cart, readable synchronously.
+   *
+   * `cart` state is only correct as of the render that produced it. Two taps on
+   * "+" inside one render — which is exactly what a customer does — both
+   * computed from the SAME snapshot, so the second overwrote the first and the
+   * quantity went up by one instead of two, in state and in localStorage alike.
+   * The ref advances immediately, so each change builds on the previous one
+   * however fast they arrive.
+   */
+  const cartRef = useRef<CartItem[]>([])
+
+  /** The single write path: ref, state and storage always move together. */
+  const commitCart = (next: CartItem[]) => {
+    cartRef.current = next
+    setCart(next)
+    localStorage.setItem('boe_cart', JSON.stringify(next))
+  }
+
   useEffect(() => {
     const loadFromStorage = () => {
       const sp  = localStorage.getItem('boe_sp')
@@ -46,27 +65,23 @@ export default function ProjectListPage() {
 
       // parseCart drops unusable rows and folds duplicates a pre-merge session
       // may have left behind, so a customer mid-visit does not carry them in.
-      setCart(parseCart(localStorage.getItem('boe_cart')))
+      commitCart(parseCart(localStorage.getItem('boe_cart')))
 
       setReady(true)
     }
     loadFromStorage()
+    // Mount only: this restores the saved selection, and re-running it would
+    // overwrite whatever the customer has changed since.
   }, [])
-
-  // Persist cart changes back to sessionStorage whenever cart state changes
-  const updateCart = (next: CartItem[]) => {
-    setCart(next)
-    localStorage.setItem('boe_cart', JSON.stringify(next))
-  }
 
   // Keyed by product, not by array index: an index is only correct until the
   // list changes, and these two run against a list the customer is editing.
   const handleQtyChange = (productId: string, delta: number) => {
-    updateCart(changeQuantity(cart, productId, delta))
+    commitCart(changeQuantity(cartRef.current, productId, delta))
   }
 
   const handleRemove = (productId: string) => {
-    updateCart(removeFromCart(cart, productId))
+    commitCart(removeFromCart(cartRef.current, productId))
   }
 
   const summary = summarizeCart(cart)

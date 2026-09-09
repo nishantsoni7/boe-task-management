@@ -167,3 +167,116 @@ describe('summarizeCart', () => {
     assert.equal(s.label, '0 items · ₹0')
   })
 })
+
+// ── Quantity persistence across the selection flow ───────────────────────────
+//
+// The reported defect: a quantity edit sometimes reverted to its previous value
+// when the customer moved between products or screens. On this side of the
+// module the mechanism was a lost update — the page's handler derived every
+// change from the `cart` value captured by the current render, so two taps
+// before a re-render both started from the same snapshot and the second
+// overwrote the first, in state and in localStorage alike.
+//
+// The page now derives each change from the last committed value. These tests
+// pin the invariant that makes that correct: an update composes with the one
+// before it, and a round-trip through storage returns exactly what was written.
+
+describe('quantity survives the selection flow', () => {
+  /** What the page writes to localStorage, and reads back on the next mount. */
+  const roundTrip = (cart: CartItem[]): CartItem[] => parseCart(JSON.stringify(cart))
+  const qtyOf = (cart: CartItem[], id: string) =>
+    cart.find(c => c.product_id === id)?.quantity
+
+  const A = chair({ product_id: 'A', product_code: 'BOE-A', mrp: 1000 })
+  const B = chair({ product_id: 'B', product_code: 'BOE-B', mrp: 2000 })
+  const C = chair({ product_id: 'C', product_code: 'BOE-C', mrp: 3000 })
+
+  test('1 → 5 persists through a save and reload', () => {
+    let cart = addToCart([], A).cart
+    cart = changeQuantity(cart, 'A', +4)
+    assert.equal(qtyOf(cart, 'A'), 5)
+    assert.equal(qtyOf(roundTrip(cart), 'A'), 5)
+  })
+
+  test('consecutive steps compose — the defect was that they did not', () => {
+    const start = addToCart([], A).cart
+
+    // What the page used to do: every handler in one render derived from that
+    // render's `cart`, so two taps both started here and the second overwrote
+    // the first. Two taps, one increment.
+    const firstTap  = changeQuantity(start, 'A', +1)
+    const secondTap = changeQuantity(start, 'A', +1)
+    void firstTap
+    assert.equal(qtyOf(secondTap, 'A'), 2, 'both derived from one snapshot: a tap is lost')
+
+    let composed = start
+    composed = changeQuantity(composed, 'A', +1)
+    composed = changeQuantity(composed, 'A', +1)
+    assert.equal(qtyOf(composed, 'A'), 3, 'derived from the latest value each time')
+  })
+
+  test('changing one product never disturbs another', () => {
+    let cart = addToCart(addToCart(addToCart([], A).cart, B).cart, C).cart
+    cart = changeQuantity(cart, 'A', +4)   // 5
+    cart = changeQuantity(cart, 'B', +2)   // 3
+    cart = changeQuantity(cart, 'C', +6)   // 7
+    assert.deepEqual([qtyOf(cart, 'A'), qtyOf(cart, 'B'), qtyOf(cart, 'C')], [5, 3, 7])
+
+    // Editing A again leaves B and C exactly where they were.
+    cart = changeQuantity(cart, 'A', -1)
+    assert.deepEqual([qtyOf(cart, 'A'), qtyOf(cart, 'B'), qtyOf(cart, 'C')], [4, 3, 7])
+  })
+
+  test('multiple products keep independent quantities across a reload', () => {
+    let cart = addToCart(addToCart(addToCart([], A).cart, B).cart, C).cart
+    cart = changeQuantity(cart, 'A', +4)
+    cart = changeQuantity(cart, 'B', +2)
+    cart = changeQuantity(cart, 'C', +6)
+    const restored = roundTrip(cart)
+    assert.deepEqual([qtyOf(restored, 'A'), qtyOf(restored, 'B'), qtyOf(restored, 'C')], [5, 3, 7])
+  })
+
+  test('a duplicate scan builds on the edited quantity, not the original', () => {
+    // 1, hand-edited to 5, then the same sticker is scanned again → 6.
+    let cart = addToCart([], A).cart
+    cart = changeQuantity(cart, 'A', +4)
+    const rescan = addToCart(cart, A, 1)
+    assert.equal(rescan.quantity, 6)
+    assert.equal(rescan.merged, true)
+    assert.equal(rescan.cart.length, 1, 'still one line, not a duplicate row')
+    assert.match(rescan.message, /increased to 6/)
+  })
+
+  test('a scan after a reload also builds on the persisted quantity', () => {
+    // The scan lands in a NEW TAB, so it reads the cart back from storage —
+    // this is the path that must not resurrect a stale quantity.
+    let cart = addToCart([], A).cart
+    cart = changeQuantity(cart, 'A', +4)
+    const rescan = addToCart(roundTrip(cart), A, 1)
+    assert.equal(rescan.quantity, 6)
+  })
+
+  test('the latest write wins over an earlier snapshot of the same cart', () => {
+    const start = addToCart([], A).cart
+    const stale = changeQuantity(start, 'A', +1)      // an older derivation
+    const latest = changeQuantity(changeQuantity(start, 'A', +1), 'A', +3)  // 5
+    // Whichever is written last is what a reload returns; the page must write
+    // the latest, never the stale one.
+    assert.equal(qtyOf(roundTrip(latest), 'A'), 5)
+    assert.equal(qtyOf(roundTrip(stale), 'A'), 2)
+  })
+
+  test('quantity cannot be driven below one or above the cap by stepping', () => {
+    let cart = addToCart([], A).cart
+    for (let i = 0; i < 5; i++) cart = changeQuantity(cart, 'A', -1)
+    assert.equal(qtyOf(cart, 'A'), 1)
+    for (let i = 0; i < MAX_ITEM_QUANTITY + 5; i++) cart = changeQuantity(cart, 'A', +1)
+    assert.equal(qtyOf(cart, 'A'), MAX_ITEM_QUANTITY)
+  })
+
+  test('a corrupt stored cart cannot wipe a quantity to something arbitrary', () => {
+    // Restoring junk yields an empty selection rather than a cart of NaNs.
+    assert.deepEqual(parseCart('[[]]'), [])
+    assert.equal(parseCart('[{"product_id":"A","quantity":"nonsense"}]')[0].quantity, 1)
+  })
+})

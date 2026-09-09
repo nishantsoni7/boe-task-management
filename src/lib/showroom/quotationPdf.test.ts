@@ -250,3 +250,71 @@ describe('the quotation body', () => {
     assert.equal(/₹/.test(pdfText(await render(data()))), false)
   })
 })
+
+// ── Quantity reaches the document ─────────────────────────────────────────────
+//
+// Preview (GET) and Generate (POST) both build the page through
+// buildEnhancedPdf with the same PdfItem shape, so asserting the builder covers
+// both. What guarantees the LATEST quantity gets here is that both handlers
+// flush pending quantity edits before requesting the document — pinned
+// separately in src/app/api/showroom/inquiry/quantityAuthority.test.ts, because
+// it is an ordering property of the page rather than of the renderer.
+//
+// The defect: the payload and every total read the last server snapshot while
+// the input showed the typed value, so a quotation could be produced at the old
+// quantity — with the new one on screen behind it.
+
+describe('the quantity the quotation charges for', () => {
+  const priced = (quantity: number, rate: number, code: string) => item({
+    quantity,
+    rate,
+    mrp_at_time: rate,
+    product: { product_code: code, name: `Chair ${code}`, image_url: null, dimensions: null },
+  })
+
+  test('an edited quantity is printed on the line', async () => {
+    const text = pdfText(await render(data({ items: [priced(5, 25000, 'BOE-A')] })))
+    assert.match(text, /QTY/)
+    // The line carries 5, not the 1 it was created with.
+    assert.match(text, /(^|\n)5(\n|$)/)
+    assert.match(text, /Rs\. 1,25,000/, 'line total is 5 x 25,000')
+  })
+
+  test('the subtotal adds up the quantities actually sent', async () => {
+    const text = pdfText(await render(data({
+      discount_percent: 0,
+      items: [priced(5, 25000, 'BOE-A'), priced(2, 10000, 'BOE-B')],
+    })))
+    // 5 x 25,000 + 2 x 10,000
+    assert.match(text, /Rs\. 1,45,000/)
+  })
+
+  test('discount and final value follow the same quantities', async () => {
+    const text = pdfText(await render(data({
+      discount_percent: 10,
+      items: [priced(5, 25000, 'BOE-A'), priced(2, 10000, 'BOE-B')],
+    })))
+    assert.match(text, /Discount \(10%\)/)
+    assert.match(text, /Rs\. 14,500/,  'discount is 10% of 1,45,000')
+    assert.match(text, /Rs\. 1,30,500/, 'final value is 1,45,000 less 14,500')
+  })
+
+  test('quantities stay attached to their own lines', async () => {
+    const text = pdfText(await render(data({
+      discount_percent: 0,
+      items: [priced(5, 1000, 'BOE-A'), priced(3, 1000, 'BOE-B'), priced(7, 1000, 'BOE-C')],
+    })))
+    assert.match(text, /Rs\. 5,000/)
+    assert.match(text, /Rs\. 3,000/)
+    assert.match(text, /Rs\. 7,000/)
+    assert.match(text, /Rs\. 15,000/, 'subtotal of 5 + 3 + 7 units at 1,000')
+  })
+
+  test('a quantity of one is still a quantity of one', async () => {
+    const text = pdfText(await render(data({
+      discount_percent: 0,
+      items: [priced(1, 9200, 'BOE-A')],
+    })))
+    assert.match(text, /Rs\. 9,200/)
+  })
+})
