@@ -707,6 +707,12 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // it reaches nothing asserted here.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
       '20261201000000_order_submission_confirmation_required_fields.sql',
+      // Confirmed Order update notifications: four notification_type values,
+      // one configuration table of its own (public.order_notification_recipients)
+      // and one partial index on public.notifications. It creates nothing else,
+      // alters no existing table and defines no function, so it reaches nothing
+      // asserted here.
+      '20261202000000_order_update_notifications.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

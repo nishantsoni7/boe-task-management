@@ -18,6 +18,8 @@ import {
   OrderAttentionBar,
   OrderCommercialTotals,
   OrderDetailSkeleton,
+  OrderImportantDatesSection,
+  OrderStatusPill,
   OrderSummary,
   PAYMENT_SECTION_TITLE,
   PaymentSummaryFigures,
@@ -30,6 +32,7 @@ import {
 import {
   arrangeOrderActions,
   orderAttentionItems,
+  orderImportantDates,
   orderSummaryFacts,
   type OrderHeaderActionKey,
   type WorkspaceTone,
@@ -50,7 +53,10 @@ import {
   NO_FINANCE_CAPABILITIES,
   type FinanceCapabilities,
 } from '@/lib/permissions/finance'
-import { financePaymentHref, piSubmissionHref } from '@/lib/finance/crossModuleLinks'
+// piSubmissionHref is deliberately NOT imported: after conversion this page is
+// the source of truth and offers no route back to the superseded draft. The PI
+// relation, its files and its version history are all still here.
+import { financePaymentHref } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ArrowLeft, ChevronDown } from 'lucide-react'
@@ -137,7 +143,13 @@ import {
   orderProductCodesByItemId,
   type OrderProductCodeRecord,
 } from '@/lib/orders/orderProductCodes'
-import { notifyPiSubmission } from '@/lib/notify'
+import { notifyOrderUpdate, notifyPiSubmission } from '@/lib/notify'
+import type { OrderUpdateEvent } from '@/lib/orders/orderUpdateNotifications'
+import {
+  ORDER_UNREAD_TYPES,
+  oldestUnreadAt,
+  type UnreadUpdateRow,
+} from '@/lib/orders/orderUnreadUpdates'
 import { leadSourceLabel } from '@/lib/orders/orderConfirmation'
 import {
   ORDER_DOCUMENT_COLUMNS,
@@ -368,19 +380,6 @@ function fmtDateTime(iso: string) {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-
-function MetaField({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-      <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        {label}
-      </span>
-      <span style={{ fontSize: '13px', color: colors.primary, lineHeight: 1.4 }}>
-        {value ?? '—'}
-      </span>
-    </div>
-  )
-}
 
 function ActivityDot({ event_type }: { event_type: string }) {
   const colorMap: Record<string, string> = {
@@ -664,6 +663,13 @@ export default function OrderDetailPage() {
   // Set once and never cleared: a refresh replaces data in place and must not
   // blank a screen somebody is reading.
   const [recordsReady, setRecordsReady] = useState(false)
+  /**
+   * WHERE THIS READER HAD GOT TO — the timestamp of their oldest unread update
+   * on this Order, captured once on open, just before those rows are marked
+   * read. Null when there was nothing new, which is the ordinary case and
+   * draws no marks at all.
+   */
+  const [newSince, setNewSince] = useState<string | null>(null)
   const [handoffReady, setHandoffReady] = useState(false)
   const changeRequestsRef = useRef<HTMLDivElement | null>(null)
   // The startup gate's resolver, parked here by the startup path and released
@@ -1149,6 +1155,57 @@ export default function OrderDetailPage() {
     await handoff
   }
 
+  /**
+   * READ WHAT THIS PERSON HAS NOT SEEN ON THIS ORDER, THEN MARK IT SEEN.
+   *
+   * TWO STEPS, IN THIS ORDER, AND THE ORDER MATTERS. The read has to happen
+   * before the mark, because the mark destroys the very information the
+   * Activity trail needs: once the rows are read, nothing remembers where the
+   * reader had got to.
+   *
+   * PER USER, END TO END. The read is scoped to the caller by the notifications
+   * RLS policy; the mark is scoped to the caller by /api/notifications/mark-read,
+   * which puts `user_id = caller` on every statement it issues. So one
+   * recipient opening this Order cannot clear anybody else's badge — theirs is
+   * a different row, and this touches only its own.
+   *
+   * NOTHING BLOCKS ON EITHER. A failed read means no "new since" marks; a
+   * failed mark means the badge is still there next time. Both are worse than
+   * working and far better than a page that will not open.
+   */
+  const markUpdatesSeen = async () => {
+    // A PREVIEW SEES, IT DOES NOT READ-RECEIPT. Under View As the session is
+    // still the administrator's, so marking anything read here would silently
+    // clear the ADMINISTRATOR'S own unread updates for an Order they only
+    // looked at through somebody else's eyes — and it would not touch the
+    // employee's, which is the state they were trying to inspect. Neither is
+    // wanted, so a preview does neither.
+    if (viewAsUserId) return
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('entity_id, created_at')
+      .eq('entity_id', id)
+      .eq('is_read', false)
+      .in('type', ORDER_UNREAD_TYPES)
+    if (error) return
+
+    const rows = (data ?? []) as UnreadUpdateRow[]
+    if (rows.length === 0) return
+
+    // The line the trail draws "New since your last visit" above. The OLDEST
+    // unread, not the newest: taking the newest would hide every earlier
+    // unseen entry behind the divider.
+    setNewSince(oldestUnreadAt(rows))
+
+    // ONE REQUEST FOR THE WHOLE ORDER, not one per row — including the rows
+    // this browser never loaded. See the `entityId` selector in the route.
+    await fetch('/api/notifications/mark-read', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entityId: id }),
+    }).catch(() => {})
+  }
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -1219,6 +1276,19 @@ export default function OrderDetailPage() {
         const settings = s as { enabled?: boolean; permanently_disabled?: boolean } | null
         setCleanupEnabled(!!settings?.enabled && !settings?.permanently_disabled)
       }
+
+      // ── OPENING THE ORDER IS WHAT "SEEN" MEANS ──
+      //
+      // NO POPUP AND NO CONFIRMATION. Product Orders → click → Order Detail,
+      // and nothing stands between them. The reader's unread updates for this
+      // Order are read once (so the Activity trail can point at what is new to
+      // THEM), and then marked read for THEM ALONE — every other recipient's
+      // rows are different rows and are untouched.
+      //
+      // Last in the sequence and never awaited by anything: the page is
+      // already on screen, and a failed read or a failed mark leaves the
+      // trail unmarked rather than the Order unopened.
+      void markUpdatesSeen()
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1373,6 +1443,10 @@ export default function OrderDetailPage() {
       })
       if (error) { setAlignError(describeAlignmentFailure(error)); return }
       setAlignDialog(null)
+      // Production moved. The people on this Order plan against it, so they
+      // hear about it — from the production_alignment_changed row the RPC just
+      // wrote, never from anything this browser composes.
+      void notifyOrderUpdate({ orderId: order.id, event: 'production' })
       // The RPC moved four columns on `orders` and appended one activity
       // entry. Nothing else on this page changed, so nothing else is re-read.
       await reloadOrderRow()
@@ -1617,8 +1691,23 @@ export default function OrderDetailPage() {
     notes: order.notes,
   }
 
-  const afterChange = () => {
+  /**
+   * A dialog wrote something. Close everything, re-read, and — when the write
+   * was one the people on this Order should hear about — announce it.
+   *
+   * THE EVENT IS THE CALLER'S, because only the caller knows which dialog it
+   * was. `null` means nothing is announced: RequestOrderChangeModal RAISES a
+   * request rather than changing the Order, so there is no change yet to tell
+   * anybody about, and the decision on it comes back through this same handler
+   * as an amendment or a cancellation.
+   *
+   * FIRE AND FORGET, AFTER THE FACT. The write has already committed; the route
+   * finds the audit row it wrote and words the notification from that. If the
+   * write was refused there is no audit row, so nothing is sent.
+   */
+  const afterChange = (event: OrderUpdateEvent | null = null) => {
     setAmendOpen(false); setRequestOpen(false); setCancelOpen(false); setReviewing(null)
+    if (event && order) void notifyOrderUpdate({ orderId: order.id, event })
     loadOrder()
   }
 
@@ -1682,16 +1771,26 @@ export default function OrderDetailPage() {
 
   const summaryFacts = orderSummaryFacts({
     status: order.status,
-    statusLabel: STATUS_META[order.status]?.label ?? order.status,
-    statusTone,
+    customerName: order.client_name,
     productionAligned,
     productionLabel: production?.label ?? '—',
     productionLine: production?.line ?? null,
     salespersonName,
+    leadSource,
+    raisedByName: order.requested_by_name ?? null,
+    sourceRequestNumber: order.source_request_number,
+  })
+
+  // EVERY DATE, RANKED, ONCE. The two the business plans against and the two
+  // the database recorded — the pair Record Information used to state on its
+  // own, three sections lower.
+  const importantDates = orderImportantDates({
+    status: order.status,
     confirmDate: order.confirm_date ? fmtDate(order.confirm_date) : null,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     isOverdue: !!isOverdue,
-    leadSource,
+    createdAt: fmtDate(order.created_at),
+    updatedAt: fmtDate(order.updated_at),
   })
 
   const attention = orderAttentionItems({
@@ -1813,13 +1912,19 @@ export default function OrderDetailPage() {
         </button>
 
         {/* ══ 1. THE COMMAND HEADER ══
-            IDENTITY AND ACTIONS, AND NOTHING ELSE. Every Order FACT — the
-            status, the production state, the salesperson, the two dates, the
-            lead source — is stated once, in the Order Summary below. */}
+            ORDER NUMBER AND STATUS, ON ONE LINE, FIRST — "ORDER BOE-147  IN
+            PRODUCTION". Those two answer "which Order is this and where is
+            it", which is what every reader arrives asking, and the status used
+            to be the first of six equal facts in the band below. It is stated
+            HERE now and nowhere else.
+
+            Everything else is still exactly once, elsewhere: the customer, the
+            salesperson, the lead source and production in the identity band
+            below; every date in Important Dates under it. */}
         <header className="order-command-header">
           <div className="order-command-identity">
             <h1 className="order-command-title">Order {operationalNumber}</h1>
-            <div className="order-command-client">{order.client_name}</div>
+            <OrderStatusPill label={STATUS_META[order.status]?.label ?? order.status} tone={statusTone} />
           </div>
 
           <div className="order-command-actions">
@@ -1836,6 +1941,11 @@ export default function OrderDetailPage() {
                   // transitions, the amend and cancel controls) is computed
                   // from `order.status`, so all of them follow from this.
                   setOrder(o => o ? { ...o, ...updated } : o)
+                  // THE ONE EVENT EVERYBODY ON THIS ORDER WANTS. The route
+                  // reads the status_changed row StatusControl just wrote and
+                  // words "from X to Y by Z" from it — this browser supplies
+                  // nothing but the word "status".
+                  void notifyOrderUpdate({ orderId: order.id, event: 'status' })
                   // A transition writes the row above and one activity entry.
                   // Nothing else on this page moved, so nothing else is re-read.
                   reloadActivity()
@@ -1870,15 +1980,35 @@ export default function OrderDetailPage() {
           </div>
         </header>
 
-        {/* ══ 2. THE ORDER SUMMARY ══
-            The operational facts on the left; the money on the right, with the
-            breakdown directly beneath it. The commercial side is passed in, so
-            which figures a reader may see stays exactly where that decision
-            already lives. */}
+        {/* ══ 2. THE IDENTITY BAND ══
+            Customer, salesperson, lead source, production — and, when the
+            Order has them, who raised it and the request it came from. The
+            last two came off Record Information rather than being deleted with
+            it: both name something a person cares about, neither is database
+            metadata. */}
         <OrderSummary facts={summaryFacts} />
 
-        {/* ══ 3. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
+        {/* ══ 3. IMPORTANT DATES ══
+            EVERY DATE THIS ORDER HAS, IN ONE PLACE. Confirm and due lead;
+            created and last-updated follow, muted. The audit pair used to sit
+            alone in Record Information three sections lower, so answering
+            "when" meant looking in two places. */}
+        <OrderImportantDatesSection dates={importantDates} />
+
+        {/* ══ 4. THE ATTENTION STRIP ══ hidden entirely when nothing needs it. */}
         <OrderAttentionBar items={attention} />
+
+        {/* ── Notes ──
+            OPERATIONAL CONTENT, and the one thing on Record Information that
+            was never metadata: somebody typed it about this Order for somebody
+            else to read. It keeps its own quiet block rather than following
+            that section out. */}
+        {order.notes && (
+          <section className="order-notes" aria-label="Order notes">
+            <div className="order-notes-head">Notes</div>
+            <div className="order-notes-body">{order.notes}</div>
+          </section>
+        )}
 
         {/* ══ 4. PRODUCTS ══
             FULL CONTENT WIDTH and the most prominent operational section: nine
@@ -2076,18 +2206,22 @@ export default function OrderDetailPage() {
                           {wbBusy ? 'Preparing…' : 'Download'}
                         </button>
                       )}
-                      {/* The way back to the PI. The database has had this door
-                          since 20260924000000 — can_view_order_submission_via_order
-                          exists so that seeing the Order is a way onto its approved
-                          PI — and the PI screen still decides for itself under RLS. */}
-                      <button
-                        type="button"
-                        onClick={() => router.push(piSubmissionHref(piHandoff.submissionId))}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '5px 11px', fontSize: '12px', fontWeight: 600 }}
-                      >
-                        Open source PI
-                      </button>
+                      {/* NO "OPEN SOURCE PI" BUTTON.
+                          Once the PI has converted, THIS page is the source of
+                          truth: the products, the money, the documents and the
+                          version history are all here, and a prominent door
+                          back to the superseded draft invited operational
+                          readers to work from it.
+
+                          NOTHING UNDERNEATH IS TOUCHED. The relation
+                          (orders.source_order_submission_id) is unchanged and
+                          still frozen, the PI's own row and files are
+                          untouched, the merged chronology below still
+                          interleaves the PI's activity trail, PI History still
+                          opens every version, and the RLS door
+                          can_view_order_submission_via_order (20260924000000)
+                          still stands — an administrator who needs the draft
+                          reaches it from the PI Drafts module as before. */}
                     </div>
                   </div>
                 ) : (
@@ -2179,46 +2313,19 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ 7. RECORD INFORMATION ══
-            SECONDARY AUDIT METADATA ONLY. The salesperson, the lead source and
-            the two commercial totals used to be repeated here; each is stated
-            once, in the Order Summary. What is left is what nothing else on
-            the page says: who raised it, when it was created, when it last
-            moved, and where it came from. */}
-        <section className="order-details" aria-label="Record information">
-          <div className="order-details-head">Record information</div>
-          <div className="order-details-grid">
-            <MetaField label="Requested By" value={order.requested_by_name} />
-            <MetaField label="Created"       value={fmtDate(order.created_at)} />
-            <MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />
-            {/* Read-only provenance. Rendered only for an Order that actually
-                came from a request. Deliberately not a link: converted requests
-                are gone from the Order Requests module, so there is nowhere to
-                navigate to. The internal request id rides along as a title
-                attribute for support/audit lookups without adding UI noise. */}
-            {order.source_request_number && (
-              <MetaField
-                label="Source Request"
-                value={
-                  <span title={order.source_order_request_id ?? undefined}>
-                    {order.source_request_number}
-                  </span>
-                }
-              />
-            )}
-          </div>
-          {order.notes && (
-            <div style={{
-              marginTop: '10px', paddingTop: '9px', borderTop: `1px solid ${colors.border}`,
-              fontSize: '12.5px', color: colors.secondary, lineHeight: 1.55, whiteSpace: 'pre-wrap',
-            }}>
-              <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '3px' }}>
-                Notes
-              </span>
-              {order.notes}
-            </div>
-          )}
-        </section>
+        {/* ══ RECORD INFORMATION IS GONE ══
+            It held five things. Three were worth keeping and each moved to
+            where it belongs rather than being deleted with the section:
+
+              Requested By      → the identity band, as "Raised by"
+              Created           → Important Dates, secondary
+              Last Updated      → Important Dates, secondary
+              Source Request    → the identity band, as "From request"
+              Notes             → its own block under the attention strip
+
+            The internal request UUID that used to ride along as a title
+            attribute is NOT reproduced. Nothing an operational reader can do
+            with it, and a database key is not a fact about the Order. */}
 
         {/* ══ 8. ACTIVITY ══ the complete trail, last: the current state is
             understood before the history that produced it. */}
@@ -2242,6 +2349,11 @@ export default function OrderDetailPage() {
               when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
               dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
               fromPi: entry.source === 'pi',
+              // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
+              // of their oldest unread update, captured on open before those
+              // rows were marked read, so everything at or after it is what
+              // they have not seen. Null — the ordinary case — marks nothing.
+              isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
             }
           })} />
         )}
@@ -2286,7 +2398,7 @@ export default function OrderDetailPage() {
           order={amendableOrder}
           supabase={supabase}
           onClose={() => setAmendOpen(false)}
-          onDone={afterChange}
+          onDone={() => afterChange('amended')}
         />
       )}
       {requestOpen && amendableOrder && (
@@ -2294,7 +2406,9 @@ export default function OrderDetailPage() {
           order={amendableOrder}
           supabase={supabase}
           onClose={() => setRequestOpen(false)}
-          onDone={afterChange}
+          /* Nothing to announce: this RAISES a change request, and the Order
+             itself has not moved. The decision on it does announce. */
+          onDone={() => afterChange(null)}
         />
       )}
       {cancelOpen && amendableOrder && (
@@ -2303,7 +2417,9 @@ export default function OrderDetailPage() {
           supabase={supabase}
           isAdmin={actingAsAdmin || mayManageOrders}
           onClose={() => setCancelOpen(false)}
-          onDone={afterChange}
+          /* A cancellation IS a status change — cancel_order_with_audit writes
+             status_changed, with the reason in its payload. */
+          onDone={() => afterChange('status')}
         />
       )}
       {/* The client dialog the PI card's name opens: the contact number and both
@@ -2371,7 +2487,11 @@ export default function OrderDetailPage() {
           order={amendableOrder ?? null}
           supabase={supabase}
           onClose={() => setReviewing(null)}
-          onDone={afterChange}
+          /* An approved change request is applied as an amendment, and that is
+             the audit row this finds. A rejection writes none, so the route
+             finds nothing and sends nothing — which is right: the Order did
+             not move. */
+          onDone={() => afterChange('amended')}
         />
       )}
 

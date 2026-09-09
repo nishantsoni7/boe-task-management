@@ -191,7 +191,11 @@ describe('7/8. the server decides the set, and decides it narrowly', () => {
 
   test('8. a task-group action carries the SAME category and system filters as the list', () => {
     // mark-read: the taskId branch is the all-branch plus one condition.
-    assert.ok(MARK_ROUTE.includes('if (all || taskId != null) {'))
+    // `entityId` joined the same branch (20261202000000): it is the non-task
+    // equivalent of `taskId` and takes the identical category and system
+    // filters. Adding it here rather than beside `id` is the whole point —
+    // a selector that reached rows the feed does not show would be a leak.
+    assert.ok(MARK_ROUTE.includes('if (all || taskId != null || entityId != null) {'))
     assert.ok(MARK_ROUTE.includes("if (taskId != null) query = query.eq('task_id', taskId as string)"))
     assert.ok(MARK_ROUTE.includes('getNotificationCategoryFilter(categoryResult.category)'))
     assert.ok(MARK_ROUTE.includes("SYSTEM_TYPE_EXCLUSION"))
@@ -212,9 +216,11 @@ describe('7/8. the server decides the set, and decides it narrowly', () => {
   })
 
   test('the routes reject ambiguous, empty and malformed selectors', () => {
-    assert.ok(MARK_ROUTE.includes("{ error: 'id, ids, taskId or all is required' }"))
-    assert.ok(MARK_ROUTE.includes("{ error: 'Provide exactly one of id, ids, taskId or all' }"))
+    assert.ok(MARK_ROUTE.includes("{ error: 'id, ids, taskId, entityId or all is required' }"))
+    assert.ok(MARK_ROUTE.includes("{ error: 'Provide exactly one of id, ids, taskId, entityId or all' }"))
     assert.ok(MARK_ROUTE.includes("if (taskId != null && !isValidUUID(taskId as string))"))
+    assert.ok(MARK_ROUTE.includes("if (entityId != null && !isValidUUID(entityId as string))"),
+      'a malformed entity id is a 400, not a 22P02 cast error dressed as a 500')
     assert.ok(MARK_ROUTE.includes('Cannot mark more than'), 'oversized id lists are refused')
     assert.ok(LIST_ROUTE.includes("if (taskId !== null && !isValidUUID(taskId))"))
     // An unsupported category is refused before any filter is built.
@@ -230,7 +236,7 @@ describe('7/8. the server decides the set, and decides it narrowly', () => {
     assert.equal(/count:\s*'exact'/.test(del), false, 'no separate count before the delete')
     // mark-read filters on is_read = false, so every returned row WAS unread.
     assert.ok(MARK_ROUTE.includes(".eq('is_read', false)"))
-    assert.ok(MARK_ROUTE.includes('unreadAffected: (all || taskId != null) ? updatedCount : undefined'))
+    assert.ok(MARK_ROUTE.includes('unreadAffected: (all || taskId != null || entityId != null) ? updatedCount : undefined'))
   })
 
   test('the group delete names ONE table', () => {

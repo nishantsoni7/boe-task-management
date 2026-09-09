@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
   Home, LayoutGrid, Building2, Users, Briefcase, ShieldCheck, Layers, X, Hash, Eraser, DatabaseZap,
-  ClipboardList,
+  ClipboardList, BellRing,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -15,14 +15,15 @@ import cc from '@/components/controlCenter/controlCenter.module.css'
 // 'modules' (Module Visibility) is retained so the existing ?tab=modules URL
 // still resolves for rollback, but it is not reachable from the sidebar — see
 // the note in ControlCenterNav.
-export type ControlCenterTab = 'overview' | 'departments' | 'people' | 'modules' | 'order-numbering'
+export type ControlCenterTab =
+  'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
 
 const MAIN_PATH = '/admin/control-center'
 
 /** The section the main page shows for a ?tab= value. Anything unknown is Overview. */
 export function resolveControlCenterTab(tabParam: string | null): ControlCenterTab {
   return tabParam === 'departments' || tabParam === 'people' || tabParam === 'modules'
-    || tabParam === 'order-numbering'
+    || tabParam === 'order-numbering' || tabParam === 'order-notifications'
     ? tabParam : 'overview'
 }
 
@@ -53,6 +54,10 @@ const TAB_HEADINGS: Record<ControlCenterTab, Heading> = {
   'order-numbering': {
     group: 'System', title: 'Order Numbering',
     subtitle: 'The number the next Confirmed Order will be given.',
+  },
+  'order-notifications': {
+    group: 'System', title: 'Order Notifications',
+    subtitle: 'Which associated people are told when a Confirmed Order changes.',
   },
 }
 
@@ -316,6 +321,17 @@ function ControlCenterNav({
           href={tabHref('order-numbering')}
           replace={onMain}
           active={onMain && tab === 'order-numbering'}
+          onNavigate={onNavigate}
+        />
+        {/* Which associated people are told when a Confirmed Order changes.
+            Its own entry for the same reason Order Numbering has one: a
+            control an admin cannot find is a control that does not exist. */}
+        <NavItem
+          label="Order Notifications"
+          icon={icon(BellRing)}
+          href={tabHref('order-notifications')}
+          replace={onMain}
+          active={onMain && tab === 'order-notifications'}
           onNavigate={onNavigate}
         />
         {/* Test Data Cleanup removes ONE transaction, found by searching for

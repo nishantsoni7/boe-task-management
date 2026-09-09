@@ -873,6 +873,12 @@ describe('the applied migrations are frozen', () => {
       // read, so it reaches nothing asserted here.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
       '20261201000000_order_submission_confirmation_required_fields.sql',
+      // Confirmed Order update notifications: four notification_type values,
+      // one configuration table of its own (public.order_notification_recipients)
+      // and one partial index on public.notifications. It creates nothing else,
+      // alters no existing table and defines no function, so it reaches nothing
+      // asserted here.
+      '20261202000000_order_update_notifications.sql',
     ])
   })
 
@@ -1012,6 +1018,12 @@ describe('the applied migrations are frozen', () => {
       // read, so it reaches nothing asserted here.
       '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
       '20261201000000_order_submission_confirmation_required_fields.sql',
+      // Confirmed Order update notifications: four notification_type values,
+      // one configuration table of its own (public.order_notification_recipients)
+      // and one partial index on public.notifications. It creates nothing else,
+      // alters no existing table and defines no function, so it reaches nothing
+      // asserted here.
+      '20261202000000_order_update_notifications.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

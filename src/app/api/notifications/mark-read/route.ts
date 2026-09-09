@@ -14,6 +14,9 @@ const MAX_IDS = 200
 //   { ids: [...] }    an explicit set the caller already holds
 //   { taskId }        EVERY notification for that task in this category —
 //                     including ones the browser has never loaded
+//   { entityId }      the same, for a non-task record named by `entity_id` —
+//                     a Confirmed Order, a payment request. Opening the record
+//                     is what marks that reader's rows about it read.
 //   { all: true }     every unread one for the caller in this category
 //
 // `taskId` exists because the page is bounded. "Mark all updates for this task
@@ -49,8 +52,11 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null)
-  const { id, ids, taskId, all, category } =
-    (body ?? {}) as { id?: unknown; ids?: unknown; taskId?: unknown; all?: unknown; category?: unknown }
+  const { id, ids, taskId, entityId, all, category } =
+    (body ?? {}) as {
+      id?: unknown; ids?: unknown; taskId?: unknown; entityId?: unknown
+      all?: unknown; category?: unknown
+    }
 
   // `ids` is the same operation as `id`, for a known set. It exists so that
   // marking one task's group read is ONE request rather than one per event —
@@ -61,16 +67,20 @@ export async function POST(req: NextRequest) {
 
   // Exactly one selector. Two would be ambiguous about which wins, and an
   // ambiguous destructive-ish request is one nobody can reason about later.
-  const selectors = [id != null, idList != null, taskId != null, all === true].filter(Boolean).length
+  const selectors =
+    [id != null, idList != null, taskId != null, entityId != null, all === true].filter(Boolean).length
   if (selectors === 0) {
-    return NextResponse.json({ error: 'id, ids, taskId or all is required' }, { status: 400 })
+    return NextResponse.json({ error: 'id, ids, taskId, entityId or all is required' }, { status: 400 })
   }
   if (selectors > 1) {
     return NextResponse.json(
-      { error: 'Provide exactly one of id, ids, taskId or all' }, { status: 400 })
+      { error: 'Provide exactly one of id, ids, taskId, entityId or all' }, { status: 400 })
   }
   if (taskId != null && !isValidUUID(taskId as string)) {
     return NextResponse.json({ error: 'Invalid task id' }, { status: 400 })
+  }
+  if (entityId != null && !isValidUUID(entityId as string)) {
+    return NextResponse.json({ error: 'Invalid entity id' }, { status: 400 })
   }
   // Validated before Postgres sees it — a malformed id would otherwise return a
   // 22P02 cast error as a 500 rather than the 400 it is.
@@ -98,7 +108,7 @@ export async function POST(req: NextRequest) {
 
   const update = { is_read: true, read_at: new Date().toISOString() }
   let query = supabase.from('notifications').update(update).eq('user_id', user.id)
-  if (all || taskId != null) {
+  if (all || taskId != null || entityId != null) {
     const categoryResult = resolveNotificationCategory(category)
     if (!categoryResult.ok) {
       return NextResponse.json({ error: categoryResult.error }, { status: 400 })
@@ -116,6 +126,20 @@ export async function POST(req: NextRequest) {
     // filters, never a replacement for them, so it cannot reach a row the feed
     // does not show.
     if (taskId != null) query = query.eq('task_id', taskId as string)
+    // ── entityId: every notification about ONE non-task record ──
+    //
+    // The same argument `taskId` makes, for the modules whose rows point at a
+    // record through `entity_id` rather than `task_id`. Opening a Confirmed
+    // Order marks that reader's updates for THAT Order read — including the
+    // ones older than the browser's page window, which an id list would
+    // silently leave unread and the badge wrong about.
+    //
+    // PER USER, INHERENTLY. Every condition here is on top of the
+    // `user_id = caller` above, so this can only ever flip the caller's own
+    // rows. Another recipient's unread state for the same Order is a different
+    // row and is not touched — which is the whole reason unread lives in
+    // `notifications` and not in a column on `orders`.
+    if (entityId != null) query = query.eq('entity_id', entityId as string)
   } else if (idList) {
     // Scoped to the caller by the `.eq('user_id', …)` above, so an id belonging
     // to somebody else simply matches nothing.
@@ -145,6 +169,6 @@ export async function POST(req: NextRequest) {
     updatedCount,
     // Named separately from updatedCount so a future change to the filter
     // cannot silently redefine what the client subtracts.
-    unreadAffected: (all || taskId != null) ? updatedCount : undefined,
+    unreadAffected: (all || taskId != null || entityId != null) ? updatedCount : undefined,
   })
 }

@@ -22,6 +22,10 @@
 import type { Notification } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { ISSUE_PARAM } from '@/lib/objections'
+import { ORDER_UPDATE_NOTIFICATION_TYPES } from '@/lib/orders/orderUpdateNotifications'
+
+/** The four Confirmed Order update types, as a set, for the href branch below. */
+const ORDER_UPDATE_TYPE_SET: ReadonlySet<string> = new Set(ORDER_UPDATE_NOTIFICATION_TYPES)
 
 export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'other'
 
@@ -96,6 +100,13 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   order_resubmitted:         { label: 'Resubmitted',     color: colors.blue,  bg: colors.blueTint  },
   order_rejected:            { label: 'Rejected',        color: colors.red,   bg: colors.redTint   },
   order_converted:           { label: 'Converted',       color: colors.green, bg: colors.greenTint },
+  // Confirmed Order updates (20261202000000). Blue for the three that report a
+  // move somebody made; amber for payment, which is the one a reader may have
+  // to reconcile against a bank statement before the Order can proceed.
+  order_update_status:       { label: 'Status changed',  color: colors.blue,  bg: colors.blueTint  },
+  order_update_amended:      { label: 'Order amended',   color: colors.blue,  bg: colors.blueTint  },
+  order_update_production:   { label: 'Production',      color: colors.blue,  bg: colors.blueTint  },
+  order_update_payment:      { label: 'Payment',         color: colors.amber, bg: colors.amberTint },
   // PI submissions — the reduced-payment exception. Amber for the request,
   // because somebody must decide it before an Order number can exist; green and
   // red for the two outcomes, which are what the salesperson is waiting on.
@@ -285,8 +296,13 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
 
   if (type.startsWith('order')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE
+    // AN ORDER UPDATE'S entity_id IS THE CONFIRMED ORDER, so it opens the Order
+    // itself — the same destination order_converted has always used, and the
+    // page whose Activity trail explains what the sentence said. Opening it is
+    // also what marks that reader's updates for this Order read, so the link
+    // and the unread state cannot disagree about where "seen" happens.
     const href = n.entity_id
-      ? (type === 'order_converted'
+      ? (type === 'order_converted' || ORDER_UPDATE_TYPE_SET.has(type)
           ? `/orders/${n.entity_id}`
           : `/orders/requests/${n.entity_id}?from=all`)
       : '/orders/requests'

@@ -249,6 +249,13 @@ describe('no Order screen waits more than it must', () => {
     // inside the handoff's existing Promise.all, so the Order's permanent BOE
     // item codes arrive alongside its PI items rather than in a fourth wait.
     // The startup wait count is unchanged.
+    //
+    // DETAIL 28 -> 29 (20261202000000): the reader's own unread Order-update
+    // notifications for THIS Order, read once on open so the Activity trail can
+    // mark what is new to them before those rows are marked read. It runs LAST,
+    // after the loading gate has cleared and the page is already on screen, and
+    // nothing awaits it — so the startup wait count is unchanged and the test
+    // above still requires exactly three.
     const expected: Record<string, number> = {
       // DASHBOARD went 9 -> 11 when the Order Request card and its count were
       // replaced by the workflow the dashboard now describes: PI Drafts, the
@@ -256,7 +263,12 @@ describe('no Order screen waits more than it must', () => {
       // them are issued INSIDE the page's existing Promise.all, so the count
       // grew and the number of times the page waits did not — which is the whole
       // property this block exists to protect.
-      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 2, [DETAIL]: 28,
+      // ALL 2 -> 3 (20261202000000): the reader's own unread Order-update
+      // notifications, which decide the NEW UPDATE badge. It is issued INSIDE
+      // the page's existing Promise.all, beside the profile and the Orders
+      // read, so the count grew and the number of times the page waits did NOT
+      // — the wait test above still requires exactly two.
+      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 3, [DETAIL]: 29,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -501,7 +513,11 @@ describe('a status change re-reads what it changed, and not the whole page', () 
       'the update must return the row it stored')
     assert.ok(detail.includes('setOrder(o => o ? { ...o, ...updated } : o)'),
       'and the page must apply the DATABASE\'s values, not the requested one')
-    assert.ok(detail.includes('<MetaField label="Last Updated"  value={fmtDate(order.updated_at)} />'),
+    // Record Information was removed (20261202000000) and its two timestamps
+    // moved into Important Dates. The REASON this assertion exists is unchanged
+    // — updated_at is on screen, so a trigger-written value may not be assumed
+    // — and this now pins it where it actually renders.
+    assert.ok(detail.includes('updatedAt: fmtDate(order.updated_at)'),
       'updated_at is displayed, which is why it may not be assumed')
   })
 

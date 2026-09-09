@@ -153,6 +153,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // public.order_product_codes. It touches no task table or function.
     '20261124000000_order_submission_reserved_number_gate_removed_and_boe_item_codes.sql',
     '20261201000000_order_submission_confirmation_required_fields.sql',
+    // Confirmed Order update notifications: four notification_type values, one
+    // configuration table of its own and one partial index on
+    // public.notifications. It touches no task table and no task function.
+    '20261202000000_order_update_notifications.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

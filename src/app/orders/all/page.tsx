@@ -10,6 +10,12 @@ import type { UserProfile } from '@/lib/types'
 import { Activity, CircleX, Layers, PackageCheck, PauseCircle, Truck, type LucideIcon } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatOrderOperationalNumber } from '@/lib/orders/orderProductCodes'
+import {
+  ORDER_UNREAD_TYPES,
+  unreadUpdateCounts,
+  unreadUpdateLabel,
+  type UnreadUpdateRow,
+} from '@/lib/orders/orderUnreadUpdates'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -205,6 +211,14 @@ export default function AllOrdersPage() {
   const [dateFilter,   setDateFilter]   = useState<DateFilter>('all')
   const [sortKey,      setSortKey]      = useState<SortKey>('newest')
   const [deletedBanner, setDeletedBanner] = useState(false)
+  /**
+   * HOW MANY UNREAD UPDATES THIS READER HAS, PER ORDER.
+   *
+   * Read from `notifications` under RLS, so it is scoped to the signed-in
+   * person by the database and cannot be anybody else's. Empty until the read
+   * lands, which is right: an absent badge is honest, a wrong one is not.
+   */
+  const [unread, setUnread] = useState<Map<string, number>>(new Map())
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -236,6 +250,31 @@ export default function AllOrdersPage() {
     setListLoading(false)
   }
 
+  /**
+   * WHICH ORDERS HAVE UPDATES THIS READER HAS NOT SEEN.
+   *
+   * ONE QUERY, AND IT IS THE NOTIFICATION SYSTEM'S OWN ROWS. `user_id` is not
+   * filtered here because it does not need to be: the notifications RLS policy
+   * already limits a reader to their own rows, so this cannot return anybody
+   * else's unread state even if it asked for it. `is_read = false` and the four
+   * Order-update types are the whole filter, and both are served by the partial
+   * index 20261202000000 adds.
+   *
+   * DELIBERATELY SEPARATE FROM loadOrders. The badge is an enhancement over a
+   * list that must render without it: a failed or slow notification read leaves
+   * the Orders exactly as they were, with no badges, rather than delaying or
+   * breaking the table.
+   */
+  const loadUnread = async () => {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('entity_id')
+      .eq('is_read', false)
+      .in('type', ORDER_UNREAD_TYPES)
+    if (error) return
+    setUnread(unreadUpdateCounts((data ?? []) as UnreadUpdateRow[]))
+  }
+
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -253,6 +292,10 @@ export default function AllOrdersPage() {
           .eq('id', session.user.id)
           .single(),
         loadOrders(),
+        // Alongside, never after: the badge depends on neither of the other
+        // two, and a third round trip in series would delay the whole table
+        // for a decoration.
+        loadUnread(),
       ])
 
       setProfile(me as UserProfile)
@@ -369,7 +412,9 @@ export default function AllOrdersPage() {
       title="Confirmed Orders"
       subtitle="Complete order list across all statuses."
       onSignOut={handleSignOut}
-      onRefresh={loadOrders}
+      /* Refresh re-reads both: a reader who has just opened an Order in
+         another tab expects its badge to be gone when they come back. */
+      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread()]) }}
     >
       {deletedBanner && (
         <div style={{
@@ -567,6 +612,11 @@ export default function AllOrdersPage() {
               <tbody>
                 {visible.map(o => {
                   const overdue = isOverdue(o.due_date, o.status)
+                  // PER READER. This count came from this person's own unread
+                  // notification rows, so another recipient opening the Order
+                  // leaves this badge exactly where it is.
+                  const updates = unread.get(o.id) ?? 0
+                  const updateLabel = unreadUpdateLabel(updates)
                   return (
                     <tr
                       key={o.id}
@@ -574,6 +624,15 @@ export default function AllOrdersPage() {
                       style={{
                         borderBottom: `1px solid ${colors.border}`,
                         cursor: 'pointer', transition: 'background 0.1s',
+                        /* A TINT AND A LEFT EDGE, NOT A FLASH. The row has to
+                           be hard to miss in a list of forty and impossible to
+                           find irritating in a list somebody reads all day, so
+                           the animation is on the small dot in the badge and
+                           nowhere else. */
+                        ...(updateLabel ? {
+                          background: colors.blueTint,
+                          boxShadow: `inset 3px 0 0 ${colors.blue}`,
+                        } : null),
                       }}
                       /* HOVER IS THE EARLIEST HONEST SIGNAL that this row is
                          about to be opened, and prefetching the Order detail
@@ -586,12 +645,22 @@ export default function AllOrdersPage() {
                          moving down a list of forty costs forty cache hits. */
                       onMouseEnter={e => {
                         router.prefetch(`/orders/${o.id}`)
-                        ;(e.currentTarget as HTMLTableRowElement).style.background = colors.raised
+                        ;(e.currentTarget as HTMLTableRowElement).style.background =
+                          updateLabel ? colors.blueTint : colors.raised
                       }}
-                      onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
+                      onMouseLeave={e => {
+                        (e.currentTarget as HTMLTableRowElement).style.background =
+                          updateLabel ? colors.blueTint : 'transparent'
+                      }}
                     >
-                      <td style={{ padding: '11px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
+                      <td style={{ padding: '11px 16px', fontWeight: updateLabel ? 800 : 600, color: colors.primary, whiteSpace: 'nowrap' }}>
                         {formatOrderOperationalNumber(o.display_number) ?? o.display_number}
+                        {updateLabel && (
+                          <span className="order-update-badge">
+                            <span className="order-update-dot" aria-hidden="true" />
+                            {updateLabel}
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: '11px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.client_name}

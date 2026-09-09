@@ -236,37 +236,47 @@ describe('neither screen reveals a record it could not already read', () => {
 })
 
 describe('the trail runs both ways between an Order and its PI', () => {
-  test('the Order offers the approved PI it was created from', () => {
-    // THE DOOR EXISTED IN THE DATABASE AND NOTHING USED IT.
+  test('the Order no longer offers a door back to the PI it was created from', () => {
+    // THE DOOR IS GONE FROM THE SCREEN, NOT FROM THE DATABASE.
+    //
     // can_view_order_submission_via_order (20260924000000 §3) was added so that
-    // "this submission became an Order the caller may see" is a way onto the PI,
-    // deliberately separate from PI-REVIEW visibility. Until this control there
-    // was no way to walk through it, so the trail ran one way only: a PI could
-    // reach its Order, and the Order could not reach its PI.
+    // "this submission became an Order the caller may see" is a way onto the
+    // PI, and it still stands — an administrator reaches the draft from PI
+    // Drafts exactly as they always could.
+    //
+    // WHAT CHANGED IS WHAT AN OPERATIONAL READER IS OFFERED. After conversion
+    // the Order page IS the source of truth: the products, the money, the
+    // documents and the PI version history are all on it. A prominent "Open
+    // source PI" beside them invited people to work from a superseded draft.
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    assert.ok(page.includes('piSubmissionHref(piHandoff.submissionId)'))
-    // The control moved from the big Approved PI card into Order Records when
-    // that card was removed: the source relationship is a REFERENCE and an
-    // action, not a section that restates the Order's own facts. Same door.
-    assert.ok(page.includes('Open source PI'))
+    assert.ok(!page.includes('Open source PI'), 'the action must not be offered')
+    assert.ok(!page.includes('piSubmissionHref('), 'and no route back to the draft is built')
   })
 
-  test('and offers it only for an Order that HAS one', () => {
-    // The control hangs off the `ready` handoff branch. An Order created from an
-    // Order Request has no source PI, and gets no door to a record that does not
-    // exist — `none` renders nothing at all, exactly as before.
+  test('but the RELATIONSHIP and every record on both sides survive it', () => {
+    // Removing an action must not remove a record. All five of these are what
+    // "traceability" actually means here, and every one is still read.
     const page = readFileSync(ORDER_PAGE, 'utf8')
-    // Order Records is drawn only for an Order that came from a PI, and the
-    // door itself only in the 'ready' branch inside it: an Order created from
-    // an Order Request has no source PI and gets no door to a record that does
-    // not exist.
-    const records = page.slice(page.indexOf('title="Order records"'))
-    const door = records.indexOf('Open source PI')
-    const readyGate = records.indexOf("piHandoff.kind === 'ready'")
-    assert.ok(readyGate > 0 && readyGate < door,
-      'the door sits inside the ready branch')
+    assert.ok(page.includes('source_order_submission_id'), 'the relation itself')
+    assert.ok(page.includes('ORDER_PI_HANDOFF_COLUMNS'), 'the PI the Order came from')
+    assert.ok(page.includes('piHandoff.workbookName'), 'named on screen')
+    assert.ok(page.includes('downloadWorkbook'), 'and its file still downloadable')
+    assert.ok(page.includes("from('order_pi_versions')"), 'and every PI version')
+
+    // The merged chronology still interleaves the PI's own activity trail, so
+    // the history of the draft is still readable from the Order.
+    assert.ok(page.includes('mergeOrderHistory'))
+  })
+
+  test('and the PI card is drawn only for an Order that HAS a PI', () => {
+    // An Order created from an Order Request has no source PI, and gets no
+    // section about a record that does not exist — exactly as before.
+    const page = readFileSync(ORDER_PAGE, 'utf8')
     assert.ok(page.indexOf("piHandoff.kind !== 'none'") < page.indexOf('title="Order records"'),
-      'and Order Records itself is gated on the Order having a PI at all')
+      'Order Records is gated on the Order having a PI at all')
+    const records = page.slice(page.indexOf('title="Order records"'))
+    assert.ok(records.indexOf("piHandoff.kind === 'ready'") > 0,
+      'and the source-PI block inside it on the handoff being ready')
   })
 
   test('the PI already offered its Order, and that is unchanged', () => {

@@ -21,9 +21,11 @@ import {
   attentionHeading,
   isOrderClosed,
   orderAttentionItems,
+  orderImportantDates,
   orderSummaryFacts,
   relativeDayLabel,
   type OrderAttentionInput,
+  type OrderImportantDatesInput,
   type OrderSummaryInput,
 } from './orderWorkspace'
 
@@ -127,24 +129,49 @@ describe('the attention bar', () => {
 
 const summary: OrderSummaryInput = {
   status: 'running',
-  statusLabel: 'Running',
-  statusTone: 'blue',
+  customerName: 'Acme Exports',
   productionAligned: true,
   productionLabel: 'Aligned',
   productionLine: 'Aligned by Ravi · 8 Sep 2026, 10:00 am',
   salespersonName: 'Nishant',
-  confirmDate: '8 Sep 2026',
-  dueDate: '30 Oct 2026',
-  isOverdue: false,
   leadSource: 'Reference',
+  raisedByName: null,
+  sourceRequestNumber: null,
 }
 
-describe('the Order Summary facts', () => {
-  test('states the six management facts, in reading order', () => {
+describe('the identity band', () => {
+  test('states who the Order is for and who is carrying it, in reading order', () => {
     assert.deepEqual(orderSummaryFacts(summary).map(f => f.key),
-      ['status', 'production', 'salesperson', 'confirm_date', 'due_date', 'lead_source'])
+      ['customer', 'salesperson', 'lead_source', 'production'])
     assert.deepEqual(orderSummaryFacts(summary).map(f => f.label),
-      ['Status', 'Production', 'Salesperson', 'Confirm date', 'Due date', 'Lead source'])
+      ['Customer', 'Salesperson', 'Lead source', 'Production'])
+  })
+
+  test('the status is NOT here — it belongs to the command header', () => {
+    const facts = orderSummaryFacts(summary)
+    assert.ok(!facts.some(f => (f.key as string) === 'status'))
+    assert.ok(!facts.some(f => /^status$/i.test(f.label)))
+  })
+
+  test('neither date is here — both belong to Important Dates', () => {
+    const facts = orderSummaryFacts(summary)
+    for (const key of ['confirm_date', 'due_date']) {
+      assert.ok(!facts.some(f => (f.key as string) === key), key)
+    }
+    assert.ok(!/date/i.test(facts.map(f => f.label).join(' ')))
+  })
+
+  test('the two Record Information survivors appear only when the Order has them', () => {
+    assert.equal(orderSummaryFacts(summary).length, 4)
+    const full = orderSummaryFacts({
+      ...summary, raisedByName: 'Dhruv', sourceRequestNumber: 'BOE-R-0042',
+    })
+    assert.deepEqual(full.map(f => f.key),
+      ['customer', 'salesperson', 'lead_source', 'production', 'raised_by', 'source_request'])
+    assert.equal(full[4].value, 'Dhruv')
+    assert.equal(full[5].value, 'BOE-R-0042')
+    // Both are records, never gaps: nobody can act on a missing one.
+    assert.ok(full.slice(4).every(f => f.tone === 'neutral'))
   })
 
   test('carries NO payment figure — payment has its own section', () => {
@@ -164,37 +191,67 @@ describe('the Order Summary facts', () => {
 
   test('a gap on an OPEN Order is amber and names itself', () => {
     const gaps = orderSummaryFacts({
-      ...summary, productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-      salespersonName: null, confirmDate: null, dueDate: null, leadSource: null,
+      ...summary, customerName: '', productionAligned: false, productionLabel: 'Not Aligned',
+      productionLine: null, salespersonName: null, leadSource: null,
     })
-    assert.equal(gaps[1].tone, 'amber')
-    assert.equal(gaps[2].value, SUMMARY_UNASSIGNED)
-    assert.equal(gaps[2].tone, 'amber')
-    assert.equal(gaps[3].value, SUMMARY_NOT_SET)
-    assert.equal(gaps[4].value, SUMMARY_NOT_SET)
-    assert.equal(gaps[5].value, SUMMARY_NOT_SET)
-    assert.ok(gaps.slice(2).every(f => f.tone === 'amber'))
+    assert.equal(gaps[0].value, SUMMARY_NOT_SET)
+    assert.equal(gaps[1].value, SUMMARY_UNASSIGNED)
+    assert.equal(gaps[2].value, SUMMARY_NOT_SET)
+    assert.ok(gaps.every(f => f.tone === 'amber'))
   })
 
   test('the same gaps on a closed Order are neutral, not warnings', () => {
     const facts = orderSummaryFacts({
-      ...summary, status: 'dispatched', productionAligned: false, productionLabel: 'Not Aligned',
-      productionLine: null, salespersonName: null, confirmDate: null, dueDate: null, leadSource: null,
+      ...summary, status: 'dispatched', customerName: '', productionAligned: false,
+      productionLabel: 'Not Aligned', productionLine: null, salespersonName: null, leadSource: null,
     })
-    assert.ok(facts.slice(1).every(f => f.tone === 'neutral'))
+    assert.ok(facts.every(f => f.tone === 'neutral'))
   })
 
   test('a settled Order is quiet: production green, everything else neutral', () => {
     const facts = orderSummaryFacts(summary)
-    assert.equal(facts[1].tone, 'green')
-    assert.ok(facts.slice(2).every(f => f.tone === 'neutral'))
+    assert.equal(facts[3].tone, 'green')
+    assert.ok(facts.slice(0, 3).every(f => f.tone === 'neutral'))
+  })
+})
+
+const dates: OrderImportantDatesInput = {
+  status: 'running',
+  confirmDate: '8 Sep 2026',
+  dueDate: '30 Oct 2026',
+  isOverdue: false,
+  createdAt: '8 Sep 2026',
+  updatedAt: '9 Sep 2026',
+}
+
+describe('Important Dates', () => {
+  test('the planning pair leads and the audit pair follows', () => {
+    const d = orderImportantDates(dates)
+    assert.deepEqual(d.primary.map(x => x.key), ['confirm_date', 'due_date'])
+    assert.deepEqual(d.secondary.map(x => x.key), ['created_at', 'updated_at'])
+    assert.deepEqual(d.primary.map(x => x.label), ['Confirm date', 'Due date'])
+    assert.deepEqual(d.secondary.map(x => x.label), ['Created', 'Last updated'])
   })
 
-  test('overdue is the only red', () => {
-    const facts = orderSummaryFacts({ ...summary, isOverdue: true })
-    assert.equal(facts[4].tone, 'red')
-    assert.equal(facts[4].detail, 'Overdue')
-    assert.equal(facts.filter(f => f.tone === 'red').length, 1)
+  test('overdue is the only red, and it names itself', () => {
+    const d = orderImportantDates({ ...dates, isOverdue: true })
+    assert.equal(d.primary[1].tone, 'red')
+    assert.equal(d.primary[1].detail, 'Overdue')
+    assert.equal([...d.primary, ...d.secondary].filter(x => x.tone === 'red').length, 1)
+  })
+
+  test('a missing planning date on an OPEN Order is amber; on a closed one it is not', () => {
+    const open = orderImportantDates({ ...dates, confirmDate: null, dueDate: null })
+    assert.ok(open.primary.every(x => x.value === SUMMARY_NOT_SET && x.tone === 'amber'))
+    const closed = orderImportantDates({ ...dates, status: 'cancelled', confirmDate: null, dueDate: null })
+    assert.ok(closed.primary.every(x => x.tone === 'neutral'))
+  })
+
+  test('the audit pair is never a warning — nothing is waiting on a timestamp', () => {
+    const d = orderImportantDates({ ...dates, confirmDate: null, dueDate: null })
+    assert.ok(d.secondary.every(x => x.tone === 'neutral'))
+    assert.equal(d.secondary[0].value, '8 Sep 2026')
+    assert.equal(d.secondary[1].value, '9 Sep 2026')
   })
 })
 

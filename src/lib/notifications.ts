@@ -84,6 +84,15 @@ export const ORDER_NOTIFICATION_TYPES = [
   'order_resubmitted',
   'order_rejected',
   'order_converted',
+  // Confirmed Order updates (20261202000000). Listed here so they reach the
+  // Orders bell, the Orders feed, the Orders unread count and Orders' own
+  // "mark all read" — one module, one channel. The same four are the closed
+  // set src/lib/orders/orderUpdateNotifications.ts derives from its event map,
+  // and a test pins these two lists to each other.
+  'order_update_status',
+  'order_update_amended',
+  'order_update_production',
+  'order_update_payment',
 ] as const
 
 // Attendance & Payroll employee-raised issues (20260824000000).
