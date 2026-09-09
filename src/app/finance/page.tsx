@@ -1857,9 +1857,20 @@ function FigureBand({ children }: { children: React.ReactNode }) {
   )
 }
 
-// One cell of the figure band. `lead` carries the amount at display weight; the
-// other cells sit a step below it so the money is unmistakably the headline.
-function FigureCell({ label, value, lead }: { label: string; value: string; lead?: boolean }) {
+// One cell of the figure band, in three weights.
+//
+// `lead` carries the amount at display weight. `strong` sits between that and a
+// plain cell, and exists for the payment MODE: an approver's first scan is "how
+// much, through which account, on what date", so the account cannot be set in
+// the same quiet type as an ordinary field. It is deliberately NOT a badge —
+// HDFC is information about the money, not a state the payment is in, and
+// tinting it would make it read as a status beside the real one in the header.
+function FigureCell({ label, value, lead, strong }: {
+  label: string
+  value: string
+  lead?: boolean
+  strong?: boolean
+}) {
   return (
     <div style={{ background: colors.raised, padding: '11px 14px', minWidth: 0 }}>
       <div style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
@@ -1867,10 +1878,10 @@ function FigureCell({ label, value, lead }: { label: string; value: string; lead
       </div>
       <div style={{
         marginTop: lead ? '3px' : '4px',
-        fontSize: lead ? '26px' : '15px',
-        fontWeight: lead ? 700 : 600,
+        fontSize: lead ? '26px' : strong ? '19px' : '15px',
+        fontWeight: lead || strong ? 700 : 600,
         color: colors.primary,
-        lineHeight: lead ? 1.1 : 1.35,
+        lineHeight: lead ? 1.1 : strong ? 1.25 : 1.35,
         fontVariantNumeric: 'tabular-nums',
         wordBreak: 'break-word',
       }}>
@@ -2058,9 +2069,13 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
     decisionRefs.current[next]?.focus()
   }
 
-  const submittedLine = r.submitted_by_name
-    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
-    : `Submitted ${fmtDate(r.created_at)}`
+  // WHAT THIS DIALOG IS, under the Payment ID — not who typed the entry.
+  //
+  // "Submitted by Test Sales User · 9 Sep 2026" used to sit here, in the most
+  // prominent line on the screen after the id itself, which is more weight than
+  // the submitter earns on a screen about money. It is still shown, as a field
+  // in the payment details where the rest of the context is.
+  const subtitleLine = 'Payment verification'
 
   // WHAT APPROVING THIS WILL ATTACH THE MONEY TO, read from the same projection
   // the requester's popup and the table read. Before this approval it is the
@@ -2069,65 +2084,94 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
   const destination = usePaymentDestination(supabase, r.id)
   const orderNoLine = orderNoCell(destination)
 
-  // ── Figure band — the three facts an approval actually turns on ────────────
-  // How much, from whom, and when the money arrived. Lifted out of the old
-  // summary card and given the full dialog width: they were previously sharing
-  // a card with five routing fields, which flattened the amount into just
-  // another value and left the card looking large and half-empty.
+  // ── Figure band — the three facts a VERIFICATION turns on ──────────────────
+  //
+  // How much, through which account, on what date. The band used to carry the
+  // CLIENT in the middle cell, which answered a different question: who the
+  // money is from matters for context, but an approver checking a payment
+  // against a bank statement is matching an amount to an account to a date, and
+  // those three had to be read in three different places.
+  //
+  // The client has not been dropped — it leads the payment details below, where
+  // it sits beside the record the money is for, which is where it is useful.
   const top = (
     <FigureBand>
       <FigureCell label="Amount"       value={fmtAmount(r.amount)} lead />
-      {/* NEVER BLANK. A Suspense payment has no customer to name, and
-          customerDisplayName is the one place that decides what that reads as
-          — never an empty cell, a 'null' or an 'undefined'. */}
-      <FigureCell label="Client"       value={customerDisplayName(r.client_name)} />
+      {/* THE ACCOUNT, not a second copy of the mode. paymentDestinationLabel
+          resolves a historical mode/received_in pair to the account it was
+          recorded against, so a 2026 row still reads as an account name. */}
+      <FigureCell label="Payment Mode" value={paymentDestinationLabel(r.payment_mode, r.received_in)} strong />
       <FigureCell label="Payment Date" value={fmtDate(r.payment_date)} />
     </FigureBand>
   )
-
+  // ── Payment details — the evidence, in one column, stated once ────────────
+  //
+  // WHAT WAS REMOVED WAS DUPLICATION, NOT INFORMATION. This column used to open
+  // with a "What this payment is for" card naming PI Draft 417, and then a
+  // "Routing" card whose "Payment Against" field named PI Draft 417 again and
+  // whose "Order Number" field said "No Order yet — PI Draft" — a third way of
+  // saying the same thing, phrased as an absence. The destination is one fact,
+  // so it is one field: Against.
+  //
+  // The card also carried two sentences about the plumbing — "From this
+  // payment's allocations" and "Read from the record itself, never typed" —
+  // which tell an approver where the interface got a value rather than what the
+  // value is. Neither survives.
+  //
+  // Payment Mode left this column for the band above, where it belongs on a
+  // verification screen; the client came down from that band to lead here.
   const left = (
-    <>
-      {/* WHAT APPROVING THIS WILL ATTACH THE MONEY TO. First, above the routing
-          facts, because it is the one thing an approver is deciding about: the
-          allocation intent becomes a real allocation the moment they click
-          Approve, and until then the row's own linkage columns say nothing. */}
-      <PaymentDestinationSummary destination={destination} clientName={r.client_name} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <SectionHeader>Payment Details</SectionHeader>
 
-      {/* Routing — where this payment is aimed and how it came in. Quiet,
-          dense, and deliberately lighter than the band above it: these are
-          facts to check, not the headline. Every field the previous layout
-          showed is still here, minus the amount/client/date now in the band. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <SectionHeader>Routing</SectionHeader>
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '10px', background: colors.raised,
-          // Exactly two columns at every width. auto-fit would find room for a
-          // third once the dialog stacks to one column on a narrow viewport,
-          // breaking the 2×2 into a lopsided 3 + 1.
-          padding: '12px 14px', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-          columnGap: '18px', rowGap: '11px',
-        }}>
-          <MetaItem label="Payment Against" value={paymentAgainstDisplay(destination)}
-                    muted={!destination || destination.kind === 'suspense'} />
-          <MetaItem label="Order Number"    value={orderNoLine.value} muted={orderNoLine.muted} />
-          {/* ONE destination row in place of the Payment Mode + Received In
-              pair, which was printing the same account name twice ("Paytm"
-              over "Paytm") — the second only because a raw received_in was
-              being mapped back to an account by a separate local table.
-              Spanning both columns keeps the grid from ending on a lone empty
-              cell, and leaves room for the helper that says what the account
-              MEANS, which is the whole point: "PNB" alone does not tell an
-              admin that cash was involved. */}
-          <div style={{ gridColumn: '1 / -1' }}>
-            <PaymentDestinationLine payment_mode={r.payment_mode} received_in={r.received_in} />
-          </div>
-        </div>
-      </div>
+      {/* NEVER BLANK. A Suspense payment has no customer to name, and
+          customerDisplayName is the one place that decides what that reads as
+          — never an empty cell, a 'null' or an 'undefined'. */}
+      <MetaItem label="Client" value={customerDisplayName(r.client_name)} />
+
+      {/* WHAT APPROVING THIS WILL ATTACH THE MONEY TO — the one thing an
+          approver is deciding about. Before the decision it is the pending
+          intent; the moment Confirm is clicked it becomes a real allocation,
+          and this field is then reading that instead. Same shared helper the
+          table and the requester's own popup read, so the three cannot
+          disagree. */}
+      <MetaItem label="Against" value={paymentAgainstDisplay(destination)}
+                muted={!destination || destination.kind === 'suspense'} />
+
+      {/* PROOF, REFERENCE AND NOTE — each drawn only when it exists.
+          A REVIEW SCREEN IS READ, NOT FILLED. The three used to sit in one
+          bordered frame with fixed rows, so a payment with no attachment, no
+          UTR and no message printed "Not attached", "Not provided" and "No
+          notes provided" — three rows whose entire content was the news that
+          there was no content, above the decision somebody opened the dialog to
+          make. The heading travels into PaymentProofView because only it knows
+          whether there is an attachment to head. */}
+      <PaymentProofView
+        supabase={supabase}
+        paymentRequestId={r.id}
+        inline
+        heading={<SectionHeader>Payment Proof</SectionHeader>}
+      />
+      {r.proof_note && <MetaItem label="Reference" value={r.proof_note} />}
+      {r.sales_note && <MetaItem label="Note" value={r.sales_note} />}
+
+      {/* WHO RAISED IT — kept, and kept secondary. It used to sit directly under
+          the Payment ID in the header, which gave the person who typed the entry
+          more prominence than the account the money came through. Finance cares
+          about the money first; the submitter matters for accountability and for
+          knowing who a clarification goes back to. */}
+      <MetaItem
+        label="Submitted by"
+        value={r.submitted_by_name
+          ? `${r.submitted_by_name} · ${fmtDate(r.created_at)}`
+          : fmtDate(r.created_at)}
+      />
 
       {/* WHO IS HOLDING THIS MONEY RIGHT NOW. For PNB and Paytm the mode says
           somebody physically carried it, and an admin about to confirm receipt
           has to be able to see the whole chain — not one collection and one
-          handover, but every hand it passed through.
+          handover, but every hand it passed through. Draws nothing at all when
+          neither clause applies.
 
           THE ADMIN MAY ADD TO IT HERE, including after approval: a custody event
           is a statement about who carried cash, not about how much money
@@ -2140,42 +2184,9 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
         canAppend
         formatDateTime={fmtDateTime}
       />
-
-      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the note
-          from sales, in ONE frame under ONE heading. They are three parts of the
-          same question and they are asked together on all three entry forms, so
-          an approver reads them together too. The note used to sit in a section
-          of its own below this one, which made a review dialog with something to
-          say wear two headings where one belongs.
-
-          THE THREE COLUMNS ARE STILL THREE COLUMNS. This is a grouping, not a
-          merge: proof_note is the reference, sales_note is the note, and the
-          attachment is a row in payment_proof_attachments. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-        <SectionHeader>Payment Proof / Reference</SectionHeader>
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '9px 12px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0 }}>Proof</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '9px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0, paddingTop: '2px' }}>Reference</span>
-            <span style={{ fontSize: '13px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-              {r.proof_note || 'Not provided'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '9px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', width: '68px', flexShrink: 0, paddingTop: '2px' }}>Notes</span>
-            <span style={{ fontSize: '13px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-              {r.sales_note || 'No notes provided'}
-            </span>
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   )
+
 
   const right = (
     <>
@@ -2317,7 +2328,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
   return (
     <RequestModalShell
       requestNumber={r.human_payment_id}
-      submittedLine={submittedLine}
+      submittedLine={subtitleLine}
       statusBadge={<StatusBadge status={r.status} />}
       ariaLabel={`Review payment ${r.human_payment_id}`}
       onClose={onClose}
