@@ -48,11 +48,11 @@ describe('the page reads in one order, with no second summary', () => {
   const marks = {
     header:   body.indexOf('className="order-command-header"'),
     summary:  body.indexOf('<OrderSummary'),
+    dates:    body.indexOf('<OrderImportantDatesSection'),
     attention: body.indexOf('<OrderAttentionBar'),
     products: body.indexOf('className="order-products"'),
     payment:  body.indexOf('PAYMENT_SECTION_TITLE'),
     records:  body.indexOf('title="Order records"'),
-    info:     body.indexOf('aria-label="Record information"'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -65,12 +65,13 @@ describe('the page reads in one order, with no second summary', () => {
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
     assert.deepEqual(order, [
-      'header', 'summary', 'attention', 'products', 'payment', 'records', 'info', 'activity',
+      'header', 'summary', 'dates', 'attention', 'products', 'payment', 'records', 'activity',
     ])
   })
 
   test('each is drawn ONCE', () => {
     assert.equal((body.match(/<OrderSummary/g) ?? []).length, 1)
+    assert.equal((body.match(/<OrderImportantDatesSection/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderAttentionBar/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderActivityList/g) ?? []).length, 1)
     assert.equal((body.match(/PAYMENT_SECTION_TITLE/g) ?? []).length, 1)
@@ -110,6 +111,44 @@ describe('the redundant surfaces are gone', () => {
     assert.equal(/OrderPiSummaryCard/.test(body), false)
   })
 
+  // ── Record Information ──
+  //
+  // It stated five things and each of them was either MOVED or deliberately
+  // dropped; none was simply deleted. See the block that replaced it on the
+  // page for the mapping, and the two tests below for what has to survive.
+  test('the Record Information section is gone, and so is its styling', () => {
+    assert.equal(body.includes('aria-label="Record information"'), false)
+    assert.equal(/Record information/i.test(body), false, 'the page must not still name it')
+    for (const cls of ['order-details', 'order-details-head', 'order-details-grid']) {
+      assert.equal(page.includes(`"${cls}"`), false, `${cls} is still used`)
+      assert.equal(read(CSS).includes(`.${cls} {`), false, `.${cls} is still styled`)
+    }
+  })
+
+  test('nothing was lost with it: every useful value has a new home', () => {
+    // Who raised it and the originating request number: the identity band.
+    const ws = read('src/lib/orders/orderWorkspace.ts')
+    assert.ok(ws.includes("key: 'raised_by'") && ws.includes("label: 'Raised by'"))
+    assert.ok(ws.includes("key: 'source_request'") && ws.includes("label: 'From request'"))
+    assert.ok(page.includes('raisedByName: order.requested_by_name'))
+    assert.ok(page.includes('sourceRequestNumber: order.source_request_number'))
+
+    // The two audit timestamps: Important Dates, as its secondary pair.
+    assert.ok(ws.includes("key: 'created_at'") && ws.includes("key: 'updated_at'"))
+    assert.ok(page.includes('createdAt: fmtDate(order.created_at)'))
+    assert.ok(page.includes('updatedAt: fmtDate(order.updated_at)'))
+
+    // The notes: their own block, still on the page.
+    assert.ok(body.includes('aria-label="Order notes"'))
+    assert.ok(body.includes('{order.notes}'))
+  })
+
+  test('the internal request UUID is not displayed anywhere', () => {
+    // A database key is not a fact about the Order. It used to ride along as a
+    // title attribute on the request number.
+    assert.equal(body.includes('source_order_request_id'), false)
+  })
+
   test('the two-column workspace and its sticky rail are gone', () => {
     for (const cls of ['order-workspace', 'order-workspace-aside', 'order-workspace-main']) {
       assert.equal(page.includes(cls), false, `${cls} is still used`)
@@ -122,21 +161,43 @@ describe('the redundant surfaces are gone', () => {
 // ══ 3. One fact, one place ════════════════════════════════════════════════════
 
 describe('no Order fact is stated twice', () => {
-  test('the command header carries the identity and the actions, and no fact', () => {
+  test('the command header carries the number, the status and the actions — and no other fact', () => {
     const header = body.slice(body.indexOf('className="order-command-header"'), body.indexOf('<OrderSummary'))
-    // The number and the client are the identity; everything else is a fact
-    // and belongs to the summary below.
+    // The number IS the identity and the status is what every reader arrives
+    // asking; both are stated here and nowhere else on the page.
     assert.ok(header.includes('order-command-title'))
-    assert.ok(header.includes('order-command-client'))
-    for (const forbidden of ['StatusBadge', 'ToneBadge', 'production', 'Confirmed ', 'Requested by']) {
+    assert.ok(header.includes('<OrderStatusPill'))
+    // Everything else is a fact belonging to the band or the dates below.
+    for (const forbidden of ['order-command-client', 'production', 'Confirmed ', 'Requested by',
+                             'confirm_date', 'due_date', 'lead_source']) {
       assert.equal(header.includes(forbidden), false, `${forbidden} must not be in the command header`)
     }
   })
 
-  test('the six operational facts are stated only by the summary', () => {
+  test('the status is stated ONCE — in the header, never again in the band', () => {
+    assert.equal((body.match(/<OrderStatusPill/g) ?? []).length, 1)
+    const ws = code('src/lib/orders/orderWorkspace.ts')
+    const facts = ws.slice(ws.indexOf('export function orderSummaryFacts'),
+                           ws.indexOf('export function orderImportantDates'))
+    assert.equal(/key: 'status'/.test(facts), false, 'the identity band must not restate the status')
+  })
+
+  test('the identity facts are stated only by the band', () => {
     // The page hands them to one component and draws none of them itself.
     assert.equal((page.match(/orderSummaryFacts\(/g) ?? []).length, 1)
     assert.ok(page.includes('facts={summaryFacts}'))
+  })
+
+  test('every date is stated only by Important Dates', () => {
+    assert.equal((page.match(/orderImportantDates\(/g) ?? []).length, 1)
+    assert.ok(page.includes('dates={importantDates}'))
+    // And the band it used to share them with states none.
+    const ws = code('src/lib/orders/orderWorkspace.ts')
+    const facts = ws.slice(ws.indexOf('export function orderSummaryFacts'),
+                           ws.indexOf('export function orderImportantDates'))
+    for (const forbidden of ["key: 'confirm_date'", "key: 'due_date'"]) {
+      assert.equal(facts.includes(forbidden), false, `${forbidden} belongs to Important Dates now`)
+    }
   })
 
   test('every payment figure lives in the payment section and nowhere else', () => {
@@ -151,8 +212,8 @@ describe('no Order fact is stated twice', () => {
   })
 
   test('the commercial figures are stated ONCE, in their own column below Products', () => {
-    // NOT in the Order Summary: that band is operational facts only, and the
-    // money belongs under the product list it describes.
+    // NOT in the identity band: that band is identity only, and the money
+    // belongs under the product list it describes.
     const summary = body.slice(body.indexOf('<OrderSummary'), body.indexOf('<OrderAttentionBar'))
     for (const forbidden of ['total_product_value', 'total_value', 'OrderCommercialTotals', 'OrderCommercialBreakdown']) {
       assert.equal(summary.includes(forbidden), false, `${forbidden} must not be in the Order Summary`)
@@ -170,14 +231,6 @@ describe('no Order fact is stated twice', () => {
     // Drawn once each.
     assert.equal((body.match(/<OrderCommercialTotals/g) ?? []).length, 1)
     assert.equal((body.match(/<OrderCommercialBreakdown/g) ?? []).length, 1)
-
-    // Record Information must not repeat them. Bounded at Activity, which is
-    // the next section: past that lies the commercial column, where these
-    // figures legitimately DO appear.
-    const info = body.slice(body.indexOf('aria-label="Record information"'), body.indexOf('<OrderActivityList'))
-    for (const forbidden of ['total_product_value', 'total_value', 'lead_source', 'assigned_to_name']) {
-      assert.equal(info.includes(forbidden), false, `${forbidden} must not be repeated in Record information`)
-    }
   })
 
   test('the lower workspace puts the record left and the money right', () => {
@@ -185,27 +238,18 @@ describe('no Order fact is stated twice', () => {
     const main = lower.indexOf('order-lower-main')
     const aside = lower.indexOf('order-lower-aside')
     assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
-    // The four sections that belong on the left, in order, all before the aside.
+    // The three sections that belong on the left, in order, all before the aside.
     const left = lower.slice(main, aside)
-    for (const section of ['PAYMENT_SECTION_TITLE', 'title="Order records"',
-                           'aria-label="Record information"', '<OrderActivityList']) {
+    for (const section of ['PAYMENT_SECTION_TITLE', 'title="Order records"', '<OrderActivityList']) {
       assert.ok(left.includes(section), `${section} belongs in the left column`)
     }
-  })
-
-  test('Record Information carries only secondary audit metadata', () => {
-    const info = body.slice(body.indexOf('aria-label="Record information"'), body.indexOf('<OrderActivityList'))
-    for (const kept of ['Requested By', 'Created', 'Last Updated']) {
-      assert.ok(info.includes(kept), kept)
-    }
-    assert.equal(/label="Assignee"|label="Lead Source"|Total Order Value|Total Product Value/.test(info), false)
   })
 })
 
 // ══ 4. Order records ══════════════════════════════════════════════════════════
 
 describe('Order records holds the documents, the source PI and the history', () => {
-  const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('aria-label="Record information"'))
+  const records = body.slice(body.indexOf('title="Order records"'), body.indexOf('<OrderActivityList'))
 
   test('all three sections are inside it, each embedded rather than a card of its own', () => {
     assert.ok(records.includes('<OrderDocumentsCard'))
@@ -214,10 +258,25 @@ describe('Order records holds the documents, the source PI and the history', () 
     assert.equal((records.match(/embedded/g) ?? []).length >= 2, true)
   })
 
-  test('the source PI is a reference and an action, not a summary', () => {
+  // ── The PI door ──
+  //
+  // AFTER CONVERSION, THIS PAGE IS THE SOURCE OF TRUTH. A prominent way back
+  // to the superseded draft invited operational readers to work from it, so
+  // the action is gone. Everything underneath it is untouched, and the two
+  // tests below are the halves of that: no button, and no lost record.
+  test('there is no "Open source PI" action for an ordinary reader', () => {
+    assert.equal(/Open source PI/i.test(body), false, 'the page must not offer it')
+    assert.equal(body.includes('piSubmissionHref('), false,
+      'and it must not build a route back to the draft')
+  })
+
+  test('the source PI is still NAMED and its workbook still downloadable', () => {
+    // Removing the door must not remove the reference: the file this Order was
+    // built from is a record, and Download reads it rather than reopening the
+    // draft as a working surface.
     const source = records.slice(records.indexOf('Source PI'), records.indexOf('<OrderPiHistoryCard'))
-    assert.ok(source.includes('Open source PI'))
-    assert.ok(source.includes('piSubmissionHref(piHandoff.submissionId)'))
+    assert.ok(source.includes('piHandoff.workbookName'))
+    assert.ok(source.includes('downloadWorkbook'))
     // None of what the big card used to restate.
     for (const forbidden of ['piHandoff.dates', 'piHandoff.figures', 'piHandoff.billing', 'Total before GST']) {
       assert.equal(source.includes(forbidden), false, `${forbidden} belongs to the Order Summary now`)
@@ -231,6 +290,8 @@ describe('Order records holds the documents, the source PI and the history', () 
     assert.ok(page.includes('describePiVersionHistory'))
     assert.ok(page.includes('canProposePiRevision'))
     assert.ok(page.includes('canDecidePiRevision'))
+    // And the relation itself is read, so traceability survives the button.
+    assert.ok(page.includes('source_order_submission_id'))
   })
 })
 

@@ -21,6 +21,8 @@ import {
   OrderAttentionBar,
   OrderCommercialTotals,
   OrderDetailSkeleton,
+  OrderImportantDatesSection,
+  OrderStatusPill,
   OrderSummary,
   PaymentSummaryFigures,
   type OrderActivityItem,
@@ -36,6 +38,7 @@ import {
   SUMMARY_NOT_SET,
   SUMMARY_UNASSIGNED,
   orderAttentionItems,
+  orderImportantDates,
   orderSummaryFacts,
 } from '@/lib/orders/orderWorkspace'
 import { buildOrderFinancePosition, type OrderFinancePaymentRow } from '@/lib/finance/orderFinancePosition'
@@ -90,13 +93,13 @@ describe('the attention bar', () => {
   })
 })
 
-// ── The Order Summary ─────────────────────────────────────────────────────────
+// ── The identity band, the status pill and Important Dates ────────────────────
 
 const facts = (over: Partial<Parameters<typeof orderSummaryFacts>[0]> = {}) => orderSummaryFacts({
-  status: 'running', statusLabel: 'Running', statusTone: 'blue',
+  status: 'running', customerName: 'Acme Exports',
   productionAligned: false, productionLabel: 'Not Aligned', productionLine: null,
-  salespersonName: null, confirmDate: '8 Sep 2026', dueDate: null, isOverdue: false,
-  leadSource: null,
+  salespersonName: null, leadSource: null,
+  raisedByName: null, sourceRequestNumber: null,
   ...over,
 })
 
@@ -104,16 +107,23 @@ function summaryMarkup(over: Parameters<typeof facts>[0] = {}, commercial: React
   return renderToStaticMarkup(<OrderSummary facts={facts(over)} commercial={commercial} />)
 }
 
-describe('the Order Summary', () => {
-  test('states all six management facts, and names the salesperson as such', () => {
+describe('the identity band', () => {
+  test('states who the Order is for and who is carrying it', () => {
     const body = text(summaryMarkup({
-      salespersonName: 'Nishant', dueDate: '30 Sep 2026', leadSource: 'Reference',
+      salespersonName: 'Nishant', leadSource: 'Reference', raisedByName: 'Dhruv',
     }))
-    for (const s of ['Status', 'Running', 'Production', 'Not Aligned',
-                     'Salesperson', 'Nishant', 'Confirm date', '8 Sep 2026',
-                     'Due date', '30 Sep 2026', 'Lead source', 'Reference']) {
+    for (const s of ['Customer', 'Acme Exports', 'Salesperson', 'Nishant',
+                     'Lead source', 'Reference', 'Production', 'Not Aligned',
+                     'Raised by', 'Dhruv']) {
       assert.ok(body.includes(s), s)
     }
+  })
+
+  test('states NEITHER the status NOR a date — those are the header and Important Dates', () => {
+    const body = text(summaryMarkup({ salespersonName: 'Nishant', leadSource: 'Reference' }))
+    assert.ok(!/\bStatus\b/.test(body))
+    assert.ok(!/\bRunning\b/.test(body))
+    assert.ok(!/date/i.test(body))
   })
 
   test('says neither Owner nor Assignee anywhere', () => {
@@ -128,8 +138,8 @@ describe('the Order Summary', () => {
 
   test('a gap is marked by a class as well as by its words', () => {
     const html = summaryMarkup()
-    // production, salesperson, due date and lead source are all missing here
-    assert.equal((html.match(/order-fact--amber/g) ?? []).length, 4)
+    // production, salesperson and lead source are all missing here
+    assert.equal((html.match(/order-fact--amber/g) ?? []).length, 3)
     assert.ok(text(html).includes(SUMMARY_UNASSIGNED))
     assert.ok(text(html).includes(SUMMARY_NOT_SET))
   })
@@ -152,6 +162,59 @@ describe('the Order Summary', () => {
     ))
     assert.ok(body.includes('Product value ₹12,53,000.00'))
     assert.ok(body.includes('Order value ₹15,64,090.00'))
+  })
+})
+
+describe('the status pill', () => {
+  test('says the status in words, in the tone it was given', () => {
+    const html = renderToStaticMarkup(<OrderStatusPill label="In Production" tone="blue" />)
+    assert.ok(text(html).includes('In Production'))
+    assert.ok(html.includes('order-status-pill'))
+  })
+
+  test('every tone is paintable — no status can render without a colour', () => {
+    for (const tone of ['neutral', 'blue', 'green', 'amber', 'red'] as const) {
+      const html = renderToStaticMarkup(<OrderStatusPill label="X" tone={tone} />)
+      assert.match(html, /background:/, tone)
+    }
+  })
+
+  test('the WORD carries the meaning — colour is never the only signal', () => {
+    // A reader who cannot tell amber from red still reads "Cancelled".
+    assert.ok(text(renderToStaticMarkup(<OrderStatusPill label="Cancelled" tone="red" />)).includes('Cancelled'))
+  })
+})
+
+const importantDates = (over: Partial<Parameters<typeof orderImportantDates>[0]> = {}) =>
+  orderImportantDates({
+    status: 'running', confirmDate: '8 Sep 2026', dueDate: '30 Oct 2026', isOverdue: false,
+    createdAt: '8 Sep 2026', updatedAt: '9 Sep 2026',
+    ...over,
+  })
+
+describe('Important Dates', () => {
+  test('draws the planning pair and the audit pair, each in its own list', () => {
+    const html = renderToStaticMarkup(<OrderImportantDatesSection dates={importantDates()} />)
+    const body = text(html)
+    for (const s of ['Important Dates', 'Confirm date', '8 Sep 2026', 'Due date', '30 Oct 2026',
+                     'Created', 'Last updated', '9 Sep 2026']) {
+      assert.ok(body.includes(s), s)
+    }
+    assert.ok(html.includes('order-dates-primary'))
+    assert.ok(html.includes('order-dates-secondary'))
+  })
+
+  test('the primary pair is marked as such, so the hierarchy is not colour alone', () => {
+    const html = renderToStaticMarkup(<OrderImportantDatesSection dates={importantDates()} />)
+    assert.equal((html.match(/order-date--primary/g) ?? []).length, 2)
+    assert.equal((html.match(/order-date--secondary/g) ?? []).length, 2)
+  })
+
+  test('an overdue due date says so in words', () => {
+    const body = text(renderToStaticMarkup(
+      <OrderImportantDatesSection dates={importantDates({ isOverdue: true })} />,
+    ))
+    assert.ok(body.includes('Overdue'))
   })
 })
 
@@ -299,8 +362,8 @@ describe('the documents section, embedded in Order records', () => {
         onDownload={() => {}} downloading={null} error={null}
       />,
     )
-    assert.match(html, /<section[^>]*aria-label="Order documents"/)
-    assert.match(html, /<h3[^>]*>Order documents<\/h3>/)
+    assert.match(html, /<section[^>]*aria-label="Documents"/)
+    assert.match(html, /<h3[^>]*>Documents<\/h3>/)
     const body = text(html)
     assert.ok(body.includes(ORDER_DOCUMENTS_TITLE))
     assert.ok(body.includes(ORDER_DOCUMENTS_EXCEL_LABEL))

@@ -138,16 +138,16 @@ export function attentionHeading(count: number): string {
 
 // ── The Order Summary's operational facts ─────────────────────────────────────
 //
-// ONE FACT, ONE PLACE. These six are the Order's operational state, and this is
-// the only place on the screen that states any of them: the command header
-// carries the identity and the actions and nothing else, and there is no second
-// summary card underneath.
+// ONE FACT, ONE PLACE. These name who the Order is FOR and who is carrying it,
+// and this is the only place on the screen that states any of them. The status
+// belongs to the command header and the dates to Important Dates; neither is
+// repeated here, and there is no second summary card underneath.
 //
 // PAYMENT IS NOT HERE. It has its own section, which holds every payment figure
 // on the page — the summary and the records together.
 
 export type OrderSummaryFactKey =
-  | 'status' | 'production' | 'salesperson' | 'confirm_date' | 'due_date' | 'lead_source'
+  | 'customer' | 'salesperson' | 'lead_source' | 'production' | 'raised_by' | 'source_request'
 
 export type OrderSummaryFact = {
   key: OrderSummaryFactKey
@@ -160,65 +160,145 @@ export type OrderSummaryFact = {
 
 export type OrderSummaryInput = {
   status: string
-  statusLabel: string
-  statusTone: WorkspaceTone
+  /** orders.client_name. The customer this Order belongs to. */
+  customerName: string
   productionAligned: boolean
   productionLabel: string
   /** "Aligned by X · date", or null. */
   productionLine: string | null
   /** orders.assigned_to's name, or null. */
   salespersonName: string | null
-  /** Already formatted, or null. */
-  confirmDate: string | null
-  dueDate: string | null
-  isOverdue: boolean
   /** Already labelled by leadSourceLabel, or null. */
   leadSource: string | null
+  /** orders.requested_by's name — who raised the PI this Order came from. */
+  raisedByName: string | null
+  /** The originating Order Request's number, for the Orders that have one. */
+  sourceRequestNumber: string | null
 }
 
 export const SUMMARY_NOT_SET = 'Not set'
 export const SUMMARY_UNASSIGNED = 'Not assigned'
 
 /**
- * The six facts, in reading order. A gap on an OPEN Order is amber; the same
- * gap on a dispatched or cancelled one is neutral, because nothing is waiting
- * on it any more. Red is kept for a due date that has genuinely passed.
+ * THE IDENTITY BAND — who this Order is for and who is carrying it.
+ *
+ * The STATUS is no longer here: it sits in the command header beside the Order
+ * number, where it is the first thing read. The TWO DATES are no longer here
+ * either: they lead Important Dates, which states every date this Order has,
+ * once. What is left is identity, and every one of these is still stated
+ * exactly once on the page.
+ *
+ * A gap on an OPEN Order is amber; the same gap on a dispatched or cancelled
+ * one is neutral, because nothing is waiting on it any more.
  */
 export function orderSummaryFacts(input: OrderSummaryInput): OrderSummaryFact[] {
   const closed = isOrderClosed(input.status)
   const gapTone: WorkspaceTone = closed ? 'neutral' : 'amber'
 
-  return [
+  const facts: OrderSummaryFact[] = [
     {
-      key: 'status', label: 'Status', value: input.statusLabel,
-      detail: null, tone: input.statusTone,
+      key: 'customer', label: 'Customer',
+      value: input.customerName || SUMMARY_NOT_SET,
+      detail: null,
+      tone: input.customerName ? 'neutral' : gapTone,
     },
+    input.salespersonName
+      ? { key: 'salesperson', label: 'Salesperson', value: input.salespersonName, detail: null, tone: 'neutral' }
+      : { key: 'salesperson', label: 'Salesperson', value: SUMMARY_UNASSIGNED, detail: null, tone: gapTone },
+    input.leadSource
+      ? { key: 'lead_source', label: 'Lead source', value: input.leadSource, detail: null, tone: 'neutral' }
+      : { key: 'lead_source', label: 'Lead source', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
     {
       key: 'production', label: 'Production',
       value: input.productionLabel,
       detail: input.productionLine,
       tone: input.productionAligned ? 'green' : gapTone,
     },
-    input.salespersonName
-      ? { key: 'salesperson', label: 'Salesperson', value: input.salespersonName, detail: null, tone: 'neutral' }
-      : { key: 'salesperson', label: 'Salesperson', value: SUMMARY_UNASSIGNED, detail: null, tone: gapTone },
-    {
-      key: 'confirm_date', label: 'Confirm date',
-      value: input.confirmDate ?? SUMMARY_NOT_SET,
-      detail: null,
-      tone: input.confirmDate ? 'neutral' : gapTone,
-    },
-    input.dueDate
-      ? {
-          key: 'due_date', label: 'Due date', value: input.dueDate,
-          detail: input.isOverdue ? 'Overdue' : null,
-          tone: input.isOverdue ? 'red' : 'neutral',
-        }
-      : { key: 'due_date', label: 'Due date', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
-    input.leadSource
-      ? { key: 'lead_source', label: 'Lead source', value: input.leadSource, detail: null, tone: 'neutral' }
-      : { key: 'lead_source', label: 'Lead source', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
   ]
+
+  // WHO RAISED IT came off Record Information rather than being deleted with
+  // it: it names a person, and a person is not database metadata. Absent for
+  // an Order whose raiser is unknown, rather than shown as a gap — nobody can
+  // act on it, so an amber "Not set" would be noise.
+  if (input.raisedByName) {
+    facts.push({ key: 'raised_by', label: 'Raised by', value: input.raisedByName, detail: null, tone: 'neutral' })
+  }
+
+  // The originating Order Request's NUMBER — a business reference, kept for
+  // the Orders that have one. Deliberately not a link: converted requests are
+  // gone from the retired Order Requests module, so there is nowhere to go.
+  if (input.sourceRequestNumber) {
+    facts.push({
+      key: 'source_request', label: 'From request',
+      value: input.sourceRequestNumber, detail: null, tone: 'neutral',
+    })
+  }
+
+  return facts
+}
+
+// ── Important dates ───────────────────────────────────────────────────────────
+//
+// EVERY DATE THIS ORDER HAS, IN ONE PLACE, RANKED.
+//
+// The two dates operations actually plans against — the confirm date and the
+// due date — lead, in a stronger treatment. The two audit timestamps follow,
+// muted: they are worth having but nobody schedules against them. Record
+// Information used to state the audit pair on its own, three sections lower,
+// which is why the same reader had to look in two places to answer "when".
+
+export type OrderDateKey = 'confirm_date' | 'due_date' | 'created_at' | 'updated_at'
+
+export type OrderDate = {
+  key: OrderDateKey
+  label: string
+  /** Already formatted by the caller, or the "not set" placeholder. */
+  value: string
+  /** A quieter second line, or null. */
+  detail: string | null
+  tone: WorkspaceTone
+}
+
+export type OrderImportantDatesInput = {
+  status: string
+  /** Already formatted, or null. */
+  confirmDate: string | null
+  dueDate: string | null
+  isOverdue: boolean
+  /** Already formatted. These two always exist on a stored row. */
+  createdAt: string
+  updatedAt: string
+}
+
+export type OrderImportantDates = {
+  primary: OrderDate[]
+  secondary: OrderDate[]
+}
+
+export function orderImportantDates(input: OrderImportantDatesInput): OrderImportantDates {
+  const gapTone: WorkspaceTone = isOrderClosed(input.status) ? 'neutral' : 'amber'
+
+  return {
+    primary: [
+      {
+        key: 'confirm_date', label: 'Confirm date',
+        value: input.confirmDate ?? SUMMARY_NOT_SET,
+        detail: null,
+        tone: input.confirmDate ? 'neutral' : gapTone,
+      },
+      input.dueDate
+        ? {
+            key: 'due_date', label: 'Due date', value: input.dueDate,
+            detail: input.isOverdue ? 'Overdue' : null,
+            tone: input.isOverdue ? 'red' : 'neutral',
+          }
+        : { key: 'due_date', label: 'Due date', value: SUMMARY_NOT_SET, detail: null, tone: gapTone },
+    ],
+    secondary: [
+      { key: 'created_at', label: 'Created',      value: input.createdAt, detail: null, tone: 'neutral' },
+      { key: 'updated_at', label: 'Last updated', value: input.updatedAt, detail: null, tone: 'neutral' },
+    ],
+  }
 }
 
 // ── The header actions ────────────────────────────────────────────────────────

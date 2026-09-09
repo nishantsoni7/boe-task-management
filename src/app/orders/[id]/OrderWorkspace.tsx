@@ -25,6 +25,7 @@ import {
   activityWindow,
   attentionHeading,
   type OrderAttentionItem,
+  type OrderImportantDates,
   type OrderSummaryFact,
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
@@ -75,12 +76,15 @@ export function OrderAttentionBar({ items }: { items: readonly OrderAttentionIte
 export const ORDER_SUMMARY_COMMERCIAL_TITLE = 'Commercial'
 
 /**
- * THE ORDER'S OPERATIONAL STATE, AND ONLY THAT.
+ * WHO THIS ORDER IS FOR, AND WHO IS CARRYING IT.
  *
- * Status, production, salesperson, the two dates and the lead source: the six
- * facts somebody opening this Order needs before anything else. There is no
- * second summary anywhere on the page and no fact appears twice — the command
- * header above carries the identity and the actions and nothing else.
+ * The customer, the salesperson, the lead source and the production state —
+ * the identity a reader needs the moment they know WHICH Order they are on.
+ *
+ * NEITHER THE STATUS NOR THE DATES ARE HERE. The status is in the command
+ * header, beside the Order number, because it is the second thing anybody
+ * looks for and it was previously three lines below the fold of the eye. The
+ * dates are in Important Dates, which states every one of them, once.
  *
  * NO MONEY HERE. The commercial figures live in their own column on the right
  * of the lower workspace, BELOW the product list they describe, which is where
@@ -116,6 +120,84 @@ export function OrderSummary({ facts, commercial }: {
         })}
       </dl>
       {commercial && <div className="order-summary-commercial">{commercial}</div>}
+    </section>
+  )
+}
+
+// ── The status pill ───────────────────────────────────────────────────────────
+
+/**
+ * THE STATUS, BESIDE THE ORDER NUMBER — "ORDER BOE-147  IN PRODUCTION".
+ *
+ * It used to be the first of six equal facts in the band below, which made the
+ * one thing every reader opens this page to check indistinguishable from the
+ * lead source. It is now a filled pill on the same line as the number, in the
+ * status's own colour, at a size that carries across the room.
+ *
+ * COLOUR IS NOT THE MESSAGE. The word is the message; the tint only agrees
+ * with it. Nothing on this page depends on a reader telling amber from red.
+ */
+export const STATUS_PILL_TONE: Record<WorkspaceTone, { bg: string; fg: string; border: string }> = {
+  neutral: { bg: colors.raised,    fg: colors.secondary, border: colors.border },
+  blue:    { bg: colors.blueTint,  fg: colors.blue,      border: 'rgba(58,122,190,0.30)' },
+  green:   { bg: colors.greenTint, fg: '#2F7A52',        border: 'rgba(69,168,112,0.32)' },
+  amber:   { bg: colors.amberTint, fg: '#9A6A12',        border: 'rgba(190,140,40,0.30)' },
+  red:     { bg: colors.redTint,   fg: '#B42318',        border: 'rgba(217,79,79,0.32)' },
+}
+
+export function OrderStatusPill({ label, tone }: { label: string; tone: WorkspaceTone }) {
+  const t = STATUS_PILL_TONE[tone]
+  return (
+    <span
+      className="order-status-pill"
+      style={{ background: t.bg, color: t.fg, borderColor: t.border }}
+    >
+      {label}
+    </span>
+  )
+}
+
+// ── Important dates ───────────────────────────────────────────────────────────
+
+export const IMPORTANT_DATES_TITLE = 'Important Dates'
+
+/**
+ * FAST SCANNING, IN ONE BAND.
+ *
+ * The two dates operations plans against sit large and first; the two audit
+ * timestamps follow, muted, on the same row. Both pairs come from
+ * orderImportantDates, which is the only thing that decides which is which —
+ * this draws the answer and computes no date of its own.
+ */
+export function OrderImportantDatesSection({ dates }: { dates: OrderImportantDates }) {
+  return (
+    <section className="order-dates" aria-label={IMPORTANT_DATES_TITLE}>
+      <div className="order-dates-head">{IMPORTANT_DATES_TITLE}</div>
+      <div className="order-dates-body">
+        <dl className="order-dates-primary">
+          {dates.primary.map(d => {
+            const tone = TONE[d.tone]
+            const warning = d.tone === 'amber' || d.tone === 'red'
+            return (
+              <div key={d.key} className="order-date order-date--primary">
+                <dt className="order-date-label">{d.label}</dt>
+                <dd className="order-date-value" style={{ color: tone.text, fontWeight: warning ? 700 : 700 }}>
+                  {d.value}
+                  {d.detail && <span className="order-date-detail" style={{ color: tone.text }}>{d.detail}</span>}
+                </dd>
+              </div>
+            )
+          })}
+        </dl>
+        <dl className="order-dates-secondary">
+          {dates.secondary.map(d => (
+            <div key={d.key} className="order-date order-date--secondary">
+              <dt className="order-date-label">{d.label}</dt>
+              <dd className="order-date-value">{d.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </section>
   )
 }
@@ -255,10 +337,27 @@ export type OrderActivityItem = {
   dot: React.ReactNode
   /** Written by the source PI's trail rather than the Order's own. */
   fromPi: boolean
+  /**
+   * This entry happened after the reader's last visit — see NEW_SINCE_LABEL.
+   * False for every entry when the reader had nothing unread, which is the
+   * ordinary case.
+   */
+  isNew?: boolean
 }
 
 export const ACTIVITY_TITLE = 'Activity'
 export const ACTIVITY_EMPTY = 'No activity recorded yet.'
+
+/**
+ * WHAT CHANGED WHILE THEY WERE AWAY, marked in place.
+ *
+ * NOT A MODAL. Opening an Order is Product Orders → click → Order Detail, with
+ * nothing in between: an "OK" somebody has to dismiss before they can read the
+ * page is a toll on the most common action in the module. The trail already
+ * holds the change history, so the unseen entries are simply marked where they
+ * already are, and a reader who does not care scrolls past them.
+ */
+export const NEW_SINCE_LABEL = 'New since your last visit'
 
 /**
  * The complete trail, newest first, showing the latest five until asked for
@@ -270,6 +369,9 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
   const { shown, hidden } = activityWindow(items.length, expanded)
   const visible = items.slice(0, shown)
   const collapsible = items.length > shown || expanded
+  // Counted over the WHOLE trail, not the visible window: a reader with six
+  // unseen entries and five on screen must not be told there are five.
+  const newCount = items.filter(i => i.isNew).length
 
   return (
     <PiCard>
@@ -277,8 +379,15 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
         title={ACTIVITY_TITLE}
         style={SECTION_HEADER_STYLE}
         right={items.length > 0 ? (
-          <span style={{ fontSize: '12px', color: colors.muted, whiteSpace: 'nowrap' }}>
-            {hidden > 0 ? `Latest ${shown} of ${items.length}` : `${items.length} event${items.length === 1 ? '' : 's'}`}
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', whiteSpace: 'nowrap' }}>
+            {newCount > 0 && (
+              <span className="order-activity-new">
+                {newCount} {NEW_SINCE_LABEL.toLowerCase()}
+              </span>
+            )}
+            <span style={{ fontSize: '12px', color: colors.muted }}>
+              {hidden > 0 ? `Latest ${shown} of ${items.length}` : `${items.length} event${items.length === 1 ? '' : 's'}`}
+            </span>
           </span>
         ) : undefined}
       />
@@ -288,7 +397,10 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
         ) : (
           <ol id="order-activity-list" className="order-activity">
             {visible.map((entry, idx) => (
-              <li key={entry.key} className="order-activity-item">
+              <li
+                key={entry.key}
+                className={entry.isNew ? 'order-activity-item order-activity-item--new' : 'order-activity-item'}
+              >
                 <div className="order-activity-rail">
                   {entry.dot}
                   {idx < visible.length - 1 && <span className="order-activity-line" aria-hidden="true" />}
@@ -298,6 +410,11 @@ export function OrderActivityList({ items }: { items: readonly OrderActivityItem
                     {entry.label}
                     {entry.fromPi && (
                       <span style={{ fontSize: '10px', fontWeight: 700, color: colors.muted, marginLeft: '6px' }}>PI</span>
+                    )}
+                    {/* The WORDS say it, not the tint: a reader who cannot see
+                        the background still reads "New". */}
+                    {entry.isNew && (
+                      <span className="order-activity-new" title={NEW_SINCE_LABEL}>New</span>
                     )}
                   </div>
                   {entry.detail && (

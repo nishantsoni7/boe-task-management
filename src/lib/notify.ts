@@ -1,3 +1,5 @@
+import type { OrderUpdateEvent } from '@/lib/orders/orderUpdateNotifications'
+
 // Fire-and-forget notification triggers for Finance & Order Management.
 //
 // These reuse the shared `notifications` table through small server routes that
@@ -97,6 +99,42 @@ export type PiSubmissionNotifyPayload = {
   event: PiSubmissionNotifyEvent
   /** order_submissions.id — also stored as entity_id for exact deep-linking. */
   submissionId: string
+}
+
+// ── Confirmed Order updates ───────────────────────────────────────────────────
+//
+// The same fire-and-forget shape, for the people associated with an Order that
+// just moved. THE PAYLOAD IS ONE EVENT NAME. The Order number, what changed,
+// the old and new values, who changed it and who is told are every one of them
+// resolved server-side, from the `order_activity_log` row the action already
+// wrote — see /api/orders/[id]/notify. A browser that could name its own
+// recipients could notify anybody, and one that could supply its own title
+// could write anything into everybody else's bell.
+//
+// Call this AFTER the write and its activity entry have both succeeded. A call
+// with no matching activity row is answered with a skip, never an error.
+
+export type OrderUpdateNotifyPayload = {
+  /** orders.id — the Order that moved. */
+  orderId: string
+  /** Which kind of change. The four in ORDER_UPDATE_EVENTS. */
+  event: OrderUpdateEvent
+}
+
+export async function notifyOrderUpdate(payload: OrderUpdateNotifyPayload): Promise<void> {
+  try {
+    const res = await fetch(`/api/orders/${payload.orderId}/notify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: payload.event }),
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => null)
+      console.error(`[notifyOrderUpdate] ${payload.event} not delivered (HTTP ${res.status}):`, detail?.error ?? res.statusText)
+    }
+  } catch (err) {
+    console.error('[notifyOrderUpdate] failed:', err)
+  }
 }
 
 export async function notifyPiSubmission(payload: PiSubmissionNotifyPayload): Promise<boolean> {

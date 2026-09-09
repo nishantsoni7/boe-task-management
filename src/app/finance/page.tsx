@@ -15,7 +15,7 @@ import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { notifyFinance } from '@/lib/notify'
+import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
   deriveFinanceCapabilities,
@@ -647,6 +647,17 @@ function DetailsModal({
         ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
         : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
     )
+
+    // AND THE PEOPLE ON THE ORDER, when the money landed on one. Finance's own
+    // notification above goes to the person who RAISED the request; this one
+    // goes to whoever is carrying the Order the payment was verified against,
+    // for whom a verified payment is the event that unblocks the next step.
+    //
+    // The route reads the payment_verified row the database's own
+    // finance_payment_requests_echo_decision trigger just wrote onto that
+    // Order, so the figure in the sentence is the ALLOCATED amount the
+    // database recorded — not one this modal computed.
+    if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
 
     // Closes this modal and reloads the list, so the row, the tab counts and the
     // status chip all reflect the new state. The ref is deliberately NOT reset:
@@ -2022,6 +2033,9 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
           ? { event: 'finance_approved_suspense', requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name }
           : { event: 'finance_approved_linked',   requestNumber: r.request_number, entityId: r.id, creatorId: r.submitted_by, clientName: r.client_name, orderNumber: r.order_number },
       )
+      // The same second audience as the verification modal above, for the same
+      // reason and by the same route. See the note there.
+      if (r.order_id) void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
 
       onActioned()
       return
@@ -2046,6 +2060,15 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       creatorId: r.submitted_by,
       clientName: r.client_name,
     })
+
+    // A REJECTION MOVES THE ORDER'S MONEY TOO. The echo trigger writes
+    // payment_rejected onto every Order the payment's active allocations name,
+    // and the people carrying that Order are the ones who have to do something
+    // about the shortfall. Clarification is not announced: nothing has been
+    // decided yet, and the request's own creator is the only person who can act.
+    if (action !== 'needs_clarification' && r.order_id) {
+      void notifyOrderUpdate({ orderId: r.order_id, event: 'payment' })
+    }
 
     onActioned()
   }

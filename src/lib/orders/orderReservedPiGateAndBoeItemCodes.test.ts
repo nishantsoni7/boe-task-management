@@ -276,6 +276,12 @@ describe('it sorts after everything that was on disk when it was written', () =>
     assert.deepEqual(files.slice(at), [
       mine,
       '20261201000000_order_submission_confirmation_required_fields.sql',
+      // Confirmed Order update notifications: four notification_type values,
+      // one configuration table of its own (public.order_notification_recipients)
+      // and one partial index on public.notifications. It creates nothing else,
+      // alters no existing table and defines no function, so it reaches nothing
+      // asserted here.
+      '20261202000000_order_update_notifications.sql',
     ], 'every migration at or after this one is accounted for')
   })
 })

@@ -152,7 +152,12 @@ export type OrderDocumentRow = {
 
 // ── What the screen says ──────────────────────────────────────────────────────
 
-export const ORDER_DOCUMENTS_TITLE = 'Order documents'
+// "Documents", not "Order documents". It is a section INSIDE an Order's record
+// card, so the "Order" prefix restated what its container already said — and
+// the section holds the Order's own final files and nothing else, which is what
+// the shorter word means here. The constant name is unchanged: it is history,
+// and renaming it would touch a dozen call sites to say the same thing.
+export const ORDER_DOCUMENTS_TITLE = 'Documents'
 
 export const ORDER_DOCUMENTS_NONE =
   'No documents have been generated for this Order yet.'
