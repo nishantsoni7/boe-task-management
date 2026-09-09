@@ -17,13 +17,12 @@ import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
+import type { ActivityTargetResolver } from '@/lib/finance/paymentActivityLabels'
 import { isValidAmount } from '@/lib/currency'
 // ONE payment-mode source for Order and Finance (20261013000000). This file
 // used to keep its own label map AND its own options array; both are gone.
 import {
   PAYMENT_DISPLAY_STATE_META,
-  orderNumberDisplay,
-  paymentAgainstDisplay,
   paymentDisplayStateMeta,
   type PaymentDestination,
 } from '@/lib/finance/paymentDestination'
@@ -58,7 +57,6 @@ import {
 import {
   PAYMENT_VERIFICATION_LABEL,
   paymentRowFigures,
-  remainderOf,
   type ClassifiablePayment,
 } from '@/lib/finance/paymentClassification'
 import {
@@ -68,6 +66,7 @@ import {
 } from '@/lib/finance/paymentLinks'
 import {
   ALLOCATION_STATE_LABEL,
+  ALLOCATION_TARGET_WORD,
   PENDING_ALLOCATION_SUMMARY,
   summarizePaymentAllocations,
   type PaymentAllocationRow,
@@ -93,7 +92,6 @@ import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPayment
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   CONFIRMED_PAYMENT_COLUMNS,
-  CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS,
   CONFIRMED_ALLOCATION_FILTERS,
   CONFIRMED_ALLOCATION_FILTER_LABEL,
   CONFIRMED_ALLOCATION_BADGE,
@@ -478,14 +476,40 @@ function SectionHeader({ children }: { children: React.ReactNode }) {
   )
 }
 
-// Label-over-value metadata item; muted styling for empty/placeholder values.
-function MetaItem({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
+/**
+ * One label-and-value line in the detail modal.
+ *
+ * A LABEL COLUMN, not a label above every value. Six stacked label/value pairs
+ * used two lines each and left the eye no column to run down; aligned labels
+ * read as a list, which is what they are. The label column is fixed and the
+ * value takes the rest, so a long client name wraps under itself instead of
+ * pushing the layout wider.
+ *
+ * THERE IS NO EMPTY VARIANT. A value that does not exist is not rendered as a
+ * muted dash — the caller omits the row. "Not provided" is a sentence that
+ * costs a line and tells nobody anything.
+ */
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
-      <span style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-      <span style={{ fontSize: '14px', color: muted ? colors.muted : colors.primary, wordBreak: 'break-word', lineHeight: 1.4 }}>{value}</span>
+    <div style={{ display: 'grid', gridTemplateColumns: '112px minmax(0, 1fr)', gap: '12px', alignItems: 'baseline' }}>
+      <span style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.45 }}>{label}</span>
+      <span style={{ fontSize: '14px', color: colors.primary, lineHeight: 1.45, wordBreak: 'break-word', minWidth: 0 }}>
+        {children}
+      </span>
     </div>
   )
+}
+
+/**
+ * The one rule that separates the detail modal's full-width sections.
+ *
+ * A hairline and some space, rather than a bordered card each. The modal was
+ * five rounded boxes deep in places — a card inside a column inside the dialog
+ * — and every border it drew was one more edge competing with the numbers.
+ */
+const DIVIDED_SECTION: React.CSSProperties = {
+  borderTop: `1px solid ${colors.border}`,
+  paddingTop: '16px',
 }
 
 // THE BADGE IS NOT THE STATUS COLUMN. For the three request-stage statuses it is
@@ -539,29 +563,14 @@ function VerificationBadge({ status, destination }: {
   )
 }
 
-/**
- * One money figure in the table, right-aligned and tabular.
- *
- * A ZERO IS PRINTED AS A DASH, and a withheld figure as "—" too but muted and
- * titled: "no money went here" and "you may not be told" are both usefully
- * quiet, and neither should shout a 0.00 that draws the eye away from the
- * figures that matter.
- */
-function MoneyCell({ value, title }: { value: string | null; title?: string }) {
-  const zero = value !== null && Number(value) === 0
-  return (
-    <span
-      title={title ?? (value === null ? 'Not visible to you' : undefined)}
-      style={{
-        fontVariantNumeric: 'tabular-nums',
-        color: value === null || zero ? colors.muted : colors.primary,
-        fontWeight: value === null || zero ? 400 : 600,
-      }}
-    >
-      {value === null || zero ? '—' : formatMoney(value)}
-    </span>
-  )
-}
+// MoneyCell IS GONE with the last figure it drew. It rendered one aggregate —
+// a zero as a dash, a withheld figure as a muted dash — for the expandable row
+// strip and then for the detail modal's "to PI Drafts / to Orders" pair. Both
+// are retired: the modal lists each allocation with its own amount, and those
+// amounts are never dashes, never withheld one-by-one, and always add up to the
+// Allocated total printed beneath them. AllocationPanel says "Not visible to
+// you" in a sentence when the ledger could not be read, which is the case the
+// muted dash was standing in for.
 
 // ── Allocation cell ───────────────────────────────────────────────────────────
 //
@@ -597,7 +606,11 @@ function MoneyCell({ value, title }: { value: string | null; title?: string }) {
 // Order still sees that the money is spoken for and loses only its number —
 // the same choice the finance_received_payments projection makes.
 
-function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
+// EXPORTED FOR ITS RENDER TEST, and for nothing else — one page mounts it. The
+// figures it prints are the answer to "is any of this money still free", which
+// is the question a detail modal exists to answer, so they are asserted against
+// real markup rather than against the source that produces it.
+export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
   summary: PaymentAllocationSummary
   amount: number
   canOpenLinkedRecord: boolean
@@ -627,55 +640,67 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
     )
   }
 
+  // THE SHARE OF THE PAYMENT ONE ALLOCATION TOOK, and only when there is one
+  // allocation. On a split it would be three percentages the reader has to add
+  // up, next to three amounts that already say the same thing.
+  const onlyShare = summary.targets.length === 1 && amount > 0
+    ? Math.round((Number(summary.targets[0].amount) / amount) * 100)
+    : null
+
   return (
-    <>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
         {summary.targets.map(target => {
           const href = target.kind === 'order'
             ? orderDetailHref(target.targetId)
             : piSubmissionHref(target.targetId)
-          const name = target.label ?? (target.kind === 'order' ? 'A Confirmed Order' : 'A PI submission')
+          // "A PI submission" is gone: the row above it now reads "PI Draft
+          // 019", and one list must not call one kind of record by two names.
+          const name = target.label ?? (target.kind === 'order' ? 'A Confirmed Order' : 'A PI Draft')
+          const kindWord = ALLOCATION_TARGET_WORD[target.kind]
           return (
-            <div
-              key={target.allocationId}
-              style={{
-                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-                gap: '12px', flexWrap: 'wrap',
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <span style={{ fontSize: '10px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: '6px' }}>
-                  {target.kind === 'order' ? 'Order' : 'PI'}
+            <div key={target.allocationId}>
+              <div style={{
+                display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px',
+              }}>
+                <div style={{ minWidth: 0, fontSize: '13.5px' }}>
+                  <span style={{ color: colors.secondary }}>{kindWord}{' '}</span>
+                  {/* Linked only when this reader holds Orders module entry AND
+                      the target could be named. A link labelled "A Confirmed
+                      Order" would be a door with no sign on it. */}
+                  {canOpenLinkedRecord && target.label ? (
+                    <button
+                      onClick={() => onOpen(href)}
+                      style={{
+                        background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                        font: 'inherit', fontWeight: 600, color: colors.blue,
+                        textDecoration: 'underline', textUnderlineOffset: '2px', wordBreak: 'break-word',
+                      }}
+                    >
+                      {name}
+                    </button>
+                  ) : (
+                    <span style={{ fontWeight: 600, color: colors.primary, wordBreak: 'break-word' }}>{name}</span>
+                  )}
+                </div>
+                <span style={{ fontSize: '13.5px', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
+                  {formatMoney(target.amount)}
                 </span>
-                {/* Linked only when this reader holds Orders module entry AND the
-                    target could be named. A link labelled "A Confirmed Order"
-                    would be a door with no sign on it. */}
-                {canOpenLinkedRecord && target.label ? (
-                  <button
-                    onClick={() => onOpen(href)}
-                    style={{
-                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                      fontSize: '13px', fontWeight: 600, color: colors.blue,
-                      textDecoration: 'underline', textUnderlineOffset: '2px', wordBreak: 'break-word',
-                    }}
-                  >
-                    {name}
-                  </button>
-                ) : (
-                  <span style={{ fontSize: '13px', color: colors.primary, wordBreak: 'break-word' }}>{name}</span>
-                )}
-                {/* When the money was assigned here. Absent on a reader whose
-                    select did not ask for it, and absent is simply nothing —
-                    it is a display fact and no total depends on it. */}
-                {target.allocatedAt && (
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-                    Allocated {fmtDate(target.allocatedAt)}
-                  </div>
-                )}
               </div>
-              <span style={{ fontSize: '13px', fontWeight: 600, color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
-                {formatMoney(target.amount)}
-              </span>
+              {/* The sub-line, and only when there is something to put on it.
+                  WHAT SHARE OF THE PAYMENT this took, on a payment with one
+                  allocation — on a split it would be three percentages next to
+                  three amounts that already say the same thing. And WHEN the
+                  money was assigned here, which is absent on a reader whose
+                  select did not ask for it; absent is simply nothing, since it
+                  is a display fact and no total depends on it. */}
+              {(onlyShare !== null || target.allocatedAt) && (
+                <div style={{ fontSize: '12px', color: colors.muted, marginTop: '2px' }}>
+                  {onlyShare !== null && <>{onlyShare}% allocated</>}
+                  {onlyShare !== null && target.allocatedAt && ' · '}
+                  {target.allocatedAt && <>Allocated {fmtDate(target.allocatedAt)}</>}
+                </div>
+              )}
             </div>
           )
         })}
@@ -683,33 +708,55 @@ function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }: {
 
       {/* The two totals, so the lines above visibly reconcile to the payment. */}
       <div style={{
-        display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap',
-        borderTop: `1px solid ${colors.border}`, paddingTop: '10px',
-        fontSize: '12px', color: colors.secondary,
+        display: 'flex', flexDirection: 'column', gap: '6px',
+        borderTop: `1px solid ${colors.border}`, paddingTop: '10px', fontSize: '13px',
       }}>
-        <span>
-          Allocated{' '}
-          <strong style={{ color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+          <span style={{ color: colors.secondary }}>Allocated</span>
+          <strong style={{ color: colors.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>
             {formatMoney(summary.allocated)}
           </strong>
-        </span>
-        <span>
-          {summary.state === 'over' ? 'Over the payment by ' : 'Unallocated '}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px' }}>
+          <span style={{ color: colors.secondary }}>
+            {summary.state === 'over' ? 'Over the payment by' : 'Remaining'}
+          </span>
           <strong style={{
             color: summary.state === 'over' ? colors.red
               : summary.unallocated && summary.unallocated !== '0' ? '#9A3412'
               : colors.muted,
-            fontVariantNumeric: 'tabular-nums',
+            fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
           }}>
             {formatMoney(summary.unallocated)}
           </strong>
-        </span>
+        </div>
       </div>
-    </>
+    </div>
   )
 }
 
 // ── Details modal ─────────────────────────────────────────────────────────────
+//
+// A PAYMENT RECEIPT AND AN ALLOCATION RECORD, not a print-out of the row.
+//
+// Everything here answers one of eight questions: how much, from whom, when,
+// against which record, is any of it still free, who approved it, is there
+// proof, and what has happened to it. A field that answers none of them, or
+// that answers one already answered somewhere else on this screen, is not shown
+// — the old layout said "Order 0524" four times (Payment Against, Order Number,
+// the allocation row, and the breakdown strip) and the Payment ID twice.
+//
+// WHAT WAS REMOVED WAS DUPLICATION, NEVER A FACT:
+//   Payment ID field        → it is the modal's own title.
+//   Payment Against         → the Allocation list names the same records, with
+//                             the amount that went to each.
+//   Order Number            → likewise, and it could only name one Order.
+//   Allocation Status badge → Allocated + Remaining are the figures the status
+//                             is derived from, and they are printed in full.
+//   To PI Drafts / To Orders → per-target amounts already sum to exactly this.
+//   Initiated By            → Activity, where it belongs, with when.
+//   Not attached / Not provided / No notes provided → an absent optional field
+//                             is now absent from the layout.
 
 function DetailsModal({
   request: r,
@@ -771,87 +818,67 @@ function DetailsModal({
     onCorrected()
   }
 
-  const submittedLine = r.submitted_by_name
-    ? `Submitted by ${r.submitted_by_name} · ${fmtDate(r.created_at)}`
-    : `Submitted ${fmtDate(r.created_at)}`
-
-  // The PI-Draft / Order split, from the row the list already holds. No query:
-  // confirmedFigures is pure, and this is the same call the table row used to
-  // make for the expandable strip that no longer exists.
-  const modalFigures = confirmedFigures(r)
-
-  // WHICH RECORD THIS MONEY IS FOR, from the allocation ledger. This modal used
-  // to print order_number, and a blank whenever it was null — which is every
-  // payment written since 20261012000000 made that column provenance.
+  // WHICH RECORD THIS MONEY IS FOR, from the allocation ledger. Read here only
+  // for the status badge's live label — the destination is SHOWN by the
+  // Allocation list, which names every target rather than the first one.
   const destination = usePaymentDestination(supabase, r.id)
-  const orderNoLine = orderNumberDisplay(destination)
+
+  // WHO PAID AND WHEN, on one line under the Payment ID. This replaces
+  // "Submitted by … · <created_at>", which named the wrong person (whoever
+  // typed the entry) and the wrong date (when it was typed, not when the money
+  // arrived) in the one place a reader looks first. Submission is in Activity.
+  const headerLine = `${customerDisplayName(r.client_name)} · Received ${fmtDate(r.payment_date)}`
+
+  // NAMES FOR THE ACTIVITY TRAIL'S ALLOCATION EVENTS, out of records this modal
+  // already holds. The audit rows carry target uuids and no display number, so
+  // without this they read "a Confirmed Order" — true, and never a uuid. NO
+  // QUERY is issued for this: an id that is not in hand simply stays unnamed.
+  const resolveActivityTarget = useMemo<ActivityTargetResolver>(() => {
+    const named = new Map<string, string>()
+    for (const t of allocation.targets) {
+      if (t.label) named.set(`${t.kind}:${t.targetId}`, t.label)
+    }
+    if (destination?.orderId && destination.orderNumber) {
+      named.set(`order:${destination.orderId}`, destination.orderNumber)
+    }
+    if (destination?.submissionId && destination.reference) {
+      named.set(`submission:${destination.submissionId}`, destination.reference)
+    }
+    return (kind, id) => named.get(`${kind}:${id}`) ?? null
+  }, [allocation, destination])
+
+  const paymentModeText = PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode
+  // THE ACCOUNT, and only when it says something the mode has not. Since the
+  // four modes became bank names, a payment recorded as HDFC into the HDFC
+  // account printed "HDFC" twice under two labels. A genuinely different
+  // account — and a legacy row whose mode is "Cash" or "UPI" — still shows it.
+  const receivedInText = r.received_in ? receivedInLabel(r.received_in) : null
+  const showReceivedIn = receivedInText !== null && receivedInText !== paymentModeText
 
   const left = (
-    <>
-      {/* Primary summary card — amount + client lead, payment details below.
-          Same shell as the Payment Requests page's detail modal. */}
-      <div style={{
-        border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-        display: 'flex', flexDirection: 'column', gap: '14px',
-      }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Amount</div>
-            <div style={{ fontSize: '28px', fontWeight: 700, color: colors.primary, lineHeight: 1.1, marginTop: '4px', fontVariantNumeric: 'tabular-nums', wordBreak: 'break-word' }}>
-              {fmtAmount(r.amount)}
-            </div>
-          </div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Client</div>
-            <div style={{ fontSize: '18px', fontWeight: 600, color: colors.primary, lineHeight: 1.3, marginTop: '4px', wordBreak: 'break-word' }}>
-              <CustomerName name={r.client_name} truncate={false} />
-            </div>
-          </div>
-        </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px',
-          borderTop: `1px solid ${colors.border}`, paddingTop: '14px',
-        }}>
-          {/* PAYMENT ID leads, because it is what the table now leads with and
-              what somebody types to confirm a deletion. The human id, never the
-              row's UUID. */}
-          <MetaItem label="Payment ID"   value={r.human_payment_id ?? '—'} muted={!r.human_payment_id} />
-          <MetaItem label="Received Date" value={fmtDate(r.payment_date)} />
-          <MetaItem label="Payment Mode" value={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode} />
-          <MetaItem label="Received In"  value={receivedInLabel(r.received_in)} />
-          {/* WHAT THIS PAYMENT IS FOR, from the ledger — never from the payment
-              row's provenance columns. */}
-          <MetaItem label="Payment Against" value={paymentAgainstDisplay(destination)}
-                    muted={!destination || destination.kind === 'suspense'} />
-          {/* THE TWO PEOPLE. The table abbreviates both to fit a column; here
-              they are whole, which is half the reason the columns may abbreviate
-              at all. */}
-          <MetaItem label="Initiated By" value={r.submitted_by_name ?? '—'} muted={!r.submitted_by_name} />
-          <MetaItem label="Approved By"  value={r.approved_by_name ?? '—'} muted={!r.approved_by_name} />
-          {/* THE ORDER NUMBER, derived. A number appears only when exactly one
-              Confirmed Order is the whole destination; a split payment says how
-              many rather than naming whichever one sorted first. The old
-              "Linked Order Request" branch is gone with the retired workflow —
-              such a payment holds no active allocation and reads as
-              unallocated, which is what it is. */}
-          <MetaItem label="Order Number" value={orderNoLine.value} muted={orderNoLine.muted} />
-          {/* The status the badge in the row shows, restated inside the record
-              it opens — the same component, inert here because this IS the
-              destination. */}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Allocation Status
-            </div>
-            <div style={{ marginTop: '5px' }}>
-              <ConfirmedAllocationBadge status={r.confirmed_allocation_status} />
-            </div>
-          </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        <SectionHeader>Payment Details</SectionHeader>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '9px' }}>
+          <DetailRow label="Client">
+            <CustomerName name={r.client_name} truncate={false} />
+          </DetailRow>
+          <DetailRow label="Payment Mode">{paymentModeText}</DetailRow>
+          {showReceivedIn && <DetailRow label="Received In">{receivedInText}</DetailRow>}
+          <DetailRow label="Received">{fmtDate(r.payment_date)}</DetailRow>
+          {/* CONDITIONAL, all three. An approval that has not happened, an
+              account that was never stated and a reference that was never given
+              are absences — and an absence does not need a row of its own
+              saying so. Activity still records the approval when it comes. */}
+          {r.approved_by_name && <DetailRow label="Approved By">{r.approved_by_name}</DetailRow>}
+          {r.proof_note && <DetailRow label="Reference">{r.proof_note}</DetailRow>}
         </div>
       </div>
 
       {/* WHO PHYSICALLY CARRIED IT. Shown for PNB and Paytm, and for any payment
           that already has a trail — including one recorded before the trail
           existed, whose five legacy columns are projected into the same shape.
+          Draws nothing at all for a payment neither clause applies to.
 
           FINANCE MAY STILL ADD TO IT, verified or not: a custody event is a
           statement about who carried cash, not about how much money arrived, so
@@ -865,92 +892,74 @@ function DetailsModal({
           formatDateTime={fmtDateTime}
         />
       )}
-
-      {/* PAYMENT PROOF / REFERENCE — the attachment, the reference and the notes
-          under ONE heading, the same three the entry forms ask together. The
-          database keeps three columns because they mean three things; this is a
-          grouping, not a merge. */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-        <SectionHeader>Payment Proof / Reference</SectionHeader>
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '10px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px' }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0 }}>Proof</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {supabase
-                ? <PaymentProofView supabase={supabase} paymentRequestId={r.id} renderEmpty inline />
-                : <span style={{ fontSize: '13px', color: colors.muted }}>Not attached</span>}
-            </div>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Reference</span>
-            <span style={{ fontSize: '13.5px', color: r.proof_note ? colors.primary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.45 }}>
-              {r.proof_note || 'Not provided'}
-            </span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 12px', borderTop: `1px solid ${colors.border}` }}>
-            <span style={{ fontSize: '11px', fontWeight: 700, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em', width: '74px', flexShrink: 0, paddingTop: '1px' }}>Notes</span>
-            <span style={{ fontSize: '13.5px', color: r.sales_note ? colors.secondary : colors.muted, minWidth: 0, wordBreak: 'break-word', lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-              {r.sales_note || 'No notes provided'}
-            </span>
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   )
 
   const right = (
-    <>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       {/* ── Where this money went ──
           The payment is ONE record; this lists the claims against it without
           restating the payment itself. A payment split across two Orders appears
           here as two allocations of one sum — never as two payments, which is
           exactly the duplication the allocation table exists to avoid. */}
-      <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-        <SectionHeader>Allocation</SectionHeader>
-        <AllocationPanel
-          summary={allocation}
-          amount={r.amount}
-          canOpenLinkedRecord={canOpenLinkedRecord}
-          onOpen={onOpenLinked}
-        />
+      <SectionHeader>Allocation</SectionHeader>
+      <AllocationPanel
+        summary={allocation}
+        amount={r.amount}
+        canOpenLinkedRecord={canOpenLinkedRecord}
+        onOpen={onOpenLinked}
+      />
+    </div>
+  )
 
-        {/* WHERE THE EXPANDABLE ROW'S FIGURES WENT.
-            The table used to carry a chevron that opened a strip under the row
-            showing these two aggregates. The chevron is gone — Payment ID is
-            the first column now, and this record is reached by the Allocation
-            Status badge or by View — so the figures moved here, beside the
-            per-target list they are the totals of. Nothing was lost with the
-            row; the same helper computes them from the same already-loaded
-            row. */}
-        <div style={{
-          display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: '12px',
-          borderTop: `1px solid ${colors.border}`, paddingTop: '10px',
-        }}>
-          {CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map(column => (
-            <span key={column.key}>
-              <span style={{ color: colors.muted }}>{column.label} </span>
-              <MoneyCell value={column.key === 'to_pi_draft' ? modalFigures.toPI : modalFigures.toOrders} />
-            </span>
-          ))}
-        </div>
-      </div>
-
-      {/* Activity panel — same bordered shell as the Payment Requests page's
-          detail modal. */}
+  const bottom = (
+    <>
+      {/* PAYMENT PROOF — heading and all, or nothing. The heading travels INTO
+          PaymentProofView because only it knows whether an attachment exists;
+          drawing "Payment Proof" over a row reading "Not attached" is the
+          empty state this replaces. */}
       {supabase && (
-        <div style={{ border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px' }}>
-          <PaymentRequestActivity supabase={supabase} paymentRequestId={r.id} />
+        <PaymentProofView
+          supabase={supabase}
+          paymentRequestId={r.id}
+          inline
+          heading={<div style={DIVIDED_SECTION}><SectionHeader>Payment Proof</SectionHeader></div>}
+        />
+      )}
+
+      {/* THE NOTE, when there is one. proof_note (the reference) is a different
+          column with a different meaning and is shown under Payment Details;
+          this is the note to Finance. */}
+      {r.sales_note && (
+        <div style={DIVIDED_SECTION}>
+          <SectionHeader>Note</SectionHeader>
+          <div style={{
+            fontSize: '13.5px', color: colors.secondary, lineHeight: 1.55,
+            marginTop: '8px', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+          }}>
+            {r.sales_note}
+          </div>
         </div>
+      )}
+
+      {/* ACTIVITY — the audit trail, unchanged in content and re-worded for a
+          reader. Every row keeps its actor and its timestamp; only the sentence
+          describing the event is this module's, and it is one shared function
+          so the two Finance surfaces cannot disagree. */}
+      {supabase && (
+        <PaymentRequestActivity
+          supabase={supabase}
+          paymentRequestId={r.id}
+          resolveTarget={resolveActivityTarget}
+          heading={<div style={DIVIDED_SECTION}><SectionHeader>Activity</SectionHeader></div>}
+        />
       )}
 
       {/* Admin controls — never renders on this page in practice (every row
           here is approved_unlinked/approved_linked), kept for parity with the
           Payment Requests page's guard structure. */}
       {mayCorrectPayments && supabase && onCorrected && !isLinkageStatus && (
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-          display: 'flex', flexDirection: 'column', gap: '12px',
-        }}>
+        <div style={{ ...DIVIDED_SECTION, display: 'flex', flexDirection: 'column', gap: '12px' }}>
           <div>
             <SectionHeader>Admin controls</SectionHeader>
             <div style={{ fontSize: '12px', color: colors.muted, marginTop: '4px', lineHeight: 1.5 }}>
@@ -1013,10 +1022,7 @@ function DetailsModal({
         </div>
       )}
       {mayCorrectPayments && isLinkageStatus && (
-        <div style={{
-          border: `1px solid ${colors.border}`, borderRadius: '12px', padding: '16px',
-          fontSize: '12px', color: colors.muted, lineHeight: 1.5,
-        }}>
+        <div style={{ ...DIVIDED_SECTION, fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>
           Funds are attached to a PI Draft or an Order with Allocate Funds, not here.
         </div>
       )}
@@ -1026,11 +1032,25 @@ function DetailsModal({
   return (
     <RequestModalShell
       requestNumber={r.human_payment_id}
-      submittedLine={submittedLine}
-      statusBadge={<StatusBadge status={r.status} destination={destination} />}
+      submittedLine={headerLine}
+      /* THE AMOUNT IS THE LOUDEST THING ON THE SCREEN, and it sits in the
+         header beside the state of the money rather than in a card below it —
+         "how much" is the first of the eight questions. */
+      statusBadge={
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px' }}>
+          <span style={{
+            fontSize: 'clamp(20px, 5vw, 26px)', fontWeight: 700, color: colors.primary,
+            lineHeight: 1.1, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap',
+          }}>
+            {fmtAmount(r.amount)}
+          </span>
+          <StatusBadge status={r.status} destination={destination} />
+        </div>
+      }
       onClose={onClose}
       left={left}
       right={right}
+      bottom={bottom}
     />
   )
 }
@@ -1278,29 +1298,20 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   )
 }
 
-/**
- * The figures a Confirmed Payment row/card needs — Total Allocated, Remaining
- * Unallocated, and the PI-Draft / Order breakdown — all EXACT, and all
- * consistent with `confirmed_allocation_status`, which is itself computed
- * purely from `allocated_total` (never the legacy direct-link fallback).
- *
- * REMAINING IS WITHHELD, NEVER GUESSED, when this reader's view of the
- * allocation ledger is incomplete (`attribution_complete` false — the same
- * gate `available_balance` already uses). A restricted viewer must never see
- * or infer a definite remaining balance from a sum they cannot vouch for.
- */
-function confirmedFigures(r: PaymentRequest) {
-  const totalAllocated = String(r.allocated_total ?? 0)
-  const remaining = r.attribution_complete === true
-    ? remainderOf(r.amount, totalAllocated)
-    : null
-  return {
-    totalAllocated,
-    remaining,
-    toOrders: String(r.order_allocated_total ?? 0),
-    toPI:     String(r.pi_allocated_total ?? 0),
-  }
-}
+// THE ROW FIGURES ARE GONE, and so is confirmedFigures() with them.
+//
+// It computed four numbers — Total Allocated, Remaining, To Orders, To PI
+// Drafts — for a table strip that no longer exists and then for a detail modal
+// that printed the last two beside a list of the very allocations they were
+// the totals of. The modal lists each allocation with its own amount and
+// reconciles them to Allocated / Remaining, from the ALLOCATION LEDGER read
+// rather than from the projection’s pre-summed columns.
+//
+// THE INVARIANT IT CARRIED IS NOT LOST. "Remaining is withheld, never guessed,
+// when this reader’s view is incomplete" now lives where the figure itself is
+// produced: summarizePaymentAllocations returns state 'unknown' with null
+// totals for an unreadable allocation read, and AllocationPanel prints a
+// sentence about the reader instead of a number. See paymentAllocations.ts.
 
 // The Confirmed Payments table — EXACT figures, never a vague "Linked
 // Against" concept (Requirement 2). The primary row is CONFIRMED_PAYMENT_
@@ -1402,10 +1413,9 @@ function ReceivedPaymentsTable({
         </thead>
         <tbody>
           {rows.map(r => {
-            // confirmedFigures() is no longer read per row: the exact figures
-            // it computes were the expandable strip's, and that strip is gone.
-            // The helper is unchanged and now serves the detail modal, which is
-            // where those figures live.
+            // NO PER-ROW FIGURE COMPUTATION. The exact figures were the
+            // expandable strip's, that strip is gone, and the detail modal
+            // computes them from the allocation ledger when it opens.
             const isHighlighted = r.id === highlightId
             const offerAllocate = canAllocate && canOfferAllocateFunds(r)
             return (
@@ -1919,10 +1929,10 @@ function ReceivedPaymentsCards({
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(r => {
-        // confirmedFigures() is deliberately NOT read here any more: the exact
-        // Total Allocated / Remaining / per-destination figures moved into the
-        // detail modal, which the card's own allocation badge opens. The helper
-        // is unchanged and still serves the desktop expandable row.
+        // NO PER-ROW FIGURE COMPUTATION, same as the desktop table. Total
+        // Allocated / Remaining / per-destination live in the detail modal the
+        // card's own allocation badge opens, computed there from the
+        // allocation ledger rather than pre-summed per row here.
         const offerAllocate = canAllocate && canOfferAllocateFunds(r)
         return (
           <div

@@ -864,13 +864,24 @@ describe('the primary row shows eight columns and no money detail', () => {
       'the breakdown does not render in the table any more')
   })
 
-  test('and its figures moved into the modal rather than being dropped', () => {
+  test('and its figures are in the modal — as allocations, not as a second summary', () => {
+    // REVISED with the detail redesign. The strip's two aggregates ("to PI
+    // Drafts", "to Orders") followed the modal into its Allocation panel and
+    // were printed directly UNDER the per-target list they were the totals of:
+    // the same money, added up two ways, three inches apart. The panel keeps
+    // the thing the aggregates were derived from — every allocation with its
+    // own amount — and reconciles it to Allocated and Remaining.
     const modal = view.slice(view.indexOf('function DetailsModal'),
                              view.indexOf('function EditPaymentModal'))
-    assert.ok(modal.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.map'))
-    assert.ok(modal.includes('modalFigures.toPI') && modal.includes('modalFigures.toOrders'))
-    assert.ok(modal.includes('const modalFigures = confirmedFigures(r)'),
-      'computed from the row already in hand — pure, no query')
+    assert.ok(modal.includes('<AllocationPanel'), 'the per-allocation list is the breakdown')
+    assert.ok(!modal.includes('CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS'),
+      'the pre-summed PI/Order split must not be restated beside its own components')
+    const panel = view.slice(view.indexOf('function AllocationPanel'),
+                             view.indexOf('// ── Details modal'))
+    assert.ok(panel.includes('summary.targets.map'), 'one line per allocation')
+    assert.ok(panel.includes('formatMoney(summary.allocated)')
+           && panel.includes('formatMoney(summary.unallocated)'),
+      'and the two totals those lines add up to')
   })
 
   test('PAYMENT ID IS THE FIRST COLUMN AND THE FIRST CELL', () => {
@@ -990,13 +1001,53 @@ describe('the detail modal carries what the table stopped showing', () => {
     assert.ok(modal.includes("wordBreak: 'break-word'"), 'it wraps rather than clipping')
   })
 
-  test('Payment ID, both people and the status are in the summary', () => {
-    for (const field of ['Payment ID', 'Received Date', 'Payment Mode',
-                         'Initiated By', 'Approved By', 'Allocation Status']) {
-      assert.ok(modal.includes(field), `${field} must be in the modal summary`)
+  test('the summary states each fact once, and states it where it belongs', () => {
+    // REVISED with the detail redesign. This used to require six labelled
+    // fields, four of which said something the same screen said again:
+    //
+    //   Payment ID       → it is the modal's own title (requestNumber below).
+    //   Initiated By     → Activity, with WHEN they did it.
+    //   Order Number     → the Allocation list, which names every target and
+    //                      says how much went to each; this could name one.
+    //   Allocation Status→ Allocated and Remaining are the two figures the
+    //                      status is derived from, and both are printed.
+    //
+    // What survives is the four that are stated nowhere else.
+    for (const field of ['Client', 'Payment Mode', 'Received', 'Approved By']) {
+      assert.ok(modal.includes(`label="${field}"`), `${field} must be in the modal summary`)
     }
-    assert.ok(modal.includes('r.human_payment_id'), 'the human id, never the UUID')
-    assert.ok(modal.includes('r.submitted_by_name') && modal.includes('r.approved_by_name'))
+    for (const gone of ['label="Payment ID"', 'label="Initiated By"',
+                        'label="Order Number"', 'Allocation Status']) {
+      assert.ok(!modal.includes(gone), `${gone} restates something already on screen`)
+    }
+    assert.ok(modal.includes('requestNumber={r.human_payment_id}'),
+      'the human id titles the modal — never the UUID, and never twice')
+    assert.ok(modal.includes('r.approved_by_name'), 'who approved it is still shown')
+  })
+
+  test('an optional field that is empty takes no space at all', () => {
+    // "Not attached", "Not provided" and "No notes provided" were three rows
+    // whose entire content was the news that there was no content.
+    for (const empty of ['No notes provided', "'Not provided'", "'Not attached'"]) {
+      assert.ok(!modal.includes(empty), `${empty} must not be rendered as a field`)
+    }
+    // Each optional block is guarded on the value itself.
+    assert.ok(modal.includes('{r.approved_by_name && <DetailRow'))
+    assert.ok(modal.includes('{r.proof_note && <DetailRow'))
+    assert.ok(modal.includes('{r.sales_note && ('))
+    // The proof's own heading travels into the component that knows whether
+    // there is a proof, so a heading is never drawn over an empty row.
+    assert.ok(/heading=\{<div style=\{DIVIDED_SECTION\}><SectionHeader>Payment Proof</.test(modal))
+  })
+
+  test('the amount is the loudest thing in the header, beside the state', () => {
+    assert.ok(modal.includes('{fmtAmount(r.amount)}'), 'the payment amount leads')
+    assert.ok(modal.includes('<StatusBadge status={r.status} destination={destination} />'))
+    // The header line is the client and the date the money arrived — not the
+    // person who typed the entry and the date they typed it.
+    assert.ok(modal.includes('Received ${fmtDate(r.payment_date)}'))
+    assert.ok(!modal.includes('Submitted by ${r.submitted_by_name}'),
+      'submission belongs in Activity, not in the header')
   })
 
   test('the allocation breakdown reaches it through the shared panel', () => {
@@ -1011,7 +1062,10 @@ describe('the allocation breakdown', () => {
 
   test('every active allocation is listed, with its type, name and amount', () => {
     assert.ok(panel.includes('summary.targets.map'), 'one line per allocation, never a summary')
-    assert.ok(panel.includes("target.kind === 'order' ? 'Order' : 'PI'"), 'the target type')
+    // ONE source for the two words. The panel and the activity trail name the
+    // same record on the same screen, so neither may keep its own spelling of
+    // "PI Draft" — that is what ALLOCATION_TARGET_WORD exists to prevent.
+    assert.ok(panel.includes('ALLOCATION_TARGET_WORD[target.kind]'), 'the target type')
     assert.ok(panel.includes('{name}'), 'the human-readable number where it could be read')
     assert.ok(panel.includes('formatMoney(target.amount)'), 'and the amount allocated to it')
   })
@@ -1025,6 +1079,8 @@ describe('the allocation breakdown', () => {
   test('the totals reconcile the lines to the payment', () => {
     assert.ok(panel.includes('formatMoney(summary.allocated)'), 'total of all allocations')
     assert.ok(panel.includes('formatMoney(summary.unallocated)'), 'and what is left')
+    assert.ok(panel.includes('>Allocated<'), 'labelled Allocated')
+    assert.ok(panel.includes(": 'Remaining'"), 'and Remaining — the word management asks in')
   })
 
   test('ZERO ALLOCATED gets an empty state, and still states the figure', () => {
@@ -1034,8 +1090,16 @@ describe('the allocation breakdown', () => {
       'the remaining amount is the thing somebody acts on')
   })
 
+  test('a single allocation says what share of the payment it took', () => {
+    // "₹7,50,000 of ₹7,50,000" is two numbers the reader has to compare;
+    // "100% allocated" is the comparison. Only on a single allocation — on a
+    // split the per-target amounts and the totals already say it.
+    assert.ok(panel.includes('summary.targets.length === 1'))
+    assert.ok(panel.includes('{onlyShare}% allocated'))
+  })
+
   test('OVER-ALLOCATED is called over, never rounded into fully', () => {
-    assert.ok(panel.includes("summary.state === 'over' ? 'Over the payment by '"))
+    assert.ok(panel.includes("summary.state === 'over' ? 'Over the payment by'"))
     assert.ok(panel.includes("summary.state === 'over' ? colors.red"), 'and shown in red')
   })
 
@@ -1209,15 +1273,22 @@ describe('this is a presentation change, and costs no extra request', () => {
     // the list already holds.
     const modal = view.slice(view.indexOf('function DetailsModal'),
                              view.indexOf('function EditPaymentModal'))
-    for (const field of ['r.human_payment_id', 'r.client_name', 'r.submitted_by_name',
-                         'r.approved_by_name', 'r.confirmed_allocation_status']) {
+    for (const field of ['r.human_payment_id', 'r.client_name', 'r.amount',
+                         'r.payment_date', 'r.payment_mode', 'r.approved_by_name']) {
       assert.ok(modal.includes(field), `${field} is read from the row in hand`)
     }
+    // And the names the Activity trail's allocation events need come from the
+    // allocation summary already in hand — never from a lookup of their own.
+    assert.ok(modal.includes('resolveTarget={resolveActivityTarget}'))
+    assert.ok(!/resolveActivityTarget[\s\S]{0,600}?\.from\(/.test(modal),
+      'resolving a target name must not issue a query')
   })
 
   test('opening the badge triggers no query at all', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
+    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    assert.ok(end > 0, 'the badge body could not be delimited')
+    const body = badge.slice(0, end)
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
       assert.ok(!body.includes(call), `${call} must not appear in a badge`)
     }
@@ -1242,7 +1313,9 @@ describe('nothing about who may do what has moved', () => {
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const body = badge.slice(0, badge.indexOf('\nfunction confirmedFigures'))
+    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    assert.ok(end > 0, 'the badge body could not be delimited')
+    const body = badge.slice(0, end)
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===']) {
       assert.ok(!body.includes(gate), `a status badge must not reference ${gate}`)
     }
@@ -1406,7 +1479,13 @@ describe('the earlier corrections still hold', () => {
                              view.indexOf('function EditPaymentModal'))
     assert.ok(modal.includes('{r.client_name}'))
     assert.ok(modal.includes('<AllocationPanel'))
-    assert.ok(modal.includes('modalFigures.toPI') && modal.includes('modalFigures.toOrders'))
+    // Total Allocated and Remaining reach the modal through the panel, which
+    // computes them from the allocation ledger and prints them under the
+    // per-target lines rather than as a second, pre-summed pair.
+    const panel = view.slice(view.indexOf('function AllocationPanel'),
+                             view.indexOf('// ── Details modal'))
+    assert.ok(panel.includes('formatMoney(summary.allocated)')
+           && panel.includes('formatMoney(summary.unallocated)'))
   })
 
   test('NO NEW DATABASE REQUEST — and one fewer, now the probe is gone', () => {
