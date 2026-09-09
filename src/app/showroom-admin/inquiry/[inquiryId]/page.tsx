@@ -7,7 +7,7 @@ import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save } from 'lucide-react'
+import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, Phone, CalendarDays, Save, Eye } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
 
@@ -97,6 +97,7 @@ export default function InquiryDetailPage() {
   const [saveOk,    setSaveOk]      = useState(false)
   const [pdfError,  setPdfError]    = useState('')
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const [copied,          setCopied]          = useState(false)
   const [token,           setToken]           = useState('')
   const [salespersonName, setSalespersonName] = useState('')
@@ -319,7 +320,51 @@ export default function InquiryDetailPage() {
     await reloadInquiry()
   }
 
-  // ── Download quotation PDF ───────────────────────────────────────────────────
+  // ── Preview quotation PDF ────────────────────────────────────────────────────
+  //
+  // Preview is a GET, which no longer writes any status: the salesperson can
+  // look at the finished document — check a rate, a customization note, that
+  // the images came through — without the inquiry recording that a quotation
+  // was sent to the customer. Generating (POST, below) is what still moves the
+  // status, because that is the action a person takes when they mean it.
+  //
+  // Edits are saved first so the preview shows the rates currently on screen
+  // rather than the ones last written; that is a save the salesperson asked for
+  // by editing, not a send.
+
+  const handlePreviewQuotation = async () => {
+    setPreviewLoading(true)
+    setPdfError('')
+
+    const saved = await handleSaveItemEdits()
+    if (!saved) { setPreviewLoading(false); return }
+
+    // The discount lives on the inquiry and only POST persists it, so preview
+    // it by saving the inquiry first — same write the Save button performs.
+    await handleSave()
+
+    try {
+      const res = await fetch(`/api/showroom/quotation/${inquiryId}`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setPdfError(d.error ?? 'Failed to build the preview')
+        setPreviewLoading(false)
+        return
+      }
+      const url = URL.createObjectURL(await res.blob())
+      // Opened rather than downloaded. Revoked on a delay because the new tab
+      // needs the blob to still exist while it loads it.
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch {
+      setPdfError('Failed to build the preview. Please try again.')
+    }
+    setPreviewLoading(false)
+  }
+
+  // ── Generate & download quotation PDF ────────────────────────────────────────
 
   const handleDownloadQuotation = async () => {
     setPdfLoading(true)
@@ -1090,25 +1135,57 @@ export default function InquiryDetailPage() {
             <SideLabel>Share & Export</SideLabel>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
+              {/* Preview first, then generate. Preview opens the finished
+                  document and records nothing; Generate is the step that marks
+                  the quotation sent. */}
               <button
-                onClick={handleDownloadQuotation}
-                disabled={pdfLoading || items.length === 0}
-                title={items.length === 0 ? 'Add products before generating a quotation' : undefined}
+                onClick={handlePreviewQuotation}
+                disabled={previewLoading || pdfLoading || items.length === 0}
+                title={items.length === 0 ? 'Add products before previewing a quotation' : 'Open the quotation without marking it sent'}
                 style={{
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
                   padding: '11px 16px',
                   background: '#fff',
-                  color: (pdfLoading || items.length === 0) ? '#9CA3AF' : '#1A2035',
-                  border: `1px solid ${(pdfLoading || items.length === 0) ? '#E8EAED' : '#D1D5DB'}`,
+                  color: (previewLoading || pdfLoading || items.length === 0) ? '#9CA3AF' : '#1A2035',
+                  border: `1px solid ${(previewLoading || pdfLoading || items.length === 0) ? '#E8EAED' : '#D1D5DB'}`,
                   borderRadius: '10px',
                   fontSize: '13px', fontWeight: 600,
-                  cursor: (pdfLoading || items.length === 0) ? 'default' : 'pointer',
+                  cursor: (previewLoading || pdfLoading || items.length === 0) ? 'default' : 'pointer',
+                  fontFamily: font.body, width: '100%', minHeight: '44px',
+                }}
+              >
+                <Eye size={15} strokeWidth={1.8} />
+                {previewLoading ? 'Building preview…' : 'Preview Quotation'}
+              </button>
+
+              <button
+                onClick={handleDownloadQuotation}
+                disabled={pdfLoading || previewLoading || items.length === 0}
+                title={items.length === 0 ? 'Add products before generating a quotation' : 'Generates the PDF and marks the quotation sent'}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                  padding: '11px 16px',
+                  // The committing action, so it is the filled one.
+                  background: (pdfLoading || previewLoading || items.length === 0) ? '#F3F4F6' : '#1A2035',
+                  color: (pdfLoading || previewLoading || items.length === 0) ? '#9CA3AF' : '#fff',
+                  border: '1px solid transparent',
+                  borderRadius: '10px',
+                  fontSize: '13px', fontWeight: 600,
+                  cursor: (pdfLoading || previewLoading || items.length === 0) ? 'default' : 'pointer',
                   fontFamily: font.body, width: '100%', minHeight: '44px',
                 }}
               >
                 <FileDown size={15} strokeWidth={1.8} />
-                {pdfLoading ? 'Generating PDF…' : 'Generate Quotation PDF'}
+                {pdfLoading ? 'Generating PDF…' : 'Generate & Download'}
               </button>
+
+              {items.length > 0 && (
+                <p style={{
+                  margin: '0 0 2px', fontSize: '11.5px', color: '#8C94A6', lineHeight: 1.5,
+                }}>
+                  Preview does not change the status. Generating marks the quotation sent.
+                </p>
+              )}
 
               <button
                 onClick={handleWhatsAppShare}

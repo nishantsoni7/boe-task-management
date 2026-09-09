@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { colors, font } from '@/lib/tokens'
 import { Package } from 'lucide-react'
+import { ProductThumb } from '@/components/showroom/ProductThumb'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -15,6 +16,12 @@ type ShareItem = {
     product_code: string
     name: string
     category: string
+    /**
+     * The one publishable image for this product, already resolved server-side.
+     * Null when the product has none, or when the stored value is a private
+     * storage path the share endpoint deliberately does not publish.
+     */
+    image_url: string | null
   } | null
 }
 
@@ -140,23 +147,33 @@ export default function SharePage() {
                   borderRadius: '10px',
                   padding: '12px 14px',
                 }}>
-                  {/* Code + name */}
-                  <div style={{ marginBottom: '8px' }}>
-                    <span style={{
-                      fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
-                      color: '#1A2035', background: 'rgba(26,32,53,0.07)',
-                      borderRadius: '3px', padding: '1px 5px',
-                    }}>
-                      {prod?.product_code ?? '—'}
-                    </span>
-                    <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginTop: '3px' }}>
-                      {prod?.name ?? 'Unknown product'}
-                    </div>
-                    {prod?.category && (
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
-                        {prod.category}
+                  {/* Image + code + name. The photo leads: this is the copy the
+                      customer looks at after leaving the showroom, and a code
+                      alone does not tell them which chair they chose. */}
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', marginBottom: '8px' }}>
+                    <ProductThumb
+                      src={prod?.image_url}
+                      alt={prod?.name ?? prod?.product_code ?? 'Product'}
+                      size={72}
+                      radius={8}
+                    />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <span style={{
+                        fontFamily: font.mono, fontSize: '10px', fontWeight: 600,
+                        color: '#1A2035', background: 'rgba(26,32,53,0.07)',
+                        borderRadius: '3px', padding: '1px 5px',
+                      }}>
+                        {prod?.product_code ?? '—'}
+                      </span>
+                      <div style={{ fontSize: '14px', fontWeight: 600, color: colors.primary, marginTop: '3px', lineHeight: 1.3 }}>
+                        {prod?.name ?? 'Unknown product'}
                       </div>
-                    )}
+                      {prod?.category && (
+                        <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                          {prod.category}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Qty + MRP + line total */}

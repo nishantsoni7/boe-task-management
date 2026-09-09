@@ -20,9 +20,14 @@ export async function GET(
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
 
+  // `images` and `dimensions` were missing from this list while the customer
+  // product page read both: it rendered `product.images?.[0]` (always undefined,
+  // so it silently fell through to the legacy image_url) and called
+  // formatDimensions(product.dimensions) on a field that was never sent — which
+  // is why no customer-facing product page has ever shown a dimension.
   const { data, error } = await serviceClient
     .from('showroom_products')
-    .select('id, product_code, name, category, description, specifications, image_url, mrp, is_active')
+    .select('id, product_code, name, category, description, specifications, image_url, images, dimensions, mrp, is_active')
     .eq('product_code', code)
     .single()
 

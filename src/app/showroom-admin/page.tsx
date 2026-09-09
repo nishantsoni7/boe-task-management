@@ -9,6 +9,9 @@ import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { font } from '@/lib/tokens'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
+import {
+  STAGE_ORDER, inquiryStage, stageLabel, type InquiryStage,
+} from '@/lib/showroom/inquiryStage'
 
 type ModVisRow = { visibility_type: string; allowed_department: string[] | null; allowed_user_ids: string[] | null }
 const teamFallback = (team?: string | null) =>
@@ -27,25 +30,36 @@ type InquirySummary = {
   created_at: string
   item_count: number
   mrp_total: number
+  /** Resolved by the list route. Null when the profile could not be read. */
+  salesperson_name: string | null
 }
 
-type QuotationFilter = 'all' | QuotationStatus
+type StageFilter = 'all' | InquiryStage
 
-const FILTER_TABS: { value: QuotationFilter; label: string }[] = [
-  { value: 'all',       label: 'All' },
-  { value: 'draft',     label: 'Draft' },
-  { value: 'sent',      label: 'Sent' },
-  { value: 'converted', label: 'Converted' },
-  { value: 'lost',      label: 'Lost' },
+const FILTER_TABS: { value: StageFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  ...STAGE_ORDER.map(stage => ({ value: stage as StageFilter, label: stageLabel(stage) })),
 ]
 
-const QS: Record<QuotationStatus, {
-  color: string; bg: string; border: string; dot: string; label: string; strip: string
+/**
+ * Colour per stage.
+ *
+ * Five stages rather than four statuses, because `draft` was being shown for
+ * two genuinely different situations — an inquiry the customer just submitted
+ * and one whose rates a salesperson is working on. See inquiryStage: no new
+ * database status is involved, the two existing columns are read together.
+ */
+const STAGE_STYLE: Record<InquiryStage, {
+  color: string; bg: string; border: string; dot: string; strip: string
 }> = {
-  draft:     { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', dot: '#94A3B8', label: 'Draft',     strip: '#94A3B8' },
-  sent:      { color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', dot: '#3B82F6', label: 'Sent',      strip: '#3B82F6' },
-  converted: { color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', dot: '#22C55E', label: 'Converted', strip: '#22C55E' },
-  lost:      { color: '#BE123C', bg: '#FFF1F2', border: '#FDA4AF', dot: '#F43F5E', label: 'Lost',      strip: '#F43F5E' },
+  selecting:       { color: '#B45309', bg: '#FFFBEB', border: '#FCD34D', dot: '#F59E0B', strip: '#F59E0B' },
+  quotation_draft: { color: '#64748B', bg: '#F8FAFC', border: '#CBD5E1', dot: '#94A3B8', strip: '#94A3B8' },
+  quotation_sent:  { color: '#1D4ED8', bg: '#EFF6FF', border: '#93C5FD', dot: '#3B82F6', strip: '#3B82F6' },
+  converted:       { color: '#15803D', bg: '#F0FDF4', border: '#86EFAC', dot: '#22C55E', strip: '#22C55E' },
+  lost:            { color: '#BE123C', bg: '#FFF1F2', border: '#FDA4AF', dot: '#F43F5E', strip: '#F43F5E' },
+  // Ended without an outcome recorded — deliberately duller than every open
+  // stage and than both outcomes, so a closed row recedes in a mixed list.
+  closed:          { color: '#475569', bg: '#F1F5F9', border: '#CBD5E1', dot: '#64748B', strip: '#64748B' },
 }
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
@@ -56,7 +70,7 @@ export default function ShowroomInboxPage() {
   const [loading,         setLoading]         = useState(true)
   const [error,           setError]           = useState('')
   const [token,           setToken]           = useState('')
-  const [quotationFilter, setQuotationFilter] = useState<QuotationFilter>('all')
+  const [quotationFilter, setQuotationFilter] = useState<StageFilter>('all')
   const [showroomMod, setShowroomMod] = useState<ModVisRow | null>(null)
 
   const router   = useRouter()
@@ -128,10 +142,24 @@ export default function ShowroomInboxPage() {
   const isAdmin = effectiveProfile?.role === 'admin'
   void isAdmin
 
+  // Stage is derived from both status columns, so it is computed once per
+  // inquiry here rather than recomputed by the filter, the count and the card.
+  const stageById = useMemo(() => {
+    const map = new Map<string, InquiryStage>()
+    for (const inq of inquiries) {
+      map.set(inq.id, inquiryStage({
+        status: inq.status,
+        quotation_status: inq.quotation_status,
+        itemCount: inq.item_count,
+      }))
+    }
+    return map
+  }, [inquiries])
+
   const filteredInquiries = useMemo(() => {
     if (quotationFilter === 'all') return inquiries
-    return inquiries.filter(inq => (inq.quotation_status ?? 'draft') === quotationFilter)
-  }, [inquiries, quotationFilter])
+    return inquiries.filter(inq => stageById.get(inq.id) === quotationFilter)
+  }, [inquiries, quotationFilter, stageById])
 
   // Pipeline stats
   const pipelineStats = useMemo(() => {
@@ -163,13 +191,41 @@ export default function ShowroomInboxPage() {
         </div>
       )}
 
-      {/* Pipeline summary chips */}
-      {inquiries.length > 0 && (
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '16px' }}>
-          <SummaryChip label="Pipeline" value={inr(pipelineStats.activeValue)} sub={`${pipelineStats.total} inquiries`} />
-          <SummaryChip label="Converted" value={inr(pipelineStats.convertedValue)} sub={`${pipelineStats.converted} won`} accent="#15803D" />
-        </div>
-      )}
+      {/* Pipeline summary, and the one action this screen is missing.
+          A showroom day starts by showing a customer your QR code, and the
+          landing page had no way to do it — the only route was the sidebar. */}
+      <div style={{
+        display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center',
+        marginBottom: '16px',
+      }}>
+        {inquiries.length > 0 && (
+          <>
+            <SummaryChip label="Pipeline" value={inr(pipelineStats.activeValue)} sub={`${pipelineStats.total} inquiries`} />
+            <SummaryChip label="Converted" value={inr(pipelineStats.convertedValue)} sub={`${pipelineStats.converted} won`} accent="#15803D" />
+          </>
+        )}
+        <button
+          onClick={() => router.push('/showroom-admin/qr')}
+          style={{
+            marginLeft: 'auto',
+            display: 'inline-flex', alignItems: 'center', gap: '7px',
+            padding: '10px 16px', minHeight: '40px',
+            background: '#1A2035', color: '#fff',
+            border: 'none', borderRadius: '10px',
+            fontSize: '13px', fontWeight: 600,
+            cursor: 'pointer', fontFamily: font.body,
+            boxShadow: '0 2px 8px rgba(26,32,53,0.22)',
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+            <path d="M14 14h3v3h-3zM19 19h2v2h-2z" />
+          </svg>
+          New Inquiry — Show My QR
+        </button>
+      </div>
 
       {/* Filter tabs */}
       {inquiries.length > 0 && (
@@ -180,7 +236,7 @@ export default function ShowroomInboxPage() {
             const active = quotationFilter === tab.value
             const count = tab.value === 'all'
               ? inquiries.length
-              : inquiries.filter(i => (i.quotation_status ?? 'draft') === tab.value).length
+              : inquiries.filter(i => stageById.get(i.id) === tab.value).length
             return (
               <button
                 key={tab.value}
@@ -234,6 +290,7 @@ export default function ShowroomInboxPage() {
             <InquiryCard
               key={inq.id}
               inquiry={inq}
+              stage={stageById.get(inq.id) ?? 'selecting'}
               onClick={() => router.push(`/showroom-admin/inquiry/${inq.id}`)}
             />
           ))}
@@ -283,9 +340,11 @@ function SummaryChip({ label, value, sub, accent = '#1A2035' }: {
 
 // ── Inquiry card ──────────────────────────────────────────────────────────────
 
-function InquiryCard({ inquiry, onClick }: { inquiry: InquirySummary; onClick: () => void }) {
+function InquiryCard({ inquiry, stage, onClick }: {
+  inquiry: InquirySummary; stage: InquiryStage; onClick: () => void
+}) {
   const [hovered, setHovered] = useState(false)
-  const qs = QS[inquiry.quotation_status ?? 'draft']
+  const qs = STAGE_STYLE[stage]
   const discountedTotal = inquiry.mrp_total * (1 - inquiry.discount_percent / 100)
   const hasDiscount = inquiry.discount_percent > 0
 
@@ -366,7 +425,22 @@ function InquiryCard({ inquiry, onClick }: { inquiry: InquirySummary; onClick: (
             whiteSpace: 'nowrap', flexShrink: 0,
           }}>
             <span style={{ width: 6, height: 6, borderRadius: '50%', background: qs.dot }} />
-            {qs.label}
+            {stageLabel(stage)}
+          </span>
+        </div>
+
+        {/* Owner. An admin sees every salesperson's inquiries in one list, and
+            until now the list did not say whose customer any of them was. */}
+        <div style={{
+          fontSize: '11.5px', color: '#4A5261', fontWeight: 500,
+          display: 'flex', alignItems: 'center', gap: '5px',
+        }}>
+          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <circle cx="8" cy="5" r="2.75" stroke="currentColor" strokeWidth="1.5"/>
+            <path d="M2.5 14c0-2.5 2.5-4 5.5-4s5.5 1.5 5.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {inquiry.salesperson_name ?? 'Unassigned'}
           </span>
         </div>
 

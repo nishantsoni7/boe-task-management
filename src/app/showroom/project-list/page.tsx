@@ -4,16 +4,11 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { colors, font } from '@/lib/tokens'
 import { Trash2 } from 'lucide-react'
-
-type CartItem = {
-  product_id:   string
-  product_code: string
-  name:         string
-  mrp:          number
-  quantity:     number
-  image_url?:   string | null
-  dim_str?:     string | null
-}
+import {
+  changeQuantity, parseCart, removeFromCart, summarizeCart, type CartItem,
+} from '@/lib/showroom/cart'
+import { ProductThumb } from '@/components/showroom/ProductThumb'
+import { WorkflowSteps } from '@/components/showroom/WorkflowSteps'
 
 type CustomerDetails = {
   customer_name: string
@@ -49,10 +44,9 @@ export default function ProjectListPage() {
 
       setSalespersonId(sp)
 
-      const cartRaw = localStorage.getItem('boe_cart')
-      if (cartRaw) {
-        try { setCart(JSON.parse(cartRaw) as CartItem[]) } catch { /* ignore bad cart */ }
-      }
+      // parseCart drops unusable rows and folds duplicates a pre-merge session
+      // may have left behind, so a customer mid-visit does not carry them in.
+      setCart(parseCart(localStorage.getItem('boe_cart')))
 
       setReady(true)
     }
@@ -65,18 +59,17 @@ export default function ProjectListPage() {
     localStorage.setItem('boe_cart', JSON.stringify(next))
   }
 
-  const handleQtyChange = (index: number, delta: number) => {
-    const next = cart.map((item, i) =>
-      i === index ? { ...item, quantity: Math.max(1, item.quantity + delta) } : item
-    )
-    updateCart(next)
+  // Keyed by product, not by array index: an index is only correct until the
+  // list changes, and these two run against a list the customer is editing.
+  const handleQtyChange = (productId: string, delta: number) => {
+    updateCart(changeQuantity(cart, productId, delta))
   }
 
-  const handleRemove = (index: number) => {
-    updateCart(cart.filter((_, i) => i !== index))
+  const handleRemove = (productId: string) => {
+    updateCart(removeFromCart(cart, productId))
   }
 
-  const grandTotal = cart.reduce((sum, item) => sum + item.mrp * item.quantity, 0)
+  const summary = summarizeCart(cart)
 
   const handleSubmit = async () => {
     if (!salespersonId || !customer || cart.length === 0) return
@@ -144,7 +137,38 @@ export default function ProjectListPage() {
   }
 
   return (
-    <Shell>
+    <Shell
+      footer={cart.length > 0 ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontSize: '11px', color: colors.muted, fontWeight: 500 }}>
+              {summary.units} {summary.units === 1 ? 'item' : 'items'} · Estimated (MRP)
+            </div>
+            <div style={{
+              fontSize: '19px', fontWeight: 700, color: colors.primary,
+              fontFamily: font.mono, lineHeight: 1.2,
+            }}>
+              ₹{summary.total.toLocaleString('en-IN')}
+            </div>
+          </div>
+          <button
+            onClick={handleSubmit}
+            disabled={submitting}
+            style={{
+              ...primaryBtn,
+              // 48px tall: a thumb target, not a desktop button shrunk down.
+              padding: '14px 22px', fontSize: '15px', flexShrink: 0,
+              opacity: submitting ? 0.6 : 1,
+              cursor: submitting ? 'default' : 'pointer',
+            }}
+          >
+            {submitting ? 'Submitting…' : 'Submit Inquiry →'}
+          </button>
+        </div>
+      ) : undefined}
+    >
+      <WorkflowSteps current="Quotation" />
+
       {/* Page title */}
       <div style={{ marginBottom: '20px' }}>
         <h1 style={{
@@ -185,34 +209,19 @@ export default function ProjectListPage() {
         <>
           {/* Cart items */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px' }}>
-            {cart.map((item, index) => (
+            {cart.map(item => (
               <CartRow
-                key={index}
+                key={item.product_id}
                 item={item}
-                onIncrease={() => handleQtyChange(index, +1)}
-                onDecrease={() => handleQtyChange(index, -1)}
-                onRemove={() => handleRemove(index)}
+                onIncrease={() => handleQtyChange(item.product_id, +1)}
+                onDecrease={() => handleQtyChange(item.product_id, -1)}
+                onRemove={() => handleRemove(item.product_id)}
               />
             ))}
           </div>
 
-          {/* Grand total */}
-          <div style={{
-            borderTop: `1.5px solid ${colors.border}`,
-            paddingTop: '14px',
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: '20px',
-          }}>
-            <span style={{ fontSize: '13px', fontWeight: 600, color: colors.secondary }}>
-              Estimated Total (MRP)
-            </span>
-            <span style={{
-              fontSize: '18px', fontWeight: 700, color: colors.primary,
-              fontFamily: font.mono,
-            }}>
-              ₹{grandTotal.toLocaleString('en-IN')}
-            </span>
-          </div>
+          {/* No total here: the sticky bar carries it, and printing the same
+              number forty pixels above the bar that shows it is noise. */}
         </>
       )}
 
@@ -230,37 +239,21 @@ export default function ProjectListPage() {
         </div>
       )}
 
-      {/* Add more / submit row */}
+      {/* Add more — stays in the card, above the sticky bar. */}
       {cart.length > 0 && (
         <button
           onClick={() => router.push('/showroom/scan')}
           style={{
-            width: '100%', padding: '12px',
+            width: '100%', padding: '13px',
             background: 'none', color: colors.secondary,
             border: `1.5px solid ${colors.border}`, borderRadius: '10px',
             fontSize: '13px', fontWeight: 600,
             cursor: 'pointer', fontFamily: font.body,
-            marginBottom: '10px',
           }}
         >
-          + Scan Another Product
+          + Add Another Product
         </button>
       )}
-
-      {/* Submit */}
-      <button
-        onClick={handleSubmit}
-        disabled={submitting || cart.length === 0}
-        style={{
-          ...primaryBtn,
-          width: '100%', padding: '15px',
-          fontSize: '15px',
-          opacity: (submitting || cart.length === 0) ? 0.5 : 1,
-          cursor: (submitting || cart.length === 0) ? 'default' : 'pointer',
-        }}
-      >
-        {submitting ? 'Submitting…' : 'Submit Inquiry'}
-      </button>
 
       {cart.length === 0 && (
         <div style={{ fontSize: '11px', color: colors.muted, textAlign: 'center', marginTop: '8px' }}>
@@ -293,22 +286,10 @@ function CartRow({
       {/* Top row: image + info + remove */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginBottom: '10px' }}>
 
-        {/* Thumbnail */}
-        <div style={{
-          width: 52, height: 52, flexShrink: 0,
-          borderRadius: '8px',
-          background: colors.float,
-          border: `1px solid ${colors.border}`,
-          overflow: 'hidden',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          {item.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image_url} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          ) : (
-            <span style={{ fontSize: '20px' }}>🪑</span>
-          )}
-        </div>
+        {/* Thumbnail — shared component, so a dead URL falls back to a
+            placeholder instead of the browser's broken-image glyph, and the
+            photo is contained rather than cropped. */}
+        <ProductThumb src={item.image_url} alt={item.name} size={56} radius={8} />
 
         {/* Code + name + dims + price */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -372,12 +353,22 @@ function CartRow({
 
 // ── Shell ─────────────────────────────────────────────────────────────────────
 
-function Shell({ children }: { children: React.ReactNode }) {
+/**
+ * `footer` renders in a bar pinned to the bottom of the viewport.
+ *
+ * The list is scrolled on a phone while the customer walks — with the total and
+ * the submit button at the end of the document, both were off screen for most
+ * of the visit, and the one question they are asked at that moment ("how much
+ * is this so far?") needed a scroll to answer. The bar keeps the running count,
+ * the value and the next action visible the whole time. Extra bottom padding
+ * below reserves its height so it can never cover the last row.
+ */
+function Shell({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) {
   return (
     <div style={{
       minHeight: '100vh', background: colors.void,
       display: 'flex', flexDirection: 'column', alignItems: 'center',
-      padding: '24px 16px 48px',
+      padding: footer ? '24px 16px 132px' : '24px 16px 48px',
     }}>
       {/* BOE header */}
       <div style={{
@@ -410,6 +401,23 @@ function Shell({ children }: { children: React.ReactNode }) {
       }}>
         {children}
       </div>
+
+      {footer && (
+        <div style={{
+          position: 'fixed', left: 0, right: 0, bottom: 0,
+          background: colors.base,
+          borderTop: `1px solid ${colors.borderSoft}`,
+          boxShadow: '0 -4px 16px rgba(0,0,0,0.07)',
+          // Keeps the bar clear of the iOS home indicator.
+          padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
+          display: 'flex', justifyContent: 'center',
+          zIndex: 20,
+        }}>
+          <div style={{ width: '100%', maxWidth: '480px' }}>
+            {footer}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

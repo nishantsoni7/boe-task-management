@@ -5,16 +5,8 @@ import { useRouter, useParams } from 'next/navigation'
 import type { ShowroomProduct } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { Package } from 'lucide-react'
-
-type CartItem = {
-  product_id:   string
-  product_code: string
-  name:         string
-  mrp:          number
-  quantity:     number
-  image_url:    string | null
-  dim_str:      string | null
-}
+import { addToCart, parseCart, summarizeCart } from '@/lib/showroom/cart'
+import { WorkflowSteps } from '@/components/showroom/WorkflowSteps'
 
 export default function ProductPage() {
   const params      = useParams()
@@ -26,6 +18,14 @@ export default function ProductPage() {
   const [noSession, setNoSession] = useState(false)
   const [quantity,  setQuantity]  = useState(1)
   const [added,     setAdded]     = useState(false)
+  // What the add actually did — "added" vs "already selected, quantity raised".
+  // Shown in place before the redirect, because the whole point of a scan-heavy
+  // flow is that the customer learns the outcome without changing pages.
+  const [addMessage, setAddMessage] = useState('')
+  // Running selection, so this page can say what is already on the list. Read
+  // once on mount: another tab's scan lands in localStorage, and re-reading it
+  // on every render would make this page's own state flicker.
+  const [selectionLabel, setSelectionLabel] = useState('')
 
   const router = useRouter()
 
@@ -39,6 +39,11 @@ export default function ProductPage() {
         setLoading(false)
         return
       }
+
+      // The list may have grown in another tab since this one opened — each QR
+      // scan is a new tab, so this page is frequently not the one that added
+      // the last item.
+      setSelectionLabel(summarizeCart(parseCart(localStorage.getItem('boe_cart'))).label)
 
       fetch(`/api/showroom/products/by-code/${encodeURIComponent(productCode)}`)
         .then(r => r.ok ? r.json() : Promise.reject())
@@ -57,14 +62,13 @@ export default function ProductPage() {
   const handleAdd = () => {
     if (!product) return
 
-    const existing = localStorage.getItem('boe_cart')
-    const cart: CartItem[] = existing ? JSON.parse(existing) : []
-
+    const cart = parseCart(localStorage.getItem('boe_cart'))
     const primaryImg = product.images?.[0] ?? product.image_url ?? null
     const dimStr = formatDimensions(product.dimensions)
 
-    // Same product added twice is kept as a separate row in V1
-    cart.push({
+    // Scanning a sticker a second time raises the quantity rather than adding a
+    // duplicate row — see addToCart, which also decides the wording.
+    const outcome = addToCart(cart, {
       product_id:   product.id,
       product_code: product.product_code,
       name:         product.name,
@@ -72,12 +76,14 @@ export default function ProductPage() {
       quantity,
       image_url:    primaryImg,
       dim_str:      dimStr,
-    })
+    }, quantity)
 
-    localStorage.setItem('boe_cart', JSON.stringify(cart))
+    localStorage.setItem('boe_cart', JSON.stringify(outcome.cart))
     setAdded(true)
-    // Brief confirmation before redirect
-    setTimeout(() => router.push('/showroom/project-list'), 600)
+    setAddMessage(outcome.message)
+    setSelectionLabel(summarizeCart(outcome.cart).label)
+    // Long enough to read a merge message, short enough not to feel like a wait.
+    setTimeout(() => router.push('/showroom/project-list'), outcome.merged ? 1400 : 700)
   }
 
   // ── Loading ────────────────────────────────────────────────────────────────
@@ -169,7 +175,10 @@ export default function ProductPage() {
 
   return (
     <Shell>
-      {/* Primary image */}
+      <WorkflowSteps current="Products" />
+
+      {/* Primary image. `contain`, not `cover`: cropping a chair to fill a 4:3
+          box cuts off the legs, which is the part a customer is judging. */}
       <div style={{
         width: '100%', aspectRatio: '4/3',
         background: colors.raised,
@@ -184,7 +193,7 @@ export default function ProductPage() {
           <img
             src={allImages[0]}
             alt={product.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }}
           />
         ) : (
           <Package size={48} color={colors.muted} strokeWidth={1.2} />
@@ -349,6 +358,27 @@ export default function ProductPage() {
           {added ? '✓ Added — going to list…' : 'Add To Project List'}
         </button>
 
+        {/* The outcome in words. A merge in particular has to be said out loud:
+            a customer who scans the same chair twice needs to know their list
+            did change, and how — otherwise the second scan looks like it did
+            nothing at all. */}
+        {addMessage && (
+          <div
+            role="status"
+            aria-live="polite"
+            style={{
+              background: 'rgba(69,168,112,0.09)',
+              border: '1px solid rgba(69,168,112,0.25)',
+              borderRadius: '9px',
+              padding: '10px 13px',
+              fontSize: '13px', fontWeight: 500, color: '#2F7A52',
+              lineHeight: 1.5,
+            }}
+          >
+            {addMessage}
+          </div>
+        )}
+
         <button
           onClick={() => router.push('/showroom/project-list')}
           style={{
@@ -357,9 +387,20 @@ export default function ProductPage() {
             border: `1px solid ${colors.border}`, borderRadius: '10px',
             fontSize: '13px', fontWeight: 500,
             cursor: 'pointer', fontFamily: font.body,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
           }}
         >
           View Project List
+          {/* Selection count travels with the button, so the customer always
+              knows how much is on the list without opening it. */}
+          {selectionLabel && !selectionLabel.startsWith('0 ') && (
+            <span style={{
+              fontSize: '11.5px', fontWeight: 600, color: colors.secondary,
+              background: colors.float, borderRadius: '5px', padding: '2px 7px',
+            }}>
+              {selectionLabel}
+            </span>
+          )}
         </button>
       </div>
     </Shell>
