@@ -107,7 +107,7 @@ describe('the confirmed-order display defect', () => {
 
   test('"Payment Against" names the Order, and never says "New Order"', () => {
     const against = paymentAgainstDisplay(confirmedOrder())
-    assert.equal(against, 'Confirmed Order · ORD-A')
+    assert.equal(against, 'Confirmed Order ORD-A')
     assert.equal(/New Order/.test(against), false)
   })
 
@@ -130,7 +130,7 @@ describe('the confirmed-order display defect', () => {
     // form promised when somebody picked the Order.
     const pending = confirmedOrder({ destination_source: 'intent' })
     assert.equal(paymentDisplayState('pending_approval', pending), 'pending')
-    assert.equal(paymentAgainstDisplay(pending), 'Confirmed Order · ORD-A')
+    assert.equal(paymentAgainstDisplay(pending), 'Confirmed Order ORD-A')
     assert.deepEqual(orderNumberDisplay(pending), { value: 'ORD-A', muted: false })
   })
 })
@@ -192,6 +192,60 @@ describe('the four destination kinds', () => {
     const hidden = confirmedOrder({ destination_order_number: null, destination_reference: null })
     assert.equal(destinationReferenceLabel(hidden), DESTINATION_NOT_VISIBLE)
     assert.deepEqual(orderNumberDisplay(hidden), { value: DESTINATION_NOT_VISIBLE, muted: true })
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 2b. "AGAINST" IS ONE IDENTIFIER, NOT TWO FIELDS
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// The kind and the number used to be joined with a middle dot — "PI Draft ·
+// 417" — which put a divider through the middle of a single identifier and made
+// one fact look like two. They are juxtaposed now, the way a person says it.
+//
+// THE DOT IS NOT BANNED, it is reserved: it survives exactly where the second
+// half is NOT a number, because juxtaposing a kind with a sentence produces
+// "Confirmed Order Not visible to you", which reads as a broken identifier.
+
+describe('what a payment is against, written the way it is spoken', () => {
+  test('a PI Draft is "PI Draft 417"', () => {
+    assert.equal(paymentAgainstDisplay(piDraft()), 'PI Draft PI-4471')
+  })
+
+  test('a Confirmed Order is "Confirmed Order 0524"', () => {
+    assert.equal(paymentAgainstDisplay(confirmedOrder()), 'Confirmed Order ORD-A')
+  })
+
+  test('no separator sits between a kind and its number', () => {
+    for (const destination of [piDraft(), confirmedOrder()]) {
+      const label = paymentAgainstDisplay(destination)
+      assert.equal(label.includes('·'), false, `"${label}" must not be split by a dot`)
+      assert.equal(label.includes('—'), false, `"${label}" must not be split by a dash`)
+    }
+  })
+
+  test('a MIXED destination is its own summary, and is not prefixed with the kind', () => {
+    // "Multiple destinations 2 Orders · 1 PI Draft" states the same thing twice.
+    // The inner dot here separates two COUNTS, which is what it is for.
+    const mixed = readPaymentDestination(row({
+      destination_source: 'allocation',
+      destination_kind: 'mixed',
+      destination_order_count: 2,
+      destination_submission_count: 1,
+    }))
+    assert.equal(paymentAgainstDisplay(mixed), '2 Orders · 1 PI Draft')
+    assert.equal(paymentAgainstDisplay(mixed).includes('Multiple destinations'), false)
+  })
+
+  test('a record the reader may not open KEEPS its separator, because that half is a sentence', () => {
+    const hidden = confirmedOrder({ destination_order_number: null, destination_reference: null })
+    assert.equal(paymentAgainstDisplay(hidden), `Confirmed Order — ${DESTINATION_NOT_VISIBLE}`)
+  })
+
+  test('the cases with nothing to name are unchanged', () => {
+    assert.equal(paymentAgainstDisplay(suspense()), 'Suspense / Unallocated')
+    assert.equal(paymentAgainstDisplay(null), 'Suspense / Unallocated')
+    assert.equal(paymentAgainstDisplay(undefined), DESTINATION_LOADING)
   })
 })
 

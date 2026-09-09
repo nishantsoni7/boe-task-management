@@ -195,11 +195,19 @@ export function destinationReferenceLabel(
 }
 
 /**
- * The "Payment Against" cell: the kind and the record, in one line.
+ * What a payment is FOR: the kind and the record, in one line.
  *
  * THIS IS WHAT REPLACES "New Order — no order created yet". That sentence came
  * from payment_against, which reads 'new_order' for every request the current
  * form writes — true of the row, and false about the money.
+ *
+ * THE KIND AND THE NUMBER ARE JUXTAPOSED, NOT SEPARATED. "PI Draft 417" is how
+ * a person says it out loud and how it is written everywhere else in the
+ * product; "PI Draft · 417" put a divider through the middle of one identifier
+ * and made it look like two fields that happened to share a cell. The dot
+ * survives only in the two places where the second half is NOT a number — a
+ * mixed destination's summary, and the sentence a reader gets when they may not
+ * open the record.
  */
 export function paymentAgainstDisplay(
   destination: PaymentDestination | null | undefined,
@@ -207,7 +215,18 @@ export function paymentAgainstDisplay(
   if (destination === undefined) return DESTINATION_LOADING
   const kind = destinationLabel(destination)
   const reference = destinationReferenceLabel(destination)
-  return reference ? `${kind} · ${reference}` : kind
+  if (!reference) return kind
+
+  // A MIXED destination names no single record. Its summary already reads
+  // "2 Orders · 1 PI Draft", so prefixing the kind would say it twice.
+  if (destination?.kind === 'mixed') return reference
+
+  // The record's own number, juxtaposed: "PI Draft 417", "Confirmed Order 0524".
+  if (destination?.reference) return `${kind} ${reference}`
+
+  // NOT A NUMBER BUT A SENTENCE ABOUT THE READER. "Confirmed Order Not visible
+  // to you" reads as a broken identifier, so this one keeps its separator.
+  return `${kind} — ${reference}`
 }
 
 /**
