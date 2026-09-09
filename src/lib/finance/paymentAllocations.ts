@@ -92,6 +92,19 @@ export type AllocationTarget = {
   allocatedAt?: string | null
 }
 
+/**
+ * What the two kinds of allocation target are CALLED, once.
+ *
+ * The detail modal names the same record twice on one screen — in the
+ * allocation list and again in the activity trail — and each surface used to
+ * pick its own words ("PI" in the list, "PI Draft" in the sentence). One map,
+ * so a reader is never asked to work out that two names are one record.
+ */
+export const ALLOCATION_TARGET_WORD: Record<AllocationTarget['kind'], string> = {
+  order:      'Order',
+  submission: 'PI Draft',
+}
+
 export type PaymentAllocationState = 'unknown' | 'unallocated' | 'partial' | 'full' | 'over'
 
 /** What Finance knows about one payment's allocations. */

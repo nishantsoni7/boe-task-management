@@ -21,6 +21,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { NO_CUSTOMER_LABEL, customerDisplayName } from './paymentEntry'
+import { summarizePaymentAllocations } from './paymentAllocations'
 import {
   ALL_PAYMENT_STATUSES,
   CONFIRMED_PAYMENTS_PATH,
@@ -288,29 +289,53 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
   })
 
   test('the breakdown is exact figures, never a list of names', () => {
-    // MOVED, NOT DROPPED. These two aggregates used to sit in a strip under the
-    // row, opened by a chevron. The chevron is gone — Payment ID is the first
-    // column, and the record is reached by the Allocation Status badge or by
-    // View — so the figures are asserted where they now live: the detail modal,
-    // beside the per-target list they are the totals of.
+    // MOVED, THEN COLLAPSED INTO WHAT IT SUMMARISED. The two aggregates ("to
+    // PI Drafts", "to Orders") used to sit in a strip under the row, opened by
+    // a chevron; the chevron went and they followed the record into the detail
+    // modal — where they landed directly beneath the per-allocation list they
+    // were the totals of, saying the same money twice. The modal now shows the
+    // allocations themselves, each with its amount, reconciled to Allocated and
+    // Remaining. Nothing a reader could learn from the pair is gone; it is
+    // stated once, at the level somebody can act on.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    const modal = view.slice(
-      view.indexOf('function DetailsModal'),
-      view.indexOf('function EditPaymentModal'))
-    assert.ok(modal.includes('modalFigures.toPI'))
-    assert.ok(modal.includes('modalFigures.toOrders'))
+    const panel = view.slice(
+      view.indexOf('function AllocationPanel'),
+      view.indexOf('// ── Details modal'))
+    assert.ok(panel.includes('summary.targets.map'), 'one line per allocation')
+    assert.ok(panel.includes('formatMoney(target.amount)'), 'each with its own exact amount')
+    assert.ok(panel.includes('formatMoney(summary.allocated)')
+           && panel.includes('formatMoney(summary.unallocated)'),
+      'and the totals those lines reconcile to')
     assert.ok(!view.includes('<DestinationsCell'),
       'inline destination names are what made the row wrap unpredictably; this is exact figures now')
   })
 
   test('Remaining is never overstated — withheld, not guessed, on an incomplete view', () => {
+    // THE GATE MOVED TO WHERE THE FIGURE IS PRODUCED. It used to live in
+    // confirmedFigures(), which read the projection's pre-summed columns and
+    // returned null for Remaining when attribution_complete was false. The
+    // modal reads the allocation ledger directly now, and the same rule is
+    // enforced one level lower: an unreadable allocation read yields state
+    // 'unknown' with BOTH totals null, and the panel then prints a sentence
+    // about the limit of the reader's sight rather than a figure.
+    const summaries = summarizePaymentAllocations(
+      [{ id: 'p1', amount: '1000' }], [], { readable: false })
+    const withheld = summaries.get('p1')
+    assert.equal(withheld?.state, 'unknown')
+    assert.equal(withheld?.allocated, null, 'no total is offered')
+    assert.equal(withheld?.unallocated, null, 'and Remaining above all is not guessed')
+
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
-    // confirmedFigures is the one function both the table and the cards read
-    // Remaining from — gated on attribution_complete, never inferred.
-    const fn = view.slice(view.indexOf('function confirmedFigures'), view.indexOf('function confirmedFigures') + 700)
-    assert.ok(fn.includes("r.attribution_complete === true"))
-    assert.ok(fn.includes('remainderOf('))
-    assert.ok(/:\s*null/.test(fn), 'an incomplete view withholds Remaining rather than computing a guess')
+    const panel = view.slice(
+      view.indexOf('function AllocationPanel'),
+      view.indexOf('// ── Details modal'))
+    assert.ok(panel.includes("summary.state === 'unknown'"),
+      'the panel branches on it before printing any figure at all')
+    assert.ok(panel.includes('ALLOCATION_STATE_LABEL.unknown'))
+    const unknownBranch = panel.slice(panel.indexOf("summary.state === 'unknown'"),
+                                      panel.indexOf('summary.targets.length === 0'))
+    assert.ok(!unknownBranch.includes('formatMoney('),
+      'a withheld view must not render a money figure of any kind')
   })
 
   test('an over-allocated row gets a visibly different badge tone and a review tooltip, never the reassuring "Fully Allocated" look', () => {

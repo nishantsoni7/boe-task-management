@@ -24,6 +24,7 @@ export function PaymentProofView({
   renderEmpty = false,
   inline = false,
   emptyLabel,
+  heading,
 }: {
   supabase: ReturnType<typeof createClient>
   paymentRequestId: string
@@ -39,6 +40,16 @@ export function PaymentProofView({
   // it has always used, so adopting the fuller "No payment proof attached"
   // phrasing is a per-caller decision rather than a silent change everywhere.
   emptyLabel?: string
+  /**
+   * A section label drawn ABOVE the proof, and only when there is a proof.
+   *
+   * Whether a payment has an attachment is known here and nowhere else — the
+   * host would have to issue the same query a second time to decide whether to
+   * draw its own heading, and a heading over nothing is the empty row this
+   * exists to avoid. Left unset, every existing caller renders exactly as
+   * before.
+   */
+  heading?: React.ReactNode
 }) {
   const [proof,   setProof]   = useState<ProofRow | null>(null)
   const [loading, setLoading] = useState(true)
@@ -89,7 +100,7 @@ export function PaymentProofView({
     )
   }
 
-  return (
+  const body = (
     <div style={inline
       ? { display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }
       : {
@@ -113,6 +124,14 @@ export function PaymentProofView({
         {opening ? 'Opening…' : 'View'}
       </button>
       {error && <span style={{ fontSize: '11px', color: colors.red, width: '100%' }}>{error}</span>}
+    </div>
+  )
+
+  if (!heading) return body
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      {heading}
+      {body}
     </div>
   )
 }

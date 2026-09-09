@@ -123,15 +123,50 @@ describe('all three entry forms group the same three things', () => {
 })
 
 describe('the detail views group them the same way', () => {
-  test('both detail surfaces put proof, reference and notes under one heading', () => {
-    for (const file of [REQUEST_PAGE, RECEIVED_VIEW]) {
-      const src = read(file)
-      assert.ok(src.includes('<SectionHeader>Payment Proof / Reference</SectionHeader>'),
-        `${file} must group the three under the product's own heading`)
-      assert.equal(src.includes('<SectionHeader>Notes</SectionHeader>'), false,
-        `${file} must not keep a standalone Notes section`)
-      assert.equal(src.includes('<SectionHeader>Supporting information</SectionHeader>'), false,
-        `${file} must use the product's heading, not a second name for it`)
+  test('the Payment Requests detail modal puts them under one heading', () => {
+    const src = read(REQUEST_PAGE)
+    assert.ok(src.includes('<SectionHeader>Payment Proof / Reference</SectionHeader>'),
+      `${REQUEST_PAGE} must group the three under the product's own heading`)
+    assert.equal(src.includes('<SectionHeader>Notes</SectionHeader>'), false,
+      `${REQUEST_PAGE} must not keep a standalone Notes section`)
+    assert.equal(src.includes('<SectionHeader>Supporting information</SectionHeader>'), false,
+      `${REQUEST_PAGE} must use the product's heading, not a second name for it`)
+  })
+
+  test('the Received Payment record shows each of the three only when it exists', () => {
+    // A DELIBERATE DIVERGENCE, and the reason is which question each screen
+    // answers. The three ENTRY FORMS ask for proof, reference and note
+    // together, so they are one section there — a person filling one in is
+    // deciding all three at once, and empty boxes are the point of a form.
+    //
+    // A RECORDED PAYMENT is read, not filled. Grouping the three under one
+    // heading meant drawing that heading unconditionally, and under it three
+    // fixed rows that on most payments read "Not attached", "Not provided" and
+    // "No notes provided" — a bordered panel whose entire content was the news
+    // that there was no content, above the allocation figures somebody opened
+    // the record for. So on this surface each of the three appears only when
+    // there is something to show, and the reference joins the payment's own
+    // details, where a reader looking for a UTR number would look.
+    //
+    // THE COLUMNS ARE UNTOUCHED, which is what the rest of this file pins:
+    // proof_note is still the reference, sales_note is still the note, and the
+    // attachment is still a row in payment_proof_attachments.
+    const src = read(RECEIVED_VIEW)
+    const modal = src.slice(src.indexOf('function DetailsModal'),
+                            src.indexOf('function EditPaymentModal'))
+    assert.ok(!modal.includes('Payment Proof / Reference'),
+      'the grouped heading would have to be drawn over three empty rows')
+    assert.ok(modal.includes('<DetailRow label="Reference">'),
+      'the reference sits with the payment details it identifies')
+    assert.ok(modal.includes('{r.proof_note && <DetailRow'),
+      'and only when one was actually given')
+    assert.ok(modal.includes('{r.sales_note && ('),
+      'the note appears only when there is a note')
+    assert.ok(/heading=\{<div style=\{DIVIDED_SECTION\}><SectionHeader>Payment Proof</.test(modal),
+      'and the proof heading is drawn by the component that knows there is a proof')
+    for (const emptyState of ['No notes provided', "'Not provided'", "'Not attached'"]) {
+      assert.equal(modal.includes(emptyState), false,
+        `${emptyState} must not occupy a row in a read-only record`)
     }
   })
 
