@@ -90,11 +90,28 @@ comment on table public.order_notification_recipients is
 comment on column public.order_notification_recipients.recipient_role is
   'One of four recipient categories. Closed set, matched by the CHECK above; how each resolves to people is decided in src/lib/orders/orderUpdateNotifications.ts, never in SQL.';
 
--- Seeded ON, all four: the feature is worth nothing switched off, and an
--- administrator who wants a category silent can say so in one click. ON
--- CONFLICT DO NOTHING so re-running never resets a decision somebody made.
+-- THREE ON, AND `bdm` OFF.
+--
+-- The first three name people who are already accountable for the Order: the
+-- two administrations, and the one salesperson the Order itself records. Each
+-- resolves to a small, correct set, so switched on is the useful default and an
+-- administrator who wants one silent says so in one click.
+--
+-- `bdm` IS DIFFERENT, AND THAT IS WHY IT IS OFF. There is no BDM field on an
+-- Order and never has been, so this category cannot resolve to "the BDM on this
+-- Order" — it resolves to EVERY active member of the BDM department. Switched
+-- on by default that would put every Order's every status change, amendment,
+-- alignment and payment into the bell of every BDM, none of whom the Order
+-- names. It is available for an administrator who wants it, and it starts off.
+--
+-- Turn it on only knowingly. When an Order eventually records its own BDM, this
+-- category should be re-pointed at that column and the default reconsidered
+-- then; nothing here presumes that has happened.
+--
+-- ON CONFLICT DO NOTHING so re-running never resets a decision somebody made —
+-- including a deliberate decision to switch `bdm` on.
 insert into public.order_notification_recipients (recipient_role, enabled)
-values ('super_admin', true), ('admin', true), ('salesperson', true), ('bdm', true)
+values ('super_admin', true), ('admin', true), ('salesperson', true), ('bdm', false)
 on conflict (recipient_role) do nothing;
 
 alter table public.order_notification_recipients enable row level security;
