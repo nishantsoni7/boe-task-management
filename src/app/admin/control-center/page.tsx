@@ -167,6 +167,15 @@ function OrderNotificationRecipientsTab() {
       {saved && <div className={cc.success} style={{ marginTop: 10 }}>{saved}</div>}
 
       <div className={cc.note} style={{ marginTop: 18 }}>
+        <div className={cc.noteTitle}>Why BDM Department starts off</div>
+        An Order does not record a BDM, so this category cannot mean &ldquo;the BDM
+        on this Order&rdquo; — it means every active member of the BDM Department.
+        Switched on, all of them are notified about every Order. It is available
+        if that is what you want; it starts off so nobody turns it on by
+        assuming it works like the salesperson switch above.
+      </div>
+
+      <div className={cc.note} style={{ marginTop: 12 }}>
         <div className={cc.noteTitle}>The rule no switch can change</div>
         Whoever makes a change is never notified about their own action, whatever
         is switched on here. They were looking at the screen when they made it.

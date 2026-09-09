@@ -54,33 +54,57 @@ export function isOrderUpdateRecipientRole(value: unknown): value is OrderUpdate
   return typeof value === 'string' && (ORDER_UPDATE_RECIPIENT_ROLES as readonly string[]).includes(value)
 }
 
-/** What an administrator reads beside each switch. */
+/**
+ * What an administrator reads beside each switch.
+ *
+ * `bdm` IS NAMED "BDM DEPARTMENT" AND NOT "BDM", on purpose. An administrator
+ * reading a list beside "Salesperson on the Order" will read a bare "BDM" as
+ * the matching per-Order person, and switch it on expecting one recipient. It
+ * is the whole department, so the label says the whole department.
+ */
 export const ORDER_UPDATE_RECIPIENT_LABEL: Record<OrderUpdateRecipientRole, string> = {
   super_admin: 'Super Admin',
   admin:       'Admin',
   salesperson: 'Salesperson on the Order',
-  bdm:         'BDM department',
+  bdm:         'BDM Department',
 }
 
 export const ORDER_UPDATE_RECIPIENT_DESCRIPTION: Record<OrderUpdateRecipientRole, string> = {
   super_admin: 'Everyone whose designation level is Super Admin.',
   admin:       'Everyone with system administrator access.',
   salesperson: 'The one salesperson named on that Order, and nobody else.',
-  bdm:         'Everyone in the BDM department. No Order records a BDM of its own, so this is the department rather than a per-Order person.',
+  // States what it IS and then what it IS NOT, because the second half is the
+  // half that gets assumed. Off by default for exactly this reason.
+  bdm: 'EVERY active member of the BDM Department — not the BDM associated with this Order. No Order records a BDM of its own, so there is no per-Order BDM to resolve, and switching this on notifies the whole department about every Order.',
 }
 
-/** All four on — what a database with no configuration row behaves as. */
+/**
+ * WHAT A DATABASE WITH NO CONFIGURATION ROW BEHAVES AS — and it is the same
+ * thing 20261202000000 seeds, deliberately.
+ *
+ * The three that name accountable people are on. `bdm` is OFF, because it
+ * cannot resolve to "the BDM on this Order" — no such field exists — and so
+ * resolves to the whole BDM department. On by default that would put every
+ * Order's every change into the bell of every BDM, none of whom the Order
+ * names.
+ *
+ * THESE TWO MUST AGREE. If this said `bdm: true` while the migration seeded
+ * false, then a database where the row was somehow absent would fail OPEN for
+ * the one category that must not — which is the precise mistake this pass
+ * exists to avoid. A test reads the migration against this record.
+ */
 export const ORDER_UPDATE_RECIPIENTS_DEFAULT: Record<OrderUpdateRecipientRole, boolean> = {
-  super_admin: true, admin: true, salesperson: true, bdm: true,
+  super_admin: true, admin: true, salesperson: true, bdm: false,
 }
 
 /**
  * Read a stored configuration into a complete record.
  *
- * FAIL-OPEN ON A MISSING ROW, FAIL-CLOSED ON A DISABLED ONE. A category with no
- * row has never been decided, and the seeded default is on; a category with
- * `enabled = false` was switched off by somebody and stays off. An unknown key
- * is ignored rather than trusted.
+ * A MISSING ROW FALLS BACK TO THE SEEDED DEFAULT ABOVE; a row saying
+ * `enabled = false` was switched off by somebody and stays off. So an
+ * undecided category behaves exactly as a freshly migrated database does —
+ * which for `bdm` means silent — and an unknown key is ignored rather than
+ * trusted.
  */
 export function readRecipientConfig(
   rows: readonly { recipient_role?: unknown; enabled?: unknown }[] | null | undefined,

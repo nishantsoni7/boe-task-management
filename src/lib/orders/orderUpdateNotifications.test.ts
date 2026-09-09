@@ -25,6 +25,7 @@ import {
   ORDER_UPDATE_EVENT_KEYS,
   ORDER_UPDATE_NOTIFICATION_TYPES,
   ORDER_UPDATE_RECIPIENTS_DEFAULT,
+  ORDER_UPDATE_RECIPIENT_DESCRIPTION,
   ORDER_UPDATE_RECIPIENT_LABEL,
   ORDER_UPDATE_RECIPIENT_ROLES,
   activityTypesForEvent,
@@ -65,7 +66,16 @@ const people: Record<string, OrderUpdateCandidate> = {
 
 const everyone = Object.values(people)
 const order = { assignedTo: SALESPERSON }
-const allOn = { ...ORDER_UPDATE_RECIPIENTS_DEFAULT }
+/**
+ * EVERY CATEGORY ON — a fixture, and deliberately NOT the shipped default.
+ *
+ * The default has `bdm` off (see the seeded-default block below), and most of
+ * the tests here are about resolution rather than about which switches happen
+ * to ship on. Deriving this from the default would make every one of them
+ * silently change meaning the next time somebody moves a switch.
+ */
+const allOn: Record<OrderUpdateRecipientRole, boolean> =
+  { super_admin: true, admin: true, salesperson: true, bdm: true }
 
 const resolve = (over: Partial<Parameters<typeof resolveOrderUpdateRecipients>[0]> = {}) =>
   resolveOrderUpdateRecipients({
@@ -198,15 +208,60 @@ describe('the actor is never told about their own action', () => {
 // ══ 3. The configuration ══════════════════════════════════════════════════════
 
 describe('reading the stored configuration', () => {
-  test('no rows at all means the seeded default: everything on', () => {
+  test('THE SHIPPED DEFAULT: three on, and the BDM Department off', () => {
+    // `bdm` cannot resolve to "the BDM on this Order" — no Order records one —
+    // so it resolves to the whole department. On by default that would put
+    // every Order's every change into the bell of every BDM, none of whom the
+    // Order names. The other three each name somebody already accountable.
+    assert.deepEqual(ORDER_UPDATE_RECIPIENTS_DEFAULT, {
+      super_admin: true, admin: true, salesperson: true, bdm: false,
+    })
+  })
+
+  test('and the migration seeds EXACTLY that — the two cannot disagree', () => {
+    // If these drifted apart, a database missing the row would fail open for
+    // the one category that must not. Read from the migration itself.
+    const sql = read(MIGRATION)
+    assert.match(
+      sql,
+      /values \('super_admin', true\), \('admin', true\), \('salesperson', true\), \('bdm', false\)/,
+      'the seed must match ORDER_UPDATE_RECIPIENTS_DEFAULT',
+    )
+    // ON CONFLICT DO NOTHING: re-running must never reset a decision somebody
+    // made — including a deliberate decision to switch the BDM Department on.
+    assert.match(sql, /on conflict \(recipient_role\) do nothing;/)
+  })
+
+  test('a fresh database therefore notifies nobody through the BDM Department', () => {
+    // The behaviour, not just the constant: a BDM who is nothing else on this
+    // Order hears nothing until an administrator turns the category on.
+    const fresh = readRecipientConfig([])
+    assert.deepEqual(
+      resolveOrderUpdateRecipients({ candidates: everyone, order, config: fresh, actorId: null }),
+      ['u-admin', 'u-super', SALESPERSON],
+    )
+    assert.ok(!resolveOrderUpdateRecipients({
+      candidates: [people.bdm], order, config: fresh, actorId: null,
+    }).length, 'a plain BDM is silent by default')
+  })
+
+  test('but an administrator can switch it on, and then they are notified', () => {
+    // Off by default is a default, not a removal.
+    const on = readRecipientConfig([{ recipient_role: 'bdm', enabled: true }])
+    assert.ok(resolveOrderUpdateRecipients({
+      candidates: [people.bdm], order, config: on, actorId: null,
+    }).includes('u-bdm'))
+  })
+
+  test('no rows at all means the seeded default', () => {
     assert.deepEqual(readRecipientConfig(null), ORDER_UPDATE_RECIPIENTS_DEFAULT)
     assert.deepEqual(readRecipientConfig([]), ORDER_UPDATE_RECIPIENTS_DEFAULT)
   })
 
   test('a stored false is respected; a missing row keeps the default', () => {
-    const config = readRecipientConfig([{ recipient_role: 'bdm', enabled: false }])
-    assert.equal(config.bdm, false)
-    assert.equal(config.admin, true, 'undecided is not off')
+    const config = readRecipientConfig([{ recipient_role: 'admin', enabled: false }])
+    assert.equal(config.admin, false)
+    assert.equal(config.salesperson, true, 'undecided is not off')
   })
 
   test('an unknown key is ignored rather than trusted', () => {
@@ -224,17 +279,31 @@ describe('reading the stored configuration', () => {
     }
     // The CHECK closes the set on the database side too.
     assert.match(sql, /check \(recipient_role in \('super_admin', 'admin', 'salesperson', 'bdm'\)\)/)
-    // And every one is seeded, so nothing depends on the fail-open default.
-    assert.match(sql, /values \('super_admin', true\), \('admin', true\), \('salesperson', true\), \('bdm', true\)/)
+    // And every one is seeded, so nothing in production depends on the
+    // in-memory fallback above.
+    for (const role of ORDER_UPDATE_RECIPIENT_ROLES) {
+      assert.ok(sql.includes(`('${role}', `), `${role} is not seeded`)
+    }
   })
 
   test('every category has words an administrator can read', () => {
     for (const role of ORDER_UPDATE_RECIPIENT_ROLES) {
       assert.ok(ORDER_UPDATE_RECIPIENT_LABEL[role].length > 0, role)
+      assert.ok(ORDER_UPDATE_RECIPIENT_DESCRIPTION[role].length > 0, role)
     }
-    // The BDM label says what it actually resolves to, rather than implying a
-    // per-Order association this database has never recorded.
-    assert.match(ORDER_UPDATE_RECIPIENT_LABEL.bdm, /department/i)
+  })
+
+  test('the BDM control says DEPARTMENT, and says what it is NOT', () => {
+    // The label sits directly under "Salesperson on the Order". A bare "BDM"
+    // there reads as the matching per-Order person, which is exactly the
+    // assumption that would get the whole department switched on by mistake.
+    assert.equal(ORDER_UPDATE_RECIPIENT_LABEL.bdm, 'BDM Department')
+    assert.match(ORDER_UPDATE_RECIPIENT_DESCRIPTION.bdm, /BDM Department/)
+    assert.match(ORDER_UPDATE_RECIPIENT_DESCRIPTION.bdm, /not the BDM associated with this Order/i)
+
+    // And the Control Center page explains why it ships off, where the switch is.
+    const cc = read('src/app/admin/control-center/page.tsx')
+    assert.match(cc, /Why BDM Department starts off/)
   })
 
   test('the configuration is admin-only, and fail-closed for everyone else', () => {
