@@ -50,9 +50,30 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  const rows = data ?? []
+
+  // ── Who owns each inquiry ───────────────────────────────────────────────────
+  //
+  // The rows already carry `salesperson_id` (the select is a wildcard), but the
+  // list never had a NAME for it, so an admin looking at every inquiry in the
+  // showroom could not see whose customer any of them was — the one thing an
+  // admin most needs from this screen.
+  //
+  // One extra query for the distinct owners, not one per row: a page of 60
+  // inquiries is typically a handful of salespeople.
+  const ownerIds = [...new Set(rows.map(r => r.salesperson_id).filter(Boolean))] as string[]
+  const namesById = new Map<string, string>()
+  if (ownerIds.length > 0) {
+    const { data: owners } = await caller.client
+      .from('users').select('id, full_name').in('id', ownerIds)
+    for (const o of owners ?? []) namesById.set(o.id as string, o.full_name as string)
+  }
+
   // Compute item_count and mrp_total for each inquiry
-  const inquiries = (data ?? []).map(({ showroom_inquiry_items: items, ...inq }) => ({
+  const inquiries = rows.map(({ showroom_inquiry_items: items, ...inq }) => ({
     ...inq,
+    // Null rather than a dash: the display decides how an unresolved name reads.
+    salesperson_name: namesById.get(inq.salesperson_id as string) ?? null,
     item_count: (items as { quantity: number; mrp_at_time: number }[]).length,
     mrp_total:  (items as { quantity: number; mrp_at_time: number }[])
       .reduce((s, i) => s + i.quantity * i.mrp_at_time, 0),

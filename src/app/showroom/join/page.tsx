@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { colors, font } from '@/lib/tokens'
 import { AlertBanner } from '@/components/ui/atoms'
+import { WorkflowSteps } from '@/components/showroom/WorkflowSteps'
 
 // ── Inner component reads search params (must be inside Suspense) ─────────────
 
@@ -22,6 +23,10 @@ function JoinForm() {
   const [projectName,    setProjectName]    = useState('')
   const [formError,      setFormError]      = useState('')
   const [submitting,     setSubmitting]     = useState(false)
+  // Which field the error is about, so the banner is not the only way to find
+  // it. Two required fields on a phone is short enough that a summary alone
+  // works, but pointing at the field removes the hunt entirely.
+  const [invalidField,   setInvalidField]   = useState<'name' | 'mobile' | null>(null)
 
   const router = useRouter()
 
@@ -47,11 +52,21 @@ function JoinForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
+    setInvalidField(null)
 
-    if (!customerName.trim()) { setFormError('Please enter your name'); return }
-    if (!customerMobile.trim()) { setFormError('Please enter your mobile number'); return }
+    if (!customerName.trim()) {
+      setFormError('Please enter your name')
+      setInvalidField('name')
+      return
+    }
+    if (!customerMobile.trim()) {
+      setFormError('Please enter your mobile number')
+      setInvalidField('mobile')
+      return
+    }
     if (!/^[0-9+\s\-]{7,15}$/.test(customerMobile.trim())) {
       setFormError('Please enter a valid mobile number')
+      setInvalidField('mobile')
       return
     }
 
@@ -111,7 +126,11 @@ function JoinForm() {
   // ── Join form ─────────────────────────────────────────────────────────────────
   return (
     <PageShell>
-      {/* Salesperson context */}
+      <WorkflowSteps current="Customer" />
+
+      {/* Salesperson context. Assigned by the QR that was scanned — never
+          chosen from a list — so the inquiry, and later the quotation, is owned
+          by the person actually standing with the customer. */}
       <div style={{
         background: 'rgba(26,32,53,0.05)',
         border: '1px solid rgba(26,32,53,0.10)',
@@ -130,7 +149,7 @@ function JoinForm() {
           {salespersonName?.[0]?.toUpperCase() ?? '?'}
         </div>
         <div>
-          <div style={{ fontSize: '11px', color: colors.muted, fontWeight: 500 }}>Your showroom guide</div>
+          <div style={{ fontSize: '11px', color: colors.muted, fontWeight: 500 }}>Salesperson</div>
           <div style={{ fontSize: '13px', fontWeight: 600, color: colors.primary }}>{salespersonName}</div>
         </div>
       </div>
@@ -155,11 +174,12 @@ function JoinForm() {
           <input
             type="text"
             value={customerName}
-            onChange={e => setCustomerName(e.target.value)}
+            onChange={e => { setCustomerName(e.target.value); if (invalidField === 'name') { setInvalidField(null); setFormError('') } }}
             placeholder="Full name"
             autoComplete="name"
             inputMode="text"
-            style={inputStyle}
+            aria-invalid={invalidField === 'name'}
+            style={invalidField === 'name' ? invalidInputStyle : inputStyle}
           />
         </Field>
 
@@ -167,11 +187,12 @@ function JoinForm() {
           <input
             type="tel"
             value={customerMobile}
-            onChange={e => setCustomerMobile(e.target.value)}
+            onChange={e => { setCustomerMobile(e.target.value); if (invalidField === 'mobile') { setInvalidField(null); setFormError('') } }}
             placeholder="e.g. 98765 43210"
             autoComplete="tel"
             inputMode="tel"
-            style={inputStyle}
+            aria-invalid={invalidField === 'mobile'}
+            style={invalidField === 'mobile' ? invalidInputStyle : inputStyle}
           />
         </Field>
 
@@ -222,7 +243,7 @@ function JoinForm() {
             letterSpacing: '-0.01em',
           }}
         >
-          {submitting ? 'Please wait…' : 'Enter Showroom →'}
+          {submitting ? 'Please wait…' : 'Start Product Selection →'}
         </button>
 
       </form>
@@ -316,6 +337,13 @@ const inputStyle: React.CSSProperties = {
   boxSizing: 'border-box',
   fontFamily: 'var(--font-body, DM Sans, sans-serif)',
   WebkitAppearance: 'none',
+}
+
+/** The same field, marked. Border and tint only — the label stays readable. */
+const invalidInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  border: '1.5px solid rgba(217,79,79,0.6)',
+  background: 'rgba(217,79,79,0.04)',
 }
 
 // ── Export with Suspense boundary (required for useSearchParams) ──────────────
