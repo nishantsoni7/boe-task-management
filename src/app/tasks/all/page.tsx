@@ -11,6 +11,8 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { statusBadgeClass } from '@/lib/ui'
 import { useListUrlState } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumListParam, idParam, pageParam } from '@/lib/listState'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
@@ -77,6 +79,8 @@ function ViewAllTasksContent() {
   const page = state.page
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -220,7 +224,7 @@ function ViewAllTasksContent() {
               <div
                 key={task.id}
                 role="button"
-                onClick={() => router.push(`/tasks/${task.id}`)}
+                onClick={() => router.push(taskDetailHref(task.id, returnTo))}
                 style={{
                   background: colors.base,
                   border: `1.5px solid ${overdue ? colors.red + '44' : colors.border}`,
@@ -305,7 +309,7 @@ function ViewAllTasksContent() {
                 <div
                   key={task.id}
                   role="button"
-                  onClick={() => router.push(`/tasks/${task.id}`)}
+                  onClick={() => router.push(taskDetailHref(task.id, returnTo))}
                   style={{
                     display: 'flex', alignItems: 'center',
                     padding: '10px 12px',

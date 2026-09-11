@@ -212,7 +212,8 @@ describe('the Awaiting Approval tab', () => {
 
   test('clicking still opens the task', () => {
     assert.ok(PAGE_CODE.includes('onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}'))
-    assert.ok(PAGE_CODE.includes('router.push(`/tasks/${selectedTask.id}`)'))
+    // The drawer's full-page link carries this view as returnTo (see taskReturnPath.test.ts).
+    assert.ok(PAGE_CODE.includes('fullPageHref={taskDetailHref(selectedTask.id, returnTo)}'))
   })
 
   test('an approval decision re-places the task immediately', () => {

@@ -12,6 +12,8 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { ExternalLink, Star, Search, Ban } from 'lucide-react'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { idParam, optionParam, textParam } from '@/lib/listState'
 import { fetchAllRows } from '@/lib/supabasePaging'
 
@@ -241,6 +243,8 @@ function AssignedByMeCancelledContent() {
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -433,7 +437,7 @@ function AssignedByMeCancelledContent() {
           task={selectedTask}
           userMap={userMap}
           onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          fullPageHref={taskDetailHref(selectedTask.id, returnTo)}
           currentUserId={userId}
         />
       )}

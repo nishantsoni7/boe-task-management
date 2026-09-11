@@ -33,6 +33,17 @@ if (typeof window !== 'undefined') {
   window.addEventListener('popstate', () => historyReturn.noteHistoryNavigation(Date.now()))
 }
 
+/**
+ * Treat the navigation about to happen as a return to a list, exactly as a
+ * popstate would be. For code that sends someone back to the list they came from
+ * with `router.replace` — Task Detail after Submit for Approval — so that list
+ * restores its scroll the way Back does. The same one-shot, time-boxed claim:
+ * only a list whose path and query match the view that was left restores.
+ */
+export function noteListReturn(): void {
+  historyReturn.noteHistoryNavigation(Date.now())
+}
+
 function sessionStore(): ScrollStore | null {
   try {
     return typeof window === 'undefined' ? null : window.sessionStorage

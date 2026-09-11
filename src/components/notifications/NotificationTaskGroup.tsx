@@ -7,6 +7,7 @@ import type { Notification } from '@/lib/types'
 import { colors, font } from '@/lib/tokens'
 import { timeAgo } from '@/lib/ui'
 import { getNotificationMeta } from '@/lib/notificationMeta'
+import { withTaskReturnTo } from '@/lib/tasks/taskReturnPath'
 import {
   orderGroupEvents,
   type NotificationFilter,
@@ -123,6 +124,7 @@ function NotificationTaskGroupImpl({
   onDeleteGroup,
   onDeleteOne,
   onRowClick,
+  returnTo,
   isMobile = false,
 }: {
   group: TaskGroup
@@ -157,6 +159,8 @@ function NotificationTaskGroupImpl({
   onDeleteGroup: (group: TaskGroup) => void
   onDeleteOne: (id: string) => void
   onRowClick: (n: Notification) => void
+  /** The page this card is on, handed to Task Detail so Submit for Approval returns there. */
+  returnTo?: string
   isMobile?: boolean
 }) {
   const [open, setOpen] = useState(false)
@@ -174,6 +178,8 @@ function NotificationTaskGroupImpl({
   const counterpart = headerCounterpart(rowHeader, viewerId ?? null)
   const assignee = assigneeLabel(rowHeader)
   const href = getNotificationMeta(group.latest).href
+  // The same destination, carrying this page as `returnTo`.
+  const taskHref = withTaskReturnTo(href, returnTo)
 
   // One loaded event is not a group. The count is what decides, not the filter:
   // hiding read events under "Unread" must not turn a three-event task into a
@@ -203,8 +209,8 @@ function NotificationTaskGroupImpl({
       ? { overflowWrap: 'anywhere' }
       : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }),
   }
-  const titleNode = href ? (
-    <Link href={href} className="boe-notif-task-title" style={titleStyle}>
+  const titleNode = taskHref ? (
+    <Link href={taskHref} className="boe-notif-task-title" style={titleStyle}>
       {taskTitle}
     </Link>
   ) : (

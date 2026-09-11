@@ -33,6 +33,8 @@ import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, 
 import { perfTrack } from '@/lib/perf'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
+import { noteListReturn } from '@/hooks/useListScrollRestore'
+import { defaultTaskListPath, returnPathFromSearch } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 
@@ -611,9 +613,33 @@ export default function TaskDetailPage() {
     }
   }
 
+  // ── AFTER SUBMITTING, BACK TO WHERE THE TASK WAS OPENED FROM ───────────────
+  //
+  // Submitting hands the task to its creator, so there is nothing left for the
+  // assignee to do on this page. They return to the exact list they opened it
+  // from — `returnTo`, which every internal entry point appends and which is
+  // validated here, so a crafted link cannot send anyone off BOE — or to the
+  // task's own list when there is none (a pasted URL, an old bookmark).
+  //
+  // `replace`, not `push`: the submitted task is not left one Back press away,
+  // and Back from the list still goes wherever it went before Task Detail. The
+  // toast stays up briefly first — the same 800 ms Mark Complete waits. A failed
+  // submit returns before any of this, so the user stays here with the error.
+  const submitReturnTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => {
+    if (submitReturnTimer.current) clearTimeout(submitReturnTimer.current)
+  }, [])
+
   const submitForApproval = async () => {
     const ok = await runReviewAction('submit')
-    if (ok) showToast(`Submitted to ${creatorName ?? 'the creator'} for review.`)
+    if (!ok) return
+    showToast(`Submitted to ${creatorName ?? 'the creator'} for review.`)
+    const target = returnPathFromSearch(window.location.search) ?? defaultTaskListPath(task?.task_type)
+    submitReturnTimer.current = setTimeout(() => {
+      // Counts as a return, so the list restores its scroll the way Back does.
+      noteListReturn()
+      router.replace(target)
+    }, 800)
   }
 
   const approveTask = async () => {
