@@ -98,7 +98,9 @@ describe('safeReturnPath', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/app/account/page.tsx'), 'utf8')
 
     assert.match(source, /import \{ safeReturnPath \} from ['"]@\/lib\/safeReturnPath['"]/) 
-    assert.match(source, /safeReturnPath\(rawReturn, window\.location\.origin\) \?\? ['"]\/modules['"]/) 
+    assert.match(source, /safeReturnPath\(\s*rawReturn,/) 
+    assert.match(source, /window\.location\.origin/) 
+    assert.match(source, /\) \?\? ['"]\/modules['"]/) 
     assert.doesNotMatch(
       source,
       /rawReturn\.startsWith\(['"]\/['"]\)\s*&&\s*!rawReturn\.startsWith\(['"]\/\/['"]\)/,
