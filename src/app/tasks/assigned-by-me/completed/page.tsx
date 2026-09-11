@@ -17,6 +17,8 @@ import {
 } from 'lucide-react'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useCompletedCounterparts, useCompletedTaskPage, useUserNames } from '@/hooks/queries/useCompletedTasks'
@@ -278,6 +280,8 @@ function AssignedByMeCompletedContent() {
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   const router      = useRouter()
   const queryClient = useQueryClient()
@@ -474,7 +478,7 @@ function AssignedByMeCompletedContent() {
           task={selectedTask}
           userMap={userMap}
           onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          fullPageHref={taskDetailHref(selectedTask.id, returnTo)}
           currentUserId={userId}
         />
       )}

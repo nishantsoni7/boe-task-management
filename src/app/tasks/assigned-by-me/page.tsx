@@ -23,6 +23,8 @@ import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_A
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { accruesAssigneeOverdue } from '@/lib/tasks/reviewTransitions'
@@ -1033,6 +1035,8 @@ function AssignedByMeContent() {
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(search, next => setState({ q: next }))
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -1334,7 +1338,7 @@ function AssignedByMeContent() {
                     accentColor={activeTabColor}
                     userMap={userMap}
                     onClick={() => setSelectedTask(prev => prev?.id === task.id ? null : task)}
-                    onView={() => router.push(`/tasks/${task.id}`)}
+                    onView={() => router.push(taskDetailHref(task.id, returnTo))}
                     onEdit={() => setEditingTask(task)}
                     onDelete={() => handleDelete(task)}
                     isMobile={isMobile}
@@ -1354,7 +1358,7 @@ function AssignedByMeContent() {
           task={selectedTask}
           userMap={userMap}
           onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          fullPageHref={taskDetailHref(selectedTask.id, returnTo)}
           currentUserId={userId}
         />
       )}

@@ -21,6 +21,8 @@ import { fetchAllRows } from '@/lib/supabasePaging'
 import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 
 /**
@@ -220,6 +222,8 @@ function QuotationRequestsContent() {
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(state.q, next => setState({ q: next }))
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -565,8 +569,8 @@ function QuotationRequestsContent() {
                   key={task.id}
                   task={task}
                   userMap={userMap}
-                  onClick={() => router.push(`/tasks/${task.id}`)}
-                  onView={() => router.push(`/tasks/${task.id}`)}
+                  onClick={() => router.push(taskDetailHref(task.id, returnTo))}
+                  onView={() => router.push(taskDetailHref(task.id, returnTo))}
                 />
               ))}
             </div>

@@ -83,7 +83,8 @@ describe('the drawer opens the task page on the first click', () => {
   })
 
   test('the Dashboard passes the link and no longer closes the drawer first', () => {
-    assert.ok(DASH_CODE.includes('fullPageHref={`/tasks/${selectedTask.id}`}'))
+    // Still the link — now carrying the Dashboard as returnTo (see taskReturnPath.test.ts).
+    assert.ok(DASH_CODE.includes('fullPageHref={taskDetailHref(selectedTask.id, pathname)}'))
     assert.equal(DASH_CODE.includes('setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`)'), false,
       'closing the drawer before the page arrived is what hid the click')
   })
