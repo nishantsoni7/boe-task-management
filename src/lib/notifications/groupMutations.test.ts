@@ -387,6 +387,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // alters no existing table and defines no function, so it reaches nothing
       // asserted here.
       '20261202000000_order_update_notifications.sql',
+      // Meetings Order discussion evidence: one append-only table of its own
+      // (meeting_order_evidence), one private bucket with three storage
+      // policies, two new meeting functions, and remove_meeting_order()
+      // re-emitted with one more refusal. It reaches nothing asserted here.
+      '20261203000000_meeting_order_evidence.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

@@ -879,6 +879,11 @@ describe('the applied migrations are frozen', () => {
       // alters no existing table and defines no function, so it reaches nothing
       // asserted here.
       '20261202000000_order_update_notifications.sql',
+      // Meetings Order discussion evidence: one append-only table of its own
+      // (meeting_order_evidence), one private bucket with three storage
+      // policies, two new meeting functions, and remove_meeting_order()
+      // re-emitted with one more refusal. It reaches nothing asserted here.
+      '20261203000000_meeting_order_evidence.sql',
     ])
   })
 
@@ -1024,6 +1029,11 @@ describe('the applied migrations are frozen', () => {
       // alters no existing table and defines no function, so it reaches nothing
       // asserted here.
       '20261202000000_order_update_notifications.sql',
+      // Meetings Order discussion evidence: one append-only table of its own
+      // (meeting_order_evidence), one private bucket with three storage
+      // policies, two new meeting functions, and remove_meeting_order()
+      // re-emitted with one more refusal. It reaches nothing asserted here.
+      '20261203000000_meeting_order_evidence.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

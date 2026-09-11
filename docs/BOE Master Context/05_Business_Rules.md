@@ -171,6 +171,39 @@ ignore the bell.
 
 ---
 
+## Meeting Evidence Rule
+
+A meeting is a dated record. What was said about an Order, and the screenshot
+of what was communicated at that time, must still read the same at every later
+meeting.
+
+* **An Order's meeting history is found, never copied.** The same Order in a
+  later meeting is a new `meeting_orders` row under the same normalised
+  `order_number_key`. Opening it shows the earlier meetings' own rows, read-only;
+  today's update is a new history row in today's meeting. Nothing in an earlier
+  meeting changes.
+* **"Earlier" means held before this meeting** (by meeting date, then creation
+  time). Opening an old meeting never shows what happened after it.
+* **Evidence is append-only.** `meeting_order_evidence` has no client INSERT,
+  UPDATE or DELETE privilege; rows arrive only from `add_meeting_order_evidence()`.
+  A recorded image cannot be replaced (no storage UPDATE policy) or removed (the
+  storage DELETE policy only allows the uploader to clean up an object that no
+  evidence row references). An Order with evidence cannot be removed from its
+  meeting.
+* **No false evidence.** The browser uploads first; the RPC then records the
+  image only if the object exists in the private `meeting-evidence` bucket,
+  under that Order's folder, uploaded by the caller. Type and size are read from
+  Storage, not from the client. A failed recording removes the stray object and
+  is reported as "not attached".
+* **Images only, 10 MB.** JPG, PNG or WEBP, enforced by the bucket, the table and
+  the RPC. Larger images are compressed in the browser first, or refused.
+* **Visibility is the meeting's.** Read = `can_view_meeting`, write =
+  `can_edit_meeting` on a live meeting, plus the Meetings module gate. A
+  completed meeting accepts no evidence until it is reopened.
+* **Every image names who attached it and when**, wherever it is shown.
+
+---
+
 ## Order Requests — RETIRED (branch, not applied)
 
 **The Order Request workflow is retired.** The only active Order lifecycle is:

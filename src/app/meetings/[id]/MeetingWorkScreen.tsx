@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import {
-  AlertTriangle, ArrowLeft, CalendarPlus, CheckCircle2, ChevronLeft, ClipboardList,
-  History as HistoryIcon, Pencil, Plus, RotateCcw, Search, Trash2, Upload, Users,
+  AlertTriangle, ArrowLeft, CalendarPlus, CheckCircle2, ChevronLeft, ChevronRight, ClipboardList,
+  History as HistoryIcon, ListPlus, Pencil, Plus, RotateCcw, Trash2, Upload, Users,
 } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Toast, useToast } from '@/components/ui/toast'
@@ -19,11 +19,18 @@ import { MeetingActivityModal } from '@/components/meetings/MeetingActivityModal
 import { MeetingImportModal } from '@/components/meetings/MeetingImportModal'
 import { CompleteMeetingModal, ReopenMeetingModal } from '@/components/meetings/CompleteMeetingModal'
 import {
-  AddItemModal, AddOrderModal, OrderUpdateModal, RemoveOrderModal,
+  AddItemModal, AddOrderModal, CarryForwardOrdersModal, OrderUpdateModal, RemoveOrderModal,
 } from '@/components/meetings/MeetingOrderModals'
+import { MeetingBoard } from '@/components/meetings/MeetingBoard'
+import {
+  OrderDiscussion, fetchEvidenceRows, resetEarlierDiscussionCache,
+} from '@/components/meetings/OrderDiscussion'
 import { useMeetings } from '@/hooks/useMeetings'
 import { canEditThisMeeting, canSetThisMeetingStatus } from '@/lib/permissions/meetings'
 import { historyForItem, historyForOrder, previousUpdateByItem } from '@/lib/meetings/history'
+import {
+  discussionStateByOrder, earlierPresenceByKey, orderNumberKey, type EarlierPresence,
+} from '@/lib/meetings/orderHistory'
 import { followUpDue, daysOverdue, FOLLOW_UP_DUE_META } from '@/lib/meetings/followUps'
 import { meetingErrorMessage, logMeetingFailure } from '@/lib/meetings/errors'
 import { fetchAllRows } from '@/lib/supabasePaging'
@@ -33,28 +40,30 @@ import {
   MEETING_ORDER_ITEM_COLUMNS, MEETING_STATUS_META, MEETING_TYPE_META,
   MEETING_ACTIVITY_COLUMNS, ORDER_POSITION_META, departmentLabel, formatMeetingDate,
   type LinkedTask, type Meeting, type MeetingActivityEntry, type MeetingHistoryEntry,
-  type MeetingOrder, type MeetingOrderItem,
+  type MeetingOrder, type MeetingOrderEvidence, type MeetingOrderItem,
 } from '@/lib/meetings/types'
 
-// The meeting working screen — one screen, no nested pages.
+// The meeting working screen — one route, two views.
 //
 // It is laid out for the sequence a review is actually conducted in:
 //
-//   1. open the meeting                → this page
-//   2. open or search an order         → the order rail on the left
-//   3. review its SKU lines            → the table on the right
-//   4. see the previous commitment     → the "Previously" line under each update
-//   5. enter the update                → one dialog, three fields
-//   6. set the follow-up, or create a task → separate actions on the same row
-//   7. move to the next SKU            → "Save & next" inside the dialog
+//   1. open the meeting                → the BOARD: every Order, one row each
+//   2. open an Order                   → its discussion (`?order=<id>`)
+//   3. see what was said before        → that Order's earlier meetings, automatic
+//   4. record today                    → update, position, next review, screenshot
+//   5. review its SKU lines            → the product table under the discussion
+//   6. set a follow-up, or create a task → the same row actions as before
+//   7. move to the next Order          → Next, or back to the board
 //
-// Nothing in that sequence navigates away, and every action is a dialog over
-// this screen rather than a route.
+// The Order view lives in the query string rather than a nested route, so
+// browser Back returns to the board and a link opens straight into an Order.
+// Every other action is still a dialog over this screen.
 
 type ModalState =
   | { kind: 'none' }
   | { kind: 'edit-meeting' }
   | { kind: 'add-order' }
+  | { kind: 'carry-forward' }
   | { kind: 'order-update'; order: MeetingOrder }
   | { kind: 'remove-order'; order: MeetingOrder }
   | { kind: 'add-item'; order: MeetingOrder }
@@ -102,15 +111,19 @@ export function MeetingWorkScreen() {
   const [history, setHistory]     = useState<MeetingHistoryEntry[]>([])
   const [activity, setActivity]   = useState<MeetingActivityEntry[]>([])
   const [tasks, setTasks]         = useState<Record<string, LinkedTask>>({})
+  const [evidence, setEvidence]   = useState<MeetingOrderEvidence[]>([])
+  // Per Order key: the earlier meetings that discussed it. null = the lookup
+  // failed, which the board shows as unknown rather than as "first review".
+  const [earlierPresence, setEarlierPresence] = useState<Map<string, EarlierPresence> | null>(null)
 
   const [loading, setLoading]     = useState(true)
   const [notFound, setNotFound]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
   const [orderSearch, setOrderSearch] = useState('')
   const [modal, setModal]         = useState<ModalState>({ kind: 'none' })
   const [isMobile, setIsMobile]   = useState(false)
-  const [railOpen, setRailOpen]   = useState(true)
+  const searchParams = useSearchParams()
+  const openOrderId = searchParams.get('order')
   // The two actions that fire an RPC straight from a button rather than from a
   // modal (which disables its own submit while saving). Both are idempotent in
   // the database, so a double click cannot corrupt anything — but it would fire
@@ -118,24 +131,16 @@ export function MeetingWorkScreen() {
   const [actionBusy, setActionBusy] = useState(false)
 
   useEffect(() => {
-    // Tracked so the rail is reset only when the layout actually CROSSES the
-    // breakpoint. Reacting to every resize event would slam the order list back
-    // over the SKU table each time a phone keyboard opened or the device
-    // rotated — mid-update, which is the worst possible moment.
-    let wasMobile: boolean | null = null
-    const check = () => {
-      const mobile = window.innerWidth < 900
-      setIsMobile(mobile)
-      if (wasMobile !== mobile) {
-        // On a phone the rail and the table cannot share the screen, so the
-        // rail closes and the SKU table gets the whole width.
-        setRailOpen(!mobile)
-        wasMobile = mobile
-      }
-    }
+    const check = () => setIsMobile(window.innerWidth < 900)
     check()
     window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
+  }, [])
+
+  // Earlier meetings are cached while this screen stays open; a fresh visit
+  // reads them again.
+  useEffect(() => {
+    resetEarlierDiscussionCache()
   }, [])
 
   // Reads before it writes — the mount effect calls it directly, so nothing
@@ -202,6 +207,28 @@ export function MeetingWorkScreen() {
     // A silently truncated history would hide exactly the older commitments
     // this screen exists to surface.
     const orderIds = loadedOrders.map(o => o.id)
+
+    // Started here and awaited at the end, so they run alongside the item, task
+    // and history reads instead of after them. Each is one indexed read:
+    // evidence by meeting_order_id, earlier meetings by order_number_key.
+    const orderKeys = [...new Set(loadedOrders.map(orderNumberKey))]
+    const evidencePromise = fetchEvidenceRows(supabase, orderIds)
+    const earlierPromise = orderKeys.length > 0
+      ? fetchAllRows<{
+          id: string
+          order_number_key: string
+          meeting_id: string
+          meeting: { meeting_date: string; created_at: string } | null
+        }>((from, to) =>
+          supabase
+            .from('meeting_orders')
+            .select('id, order_number_key, meeting_id, meeting:meetings!meeting_id(meeting_date, created_at)')
+            .in('order_number_key', orderKeys)
+            .neq('meeting_id', meetingId)
+            .order('id', { ascending: true })
+            .range(from, to),
+        )
+      : null
     if (orderIds.length > 0) {
       const itemsResult = await fetchAllRows<MeetingOrderItem>((from, to) =>
         supabase
@@ -268,6 +295,24 @@ export function MeetingWorkScreen() {
       )
     }
 
+    const [evidenceRows, earlierResult] = await Promise.all([evidencePromise, earlierPromise])
+    if (evidenceRows) {
+      setEvidence(evidenceRows)
+    } else {
+      // An unread evidence list is never shown as an empty one.
+      setEvidence([])
+      setLoadError('Could not load the evidence attached in this meeting. Please retry.')
+    }
+    setEarlierPresence(
+      !earlierResult
+        ? new Map()
+        : earlierResult.ok && !earlierResult.truncated
+          ? earlierPresenceByKey(earlierResult.rows, {
+              id: meetingId, meeting_date: raw.meeting_date, created_at: raw.created_at,
+            })
+          : null,
+    )
+
     setLoading(false)
   }, [supabase, meetingId])
 
@@ -303,20 +348,14 @@ export function MeetingWorkScreen() {
   // per SKU row per render.
   const previousUpdates = useMemo(() => previousUpdateByItem(history), [history])
 
-  const filteredOrders = useMemo(() => {
-    const q = orderSearch.trim().toLowerCase()
-    if (!q) return orders
-    return orders.filter(o =>
-      o.order_number.toLowerCase().includes(q)
-      || (o.customer_name ?? '').toLowerCase().includes(q),
-    )
-  }, [orders, orderSearch])
+  // What has been recorded against each Order in this meeting, for the board.
+  const discussion = useMemo(() => discussionStateByOrder(history, evidence), [history, evidence])
+  const orderKeysInMeeting = useMemo(() => new Set(orders.map(orderNumberKey)), [orders])
 
-  // Derived during render rather than synced by an effect: the working pane is
-  // never empty when there is something to work on, and an order removed from
-  // the meeting falls back to the first one instead of leaving a blank pane
-  // until a second render catches up.
-  const selectedOrder = orders.find(o => o.id === selectedOrderId) ?? orders[0] ?? null
+  // Derived from the URL during render: an `order` that is not (or is no longer)
+  // part of this meeting simply shows the board.
+  const selectedOrder = openOrderId ? (orders.find(o => o.id === openOrderId) ?? null) : null
+  const selectedIndex = selectedOrder ? orders.findIndex(o => o.id === selectedOrder.id) : -1
   const selectedItems = selectedOrder ? (itemsByOrder.get(selectedOrder.id) ?? []) : []
 
   const existingKeys = useMemo(
@@ -332,6 +371,17 @@ export function MeetingWorkScreen() {
     await load()
     show(message)
   }, [load, show])
+
+  // The discussion composer reports a partial failure inline, and passes null
+  // when the toast has nothing to add.
+  const afterDiscussionSave = useCallback(async (message: string | null) => {
+    await load()
+    if (message) show(message)
+  }, [load, show])
+
+  const openOrder   = (orderId: string) => router.push(`/meetings/${meetingId}?order=${orderId}`)
+  const stepToOrder = (orderId: string) => router.replace(`/meetings/${meetingId}?order=${orderId}`)
+  const backToBoard = () => router.push(`/meetings/${meetingId}`)
 
   // Draft → In Progress. Explicit rather than inferred from the first update:
   // a lead opening the screen to read last week's notes has not started this
@@ -435,6 +485,15 @@ export function MeetingWorkScreen() {
               style={{ padding: '7px 12px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '5px' }}
             >
               <Upload size={13} strokeWidth={2} /> Import
+            </button>
+          )}
+          {editable && (
+            <button
+              onClick={() => setModal({ kind: 'carry-forward' })}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '7px 12px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <ListPlus size={13} strokeWidth={2} /> From Last Meeting
             </button>
           )}
           {editable && (
@@ -568,134 +627,81 @@ export function MeetingWorkScreen() {
       )}
 
       {orders.length === 0 ? (
-        <EmptyReview editable={editable} canImport={caps.canImport} onAdd={() => setModal({ kind: 'add-order' })} onImport={() => setModal({ kind: 'import' })} />
-      ) : (
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+        <EmptyReview
+          editable={editable}
+          canImport={caps.canImport}
+          onAdd={() => setModal({ kind: 'add-order' })}
+          onCarryForward={() => setModal({ kind: 'carry-forward' })}
+          onImport={() => setModal({ kind: 'import' })}
+        />
+      ) : selectedOrder ? (
+        <div>
+          <OrderWorkspaceHeader
+            order={selectedOrder}
+            index={selectedIndex + 1}
+            total={orders.length}
+            editable={editable}
+            onBoard={backToBoard}
+            onPrev={selectedIndex > 0 ? () => stepToOrder(orders[selectedIndex - 1].id) : undefined}
+            onNext={selectedIndex < orders.length - 1 ? () => stepToOrder(orders[selectedIndex + 1].id) : undefined}
+            onEdit={() => setModal({ kind: 'order-update', order: selectedOrder })}
+            onRemove={() => setModal({ kind: 'remove-order', order: selectedOrder })}
+          />
 
-          {/* ── Order rail ── */}
-          {(!isMobile || railOpen) && (
-            <div style={{
-              flex: isMobile ? '1 1 100%' : '0 0 264px',
-              width: isMobile ? '100%' : '264px',
-              background: colors.base, border: `1px solid ${colors.border}`,
-              borderRadius: '10px', overflow: 'hidden',
-              position: isMobile ? 'static' : 'sticky', top: '10px',
-            }}>
-              <div style={{ padding: '9px 10px', borderBottom: `1px solid ${colors.border}` }}>
-                <div style={{ position: 'relative' }}>
-                  <Search
-                    size={13}
-                    color={colors.muted}
-                    style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)' }}
-                  />
-                  <input
-                    className="boe-input"
-                    aria-label="Find order number"
-                    placeholder="Find order number…"
-                    value={orderSearch}
-                    onChange={e => setOrderSearch(e.target.value)}
-                    style={{ paddingLeft: '28px', padding: '6px 10px 6px 28px', fontSize: '12px' }}
-                  />
-                </div>
-              </div>
-              <div style={{ maxHeight: isMobile ? 'none' : 'calc(100vh - 210px)', overflowY: 'auto' }}>
-                {filteredOrders.length === 0 ? (
-                  <div style={{ padding: '20px 12px', fontSize: '12px', color: colors.muted, textAlign: 'center' }}>
-                    No order matches “{orderSearch}”.
-                  </div>
-                ) : filteredOrders.map(order => {
-                  const orderItems = itemsByOrder.get(order.id) ?? []
-                  const open = orderItems.filter(i => i.status !== 'resolved').length
-                  const active = order.id === selectedOrder?.id
-                  const posMeta = ORDER_POSITION_META[order.position]
-                  return (
-                    <button
-                      key={order.id}
-                      onClick={() => { setSelectedOrderId(order.id); if (isMobile) setRailOpen(false) }}
-                      style={{
-                        width: '100%', textAlign: 'left', display: 'block', cursor: 'pointer',
-                        padding: '9px 12px', border: 'none',
-                        borderLeft: `3px solid ${active ? posMeta.color : 'transparent'}`,
-                        borderBottom: `1px solid ${colors.border}`,
-                        background: active ? colors.raised : 'transparent',
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                        <span style={{ fontSize: '12.5px', fontWeight: 700, color: colors.primary }}>
-                          {order.order_number}
-                        </span>
-                        <span style={{
-                          fontSize: '10px', fontWeight: 700, padding: '1px 6px', borderRadius: '5px',
-                          background: posMeta.bg, color: posMeta.color, whiteSpace: 'nowrap',
-                        }}>
-                          {posMeta.label}
-                        </span>
-                      </div>
-                      {order.customer_name && (
-                        <div style={{
-                          fontSize: '11.5px', color: colors.muted, marginTop: '2px',
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                        }}>
-                          {order.customer_name}
-                        </div>
-                      )}
-                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '3px' }}>
-                        {orderItems.length} SKU{orderItems.length !== 1 ? 's' : ''}
-                        {open > 0 && <span style={{ color: colors.amber, fontWeight: 600 }}> · {open} open</span>}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
+          <OrderDiscussion
+            key={selectedOrder.id}
+            supabase={supabase}
+            meeting={meeting}
+            order={selectedOrder}
+            entries={history.filter(h => h.meeting_order_id === selectedOrder.id)}
+            evidence={evidence.filter(e => e.meeting_order_id === selectedOrder.id)}
+            editable={editable}
+            isMobile={isMobile}
+            onSaved={afterDiscussionSave}
+          />
 
-          {/* ── Working pane ── */}
-          {(!isMobile || !railOpen) && selectedOrder && (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              {isMobile && (
-                <button
-                  onClick={() => setRailOpen(true)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px',
-                    background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px 2px 0',
-                    fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
-                  }}
-                >
-                  <ChevronLeft size={14} strokeWidth={2} /> All orders ({orders.length})
-                </button>
-              )}
-
-              <OrderPanel
-                order={selectedOrder}
-                items={selectedItems}
-                previousUpdates={previousUpdates}
-                tasks={tasks}
-                editable={editable}
-                isMobile={isMobile}
-                onOrderUpdate={() => setModal({ kind: 'order-update', order: selectedOrder })}
-                onOrderHistory={() => setModal({
-                  kind: 'history',
-                  title: `Order ${selectedOrder.order_number}`,
-                  subtitle: 'Every update recorded against this order and its products',
-                  entries: historyForOrder(history, selectedOrder.id),
-                })}
-                onRemoveOrder={() => setModal({ kind: 'remove-order', order: selectedOrder })}
-                onAddItem={() => setModal({ kind: 'add-item', order: selectedOrder })}
-                onUpdateItem={(item, focus) => setModal({ kind: 'item-update', order: selectedOrder, item, focus })}
-                onCreateTask={canCreateTasks ? (item => setModal({ kind: 'create-task', order: selectedOrder, item })) : undefined}
-                onOpenTask={taskId => router.push(`/tasks/${taskId}`)}
-                onResolve={markResolved}
-                onItemHistory={item => setModal({
-                  kind: 'history',
-                  title: item.sku,
-                  subtitle: `${item.product_name} · Order ${selectedOrder.order_number}`,
-                  entries: historyForItem(history, item.id),
-                })}
-              />
-            </div>
-          )}
+          <div style={{ marginTop: '12px' }}>
+            <OrderPanel
+              showHeader={false}
+              order={selectedOrder}
+              items={selectedItems}
+              previousUpdates={previousUpdates}
+              tasks={tasks}
+              editable={editable}
+              isMobile={isMobile}
+              onOrderUpdate={() => setModal({ kind: 'order-update', order: selectedOrder })}
+              onOrderHistory={() => setModal({
+                kind: 'history',
+                title: `Order ${selectedOrder.order_number}`,
+                subtitle: 'Every update recorded against this order and its products',
+                entries: historyForOrder(history, selectedOrder.id),
+              })}
+              onRemoveOrder={() => setModal({ kind: 'remove-order', order: selectedOrder })}
+              onAddItem={() => setModal({ kind: 'add-item', order: selectedOrder })}
+              onUpdateItem={(item, focus) => setModal({ kind: 'item-update', order: selectedOrder, item, focus })}
+              onCreateTask={canCreateTasks ? (item => setModal({ kind: 'create-task', order: selectedOrder, item })) : undefined}
+              onOpenTask={taskId => router.push(`/tasks/${taskId}`)}
+              onResolve={markResolved}
+              onItemHistory={item => setModal({
+                kind: 'history',
+                title: item.sku,
+                subtitle: `${item.product_name} · Order ${selectedOrder.order_number}`,
+                entries: historyForItem(history, item.id),
+              })}
+            />
+          </div>
         </div>
+      ) : (
+        <MeetingBoard
+          orders={orders}
+          itemsByOrder={itemsByOrder}
+          discussion={discussion}
+          earlier={earlierPresence}
+          search={orderSearch}
+          onSearch={setOrderSearch}
+          isMobile={isMobile}
+          onOpen={openOrder}
+        />
       )}
 
       {/* ── Modals ── */}
@@ -715,7 +721,18 @@ export function MeetingWorkScreen() {
           meetingId={meeting.id}
           meetingType={meeting.meeting_type}
           onClose={() => setModal({ kind: 'none' })}
-          onSaved={orderId => { setSelectedOrderId(orderId); afterWrite('Order added') }}
+          onSaved={() => afterWrite('Order added')}
+        />
+      )}
+      {modal.kind === 'carry-forward' && (
+        <CarryForwardOrdersModal
+          supabase={supabase}
+          meeting={meeting}
+          existingKeys={orderKeysInMeeting}
+          onClose={() => setModal({ kind: 'none' })}
+          onAdded={count => afterWrite(count === 0
+            ? 'Those orders are already in this meeting'
+            : `${count} order${count === 1 ? '' : 's'} added from the last meeting`)}
         />
       )}
       {modal.kind === 'order-update' && (
@@ -731,7 +748,7 @@ export function MeetingWorkScreen() {
           supabase={supabase}
           order={modal.order}
           onClose={() => setModal({ kind: 'none' })}
-          onRemoved={() => { setSelectedOrderId(null); afterWrite('Order removed') }}
+          onRemoved={() => { backToBoard(); afterWrite('Order removed') }}
         />
       )}
       {modal.kind === 'add-item' && (
@@ -822,13 +839,106 @@ export function MeetingWorkScreen() {
   )
 }
 
+// ─── Order discussion header ──────────────────────────────────────────────────
+
+function OrderWorkspaceHeader({
+  order, index, total, editable, onBoard, onPrev, onNext, onEdit, onRemove,
+}: {
+  order: MeetingOrder
+  /** 1-based place of this Order on the board. */
+  index: number
+  total: number
+  editable: boolean
+  onBoard: () => void
+  /** Absent on the first Order. */
+  onPrev?: () => void
+  /** Absent on the last Order. */
+  onNext?: () => void
+  onEdit: () => void
+  onRemove: () => void
+}) {
+  return (
+    <div style={{
+      background: colors.base, border: `1px solid ${colors.border}`,
+      borderRadius: '10px', padding: '10px 15px 13px', marginBottom: '12px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+        <button
+          onClick={onBoard}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 0',
+            background: 'none', border: 'none', cursor: 'pointer',
+            fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
+          }}
+        >
+          <ArrowLeft size={14} strokeWidth={2} /> Meeting board
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span style={{ fontSize: '11.5px', color: colors.muted, marginRight: '3px' }}>
+            Order {index} of {total}
+          </span>
+          <IconAction label="Previous order" onClick={() => onPrev?.()} disabled={!onPrev}>
+            <ChevronLeft size={14} strokeWidth={2} />
+          </IconAction>
+          <IconAction label="Next order" onClick={() => onNext?.()} disabled={!onNext}>
+            <ChevronRight size={14} strokeWidth={2} />
+          </IconAction>
+        </div>
+      </div>
+
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+        gap: '10px', flexWrap: 'wrap', marginTop: '6px',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '20px', fontWeight: 800, color: colors.primary, letterSpacing: '-0.01em' }}>
+              {order.order_number}
+            </span>
+            <MeetingBadge meta={ORDER_POSITION_META[order.position]} />
+          </div>
+          <div style={{ fontSize: '12.5px', color: colors.muted, marginTop: '2px' }}>
+            {order.customer_name ?? 'No customer recorded'}
+            {order.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(order.expected_dispatch_date)}`}
+            {order.next_review_date && ` · Next review ${formatMeetingDate(order.next_review_date)}`}
+          </div>
+          {order.remarks && (
+            <div style={{ marginTop: '5px', fontSize: '11.5px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
+              {order.remarks}
+            </div>
+          )}
+        </div>
+        {editable && (
+          <div style={{ display: 'flex', gap: '5px', flexShrink: 0 }}>
+            <button
+              onClick={onEdit}
+              className="boe-btn boe-btn-ghost"
+              style={{ padding: '6px 11px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <Pencil size={12} strokeWidth={2.2} /> Edit details
+            </button>
+            <IconAction label="Remove order from meeting" onClick={onRemove} danger>
+              <Trash2 size={14} strokeWidth={1.9} />
+            </IconAction>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Order panel ──────────────────────────────────────────────────────────────
 
 function OrderPanel({
-  order, items, previousUpdates, tasks, editable, isMobile,
+  order, items, previousUpdates, tasks, editable, isMobile, showHeader = true,
   onOrderUpdate, onOrderHistory, onRemoveOrder, onAddItem,
   onUpdateItem, onCreateTask, onOpenTask, onResolve, onItemHistory,
 }: {
+  /**
+   * False inside the Order discussion view, whose own header already carries
+   * the Order's identity, position and actions.
+   */
+  showHeader?: boolean
   order: MeetingOrder
   items: MeetingOrderItem[]
   /** itemId -> the update the current one replaced. Precomputed once. */
@@ -856,56 +966,58 @@ function OrderPanel({
     }}>
       {/* Order header — position, overall update and next review together, which
           is the whole order-level answer in one glance. */}
-      <div style={{ padding: '13px 15px', borderBottom: `1px solid ${colors.border}` }}>
-        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '15px', fontWeight: 800, color: colors.primary, letterSpacing: '-0.01em' }}>
-                {order.order_number}
-              </span>
-              <MeetingBadge meta={posMeta} />
-              <MeetingBadge meta={MEETING_TYPE_META[order.order_type]} />
+      {showHeader && (
+        <div style={{ padding: '13px 15px', borderBottom: `1px solid ${colors.border}` }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '15px', fontWeight: 800, color: colors.primary, letterSpacing: '-0.01em' }}>
+                  {order.order_number}
+                </span>
+                <MeetingBadge meta={posMeta} />
+                <MeetingBadge meta={MEETING_TYPE_META[order.order_type]} />
+              </div>
+              <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px' }}>
+                {order.customer_name ?? 'No customer recorded'}
+                {order.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(order.expected_dispatch_date)}`}
+                {order.next_review_date && ` · Next review ${formatMeetingDate(order.next_review_date)}`}
+              </div>
             </div>
-            <div style={{ fontSize: '12px', color: colors.muted, marginTop: '3px' }}>
-              {order.customer_name ?? 'No customer recorded'}
-              {order.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(order.expected_dispatch_date)}`}
-              {order.next_review_date && ` · Next review ${formatMeetingDate(order.next_review_date)}`}
+            <div style={{ display: 'flex', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
+              {editable && (
+                <button
+                  onClick={onOrderUpdate}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ padding: '6px 11px', fontSize: '12px' }}
+                >
+                  Order Update
+                </button>
+              )}
+              <IconAction label="Order history" onClick={onOrderHistory}><HistoryIcon size={14} strokeWidth={1.9} /></IconAction>
+              {editable && (
+                <IconAction label="Remove order from meeting" onClick={onRemoveOrder} danger>
+                  <Trash2 size={14} strokeWidth={1.9} />
+                </IconAction>
+              )}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '5px', flexShrink: 0, flexWrap: 'wrap' }}>
-            {editable && (
-              <button
-                onClick={onOrderUpdate}
-                className="boe-btn boe-btn-ghost"
-                style={{ padding: '6px 11px', fontSize: '12px' }}
-              >
-                Order Update
-              </button>
-            )}
-            <IconAction label="Order history" onClick={onOrderHistory}><HistoryIcon size={14} strokeWidth={1.9} /></IconAction>
-            {editable && (
-              <IconAction label="Remove order from meeting" onClick={onRemoveOrder} danger>
-                <Trash2 size={14} strokeWidth={1.9} />
-              </IconAction>
-            )}
-          </div>
-        </div>
 
-        {order.latest_update && (
-          <div style={{
-            marginTop: '9px', padding: '8px 11px', borderRadius: '7px',
-            background: colors.raised, borderLeft: `2px solid ${posMeta.color}`,
-            fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
-          }}>
-            {order.latest_update}
-          </div>
-        )}
-        {order.remarks && (
-          <div style={{ marginTop: '6px', fontSize: '11.5px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
-            {order.remarks}
-          </div>
-        )}
-      </div>
+          {order.latest_update && (
+            <div style={{
+              marginTop: '9px', padding: '8px 11px', borderRadius: '7px',
+              background: colors.raised, borderLeft: `2px solid ${posMeta.color}`,
+              fontSize: '12.5px', color: colors.primary, lineHeight: 1.45, whiteSpace: 'pre-wrap',
+            }}>
+              {order.latest_update}
+            </div>
+          )}
+          {order.remarks && (
+            <div style={{ marginTop: '6px', fontSize: '11.5px', color: colors.muted, whiteSpace: 'pre-wrap' }}>
+              {order.remarks}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* SKU lines */}
       <div style={{
@@ -1236,25 +1348,28 @@ function RowActions({
 }
 
 function IconAction({
-  label, onClick, children, danger, positive,
+  label, onClick, children, danger, positive, disabled,
 }: {
   label: string
   onClick: () => void
   children: React.ReactNode
   danger?: boolean
   positive?: boolean
+  disabled?: boolean
 }) {
   const color = danger ? colors.red : positive ? '#2E8A58' : colors.secondary
   return (
     <button
       onClick={onClick}
+      disabled={disabled}
       title={label}
       aria-label={label}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
         width: 28, height: 28, borderRadius: '7px', flexShrink: 0,
         border: `1px solid ${colors.border}`, background: 'transparent',
-        color, cursor: 'pointer', transition: 'background 0.12s',
+        color, cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
+        transition: 'background 0.12s',
       }}
       onMouseEnter={e => { e.currentTarget.style.background = colors.raised }}
       onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}
@@ -1265,8 +1380,14 @@ function IconAction({
 }
 
 function EmptyReview({
-  editable, canImport, onAdd, onImport,
-}: { editable: boolean; canImport: boolean; onAdd: () => void; onImport: () => void }) {
+  editable, canImport, onAdd, onCarryForward, onImport,
+}: {
+  editable: boolean
+  canImport: boolean
+  onAdd: () => void
+  onCarryForward: () => void
+  onImport: () => void
+}) {
   return (
     <div style={{
       background: colors.base, border: `1px solid ${colors.border}`,
@@ -1281,12 +1402,15 @@ function EmptyReview({
         maxWidth: '420px', margin: '4px auto 0', lineHeight: 1.5,
       }}>
         {editable
-          ? 'Add the orders being discussed one at a time, or bring the whole list in from the BOE spreadsheet template.'
+          ? 'Bring forward the orders from the last meeting, add them one at a time, or import the BOE spreadsheet template.'
           : 'Nothing has been added to this meeting.'}
       </p>
       {editable && (
         <div style={{ marginTop: '14px', display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button onClick={onAdd} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+          <button onClick={onCarryForward} className="boe-btn boe-btn-primary" style={{ padding: '8px 18px', fontSize: '13px' }}>
+            Add From Last Meeting
+          </button>
+          <button onClick={onAdd} className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
             Add Order
           </button>
           {canImport && (
