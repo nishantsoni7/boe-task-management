@@ -202,6 +202,11 @@ describe('the migration is one file, correctly sequenced', () => {
       // alters no existing table and defines no function, so it reaches nothing
       // asserted here.
       '20261202000000_order_update_notifications.sql',
+      // Meetings Order discussion evidence: one append-only table of its own
+      // (meeting_order_evidence), one private bucket with three storage
+      // policies, two new meeting functions, and remove_meeting_order()
+      // re-emitted with one more refusal. It reaches nothing asserted here.
+      '20261203000000_meeting_order_evidence.sql',
     ])
   })
 

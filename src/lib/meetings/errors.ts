@@ -54,6 +54,7 @@ export type MeetingAction =
   | 'create-task'
   | 'import'
   | 'attendees'
+  | 'add-evidence'
 
 const PERMISSION_MESSAGE: Record<MeetingAction, string> = {
   'create-meeting': 'You do not have permission to schedule meetings.',
@@ -68,6 +69,7 @@ const PERMISSION_MESSAGE: Record<MeetingAction, string> = {
   'create-task':    'You do not have permission to create tasks from this meeting.',
   'import':         'You do not have permission to import into this meeting.',
   'attendees':      'You do not have permission to change who attended this meeting.',
+  'add-evidence':   'You do not have permission to attach evidence to this meeting.',
 }
 
 const NETWORK_MESSAGE  = 'Could not reach the server. Check your connection and try again.'
@@ -90,6 +92,12 @@ const GUARD_PREFIXES = [
   'MEETING_ORDER_DUPLICATE:',
   'MEETING_ORDER_HAS_HISTORY:',
   'MEETING_ORDER_HAS_TASKS:',
+  'MEETING_ORDER_HAS_EVIDENCE:',
+  'MEETING_EVIDENCE_PATH_INVALID:',
+  'MEETING_EVIDENCE_NOT_STORED:',
+  'MEETING_EVIDENCE_TYPE_INVALID:',
+  'MEETING_EVIDENCE_TOO_LARGE:',
+  'MEETING_EVIDENCE_DUPLICATE:',
   'MEETING_ITEM_MISSING:',
   'MEETING_ITEM_DUPLICATE:',
   'MEETING_ITEM_FIELDS_REQUIRED:',

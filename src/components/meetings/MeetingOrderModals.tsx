@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
-import { MeetingModal, MeetingField, MeetingModalActions, MeetingModalError } from './MeetingModal'
+import { MeetingBadge, MeetingModal, MeetingField, MeetingModalActions, MeetingModalError } from './MeetingModal'
 import { meetingErrorMessage, logMeetingFailure } from '@/lib/meetings/errors'
+import { meetingIsBefore } from '@/lib/meetings/orderHistory'
 import {
-  ORDER_POSITIONS, ORDER_POSITION_META, ITEM_STATUSES, ITEM_STATUS_META,
-  formatMeetingDate, type MeetingOrder, type MeetingType, type OrderPosition,
+  MEETING_TYPE_META, ORDER_POSITIONS, ORDER_POSITION_META, ITEM_STATUSES, ITEM_STATUS_META,
+  formatMeetingDate, type Meeting, type MeetingOrder, type MeetingType, type OrderPosition,
   type ItemStatus,
 } from '@/lib/meetings/types'
 
@@ -532,6 +533,257 @@ export function RemoveOrderModal({
         saving={saving}
         saveLabel="Remove Order"
         destructive
+      />
+    </MeetingModal>
+  )
+}
+
+// ─── Carry Orders forward from the last meeting ───────────────────────────────
+//
+// A recurring review walks mostly the same running Orders every time, and
+// re-typing each number is where a meeting starts from zero. This lists the
+// Orders of the most recent EARLIER meeting of the same type and adds the chosen
+// ones through the same add_meeting_order() a manual add uses.
+//
+// Only what identifies the Order is carried — number, customer, expected
+// dispatch. Position, updates and follow-ups are NOT: those belong to the meeting
+// that recorded them, and today's meeting records its own. The earlier meeting
+// is only read.
+
+type CarryCandidate = {
+  id: string
+  meeting_id: string
+  order_number: string
+  order_number_key: string
+  customer_name: string | null
+  expected_dispatch_date: string | null
+  position: OrderPosition
+}
+
+export function CarryForwardOrdersModal({
+  supabase, meeting, existingKeys, onClose, onAdded,
+}: {
+  supabase: SupabaseClient
+  meeting: Pick<Meeting, 'id' | 'meeting_type' | 'meeting_date' | 'created_at'>
+  /** order_number_key of every Order already in this meeting. */
+  existingKeys: ReadonlySet<string>
+  onClose: () => void
+  onAdded: (count: number) => void
+}) {
+  const [status, setStatus]         = useState<'loading' | 'ready' | 'empty' | 'error'>('loading')
+  const [source, setSource]         = useState<{ title: string; meeting_date: string } | null>(null)
+  const [candidates, setCandidates] = useState<CarryCandidate[]>([])
+  const [selected, setSelected]     = useState<Set<string>>(() => new Set())
+  const [done, setDone]             = useState<Set<string>>(() => new Set())
+  const [totalAdded, setTotalAdded] = useState(0)
+  const [saving, setSaving]         = useState(false)
+  const [error, setError]           = useState<string | null>(null)
+
+  const meetingId = meeting.id
+  const meetingType = meeting.meeting_type
+  const meetingDate = meeting.meeting_date
+  const meetingCreatedAt = meeting.created_at
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      const { data: meetingRows, error: meetingsError } = await supabase
+        .from('meetings')
+        .select('id, title, meeting_date, created_at')
+        .eq('meeting_type', meetingType)
+        .neq('id', meetingId)
+        .lte('meeting_date', meetingDate)
+        .order('meeting_date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(10)
+      if (!active) return
+      if (meetingsError) {
+        logMeetingFailure('add-order', meetingsError)
+        setStatus('error')
+        return
+      }
+
+      const current = { meeting_date: meetingDate, created_at: meetingCreatedAt }
+      const earlier = ((meetingRows ?? []) as { id: string; title: string; meeting_date: string; created_at: string }[])
+        .filter(m => meetingIsBefore(m, current))
+      if (earlier.length === 0) { setStatus('empty'); return }
+
+      const { data: orderRows, error: ordersError } = await supabase
+        .from('meeting_orders')
+        .select('id, meeting_id, order_number, order_number_key, customer_name, expected_dispatch_date, position, created_at')
+        .in('meeting_id', earlier.map(m => m.id))
+        .order('created_at', { ascending: true })
+      if (!active) return
+      if (ordersError) {
+        logMeetingFailure('add-order', ordersError)
+        setStatus('error')
+        return
+      }
+
+      const rows = (orderRows ?? []) as CarryCandidate[]
+      // The most recent earlier meeting that actually had Orders — an empty
+      // draft raised by mistake is skipped rather than offered as "nothing".
+      const from = earlier.find(m => rows.some(r => r.meeting_id === m.id))
+      if (!from) { setStatus('empty'); return }
+
+      const list = rows.filter(r => r.meeting_id === from.id)
+      setSource({ title: from.title, meeting_date: from.meeting_date })
+      setCandidates(list)
+      // A closed Order is listed but not pre-ticked: it has usually left the review.
+      setSelected(new Set(list.filter(c => c.position !== 'closed').map(c => c.id)))
+      setStatus('ready')
+    }
+    void run()
+    return () => { active = false }
+  }, [supabase, meetingId, meetingType, meetingDate, meetingCreatedAt])
+
+  const inMeeting = (c: CarryCandidate) => existingKeys.has(c.order_number_key) || done.has(c.id)
+  const selectable = candidates.filter(c => !inMeeting(c))
+  const chosen = selectable.filter(c => selected.has(c.id))
+  const allChosen = selectable.length > 0 && chosen.length === selectable.length
+
+  // Closing after a partial add still refreshes the meeting behind the dialog.
+  const close = () => (totalAdded > 0 ? onAdded(totalAdded) : onClose())
+
+  const toggle = (id: string) => setSelected(prev => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  const save = async () => {
+    if (saving || chosen.length === 0) return
+    setSaving(true)
+    setError(null)
+
+    let count = 0
+    const failures: string[] = []
+    const nextDone = new Set(done)
+    for (const c of chosen) {
+      const { error: rpcErr } = await supabase.rpc('add_meeting_order', {
+        p_meeting_id: meetingId,
+        p_order_number: c.order_number,
+        p_order_type: meetingType,
+        p_customer_name: c.customer_name,
+        p_expected_dispatch_date: c.expected_dispatch_date,
+        p_remarks: null,
+      })
+      if (rpcErr) {
+        // Someone added it meanwhile — it is in the meeting, which is the goal.
+        if ((rpcErr.message ?? '').startsWith('MEETING_ORDER_DUPLICATE:')) {
+          nextDone.add(c.id)
+          continue
+        }
+        logMeetingFailure('add-order', rpcErr)
+        failures.push(`${c.order_number} — ${meetingErrorMessage('add-order', rpcErr)}`)
+        continue
+      }
+      count += 1
+      nextDone.add(c.id)
+    }
+
+    const total = totalAdded + count
+    setDone(nextDone)
+    setTotalAdded(total)
+    setSaving(false)
+
+    if (failures.length === 0) {
+      onAdded(total)
+      return
+    }
+    setError(`${count > 0 ? `${count} added. ` : ''}Not added:\n${failures.join('\n')}`)
+  }
+
+  return (
+    <MeetingModal
+      title="Add orders from last meeting"
+      subtitle={source
+        ? `From ${source.title} · ${formatMeetingDate(source.meeting_date)}`
+        : `The most recent earlier ${MEETING_TYPE_META[meetingType].label} Review`}
+      onClose={close}
+      width={520}
+    >
+      {error && <MeetingModalError message={error} />}
+
+      {status === 'loading' && (
+        <div style={{ padding: '18px 0', textAlign: 'center', fontSize: '12.5px', color: colors.muted }}>Loading…</div>
+      )}
+      {status === 'error' && (
+        <MeetingModalError message="Could not load the last meeting. Close this and try again." />
+      )}
+      {status === 'empty' && (
+        <div style={{ padding: '18px 0', textAlign: 'center', fontSize: '12.5px', color: colors.muted }}>
+          There is no earlier {MEETING_TYPE_META[meetingType].label} Review with orders to bring forward.
+        </div>
+      )}
+
+      {status === 'ready' && (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+            <span style={{ fontSize: '12px', color: colors.secondary }}>
+              {chosen.length} of {selectable.length} selected
+            </span>
+            {selectable.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setSelected(allChosen ? new Set() : new Set(selectable.map(c => c.id)))}
+                disabled={saving}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: '12px', fontWeight: 600, color: colors.blue,
+                }}
+              >
+                {allChosen ? 'Select none' : 'Select all'}
+              </button>
+            )}
+          </div>
+          <div style={{
+            border: `1px solid ${colors.border}`, borderRadius: '10px',
+            maxHeight: '50vh', overflowY: 'auto',
+          }}>
+            {candidates.map((c, i) => {
+              const already = inMeeting(c)
+              return (
+                <label
+                  key={c.id}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px',
+                    borderBottom: i === candidates.length - 1 ? 'none' : `1px solid ${colors.border}`,
+                    cursor: already ? 'default' : 'pointer', opacity: already ? 0.6 : 1,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={already || selected.has(c.id)}
+                    disabled={already || saving}
+                    onChange={() => toggle(c.id)}
+                  />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: '13px', fontWeight: 700, color: colors.primary }}>
+                      {c.order_number}
+                    </span>
+                    <span style={{ display: 'block', fontSize: '11.5px', color: colors.muted }}>
+                      {c.customer_name ?? 'No customer recorded'}
+                      {c.expected_dispatch_date && ` · Dispatch ${formatMeetingDate(c.expected_dispatch_date)}`}
+                    </span>
+                  </span>
+                  {already
+                    ? <span style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>In this meeting</span>
+                    : <MeetingBadge meta={ORDER_POSITION_META[c.position]} />}
+                </label>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      <MeetingModalActions
+        onClose={close}
+        onSave={() => void save()}
+        saving={saving}
+        disabled={status !== 'ready' || chosen.length === 0}
+        saveLabel={`Add ${chosen.length} order${chosen.length === 1 ? '' : 's'}`}
       />
     </MeetingModal>
   )
