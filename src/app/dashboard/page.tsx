@@ -647,7 +647,10 @@ export default function DashboardPage() {
           task={selectedTask}
           userMap={userMap}
           onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          // A link, not close-then-push: the route is prefetched while the
+          // drawer is open, and the drawer stays up saying "Opening task…"
+          // until the task page replaces this one. See TaskDetailPanel.
+          fullPageHref={`/tasks/${selectedTask.id}`}
           currentUserId={currentUserId}
           onAcknowledge={
             !viewAsUserId &&

@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { AssignmentNotificationNotice } from '@/components/tasks/AssignmentNotificationNotice'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, LogEntry, TaskStatus, UserProfile, TaskAttachment } from '@/lib/types'
+import type { Task, LogEntry, TaskStatus, TaskAttachment } from '@/lib/types'
 import {
   isOverdue, formatFullDate, formatDateTime, formatActivityTimestamp,
   formatLogAction, timeAgo, getTaskAging, taskStatusLabel,
@@ -31,6 +31,8 @@ import {
 } from '@/lib/tasks/taskDetailAccess'
 import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 
@@ -95,12 +97,27 @@ const ACTION_BUTTON_BASE: React.CSSProperties = {
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function TaskDetailPage() {
-  const [profile,         setProfile]         = useState<UserProfile | null>(null)
   const [task,            setTask]            = useState<Task | null>(null)
   const [log,             setLog]             = useState<LogEntry[]>([])
   const [creatorName,     setCreatorName]     = useState<string | null>(null)
-  const [currentUserId,   setCurrentUserId]   = useState('')
   const [loading,         setLoading]         = useState(true)
+
+  // ── WHO, from the cache the route guard already filled ─────────────────────
+  //
+  // This page used to open with `await supabase.auth.getUser()` — a round trip
+  // to the auth server — and only then start its queries, one of which re-read
+  // the caller's own profile row. /tasks sits under ModuleGuard
+  // (src/app/tasks/layout.tsx), which does not mount this page until it has
+  // resolved the signed-in user through the shared session query and published
+  // that user's profile row into useProfile's cache. So both answers exist on
+  // the first render and the queries start at mount.
+  //
+  // Same person as before: the SIGNED-IN user, which View As does not change.
+  // Nothing is authorized by this value — every read and write below is still
+  // decided by RLS against the session's own JWT.
+  const { data: signedInUserId, isPending: idPending } = useSignedInUserId()
+  const { data: profile = null, isPending: profilePending } = useProfile(signedInUserId)
+  const currentUserId = signedInUserId ?? ''
 
   const [_selectedStatus,   setSelectedStatus]  = useState<string>('')
   const [waitingOnType,    setWaitingOnType]   = useState<'team_member' | 'external'>('team_member')
@@ -255,30 +272,28 @@ export default function TaskDetailPage() {
 
 
   useEffect(() => {
+    // Nothing is asked until the session query has answered — under ModuleGuard
+    // it already has. A caller with no session still goes to /login.
+    if (idPending) return
+    if (!signedInUserId) { router.push('/login'); return }
+
     const init = async () => {
       // Timings print to the console only with NEXT_PUBLIC_BOE_PERF_DEBUG=true;
       // otherwise every call here is a no-op. See src/lib/perf.ts.
       const perf = perfTrack('task.detail.load')
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
-      setCurrentUserId(user.id)
-      perf.mark('auth')
 
       const taskId = params.id as string
 
-      // Fetch task (with creator name embedded), profile, members, activity log,
-      // and all attachments for this task — all in one parallel batch.
+      // Fetch task (with creator name embedded), members, activity log, and all
+      // attachments for this task — all in one parallel batch. The caller's own
+      // profile is not among them: useProfile above already holds it.
       const [
         { data: taskData },
-        { data: profileData },
         { data: members },
         { data: activityLogData },
         { data: allAttachments },
       ] = await Promise.all([
         supabase.from('tasks').select('*, creator:created_by(full_name)').eq('id', taskId).single(),
-        supabase.from('users')
-          .select('id, full_name, email, phone, role, team, is_active, created_at')
-          .eq('id', user.id).single(),
         supabase.from('users').select('id, full_name').eq('is_active', true).order('full_name'),
         supabase.from('task_activity_log')
           .select('id, action, note, from_status, to_status, old_val, new_val, created_at, actor_id, attachment_url, users:actor_id ( full_name )')
@@ -293,7 +308,6 @@ export default function TaskDetailPage() {
       perf.mark('queries')
 
       if (members) setTeamMembers(members)
-      if (profileData) setProfile(profileData as UserProfile)
 
       if (taskData) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -334,7 +348,7 @@ export default function TaskDetailPage() {
       perf.end()
     }
     init()
-  }, [params.id, router, supabase])
+  }, [params.id, idPending, signedInUserId, router, supabase])
 
   const loadLog = async (taskId: string) => {
     // Fetch activity log and all task attachments in parallel
@@ -1087,7 +1101,10 @@ export default function TaskDetailPage() {
     router.push('/login')
   }
 
-  if (loading) return <LoadingScreen />
+  // The profile decides what is drawn (admin-only actions, "You"), so it is
+  // waited for exactly as it was when it rode in the query batch. Under
+  // ModuleGuard it is already cached and this waits for nothing.
+  if (loading || (!!signedInUserId && profilePending)) return <LoadingScreen />
   if (!task)   return <LoadingScreen message="Task not found" />
 
   const isAssignee   = task.assigned_to === currentUserId
