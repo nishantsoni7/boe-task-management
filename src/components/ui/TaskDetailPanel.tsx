@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
+import Link from 'next/link'
 import type { Task, LogEntry } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { isOverdue, formatShortDate, formatDateTime, timeAgo, formatLogAction, getTaskAging, taskStatusLabel } from '@/lib/ui'
@@ -15,6 +16,9 @@ type Props = {
   userMap?: Record<string, string>
   onClose: () => void
   onOpenFullPage?: () => void
+  /** The full task page. When given, View Task Page is a real link and
+   *  onOpenFullPage is not used — see the footer for why. */
+  fullPageHref?: string
   currentUserId?: string
   onAcknowledge?: () => Promise<void>
 }
@@ -35,6 +39,17 @@ const STATUS_COLOR: Record<string, string> = {
   blocked:          colors.red,
   pending_approval: '#A57F14',
   completed:        colors.green,
+}
+
+// View Task Page — one look whether it renders as a link or a button.
+const FULL_PAGE_BUTTON: React.CSSProperties = {
+  width: '100%', padding: '9px 14px', borderRadius: '7px',
+  border: 'none',
+  background: colors.blue,
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: '13px', fontWeight: 600,
+  transition: 'opacity 0.12s',
 }
 
 // ─── Meta row ─────────────────────────────────────────────────────────────────
@@ -59,8 +74,12 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── TaskDetailPanel ──────────────────────────────────────────────────────────
 
-export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, currentUserId, onAcknowledge }: Props) {
+export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, fullPageHref, currentUserId, onAcknowledge }: Props) {
   const [open,          setOpen]        = useState(false)
+  const [opening,       setOpening]     = useState(false)
+  // Read synchronously, so a second click in the same tick is refused before
+  // React has re-rendered the link as busy.
+  const openingRef = useRef(false)
   const [acknowledging, setAcknowledging] = useState(false)
   const [activityLog,   setActivityLog] = useState<LogEntry[]>([])
   const [logLoading,    setLogLoading]  = useState(true)
@@ -518,18 +537,43 @@ export function TaskDetailPanel({ task, userMap, onClose, onOpenFullPage, curren
           flexDirection: 'column',
           gap:           '7px',
         }}>
-          {onOpenFullPage && (
+          {/* View Task Page as a LINK. What it does that close-then-router.push
+              did not:
+                1. Next prefetches the route while the drawer is open (the
+                   route's loading.tsx is what makes that prefetch useful), so
+                   the click has little or nothing left to wait for.
+                2. The drawer is NOT closed first. Closing it before the page
+                   arrived left the Dashboard on screen with no sign the click
+                   had landed — which is why people clicked three or four times.
+                3. It says "Opening task…" and ignores repeat activation until
+                   the task page takes over and this drawer unmounts with it.
+              Enter activates it like any link; a modified click opens a tab. */}
+          {fullPageHref ? (
+            <Link
+              href={fullPageHref}
+              aria-busy={opening || undefined}
+              onClick={e => {
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+                if (openingRef.current) { e.preventDefault(); return }
+                openingRef.current = true
+                setOpening(true)
+              }}
+              style={{
+                ...FULL_PAGE_BUTTON,
+                display: 'block', boxSizing: 'border-box',
+                textAlign: 'center', textDecoration: 'none',
+                cursor: opening ? 'progress' : 'pointer',
+                opacity: opening ? 0.8 : 1,
+              }}
+              onMouseEnter={e => { if (!opening) e.currentTarget.style.opacity = '0.88' }}
+              onMouseLeave={e => { e.currentTarget.style.opacity = opening ? '0.8' : '1' }}
+            >
+              {opening ? 'Opening task…' : 'View Task Page ↗'}
+            </Link>
+          ) : onOpenFullPage && (
             <button
               onClick={onOpenFullPage}
-              style={{
-                width: '100%', padding: '9px 14px', borderRadius: '7px',
-                border: 'none',
-                background: colors.blue,
-                color: '#fff',
-                cursor: 'pointer',
-                fontSize: '13px', fontWeight: 600,
-                transition: 'opacity 0.12s',
-              }}
+              style={FULL_PAGE_BUTTON}
               onMouseEnter={e => (e.currentTarget.style.opacity = '0.88')}
               onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
             >
