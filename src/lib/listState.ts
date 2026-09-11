@@ -127,6 +127,29 @@ export function pageParam(): ParamCodec<number> {
   }
 }
 
+const CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
+
+/** True for a real calendar date written `YYYY-MM-DD`; `2026-02-30` is not one. */
+export function isCalendarDate(value: string): boolean {
+  const match = CALENDAR_DATE_RE.exec(value)
+  if (!match) return false
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])]
+  const probe = new Date(year, month - 1, day)
+  return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === day
+}
+
+/**
+ * A calendar date, as `<input type="date">` writes it. Anything that is not a
+ * real date reads as `''` (no filter) rather than as a range that silently
+ * matches nothing.
+ */
+export function dateParam(): ParamCodec<string> {
+  return {
+    parse: raw => (raw !== null && isCalendarDate(raw) ? raw : ''),
+    serialize: value => (isCalendarDate(value) ? value : null),
+  }
+}
+
 /**
  * A comma-separated subset of a closed set (`?status=pending,working`).
  * Unknown members are dropped rather than failing the whole param, and an empty

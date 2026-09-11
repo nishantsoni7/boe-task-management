@@ -9,12 +9,16 @@
  * of an activity log silently discarded, every employee scoring zero, and a page
  * that was internally consistent and comprehensively wrong.
  *
- * These five lists are exactly the shape that hits it. They only ever
+ * These lists are exactly the shape that hits it. They only ever
  * grow, and each is ordered newest-first, so past a thousand rows the OLDEST
  * records stop appearing — the ones somebody opens an archive specifically to
  * find. Nothing looks wrong; the list just quietly stops going back far enough.
  *
- * These tests pin, for every archive:
+ * The two COMPLETED archives no longer read in full at all: they ask the
+ * database for one page of twenty plus an exact count (see the last describe
+ * below), which cannot be clipped. The rest are still read whole, and pinned:
+ *
+ * These tests pin, for every archive read in full:
  *
  *   1. the read is PAGED, through the shared helper;
  *   2. the ordering is UNIQUE, so pages cannot overlap or leave gaps;
@@ -34,8 +38,6 @@ import { readFileSync } from 'node:fs'
 
 /** Every Task Management list that grows without limit and is read in full. */
 const ARCHIVES = [
-  { label: 'my completed tasks',            file: 'src/app/tasks/my/completed/page.tsx' },
-  { label: 'completed tasks I assigned',    file: 'src/app/tasks/assigned-by-me/completed/page.tsx' },
   { label: 'cancelled tasks',               file: 'src/app/tasks/cancelled/page.tsx' },
   { label: 'cancelled tasks I assigned',    file: 'src/app/tasks/assigned-by-me/cancelled/page.tsx' },
   // Not finished work, but the same shape: quotation requests accumulate, the
@@ -111,6 +113,61 @@ describe('a failed read is never rendered as an empty archive', () => {
       assert.ok(list > 0, `${file}: expected a visibleTasks empty-state branch`)
       assert.ok(banner > 0 && list > banner,
         `${file}: the notice must precede the list, not replace it`)
+    })
+  }
+})
+
+/** Completed history: one database page at a time, never the whole archive. */
+const COMPLETED_HISTORY = [
+  { label: 'my completed tasks',         file: 'src/app/tasks/my/completed/page.tsx' },
+  { label: 'completed tasks I assigned', file: 'src/app/tasks/assigned-by-me/completed/page.tsx' },
+]
+const COMPLETED_HOOK = 'src/hooks/queries/useCompletedTasks.ts'
+
+describe('completed history is paged by the database, not read in full', () => {
+  test('each request is one bounded page plus an exact total', () => {
+    const hook = source(COMPLETED_HOOK)
+    assert.ok(hook.includes(".select(COMPLETED_TASK_COLUMNS, { count: 'exact' })"),
+      'the total must come from the database, not from rows held in the browser')
+    assert.ok(hook.includes('const { from, to } = completedPageRange(page)'))
+    assert.ok(hook.includes('.range(from, to)'), 'each page must be bounded')
+  })
+
+  test('the ordering is by completion and unique, so pages cannot overlap or leave gaps', () => {
+    const hook = source(COMPLETED_HOOK)
+    const byCompletion = hook.indexOf(".order('completed_at', { ascending: false, nullsFirst: false })")
+    const tiebreak = hook.indexOf(".order('id', { ascending: false })", byCompletion)
+    assert.ok(byCompletion > 0, 'newest completion first')
+    assert.ok(tiebreak > byCompletion, 'a unique tiebreak is required for stable paging')
+  })
+
+  test('the one read that still spans the archive — filter options — is paged through the helper', () => {
+    const hook = source(COMPLETED_HOOK)
+    assert.ok(hook.includes('fetchAllRows<Record<string, string | null>>('))
+    assert.ok(hook.includes('if (!result.ok) throw new Error(result.error)'))
+  })
+
+  test('a failed page rejects instead of resolving empty', () => {
+    assert.ok(source(COMPLETED_HOOK).includes('if (error) throw error'))
+  })
+
+  for (const { label, file } of COMPLETED_HISTORY) {
+    test(`${label} reads through the paged hook, never the whole archive`, () => {
+      const code = source(file)
+      assert.ok(code.includes('useCompletedTaskPage(SCOPE, userId, {'))
+      // Usage, not the word: the page's comments explain that it no longer uses it.
+      assert.equal(code.includes("from '@/lib/supabasePaging'"), false, `${file}: must not read the archive in full`)
+      assert.equal(/fetchAllRows\s*[<(]/.test(code), false, `${file}: must not read the archive in full`)
+      assert.equal(/\.from\('tasks'\)/.test(code), false, `${file}: task reads belong to the hook`)
+    })
+
+    test(`${label} says a failed read out loud, above whatever loaded`, () => {
+      const code = source(file)
+      assert.ok(code.includes('const loadError = pageQuery.isError ? ARCHIVE_LOAD_ERROR : null'))
+      assert.ok(code.includes('role="alert"'))
+      const banner = code.indexOf('{loadError && (')
+      const list = code.indexOf('{visibleTasks.length === 0 ? (')
+      assert.ok(banner > 0 && list > banner, `${file}: the notice must precede the list, not replace it`)
     })
   }
 })
