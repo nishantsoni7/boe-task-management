@@ -2,12 +2,14 @@
 
 import React, { useEffect, useState, useMemo, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
-import type { Task, UserProfile } from '@/lib/types'
+import type { Task } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { CompletedOnFilter, CompletedPager, CompletionSummaryCard } from '@/components/tasks/CompletedHistory'
 import { useViewAs } from '@/hooks/useViewAs'
 import {
   CheckCircle2, ExternalLink, Star,
@@ -15,37 +17,25 @@ import {
 } from 'lucide-react'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
-import { idParam, optionParam, textParam } from '@/lib/listState'
-import { fetchAllRows } from '@/lib/supabasePaging'
+import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
+import { useProfile } from '@/hooks/queries/useProfile'
+import { useCompletedCounterparts, useCompletedTaskPage, useUserNames } from '@/hooks/queries/useCompletedTasks'
+import { useCompletionSummary } from '@/hooks/queries/useTaskReports'
+import { DELEGATED_COMPLETED_PARAMS, totalPages } from '@/lib/tasks/taskReporting'
 
 /**
- * What the screen says when the archive could not be read in full.
+ * What the screen says when the archive could not be read.
  *
  * Deliberately not an empty list: an empty archive is a statement about
- * somebody's work, and a failed or truncated read is a statement about the
- * request. The two must never look the same.
+ * somebody's work, and a failed read is a statement about the request. The two
+ * must never look the same.
  */
 const ARCHIVE_LOAD_ERROR =
-  'This list could not be loaded in full. Check your connection and try again.'
+  'This list could not be loaded. Check your connection and try again.'
 
-
-const TASK_COLUMNS = [
-  'id', 'title', 'note', 'status', 'priority', 'type',
-  'is_urgent', 'due_date', 'acknowledged_at',
-  'created_at', 'last_update_at', 'blocker_reason',
-  'assigned_to', 'created_by', 'delegated_by', 'team',
-].join(', ')
-
-// ─── URL-backed list state ────────────────────────────────────────────────────
-// Search and both filters live in the query string so Back from a task detail
-// returns to the same filtered list.
-const PRIORITY_KEYS = ['high', 'medium', 'low'] as const
-
-const LIST_PARAMS = {
-  assignee: idParam(),
-  priority: optionParam(PRIORITY_KEYS),
-  q:        textParam(),
-}
+const SCOPE = 'assigned-by-me' as const
+const NO_TASKS: Task[] = []
+const NO_NAMES: Record<string, string> = {}
 
 const PRIORITY_CONFIG: Record<string, { label: string; color: string }> = {
   high:   { label: 'High', color: '#B06035'    },
@@ -98,7 +88,9 @@ function CompletedTaskCard({
   const assigneeName = userMap[task.assigned_to ?? ''] ?? 'member'
 
   const completionInfo = (() => {
-    const base = task.last_update_at
+    // The completion timestamp the list is ordered and filtered by. A task
+    // completed before completed_at was recorded falls back to its last update.
+    const base = task.completed_at ?? task.last_update_at
     if (!base) return { completedLabel: 'Unknown', countdownLabel: 'Removal date unknown', warn: false }
     const completedAt = new Date(base)
     const completedLabel = completedAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -265,16 +257,21 @@ function EmptyState() {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 function AssignedByMeCompletedContent() {
   const { viewAsUserId } = useViewAs()
-  const [profile,      setProfile]      = useState<UserProfile | null>(null)
-  const [allTasks,     setAllTasks]     = useState<Task[]>([])
-  const [loadError,    setLoadError]    = useState<string | null>(null)
-  const [userId,       setUserId]       = useState<string>('')
-  const [userMap,      setUserMap]      = useState<Record<string, string>>({})
-  const [loading,      setLoading]      = useState(true)
+
+  // WHOSE ARCHIVE: the signed-in user's, or the viewed employee's under View As —
+  // unchanged. Identity comes from the shared session query, a cache hit under
+  // ModuleGuard, instead of a getSession() await before anything could load.
+  const { data: signedInUserId, isPending: idPending } = useSignedInUserId()
+  const userId = viewAsUserId ?? signedInUserId ?? ''
+  const { data: profile = null } = useProfile(userId || null)
+
   const [selectedTask, setSelectedTask] = useState<Task | null>(null)
+  const [restoredIds,  setRestoredIds]  = useState<ReadonlySet<string>>(() => new Set())
   const [isMobile,     setIsMobile]     = useState(false)
 
-  const { state, setState } = useListUrlState(LIST_PARAMS)
+  // Filters, completion date AND page live in the URL, so Back from a task
+  // restores this exact view. Any filter change drops the page back to 1.
+  const { state, setState } = useListUrlState(DELEGATED_COMPLETED_PARAMS, { pageKey: 'page' })
   const filterAssignee = state.assignee
   const filterPriority = state.priority
   const search         = state.q
@@ -282,8 +279,9 @@ function AssignedByMeCompletedContent() {
 
   useListScrollRestore()
 
-  const router   = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const router      = useRouter()
+  const queryClient = useQueryClient()
+  const supabase    = useMemo(() => createClient(), [])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -293,54 +291,37 @@ function AssignedByMeCompletedContent() {
   }, [])
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { router.push('/login'); return }
+    if (!idPending && !signedInUserId) router.push('/login')
+  }, [idPending, signedInUserId, router])
 
-      const loggedInId = session.user.id
-      const uid = viewAsUserId ?? loggedInId
-      setUserId(uid)
-      // THE ARCHIVE IS PAGED, BECAUSE POSTGREST TRUNCATES SILENTLY. A plain
-      // .select() is capped at 1000 rows with no error and no warning — see
-      // src/lib/supabasePaging.ts. An archive of finished work only ever grows
-      // and reads newest-first, so past 1000 the OLDEST records quietly stop
-      // appearing: exactly the ones somebody opens this page to find.
-      //
-      // fetchAllRows pages it and REPORTS truncation instead of under-reporting.
-      // The whole set stays in memory, so this page's search and filters work
-      // exactly as before — which is why this and not server-side paging:
-      // narrowing one page in the browser would hide every match beyond it.
-      //
-      // The secondary sort on `id` is required, not cosmetic: range() maps to
-      // LIMIT/OFFSET, which promises nothing about row order unless the ordering
-      // is unique, so two rows sharing a timestamp could swap between pages —
-      // showing one twice and losing the other.
-      const [{ data: profileData }, taskResult, { data: userData }] = await Promise.all([
-        supabase.from('users').select('id, full_name, email, phone, role, team, is_active, created_at').eq('id', uid).single(),
-        fetchAllRows<Task>((from, to) => supabase.from('tasks').select(TASK_COLUMNS)
-          .eq('created_by', uid)
-          .not('assigned_to', 'is', null)
-          .neq('assigned_to', uid)
-          .eq('status', 'completed')
-          .order('last_update_at', { ascending: false })
-          .order('id', { ascending: false })
-          .range(from, to)),
-        supabase.from('users').select('id, full_name'),
-      ])
+  // ── ONE PAGE OF THE ARCHIVE, AND ITS TOTAL, FROM THE DATABASE ──
+  //
+  // This page used to read every completed delegated task (paged through
+  // fetchAllRows so PostgREST's 1000-row cap could not clip it) and filter in
+  // the browser. It now asks for twenty rows plus an exact count with every
+  // filter applied by the database, so the page, its total and the pager can
+  // never disagree.
+  const pageQuery = useCompletedTaskPage(SCOPE, userId, {
+    counterpart: filterAssignee,
+    priority:    filterPriority,
+    q:           search,
+    completedOn: state.completedOn,
+  }, state.page)
+  const { data: summary } = useCompletionSummary(SCOPE, userId)
+  const counterparts = useCompletedCounterparts(SCOPE, userId)
+  const { data: userMap = NO_NAMES } = useUserNames()
 
-      if (profileData) setProfile(profileData as UserProfile)
-      // A FAILED OR TRUNCATED READ IS NOT AN EMPTY ARCHIVE.
-      setLoadError(taskResult.ok && !taskResult.truncated ? null : ARCHIVE_LOAD_ERROR)
-      setAllTasks(taskResult.ok ? (taskResult.rows as unknown as Task[]) : [])
-      if (userData) {
-        const map: Record<string, string> = {}
-        for (const u of userData) map[u.id] = u.full_name
-        setUserMap(map)
-      }
-      setLoading(false)
-    }
-    init()
-  }, [viewAsUserId, router, supabase])
+  const total     = pageQuery.data?.total ?? 0
+  const pageTasks = pageQuery.data?.tasks ?? NO_TASKS
+  // A FAILED READ IS NOT AN EMPTY ARCHIVE.
+  const loadError = pageQuery.isError ? ARCHIVE_LOAD_ERROR : null
+
+  // A page past the end lands on the last real page instead of an empty one.
+  const lastPage = totalPages(total)
+  const onStalePage = pageQuery.isSuccess && !pageQuery.isPlaceholderData && state.page > lastPage
+  useEffect(() => {
+    if (onStalePage) setState({ page: lastPage })
+  }, [onStalePage, lastPage, setState])
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -354,44 +335,52 @@ function AssignedByMeCompletedContent() {
       body: JSON.stringify({ taskId: task.id }),
     })
     if (!res.ok) { console.error('[restore] failed:', await res.text()); window.alert('Failed to restore task. Please try again.'); return }
-    setAllTasks(prev => prev.filter(t => t.id !== task.id))
+    // Gone from the list at once; the page, total and summary are then re-read.
+    setRestoredIds(prev => new Set(prev).add(task.id))
     if (selectedTask?.id === task.id) setSelectedTask(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks', 'completed', SCOPE, userId] })
+    queryClient.invalidateQueries({ queryKey: ['task-report', 'completed', SCOPE, userId] })
+    queryClient.invalidateQueries({ queryKey: ['task-report', 'completed-counterparts', SCOPE, userId] })
   }
 
   const assigneeOptions = useMemo(() => {
-    const ids = [...new Set(allTasks.map(t => t.assigned_to).filter(Boolean))]
-    return (ids as string[]).map(id => ({ value: id, label: userMap[id] ?? 'Unknown' }))
+    return (counterparts.data ?? []).map(id => ({ value: id, label: userMap[id] ?? 'Unknown' }))
       .sort((a, b) => a.label.localeCompare(b.label))
-  }, [allTasks, userMap])
+  }, [counterparts.data, userMap])
 
-  // An assignee id in the URL that matches nobody in this list falls back to
+  // An assignee id in the URL that matches nobody in this archive falls back to
   // "All Assignees" instead of showing an empty list.
   const assigneeIds = useMemo(() => assigneeOptions.map(o => o.value), [assigneeOptions])
-  usePruneUnknownValue(!loading, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
+  usePruneUnknownValue(counterparts.isSuccess, filterAssignee, assigneeIds, () => setState({ assignee: '' }))
 
-  const visibleTasks = useMemo(() => {
-    let tasks = allTasks
-    if (filterAssignee) tasks = tasks.filter(t => t.assigned_to === filterAssignee)
-    if (filterPriority) tasks = tasks.filter(t => t.priority === filterPriority)
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      tasks = tasks.filter(t => t.title.toLowerCase().includes(q))
-    }
-    return tasks
-  }, [allTasks, filterAssignee, filterPriority, search])
+  const visibleTasks = useMemo(
+    () => pageTasks.filter(t => !restoredIds.has(t.id)),
+    [pageTasks, restoredIds],
+  )
 
-  if (loading) return <LoadingScreen />
+  const hasFilters = !!(filterAssignee || filterPriority || search.trim() || state.completedOn)
+
+  const goToPage = (next: number) => {
+    setState({ page: next })
+    window.scrollTo({ top: 0 })
+  }
+
+  if (!userId || pageQuery.isPending) return <LoadingScreen />
 
   return (
     <>
       <DashboardLayout profile={profile} title="Assigned By Me" onSignOut={handleLogout}>
 
         <div style={{ marginBottom: '14px' }}>
-          <div style={{ fontSize: '13px', fontWeight: 600, color: '#4CAF7D' }}>Completed Tasks</div>
+          <div style={{ fontSize: '13px', fontWeight: 600, color: '#4CAF7D' }}>
+            {`Completed · ${total}`}
+          </div>
           <div style={{ fontSize: '11px', color: colors.muted, marginTop: '2px' }}>
-            {allTasks.length} delegated task{allTasks.length !== 1 ? 's' : ''} completed
+            {hasFilters ? 'Delegated tasks matching the current filters' : 'Delegated tasks that have been completed'}
           </div>
         </div>
+
+        {isMobile && <CompletionSummaryCard summary={summary} compact />}
 
         {/* Search + filter toolbar */}
         <div style={{
@@ -430,15 +419,16 @@ function AssignedByMeCompletedContent() {
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
+          <CompletedOnFilter value={state.completedOn} onChange={next => setState({ completedOn: next })} />
         </div>
 
-        {/* Two-column: task list + info panel */}
+        {/* Two-column: task list + summary and info */}
         <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* A FAILED OR TRUNCATED READ, SAID OUT LOUD. Without this the
-                screen shows its empty state — a statement about somebody's work
-                — when the truth is that the request did not finish. Above the
-                list, not instead of it, so whatever loaded stays usable. */}
+            {/* A FAILED READ, SAID OUT LOUD. Without this the screen shows its
+                empty state — a statement about somebody's work — when the truth
+                is that the request did not finish. Above the list, not instead of
+                it, so a page that already loaded stays usable. */}
             {loadError && (
               <div
                 role="alert"
@@ -465,13 +455,16 @@ function AssignedByMeCompletedContent() {
                     isMobile={isMobile}
                   />
                 ))}
-                <div style={{ padding: '4px', fontSize: '11px', color: colors.muted }}>
-                  {visibleTasks.length} task{visibleTasks.length !== 1 ? 's' : ''}
-                </div>
               </div>
             )}
+            <CompletedPager page={state.page} total={total} onPage={goToPage} />
           </div>
-          {!isMobile && <InfoPanel />}
+          {!isMobile && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexShrink: 0 }}>
+              <CompletionSummaryCard summary={summary} />
+              <InfoPanel />
+            </div>
+          )}
         </div>
 
       </DashboardLayout>

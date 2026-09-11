@@ -16,6 +16,8 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
+import { TaskCreationReportCard } from '@/components/tasks/TaskCreationReport'
 import { useRefresh } from '@/contexts/RefreshContext'
 
 const TASK_COLUMNS = [
@@ -214,6 +216,10 @@ export default function DashboardPage() {
   const teamUsers = activeUsers
   const { data: top3Data } = useTopTasks(loggedInId || null)
   const top3Tasks = top3Data?.tasks ?? []
+  // Tasks created, for the EFFECTIVE user — the viewed employee under View As,
+  // exactly like the task lists above. Head-only counts in their own cache
+  // entry: never part of the loading gate below, so the Dashboard does not wait.
+  const { data: creationReport } = useTaskCreationReport(permsReady ? currentUserId : '')
   const [reorderingFocus, setReorderingFocus] = useState(false)
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
@@ -606,6 +612,12 @@ export default function DashboardPage() {
           onShowList={setPreviewList}
           isMobile={isMobile}
         />
+
+        {/* ── Tasks created — rolling 7 / 30 days ── */}
+        <section style={{ marginTop: isMobile ? '18px' : '22px' }}>
+          <SectionHeading title="Tasks Created" hint="Rolling windows, up to now" isMobile={isMobile} />
+          <TaskCreationReportCard report={creationReport} isMobile={isMobile} />
+        </section>
       </DashboardLayout>
 
       {previewList && !selectedTask && (

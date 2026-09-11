@@ -35,6 +35,8 @@ export type Task = {
   acknowledged_at: string | null
   created_at: string
   last_update_at: string | null
+  /** Set when the task is completed, cleared when it is reopened. Selected only where needed. */
+  completed_at?: string | null
   assigned_to: string
   created_by: string
   delegated_by: string | null
