@@ -151,8 +151,9 @@ describe('attachment-bearing creation screens compress at most twice per submiss
 
 describe('every creation screen runs its activity log and its notification together', () => {
   const SCREENS = [
-    'src/app/tasks/create/page.tsx',
-    'src/app/tasks/create-self/page.tsx',
+    // /tasks/create and /tasks/create-self no longer wait on the notification at
+    // all: it starts only once the activity row exists and is never awaited —
+    // src/lib/tasks/taskCreateFlow.test.ts pins that stronger shape.
     'src/app/tasks/quotation-requests/new/page.tsx',
     'src/app/tasks/assigned-by-me/page.tsx',
     'src/components/meetings/MeetingTaskModal.tsx',

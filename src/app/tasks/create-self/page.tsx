@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
@@ -13,8 +14,12 @@ import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_A
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { createDuplicateCandidateCache, findSimilarTitle, runTaskCreation, SESSION_EXPIRED_MESSAGE } from '@/lib/tasks/taskCreateFlow'
+import { perfTrack } from '@/lib/perf'
 
 const PRIORITIES = ['low', 'medium', 'high'] as const
+
+type CreatedTask = { id: string; title: string; assigned_to: string }
 
 export default function CreateSelfTaskPage() {
   const { viewAsUserId } = useViewAs()
@@ -39,6 +44,26 @@ export default function CreateSelfTaskPage() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const queryClient = useQueryClient()
+  // A creation in flight, read synchronously: two clicks in one tick both land
+  // before React re-renders the button as disabled.
+  const submittingRef = useRef(false)
+
+  // The similar-task warning's candidates — the same query the submit handler
+  // used to issue after the click — read as soon as the creator's profile is
+  // known, so pressing Create no longer waits a round trip for them.
+  const duplicateCandidates = useMemo(() => createDuplicateCandidateCache(async assignee => {
+    const { data, error } = await supabase
+      .from('tasks').select('id, title')
+      .eq('assigned_to', assignee)
+      .not('status', 'eq', 'completed')
+    return error ? null : ((data ?? []) as { id: string; title: string }[])
+  }), [supabase])
+
+  const selfId = profile?.id
+  useEffect(() => {
+    if (selfId) duplicateCandidates.prime(selfId)
+  }, [selfId, duplicateCandidates])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -92,118 +117,128 @@ export default function CreateSelfTaskPage() {
     setTitleDirty(true)
     setDateDirty(true)
     setPriorityDirty(true)
-    if (!title.trim() || !profile || !priority) return
-    setLoading(true)
-    setSubmitError(null)
 
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) return
+    // What the click waits for is decided in src/lib/tasks/taskCreateFlow.ts:
+    // the similar-task check (normally read before the click), the task insert
+    // and its `created` activity row. A self task notifies nobody.
+    let actorId = ''
+    const perf: { current: ReturnType<typeof perfTrack> | null } = { current: null }
+    const outcome = await runTaskCreation<CreatedTask, File>({
+      guard: submittingRef,
+      validate: () => !!(title.trim() && profile && priority),
+      onStart: () => {
+        perf.current = perfTrack('task.create')
+        setLoading(true)
+        setSubmitError(null)
+      },
+      findSimilar: async () => profile
+        ? findSimilarTitle(title, await duplicateCandidates.candidates(profile.id))
+        : null,
+      confirmSimilar: similar => window.confirm(
+        `A similar task may already exist:\n"${similar.title}"\n\nCreate anyway?`
+      ),
+      // Validate attachments before creating the task. The compressed result is
+      // KEPT and reused for the upload — never a second compression pass. With no
+      // files there is no attachment step at all.
+      prepareAttachments: attachFiles.length ? async () => {
+        const { ready, error: prepErr } = await prepareFiles(attachFiles)
+        if (prepErr) { setAttachError(prepErr); return null }
+        return ready
+      } : null,
+      insertTask: async () => {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session || !profile) return { error: SESSION_EXPIRED_MESSAGE }
+        actorId = session.user.id
+        const now = new Date().toISOString()
 
-    const { data: existing } = await supabase
-      .from('tasks').select('id, title')
-      .eq('assigned_to', profile.id)
-      .not('status', 'eq', 'completed')
-
-    const titleWords = title.toLowerCase().split(' ').filter(w => w.length > 3)
-    const duplicate  = existing?.find((t: { title: string }) => {
-      const matches = titleWords.filter(w => t.title.toLowerCase().includes(w))
-      return matches.length >= 3
-    })
-
-    if (duplicate) {
-      const ok = window.confirm(
-        `A similar task may already exist:\n"${duplicate.title}"\n\nCreate anyway?`
-      )
-      if (!ok) { setLoading(false); return }
-    }
-
-    // Validate attachments before creating the task. The compressed result is
-    // KEPT and reused for the upload below — this used to run prepareFiles
-    // twice, canvas-compressing every image a second time for no reason.
-    let readyAttachments: File[] = []
-    if (attachFiles.length) {
-      const { ready, error: prepErr } = await prepareFiles(attachFiles)
-      if (prepErr) {
-        setAttachError(prepErr)
-        setLoading(false)
-        return
-      }
-      readyAttachments = ready
-    }
-
-    const notePayload = description.trim() || null
-    const now = new Date().toISOString()
-
-    const { data: task, error } = await supabase
-      .from('tasks')
-      .insert({
-        title:           title.trim(),
-        note:            notePayload,
-        priority,        type,
-        is_urgent:       isUrgent,
-        due_date:        dueDate || null,
-        assigned_to:     profile.id,
-        created_by:      session.user.id,
-        team:            profile.team,
-        status:          'working',
-        acknowledged_at: now,
-      })
-      .select().single()
-
-    if (error || !task) {
-      console.error('[tasks insert error]', error)
-      setSubmitError(error?.message ?? 'Failed to create task. Please check your connection and try again.')
-      setLoading(false)
-      return
-    }
-
-    await supabase.from('task_activity_log').insert({
-      task_id: task.id, actor_id: session.user.id,
-      action: 'created', note: 'Task created for self',
-    })
-
-    // Upload attachments and link to the new task. A few files go up at a time
-    // rather than strictly one after another; `readyAttachments` is the
-    // already-compressed set from validation, not a second compression pass.
-    if (readyAttachments.length) {
-      const outcomes = await mapWithConcurrency(
-        readyAttachments,
-        ATTACHMENT_UPLOAD_CONCURRENCY,
-        async (file) => {
-          const ext  = getExt(file.name)
-          const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
-          const { error: upErr } = await supabase.storage
-            .from('task-attachments')
-            .upload(path, file, { upsert: false })
-          if (upErr) { console.error('[attach upload]', upErr); return false }
-          const { error: metaErr } = await supabase.from('task_attachments').insert({
-            task_id:    task.id,
-            url:        canonicalAttachmentRef(path),
-            storage_path: path,
-            file_name:  file.name,
-            file_type:  getFileTypeLabel(file.name),
-            created_by: session.user.id,
+        const { data: task, error } = await supabase
+          .from('tasks')
+          .insert({
+            title:           title.trim(),
+            note:            description.trim() || null,
+            priority,        type,
+            is_urgent:       isUrgent,
+            due_date:        dueDate || null,
+            assigned_to:     profile.id,
+            created_by:      session.user.id,
+            team:            profile.team,
+            status:          'working',
+            acknowledged_at: now,
           })
-          if (metaErr) { console.error('[attach metadata]', metaErr.message); return false }
-          return true
-        },
-      )
-      if (outcomes.some(ok => !ok)) setSubmitError('Task created, but some attachments failed to upload.')
-    }
+          .select().single()
 
-    setTitle('')
-    setDescription('')
-    setPriority('')
-    setIsUrgent(false)
-    setDueDate('')
-    setTitleDirty(false)
-    setDateDirty(false)
-    setPriorityDirty(false)
-    setAttachFiles([])
-    setAttachError(null)
-    if (fileInputRef.current) fileInputRef.current.value = ''
-    setCreatedId(task.id)
-    setSuccess(true)
+        if (error || !task) {
+          console.error('[tasks insert error]', error)
+          return { error: error?.message ?? 'Failed to create task. Please check your connection and try again.' }
+        }
+        return { task: task as CreatedTask }
+      },
+      insertActivity: async task => {
+        const { error: logErr } = await supabase.from('task_activity_log').insert({
+          task_id: task.id, actor_id: actorId,
+          action: 'created', note: 'Task created for self',
+        })
+        if (logErr) console.error('[tasks create-self] activity log insert failed:', logErr.message)
+      },
+      // A few files go up at a time; `readyAttachments` is the already-compressed
+      // set from the preparation step, not a second compression pass.
+      uploadAttachments: async (task, readyAttachments) => {
+        const outcomes = await mapWithConcurrency(
+          readyAttachments,
+          ATTACHMENT_UPLOAD_CONCURRENCY,
+          async (file) => {
+            const ext  = getExt(file.name)
+            const path = `tasks/${task.id}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`
+            const { error: upErr } = await supabase.storage
+              .from('task-attachments')
+              .upload(path, file, { upsert: false })
+            if (upErr) { console.error('[attach upload]', upErr); return false }
+            const { error: metaErr } = await supabase.from('task_attachments').insert({
+              task_id:    task.id,
+              url:        canonicalAttachmentRef(path),
+              storage_path: path,
+              file_name:  file.name,
+              file_type:  getFileTypeLabel(file.name),
+              created_by: actorId,
+            })
+            if (metaErr) { console.error('[attach metadata]', metaErr.message); return false }
+            return true
+          },
+        )
+        if (outcomes.some(ok => !ok)) setSubmitError('Task created, but some attachments failed to upload.')
+      },
+      mark: phase => perf.current?.mark(phase),
+    })
+
+    // A second click while one is in flight, or an incomplete form: nothing started.
+    if (outcome.status === 'busy' || outcome.status === 'invalid') return
+
+    if (outcome.status === 'failed') setSubmitError(outcome.message)
+
+    if (outcome.status === 'created') {
+      const { task } = outcome
+      duplicateCandidates.remember(task.assigned_to, { id: task.id, title: task.title })
+      // Every list, count and report this task appears in refreshes in the
+      // background. Nothing here waits for them.
+      queryClient.invalidateQueries({ queryKey: ['tasks', 'assigned-to', task.assigned_to] })
+      queryClient.invalidateQueries({ queryKey: ['nav-counts'] })
+      queryClient.invalidateQueries({ queryKey: ['task-report', 'created', actorId] })
+
+      setTitle('')
+      setDescription('')
+      setPriority('')
+      setIsUrgent(false)
+      setDueDate('')
+      setTitleDirty(false)
+      setDateDirty(false)
+      setPriorityDirty(false)
+      setAttachFiles([])
+      setAttachError(null)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      setCreatedId(task.id)
+      setSuccess(true)
+    }
+    perf.current?.end()
     setLoading(false)
   }
 
