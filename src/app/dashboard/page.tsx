@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useEffect, useState, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, User, CalendarDays, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -10,6 +10,7 @@ import { isOverdue, getAssignedByDisplay, isValidUUID, taskStatusLabel } from '@
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { TaskDetailPanel } from '@/components/ui/TaskDetailPanel'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { useProfile } from '@/hooks/queries/useProfile'
@@ -95,6 +96,8 @@ export default function DashboardPage() {
   const [isMobile,           setIsMobile]           = useState(false)
 
   const router      = useRouter()
+  // Handed to Task Detail as `returnTo`, so Submit for Approval comes back here.
+  const pathname    = usePathname()
   const supabase    = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { viewAsUserId, viewAsProfile, exitViewMode } = useViewAs()
@@ -588,7 +591,7 @@ export default function DashboardPage() {
                 tasks={quotationTasks}
                 userMap={mergedUserMap}
                 isMobile={isMobile}
-                onOpen={task => router.push(`/tasks/${task.id}`)}
+                onOpen={task => router.push(taskDetailHref(task.id, pathname))}
                 onViewAll={() => router.push('/tasks/quotation-requests')}
               />
             ) : (
@@ -649,8 +652,9 @@ export default function DashboardPage() {
           onClose={() => setSelectedTask(null)}
           // A link, not close-then-push: the route is prefetched while the
           // drawer is open, and the drawer stays up saying "Opening task…"
-          // until the task page replaces this one. See TaskDetailPanel.
-          fullPageHref={`/tasks/${selectedTask.id}`}
+          // until the task page replaces this one. See TaskDetailPanel. It
+          // carries `returnTo`, so Submit for Approval comes back here.
+          fullPageHref={taskDetailHref(selectedTask.id, pathname)}
           currentUserId={currentUserId}
           onAcknowledge={
             !viewAsUserId &&

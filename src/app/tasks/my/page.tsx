@@ -41,6 +41,8 @@ import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_A
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 import { useListUrlState, useUrlSearchInput, usePruneUnknownValue } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
+import { taskDetailHref } from '@/lib/tasks/taskReturnPath'
 import { enumParam, idParam, optionParam, optionalEnumParam, textParam } from '@/lib/listState'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { perfTrack } from '@/lib/perf'
@@ -1164,6 +1166,8 @@ function MyTasksContent() {
   const [filterStatus] = useState('')
 
   useListScrollRestore()
+  // This exact view, handed to Task Detail so Submit for Approval returns here.
+  const returnTo = useCurrentReturnPath()
 
   const router      = useRouter()
   const supabase    = useMemo(() => createClient(), [])
@@ -1931,7 +1935,7 @@ function MyTasksContent() {
           task={selectedTask}
           userMap={userMap}
           onClose={() => setSelectedTask(null)}
-          onOpenFullPage={() => { setSelectedTask(null); router.push(`/tasks/${selectedTask.id}`) }}
+          fullPageHref={taskDetailHref(selectedTask.id, returnTo)}
           currentUserId={userId}
           onAcknowledge={viewAsUserId ? undefined : handleAcknowledge}
         />

@@ -1,13 +1,14 @@
 'use client'
 
 import { useCallback, useEffect, useState, useMemo, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
 import type { NotificationCategory } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
+import { taskDetailHref, withTaskReturnTo } from '@/lib/tasks/taskReturnPath'
 import { colors, font } from '@/lib/tokens'
 import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -110,6 +111,10 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   const authReady = !idPending
   const { data: profile = null } = useProfile(userId)
 
+  // This notifications page, handed to Task Detail as `returnTo` so Submit for
+  // Approval comes back here. Only task links carry it (withTaskReturnTo).
+  const pathname = usePathname()
+
   // All list/count cache work lives in this hook: optimistic update, snapshot,
   // rollback on any failure, per-id pending locks, and narrow reconciliation.
   //
@@ -178,7 +183,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   useEffect(() => {
     if (notifications.length === 0) return
     notifications.slice(0, 12).forEach(n => {
-      if (n.task_id) router.prefetch(`/tasks/${n.task_id}`)
+      if (n.task_id) router.prefetch(taskDetailHref(n.task_id, pathname))
     })
   }, [notifications]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -314,7 +319,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
 
   const openNotif = (n: Notification) => {
     if (!n.is_read) markRead(n.id)
-    const href = getNotificationMeta(n).href
+    const href = withTaskReturnTo(getNotificationMeta(n).href, pathname)
     if (href) router.push(href)
   }
 
@@ -483,6 +488,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
                 // enforced in the mutation handlers, not by this prop.
                 busy={busyTaskId === item.taskId || markingAll || deletingBulk || deletingAll}
                 viewerId={userId ?? null}
+                returnTo={pathname}
                 isMobile={isMobile}
                 onToggleSelect={toggleSelect}
                 onMarkGroupRead={handleMarkGroupRead}
