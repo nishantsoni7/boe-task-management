@@ -91,11 +91,17 @@ export type CreatedKind = 'self' | 'delegated'
 /**
  * Self: created by the user AND assigned to the user.
  * Delegated: created by the user AND assigned to somebody else.
+ *
+ * Both count ORDINARY tasks only. A quotation request is its own workflow —
+ * its own create page, list and sidebar count, excluded from My Tasks, and "the
+ * requester/assignee relationship there is not a delegation" (20260833) — so it
+ * is neither. `task_type` is NOT NULL DEFAULT 'general', so `<>` drops nothing else.
  */
 export function createdTaskFilters(kind: CreatedKind, userId: string, since: Date): TaskFilter[] {
   const created: TaskFilter[] = [
     { op: 'eq', column: 'created_by', value: userId },
     ...onOrAfter('created_at', since),
+    { op: 'neq', column: 'task_type', value: 'quotation_request' },
   ]
   return kind === 'self'
     ? [...created, { op: 'eq', column: 'assigned_to', value: userId }]
