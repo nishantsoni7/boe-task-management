@@ -65,7 +65,7 @@ const NOW = new Date(2026, 8, 11, 10, 0, 0) // 11 Sep 2026, 10:00 local
 const iso = (d: Date) => d.toISOString()
 
 const created = (overrides: Row): Row => ({
-  status: 'working', created_by: ME, assigned_to: ME, created_at: iso(NOW), ...overrides,
+  status: 'working', task_type: 'general', created_by: ME, assigned_to: ME, created_at: iso(NOW), ...overrides,
 })
 
 // ── Dashboard: self vs delegated ────────────────────────────────────────────
@@ -94,6 +94,36 @@ describe('tasks created: self vs delegated', () => {
   test('a task assigned to nobody is neither', () => {
     assert.equal(matches(unassigned, createdTaskFilters('self', ME, since)), false)
     assert.equal(matches(unassigned, createdTaskFilters('delegated', ME, since)), false)
+  })
+
+  test('a normal self task counts as self, in both windows', () => {
+    for (const days of [7, 30]) {
+      const f = createdTaskFilters('self', ME, rollingSince(NOW, days))
+      assert.equal(matches(created({ task_type: 'general' }), f), true, `${days}d`)
+    }
+  })
+
+  test('a normal delegated task counts as delegated, in both windows', () => {
+    for (const days of [7, 30]) {
+      const f = createdTaskFilters('delegated', ME, rollingSince(NOW, days))
+      assert.equal(matches(created({ task_type: 'general', assigned_to: OTHER }), f), true, `${days}d`)
+    }
+  })
+
+  test('a quotation request assigned to myself counts as neither', () => {
+    const quote = created({ task_type: 'quotation_request', assigned_to: ME })
+    for (const days of [7, 30]) {
+      assert.equal(matches(quote, createdTaskFilters('self', ME, rollingSince(NOW, days))), false, `self ${days}d`)
+      assert.equal(matches(quote, createdTaskFilters('delegated', ME, rollingSince(NOW, days))), false, `delegated ${days}d`)
+    }
+  })
+
+  test('a quotation request assigned to another employee counts as neither', () => {
+    const quote = created({ task_type: 'quotation_request', assigned_to: OTHER })
+    for (const days of [7, 30]) {
+      assert.equal(matches(quote, createdTaskFilters('delegated', ME, rollingSince(NOW, days))), false, `delegated ${days}d`)
+      assert.equal(matches(quote, createdTaskFilters('self', ME, rollingSince(NOW, days))), false, `self ${days}d`)
+    }
   })
 
   test('status does not matter — a created task counts whatever became of it', () => {
@@ -320,6 +350,7 @@ describe('applyTaskFilters hands each filter to the query builder verbatim', () 
     assert.deepEqual(recorder.calls, [
       `eq created_by ${ME}`,
       `gte created_at ${since.toISOString()}`,
+      'neq task_type quotation_request',
       'not assigned_to is null',
       `neq assigned_to ${ME}`,
     ])
