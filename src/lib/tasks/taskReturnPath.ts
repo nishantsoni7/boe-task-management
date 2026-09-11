@@ -6,47 +6,15 @@
 // can craft, so it is only ever used after `safeReturnPath` has proved it is an
 // internal BOE path. Anything else — another site, a protocol, a backslash trick,
 // a control character — is ignored and the task's own list is used instead.
+// The validator is shared with Account Settings and lives in src/lib/safeReturnPath.ts.
+
+import { safeReturnPath } from '@/lib/safeReturnPath'
+
+export { MAX_RETURN_PATH_LENGTH, safeReturnPath } from '@/lib/safeReturnPath'
 
 export const RETURN_TO_PARAM = 'returnTo'
 
-/** Far longer than any real list URL: a guard against pathological input, not a limit anyone meets. */
-export const MAX_RETURN_PATH_LENGTH = 2048
-
-// Resolved against a placeholder origin: a value that can change the origin names
-// somewhere other than BOE.
-const PLACEHOLDER_ORIGIN = 'https://boe.invalid'
-
 const TASK_DETAIL_PATH = /^\/tasks\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
-
-// C0 controls, space, DEL and C1 controls. URL parsers silently strip tab and
-// newline, which is how "/\t/evil.com" turns into "//evil.com" after a naive check.
-function hasUnsafeCharacter(value: string): boolean {
-  for (let i = 0; i < value.length; i++) {
-    const code = value.charCodeAt(i)
-    if (code <= 0x20 || (code >= 0x7f && code <= 0x9f)) return true
-  }
-  return false
-}
-
-/**
- * The value itself when it is an internal BOE path (`/tasks/my?tab=working`),
- * otherwise null. Returned unchanged, so the list comes back exactly as it was.
- */
-export function safeReturnPath(raw: unknown): string | null {
-  if (typeof raw !== 'string') return null
-  if (raw.length < 1 || raw.length > MAX_RETURN_PATH_LENGTH) return null
-  if (raw[0] !== '/') return null      // relative to BOE — never a scheme or a host
-  if (raw[1] === '/') return null      // "//host" is protocol-relative
-  if (raw.includes('\\')) return null  // browsers read "\" as "/": "/\host"
-  if (hasUnsafeCharacter(raw)) return null
-  let url: URL
-  try {
-    url = new URL(raw, PLACEHOLDER_ORIGIN)
-  } catch {
-    return null
-  }
-  return url.origin === PLACEHOLDER_ORIGIN ? raw : null
-}
 
 /** A page's own location as a return path: `/tasks/my` or `/tasks/my?tab=working&page=2`. */
 export function pathWithSearch(pathname: string, search: string): string {

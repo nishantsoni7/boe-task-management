@@ -23,11 +23,8 @@ export default function AccountPage() {
 function AccountPageInner() {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  const rawReturn = searchParams.get('returnTo') ?? ''
-  const returnTo = safeReturnPath(
-    rawReturn,
-    typeof window === 'undefined' ? undefined : window.location.origin,
-  ) ?? '/modules'
+  // Only an internal BOE path is followed; anything else returns to Modules
+  const returnTo     = safeReturnPath(searchParams.get('returnTo')) ?? '/modules'
   const supabase     = useMemo(() => createClient(), [])
 
   const [profile,         setProfile]         = useState<UserProfile | null>(null)
