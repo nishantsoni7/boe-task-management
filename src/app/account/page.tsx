@@ -10,6 +10,7 @@ import { colors } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { BoeBrandIcon } from '@/components/layout/BoeBrandIcon'
 import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designationLevels'
+import { safeReturnPath } from '@/lib/safeReturnPath'
 
 export default function AccountPage() {
   return (
@@ -22,9 +23,11 @@ export default function AccountPage() {
 function AccountPageInner() {
   const router       = useRouter()
   const searchParams = useSearchParams()
-  // Only allow internal paths to prevent open-redirect attacks
   const rawReturn = searchParams.get('returnTo') ?? ''
-  const returnTo  = rawReturn.startsWith('/') && !rawReturn.startsWith('//') ? rawReturn : '/modules'
+  const returnTo = safeReturnPath(
+    rawReturn,
+    typeof window === 'undefined' ? undefined : window.location.origin,
+  ) ?? '/modules'
   const supabase     = useMemo(() => createClient(), [])
 
   const [profile,         setProfile]         = useState<UserProfile | null>(null)
