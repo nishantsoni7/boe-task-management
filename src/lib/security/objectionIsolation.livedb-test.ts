@@ -25,7 +25,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest } from 'next/server'
 import { GET as objectionsGET } from '@/app/api/objections/route'
 import { payrollObjectionHref } from '@/lib/objections'
-import { resolveLiveDbTestEnv, runCleanupSteps } from '@/lib/security/liveDbTestSupport'
+import { resolveLiveDbTestEnv, runCleanupSteps, fixtureUserCleanupSteps } from '@/lib/security/liveDbTestSupport'
 
 const { url: SUPABASE_URL, anonKey: ANON_KEY, serviceRoleKey: SERVICE_KEY } = resolveLiveDbTestEnv()
 
@@ -146,10 +146,9 @@ after(async () => {
     ...(created.periodId
       ? [{ label: 'payroll_periods', run: () => svc.from('payroll_periods').delete().eq('id', created.periodId) }]
       : []),
-    ...createdAuthUserIds.flatMap(id => [
-      { label: `users profile ${id}`, run: () => svc.from('users').delete().eq('id', id) },
-      { label: `auth user ${id}`, run: () => svc.auth.admin.deleteUser(id) },
-    ]),
+    // Each account: dependants by user id, profile, verified absent, and only
+    // then the auth row. See fixtureUserCleanupSteps.
+    ...fixtureUserCleanupSteps(svc, createdAuthUserIds),
   ])
 })
 

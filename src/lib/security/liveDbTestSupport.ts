@@ -109,6 +109,141 @@ export async function runCleanupSteps(steps: CleanupStep[]): Promise<void> {
   }
 }
 
+/**
+ * Tables that reference `public.users` with ON DELETE NO ACTION and were
+ * proven, in the production incident, to hold rows against fixture accounts.
+ *
+ * Scoped BY USER ID rather than by a row id the suite remembered. That is the
+ * whole point: the rows that actually blocked the profile deletes were ones no
+ * suite ever tracked — notifications raised by a trigger, and payroll results
+ * written days later by a real generation run that read the leftover fixture
+ * profiles as active employees.
+ *
+ * Order is load-bearing. `payroll_settlements.payroll_result_id` references
+ * `payroll_results` with NO ACTION, so settlements must go before results.
+ */
+export const FIXTURE_USER_DEPENDANTS: ReadonlyArray<{ table: string; column: string }> = [
+  { table: 'notifications', column: 'user_id' },
+  { table: 'customer_review_test_cards', column: 'assigned_to' },
+  { table: 'customer_review_test_cards', column: 'assigned_by' },
+  { table: 'payroll_settlements', column: 'employee_id' },
+  { table: 'payroll_results', column: 'employee_id' },
+]
+
+/**
+ * The four operations fixture teardown needs, isolated behind an interface so
+ * the ordering rules below can be tested without a database.
+ */
+export interface FixtureUserGateway {
+  deleteDependant(table: string, column: string, userId: string): Promise<SupabaseLikeResult>
+  deleteProfile(userId: string): Promise<SupabaseLikeResult>
+  /** Resolves `{ data }` — a row when the profile is still present, null when gone. */
+  readProfile(userId: string): Promise<{ data?: unknown; error?: unknown }>
+  deleteAuthUser(userId: string): Promise<SupabaseLikeResult>
+}
+
+const errorOf = (result: SupabaseLikeResult) =>
+  result && typeof result === 'object' && 'error' in result ? result.error : null
+
+/**
+ * Remove one fixture account, refusing to delete its auth row unless the
+ * profile is positively confirmed gone.
+ *
+ * The incident this prevents: `public.users` delete fails on a NO ACTION
+ * reference, the error is not acted on, and `auth.admin.deleteUser` runs
+ * anyway. What survives is a profile with no auth row behind it — still
+ * carrying its role and `is_active` flag, and therefore still an employee as
+ * far as payroll generation is concerned. Thirteen such rows were paid a
+ * fictional salary in a real payroll period.
+ *
+ * `runCleanupSteps` deliberately continues past failures so it can report all
+ * of them, which is right for independent steps. These four are NOT
+ * independent: each one is a precondition for the next, so this returns early
+ * at the first failure rather than pressing on to the destructive step.
+ *
+ * Returns the failures for the caller to aggregate; it never throws.
+ */
+export async function purgeFixtureUser(
+  gateway: FixtureUserGateway,
+  userId: string,
+): Promise<string[]> {
+  for (const { table, column } of FIXTURE_USER_DEPENDANTS) {
+    const error = errorOf(await gateway.deleteDependant(table, column, userId))
+    if (error) {
+      // Stop here. A dependant still standing is exactly what makes the
+      // profile delete fail, and pressing on would reach the auth delete.
+      return [`${table}.${column} for ${userId}: ${describeError(error)}`]
+    }
+  }
+
+  const profileError = errorOf(await gateway.deleteProfile(userId))
+  if (profileError) {
+    return [`users profile ${userId}: ${describeError(profileError)} (auth user left in place)`]
+  }
+
+  // The read-back. A delete that matched nothing reports no error at all, so
+  // asking whether the row is gone is the only thing that actually proves it.
+  const readBack = await gateway.readProfile(userId)
+  if (readBack.error) {
+    return [
+      `could not confirm removal of profile ${userId}: ${describeError(readBack.error)} ` +
+        '(auth user left in place)',
+    ]
+  }
+  if (readBack.data) {
+    return [
+      `profile ${userId} still present after delete (auth user left in place). Some table ` +
+        'references public.users with ON DELETE NO ACTION and is not in ' +
+        'FIXTURE_USER_DEPENDANTS.',
+    ]
+  }
+
+  const authError = errorOf(await gateway.deleteAuthUser(userId))
+  // A missing auth user is the expected state when an earlier run got this far
+  // and then failed; it is not a cleanup failure.
+  if (authError && !/not found/i.test(describeError(authError))) {
+    return [`auth user ${userId}: ${describeError(authError)}`]
+  }
+  return []
+}
+
+/** Binds the gateway to a real service-role client. */
+export function supabaseFixtureUserGateway(
+  // The suites' service-role client. Typed structurally so this module does
+  // not depend on @supabase/supabase-js.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  svc: any,
+): FixtureUserGateway {
+  return {
+    deleteDependant: (table, column, userId) => svc.from(table).delete().eq(column, userId),
+    deleteProfile: userId => svc.from('users').delete().eq('id', userId),
+    readProfile: userId => svc.from('users').select('id').eq('id', userId).maybeSingle(),
+    deleteAuthUser: userId => svc.auth.admin.deleteUser(userId),
+  }
+}
+
+/**
+ * One cleanup step per fixture account, for the tail of a suite's `after()`.
+ *
+ * Replaces the `[delete profile, delete auth user]` pair every suite used to
+ * end with. One step per user keeps `runCleanupSteps`' aggregate reporting:
+ * one account failing still lets the others be attempted and reported.
+ */
+export function fixtureUserCleanupSteps(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  svc: any,
+  userIds: readonly string[],
+): CleanupStep[] {
+  const gateway = supabaseFixtureUserGateway(svc)
+  return userIds.filter(Boolean).map(userId => ({
+    label: `fixture user ${userId}`,
+    run: async () => {
+      const failures = await purgeFixtureUser(gateway, userId)
+      return failures.length > 0 ? { error: new Error(failures.join('; ')) } : {}
+    },
+  }))
+}
+
 function describeError(error: unknown): string {
   if (error instanceof Error) return error.message
   if (error && typeof error === 'object' && 'message' in error) {
