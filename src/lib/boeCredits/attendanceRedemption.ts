@@ -28,6 +28,7 @@
 
 import type { DeductionWaiver } from '../payroll/types'
 import type { BoeCreditSettings } from './types'
+import { formatCreditNumber, roundCredits } from './ledger'
 
 export const REDEEMABLE_DEDUCTION_TYPES = ['half_day', 'absent'] as const
 
@@ -81,9 +82,9 @@ export const REDEEMABLE_DEDUCTION_LABELS: Record<RedeemableDeductionType, string
   absent:   'Absent',
 }
 
-/** "1 credit" / "8 credits". */
+/** "1 credit" / "8 credits" / "0.5 credits" — a decimal balance minus a whole price never shows float noise. */
 export function creditsWord(n: number): string {
-  return `${n} ${n === 1 ? 'credit' : 'credits'}`
+  return `${formatCreditNumber(n)} ${roundCredits(n) === 1 ? 'credit' : 'credits'}`
 }
 
 /** "Half Day · 8 credits" — the row's offer, at the price the server quoted. */

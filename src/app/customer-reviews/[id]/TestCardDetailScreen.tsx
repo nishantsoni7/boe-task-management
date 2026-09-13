@@ -1046,7 +1046,8 @@ export function verifiedQuery(data: unknown): string {
     reward?: { credits?: unknown; qualifying_review_count?: unknown; minimum_reviews?: unknown; month_status?: unknown } | null
   } | null)?.reward
   const credits = typeof reward?.credits === 'number' && Number.isFinite(reward.credits) && reward.credits > 0
-    ? Math.trunc(reward.credits)
+    // To the hundredth, never truncated: a 1.5 image reward is carried as 1.5.
+    ? Math.round(reward.credits * 100) / 100
     : 0
   // Phase 1D: the month's standing, as the database reported it, so the list
   // can say "2 of 3 this month". Absent when an older function answered.

@@ -101,8 +101,11 @@ describe('validation the form and the route share', () => {
     assert.ok(creditAmountIssue('0'))
   })
 
-  test('fractions, NaN, blanks and absurd sizes are rejected; signed whole numbers pass', () => {
-    assert.ok(creditAmountIssue(1.5))
+  test('a third decimal place, NaN, blanks and absurd sizes are rejected; signed amounts to the hundredth pass', () => {
+    // Decimal credits (20261204000000): 1.5 is a real amount now; 1.555 is not.
+    assert.ok(creditAmountIssue(1.555))
+    assert.equal(creditAmountIssue(1.5), null)
+    assert.equal(creditAmountIssue('-0.5'), null)
     assert.ok(creditAmountIssue('abc'))
     assert.ok(creditAmountIssue(''))
     assert.ok(creditAmountIssue(null))

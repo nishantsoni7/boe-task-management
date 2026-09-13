@@ -392,6 +392,16 @@ describe('34/35. no regression into suppressed territory', () => {
       // policies, two new meeting functions, and remove_meeting_order()
       // re-emitted with one more refusal. It reaches nothing asserted here.
       '20261203000000_meeting_order_evidence.sql',
+      // Decimal BOE Credits: five credit-amount columns become numeric(12,2) and
+      // the credit functions that carried an amount as integer are re-created
+      // with numeric amounts, bodies otherwise unchanged. It reaches nothing
+      // asserted here.
+      '20261204000000_boe_credits_decimal_credits.sql',
+      // Custom Review Submissions: one table of its own
+      // (customer_review_custom_submissions), one private bucket with one SELECT
+      // storage policy, and five new functions. It alters no existing table and
+      // redefines no existing function, so it reaches nothing asserted here.
+      '20261205000000_customer_review_custom_submissions.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

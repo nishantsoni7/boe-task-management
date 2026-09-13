@@ -40,7 +40,7 @@ function fn(name: string): string {
 }
 
 describe('the file, and where it sits', () => {
-  test('it exists, heads the four credits migrations, and sorts after everything that was there before it', () => {
+  test('it exists, heads the credits migrations, and sorts after everything that was there before it', () => {
     const all = readdirSync(MIGRATIONS).filter(f => f.endsWith('.sql')).sort()
     assert.ok(all.includes(FILE))
     assert.deepEqual(all.filter(f => /credit/i.test(f)), [
@@ -48,6 +48,10 @@ describe('the file, and where it sits', () => {
       '20261102000000_boe_credits_review_reward.sql',
       '20261103000000_boe_credits_attendance_redemption.sql',
       '20261104000000_boe_credits_phase_1d.sql',
+      // Decimal credits: the amount columns and the functions carrying them
+      // become numeric(12,2). Asserted in decimalCredits.test.ts; every claim in
+      // THIS file is about what 20261101000000 says.
+      '20261204000000_boe_credits_decimal_credits.sql',
     ])
     const prior = all.filter(f => f < FILE)
     assert.equal(prior[prior.length - 1], '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql')

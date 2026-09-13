@@ -287,6 +287,16 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // policies, two new meeting functions, and remove_meeting_order()
       // re-emitted with one more refusal. It reaches nothing asserted here.
       '20261203000000_meeting_order_evidence.sql',
+      // Decimal BOE Credits: five credit-amount columns become numeric(12,2) and
+      // the credit functions that carried an amount as integer are re-created
+      // with numeric amounts, bodies otherwise unchanged. It reaches nothing
+      // asserted here.
+      '20261204000000_boe_credits_decimal_credits.sql',
+      // Custom Review Submissions: one table of its own
+      // (customer_review_custom_submissions), one private bucket with one SELECT
+      // storage policy, and five new functions. It alters no existing table and
+      // redefines no existing function, so it reaches nothing asserted here.
+      '20261205000000_customer_review_custom_submissions.sql',
     ], 'every migration at or after this one is accounted for')
   })
 })

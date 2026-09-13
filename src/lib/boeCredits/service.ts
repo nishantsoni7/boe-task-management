@@ -26,7 +26,7 @@
 // not a second source of truth.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { creditAmountIssue, creditReasonIssue } from './ledger'
+import { creditAmountIssue, creditReasonIssue, hasCreditPrecision } from './ledger'
 import { parseBoeCreditSettings, DEFAULT_BOE_CREDIT_SETTINGS } from './settings'
 import { isRedeemableDeductionType, type RedeemableDeductionType } from './attendanceRedemption'
 import {
@@ -74,7 +74,8 @@ const APPLICATION_COLUMNS =
  *   BOE_CREDITS_PERIOD, BOE_CREDITS_PERIOD_LOCKED, BOE_CREDITS_NOT_GENERATED,
  *   BOE_CREDITS_DATE, BOE_CREDITS_ALREADY_COVERED, BOE_CREDITS_REDEMPTION,
  *   BOE_CREDITS_ALREADY_REVERSED; from Phase 1D: BOE_CREDITS_SETTINGS,
- *   BOE_CREDITS_REVIEW_MONTH, BOE_CREDITS_MONTH_OPEN, BOE_CREDITS_MONTH_LAPSED.
+ *   BOE_CREDITS_REVIEW_MONTH, BOE_CREDITS_MONTH_OPEN, BOE_CREDITS_MONTH_LAPSED;
+ *   from decimal credits: BOE_CREDITS_PRECISION.
  * The sentence after the colon is written for the person, and is what a route
  * shows. Anything without a marker is an unexpected failure.
  */
@@ -338,7 +339,7 @@ export async function getAttendanceRedemptionsByTransaction(
 export type PostCreditInput = {
   employeeId: string
   transactionType: CreditTransactionType
-  /** Signed whole credits. Never zero. */
+  /** Signed credits, at most two decimal places. Never zero. */
   credits: number
   sourceType: string
   sourceId: string | null
@@ -552,8 +553,8 @@ export async function applyPayrollCredits(
   svc: Svc,
   input: { employeeId: string; payrollPeriodId: string; credits: number; actorId: string },
 ): Promise<ApplyPayrollCreditsResult> {
-  if (!Number.isInteger(input.credits) || input.credits <= 0) {
-    throw new CreditServiceError('choose at least one credit to apply', 'BOE_CREDITS_ZERO', '22023')
+  if (!(input.credits > 0) || !hasCreditPrecision(input.credits)) {
+    throw new CreditServiceError('choose a number of credits above zero, with at most two decimal places', 'BOE_CREDITS_ZERO', '22023')
   }
   const { data, error } = await svc.rpc('apply_boe_credits_to_payroll', {
     p_employee_id:       input.employeeId,

@@ -36,6 +36,7 @@
 // history is a consequence of the shape — every save is its own row.
 
 import type { BoeCreditSettings } from './types'
+import { hasCreditPrecision, roundCredits } from './ledger'
 
 /**
  * The Phase 1D production values. Seeded by 20261104000000_boe_credits_phase_1d.sql
@@ -72,10 +73,17 @@ function asNumber(value: unknown): number | null {
   return null
 }
 
-/** The five whole-credit fields share one rule: a positive whole number within its bound. */
+/**
+ * The two review rewards may be DECIMAL — an image review can earn 1.5 credits
+ * (numeric(12,2) in the database). Above zero, at most two decimal places.
+ */
+const REWARD_FIELDS: { key: 'review_reward_credits' | 'image_review_reward_credits'; label: string; max: number }[] = [
+  { key: 'review_reward_credits',       label: 'Text review reward',  max: MAX_REVIEW_REWARD_CREDITS },
+  { key: 'image_review_reward_credits', label: 'Image review reward', max: MAX_REVIEW_REWARD_CREDITS },
+]
+
+/** The three whole-number fields share one rule: a positive whole number within its bound. */
 const WHOLE_FIELDS: { key: keyof BoeCreditSettings; label: string; unit: string; max: number }[] = [
-  { key: 'review_reward_credits',       label: 'Text review reward',         unit: 'credits', max: MAX_REVIEW_REWARD_CREDITS },
-  { key: 'image_review_reward_credits', label: 'Image review reward',        unit: 'credits', max: MAX_REVIEW_REWARD_CREDITS },
   { key: 'half_day_redemption_credits', label: 'Half Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
   { key: 'full_day_redemption_credits', label: 'Full Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
   { key: 'minimum_monthly_reviews',     label: 'Minimum reviews per month',  unit: 'reviews', max: MAX_MINIMUM_MONTHLY_REVIEWS },
@@ -89,6 +97,19 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
   const issues: SettingsValidationIssue[] = []
   const obj = (input ?? {}) as Record<string, unknown>
   const out: Partial<BoeCreditSettings> = {}
+
+  for (const f of REWARD_FIELDS) {
+    const n = asNumber(obj[f.key])
+    if (n == null) {
+      issues.push({ key: f.key, message: `${f.label} must be a number.` })
+    } else if (n <= 0 || n > f.max) {
+      issues.push({ key: f.key, message: `${f.label} must be above 0 and at most ${f.max.toLocaleString('en-IN')} credits.` })
+    } else if (!hasCreditPrecision(n)) {
+      issues.push({ key: f.key, message: `${f.label} can have at most two decimal places.` })
+    } else {
+      out[f.key] = roundCredits(n)
+    }
+  }
 
   for (const f of WHOLE_FIELDS) {
     const n = asNumber(obj[f.key])
@@ -122,8 +143,8 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
 
 /** True when two settings objects carry the same six values. */
 export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings): boolean {
-  return a.review_reward_credits === b.review_reward_credits
-    && a.image_review_reward_credits === b.image_review_reward_credits
+  return roundCredits(a.review_reward_credits) === roundCredits(b.review_reward_credits)
+    && roundCredits(a.image_review_reward_credits) === roundCredits(b.image_review_reward_credits)
     && Math.abs(a.credit_value - b.credit_value) < 0.005
     && a.half_day_redemption_credits === b.half_day_redemption_credits
     && a.full_day_redemption_credits === b.full_day_redemption_credits

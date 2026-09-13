@@ -144,6 +144,18 @@ describe('the file, and where it sits', () => {
       // policies, two new meeting functions, and remove_meeting_order()
       // re-emitted with one more refusal. It reaches nothing asserted here.
       '20261203000000_meeting_order_evidence.sql',
+      // Decimal BOE Credits. IT DOES REACH THIS WORK, which is why it is named:
+      // it re-creates post_boe_credit_review_reward() so the reward is carried as
+      // numeric (a 1.5 image reward posts 1.5, not 2). It does not touch
+      // transition_customer_review_test_card(), and every claim below is about what
+      // 20261102000000 SAYS. The decimal shape is asserted in
+      // src/lib/boeCredits/decimalCredits.test.ts.
+      '20261204000000_boe_credits_decimal_credits.sql',
+      // Custom Review Submissions: a second, separate way to earn a review_reward
+      // (source customer_review_custom_submission), approved by a verifier. It does
+      // not touch the verify transition or the Phase 1B reward. Asserted in
+      // src/lib/customerReviews/customSubmissions.test.ts.
+      '20261205000000_customer_review_custom_submissions.sql',
     ])
   })
 

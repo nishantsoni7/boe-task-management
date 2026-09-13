@@ -2,7 +2,8 @@
 //
 // Employees see CREDITS, never rupees — except on the one screen where credits
 // become rupees, the payroll application, and there the rate is the server's.
-// A credit is a whole number.
+// A credit amount has at most two decimal places — 1.5 is one and a half
+// credits (numeric(12,2) in the database; see ledger.ts for the arithmetic).
 
 /** The five kinds a ledger row can be. Mirrors the CHECK on the table (Phase 1D added the lapse). */
 export const CREDIT_TRANSACTION_TYPES = [
@@ -26,6 +27,8 @@ export function isCreditTransactionType(value: unknown): value is CreditTransact
  */
 export type CreditSourceType =
   | 'customer_review'
+  /** An approved Custom Review Submission; source_id = customer_review_custom_submissions.id. */
+  | 'customer_review_custom_submission'
   /** A Phase 1C attendance redemption; source_id = boe_credit_attendance_redemptions.id. */
   | 'attendance_redemption'
   /** A Phase 1D payroll application; source_id = boe_credit_payroll_applications.id. */
@@ -40,7 +43,7 @@ export type CreditTransaction = {
   id: string
   employee_id: string
   transaction_type: CreditTransactionType
-  /** Signed whole credits. Positive earns, negative spends. Never zero. */
+  /** Signed credits, at most two decimal places. Positive earns, negative spends. Never zero. */
   credits: number
   source_type: string
   source_id: string | null

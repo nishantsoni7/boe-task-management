@@ -162,6 +162,16 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // policies, two new meeting functions, and remove_meeting_order()
     // re-emitted with one more refusal. It reaches nothing asserted here.
     '20261203000000_meeting_order_evidence.sql',
+    // Decimal BOE Credits: five credit-amount columns become numeric(12,2) and
+    // the credit functions that carried an amount as integer are re-created
+    // with numeric amounts, bodies otherwise unchanged. It reaches nothing
+    // asserted here.
+    '20261204000000_boe_credits_decimal_credits.sql',
+    // Custom Review Submissions: one table of its own
+    // (customer_review_custom_submissions), one private bucket with one SELECT
+    // storage policy, and five new functions. It alters no existing table and
+    // redefines no existing function, so it reaches nothing asserted here.
+    '20261205000000_customer_review_custom_submissions.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

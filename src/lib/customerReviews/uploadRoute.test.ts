@@ -81,14 +81,14 @@ describe('the endpoint', () => {
       }
       return out
     }
-    // SEVEN routes, and naming each is the point: an eighth appearing without
+    // EIGHT routes, and naming each is the point: a ninth appearing without
     // anybody noticing is what this assertion exists to catch. The photos route
     // is the only writer of a test screenshot; the images route is the only
     // writer of a review image; the image-groups route is the only writer of a
     // project image; the whatsapp route is the only builder of a wa.me link.
     // None of them is a general service.
     const routes = walk(apiDir).map(f => f.replace(/\\/g, '/')).sort()
-    assert.equal(routes.length, 7, `unexpected routes: ${routes.join(', ')}`)
+    assert.equal(routes.length, 8, `unexpected routes: ${routes.join(', ')}`)
     assert.ok(routes.some(r => r.endsWith('customer-reviews/photos/route.ts')))
     assert.ok(routes.some(r => r.endsWith('customer-reviews/whatsapp/route.ts')))
     // Review images: the same byte pipeline as photos, a different
@@ -110,6 +110,11 @@ describe('the endpoint', () => {
     // bucket. It is a route for the reason they are — adding or removing one
     // spans the bucket and a metadata table, and no client may do half of it.
     assert.ok(routes.some(r => r.endsWith('customer-reviews/image-groups/route.ts')))
+    // Custom Review Submissions. The same byte pipeline and a fourth subject:
+    // proof that a review the employee arranged was published, in its own
+    // private bucket. Registering one spans the bucket and a metadata row;
+    // approving and rejecting are RPCs, and add no route.
+    assert.ok(routes.some(r => r.endsWith('customer-reviews/custom-submissions/route.ts')))
   })
 
   test('and APPROVING adds no route at all', () => {

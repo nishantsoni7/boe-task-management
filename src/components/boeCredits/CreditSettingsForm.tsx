@@ -22,13 +22,14 @@ const inputStyle: React.CSSProperties = {
 
 type FieldKey = keyof BoeCreditSettings
 
-const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean }[] = [
+const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean; decimal?: boolean }[] = [
   // TWO REWARDS, AND THE HINTS SAY WHICH IS WHICH RATHER THAN LEAVING THE
   // LABELS TO IMPLY IT. The stored field is still review_reward_credits; the
   // label is what changed, because the label is the part a person reads and the
-  // field name is the part the history is written under.
-  { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one verified text review earns.', step: '1' },
-  { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one verified image review earns. Set on its own, not from the text reward.', step: '1' },
+  // field name is the part the history is written under. Both may be decimal
+  // (1.5 credits); every other credit field stays a whole number.
+  { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one verified text review earns. Decimals such as 1.5 are allowed.', step: '0.01', decimal: true },
+  { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one verified image review earns, e.g. 1.5. Set on its own, not from the text reward.', step: '0.01', decimal: true },
   { key: 'credit_value',                label: 'Value of 1 Credit',            unit: '',          hint: 'Rupees one credit adds to salary when applied to payroll.', step: '0.01', money: true },
   { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1' },
   { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1' },
@@ -129,8 +130,8 @@ export function CreditSettingsForm({
                       {f.money && <span style={{ fontSize: 14, fontWeight: 600, color: colors.tertiary }}>₹</span>}
                       <input
                         type="number"
-                        inputMode={f.money ? 'decimal' : 'numeric'}
-                        min={f.money ? 0.01 : 1}
+                        inputMode={f.money || f.decimal ? 'decimal' : 'numeric'}
+                        min={f.money || f.decimal ? 0.01 : 1}
                         step={f.step}
                         value={draft[f.key]}
                         disabled={saving}

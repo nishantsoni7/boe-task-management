@@ -107,7 +107,8 @@ const TAB_STATUSES: Record<TabKey, readonly TestCardStatus[]> = {
  */
 export function verifiedNoticeFrom(flag: string | null): string | null {
   if (flag === null) return null
-  const credits = /^\d+$/.test(flag) ? Number(flag) : 0
+  // Decimal rewards are real (an image review may earn 1.5), so the flag may carry one.
+  const credits = /^\d+(\.\d{1,2})?$/.test(flag) ? Number(flag) : 0
   return credits > 0
     ? `Review verified · ${formatCredits(credits, { signed: true })} awarded to the tester.`
     : 'Review verified.'

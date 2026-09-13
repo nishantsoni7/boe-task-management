@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, Sparkles } from 'lucide-react'
+import { BadgeCheck, BarChart3, Home, Image as ImageIcon, Layers, MessageSquareHeart, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -20,6 +20,8 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 //   Reviews        the operational queue. The four workflow states live inside
 //                  it as tabs, because a state filters one queue rather than
 //                  being a place of its own.
+//   Custom Submissions  reviews employees arranged themselves: open the proof,
+//                  approve with credits or reject with a reason.
 //   Batches        generate → review → approve → assign, in one workspace.
 //   Image Library  the project image groups an image review draws from.
 //   Progress       assigned / posted / verified / remaining, per employee.
@@ -83,6 +85,12 @@ const NAV_ITEMS: NavItem[] = [
     label: 'Reviews',
     path: '/customer-reviews/reviews',
     icon: <Layers size={15} strokeWidth={1.8} />,
+    verifierOnly: true,
+  },
+  {
+    label: 'Custom Submissions',
+    path: '/customer-reviews/custom',
+    icon: <BadgeCheck size={15} strokeWidth={1.8} />,
     verifierOnly: true,
   },
   {
