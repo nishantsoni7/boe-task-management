@@ -5,7 +5,9 @@ Phases 1A–1D (`20261101000000`–`20261104000000`), decimal credits
 (`20261204000000`) and Custom Review Submissions (`20261205000000`) are
 **applied**. **The Custom Review phase — `20261206000000_customer_review_custom_reapply_and_monthly_rules.sql`
 (monthly submission rules, reapplication, the new settings row with the 1.5
-image reward) — is in the repository and NOT yet applied.**
+image reward) — is in the repository and NOT yet applied.** **The attendance
+redemption switches — `20261208000000_boe_credits_redemption_toggles.sql` — are
+in the repository and NOT yet applied.**
 
 This document is the technical and business reference. Where an earlier phase's
 rule changed, the current rule is stated and the old one is noted; nothing
@@ -26,6 +28,8 @@ already recorded was re-valued. The Review Workflow side is in
 | `minimum_monthly_image_reviews` — of those, Image Reviews required | **3** |
 | `half_day_redemption_credits` — cost of covering a chargeable Half Day | **8** (carried over) |
 | `full_day_redemption_credits` — cost of covering a chargeable Absent day | **15** (carried over) |
+| `half_day_redemption_enabled` — whether a chargeable Half Day may be covered at all (`20261208000000`) | **off** (column default off); an administrator may switch it on |
+| `full_day_redemption_enabled` — whether a chargeable Absent day may be covered at all (`20261208000000`) | **off** (column default off); an administrator may switch it on |
 
 `20261206000000` inserts ONE new settings row with the first six values and the
 attendance prices of the row in force, only if the newest row does not already
@@ -74,7 +78,8 @@ payroll applications already recorded keep the numbers written on them.
    cannot be reversed; a lapse row itself cannot be reversed (post an adjustment).
 8. **Attendance.** A chargeable Half Day costs `half_day_redemption_credits`, a
    chargeable Absent day `full_day_redemption_credits`, read at redemption and
-   written on the record.
+   written on the record — **only while that kind is switched on** (see
+   *Attendance redemption switches* below).
 9. **Payroll.** The employee applies N **spendable** credits to an unlocked,
    generated payroll month as a salary addition of round(N × `credit_value`, 2),
    both snapshotted. At most one active application per employee-period; the
@@ -103,6 +108,36 @@ enforces them in `check_customer_review_custom_month_rules()`:
 
 They are separate from the credits minimum: *3 approved reviews to earn* is not
 *3 Image Reviews submitted*.
+
+### Attendance redemption switches (`20261208000000`)
+
+Two booleans on the settings row, `half_day_redemption_enabled` and
+`full_day_redemption_enabled`, each with a switch on `/payroll/credits`. **Both
+are OFF.** The columns default **false** — redemption is optional, and a
+settings row does not switch it on unless an administrator does. Adding the
+columns gives every existing row, the active one included, `false` without
+updating or inserting a row (earlier settings-history rows therefore also show
+"(off)"); the stored Half Day / Full Day prices are untouched. The in-code
+fallback `DEFAULT_BOE_CREDIT_SETTINGS` is also **false**, so a screen that cannot
+read the row never offers one. Switching either on is an ordinary settings save —
+its own history row, future actions only.
+
+A switched-OFF kind of day:
+
+* **is not offered** — `attendanceRedemptionEligibility()` refuses it
+  (`redemption_disabled`), so the payslip's `redeemable_dates` omits it and
+  `POST /api/boe-credits/redemptions` answers 422;
+* **is refused by the database** — the `BEFORE INSERT` trigger
+  `boe_credit_attendance_redemptions_enabled_guard` on
+  `boe_credit_attendance_redemptions` raises `BOE_CREDITS_REDEMPTION_DISABLED`;
+* **is not explained** — My Credits and How BOE Credits Work render only
+  switched-on redemptions; with both off neither page names attendance
+  redemption;
+* **keeps its price** — while off the price is not required or validated, and
+  the parser carries the price in force;
+* **never changes the past** — existing records, ledger rows and balances stay;
+  the coverage lifecycle skips an Absent → Half Day re-price while Half Day is
+  off and leaves the absent-day coverage in place.
 
 ---
 

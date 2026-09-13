@@ -618,6 +618,10 @@ describe('the migration is placed correctly', () => {
       // reapplied event records the right attempt number. It names no
       // health-check object.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It names no
+      // health-check object.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

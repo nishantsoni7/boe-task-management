@@ -118,7 +118,9 @@ describe('settings: any employee may read, only an admin may write', () => {
     const c = code(SETTINGS)
     const put = c.slice(c.indexOf('export async function PUT'))
     assert.match(put, /const auth = await requireAdmin\(req\)/)
-    assert.match(put, /parseBoeCreditSettings\(payload\.settings\)/)
+    // The active row is handed in so a switched-off redemption keeps its price.
+    assert.match(put, /const active = await fetchActiveCreditSettings\(svc\)/)
+    assert.match(put, /parseBoeCreditSettings\(payload\.settings, active\.settings\)/)
     assert.match(put, /saveCreditSettings\(svc, parsed\.settings, auth\.id, note\)/)
     assert.equal(/\.update\(|\.delete\(/.test(put), false, 'append-only: an INSERT, never an UPDATE')
   })

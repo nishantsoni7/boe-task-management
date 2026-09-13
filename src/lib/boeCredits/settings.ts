@@ -31,6 +31,16 @@
 //                                 approval in one month (20261206000000).
 //   minimum_monthly_image_reviews of those, how many must be Image Reviews.
 //
+// AND TWO SWITCHES (20261208000000).
+//
+//   half_day_redemption_enabled   whether a chargeable Half Day may be covered
+//                                 with credits at all.
+//   full_day_redemption_enabled   the same for a chargeable Absent day.
+//                                 Independent of the half day. A switched-off
+//                                 price is KEPT — neither required nor
+//                                 validated, carried as it was — so switching
+//                                 it back on restores it without re-entry.
+//
 // EVERY CHANGE APPLIES TO FUTURE ACTIONS ONLY. Rewards, redemptions and payroll
 // applications already recorded keep the numbers written on them.
 //
@@ -46,6 +56,12 @@ import { hasCreditPrecision, roundCredits } from './ledger'
  * 20261206000000_customer_review_custom_reapply_and_monthly_rules.sql and
  * asserted against it by settings.test.ts, so the two cannot drift. Used only
  * when no settings row can be read.
+ *
+ * THE TWO SWITCHES DEFAULT TO OFF HERE, deliberately: this object is what a
+ * screen shows while the real row is loading or could not be read, and a
+ * redemption the business has switched off must never flash into view. The
+ * database columns default to OFF as well (20261208000000): redemption is an
+ * optional feature that only an administrator switches on.
  */
 export const DEFAULT_BOE_CREDIT_SETTINGS: BoeCreditSettings = {
   review_reward_credits: 1,
@@ -56,6 +72,8 @@ export const DEFAULT_BOE_CREDIT_SETTINGS: BoeCreditSettings = {
   minimum_monthly_reviews: 3,
   max_monthly_review_submissions: 10,
   minimum_monthly_image_reviews: 3,
+  half_day_redemption_enabled: false,
+  full_day_redemption_enabled: false,
 }
 
 /** Bounds the database CHECKs also enforce. Stated once, here. */
@@ -90,10 +108,30 @@ const REWARD_FIELDS: { key: 'review_reward_credits' | 'image_review_reward_credi
   { key: 'image_review_reward_credits', label: 'Image review reward', max: MAX_REVIEW_REWARD_CREDITS },
 ]
 
+/** The two redemption switches. */
+export type RedemptionSwitchKey = 'half_day_redemption_enabled' | 'full_day_redemption_enabled'
+
+/** Required, like every other setting — a payload that omits one is refused, not defaulted. */
+const SWITCH_FIELDS: { key: RedemptionSwitchKey; label: string }[] = [
+  { key: 'half_day_redemption_enabled', label: 'Half Day redemption' },
+  { key: 'full_day_redemption_enabled', label: 'Full Day redemption' },
+]
+
+function asBoolean(value: unknown): boolean | null {
+  if (value === true || value === 'true') return true
+  if (value === false || value === 'false') return false
+  return null
+}
+
 /** The whole-number fields that must be at least 1. */
-const WHOLE_FIELDS: { key: keyof BoeCreditSettings; label: string; unit: string; max: number }[] = [
-  { key: 'half_day_redemption_credits',    label: 'Half Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS },
-  { key: 'full_day_redemption_credits',    label: 'Full Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS },
+const WHOLE_FIELDS: {
+  key: 'half_day_redemption_credits' | 'full_day_redemption_credits' | 'minimum_monthly_reviews' | 'max_monthly_review_submissions'
+  label: string; unit: string; max: number
+  /** The switch that makes this price optional while it is off. */
+  switchKey?: RedemptionSwitchKey
+}[] = [
+  { key: 'half_day_redemption_credits',    label: 'Half Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS, switchKey: 'half_day_redemption_enabled' },
+  { key: 'full_day_redemption_credits',    label: 'Full Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS, switchKey: 'full_day_redemption_enabled' },
   { key: 'minimum_monthly_reviews',        label: 'Minimum reviews per month',        unit: 'reviews', max: MAX_MINIMUM_MONTHLY_REVIEWS },
   { key: 'max_monthly_review_submissions', label: 'Maximum review submissions a month', unit: 'reviews', max: MAX_MONTHLY_REVIEW_SUBMISSIONS },
 ]
@@ -101,11 +139,22 @@ const WHOLE_FIELDS: { key: keyof BoeCreditSettings; label: string; unit: string;
 /**
  * Validate a candidate settings object in full. Returns the issues rather than
  * throwing, so a form can show every problem at once.
+ *
+ * `keep` is the settings in force. A redemption price whose switch is OFF is
+ * not required: when the candidate's value is missing or unusable, the price in
+ * `keep` is carried unchanged (the built-in default when none is given), so
+ * switching a redemption off never deletes or rewrites its price.
  */
-export function parseBoeCreditSettings(input: unknown): ParsedSettings {
+export function parseBoeCreditSettings(input: unknown, keep: BoeCreditSettings = DEFAULT_BOE_CREDIT_SETTINGS): ParsedSettings {
   const issues: SettingsValidationIssue[] = []
   const obj = (input ?? {}) as Record<string, unknown>
   const out: Partial<BoeCreditSettings> = {}
+
+  for (const f of SWITCH_FIELDS) {
+    const b = asBoolean(obj[f.key])
+    if (b == null) issues.push({ key: f.key, message: `${f.label} must be switched on or off.` })
+    else out[f.key] = b
+  }
 
   for (const f of REWARD_FIELDS) {
     const n = asNumber(obj[f.key])
@@ -122,7 +171,10 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
 
   for (const f of WHOLE_FIELDS) {
     const n = asNumber(obj[f.key])
-    if (n == null) {
+    const usable = n != null && Number.isInteger(n) && n >= 1 && n <= f.max
+    if (!usable && f.switchKey != null && out[f.switchKey] === false) {
+      out[f.key] = keep[f.key]
+    } else if (n == null) {
       issues.push({ key: f.key, message: `${f.label} must be a number.` })
     } else if (!Number.isInteger(n)) {
       issues.push({ key: f.key, message: `${f.label} must be a whole number of ${f.unit}.` })
@@ -188,10 +240,12 @@ export function parseBoeCreditSettingsRow(row: Record<string, unknown>): ParsedS
     minimum_monthly_reviews:        or('minimum_monthly_reviews'),
     max_monthly_review_submissions: or('max_monthly_review_submissions'),
     minimum_monthly_image_reviews:  or('minimum_monthly_image_reviews'),
+    half_day_redemption_enabled:    or('half_day_redemption_enabled'),
+    full_day_redemption_enabled:    or('full_day_redemption_enabled'),
   })
 }
 
-/** True when two settings objects carry the same eight values. */
+/** True when two settings objects carry the same eight values and the same two switches. */
 export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings): boolean {
   return roundCredits(a.review_reward_credits) === roundCredits(b.review_reward_credits)
     && roundCredits(a.image_review_reward_credits) === roundCredits(b.image_review_reward_credits)
@@ -201,6 +255,8 @@ export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings
     && a.minimum_monthly_reviews === b.minimum_monthly_reviews
     && a.max_monthly_review_submissions === b.max_monthly_review_submissions
     && a.minimum_monthly_image_reviews === b.minimum_monthly_image_reviews
+    && a.half_day_redemption_enabled === b.half_day_redemption_enabled
+    && a.full_day_redemption_enabled === b.full_day_redemption_enabled
 }
 
 /**

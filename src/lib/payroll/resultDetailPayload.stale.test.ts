@@ -78,7 +78,7 @@ const PRICES = { half_day: 8, absent: 15 }
 function world(opts: { storedTotal: number; activeRedemptions: unknown[]; status?: 'generated' | 'locked'; prices?: { half_day: number; absent: number } }) {
   const prices = opts.prices ?? PRICES
   return fakeSvc({
-    boe_credit_settings: [{ id: 's-1', review_reward_credits: 1, credit_value: 100, half_day_redemption_credits: prices.half_day, full_day_redemption_credits: prices.absent, minimum_monthly_reviews: 3, note: null, created_at: '2026-09-01T00:00:00Z', created_by: null }],
+    boe_credit_settings: [{ id: 's-1', review_reward_credits: 1, credit_value: 100, half_day_redemption_credits: prices.half_day, full_day_redemption_credits: prices.absent, minimum_monthly_reviews: 3, half_day_redemption_enabled: true, full_day_redemption_enabled: true, note: null, created_at: '2026-09-01T00:00:00Z', created_by: null }],
     boe_credit_payroll_applications: [],
     boe_credit_balances: [],
     payroll_periods: [{ id: PERIOD, payroll_month: 7, payroll_year: 2026, status: opts.status ?? 'generated', locked_at: null, settings_snapshot: null }],

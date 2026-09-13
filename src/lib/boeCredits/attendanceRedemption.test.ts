@@ -64,7 +64,7 @@ const fn = (name: string) => fnIn(code, name)
 
 // ── 1. The cost ─────────────────────────────────────────────────────────────
 
-const COSTS = { half_day_redemption_credits: 8, full_day_redemption_credits: 15 }
+const COSTS = { half_day_redemption_credits: 8, full_day_redemption_credits: 15, half_day_redemption_enabled: true, full_day_redemption_enabled: true }
 
 describe('the cost is a setting, read the same way in SQL and TypeScript', () => {
   test('two kinds, and each reads its own setting — nothing is derived from the other', () => {
@@ -129,7 +129,7 @@ describe('eligibility comes from the settled deduction line, not the attendance 
   })
 
   test('the price follows the settings handed in, not a constant', () => {
-    const cheap = { ...CTX, costs: { half_day_redemption_credits: 1, full_day_redemption_credits: 2 } }
+    const cheap = { ...CTX, costs: { ...COSTS, half_day_redemption_credits: 1, full_day_redemption_credits: 2 } }
     const e = attendanceRedemptionEligibility(day('2026-08-13', [{ deduction_type: 'absent', amount_deducted: 769 }]), cheap)
     assert.ok(e.eligible && e.credits === 2)
   })
@@ -193,6 +193,56 @@ describe('eligibility comes from the settled deduction line, not the attendance 
     const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 385 }]), { ...CTX, periodStatus: 'locked' })
     assert.equal(e.eligible, false)
     if (!e.eligible) { assert.equal(e.reason, 'locked'); assert.match(e.message, /locked/) }
+  })
+
+  test('a switched-off kind of day is refused, each switch on its own, and the refusal names no feature', () => {
+    const halfOff = { ...CTX, costs: { ...COSTS, half_day_redemption_enabled: false } }
+    const half = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 385 }]), halfOff)
+    assert.equal(half.eligible, false)
+    if (!half.eligible) {
+      assert.equal(half.reason, 'redemption_disabled')
+      assert.equal(/half|absent|switch|disabled|\boff\b/i.test(half.message), false, half.message)
+    }
+    const absent = attendanceRedemptionEligibility(day('2026-08-13', [{ deduction_type: 'absent', amount_deducted: 769 }]), halfOff)
+    assert.deepEqual(absent, { eligible: true, deduction_type: 'absent', credits: 15, amount: 769 }, 'the full day has its own switch')
+
+    const fullOff = { ...CTX, costs: { ...COSTS, full_day_redemption_enabled: false } }
+    const full = attendanceRedemptionEligibility(day('2026-08-13', [{ deduction_type: 'absent', amount_deducted: 769 }]), fullOff)
+    assert.ok(!full.eligible && full.reason === 'redemption_disabled')
+    assert.ok(attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 385 }]), fullOff).eligible)
+  })
+
+  test('with both switches off, a day already covered still reads as covered — nothing already made is hidden', () => {
+    const off = { ...CTX, costs: { ...COSTS, half_day_redemption_enabled: false, full_day_redemption_enabled: false } }
+    const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 0, waived_by: 'boe_credits', credits_redeemed: 8 }]), off)
+    assert.ok(!e.eligible && e.reason === 'already_covered')
+  })
+
+  test('a missing switch reads as OFF', () => {
+    const { half_day_redemption_enabled: _h, ...rest } = COSTS
+    void _h
+    const e = attendanceRedemptionEligibility(day('2026-08-12', [{ deduction_type: 'half_day', amount_deducted: 385 }]), { ...CTX, costs: rest as typeof COSTS })
+    assert.ok(!e.eligible && e.reason === 'redemption_disabled')
+  })
+})
+
+// ── 2b. The database guard (20261208000000) ─────────────────────────────────
+
+describe('the database refuses a redemption of a switched-off kind', () => {
+  const toggles = strip(read(join(MIGRATIONS, '20261208000000_boe_credits_redemption_toggles.sql')))
+
+  test('a BEFORE INSERT trigger on the record reads the newest settings row and raises a marker', () => {
+    const f = fnIn(toggles, 'boe_credit_attendance_redemption_enabled_guard')
+    assert.match(f, /from public\.boe_credit_settings s\s*\n\s*order by s\.created_at desc\s*\n\s*limit 1;/)
+    assert.match(f, /when 'half_day' then s\.half_day_redemption_enabled\s*\n\s*else\s+s\.full_day_redemption_enabled/)
+    assert.match(f, /if v_enabled is false then\s*\n\s*raise exception 'BOE_CREDITS_REDEMPTION_DISABLED: [^']+'\s*\n\s*using errcode = '55000';/)
+    assert.match(toggles, /create trigger boe_credit_attendance_redemptions_enabled_guard\s*\n\s*before insert on public\.boe_credit_attendance_redemptions\s*\n\s*for each row execute function public\.boe_credit_attendance_redemption_enabled_guard\(\);/)
+    assert.match(toggles, /revoke execute on function public\.boe_credit_attendance_redemption_enabled_guard\(\) from public, anon, authenticated;/)
+  })
+
+  test('it re-creates no credit function and writes no row', () => {
+    assert.equal(/create or replace function public\.(redeem_boe_credits_for_attendance|post_boe_credit_transaction|reverse_boe_credit_attendance_redemption)\(/.test(toggles), false)
+    assert.equal(/insert into|update public\.|delete from/.test(toggles), false)
   })
 })
 

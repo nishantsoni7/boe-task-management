@@ -52,6 +52,10 @@ describe('the file, and where it sits', () => {
       // become numeric(12,2). Asserted in decimalCredits.test.ts; every claim in
       // THIS file is about what 20261101000000 says.
       '20261204000000_boe_credits_decimal_credits.sql',
+      // Redemption switches: two settings columns and a BEFORE INSERT guard on
+      // the attendance redemption record. Asserted in settings.test.ts and
+      // attendanceRedemption.test.ts.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
     const prior = all.filter(f => f < FILE)
     assert.equal(prior[prior.length - 1], '20261031000000_review_workflow_twelve_drafts_editing_and_images.sql')

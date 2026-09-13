@@ -121,6 +121,16 @@ export type BoeCreditSettings = {
    * 0 turns the rule off.
    */
   minimum_monthly_image_reviews: number
+  /**
+   * Whether an employee may cover a chargeable Half Day with credits
+   * (20261208000000). OFF means the redemption does not exist for employees:
+   * no offer, no explanation, and the server and the database refuse a new one.
+   * The price is KEPT while it is off, so switching it back on needs no
+   * re-entry. Redemptions already made are never touched.
+   */
+  half_day_redemption_enabled: boolean
+  /** The same switch for a chargeable Absent (full) day. Independent of the half day. */
+  full_day_redemption_enabled: boolean
 }
 
 // ─── Phase 1D records ─────────────────────────────────────────────────────────

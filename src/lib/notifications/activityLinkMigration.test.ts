@@ -276,6 +276,10 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // trail function (the reapplied event's attempt number) — it reaches
       // nothing asserted here.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
+      // notification, so it reaches nothing asserted here.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
   })
 

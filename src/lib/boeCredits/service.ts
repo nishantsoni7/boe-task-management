@@ -52,7 +52,7 @@ const BALANCE_COLUMNS =
   'employee_id, available_credits, provisional_credits, spendable_credits, transaction_count, last_transaction_at'
 
 const SETTINGS_COLUMNS =
-  'id, review_reward_credits, image_review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, max_monthly_review_submissions, minimum_monthly_image_reviews, note, created_at, created_by'
+  'id, review_reward_credits, image_review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, max_monthly_review_submissions, minimum_monthly_image_reviews, half_day_redemption_enabled, full_day_redemption_enabled, note, created_at, created_by'
 
 const MONTH_COLUMNS =
   'id, employee_id, review_month, minimum_reviews_snapshot, qualifying_review_count, earned_review_credits, status, qualified_at, finalized_at, lapse_transaction_id'
@@ -75,7 +75,8 @@ const APPLICATION_COLUMNS =
  *   BOE_CREDITS_DATE, BOE_CREDITS_ALREADY_COVERED, BOE_CREDITS_REDEMPTION,
  *   BOE_CREDITS_ALREADY_REVERSED; from Phase 1D: BOE_CREDITS_SETTINGS,
  *   BOE_CREDITS_REVIEW_MONTH, BOE_CREDITS_MONTH_OPEN, BOE_CREDITS_MONTH_LAPSED;
- *   from decimal credits: BOE_CREDITS_PRECISION.
+ *   from decimal credits: BOE_CREDITS_PRECISION; from the redemption switches:
+ *   BOE_CREDITS_REDEMPTION_DISABLED.
  * The sentence after the colon is written for the person, and is what a route
  * shows. Anything without a marker is an unexpected failure.
  */
@@ -724,6 +725,8 @@ export async function saveCreditSettings(
       minimum_monthly_reviews:     parsed.settings.minimum_monthly_reviews,
       max_monthly_review_submissions: parsed.settings.max_monthly_review_submissions,
       minimum_monthly_image_reviews:  parsed.settings.minimum_monthly_image_reviews,
+      half_day_redemption_enabled:    parsed.settings.half_day_redemption_enabled,
+      full_day_redemption_enabled:    parsed.settings.full_day_redemption_enabled,
       created_by: createdBy,
       note: note ?? null,
     })
@@ -758,6 +761,8 @@ export async function fetchCreditSettingsHistory(svc: Svc, limit = 20): Promise<
     minimum_monthly_reviews:     Number(r.minimum_monthly_reviews ?? DEFAULT_BOE_CREDIT_SETTINGS.minimum_monthly_reviews),
     max_monthly_review_submissions: Number(r.max_monthly_review_submissions ?? DEFAULT_BOE_CREDIT_SETTINGS.max_monthly_review_submissions),
     minimum_monthly_image_reviews:  Number(r.minimum_monthly_image_reviews ?? DEFAULT_BOE_CREDIT_SETTINGS.minimum_monthly_image_reviews),
+    half_day_redemption_enabled:    r.half_day_redemption_enabled == null ? DEFAULT_BOE_CREDIT_SETTINGS.half_day_redemption_enabled : r.half_day_redemption_enabled === true,
+    full_day_redemption_enabled:    r.full_day_redemption_enabled == null ? DEFAULT_BOE_CREDIT_SETTINGS.full_day_redemption_enabled : r.full_day_redemption_enabled === true,
     note:                        (r.note as string | null) ?? null,
     created_by:                  (r.created_by as string | null) ?? null,
     created_at:                  String(r.created_at),

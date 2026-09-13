@@ -228,6 +228,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // reapplied event records attempt = reapplication_count. One function, the
       // same grants; it touches none of the three tables asserted below.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches
+      // none of the three tables asserted below.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
   })
 

@@ -35,11 +35,12 @@ import { isSkip } from './types'
 import { fetchActiveAttendanceRedemptions, type StoredAttendanceRedemption } from './store'
 import {
   REDEEMABLE_DEDUCTION_LABELS,
+  attendanceRedemptionEnabled,
   isRedeemableDeductionType,
   type AttendanceCreditRedemption,
   type RedeemableDeductionType,
 } from '../boeCredits/attendanceRedemption'
-import { redeemAttendanceDay, reverseAttendanceRedemption } from '../boeCredits/service'
+import { fetchActiveCreditSettings, redeemAttendanceDay, reverseAttendanceRedemption } from '../boeCredits/service'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = SupabaseClient<any, any, any>
@@ -149,7 +150,20 @@ export async function reconcileAttendanceCoverage(
     return { redemptions: active, outcome: first, actions: [], failures: [] }
   }
 
-  const actions = planCoverageReconciliation(active, (first as EngineResult).deduction_lines)
+  const planned = planCoverageReconciliation(active, (first as EngineResult).deduction_lines)
+
+  // A RE-PRICE IS A NEW REDEMPTION, so it is made only while that kind of day
+  // is switched on (20261208000000). Switched off, the absent-day coverage is
+  // left exactly as it is — it still covers the half day (redemptionCovers) —
+  // and nothing is reversed: switching a redemption off never takes away a day
+  // the employee already covered. The settings are read only when a re-price
+  // is planned; if they cannot be read the defaults say OFF, which keeps the
+  // coverage rather than reversing it.
+  let actions = planned
+  if (planned.some(a => a.action === 'reprice')) {
+    const { settings } = await fetchActiveCreditSettings(svc)
+    actions = planned.filter(a => a.action !== 'reprice' || attendanceRedemptionEnabled(a.new_type, settings))
+  }
   if (actions.length === 0) {
     return { redemptions: active, outcome: first, actions, failures: [] }
   }

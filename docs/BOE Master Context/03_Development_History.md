@@ -1080,3 +1080,48 @@ proof of a review they arranged, but:
 applied `20261204000000`–`20261206000000` twice on a bare PostgreSQL 16
 container and every assertion passed twice. Full `npm test`, `npm run build` and
 `git diff --check` results are in the branch's completion report.
+
+---
+
+# BOE Credits — Half Day and Full Day redemption switches
+
+Date: 13 September 2026
+
+Branch: `feat/boe-credits-redemption-toggles` (from `main` at `ad8a0ac7`).
+Migration: `20261208000000_boe_credits_redemption_toggles.sql` — **not yet
+applied** at the time of writing.
+
+## Problem
+
+The business wants attendance redemption unavailable for now without removing
+it. An administrator could only change the two prices, both were always
+required (an empty Half Day value blocked the whole save), and every employee
+screen always described both redemptions.
+
+## What was built
+
+* Two independent settings, `half_day_redemption_enabled` and
+  `full_day_redemption_enabled`, each with a switch on `/payroll/credits`. A
+  switched-off price is disabled in the form, not validated, and kept.
+* The shared eligibility rule refuses a switched-off kind
+  (`redemption_disabled`), so the payslip lists no offer and
+  `POST /api/boe-credits/redemptions` refuses one. A `BEFORE INSERT` trigger on
+  `boe_credit_attendance_redemptions` refuses it in the database
+  (`BOE_CREDITS_REDEMPTION_DISABLED`).
+* The payroll coverage lifecycle skips an Absent → Half Day re-price while Half
+  Day is off and leaves the existing coverage in place.
+* My Credits and How BOE Credits Work render only the switched-on redemptions;
+  with both off neither page names attendance redemption.
+
+## Decisions
+
+* **Configuration, not removal.** Prices, history, ledger rows and balances are
+  untouched; switching back on restores the redemption at the price in force.
+* **Both redemptions are OFF from the migration onward.** The columns default to
+  false, which gives every existing settings row — the active one included —
+  `false` without an UPDATE (the table is append-only) or a new row; the stored
+  Half Day / Full Day prices are untouched. An administrator switches either on
+  later. The in-code fallback is also OFF, so a screen that cannot read the
+  settings never offers a switched-off redemption.
+* **A trigger, not a re-created redemption function**, so the decimal-credits
+  function body is not copied again.

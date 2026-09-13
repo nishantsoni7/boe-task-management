@@ -306,6 +306,10 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // reapplied event records the right attempt number. It reaches nothing
       // asserted here.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches
+      // nothing asserted here.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ], 'every migration at or after this one is accounted for')
   })
 })
