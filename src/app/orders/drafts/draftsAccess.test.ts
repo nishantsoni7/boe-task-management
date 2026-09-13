@@ -487,6 +487,12 @@ describe('the detail page renders only what it fetched', () => {
       'recordPiPayment',
       // src/lib/finance/paymentProof.ts — storage upload + metadata row
       'attachPaymentProof',
+      // src/lib/finance/paymentDecision.ts — approve or reject ONE pending
+      // payment through Finance's own doors: approve_finance_payment_request, or
+      // the three-column status write the approver-decide policy admits. Drawn
+      // only for finance.approve; pinned call-for-call to Finance's review
+      // dialog in paymentDecision.test.ts.
+      'decidePayment',
     ] as const
 
     const READ_ONLY_HELPERS = [
@@ -498,10 +504,9 @@ describe('the detail page renders only what it fetched', () => {
     // control is drawn, and the server re-derives every one of them.
     const PURE_HELPERS = [
       'canAddPiPayment',
-      // A predicate on one status string. It decides whether a row is counted
-      // as awaiting a Finance decision, so the summary can say how many are —
-      // it reads no money and reaches no database.
-      'isAwaitingVerification',
+      // Counts of ROWS: how many are still with Finance, and how many of those a
+      // verifier could decide now. It reads no money and reaches no database.
+      'countPiPaymentRows',
       // Formatters. They turn a `numeric` the database already computed into
       // pixels and can no longer feed a decision — the page uses them for the
       // one verified-payment line the review dialogs and the snapshot share.
@@ -509,7 +514,7 @@ describe('the detail page renders only what it fetched', () => {
       'formatPercent',
     ] as const
 
-    // Anything imported from the Finance library must be on one of the two
+    // Anything imported from the Finance library must be on one of the
     // lists. A new helper appearing here is a new write this page can reach, and
     // must be a deliberate, visible addition — exactly what the RPC list above
     // demands of the direct calls.
@@ -525,7 +530,7 @@ describe('the detail page renders only what it fetched', () => {
       )
     }
 
-    // And the two writers really are the only mutating ones: the page still
+    // And the three writers really are the only mutating ones: the page still
     // performs no table write and no upload of its own.
     for (const forbidden of ['.insert(', '.update(', '.delete(', '.upsert(', '.upload(']) {
       assert.ok(!source.includes(forbidden),
@@ -1130,16 +1135,24 @@ describe('the page identity is a strip, not a card that repeats the title', () =
       'and the badge renders in the card')
   })
 
-  test('the ownership facts the old strip carried all survive, in one group', () => {
+  test('the ownership facts survive, each said once', () => {
     const view = read(DETAIL_VIEW)
-    for (const fact of ['Saved ', 'Submitted ']) {
-      assert.ok(view.includes(fact), `${fact} must survive the redesign`)
+    // Salesperson · PI submitted by · Created date in the overview's strip; the
+    // submission time and the status in the context row above it.
+    assert.ok(view.includes('label: SALESPERSON_LABEL'),
+      'the one established word for the salesperson, from the Order flow')
+    for (const label of ["'PI submitted by'", "'Created date'"]) {
+      assert.ok(view.includes(label), `${label} must survive the redesign`)
     }
-    assert.ok(page.includes('documentAuthor,'),
-      'including whoever the PI document itself named')
-    assert.ok(page.includes('ownership={ownership}'))
+    assert.ok(!/sales candidate/i.test(view + read(DETAIL_SECTIONS)),
+      'no second word for the same person')
+    assert.ok(page.includes('salesperson: documentAuthor,'),
+      'the salesperson is whoever the PI document itself named')
+    assert.ok(page.includes('submitterName: draft.submitterName,'))
+    assert.ok(page.includes('meta={overviewMeta}'))
+    assert.ok(page.includes('context={submissionContext}'))
     assert.ok(page.includes('workbookName={workbookName}'),
-      'and the workbook moved into the card rather than being dropped')
+      'and the workbook stays in the card rather than being dropped')
   })
 
   test('an absent filename shows no block at all', () => {
@@ -1163,28 +1176,23 @@ describe('the top summary answers four questions and repeats none of them', () =
   const view = read(DETAIL_VIEW)
 
   test('two columns, and every group in them names itself without a heading', () => {
-    // The card carries four labelled headings fewer than it did: Client, Order
-    // dates and Financial summary all stated what the values under them plainly
-    // are. What is left is the values themselves.
-    for (const label of ['PI created by', 'Payment received']) {
-      assert.ok(sections.includes(label), `${label} must be in the card`)
-    }
-    // The two figures are labelled by the view model, not by the component.
+    // Who and when on the left, what it is worth on the right. The figures and
+    // the metadata are labelled by the view model, not by the component.
     assert.ok(view.includes("'Product value'") && view.includes("'Total before GST'"))
-    for (const heading of ['<GroupLabel>', 'Financial summary']) {
+    assert.ok(view.includes("BILLING_NOT_DECLARED_LABEL = 'Not declared'"),
+      'billing without a declaration is said as a state')
+    for (const heading of ['<GroupLabel>', 'Financial summary', 'Payment received']) {
       assert.ok(!sections.includes(heading), `${heading} is a label for something already obvious`)
     }
-    assert.ok(sections.includes('pi-detail-summary-left'),
+    assert.ok(sections.includes('pi-detail-overview-main'),
       'the order — who, when, whose — is one column')
-    assert.ok(sections.includes('pi-detail-summary-schedule'),
+    assert.ok(sections.includes('pi-detail-dates'),
       'the two dates share one band rather than one carrying a box of its own')
-    assert.ok(sections.includes('pi-detail-summary-paycard'),
-      'and money is a surface of its own, filling the other column')
-    // Ownership belongs to the left column now, below the dates, so it reads as
-    // a fact about the record instead of a control belonging to the page.
-    assert.ok(sections.indexOf('Confirm date') < sections.indexOf('PI created by')
-      || sections.indexOf('dates.map') < sections.indexOf('PI created by'),
-      'ownership sits below the dates, at the foot of its column')
+    assert.ok(sections.includes('pi-detail-figures'),
+      'and the three figures fill the other column')
+    // The metadata strip sits ABOVE the dates in the left column.
+    assert.ok(sections.indexOf('meta.map') < sections.indexOf('dates.map'),
+      'Salesperson, PI submitted by and Created date read before the dates')
     assert.ok(!sections.includes('pi-detail-summary-divided'),
       'the vertical rules that made it read as a form are gone')
   })
@@ -1237,7 +1245,10 @@ describe('the top summary answers four questions and repeats none of them', () =
     assert.ok(page.includes('due: submission.due_date'), 'the stored column, not a derivation')
     assert.ok(!page.includes("headerValue('dispatch')"),
       'the prose dispatch commitment is not read as a date')
-    assert.ok(!page.includes("headerValue('created')"), 'and the PI-created date is not shown')
+    // The PI's own created date is back — in the metadata strip, as supporting
+    // information and never as a schedule date — with the record's own date
+    // standing in where the workbook gave none.
+    assert.ok(page.includes("createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at)"))
   })
 
   test('a missing due date says “Not set”, with the commitment only as support', () => {
@@ -1270,7 +1281,10 @@ describe('the top summary answers four questions and repeats none of them', () =
   })
 
   test('what the summary no longer spends space on', () => {
-    for (const gone of ['Commercial snapshot', 'Grand Total', 'pi-detail-overview']) {
+    // `pi-detail-overview` is a class name again, deliberately: it now names the
+    // PI overview card — who, when, and what it is worth — and not the removed
+    // snapshot that printed a standalone grand total. The snapshot stays gone.
+    for (const gone of ['Commercial snapshot', 'Grand Total']) {
       assert.ok(!sections.includes(gone), `${gone} was removed from the top summary`)
     }
     assert.ok(!page.includes('buildCommercialSnapshot'),
@@ -1281,17 +1295,26 @@ describe('the top summary answers four questions and repeats none of them', () =
       'the Products card states its own size on its own header')
   })
 
-  test('the payment figures are the database’s, and only the bar width is derived', () => {
-    assert.ok(page.includes('verifiedAmount: formatInr(toNumber(payments.verified_amount))'))
-    assert.ok(page.includes('verifiedPercent: formatPercent(payments.verified_percent)'))
-    assert.ok(page.includes('grandTotal: formatInr(toNumber(payments.grand_total))'))
-    // The single derived quantity is a CSS width, clamped, never shown as a figure.
-    assert.ok(view.includes('Math.max(0, Math.min(100, raw))'))
+  test('the payment figures are the database’s; only a row count and bar widths are derived', () => {
+    for (const figure of [
+      'confirmed: formatInr(toNumber(payments.verified_amount))',
+      'total: formatInr(toNumber(payments.grand_total))',
+      'formatInr(toNumber(payments.required_payment))',
+      'verifiedPercent: formatPercent(payments.verified_percent)',
+      'pendingAmount: formatInr(toNumber(payments.unverified_amount))',
+      'meetsStandard: payments.meets_standard',
+    ]) {
+      assert.ok(page.includes(figure), `${figure} must come straight off the summary`)
+    }
+    // The derived quantities: a count of ROWS still with Finance, and two CSS
+    // widths clamped to the track and never shown as figures.
+    assert.ok(page.includes('const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [])'))
+    assert.ok(view.includes('return Math.max(0, Math.min(100, value))'))
   })
 
-  test('the summary is absent, not guessed at, until the position has been read', () => {
-    assert.ok(page.includes('payments === null ? null : buildPaymentSummaryView({'))
-    assert.ok(sections.includes('payment === null ? ('))
+  test('the payment card is absent, not guessed at, until the position has been read', () => {
+    assert.ok(page.includes('payments === null ? null : buildPaymentStatusView({'))
+    assert.ok(sections.includes('status === null ? ('))
   })
 })
 
@@ -1861,8 +1884,8 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // has asked, and a figure invented to fill it would be worse still.
     assert.ok(read(DETAIL_VIEW).includes('payment: payment === null ? null : {'),
       'the submit dialog still withholds a position it has not read')
-    assert.ok(read(DETAIL_PAGE).includes('payments === null ? null : buildPaymentSummaryView({'),
-      'and so does the top summary')
+    assert.ok(read(DETAIL_PAGE).includes('payments === null ? null : buildPaymentStatusView({'),
+      'and so does the payment status card')
   })
 
   test('the current advance state is stated exactly once on the page', () => {

@@ -31,7 +31,10 @@ import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
+  PiCommercialBreakdown,
+  PiContextRow,
   PiLowerGrid,
+  PiPaymentStatusCard,
   PiSummaryCard,
   PiStoredCopyNote,
   PiWarningPanel,
@@ -39,16 +42,22 @@ import {
   statusTone,
 } from './piDetailSections'
 import {
+  BILLING_NOT_DECLARED_LABEL,
   BILLING_VALUE_LABEL,
+  RESERVED_ORDER_LABEL,
+  barWidth,
   buildBillingSummary,
+  buildBreakdownView,
   buildClientDetails,
+  buildOverviewMeta,
+  buildPaymentStatusView,
+  buildSubmissionContext,
   NOT_PROVIDED,
   buildDateSummary,
+  describePendingPayments,
   summaryCommercialFigures,
-  buildOwnership,
-  buildPaymentSummaryView,
   telLink,
-  type PaymentSummaryView,
+  type PaymentStatusView,
   commercialBreakdownRows,
   describeApprovedOrder,
   describeWorkflowPanel,
@@ -56,6 +65,7 @@ import {
   STORED_COPY_NOTE,
   WORKFLOW_HEADING,
 } from './piDetailView'
+import { RESERVE_ACTION_LABEL, type ReservationView } from '@/lib/orders/orderNumberReservation'
 import {
   APPROVAL_BLOCKED_FINANCE,
   APPROVED_ORDER_HEADING,
@@ -348,93 +358,142 @@ const pageCss = (): string => {
   return css.slice(start)
 }
 
-// ── 1. The first clear scan ───────────────────────────────────────────────────
+// ── 1. The context row: the reserved number beside where review stands ────────
 
-describe('the card carries who the PI belongs to, and says it once', () => {
-  test('a saved draft names its creator and when it was last saved', () => {
-    const own = buildOwnership({
-      documentAuthor: 'Nishant Soni',
-      submitterName: null,
-      submittedAt: null,
-      savedAt: '02 Aug 2026, 11:30 am',
-    })
-    assert.equal(own.name, 'Nishant Soni')
-    assert.equal(own.when, 'Saved 02 Aug 2026, 11:30 am')
+/** A held reservation, as describeReservation would report one. A fixture. */
+const HELD: ReservationView = {
+  state: 'awaiting_revised_pi',
+  number: '0521',
+  standing: 'Reserved for this PI. The Confirmed Order will carry it.',
+  blockedReason: null,
+  canCopy: true,
+}
+
+const contextHtml = (over: {
+  status?: string
+  submittedAt?: string | null
+  submitterName?: string | null
+  finance?: { verified: boolean; text: string } | null
+  piApprovedLine?: string | null
+  rejectedLine?: string | null
+  reservation?: ReservationView
+  onReserve?: (() => void) | null
+  copied?: boolean
+  confirmedNumber?: string | null
+} = {}) => {
+  const status = over.status ?? 'submitted'
+  return renderToStaticMarkup(
+    <PiContextRow
+      reservation={over.reservation ?? HELD}
+      confirmedNumber={over.confirmedNumber ?? null}
+      reserving={false}
+      reservationFailure={null}
+      onReserve={over.onReserve ?? null}
+      onCopy={() => {}}
+      copied={over.copied ?? false}
+      context={buildSubmissionContext({
+        status,
+        submitterName: over.submitterName === undefined ? 'Nishant Soni' : over.submitterName,
+        submittedAt: over.submittedAt === undefined ? '03 Aug 2026, 09:30 am' : over.submittedAt,
+        finance: over.finance === undefined ? { verified: false, text: FINANCE_PENDING_TEXT } : over.finance,
+        piApprovedLine: over.piApprovedLine ?? null,
+        rejectedLine: over.rejectedLine ?? null,
+        hasOrder: false,
+      })}
+      statusLabel={draftStatusLabel(status)}
+      tone={statusTone(draftStatusTone(status))}
+    />,
+  )
+}
+
+describe('the context row puts the reserved number beside where review stands', () => {
+  test('one card, two sections, the number first', () => {
+    const html = contextHtml()
+    assert.ok(html.includes('class="pi-detail-context"'))
+    assert.equal((html.match(/class="pi-detail-context-cell"/g) ?? []).length, 2)
+    const t = text(html)
+    assert.ok(t.indexOf(RESERVED_ORDER_LABEL) < t.indexOf(WORKFLOW_HEADING.submitted),
+      'Reserved Order no. on the left, Submitted for review on the right')
   })
 
-  test('a submitted record says when it was sent, not when it was saved', () => {
-    const own = buildOwnership({
-      documentAuthor: 'Nishant Soni',
-      submitterName: 'Nishant Soni',
-      submittedAt: '03 Aug 2026, 09:00 am',
-      savedAt: '02 Aug 2026, 11:30 am',
-    })
-    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am')
-    // The creator's name is beside the avatar already; repeating it as "by
-    // Nishant Soni" is the duplication this composition exists to remove.
-    assert.ok(!own.when.includes('by'), 'the same person is never named twice')
+  test('the number is prominent, copyable, and explained in exactly one line', () => {
+    const html = contextHtml()
+    assert.ok(html.includes('class="pi-detail-context-number"'))
+    assert.ok(text(html).includes('0521'))
+    assert.ok(html.includes('aria-label="Copy Order number 0521"'))
+    assert.equal((text(html).match(/Reserved for this PI/g) ?? []).length, 1)
+    assert.ok(text(contextHtml({ copied: true })).includes('Copied'))
   })
 
-  test('but a DIFFERENT submitter is still named', () => {
-    const own = buildOwnership({
-      documentAuthor: 'Nishant Soni',
-      submitterName: 'Priya Rao',
-      submittedAt: '03 Aug 2026, 09:00 am',
-      savedAt: 'X',
-    })
-    assert.equal(own.name, 'Nishant Soni')
-    assert.equal(own.when, 'Submitted 03 Aug 2026, 09:00 am by Priya Rao')
+  test('no number: the Reserve control only where it is offered, otherwise a quiet absence', () => {
+    const none: ReservationView = {
+      state: 'available', number: null, standing: 'No Order number is held for this PI yet.',
+      blockedReason: null, canCopy: false,
+    }
+    assert.ok(buttonLabels(contextHtml({ reservation: none, onReserve: () => {} })).includes(RESERVE_ACTION_LABEL))
+    const quiet = contextHtml({ reservation: none })
+    assert.ok(!buttonLabels(quiet).includes(RESERVE_ACTION_LABEL))
+    assert.ok(text(quiet).includes('Not reserved'))
+    assert.ok(!quiet.includes('Copy Order number'), 'nothing to copy')
   })
 
-  test('a PI that named nobody falls back to whoever submitted it', () => {
-    assert.equal(buildOwnership({
-      documentAuthor: null, submitterName: 'Priya Rao',
-      submittedAt: '03 Aug 2026, 09:00 am', savedAt: 'X',
-    }).name, 'Priya Rao')
-    assert.equal(buildOwnership({
-      documentAuthor: null, submitterName: null, submittedAt: null, savedAt: 'X',
-    }).name, null)
+  test('the Confirmed Order number, once there is one, keeps its own label', () => {
+    const t = text(contextHtml({ status: 'approved', confirmedNumber: '0521' }))
+    assert.ok(t.includes('Confirmed Order number 0521'))
   })
 
-  test('the status, the creator and the workbook all render inside the card', () => {
-    const html = text(summaryHtml())
-    assert.ok(html.includes('PI created by'))
-    assert.ok(html.includes('Nishant Soni'))
-    assert.ok(html.includes('Submitted 03 Aug 2026'))
-    assert.ok(html.includes('Submitted for Review'), 'the status badge is in the card')
-    assert.ok(html.includes('Kalyan-PI-Aug.xlsx'), 'and the workbook is named, quietly')
+  test('submitted: the badge, who, when, and one line each for review and Finance', () => {
+    const t = text(contextHtml())
+    for (const part of [
+      'Submitted for Review', 'Nishant Soni', '03 Aug 2026, 09:30 am',
+      'Awaiting management review', FINANCE_PENDING_TEXT,
+    ]) {
+      assert.ok(t.includes(part), `${part} missing`)
+    }
   })
 
-  test('a record with no filename shows no file block at all', () => {
-    assert.ok(!summaryHtml({ workbookName: null }).includes('pi-detail-summary-file'),
-      'a labelled hole is worse than the absence')
+  test('a verified finance check and a standing PI decision read as such', () => {
+    const t = text(contextHtml({
+      finance: { verified: true, text: 'Verified by Asha Menon · 03 Aug 2026, 03:00 pm' },
+      piApprovedLine: 'PI approved by Rohit Verma · 04 Aug 2026, 10:00 am',
+    }))
+    assert.ok(t.includes('Verified by Asha Menon'))
+    assert.ok(t.includes('PI approved by Rohit Verma'))
   })
 
-  test('an unnamed creator draws no avatar and no empty name', () => {
-    const html = summaryHtml({
-      ownership: { name: null, when: 'Saved 02 Aug 2026, 11:30 am' },
-    })
-    assert.ok(!html.includes('boe-avatar'), 'no initials for nobody')
-    assert.ok(text(html).includes('Not named'))
+  test('a draft says it has not been submitted, and raises no finance question', () => {
+    const t = text(contextHtml({ status: 'draft', submittedAt: null, finance: null }))
+    assert.ok(t.includes('Not submitted yet'))
+    assert.ok(!t.includes('Finance'), 'describeFinanceStatus returns null for a draft')
+    assert.ok(t.includes('Draft — not yet with management'))
+  })
+
+  test('every state has its own words, and colour is never the only channel', () => {
+    const line = (status: string, extra: Partial<Parameters<typeof buildSubmissionContext>[0]> = {}) =>
+      buildSubmissionContext({
+        status, submitterName: 'N', submittedAt: 'x', finance: null,
+        piApprovedLine: null, rejectedLine: null, hasOrder: false, ...extra,
+      }).lines[0]
+    assert.deepEqual(line('needs_changes'), { key: 'review', label: 'Review', text: 'Returned for changes', tone: 'amber' })
+    assert.equal(line('rejected', { rejectedLine: 'Rejected by R · 05 Aug' }).text, 'Rejected by R · 05 Aug')
+    assert.equal(line('rejected', { rejectedLine: 'Rejected by R · 05 Aug' }).tone, 'red')
+    assert.equal(line('approved', { hasOrder: true }).text, 'Approved · Order created')
+    assert.equal(line('submitted').text, 'Awaiting management review')
+    const html = contextHtml()
+    assert.ok((html.match(/class="pi-detail-context-line-label"/g) ?? []).length >= 2,
+      'each dot sits beside a word saying what it means')
+    assert.ok(/class="pi-detail-context-dot"[^>]*aria-hidden="true"/.test(html))
   })
 })
 
-// ── 2. The top summary ───────────────────────────────────────────────────────
-//
-// The card answers four questions and nothing else: who the client is and how
-// to reach them, when the order was confirmed and when it is due, and how much
-// VERIFIED money has arrived against what the order is worth. These tests are
-// about what it SAYS — which figure counts, which does not, and what it does
-// when the PI gave nothing.
+// ── 2. The PI overview ───────────────────────────────────────────────────────
 
 /** The breakdown's own rows, so the card's figures come from where they will
- *  in the page: one array, shared by the summary and the Commercial breakdown. */
+ *  in the page: one array, shared by the overview and the breakdown. */
 const COMMERCIAL_ROWS = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
 
 const summaryHtml = (over: {
   client?: Parameters<typeof buildClientDetails>[0]
-  payment?: PaymentSummaryView | null
-  canAdd?: boolean
   confirmed?: string | null
   dates?: ReturnType<typeof buildDateSummary>
   figures?: ReturnType<typeof summaryCommercialFigures>
@@ -443,7 +502,7 @@ const summaryHtml = (over: {
   canEditDetails?: boolean
   onRequestCorrection?: (() => void) | null
   missingSummary?: string | null
-  ownership?: ReturnType<typeof buildOwnership>
+  meta?: ReturnType<typeof buildOverviewMeta>
   workbookName?: string | null
 } = {}) => renderToStaticMarkup(
   <PiSummaryCard
@@ -452,15 +511,10 @@ const summaryHtml = (over: {
     onEditSchedule={() => {}}
     onRequestCorrection={over.onRequestCorrection ?? null}
     missingSummary={over.missingSummary ?? null}
-    ownership={over.ownership ?? buildOwnership({
-      documentAuthor: 'Nishant Soni',
-      submitterName: 'Nishant Soni',
-      submittedAt: '03 Aug 2026, 09:30 am',
-      savedAt: '02 Aug 2026, 11:30 am',
-    })}
-    statusLabel={draftStatusLabel('submitted')}
-    tone={statusTone(draftStatusTone('submitted'))}
     workbookName={over.workbookName === undefined ? 'Kalyan-PI-Aug.xlsx' : over.workbookName}
+    meta={over.meta ?? buildOverviewMeta({
+      salesperson: 'Nishant Soni', submitterName: 'Priya Rao', createdOn: '01 Aug 2026',
+    })}
     onOpenClient={() => {}}
     client={buildClientDetails(over.client ?? {
       clientName: 'Kalyan Interiors',
@@ -477,124 +531,66 @@ const summaryHtml = (over: {
     billing={over.billing ?? buildBillingSummary({ raw: null, totalBeforeGst: 742850 })}
     canEditBilling={over.canEditBilling ?? false}
     onEditBilling={() => {}}
-    payment={over.payment === undefined ? PAID_PART : over.payment}
-    canAdd={over.canAdd ?? false}
-    onOpenPayments={() => {}}
-    onAddPayment={() => {}}
-    notice={null}
-    onDismissNotice={() => {}}
   />,
 )
 
-/** Partly paid: ₹3,50,625 of ₹8,76,563 verified, nothing awaiting. */
-const PAID_PART = buildPaymentSummaryView({
-  verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-  percentValue: 40, awaitingCount: 0,
-})
-
-describe('the top summary states VERIFIED payment, and only verified payment', () => {
-  test('nothing received reads as nothing, against the order it is measured on', () => {
-    const view = buildPaymentSummaryView({
-      verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 0,
-    })
-    assert.equal(view.ofTotal, '₹0 of ₹8,76,563')
-    assert.equal(view.percent, '0%')
-    assert.equal(view.barPercent, 0, 'an empty bar, never a hidden one')
+describe('the overview names each person once, under one established label each', () => {
+  test('Salesperson, PI submitted by, Created date — in that order', () => {
+    const meta = buildOverviewMeta({ salesperson: 'Nishant Soni', submitterName: 'Priya Rao', createdOn: '01 Aug 2026' })
+    assert.deepEqual(meta.map(m => m.label), ['Salesperson', 'PI submitted by', 'Created date'])
+    assert.deepEqual(meta.map(m => m.value), ['Nishant Soni', 'Priya Rao', '01 Aug 2026'])
   })
 
-  test('money awaiting Finance moves neither the percentage nor the bar', () => {
-    // The RPC reports verified figures; an unverified payment is in the row
-    // list and in `awaitingCount`, and in NOTHING that reads as money in hand.
-    const view = buildPaymentSummaryView({
-      verifiedAmount: '₹0', grandTotal: '₹8,76,563', verifiedPercent: '0%',
-      percentValue: 0, awaitingCount: 2,
-    })
-    assert.equal(view.barPercent, 0)
-    assert.equal(view.percent, '0%')
-    assert.equal(view.awaitingCount, 2)
-
-    const html = text(summaryHtml({ payment: view }))
-    assert.ok(html.includes('2 payments awaiting verification'),
-      'it is visible, and visibly not counted')
-    assert.ok(html.includes('not counted above'))
+  test('the salesperson is the name the PI carries — never borrowed from the submitter', () => {
+    const meta = buildOverviewMeta({ salesperson: null, submitterName: 'Priya Rao', createdOn: '01 Aug 2026' })
+    assert.equal(meta[0].value, null)
+    assert.equal(meta[0].absent, 'Not named')
+    assert.equal(meta[1].value, 'Priya Rao', 'the submitter is named once, under its own label')
   })
 
-  test('the bar is a width, never a figure, and cannot leave its track', () => {
-    const bar = (percentValue: number | null) => buildPaymentSummaryView({
-      verifiedAmount: '₹1', grandTotal: '₹2', verifiedPercent: 'x',
-      percentValue, awaitingCount: 0,
-    }).barPercent
-    assert.equal(bar(40), 40)
-    assert.equal(bar(140), 100, 'an overpaid PI fills the bar and does not overflow it')
-    assert.equal(bar(-5), 0)
-    assert.equal(bar(null), 0, 'a PI with no grand total has no proportion to show')
-    assert.equal(bar(Number.NaN), 0)
+  test('an unsubmitted PI says so, and a dash is never a value', () => {
+    const meta = buildOverviewMeta({ salesperson: '—', submitterName: null, createdOn: '  ' })
+    assert.deepEqual(meta.map(m => m.value), [null, null, null])
+    assert.equal(meta[1].absent, 'Not submitted yet')
   })
 
-  test('40% or more still prints the database’s own percentage, unrounded by us', () => {
-    const view = buildPaymentSummaryView({
-      verifiedAmount: '₹3,50,625', grandTotal: '₹8,76,563', verifiedPercent: '40%',
-      percentValue: 40, awaitingCount: 0,
-    })
-    assert.equal(view.percent, '40%')
-    assert.ok(text(summaryHtml({ payment: view })).includes('₹3,50,625 of ₹8,76,563'))
-  })
-
-  test('the figure itself is the way into the records', () => {
+  test('the strip renders every label once, with its icon hidden from assistive technology', () => {
     const html = summaryHtml()
-    assert.ok(html.includes('pi-detail-summary-open'), 'the amount is a control')
-    assert.ok(html.includes('aria-haspopup="dialog"'), 'and it announces what it opens')
+    const t = text(html)
+    for (const label of ['Salesperson', 'PI submitted by', 'Created date']) {
+      assert.equal(t.split(label).length - 1, 1, `${label} appears once`)
+    }
+    for (const retired of ['PI created by', 'Sales candidate', 'Sales Candidate', 'Assignee']) {
+      assert.ok(!t.includes(retired), `${retired} is a second word for somebody already named`)
+    }
+    const strip = html.slice(html.indexOf('class="pi-detail-meta"'), html.indexOf('class="pi-detail-dates"'))
+    assert.equal((strip.match(/aria-hidden="true"/g) ?? []).length, 3)
   })
 
-  test('Add payment is drawn only for somebody the gate allows', () => {
-    assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
-    assert.ok(!text(summaryHtml({ canAdd: false })).includes('Add payment'),
-      'the control is absent, not merely disabled')
-    assert.ok(text(summaryHtml({ canAdd: false })).includes(PAYMENT_DETAILS_LABEL),
-      'but anybody who can read the PI can still read its payments')
+  test('the workbook is named quietly, and a record with none shows no block', () => {
+    assert.ok(text(summaryHtml()).includes('Kalyan-PI-Aug.xlsx'))
+    assert.ok(!summaryHtml({ workbookName: null }).includes('pi-detail-overview-file'),
+      'a labelled hole is worse than the absence')
   })
 
-  test('the way in to the record is called one thing, whatever the record holds', () => {
-    // It used to read "View payments" once the PI had payments and "Payment
-    // details" while it had none — one control wearing two names for the one
-    // dialog it has always opened.
-    const cases = [
-      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 0 },
-      { verifiedAmount: '₹3,50,625', verifiedPercent: '40%', percentValue: 40, awaitingCount: 0 },
-      { verifiedAmount: '₹0', verifiedPercent: '0%', percentValue: 0, awaitingCount: 2 },
-    ]
-    for (const c of cases) {
-      const html = text(summaryHtml({ payment: buildPaymentSummaryView({
-        ...c, grandTotal: '₹8,76,563',
-      }) }))
-      assert.ok(html.includes(PAYMENT_DETAILS_LABEL), `${c.verifiedAmount}: the established name`)
-      assert.ok(!html.includes('View payments'), `${c.verifiedAmount}: and only that name`)
+  test('there is no payment in the overview — payment has its own card', () => {
+    const html = summaryHtml()
+    for (const gone of ['Payment', 'Add payment', PAYMENT_DETAILS_LABEL, 'role="progressbar"']) {
+      assert.ok(!html.includes(gone), `${gone} belongs to the payment status card`)
     }
   })
-
-  test('the summary says nothing while the position has not been read', () => {
-    const html = text(summaryHtml({ payment: null }))
-    assert.ok(html.includes('Loading…'))
-    assert.ok(!html.includes('of ₹'), 'never a figure invented to fill the space')
-  })
 })
 
-describe('the top summary repeats two commercial figures, and only two', () => {
+describe('the overview repeats two commercial figures, and only two', () => {
   test('each one is the Commercial breakdown’s own string, character for character', () => {
-    // Not "equal to two decimal places" — the SAME string. The card and the
-    // breakdown are handed one array, so there is no second formatting path.
     const figures = summaryCommercialFigures(COMMERCIAL_ROWS)
     const byKey = Object.fromEntries(COMMERCIAL_ROWS.map(r => [r.key, r.value]))
 
     assert.equal(figures.length, 2)
     assert.deepEqual(figures.map(f => f.key), ['gross', 'beforeGst'])
-    assert.equal(figures[0].value, byKey.gross,
-      'Product value IS Gross product amount')
-    assert.equal(figures[1].value, byKey.beforeGst,
-      'Total before GST IS Total before GST')
+    assert.equal(figures[0].value, byKey.gross, 'Product value IS Gross product amount')
+    assert.equal(figures[1].value, byKey.beforeGst, 'Total before GST IS Total before GST')
 
-    // And both reach the screen.
     const html = text(summaryHtml())
     assert.ok(html.includes('Product value'))
     assert.ok(html.includes('Total before GST'))
@@ -606,28 +602,20 @@ describe('the top summary repeats two commercial figures, and only two', () => {
     const figures = summaryCommercialFigures(COMMERCIAL_ROWS)
     assert.equal(figures[0].label, 'Product value')
     assert.equal(figures[1].label, 'Total before GST')
-    // The breakdown keeps naming the same row as the workbook's arithmetic does.
     assert.equal(COMMERCIAL_ROWS.find(r => r.key === 'gross')?.label, 'Gross product amount')
   })
 
   test('a figure the PI never stated is an em dash, never a ₹0', () => {
-    // total_before_gst is nullable. formatPiValue already renders an absent one
-    // as a dash with kind `missing`, and that is carried through rather than
-    // being coerced into a zero somebody would read as "nothing is owed".
     const rows = commercialBreakdownRows(buildCommercialRows(
       persistedCommercial(submission({ total_before_gst: null }))))
     const beforeGst = summaryCommercialFigures(rows)[1]
     assert.equal(beforeGst.kind, 'missing')
     assert.equal(beforeGst.value, '—')
-    assert.ok(!beforeGst.value.includes('0'), 'an absent total is not ₹0')
-
-    const html = text(summaryHtml({ figures: summaryCommercialFigures(rows) }))
-    assert.ok(html.includes('Total before GST'))
+    const html = summaryHtml({ figures: summaryCommercialFigures(rows) })
+    assert.ok(html.includes('class="pi-detail-figure-absent"'))
   })
 
   test('a genuine zero still prints as a zero', () => {
-    // gross_product_amount is NOT NULL in the schema, so nothing there is
-    // "missing" — a PI of entirely free items really is worth ₹0 in products.
     const rows = commercialBreakdownRows(buildCommercialRows(
       persistedCommercial(submission({ gross_product_amount: 0 }))))
     const gross = summaryCommercialFigures(rows)[0]
@@ -636,19 +624,16 @@ describe('the top summary repeats two commercial figures, and only two', () => {
   })
 
   test('the rest of the breakdown stays in the breakdown', () => {
-    // "Total before GST" is one of the two figures, so the word GST legitimately
-    // appears inside that label. What must NOT appear is a GST ROW — the tax as
-    // a figure of its own — or any other breakdown line.
     const html = text(summaryHtml()).split('Total before GST').join('')
-    for (const elsewhere of ['GST', 'Discount', 'Packing', 'Transportation', 'Subtotal', 'Fabric']) {
+    for (const elsewhere of ['GST', 'Discount', 'Packing', 'Transportation', 'Subtotal', 'Fabric', 'Grand']) {
       assert.ok(!html.includes(elsewhere), `${elsewhere} belongs to the Commercial breakdown alone`)
     }
-    // And the payment figures the column exists for are all still there.
-    assert.ok(html.includes('Payment received'))
-    assert.ok(html.includes('of ₹'))
-    assert.ok(summaryHtml().includes('pi-detail-summary-bar'))
-    assert.ok(text(summaryHtml({ canAdd: true })).includes('Add payment'))
-    assert.ok(html.includes(PAYMENT_DETAILS_LABEL))
+  })
+
+  test('three figures, as three cells of one grid', () => {
+    const html = summaryHtml()
+    const grid = html.slice(html.indexOf('class="pi-detail-figures-grid"'))
+    assert.equal((grid.match(/class="pi-detail-figure"/g) ?? []).length, 3)
   })
 })
 
@@ -658,9 +643,6 @@ describe('the card names the client, and holds the rest behind that name', () =>
     assert.equal((html.match(/Kalyan Interiors/g) ?? []).length, 1,
       'bill-to and ship-to are the same party here, and the name is printed once')
     assert.ok(!html.includes('Bill to') && !html.includes('Ship to'))
-    // The three facts that used to sit under the name are reference material.
-    // They are in the dialog now, and duplicating them here would defeat the
-    // point of moving them.
     assert.ok(!html.includes('12 Residency Road'), 'the address is not in the card')
     assert.ok(!html.includes('98450'), 'nor the number')
     assert.ok(!summaryHtml().includes('href="tel:'), 'and there is no dial link to press')
@@ -671,7 +653,6 @@ describe('the card names the client, and holds the rest behind that name', () =>
     assert.ok(html.includes('pi-detail-summary-client'), 'a button carries Enter, Space and focus')
     assert.ok(html.includes('aria-haspopup="dialog"'), 'and says what it opens')
     assert.ok(html.includes('pi-detail-summary-client-more'), 'with an affordance beside it')
-    // Not a button in appearance: no ground and no border at rest.
     const css = pageCss()
     assert.ok(/\.pi-detail-summary-client \{[^}]*background: none/.test(css))
     assert.ok(/\.pi-detail-summary-client \{[^}]*border: none/.test(css))
@@ -686,11 +667,8 @@ describe('the card names the client, and holds the rest behind that name', () =>
       billingAddress: null, shippingAddress: null,
     } }))
     assert.ok(html.includes('Kalyan Interiors'))
-    // "Not provided" belongs to the dialog. The card no longer has a field to
-    // report missing, so it must not report one.
     assert.ok(!html.includes('Contact not provided'))
     assert.ok(!html.includes('Location not provided'))
-    // The due date's own absence is a different word, and still the only one.
     assert.equal((html.match(/Not set/g) ?? []).length, 1)
   })
 
@@ -702,24 +680,24 @@ describe('the card names the client, and holds the rest behind that name', () =>
   })
 })
 
-describe('the billing declaration, on the card', () => {
+describe('the billing declaration, as the third figure', () => {
   const billed = (raw: unknown, totalBeforeGst: number | null = 742850) =>
     buildBillingSummary({ raw, totalBeforeGst })
 
-  test('undeclared says so, and offers Set to somebody who may declare one', () => {
-    const html = text(summaryHtml({ billing: billed(null), canEditBilling: true }))
-    assert.ok(html.includes('Billing percentage'))
-    assert.ok(html.includes('Undeclared'))
-    assert.ok(html.includes('Set'))
-    // The two readings it must never be mistaken for. Checked on the billing
-    // block itself: '0%' is a substring of the payment column's '40%'.
-    const block = html.slice(html.indexOf('Billing percentage'))
+  test('undeclared is a clear STATE, and offers Set to somebody who may declare one', () => {
+    const html = summaryHtml({ billing: billed(null), canEditBilling: true })
+    const t = text(html)
+    assert.ok(t.includes('Billing percentage'))
+    assert.ok(html.includes(`class="pi-detail-state-chip">${BILLING_NOT_DECLARED_LABEL}<`),
+      'a chip, not a muted word standing where a figure should be')
+    assert.ok(t.includes('Set'))
+    const block = t.slice(t.indexOf('Billing percentage'))
     assert.ok(!/\b0%/.test(block), 'undeclared is not zero')
     assert.ok(!/\b100%/.test(block), 'and it is not "bill everything" either')
-    assert.ok(!html.includes('Billing value'), 'and there is nothing to value yet')
+    assert.ok(!t.includes('Billing value'), 'and there is nothing to value yet')
   })
 
-  test('declared shows the percentage, its value, and Edit', () => {
+  test('declared shows the percentage as a figure, its value under it, and Edit', () => {
     const html = text(summaryHtml({ billing: billed('65.00'), canEditBilling: true }))
     assert.ok(html.includes('65%'))
     assert.ok(html.includes('Billing value'))
@@ -732,8 +710,7 @@ describe('the billing declaration, on the card', () => {
       const html = summaryHtml({ billing: billed(raw), canEditBilling: false })
       assert.ok(!html.includes('pi-detail-summary-billing-action'),
         'no Set and no Edit for somebody who may not change it')
-      assert.ok(!html.includes('aria-haspopup="dialog"\n' ) || true)
-      assert.ok(text(html).includes(raw === null ? 'Undeclared' : '65%'),
+      assert.ok(text(html).includes(raw === null ? BILLING_NOT_DECLARED_LABEL : '65%'),
         'but the fact itself is still readable')
     }
   })
@@ -755,23 +732,16 @@ describe('the billing declaration, on the card', () => {
   })
 
   test('it changes no other figure on the card', () => {
-    // The one thing that would make this field dangerous is if declaring a
-    // percentage moved a number somebody bills or approves against.
     const plain = text(summaryHtml({ billing: billed(null) }))
     const declared = text(summaryHtml({ billing: billed('65.00') }))
-    // The default fixture is 40% paid of ₹8,76,563; the figures below are the
-    // ones the card prints either side of the divider.
-    // The card fixture's own figures: ₹10,00,000 before GST, 40% of ₹8,76,563 paid.
-    for (const untouched of ['₹10,00,000', '₹3,50,625', '₹3,50,625 of ₹8,76,563', '40%']) {
+    const byKey = Object.fromEntries(COMMERCIAL_ROWS.map(r => [r.key, r.value]))
+    for (const untouched of [byKey.gross, byKey.beforeGst]) {
       assert.ok(plain.includes(untouched), `${untouched} missing while undeclared`)
       assert.ok(declared.includes(untouched), `${untouched} changed once declared`)
     }
   })
 
-  test('the control follows the DATABASE\u2019s capability, in all eight cases', () => {
-    // The page asks can_edit_order_submission and renders the answer. These are
-    // the eight states that answer covers — the first six as the card renders
-    // them, and the SQL half asserted underneath so the two cannot drift.
+  test('the control follows the DATABASE’s capability, in all eight cases', () => {
     const cases = [
       { who: 'owner, draft',                    editable: true },
       { who: 'owner, needs_changes',            editable: true },
@@ -786,39 +756,25 @@ describe('the billing declaration, on the card', () => {
       const html = summaryHtml({ billing: billed(null), canEditBilling: c.editable })
       assert.equal(html.includes('pi-detail-summary-billing-action'), c.editable,
         `${c.who}: the control should be ${c.editable ? 'visible' : 'hidden'}`)
-      // Either way the fact itself stays readable — read-only is not invisible.
-      assert.ok(text(html).includes('Undeclared'), `${c.who}: the value is still shown`)
+      assert.ok(text(html).includes(BILLING_NOT_DECLARED_LABEL), `${c.who}: the value is still shown`)
     }
   })
 
   test('and that capability is asked, never restated in the browser', () => {
     const page = read(PAGE)
-    // The mismatch this replaced: a client gate covering only the owner, while
-    // the database also admits an active admin. Restating the second branch here
-    // would mean reading users.role — which this page does not do — and would
-    // put a copy of an authority rule where it could drift.
     assert.ok(page.includes("supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId })"),
       'the authority is asked of the database')
     assert.ok(page.includes("supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId })"),
       'and so is the admin authority, which the owner rule cannot answer')
-    // BOTH answers, ORed. can_edit_order_submission is the OWNER rule and goes
-    // false the moment a PI is submitted — for admins too, because its actor
-    // test sits behind its state test. That is exactly the defect manual
-    // testing found: an active admin was shown no control on a submitted PI,
-    // and the RPC behind it refused anyway. The second probe is what carries
-    // the revised rule, and it is still ASKED, not restated.
     assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'),
       'and both answers together are what the card is given')
     assert.ok(!/canEditBilling=\{actions\./.test(page),
       'not describeSubmissionActions, which knows only about the owner')
-    // Comments on this page discuss users.role at length precisely because it is
-    // NOT read; the check has to look at code, not prose.
     const code = page
       .replace(/\/\*[\s\S]*?\*\//g, '')
       .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
     assert.ok(!/users\.role|role === ['"]admin['"]/.test(code),
       'and no role is read on this page to decide an authority')
-    // Asked ONCE, with the page's other reads — not every time a dialog opens.
     const inParallel = page.slice(page.indexOf('await Promise.all(['), page.indexOf('itemsResult.error'))
     assert.ok(inParallel.includes("supabase.rpc('can_edit_order_submission'"),
       'resolved in the existing parallel load')
@@ -827,27 +783,141 @@ describe('the billing declaration, on the card', () => {
   })
 
   test('the RPC refuses whenever that capability is false, whatever the UI did', () => {
-    // Hiding a button is not security. The write re-derives the same rule.
     const migration = readFileSync(join(process.cwd(),
       'supabase/migrations/20260923000000_order_submission_billing_percentage.sql'), 'utf8')
     const fn = migration.slice(
       migration.indexOf('create or replace function public.set_order_submission_billing_percentage'))
     assert.ok(fn.includes('if not public.can_edit_order_submission(p_submission_id) then'))
     assert.ok(fn.includes('ORDER_SUBMISSION_BILLING_NOT_EDITABLE'))
-    // And the check happens AFTER the row lock, so the state it reads is the
-    // state the write applies to.
     assert.ok(fn.indexOf('for update') < fn.indexOf('can_edit_order_submission'),
       'the row is locked before the authority is asked')
   })
 
-  test('no card, no rule and no ground was added to hold it', () => {
+  test('the state chip is a quiet state, not a warning and not a card', () => {
     const css = pageCss()
-    assert.ok(/\.pi-detail-summary-billing \{[^}]*margin-top/.test(css),
-      'space is what separates it from the figures above')
-    for (const forbidden of ['border', 'background', 'box-shadow']) {
-      assert.ok(!new RegExp(`\\.pi-detail-summary-billing \\{[^}]*${forbidden}`).test(css),
-        `no ${forbidden} on the billing block`)
+    assert.ok(/\.pi-detail-state-chip \{[^}]*border-radius: 6px/.test(css))
+    assert.ok(!/\.pi-detail-state-chip \{[^}]*(box-shadow|gradient|#d94f4f)/i.test(css))
+  })
+})
+
+// ── 2a. Payment status ────────────────────────────────────────────────────────
+
+const statusView = (over: Partial<Parameters<typeof buildPaymentStatusView>[0]> = {}): PaymentStatusView =>
+  buildPaymentStatusView({
+    confirmed: '₹3,50,625',
+    required: '₹3,50,625.20',
+    total: '₹8,76,563',
+    standardPercent: '40%',
+    standardPercentValue: 40,
+    verifiedPercent: '39.99%',
+    verifiedPercentValue: 39.99,
+    meetsStandard: false,
+    pendingCount: 0,
+    pendingAmount: '₹0',
+    ...over,
+  })
+
+const statusHtml = (over: {
+  status?: PaymentStatusView | null
+  canAdd?: boolean
+  canVerify?: boolean
+  decidableCount?: number
+} = {}) => renderToStaticMarkup(
+  <PiPaymentStatusCard
+    status={over.status === undefined ? statusView() : over.status}
+    canAdd={over.canAdd ?? false}
+    canVerify={over.canVerify ?? false}
+    decidableCount={over.decidableCount ?? 0}
+    onAddPayment={() => {}}
+    onOpenDetails={() => {}}
+    notice={null}
+    onDismissNotice={() => {}}
+  />,
+)
+
+describe('payment status: confirmed, required, and how far along', () => {
+  test('the card is headed Payment status and states all three figures', () => {
+    const t = text(statusHtml())
+    for (const part of ['Payment status', 'Confirmed', '₹3,50,625', 'Required', '₹3,50,625.20',
+      '40% of ₹8,76,563', 'Confirmed %', '39.99%', 'of ₹8,76,563']) {
+      assert.ok(t.includes(part), `${part} missing`)
     }
+  })
+
+  test('zero: nothing confirmed reads as nothing, over a red remainder', () => {
+    const view = statusView({ confirmed: '₹0', verifiedPercent: '0%', verifiedPercentValue: 0 })
+    assert.equal(view.barPercent, 0)
+    const html = statusHtml({ status: view })
+    assert.ok(html.includes('width:0%'))
+    assert.ok(html.includes('background:#F4D9D9'), 'short of the requirement, the rest is soft red')
+    assert.ok(html.includes('aria-valuenow="0"'))
+  })
+
+  test('partial: the database percentage, unrounded, with the requirement ticked', () => {
+    const html = statusHtml()
+    assert.ok(html.includes('width:39.99%'))
+    assert.ok(html.includes('left:40%'))
+  })
+
+  test('full: an overpaid PI fills the track and never overflows it; the rest goes neutral', () => {
+    const view = statusView({ verifiedPercent: '140%', verifiedPercentValue: 140, meetsStandard: true })
+    assert.equal(view.barPercent, 100)
+    assert.equal(view.requirementMet, true)
+    const html = statusHtml({ status: view })
+    assert.ok(html.includes('width:100%'))
+    assert.ok(html.includes('background:#E8EBF0'))
+  })
+
+  test('a bar width is a width, never a figure', () => {
+    assert.equal(barWidth(null), 0)
+    assert.equal(barWidth(Number.NaN), 0)
+    assert.equal(barWidth(-5), 0)
+    assert.equal(barWidth(40), 40)
+  })
+
+  test('pending verification is named beside the bar with its count and amount, and moves nothing', () => {
+    const view = statusView({
+      confirmed: '₹0', verifiedPercent: '0%', verifiedPercentValue: 0,
+      pendingCount: 2, pendingAmount: '₹1,00,000',
+    })
+    assert.equal(describePendingPayments(view), '2 payments pending verification · ₹1,00,000')
+    assert.equal(view.barPercent, 0, 'pending money is not in the bar')
+    const html = statusHtml({ status: view })
+    assert.ok(html.includes('class="pi-detail-paystatus-pending"'))
+    assert.ok(text(html).includes('2 payments pending verification · ₹1,00,000 — not counted as confirmed'))
+    assert.equal(describePendingPayments(statusView({ pendingCount: 1, pendingAmount: '₹5,000' })),
+      '1 payment pending verification · ₹5,000')
+  })
+
+  test('nothing pending, no notice', () => {
+    assert.equal(describePendingPayments(statusView()), null)
+    assert.ok(!statusHtml().includes('pi-detail-paystatus-pending'))
+  })
+
+  test('an unknown requirement is a dash, and no note is invented for it', () => {
+    const view = statusView({ required: null })
+    assert.equal(view.required, '—')
+    assert.equal(view.requiredNote, null)
+  })
+
+  test('Add payment only where the gate allows; Payment details for everybody', () => {
+    assert.ok(buttonLabels(statusHtml({ canAdd: true })).includes('Add payment'))
+    assert.ok(!buttonLabels(statusHtml({ canAdd: false })).includes('Add payment'))
+    assert.ok(buttonLabels(statusHtml()).includes(PAYMENT_DETAILS_LABEL))
+  })
+
+  test('the verify control is drawn only for a payment verifier with something to decide', () => {
+    const has = (html: string) => buttonLabels(html).some(l => /^Verify \d+ pending$/.test(l))
+    assert.ok(!has(statusHtml({ canVerify: false, decidableCount: 2 })), 'no authority, no control')
+    assert.ok(!has(statusHtml({ canVerify: true, decidableCount: 0 })), 'nothing pending, no control')
+    assert.ok(buttonLabels(statusHtml({ canVerify: true, decidableCount: 2 })).includes('Verify 2 pending'))
+  })
+
+  test('nothing is shown or guessed until the summary has been read', () => {
+    const html = statusHtml({ status: null })
+    assert.ok(text(html).includes('Loading…'))
+    assert.ok(!text(html).includes('of ₹'))
+    assert.ok(!html.includes('role="progressbar"'))
   })
 })
 
@@ -939,22 +1009,21 @@ describe('the client dialog answers billing and shipping separately', () => {
   })
 })
 
-describe('the top summary states the dates it has, and pauses the one it does not', () => {
+describe('the overview states the two dates it has, large, and pauses the one it does not', () => {
   test('the confirm date is shown as a date', () => {
     const html = text(summaryHtml({ confirmed: '31 Jan 2026' }))
     assert.ok(html.includes('Confirm date'))
     assert.ok(html.includes('31 Jan 2026'))
   })
 
-  test('there is no PI-created DATE and no prose dispatch commitment', () => {
-    // "PI created by" is the ownership label, and belongs. What must not come
-    // back is the PI-creation DATE, which said nothing anybody acts on, and the
-    // dispatch prose masquerading as a date field.
-    const html = text(summaryHtml())
-    assert.ok(!html.includes('PI created on'))
-    assert.ok(!/PI created\s+\d/.test(html), 'the creation date is not a metric')
-    assert.ok(!html.includes('Dispatch'))
-    assert.ok(!html.includes('weeks from date of confirmation'))
+  test('the dates band holds the two schedule dates and nothing else', () => {
+    const html = summaryHtml()
+    const band = html.slice(html.indexOf('class="pi-detail-dates"'), html.indexOf('class="pi-detail-figures"'))
+    const labels = [...band.matchAll(/class="pi-detail-date-label">([^<]+)</g)].map(m => m[1])
+    assert.deepEqual(labels, ['Confirm date', 'Due date'])
+    const t = text(html)
+    assert.ok(!t.includes('Dispatch'))
+    assert.ok(!t.includes('weeks from date of confirmation'))
   })
 
   test('an absent due date renders “Not set”, never a date derived from prose', () => {
@@ -969,8 +1038,6 @@ describe('the top summary states the dates it has, and pauses the one it does no
     }))
     assert.ok(html.includes('Due date'))
     assert.ok(html.includes('Not set'))
-    // The commitment is on screen, as supporting text under the empty row, and
-    // prefixed so it cannot be read as the date itself.
     assert.ok(html.includes('Commitment: 6 weeks from date of confirmation'))
     assert.ok(!/Due date\s*6 weeks/.test(html), 'the prose never occupies the date slot')
   })
@@ -984,8 +1051,7 @@ describe('the top summary states the dates it has, and pauses the one it does no
     }))
     assert.ok(html.includes('25 Mar 2026'))
     assert.ok(!html.includes('Not set'))
-    assert.ok(!html.includes('Commitment:'),
-      'one answer beside a real date, not two')
+    assert.ok(!html.includes('Commitment:'), 'one answer beside a real date, not two')
   })
 
   test('a confirm date the PI never gave says so rather than showing a dash', () => {
@@ -993,20 +1059,177 @@ describe('the top summary states the dates it has, and pauses the one it does no
     assert.ok(html.includes('Confirm date'))
     assert.ok(!html.includes('—'))
   })
+
+  test('the date VALUES carry the weight — materially larger and heavier than their labels', () => {
+    const css = pageCss()
+    const size = (cls: string) => Number(new RegExp(`\\.${cls} \\{[^}]*font-size: ([\\d.]+)px`).exec(css)?.[1])
+    const weight = (cls: string) => Number(new RegExp(`\\.${cls} \\{[^}]*font-weight: (\\d+)`).exec(css)?.[1])
+    assert.ok(size('pi-detail-date-value') >= 20, 'a date reads at a glance')
+    assert.ok(size('pi-detail-date-value') >= size('pi-detail-date-label') * 1.6,
+      'the value, not the label, is what grew')
+    assert.ok(weight('pi-detail-date-value') >= 700)
+    assert.ok(size('pi-detail-date-note') <= 11.5, 'the commitment stays secondary')
+  })
 })
 
-describe('the top summary drops what the old overview spent space on', () => {
+describe('the overview drops what the old one spent space on', () => {
   const html = text(summaryHtml())
 
   test('no standalone Grand Total, no product count, no shouted headings', () => {
-    // The order's worth is still on the card — as the thing payment is measured
-    // against, which is the only reason it was ever there.
-    assert.ok(html.includes('of ₹8,76,563'))
     assert.ok(!html.includes('Grand Total'))
     assert.ok(!/product line/.test(html))
     assert.ok(!html.includes('Commercial snapshot'))
     assert.ok(!html.includes('Verified payment required'),
       'the approval badge belongs with the approval controls, not the summary')
+  })
+})
+
+// ── 2b. The workflow panel, beside the context row ────────────────────────────
+
+describe('the workflow panel does not repeat what the context row already says', () => {
+  const submitted = submission({
+    status: 'submitted',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    advance_condition: 'standard',
+  })
+
+  const panelHtml = (
+    row: PersistedSubmission,
+    viewer: Parameters<typeof viewerState>[1],
+    statusShownAbove: boolean,
+    piApprovedLine: string | null = null,
+  ) => {
+    const s = viewerState(row, viewer)
+    return renderToStaticMarkup(
+      <PiWorkflowPanel
+        panel={s.panel}
+        actions={s.actions}
+        status={row.status}
+        reviewNote={row.review_note}
+        employeeReply={null}
+        advanceRefusal={null}
+        readiness={null}
+        onFixReadiness={null}
+        blockingCount={0}
+        acting={false}
+        finance={s.finance}
+        approvalBlocker={s.readiness.blocker}
+        approvalReady={s.readiness.ready}
+        piApprovedLine={piApprovedLine}
+        approvedOrder={s.approvedOrder}
+        onChangePi={() => {}}
+        onSubmit={() => {}}
+        onRequestChanges={() => {}}
+        onReject={() => {}}
+        onVerifyFinance={() => {}}
+        onApprove={() => {}}
+        onOpenOrder={() => {}}
+        advanceBand={null}
+        statusShownAbove={statusShownAbove}
+      />,
+    )
+  }
+
+  test('the owner of a submitted PI, with nothing to press, gets no second status card', () => {
+    const owner = { id: OWNER, canCreate: true }
+    assert.ok(text(panelHtml(submitted, owner, false)).includes('Submitted by'),
+      'on its own the panel still says who and when')
+    assert.equal(panelHtml(submitted, owner, true), '',
+      'beside the context row it has nothing left to say')
+  })
+
+  test('a reviewer keeps every decision, without the metadata line or the finance sentence', () => {
+    const html = panelHtml(submitted, { id: REVIEWER, canReview: true }, true)
+    const labels = buttonLabels(html)
+    for (const label of [REQUEST_CHANGES_BUTTON_LABEL, REJECT_BUTTON_LABEL]) {
+      assert.ok(labels.includes(label), `${label} must survive`)
+    }
+    assert.ok(!text(html).includes('Submitted by'))
+    assert.ok(!text(html).includes(FINANCE_PENDING_TEXT))
+  })
+
+  test('a finance verifier keeps Verify Finance — an action is never a restatement', () => {
+    const html = panelHtml(submitted, { id: FINANCE, canVerifyFinance: true }, true)
+    assert.ok(buttonLabels(html).includes(VERIFY_FINANCE_BUTTON_LABEL))
+  })
+
+  test('a standing PI decision is said once', () => {
+    const line = 'PI approved by Rohit Verma · 04 Aug 2026, 10:00 am'
+    const reviewer = { id: REVIEWER, canReview: true }
+    assert.ok(text(panelHtml(submitted, reviewer, false, line)).includes(line))
+    assert.ok(!text(panelHtml(submitted, reviewer, true, line)).includes(line))
+  })
+
+  test('the page asks for exactly that', () => {
+    assert.ok(/statusShownAbove\s*\/>/.test(read(PAGE)))
+  })
+})
+
+// ── 6a. The commercial breakdown card ─────────────────────────────────────────
+
+describe('the commercial breakdown leads with the PI total and keeps only lines that say something', () => {
+  const rows = commercialBreakdownRows(buildCommercialRows(persistedCommercial(submission())))
+  const view = buildBreakdownView(rows)
+  const html = renderToStaticMarkup(<PiCommercialBreakdown view={view} />)
+
+  test('the PI total is large, first, and the builder’s own string', () => {
+    const total = rows.find(r => r.key === 'grandTotal')
+    assert.ok(total)
+    assert.equal(view.total?.value, total.value)
+    assert.ok(html.includes(`class="pi-detail-breakdown-total-value">${total.value}<`))
+    assert.ok(html.indexOf('pi-detail-breakdown-total') < html.indexOf('pi-detail-breakdown-rows'))
+    assert.ok(!view.rows.some(r => r.key === 'grandTotal'), 'and it is not repeated as a row')
+  })
+
+  test('every line shown is the shared builder’s string, character for character', () => {
+    for (const shown of view.rows) {
+      assert.equal(shown.value, rows.find(r => r.key === shown.key)?.value, shown.key)
+    }
+  })
+
+  test('no line the PI never stated, none marked not applicable, and never the advance', () => {
+    const keys = view.rows.map(r => r.key)
+    for (const hidden of rows.filter(r => r.kind === 'missing' || r.kind === 'notApplicable')) {
+      assert.ok(!keys.includes(hidden.key), `${hidden.key} says nothing here`)
+    }
+    assert.ok(!keys.includes('advance'))
+    assert.ok(!text(html).includes('Required advance'))
+    for (const kept of ['gross', 'discount', 'subtotal', 'beforeGst', 'gst']) {
+      assert.ok(keys.includes(kept), `${kept} is information and stays`)
+    }
+  })
+
+  test('a zero discount and a subtotal identical to the product value are not repeated', () => {
+    const plain = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(persistedCommercial(
+      submission({ discount_amount: 0, subtotal_after_discount: 1000000 }))))).rows.map(r => r.key)
+    assert.ok(!plain.includes('discount'))
+    assert.ok(!plain.includes('subtotal'))
+    assert.ok(plain.includes('gross') && plain.includes('beforeGst'))
+  })
+
+  test('product value is called what the overview calls it', () => {
+    assert.equal(view.rows[0].key, 'gross')
+    assert.equal(view.rows[0].label, 'Product value')
+  })
+
+  test('amounts are figures, and tax opens the one group', () => {
+    assert.equal((html.match(/pi-detail-breakdown-subtotal/g) ?? []).length, 1)
+    // From the end of the row's opening tag, so the text starts at its label.
+    const subtotalRow = html.slice(html.indexOf('>', html.indexOf('pi-detail-breakdown-subtotal')) + 1)
+    assert.ok(text(subtotalRow).trim().startsWith('Total before GST'))
+    const css = pageCss()
+    assert.ok(/\.pi-detail-breakdown-row \{[^}]*justify-content: space-between/.test(css))
+    assert.ok(/\.pi-detail-breakdown-row dd \{[^}]*text-align: right/.test(css))
+    assert.ok(/\.pi-detail-breakdown-amount \{[^}]*font-variant-numeric: tabular-nums/.test(css))
+    assert.ok(/\.pi-detail-breakdown-total-value \{[^}]*font-size: 24px/.test(css))
+  })
+
+  test('a PI with no stated total says so, muted, rather than printing zero', () => {
+    const missing = buildBreakdownView(commercialBreakdownRows(buildCommercialRows(persistedCommercial(
+      submission({ grand_total: null })))))
+    assert.ok(renderToStaticMarkup(<PiCommercialBreakdown view={missing} />)
+      .includes('class="pi-detail-breakdown-total-absent"'))
   })
 })
 
@@ -1955,151 +2178,68 @@ describe('the lower grid pairs the two reference cards', () => {
 
 // ── The responsive arrangement ────────────────────────────────────────────────
 
-describe('the layout is CSS, at three real breakpoints', () => {
+describe('the layout is CSS, at real breakpoints', () => {
   const css = pageCss()
 
-  test('the two dates share ONE band, split by a hairline that is not a border', () => {
-    // The due date used to carry a warm ground and a 2px accent of its own,
-    // which made a card inside a card. One band holds both; the separator is an
-    // ELEMENT stretched between the cells, so it stops at the band's padding
-    // instead of running the full height the way a border on a cell would.
-    assert.ok(/\.pi-detail-summary-schedule \{[^}]*grid-template-columns: minmax\(0, 1fr\) 1px minmax\(0, 1fr\)/.test(css),
-      'two equal cells with a one-pixel track between them')
-    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*align-self: stretch/.test(css))
-    assert.ok(/\.pi-detail-summary-sched-rule \{[^}]*background:/.test(css),
-      'a background, not a border')
-    // And the due date's emphasis costs no separation at all.
-    assert.ok(/\.pi-detail-summary-due-dot \{[^}]*border-radius: 50%/.test(css))
-    assert.ok(/\.pi-detail-summary-due-value \{[^}]*font-weight: 700/.test(css))
-    assert.ok(!/\.pi-detail-summary-due \{/.test(css), 'the amber block is gone')
+  test('the context row is one column, then exactly two equal columns from tablet width', () => {
+    assert.ok(/\.pi-detail-context \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@media \(min-width: 768px\) \{\s*\.pi-detail-context \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
+    // The divider is the second cell's own edge: a rule on top while stacked,
+    // on its left side by side — never both.
+    assert.ok(/\.pi-detail-context-cell \+ \.pi-detail-context-cell \{[^}]*border-top: 1px solid/.test(css))
+    assert.ok(/@media \(min-width: 768px\)[\s\S]*?\.pi-detail-context-cell \+ \.pi-detail-context-cell \{\s*border-top: none;\s*border-left: 1px solid/.test(css))
   })
 
-  test('the order values are one compact group: label over value, twice', () => {
-    // Stacked, not label-left/figure-right. Side by side the pair needs ~166px
-    // and 38% of this surface at tablet is not that — the label wrapped, which
-    // is the compressed reading a narrow column has to avoid.
-    assert.ok(/\.pi-detail-summary-value-row \{[^}]*flex-direction: column/.test(css))
-    assert.ok(/\.pi-detail-summary-money \{[^}]*font-variant-numeric: tabular-nums/.test(css),
-      'so the two figures line up digit for digit')
-    assert.ok(/\.pi-detail-summary-values \{ align-self: start/.test(css),
-      'and the group starts at the top, so its first label is level with '
-      + '"Payment received" across the divider')
+  test('the overview is one column, then two balanced columns of equal height', () => {
+    assert.ok(/\.pi-detail-overview \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@media \(min-width: 1024px\) \{\s*\.pi-detail-overview \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@media \(min-width: 1024px\) \{\s*\.pi-detail-overview \{[^}]*align-items: stretch/.test(css),
+      'the figures column is as tall as the one beside it — no dead space under them')
   })
 
-  test('the surface splits worth from received, and stacks them on a phone', () => {
-    // A 1px TRACK, not a border: neither area can push the other around, and
-    // the divider insets from the surface's padding instead of running its
-    // full height.
-    assert.ok(/\.pi-detail-summary-paybody \{[^}]*grid-template-columns: minmax\(0, 0\.636fr\) 1px minmax\(0, 1fr\)/.test(css))
-    // The body fills the surface, so the payment column inherits its full
-    // height and has somewhere to push its controls to.
-    assert.ok(/\.pi-detail-summary-paybody \{[^}]*flex: 1 1 auto/.test(css))
-    assert.ok(/\.pi-detail-summary-payrule \{[^}]*align-self: stretch/.test(css))
-    // The same element lies down at phone width — one divider, two orientations,
-    // so there is never a second one to keep in step.
-    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-paybody \{\s*grid-template-columns: minmax\(0, 1fr\)/.test(css))
-    // Stacked, the separation is SPACE. A rule laid across one column would be
-    // a horizontal divider inside the surface, which this card does not have.
-    assert.ok(/@media \(max-width: 700px\)[\s\S]*?\.pi-detail-summary-payrule \{ display: none/.test(css))
+  test('the three figures fill their column, measured on the column itself', () => {
+    assert.ok(/\.pi-detail-figures \{[^}]*container-type: inline-size/.test(css))
+    assert.ok(/\.pi-detail-figures-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css))
+    assert.ok(/@container \(min-width: 480px\) \{\s*\.pi-detail-figures-grid \{\s*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css))
+    assert.ok(/\.pi-detail-figures-grid \{[^}]*flex: 1 1 auto/.test(css), 'the grid fills the container’s height')
+    assert.ok(/\.pi-detail-figure \{[^}]*justify-content: center/.test(css))
+    assert.ok(/\.pi-detail-figure-value,\s*\.pi-detail-figure-absent \{[^}]*font-size: 22px/.test(css), 'large values')
+    assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 11\.5px/.test(css), 'and muted labels')
   })
 
-  test('the card is two columns, and the finance surface fills its own', () => {
-    assert.ok(/\.pi-detail-summary \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css),
-      'one column is the floor: the order, then the money, in reading order')
-    assert.ok(
-      /@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{\s*grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1\.56fr\)/.test(css),
-      'and roughly 39 / 61 once there is room for both')
-    // EQUAL HEIGHT, and no height is set to get it: the outer grid stretches the
-    // surface, so its bottom edge lands on the left column's. What matters is
-    // where the extra height goes — see the controls test below.
-    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary \{[^}]*align-items: stretch/.test(css))
-    assert.ok(!/\.pi-detail-summary-paycard \{[^}]*align-self: start/.test(css),
-      'the surface must not opt out of the stretch')
-    for (const fixed of ['height: 1', 'height: 2', 'height: 3', 'position: absolute']) {
-      assert.ok(!new RegExp(`\\.pi-detail-summary-paycard \\{[^}]*${fixed}`).test(css),
-        `no fixed height and no absolute positioning (${fixed})`)
-    }
+  test('payment status: three figures, two on a phone, actions full width on a narrow phone', () => {
+    assert.ok(/\.pi-detail-paystatus-figures \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css))
+    assert.ok(/@media \(max-width: 560px\) \{\s*\.pi-detail-paystatus-figures \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
+    assert.ok(/@media \(max-width: 480px\) \{\s*\.pi-detail-paystatus-actions \{\s*width: 100%/.test(css))
+    assert.ok(/\.pi-detail-paystatus-value \{[^}]*font-size: 22px/.test(css))
   })
 
-  test('the spare height lands between the bar and the controls, in ONE column', () => {
-    // The auto margin is the point, and so is where it lives. Inside the
-    // payment column it opens room between the progress bar and the two
-    // controls; on the surface itself it would be a footer under both areas,
-    // which is the composition this replaced.
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*margin-top: auto/.test(css))
-    assert.ok(!/\.pi-detail-summary-actions \{[^}]*border-top/.test(css),
-      'and there is no rule above them')
-    const html = summaryHtml({ canAdd: true })
-    const state = html.slice(html.indexOf('pi-detail-summary-paystate'))
-    for (const control of ['pi-detail-summary-add', 'pi-detail-summary-view']) {
-      assert.ok(state.includes(control), `${control} belongs to the payment column`)
-    }
-    // Left-aligned with the amount and the bar above them, never pushed right.
-    assert.ok(!/\.pi-detail-summary-actions \{[^}]*justify-content: flex-end/.test(css))
-    // With no spare height to take — a phone — the padding leaves the usual gap.
-    assert.ok(/\.pi-detail-summary-actions \{[^}]*padding-top: 3px/.test(css))
-    assert.ok(/\.pi-detail-summary-paystate \{[^}]*gap: 8px/.test(css),
-      '8px between the payment elements, so 11px under the bar when auto is zero')
-  })
-
-  test('there is no horizontal divider anywhere inside the finance surface', () => {
-    // Two areas, one vertical hairline. A horizontal rule inside the surface is
-    // the treatment this card removed twice over.
-    for (const sel of ['paycard', 'paybody', 'paystate', 'values', 'actions']) {
-      assert.ok(!new RegExp(`\\.pi-detail-summary-${sel} \\{[^}]*border-(top|bottom):`).test(css),
-        `${sel} must not carry a horizontal rule`)
-    }
-  })
-
-  test('ownership falls to the foot of its column, by a class and not by type', () => {
-    // :last-of-type matched nothing here — the last DIV child of the column is
-    // the ownership block itself, so the rule silently did nothing.
-    assert.ok(/@media \(min-width: 900px\)[\s\S]*?\.pi-detail-summary-hr-foot \{ margin-top: auto/.test(css))
-    assert.ok(!/\.pi-detail-summary-hr:last-of-type/.test(css))
-  })
-
-  test('the boundaries inside the left column are hairlines, never boxes', () => {
-    assert.ok(/\.pi-detail-summary-hr \{[^}]*height: 1px/.test(css))
-    assert.ok(!/\.pi-detail-summary-hr \{[^}]*border-left|\.pi-detail-summary-hr \{[^}]*border-right/.test(css))
-  })
-
-  test('two soft surfaces, each doing one job, and neither shouting', () => {
-    // The schedule band and the finance surface. Both are quiet grounds rather
-    // than boxes: no shadow, no gradient, and a border only on the one that has
-    // to hold its own against the white card beside it.
-    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?background: #fafbfc/.test(css))
-    assert.ok(/\.pi-detail-summary-paycard \{[\s\S]*?border-radius: 9px/.test(css))
-    assert.ok(/\.pi-detail-summary-schedule \{[^}]*background: #f7f8fa/.test(css))
-    assert.ok(/\.pi-detail-summary-schedule \{[^}]*border-radius: 7px/.test(css))
-    assert.ok(!/\.pi-detail-summary-schedule \{[^}]*border:/.test(css),
-      'the band needs no outline of its own')
-    for (const surface of ['paycard', 'schedule']) {
-      assert.ok(!new RegExp(`\\.pi-detail-summary-${surface} \\{[^}]*(box-shadow|gradient)`).test(css),
-        `${surface}: no shadow and no gradient`)
-    }
-  })
-
-  test('every rule in the card is horizontal', () => {
-    // The old card drew vertical rules between three columns, which is what made
-    // it read as a form. The two inside the left column are the boundaries
-    // between its three groups; there is no rule between the columns at all —
-    // the surface's own edge is the separation.
-    assert.ok(/\.pi-detail-summary-hr \{[\s\S]*?background: rgba\(0, 0, 0, 0\.07\)/.test(css))
-    // NO EXCEPTIONS ANY MORE. The due date's 2px left accent was the last
-    // vertical border in the card and it is gone with the amber block; the one
-    // vertical line left — inside the schedule band — is an element, not a
-    // border, so this guard is absolute again.
-    const vertical = css.match(/\.pi-detail-summary[a-z-]*\s*\{[^}]*border-(left|right):[^;]*solid/g)
-    assert.equal(vertical, null, 'no vertical borders anywhere in the summary')
-  })
-
-  test('the progress bar cannot overflow its track and respects reduced motion', () => {
-    assert.ok(/\.pi-detail-summary-bar \{[\s\S]*?overflow: hidden/.test(css))
-    assert.ok(/prefers-reduced-motion: reduce[\s\S]*?\.pi-detail-summary-bar-fill \{ transition: none/.test(css))
+  test('the progress bar cannot overflow its track', () => {
+    assert.ok(read('src/components/orders/PiPaymentCard.tsx').includes("overflow: 'hidden'"))
+    assert.ok(read('src/app/orders/drafts/[submissionId]/piDetailView.ts')
+      .includes('return Math.max(0, Math.min(100, value))'))
   })
 
   test('actions take a readable full width on a narrow phone', () => {
     assert.ok(/@media \(max-width: 480px\)[\s\S]*?\.pi-detail-workflow-actions \{\s*width: 100%/.test(css))
+  })
+
+  test('no new surface shouts: no shadow and no gradient', () => {
+    for (const sel of ['context', 'overview', 'figures', 'dates', 'paystatus', 'breakdown']) {
+      assert.ok(!new RegExp(`\\.pi-detail-${sel}[a-z-]* \\{[^}]*(box-shadow|gradient)`).test(css),
+        `${sel}: no shadow and no gradient`)
+    }
+  })
+
+  test('the Confirmed Order page keeps the summary rules it still renders', () => {
+    // OrderPiSections draws the approved PI with these classes. The PI Draft no
+    // longer uses them; their rules were deliberately left in place.
+    const order = read('src/app/orders/[id]/OrderPiSections.tsx')
+    for (const cls of ['pi-detail-summary-schedule', 'pi-detail-summary-paycard', 'pi-detail-summary-money',
+      'pi-detail-summary-client', 'pi-detail-summary-billing-head']) {
+      assert.ok(order.includes(cls), `${cls} is still the Order page’s`)
+      assert.ok(new RegExp(`\\.${cls} \\{`).test(css), `${cls} keeps its rule`)
+    }
   })
 
   test('every column of this page is minmax(0, …), so nothing can widen it', () => {
@@ -2109,9 +2249,8 @@ describe('the layout is CSS, at three real breakpoints', () => {
       // `repeat(N, minmax(0, …))` is just as bounded as a list of minmax()
       // tracks; unwrapping it is what lets the same check cover both.
       for (const track of value.replace(/repeat\(\d+,\s*/g, '').split(/\)\s+/)) {
-        // A FIXED length cannot be widened by its content either — the schedule
-        // band's separator is a 1px track — so the rule is "bounded", not
-        // "spelled minmax". Anything flexible still has to say minmax(0, …).
+        // A FIXED length cannot be widened by its content either, so the rule is
+        // "bounded", not "spelled minmax". Anything flexible has to say minmax(0, …).
         assert.ok(track.startsWith('minmax(0,') || /^\d+px\b/.test(track),
           `${value} must not be able to overflow its grid`)
       }
@@ -2123,7 +2262,6 @@ describe('the layout is CSS, at three real breakpoints', () => {
     const selectors = [...global.matchAll(/^\.([a-z0-9-]+)/gm)].map(m => m[1])
     const mine = selectors.filter(name => name.startsWith('pi-detail-'))
     assert.ok(mine.length >= 15, 'the page owns a real block')
-    // Nothing outside the prefix was added: the block is appended at the end.
     assert.ok(global.indexOf('.pi-detail-') > global.indexOf('.boe-page-body'),
       'appended after the shared rules rather than woven into them')
   })
@@ -2192,21 +2330,32 @@ describe('the page is assembled in the redesigned scan order', () => {
   })
 
   test('the payment position is answered in exactly one place on the page', () => {
-    // It used to be answered twice: a block in the top overview and a full card
-    // below the products. The summary is now the only section, and the detail
-    // opens out of it as a dialog.
+    assert.equal((page.match(/<PiPaymentStatusCard/g) ?? []).length, 1)
     assert.equal((page.match(/<PiSummaryCard/g) ?? []).length, 1)
     assert.ok(!page.includes('<PiPaymentCard'), 'the standalone payments section is gone')
     assert.equal((page.match(/<PiPaymentDetailsModal/g) ?? []).length, 1,
       'and the records open in the dialog the rest of the application uses')
   })
 
+  test('status and dates first, then value, then payment, then the decisions', () => {
+    const order = [
+      '{justSaved && <PiSavedStrip />}',
+      '<PiContextRow',
+      '<PiSummaryCard',
+      '<PiPaymentStatusCard',
+      '<PiWorkflowPanel',
+    ].map(at)
+    assert.deepEqual([...order].sort((a, b) => a - b), order,
+      'the context row sits directly under the save banner, above the overview')
+    assert.ok(!page.includes('<PiOrderNumberPanel'), 'the reserved number has one home, in the context row')
+  })
+
   test('the commercial breakdown and the activity trail come after them, together', () => {
     assert.ok(at('{/* Products */}') < at('<PiLowerGrid'))
     const grid = page.slice(at('<PiLowerGrid'), at('<PiWarningPanel'))
-    assert.ok(grid.includes('<PiCommercialSummary'), 'the breakdown is in the grid')
+    assert.ok(grid.includes('<PiCommercialBreakdown view={breakdown} />'), 'the breakdown is in the grid')
     assert.ok(grid.includes('<PiActivityTimeline'), 'and so is the trail')
-    assert.ok(grid.indexOf('<PiCommercialSummary') < grid.indexOf('<PiActivityTimeline'),
+    assert.ok(grid.indexOf('<PiCommercialBreakdown') < grid.indexOf('<PiActivityTimeline'),
       'breakdown first, which is also the order they stack in on a phone')
   })
 
@@ -2588,6 +2737,41 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     }
     assert.ok(read(PAGE).includes('describeSubmissionFailure(error, action).message'))
   })
+
+  test('payment decisions reach the database only through Finance’s own doors', () => {
+    // The page writes no payment and names no payment table or RPC. Approve and
+    // Reject run through the one shared helper, which makes exactly the calls
+    // Finance's review dialog makes — see src/lib/finance/paymentDecision.test.ts.
+    assert.ok(page.includes("import { decidePayment, type PaymentDecision } from '@/lib/finance/paymentDecision'"))
+    assert.equal((page.match(/decidePayment\(/g) ?? []).length, 1, 'one call site')
+    assert.ok(!/approve_finance_payment_request|finance_payment_requests/.test(page))
+  })
+
+  test('only the Finance approval authority draws a payment decision', () => {
+    assert.equal((page.match(/setCanApprovePayments\(/g) ?? []).length, 1, 'set in one place')
+    assert.ok(page.includes('setCanApprovePayments(financeCaps.canApprovePayment)'),
+      'from the capability the Finance screens read — never an Orders capability')
+    assert.ok(page.includes('onDecide={canApprovePayments ? decidePendingPayment : null}'))
+    assert.ok(page.includes('canVerify={canApprovePayments}'))
+  })
+
+  test('and that authority grants nothing on the PI itself', () => {
+    const slice = (from: string, to: string) => {
+      const start = page.indexOf(from)
+      assert.ok(start > 0, `${from} must be on the page`)
+      return page.slice(start, page.indexOf(to, start))
+    }
+    const regions: [string, string][] = [
+      ['the PI decision rules', slice('const actions = describeSubmissionActions({', '})')],
+      ['who may record a payment', slice('const canAddPayment = canAddPiPayment(', 'const clientDetails')],
+      ['the workflow panel', slice('<PiWorkflowPanel', 'statusShownAbove')],
+      ['the product editors', slice('const canEditProducts =', '\n')],
+    ]
+    for (const [name, region] of regions) {
+      assert.ok(!region.includes('canApprovePayments'), `${name} must not read the payment authority`)
+    }
+    assert.ok(page.includes('canEditBilling={canEditSubmission || canAdminAmend}'))
+  })
 })
 
 // ══ THREE EDIT CONTROLS, EACH BESIDE WHAT IT CHANGES ═════════════════════════
@@ -2605,13 +2789,9 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
 
 describe('each edit control sits beside what it edits', () => {
   /**
-   * The markup between two named regions.
-   *
-   * Boundaries are given EXPLICITLY rather than guessed from "the next element
-   * with a summary class": the name button carries such a class itself, so a
-   * guess stops a few characters in and cuts off the control this is looking
-   * for. The card's regions appear in a known order, so naming both ends is
-   * both simpler and correct.
+   * The markup between two named regions. Boundaries are given EXPLICITLY: the
+   * card's regions appear in a known order, so naming both ends is both simpler
+   * and correct.
    */
   const region = (html: string, from: string, to: string): string => {
     const start = html.indexOf(`class="${from}"`)
@@ -2625,86 +2805,57 @@ describe('each edit control sits beside what it edits', () => {
 
   test('the client editor is reachable from the customer area', () => {
     const html = summaryHtml(editable)
-    const party = region(html, 'pi-detail-summary-party', 'pi-detail-summary-schedule')
+    const party = region(html, 'pi-detail-summary-party', 'pi-detail-meta')
     assert.match(party, /aria-label="Edit customer details"/,
       'the control beside the name must open the client editor')
-    // And it is a SIBLING of the name, not inside it: a button cannot be nested
-    // in a button, and the name must keep opening the read-only dialog.
     assert.ok(!/pi-detail-summary-client"[^>]*>[\s\S]{0,400}?aria-label="Edit customer details"[\s\S]{0,80}?<\/button>\s*<\/button>/.test(html),
       'the edit control must not be nested inside the name button')
   })
 
   test('the client editor is NOT reachable without permission', () => {
-    const html = summaryHtml({ canEditDetails: false })
-    assert.ok(!html.includes('aria-label="Edit customer details"'))
+    assert.ok(!summaryHtml({ canEditDetails: false }).includes('aria-label="Edit customer details"'))
   })
 
   test('the owner’s correction channel takes the same slot, and never both', () => {
     const html = summaryHtml({ canEditDetails: false, onRequestCorrection: () => {} })
-    const party = region(html, 'pi-detail-summary-party', 'pi-detail-summary-schedule')
+    const party = region(html, 'pi-detail-summary-party', 'pi-detail-meta')
     assert.match(party, /Request correction/)
     assert.ok(!party.includes('aria-label="Edit customer details"'))
 
-    // With permission it is the editor, and the correction channel is gone from
-    // the customer area — the two answer the same impulse.
     const both = region(summaryHtml({ ...editable, onRequestCorrection: () => {} }),
-                        'pi-detail-summary-party', 'pi-detail-summary-schedule')
+                        'pi-detail-summary-party', 'pi-detail-meta')
     assert.match(both, /aria-label="Edit customer details"/)
     assert.ok(!both.includes('Request correction'))
   })
 
-  test('the dates editor is reachable from the date card, not from Finance', () => {
+  test('the dates editor is inside the dates band, not in the figures column', () => {
     const html = summaryHtml(editable)
-    assert.match(html, /pi-detail-summary-sched-head/,
-      'the schedule band carries its own control')
-    assert.match(html, /aria-label="Edit dates and terms"/)
-
-    const headAt = html.indexOf('pi-detail-summary-sched-head')
-    const bodyAt = html.indexOf('pi-detail-summary-paybody')
-    assert.ok(headAt !== -1 && bodyAt !== -1 && headAt < bodyAt,
-      'the dates control is in the left column, above the finance surface')
+    const band = region(html, 'pi-detail-dates', 'pi-detail-figures')
+    assert.match(band, /aria-label="Edit dates and terms"/)
+    const figures = html.slice(html.indexOf('class="pi-detail-figures"'))
+    assert.ok(!figures.includes('Dates and terms') && !figures.includes('Edit dates and terms'))
   })
 
-  test('“Dates and terms” has left the Finance surface entirely', () => {
-    // The specific arrangement this correction removed: a button that edits the
-    // dates, sitting between the billing label and the billing control.
-    for (const html of [summaryHtml(editable), summaryHtml({ canEditDetails: true })]) {
-      const body = html.slice(html.indexOf('pi-detail-summary-paybody'))
-      assert.ok(!body.includes('Dates and terms'),
-        'the finance surface still offers the dates editor')
-      assert.ok(!body.includes('aria-label="Edit dates and terms"'))
-    }
-  })
-
-  test('the dates card has no control where there is nothing to press', () => {
-    const html = summaryHtml({ canEditDetails: false })
-    assert.ok(!html.includes('pi-detail-summary-sched-head'),
-      'a read-only viewer sees the band exactly as it was — no reserved space')
+  test('the dates band has no control where there is nothing to press', () => {
+    assert.ok(!summaryHtml({ canEditDetails: false }).includes('pi-detail-dates-edit'))
   })
 
   test('the billing control is the FIRST thing after its own label', () => {
     const html = summaryHtml(editable)
-    const head = html.slice(html.indexOf('pi-detail-summary-billing-head'))
+    const head = html.slice(html.indexOf('pi-detail-figure-head'))
     const label = head.indexOf('Billing percentage')
     const action = head.indexOf('pi-detail-summary-billing-action')
     assert.ok(label !== -1 && action !== -1 && label < action)
-
-    // Measured to the START of the action's own tag, not to its class
-    // attribute: its `<button` necessarily sits between the label text and its
-    // className, so comparing against the attribute would count the control
-    // itself as something in the way.
     const tag = head.lastIndexOf('<button', action)
     assert.ok(tag > label, 'the billing control opens before its own label')
-    const between = head.slice(label, tag)
-    assert.ok(!between.includes('<button'),
+    assert.ok(!head.slice(label, tag).includes('<button'),
       'another control sits between the billing label and its own control')
   })
 
   test('the billing control is absent where billing may not be declared', () => {
     const html = summaryHtml({ canEditDetails: true, canEditBilling: false })
     assert.ok(!html.includes('pi-detail-summary-billing-action'))
-    // …and the dates control is unaffected: the two authorities are separate.
-    assert.match(html, /aria-label="Edit dates and terms"/)
+    assert.match(html, /aria-label="Edit dates and terms"/, 'the two authorities are separate')
   })
 
   test('Billing value still reads below the percentage', () => {
@@ -2717,47 +2868,9 @@ describe('each edit control sits beside what it edits', () => {
   })
 
   test('exactly three edit controls, and no fourth', () => {
-    // A fourth would mean an edit had been added to this card without being
-    // given a home beside the thing it changes.
     const html = summaryHtml({ ...editable, onRequestCorrection: () => {} })
-    const inline = (html.match(/pi-detail-summary-inline-action/g) ?? []).length
-    const billing = (html.match(/pi-detail-summary-billing-action/g) ?? []).length
-    assert.equal(inline, 2, 'customer and dates')
-    assert.equal(billing, 1, 'billing percentage')
-  })
-})
-
-describe('the finance divider is not crowded against its content', () => {
-  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-
-  test('the grid gap gives each side visible room', () => {
-    const rule = css.slice(css.indexOf('.pi-detail-summary-paybody {'))
-      .slice(0, css.slice(css.indexOf('.pi-detail-summary-paybody {')).indexOf('}'))
-    const gap = /gap:\s*0\s+(\d+)px/.exec(rule)
-    assert.ok(gap, 'the paybody must set a horizontal gap')
-    assert.ok(Number(gap[1]) >= 16,
-      `the divider has only ${Number(gap[1]) / 2}px on each side`)
-  })
-
-  test('the rule still takes no horizontal margin of its own', () => {
-    // A margin on a 1px TRACK overflows it and silently steals width from both
-    // columns, which is what pulled the split off its intended proportion. The
-    // gap is the mechanism; this is the constraint that keeps it the mechanism.
-    const rule = css.slice(css.indexOf('.pi-detail-summary-payrule {'))
-      .slice(0, css.slice(css.indexOf('.pi-detail-summary-payrule {')).indexOf('}'))
-    assert.match(rule, /margin:\s*\d+px\s+0\s*;/, 'vertical inset only')
-  })
-
-  test('the two columns keep their proportions', () => {
-    const rule = css.slice(css.indexOf('.pi-detail-summary-paybody {'))
-      .slice(0, css.slice(css.indexOf('.pi-detail-summary-paybody {')).indexOf('}'))
-    assert.match(rule, /grid-template-columns:\s*minmax\(0, 0\.636fr\) 1px minmax\(0, 1fr\)/)
-  })
-
-  test('at phone width the rule is gone and the areas stack', () => {
-    const mobile = css.slice(css.indexOf('@media (max-width: 700px)'))
-    assert.match(mobile, /\.pi-detail-summary-payrule \{ display: none; \}/)
-    assert.match(mobile, /\.pi-detail-summary-paybody \{[\s\S]*?grid-template-columns: minmax\(0, 1fr\)/)
+    assert.equal((html.match(/pi-detail-summary-inline-action/g) ?? []).length, 2, 'customer and dates')
+    assert.equal((html.match(/pi-detail-summary-billing-action/g) ?? []).length, 1, 'billing percentage')
   })
 })
 
