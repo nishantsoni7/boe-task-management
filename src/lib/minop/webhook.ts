@@ -2,7 +2,10 @@ import { createHash, timingSafeEqual } from 'node:crypto'
 
 export const MINOP_MAX_WEBHOOK_BYTES = 256 * 1024
 
-export type MinopAuthMethod = 'bearer' | 'x-minop-webhook-secret' | 'payload-auth-token'
+export type MinopAuthMethod = 'bearer' | 'x-minop-webhook-secret' | 'payload-auth-token' | 'url-path-token'
+
+/** Shortest configured URL path token accepted. Anything shorter fails closed. */
+export const MINOP_MIN_PATH_TOKEN_LENGTH = 32
 
 export type MinopWebhookCapture = {
   raw_body: string
@@ -76,6 +79,28 @@ export function authenticateMinopWebhook(
   }
 
   return { ok: false, reason: 'unauthorized' }
+}
+
+/**
+ * The Minop Developer Dashboard accepts only a callback URL — no header and no
+ * AuthToken in the body — so its secret travels as the last URL path segment.
+ * An unset, blank or too-short configured token closes the endpoint rather
+ * than accepting a guessable one. The provided segment is compared exactly,
+ * never trimmed.
+ */
+export function authenticateMinopPathToken(
+  providedToken: string | undefined,
+  configuredToken: string | undefined,
+):
+  | { ok: true; method: 'url-path-token' }
+  | { ok: false; reason: 'missing_token_config' | 'not_found' } {
+  const expected = configuredToken?.trim() ?? ''
+  if (expected.length < MINOP_MIN_PATH_TOKEN_LENGTH) return { ok: false, reason: 'missing_token_config' }
+
+  if (!providedToken || !constantTimeEqual(providedToken, expected)) {
+    return { ok: false, reason: 'not_found' }
+  }
+  return { ok: true, method: 'url-path-token' }
 }
 
 export function captureMinopWebhookBody(rawBody: string): MinopWebhookCapture {

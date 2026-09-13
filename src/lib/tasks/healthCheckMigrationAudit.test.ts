@@ -625,6 +625,10 @@ describe('the migration is placed correctly', () => {
       // Review Workflow admin purge of internal test records. It names no
       // health-check object.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

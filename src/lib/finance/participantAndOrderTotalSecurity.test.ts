@@ -910,6 +910,10 @@ describe('the applied migrations are frozen', () => {
       // Review Workflow admin purge of internal test records. It reaches
       // nothing asserted here.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ])
   })
 
@@ -1086,6 +1090,10 @@ describe('the applied migrations are frozen', () => {
       // Review Workflow admin purge of internal test records. Not applied; it
       // reaches nothing asserted here.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

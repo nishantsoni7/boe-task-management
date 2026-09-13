@@ -744,6 +744,10 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // Review Workflow admin purge of internal test records. It reaches no
       // task table or function.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
