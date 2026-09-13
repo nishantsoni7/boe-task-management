@@ -35,6 +35,7 @@ import {
 import { fetchActivePayrollCreditApplication } from '@/lib/payroll/store'
 import { fetchSettlement } from '@/lib/payroll/settlementStore'
 import { buildSettlementBlock } from '@/lib/payroll/resultDetailPayload'
+import { hasCreditPrecision } from '@/lib/boeCredits/ledger'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Svc = any
@@ -77,8 +78,8 @@ export async function POST(req: NextRequest) {
 
   const rawCredits = (body as { credits?: unknown }).credits
   const credits = typeof rawCredits === 'string' ? Number(rawCredits.trim()) : rawCredits
-  if (typeof credits !== 'number' || !Number.isInteger(credits) || credits <= 0) {
-    return NextResponse.json({ error: 'Choose a whole number of credits, at least 1.' }, { status: 422 })
+  if (typeof credits !== 'number' || !hasCreditPrecision(credits) || credits <= 0) {
+    return NextResponse.json({ error: 'Choose a number of credits above 0, with at most two decimal places.' }, { status: 422 })
   }
 
   try {

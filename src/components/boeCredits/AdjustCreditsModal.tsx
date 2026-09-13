@@ -2,7 +2,7 @@
 
 // "Adjust credits" — an administrator's correction to one employee's balance.
 //
-// A signed whole number of credits (positive adds, negative removes) and a
+// A signed number of credits, up to two decimal places (positive adds, negative removes) and a
 // mandatory reason. On save it POSTs one admin_adjustment row; nothing here
 // edits or deletes an existing entry, because the ledger is append-only and a
 // correction is a counter-entry with a reason attached.
@@ -16,7 +16,7 @@ import {
   PayrollModal, PayrollField, PayrollModalActions, PayrollModalError,
 } from '@/components/payroll/PayrollModal'
 import { colors } from '@/lib/tokens'
-import { creditAmountIssue, creditReasonIssue, formatCredits } from '@/lib/boeCredits/ledger'
+import { creditAmountIssue, creditReasonIssue, formatCredits, sumCredits } from '@/lib/boeCredits/ledger'
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '8px 10px', borderRadius: 8, fontSize: 13.5,
@@ -40,7 +40,7 @@ export function AdjustCreditsModal({
 
   const amountIssue = credits.trim() === '' ? null : creditAmountIssue(credits)
   const parsed = Number(credits.trim())
-  const after  = amountIssue == null && credits.trim() !== '' ? availableCredits + parsed : null
+  const after  = amountIssue == null && credits.trim() !== '' ? sumCredits([{ credits: availableCredits }, { credits: parsed }]) : null
 
   const save = async () => {
     setError('')
@@ -67,12 +67,12 @@ export function AdjustCreditsModal({
 
       <PayrollField
         label="Credits"
-        hint="Positive adds credits, negative removes them. Whole numbers only."
+        hint="Positive adds credits, negative removes them. Up to two decimal places, e.g. 1.5."
       >
         <input
           type="number"
-          step={1}
-          inputMode="numeric"
+          step="0.01"
+          inputMode="decimal"
           value={credits}
           onChange={e => { setCredits(e.target.value); setError('') }}
           placeholder="e.g. 50 or -25"

@@ -10,6 +10,7 @@ import { ReviewCard, ReviewCardGrid } from '@/components/customerReviews/ReviewC
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewFullView, ReviewFullViewActions } from '@/components/customerReviews/ReviewFullView'
 import { useProjectImages } from '@/components/customerReviews/ProjectImages'
+import { CustomReviewSubmissions } from '@/components/customerReviews/CustomReviewSubmissions'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import { formatCredits } from '@/lib/boeCredits/ledger'
@@ -224,6 +225,15 @@ export function MyReviewsScreen() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', maxWidth: '900px' }}>
 
+        {/*
+          CUSTOM REVIEWS: a separate path, kept out of every count below. A
+          review the employee arranged themselves, submitted with proof and
+          verified by management before any credit is awarded.
+        */}
+        {profile && (
+          <CustomReviewSubmissions supabase={supabase} profileId={profile.id} canSubmit={caps.canUse} />
+        )}
+
         {verified && (
           <p role="status" style={{ fontSize: '12px', color: '#166534', fontWeight: 600, margin: 0 }}>
             {verified}
@@ -382,7 +392,8 @@ function EmptyState() {
  */
 export function verifiedNotice(flag: string | null): string | null {
   if (flag === null) return null
-  const credits = /^\d+$/.test(flag) ? Number(flag) : 0
+  // Decimal rewards are real (an image review may earn 1.5), so the flag may carry one.
+  const credits = /^\d+(\.\d{1,2})?$/.test(flag) ? Number(flag) : 0
   return credits > 0
     ? `Review verified · ${formatCredits(credits, { signed: true })} awarded.`
     : 'Review verified.'

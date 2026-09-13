@@ -148,7 +148,7 @@ describe('the parser', () => {
     assert.ok(parseBoeCreditSettings({ ...D, review_reward_credits: 9, image_review_reward_credits: 2 }).ok)
   })
 
-  for (const key of ['review_reward_credits', 'image_review_reward_credits', 'half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews'] as const) {
+  for (const key of ['half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews'] as const) {
     test(`${key} must be a whole positive number`, () => {
       for (const bad of [0, -1, 1.5, 'abc', null, undefined, NaN, Infinity]) {
         const r = parseBoeCreditSettings({ ...D, [key]: bad })
@@ -157,6 +157,23 @@ describe('the parser', () => {
       }
       const ok = parseBoeCreditSettings({ ...D, [key]: 1 })
       assert.ok(ok.ok, `${key} = 1 is the smallest allowed`)
+    })
+  }
+
+  // THE TWO REVIEW REWARDS MAY BE DECIMAL (20261204000000): an image review can
+  // earn 1.5 credits. Above zero, at most two decimal places.
+  for (const key of ['review_reward_credits', 'image_review_reward_credits'] as const) {
+    test(`${key} must be above zero with at most two decimal places`, () => {
+      for (const bad of [0, -1, -0.5, 1.555, 'abc', null, undefined, NaN, Infinity]) {
+        const r = parseBoeCreditSettings({ ...D, [key]: bad })
+        assert.equal(r.ok, false, `${key} = ${String(bad)} must be refused`)
+        assert.ok(!r.ok && r.issues.some(i => i.key === key))
+      }
+      for (const good of [1, 1.5, 0.5, 2.25, '1.5']) {
+        const r = parseBoeCreditSettings({ ...D, [key]: good })
+        assert.ok(r.ok, `${key} = ${String(good)} is allowed`)
+        assert.equal(r.ok && r.settings[key], Number(good))
+      }
     })
   }
 

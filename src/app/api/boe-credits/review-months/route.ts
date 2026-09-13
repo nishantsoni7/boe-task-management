@@ -30,6 +30,7 @@ import {
 } from '@/lib/boeCredits/service'
 import { istToday, istMonthStart, istMonthStartOffset, istDayStartUtc, istMonthEnd, istDayEndUtc } from '@/lib/istDate'
 import type { CreditReviewMonth } from '@/lib/boeCredits/types'
+import { sumCredits } from '@/lib/boeCredits/ledger'
 
 const MONTH_PARAM = /^\d{4}-(0[1-9]|1[0-2])$/
 
@@ -59,6 +60,19 @@ async function unresolvedByEmployee(
   for (const row of (data ?? []) as { booked_by: string | null }[]) {
     if (!row.booked_by) continue
     out.set(row.booked_by, (out.get(row.booked_by) ?? 0) + 1)
+  }
+
+  // Custom Review Submissions still waiting for a verifier count the same way:
+  // an approved one is credited to the month it was submitted in.
+  const { data: custom, error: customError } = await svc
+    .from('customer_review_custom_submissions')
+    .select('submitted_by')
+    .eq('status', 'pending_verification')
+    .gte('submitted_at', from)
+    .lte('submitted_at', to)
+  if (customError) throw new Error(`unresolved custom reviews: ${customError.message}`)
+  for (const row of (custom ?? []) as { submitted_by: string }[]) {
+    out.set(row.submitted_by, (out.get(row.submitted_by) ?? 0) + 1)
   }
   return out
 }
@@ -166,7 +180,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       review_month: reviewMonth,
       finalized: results.filter(r => r.ok && !r.already_finalized).length,
-      lapsed_credits: results.reduce((n, r) => n + (r.lapsed_credits ?? 0), 0),
+      lapsed_credits: sumCredits(results.map(r => ({ credits: r.lapsed_credits ?? 0 }))),
       results,
     })
   } catch (e) {

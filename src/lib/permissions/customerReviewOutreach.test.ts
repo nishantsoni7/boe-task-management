@@ -704,7 +704,7 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // workflow states, every entry pointing at `?tab=` on one route, while the
     // page rendered the same five as tabs — two controls for one parameter.
     const items = [...executable.matchAll(/label: '([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Batches', 'Image Library', 'Progress'])
+    assert.deepEqual(items, ['My Reviews', 'Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress'])
 
     // AND NO ENTRY CARRIES A QUERY ANY MORE: each is a route of its own, so
     // the sidebar cannot duplicate an in-page tab by construction.
@@ -715,8 +715,9 @@ describe('the screens ask the database, and offer nothing it would refuse', () =
     // Everything but Available and My reviews carries verifierOnly, so a
     // candidate's sidebar is unchanged by this work.
     const entries = executable.slice(executable.indexOf('const NAV_ITEMS'), executable.indexOf('const ROOT_LABEL'))
-    // FOUR OF THE FIVE ARE VERIFIER-ONLY. A candidate sees exactly one entry.
-    for (const label of ['Reviews', 'Batches', 'Image Library', 'Progress']) {
+    // FIVE OF THE SIX ARE VERIFIER-ONLY. A candidate sees exactly one entry —
+    // they submit a custom review from My Reviews; deciding one is verify work.
+    for (const label of ['Reviews', 'Custom Submissions', 'Batches', 'Image Library', 'Progress']) {
       const at = entries.indexOf(`label: '${label}'`)
       assert.ok(at !== -1, `${label} is missing`)
       assert.ok(entries.slice(at, at + 260).includes('verifierOnly: true'),

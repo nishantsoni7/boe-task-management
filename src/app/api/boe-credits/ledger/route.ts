@@ -116,6 +116,7 @@ export async function GET(req: NextRequest) {
             // and is simply available.
             month_status: r ? (m?.status ?? 'open') : 'qualified',
             reversed: reversed.has(t.id),
+            custom: t.source_type === 'customer_review_custom_submission',
           }
         }
         case 'redemption': {

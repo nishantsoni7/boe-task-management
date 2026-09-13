@@ -8,18 +8,41 @@
 
 import type { CreditTransaction, CreditTransactionType, CreditReviewMonthStatus } from './types'
 
-/** recorded credits = SUM(signed credits). The whole rule, in one line. */
-export function sumCredits(rows: readonly Pick<CreditTransaction, 'credits'>[]): number {
-  return rows.reduce((total, r) => total + r.credits, 0)
+/**
+ * Credits carry at most two decimal places — numeric(12,2) in the database, so
+ * 1.5 is one and a half credits. Arithmetic on them is done in HUNDREDTHS, so
+ * binary-float noise (0.1 + 0.2) never reaches a total or a label.
+ */
+export const CREDIT_DECIMAL_PLACES = 2
+
+/** The nearest hundredth of a credit. */
+export function roundCredits(n: number): number {
+  return Math.round(n * 100) / 100
 }
 
-/** "350 credits" / "1 credit" / "−50 credits". Employees never see rupees here. */
+/** True when a finite number has at most two decimal places. */
+export function hasCreditPrecision(n: number): boolean {
+  return Number.isFinite(n) && Math.abs(n * 100 - Math.round(n * 100)) < 1e-6
+}
+
+/** recorded credits = SUM(signed credits). The whole rule, in one line — summed in hundredths. */
+export function sumCredits(rows: readonly Pick<CreditTransaction, 'credits'>[]): number {
+  return rows.reduce((total, r) => total + Math.round(r.credits * 100), 0) / 100
+}
+
+/** "1.5" / "1" / "12,500" — at most two decimals, never a trailing zero. */
+export function formatCreditNumber(n: number): string {
+  return roundCredits(n).toLocaleString('en-IN', { maximumFractionDigits: CREDIT_DECIMAL_PLACES })
+}
+
+/** "350 credits" / "1 credit" / "1.5 credits" / "−50 credits". Employees never see rupees here. */
 export function formatCredits(n: number, opts: { signed?: boolean } = {}): string {
-  const abs = Math.abs(n)
+  const value = roundCredits(n)
+  const abs = Math.abs(value)
   const unit = abs === 1 ? 'credit' : 'credits'
-  const body = `${abs.toLocaleString('en-IN')} ${unit}`
-  if (n < 0) return `−${body}`
-  if (opts.signed && n > 0) return `+${body}`
+  const body = `${formatCreditNumber(abs)} ${unit}`
+  if (value < 0) return `−${body}`
+  if (opts.signed && value > 0) return `+${body}`
   return body
 }
 
@@ -70,10 +93,11 @@ export function withRunningBalance<T extends Pick<CreditTransaction, 'credits'>>
   rowsNewestFirst: readonly T[],
   recordedTotal: number,
 ): (T & { balance_after: number })[] {
-  let running = recordedTotal
+  // In hundredths, so a decimal history walks back without float drift.
+  let running = Math.round(recordedTotal * 100)
   return rowsNewestFirst.map(row => {
-    const balance_after = running
-    running -= row.credits
+    const balance_after = running / 100
+    running -= Math.round(row.credits * 100)
     return { ...row, balance_after }
   })
 }
@@ -98,7 +122,7 @@ export function reviewMonthLabel(reviewMonth: string, opts: { year?: boolean } =
 }
 
 export type CreditTransactionMeta =
-  | { kind: 'review_reward'; card_ref: string | null; review_month: string | null; month_status: CreditReviewMonthStatus | null; reversed: boolean }
+  | { kind: 'review_reward'; card_ref: string | null; review_month: string | null; month_status: CreditReviewMonthStatus | null; reversed: boolean; custom?: boolean }
   | { kind: 'attendance_redemption'; deduction_type: 'half_day' | 'absent'; attendance_date: string; reversed: boolean }
   | { kind: 'payroll_redemption'; payroll_month: number | null; payroll_year: number | null; credit_amount: number | null; reversed: boolean }
   | { kind: 'review_month_lapse'; review_month: string | null }
@@ -137,9 +161,12 @@ export function describeCreditTransaction(
         : meta.month_status === 'open' ? 'pending'
         : meta.month_status === 'lapsed' ? 'lapsed'
         : 'available'
+      // A Custom Review Submission earns the same kind of reward, approved rather than verified.
+      const noun = meta.custom ? 'Custom review' : 'Review'
+      const verb = meta.custom ? 'approved' : 'verified'
       return {
-        title: month ? `Review verified · ${month}` : 'Review verified',
-        detail: meta.card_ref ? `Review ${meta.card_ref}` : null,
+        title: month ? `${noun} ${verb} · ${month}` : `${noun} ${verb}`,
+        detail: meta.card_ref ? `${noun} ${meta.card_ref}` : null,
         status,
       }
     }
@@ -199,13 +226,13 @@ export const REWARD_STATUS_LABELS: Record<NonNullable<CreditTransactionDescripti
 }
 
 /**
- * Validate a whole-credit amount the way the database will. Returns the
- * message to show, or null when the amount is fine.
+ * Validate a credit amount the way the database will: non-zero, at most two
+ * decimal places. Returns the message to show, or null when the amount is fine.
  */
 export function creditAmountIssue(value: unknown): string | null {
   const n = typeof value === 'string' ? Number(value.trim()) : value
   if (typeof n !== 'number' || !Number.isFinite(n)) return 'Enter a number of credits.'
-  if (!Number.isInteger(n)) return 'Credits are whole numbers.'
+  if (!hasCreditPrecision(n)) return 'Credits can have at most two decimal places.'
   if (n === 0) return 'A zero-credit entry moves nothing and is not recorded.'
   if (Math.abs(n) > 1_000_000) return 'That is more credits than any adjustment should move.'
   return null

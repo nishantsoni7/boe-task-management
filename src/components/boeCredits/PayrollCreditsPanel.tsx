@@ -19,7 +19,7 @@ import { useRef, useState } from 'react'
 import { Coins, Minus, Plus } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { formatRupees } from '@/lib/payroll/money'
-import { formatCredits } from '@/lib/boeCredits/ledger'
+import { formatCreditNumber, formatCredits, roundCredits } from '@/lib/boeCredits/ledger'
 import { formatCreditValue } from '@/lib/boeCredits/settings'
 
 export type PayrollCreditsPanelData = {
@@ -50,10 +50,13 @@ export function PayrollCreditsPanel({
   const { application, locked } = credits
   // The credits the employee could put on this month: what they hold plus
   // what this month already holds (changing 5 → 3 frees 2 first).
-  const ceiling = credits.spendable_credits + (application?.credits_used ?? 0)
+  const ceiling = roundCredits(credits.spendable_credits + (application?.credits_used ?? 0))
 
   const [editing, setEditing] = useState(false)
-  const [amount,  setAmount]  = useState<number>(application?.credits_used ?? Math.min(ceiling, 1))
+  // THE DRAFT IS TEXT. Credits may be decimal (1.5), and an input re-clamped on
+  // every keystroke cannot be typed into — "1." is not a number yet. What was
+  // typed is kept as typed; the clamped figure below is what is shown and sent.
+  const [amountText, setAmountText] = useState<string>(String(application?.credits_used ?? Math.min(ceiling, 1)))
   const [error,   setError]   = useState<string | null>(null)
   const [notice,  setNotice]  = useState<string | null>(null)
   const submitting = useRef(false)
@@ -61,8 +64,10 @@ export function PayrollCreditsPanel({
   // A fresh application (after a save) resets the draft: the parent keys this
   // panel by the application id, so it remounts with what is actually applied.
 
-  const clamp = (n: number) => Math.max(1, Math.min(ceiling, Math.trunc(Number.isFinite(n) ? n : 1)))
-  const rupees = (n: number) => n * credits.credit_value
+  // Between a hundredth of a credit and the ceiling, to the hundredth — never truncated.
+  const clamp = (n: number) => roundCredits(Math.max(MIN_APPLIED_CREDITS, Math.min(ceiling, Number.isFinite(n) ? n : 1)))
+  const amount = clamp(Number(amountText))
+  const rupees = (n: number) => Math.round(roundCredits(n) * 100 * credits.credit_value) / 100
 
   const submit = async () => {
     if (submitting.current) return
@@ -209,21 +214,19 @@ export function PayrollCreditsPanel({
                       <button
                         type="button"
                         aria-label="One credit fewer"
-                        disabled={busy || amount <= 1}
-                        onClick={() => setAmount(a => clamp(a - 1))}
-                        style={stepBtn(busy || amount <= 1)}
+                        disabled={busy || amount - 1 < MIN_APPLIED_CREDITS}
+                        onClick={() => setAmountText(String(clamp(amount - 1)))}
+                        style={stepBtn(busy || amount - 1 < MIN_APPLIED_CREDITS)}
                       >
                         <Minus size={14} strokeWidth={2.2} />
                       </button>
                       <input
-                        type="number"
-                        inputMode="numeric"
-                        min={1}
-                        max={ceiling}
-                        step={1}
-                        value={amount}
+                        type="text"
+                        inputMode="decimal"
+                        value={amountText}
                         aria-label="Credits to use"
-                        onChange={e => setAmount(clamp(Number(e.target.value)))}
+                        onChange={e => setAmountText(e.target.value)}
+                        onBlur={() => setAmountText(String(amount))}
                         style={{
                           width: 64, textAlign: 'center', border: 'none', fontSize: 16, fontWeight: 700,
                           color: colors.primary, background: '#fff', padding: '8px 4px', fontVariantNumeric: 'tabular-nums',
@@ -234,7 +237,7 @@ export function PayrollCreditsPanel({
                         type="button"
                         aria-label="One credit more"
                         disabled={busy || amount >= ceiling}
-                        onClick={() => setAmount(a => clamp(a + 1))}
+                        onClick={() => setAmountText(String(clamp(amount + 1)))}
                         style={stepBtn(busy || amount >= ceiling)}
                       >
                         <Plus size={14} strokeWidth={2.2} />
@@ -242,12 +245,12 @@ export function PayrollCreditsPanel({
                     </div>
                     <button
                       type="button"
-                      onClick={() => setAmount(ceiling)}
+                      onClick={() => setAmountText(String(ceiling))}
                       disabled={busy || amount === ceiling}
                       className="boe-btn boe-btn-ghost"
                       style={{ padding: '6px 10px', fontSize: 12 }}
                     >
-                      Use all {ceiling}
+                      Use all {formatCreditNumber(ceiling)}
                     </button>
                   </div>
 
@@ -262,7 +265,7 @@ export function PayrollCreditsPanel({
                     <button
                       type="button"
                       onClick={() => void submit()}
-                      disabled={busy || (application != null && clamp(amount) === application.credits_used)}
+                      disabled={busy || (application != null && amount === roundCredits(application.credits_used))}
                       className="boe-btn boe-btn-primary"
                       style={{ padding: '8px 16px', fontSize: 13, minHeight: 40 }}
                     >
@@ -271,7 +274,7 @@ export function PayrollCreditsPanel({
                     {application && (
                       <button
                         type="button"
-                        onClick={() => { setEditing(false); setAmount(application.credits_used); setError(null) }}
+                        onClick={() => { setEditing(false); setAmountText(String(application.credits_used)); setError(null) }}
                         disabled={busy}
                         className="boe-btn boe-btn-ghost"
                         style={{ padding: '8px 14px', fontSize: 13, minHeight: 40 }}
@@ -318,6 +321,9 @@ export function PayrollCreditsPanel({
     </section>
   )
 }
+
+/** The smallest application: one hundredth of a credit, the database's precision. */
+const MIN_APPLIED_CREDITS = 0.01
 
 function stepBtn(disabled: boolean): React.CSSProperties {
   return {
