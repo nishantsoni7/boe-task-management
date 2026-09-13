@@ -316,7 +316,7 @@ export default function MyCreditsPage() {
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>How BOE Credits work</div>
             <div style={{ fontSize: 12, color: '#5B6474', marginTop: 2 }}>
-              Earning, the monthly target, attendance and salary, and what happens when a month closes — with today&rsquo;s numbers.
+              Earning, the monthly target, your salary, and what happens when a month closes — with today&rsquo;s numbers.
             </div>
           </div>
           <ChevronRight size={16} color={colors.muted} />
