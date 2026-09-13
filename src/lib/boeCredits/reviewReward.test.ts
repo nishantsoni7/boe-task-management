@@ -171,6 +171,10 @@ describe('the file, and where it sits', () => {
       // Review Workflow admin purge of internal test records. It READS the
       // ledger to refuse a rewarded card and writes nothing to it.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ])
   })
 

@@ -418,6 +418,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // Review Workflow admin purge of internal test records. It writes no
       // notification; it is not grouping's doing.
       '20261209000000_customer_review_test_card_admin_purge.sql',
+      // Minop raw capture by URL path token: widens the
+      // minop_webhook_deliveries auth_method CHECK by one value. It reaches
+      // nothing asserted here.
+      '20261210000000_minop_webhook_url_path_token_auth.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

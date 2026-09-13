@@ -49,6 +49,19 @@ Raw payloads are inaccessible to `anon` and `authenticated`. RLS is enabled with
 
 `body_sha256` is indexed but deliberately not unique — a genuine second punch can legitimately serialise identically to a byte, and treating the hash as an idempotency key would silently discard it. Idempotency instead lives in the attendance merge itself (see Stage 2).
 
+### Test-device raw capture (URL path token)
+
+Verification on 13 September 2026 found that the Minop Developer Dashboard accepts only callback URLs (Say Hello, Transaction Data) and the device sends no authentication at all — so the route above answers it `401` and stores nothing. The device's real body is also `{"trans":[{txnId, dvcId, dvcIP, punchId, txnDateTime, mode}]}`, not the `RealTime.PunchLog` shape Stage 2 reads.
+
+For the NEW, test-only machine a second, raw-only receiver exists:
+
+- `POST /api/integrations/minop/webhook/<MINOP_WEBHOOK_PATH_TOKEN>` — `src/app/api/integrations/minop/webhook/[token]/route.ts`, handler `src/lib/minop/pathTokenWebhook.ts`.
+- Server-only variable `MINOP_WEBHOOK_PATH_TOKEN`, at least 32 characters, URL-safe (e.g. 64 hex characters). Unset, blank or shorter → every request `404`.
+- Wrong token → `404`, empty body, nothing stored. Correct token → the exact body stored in `minop_webhook_deliveries` with `auth_method = 'url-path-token'` and `{"status":1}` (numeric) returned. Invalid JSON is stored quarantined and answered `400`; a failed insert answers `500`.
+- It **never** runs attendance processing, whatever `MINOP_ATTENDANCE_PROCESSING_ENABLED` says, and never reads `trans[]`, maps an employee, or touches `attendance_records` or payroll. `attendance_status` stays `NULL` on its rows.
+- Migration `20261210000000_minop_webhook_url_path_token_auth.sql` widens the `auth_method` CHECK by that one value. **Apply it before deploying the route**, or every valid delivery fails the CHECK and Minop receives `500`.
+- The token is part of the URL, so it appears in Vercel request logs and to anyone who can see the Minop dashboard. Rotate it by changing the variable and the dashboard URL together.
+
 ## Stage 2 — Attendance processing
 
 Status: **implemented on `feature/minop-attendance-processing`, flag-gated OFF by default.**
