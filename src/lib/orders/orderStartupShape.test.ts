@@ -268,7 +268,9 @@ describe('no Order screen waits more than it must', () => {
       // the page's existing Promise.all, beside the profile and the Orders
       // read, so the count grew and the number of times the page waits did NOT
       // — the wait test above still requires exactly two.
-      [GUARD]: 2, [DASHBOARD]: 11, [ALL]: 3, [DETAIL]: 29,
+      // DASHBOARD 11 -> 10: the Overdue card was removed, and with it the one
+      // count that fed only that card. The wait count is unchanged.
+      [GUARD]: 2, [DASHBOARD]: 10, [ALL]: 3, [DETAIL]: 29,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

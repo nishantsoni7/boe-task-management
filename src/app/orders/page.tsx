@@ -190,7 +190,6 @@ export default function OrdersDashboardPage() {
       { data: runningData },
       { count: activeCount },
       { data: runningValueData },
-      { count: overdueCount },
       { count: draftCount },
       { count: reviewCount },
       { count: awaitingCount },
@@ -208,9 +207,6 @@ export default function OrdersDashboardPage() {
       supabase.from('orders').select('*', { count: 'exact', head: true })
         .in('status', ['running', 'on_hold', 'ready_for_dispatch']),
       supabase.from('orders').select('total_value').eq('status', 'running'),
-      supabase.from('orders').select('*', { count: 'exact', head: true })
-        .in('status', ['running', 'on_hold'])
-        .lt('due_date', new Date().toISOString().slice(0, 10)),
 
       // PI Drafts, in exactly the statuses /orders/drafts lists — the same
       // constant, so the card and the page it opens can never describe
@@ -254,7 +250,6 @@ export default function OrdersDashboardPage() {
     setStats({
       runningValue,
       activeOrders:         activeCount   ?? 0,
-      overdueOrders:        overdueCount  ?? 0,
       piDrafts:             draftCount    ?? 0,
       reviewQueue:          reviewCount   ?? 0,
       awaitingVerification: awaitingCount ?? 0,
