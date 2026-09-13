@@ -56,6 +56,8 @@ export async function GET(req: NextRequest) {
       half_day_redemption_credits: h.half_day_redemption_credits,
       full_day_redemption_credits: h.full_day_redemption_credits,
       minimum_monthly_reviews: h.minimum_monthly_reviews,
+      max_monthly_review_submissions: h.max_monthly_review_submissions,
+      minimum_monthly_image_reviews: h.minimum_monthly_image_reviews,
       note: h.note,
       created_at: h.created_at,
       created_by_name: h.created_by ? names.get(h.created_by) ?? null : null,

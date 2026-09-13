@@ -402,6 +402,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: two notification_type values and a trigger on
+      // customer_review_custom_submissions that notifies reviewers. It is not
+      // grouping's doing and changes no notification column, policy or feed
+      // grouping reads.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

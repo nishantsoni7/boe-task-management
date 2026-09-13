@@ -287,15 +287,31 @@ describe('the read side excludes system types too', () => {
       }
       if (/insert\s+into\s+(public\.)?notifications/i.test(sql)) inserters.push(f)
     }
-    // TWO files, and they are the SAME function: 20260833000000 created the
+    // THREE files. Two are the SAME function: 20260833000000 created the
     // human-invoked creator-approval RPC, and 20261016000000 replaces it to add
-    // activity_log_id to that one insert. Nothing else in the repository writes
-    // a notification from SQL.
+    // activity_log_id to that one insert. The third is the Review Workflow's
+    // Custom Review phase: a trigger on customer_review_custom_submissions — not
+    // on notifications — tells reviewers that a PERSON submitted or reapplied a
+    // review, inside that person's own transaction. Nothing else in the
+    // repository writes a notification from SQL, and none of them writes a
+    // system type.
+    const REVIEW_PHASE = '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
+      REVIEW_PHASE,
     ])
-    for (const f of inserters) {
+    {
+      const sql = read(join(dir, REVIEW_PHASE))
+      assert.match(sql, /create trigger customer_review_custom_submissions_trail\s*\n\s*after insert or update of status on public\.customer_review_custom_submissions/,
+        `${REVIEW_PHASE}: it fires on a submission or a status change, nothing scheduled`)
+      assert.ok(sql.includes("v_kind := 'customer_review_submitted';") && sql.includes("v_kind := 'customer_review_reapplied';"),
+        `${REVIEW_PHASE}: it writes the two review types`)
+      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
+        assert.equal(sql.includes(`'${t}'`), false, `${REVIEW_PHASE} must not write ${t}`)
+      }
+    }
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

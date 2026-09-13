@@ -612,6 +612,123 @@ Detailed payroll rules remain maintained in the dedicated payroll document until
 
 ---
 
+# REVIEW WORKFLOW RULES
+
+Status:
+
+Active — **Custom Review phase**. Candidates submit Custom Reviews only; the
+generated / booked review workflow is paused for them (nothing is deleted).
+Migration `20261206000000_customer_review_custom_reapply_and_monthly_rules.sql`.
+
+Reference:
+
+docs/Module Docs/CUSTOMER_REVIEW_OUTREACH.md (the module), docs/Module Docs/BOE_CREDITS.md (the credits)
+
+Every rule below is enforced in the database. The screens explain the rules;
+they do not decide them.
+
+## What a candidate does
+
+* A candidate (an active employee holding `customer_review_requests.use`)
+  submits a **Custom Review**: the review type, the date it was published, a
+  screenshot, and an optional remark.
+* Nothing is stored until **Submit for Approval**. An unsaved form is the only
+  "draft", so a draft never uses a monthly slot.
+* A submitted review is **Pending Approval** until a reviewer decides it.
+
+## Review types
+
+* **Text Review** and **Image Review**. The stored type decides the reward; a
+  review never earns both.
+
+## Approval and rejection
+
+* Only an active user holding `customer_review_requests.verify` approves or
+  rejects, and **nobody decides their own review** — administrators included.
+* **Approval** awards the configured reward for the review's type, exactly once.
+  Approving again awards nothing.
+* **Rejection** needs a reason. It awards nothing. The candidate sees the reason
+  and the date and time.
+
+## Reapplication
+
+* Only the candidate who submitted a review can reapply it, and only while it is
+  **Rejected**.
+* Reapplying sends the **same review** back to Pending Approval, with the
+  candidate's corrections (type, published date, remark, optionally a new
+  screenshot) and an optional note on what changed. No new review is created.
+* The first submission, the rejection and its reason, and every reapplication
+  stay in the review's history.
+* A pending or approved review cannot be edited.
+
+## Monthly maximum
+
+* A candidate may submit at most **10** custom reviews for approval in one
+  calendar month (setting: `max_monthly_review_submissions`).
+* The month is the **Asia/Kolkata** month of the review's **first** submission.
+* Every submitted review holds its slot — pending, approved or rejected.
+* **A reapplication does not use another slot.** Review A submitted, rejected,
+  corrected and reapplied is still one slot.
+* An 11th new review is refused, and the screen says: *You have reached your
+  monthly limit of 10 review submissions.* A rejected review that already holds
+  a slot can still be corrected and reapplied.
+
+## Minimum Image Reviews — the exact rule
+
+* Of the monthly maximum, at least **3** must be Image Reviews (setting:
+  `minimum_monthly_image_reviews`; 0 turns the rule off).
+* A **Text Review** is accepted only when, after it, the slots left are at least
+  the Image Reviews still required:
+
+```text
+remaining_slots_after_text = maximum − (submitted + 1)
+images_still_required      = max(0, minimum_images − images_submitted)
+a Text Review is allowed only when remaining_slots_after_text ≥ images_still_required
+```
+
+* An Image Review is always allowed while a slot is left.
+* Examples at 10 / 3: 7 text + 0 image → text refused, image allowed;
+  8 total with 1 image → text refused; 9 total with 2 images → the last slot must
+  be an image; 7 total with 2 images → text still allowed; 9 total with 3 images
+  → the last slot may be text.
+* Refusal wording: *You have submitted 7 reviews this month. Your remaining 3
+  reviews must be Image Reviews to complete the monthly requirement of 3 Image
+  Reviews.*
+* A reapplication is checked against this rule only when it turns an Image
+  Review into a Text Review.
+* "Image Reviews submitted" counts submitted reviews by their current type —
+  the slot rule — not approvals.
+
+## Monthly qualification for credits — no penalty
+
+* A month earns Review credits only once it has **3 approved reviews** (setting:
+  `minimum_monthly_reviews`).
+* 0, 1 or 2 approved reviews: the month's review credits stay **pending**
+  (recorded, not spendable). The third approval makes all of them spendable, and
+  later approvals in that month are spendable at once.
+* **There is no negative penalty.** Missing the minimum never takes away credits
+  the employee already held. When an administrator closes a month below the
+  minimum, only that month's pending review credits are removed (the existing
+  `review_month_lapse`); nothing else changes.
+* A review whose month was closed below the minimum can no longer be approved
+  or reapplied.
+* The monthly minimum (3 approved) and the image requirement (3 Image Reviews
+  submitted) are two separate rules and are shown separately.
+
+## Credit rates
+
+* **1 BOE Credit = ₹50** (`credit_value`).
+* **Text Review = 1 credit** (₹50). **Image Review = 1.5 credits** (₹75).
+* Credits carry up to two decimal places.
+
+## Settings apply prospectively
+
+* An administrator changes all of these on `/payroll/credits`. Every save is a
+  new settings row; nothing already posted is re-priced, and a month keeps the
+  minimum it started with.
+
+---
+
 # UI RULES
 
 ## Simplicity

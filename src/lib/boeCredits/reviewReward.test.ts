@@ -156,6 +156,11 @@ describe('the file, and where it sits', () => {
       // not touch the verify transition or the Phase 1B reward. Asserted in
       // src/lib/customerReviews/customSubmissions.test.ts.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: re-creates the custom approval with a
+      // closed-month guard, adds the monthly submission rules, reapplication and
+      // reviewer notifications. It does not touch the verify transition or the
+      // Phase 1B reward. Asserted in src/lib/customerReviews/customReviewPhase.test.ts.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
   })
 

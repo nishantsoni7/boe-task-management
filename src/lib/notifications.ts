@@ -184,10 +184,24 @@ const typeInList = (types: readonly string[]) => `type.in.(${types.join(',')})`
 // one documented extra OR term added here, not a return to title matching.
 const TASK_STRUCTURAL_OR = 'task_id.not.is.null'
 
-export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll'
+// Review Workflow (20261206000000). Written by the database, in the same
+// transaction as the change, to every active user who resolves
+// customer_review_requests.verify — never to the employee who acted.
+//
+//   customer_review_submitted   a custom review was submitted for approval.
+//   customer_review_reapplied   a rejected custom review was corrected and
+//                               reapplied — the same review, not a new one.
+//
+// entity_id carries the SUBMISSION id; the link opens it in Custom Submissions.
+export const REVIEW_NOTIFICATION_TYPES = [
+  'customer_review_submitted',
+  'customer_review_reapplied',
+] as const
+
+export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'attendance_payroll' | 'review'
 
 const VALID_CATEGORIES: readonly NotificationCategory[] =
-  ['task', 'finance', 'order', 'asset', 'attendance_payroll']
+  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review']
 
 /**
  * Categories only an admin may read. Currently none.
@@ -233,6 +247,8 @@ export function getNotificationCategoryFilter(category: NotificationCategory): s
       return typeInList(ASSET_NOTIFICATION_TYPES)
     case 'attendance_payroll':
       return typeInList(ATTENDANCE_PAYROLL_NOTIFICATION_TYPES)
+    case 'review':
+      return typeInList(REVIEW_NOTIFICATION_TYPES)
   }
 }
 

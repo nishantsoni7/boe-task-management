@@ -217,6 +217,13 @@ describe('the migration is one file, correctly sequenced', () => {
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: reapplication on the same row, the monthly cap
+      // and image mix, reviewer notifications, an append-only history table of
+      // its own, two settings columns, and a trigger on customer_review_test_cards
+      // that refuses a candidate's booking while generated reviews are paused.
+      // It creates none of the three tables asserted below and changes no policy
+      // this file asserts; the trigger fires only on available → booked.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
   })
 

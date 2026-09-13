@@ -219,7 +219,7 @@ export default function MyCreditsPage() {
                   </span>
                 ))}
                 <span style={{ fontSize: 13, fontWeight: 600, color: colors.primary, marginLeft: 4 }}>
-                  {done} of {target} verified
+                  {done} of {target} approved
                 </span>
               </div>
               <div style={{ fontSize: 12.5, color: '#5B6474', marginTop: 8, lineHeight: 1.5 }}>
@@ -258,7 +258,7 @@ export default function MyCreditsPage() {
             <div style={{ padding: '18px', fontSize: 13, color: colors.muted }} aria-busy="true">Loading…</div>
           ) : rows.length === 0 ? (
             <div style={{ padding: '24px 18px', fontSize: 13, color: colors.muted, lineHeight: 1.6 }}>
-              No credits yet. Book a review in the Review Workflow, send it, submit your screenshot, and a verified
+              No credits yet. Submit a Custom Review in the Review Workflow; once it is approved, a
               review earns{' '}
               {settings.review_reward_credits === settings.image_review_reward_credits
                 ? formatCredits(settings.review_reward_credits)

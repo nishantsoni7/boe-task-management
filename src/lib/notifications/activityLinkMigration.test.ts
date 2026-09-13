@@ -268,6 +268,10 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: a new migration, not an edit of this one. It
+      // adds two notification_type values and writes review notifications with
+      // no activity_log_id — it reaches nothing asserted here.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
   })
 

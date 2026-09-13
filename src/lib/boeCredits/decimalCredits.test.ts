@@ -61,7 +61,8 @@ describe('10. a 1.5-credit review reward can be configured', () => {
   })
 
   test('a change from 1 to 1.5 is a change, so the Save button is not silently disabled', () => {
-    assert.equal(sameBoeCreditSettings(D, { ...D, image_review_reward_credits: 1.5 }), false)
+    // The defaults already carry 1.5 (the Custom Review phase), so start from 1.
+    assert.equal(sameBoeCreditSettings({ ...D, image_review_reward_credits: 1 }, { ...D, image_review_reward_credits: 1.5 }), false)
   })
 
   test('the attendance prices and the monthly minimum are still whole numbers', () => {

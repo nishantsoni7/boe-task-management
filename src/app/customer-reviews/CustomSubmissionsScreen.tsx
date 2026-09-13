@@ -1,15 +1,21 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import { ReviewBadge } from '@/components/customerReviews/ReviewPieces'
-import { CustomSubmissionFacts, CustomSubmissionProof } from '@/components/customerReviews/CustomSubmissionPieces'
+import {
+  CustomSubmissionFacts,
+  CustomSubmissionProof,
+  CustomSubmissionTrail,
+} from '@/components/customerReviews/CustomSubmissionPieces'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
+import { CUSTOM_REVIEW_PENDING_COUNT_KEY } from '@/hooks/queries/useCustomReviewPendingCount'
 import { istDateOf } from '@/lib/istDate'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import { REVIEW_TYPE_META } from '@/lib/customerReviews/types'
@@ -34,7 +40,10 @@ import {
 // Reviews queue is the generated-review lifecycle (pending → available →
 // booked → to verify), and a custom submission has none of those states.
 //
-// OPEN PROOF → VERIFY → APPROVE + CREDIT, OR REJECT + REASON.
+// OPEN PROOF → CHECK → APPROVE + CREDIT, OR REJECT + REASON. A rejected review
+// can come back: the employee corrects it and reapplies the SAME review, which
+// returns here as Pending Approval with a "Reapplied" marker, their note, and
+// the whole history — the first submission, the rejection and why.
 //
 // THE DATABASE DECIDES EVERYTHING THAT MATTERS. approve_customer_review_custom_
 // submission() and reject_…() take their actor from auth.uid(), resolve
@@ -42,12 +51,17 @@ import {
 // credit exactly once. This screen only shows the amount they will post: the
 // configured reward for the review type, which a verifier confirms and only a
 // BOE Credits administrator may change (the function enforces that too).
+//
+// A NOTIFICATION OPENS ONE REVIEW. `?submission=<id>` loads that row, switches
+// to its status and opens its sheet.
 
 type Rewards = { text: number; image: number }
 
 export function CustomSubmissionsScreen() {
   const { supabase, profile, caps, loading, signOut } = useCustomerReviews()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const queryClient = useQueryClient()
 
   const [status, setStatus] = useState<CustomSubmissionStatus>('pending_verification')
   const [rows, setRows] = useState<CustomReviewSubmission[]>([])
@@ -60,11 +74,25 @@ export function CustomSubmissionsScreen() {
   const [notice, setNotice] = useState<string | null>(null)
   // A response for a tab somebody already left must not overwrite the one they are on.
   const loadTicket = useRef(0)
+  const deepLinked = useRef<string | null>(null)
 
   useEffect(() => {
     if (loading) return
     if (!caps.canVerify) router.replace('/customer-reviews')
   }, [loading, caps.canVerify, router])
+
+  const rememberNames = useCallback(async (found: CustomReviewSubmission[]) => {
+    const ids = [...new Set(found.flatMap(r => [r.submitted_by, r.approved_by, r.rejected_by]).filter((v): v is string => !!v))]
+    if (ids.length === 0) return
+    // id and full_name only — users has private columns (src/lib/users/safeColumns.ts).
+    const { data: people } = await supabase.from('users').select('id, full_name').in('id', ids)
+    const named = (people ?? []) as unknown as { id: string; full_name: string | null }[]
+    setNames(prev => {
+      const next = new Map(prev)
+      for (const p of named) next.set(p.id, p.full_name ?? 'Unknown')
+      return next
+    })
+  }, [supabase])
 
   const load = useCallback(async (which: CustomSubmissionStatus) => {
     const ticket = ++loadTicket.current
@@ -93,21 +121,36 @@ export function CustomSubmissionsScreen() {
     setRows(found)
     setLoadedStatus(which)
     setPendingCount(pending.error ? null : pending.count ?? null)
-
-    const ids = [...new Set(found.flatMap(r => [r.submitted_by, r.approved_by, r.rejected_by]).filter((v): v is string => !!v))]
-    if (ids.length === 0) return
-    // id and full_name only — users has private columns (src/lib/users/safeColumns.ts).
-    const { data: people } = await supabase.from('users').select('id, full_name').in('id', ids)
-    if (ticket !== loadTicket.current) return
-    const named = (people ?? []) as unknown as { id: string; full_name: string | null }[]
-    setNames(new Map(named.map(p => [p.id, p.full_name ?? 'Unknown'])))
-  }, [supabase])
+    await rememberNames(found)
+  }, [supabase, rememberNames])
 
   useEffect(() => {
     if (loading || !caps.canVerify) return
     const startFetch = () => { void load(status) }
     startFetch()
   }, [loading, caps.canVerify, status, load])
+
+  // The review a notification points at, opened once per id.
+  const wanted = searchParams.get('submission')
+  useEffect(() => {
+    if (loading || !caps.canVerify || !wanted || deepLinked.current === wanted) return
+    deepLinked.current = wanted
+    const startFetch = () => {
+      void (async () => {
+        const { data } = await supabase
+          .from('customer_review_custom_submissions')
+          .select(CUSTOM_SUBMISSION_COLUMNS)
+          .eq('id', wanted)
+          .maybeSingle()
+        const row = data as unknown as CustomReviewSubmission | null
+        if (!row) { setNotice('That custom review could not be found.'); return }
+        await rememberNames([row])
+        setStatus(row.status)
+        setOpened(row)
+      })()
+    }
+    startFetch()
+  }, [loading, caps.canVerify, wanted, supabase, rememberNames])
 
   // The configured rewards, read under RLS (every active employee may read the
   // settings). A label for the button — the approval function re-reads them.
@@ -140,7 +183,7 @@ export function CustomSubmissionsScreen() {
     <CustomerReviewsLayout
       profile={profile}
       title="Custom Submissions"
-      subtitle="Reviews employees arranged themselves"
+      subtitle="Custom reviews waiting for approval"
       canVerify={caps.canVerify}
       onSignOut={signOut}
     >
@@ -186,8 +229,8 @@ export function CustomSubmissionsScreen() {
             border: `1px dashed ${colors.border}`, color: colors.muted, fontSize: '13px',
           }}>
             {status === 'pending_verification'
-              ? 'Nothing is waiting for verification.'
-              : status === 'approved' ? 'No custom review has been approved yet.' : 'No custom review has been rejected.'}
+              ? 'Nothing is waiting for approval.'
+              : status === 'approved' ? 'No custom review has been approved yet.' : 'No custom review is rejected right now.'}
           </p>
         ) : (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -208,16 +251,25 @@ export function CustomSubmissionsScreen() {
                       {CUSTOM_REVIEW_TYPE_LABELS[row.review_type]}
                     </span>
                     <ReviewBadge meta={CUSTOM_SUBMISSION_STATUS_META[row.status]} />
+                    {row.reapplication_count > 0 && row.status === 'pending_verification' && (
+                      <span style={{
+                        fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '999px',
+                        background: 'rgba(79,111,208,0.10)', color: '#3B5BC0', border: '1px solid rgba(79,111,208,0.25)',
+                      }}>
+                        Reapplied
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '12px', color: colors.secondary, marginTop: '4px', fontVariantNumeric: 'tabular-nums' }}>
                     {row.submission_ref} · Published {formatSubmissionDay(row.published_on)} · Submitted {formatSubmissionDay(istDateOf(row.submitted_at))}
+                    {row.last_reapplied_at ? ` · Reapplied ${formatSubmissionDay(istDateOf(row.last_reapplied_at))}` : ''}
                   </div>
-                  {row.remark && (
+                  {(row.candidate_note ?? row.remark) && (
                     <div style={{
                       fontSize: '12px', color: colors.tertiary, marginTop: '3px',
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                     }}>
-                      {row.remark}
+                      {row.candidate_note ? `Note: ${row.candidate_note}` : row.remark}
                     </div>
                   )}
                 </div>
@@ -232,7 +284,7 @@ export function CustomSubmissionsScreen() {
                   onClick={() => { setNotice(null); setOpened(row) }}
                   style={{ padding: '7px 14px', fontSize: '12.5px', minHeight: '44px' }}
                 >
-                  {row.status === 'pending_verification' ? 'Open & Verify' : 'Open'}
+                  {row.status === 'pending_verification' ? 'Open & Decide' : 'Open'}
                 </button>
               </li>
             ))}
@@ -253,6 +305,8 @@ export function CustomSubmissionsScreen() {
           onDecided={async message => {
             setOpened(null)
             setNotice(message)
+            // The sidebar's pending badge reads the same queue.
+            void queryClient.invalidateQueries({ queryKey: CUSTOM_REVIEW_PENDING_COUNT_KEY })
             await load(status)
           }}
         />
@@ -342,7 +396,7 @@ function DecisionSheet({
       const result = data as { already_decided?: boolean } | null
       await onDecided(result?.already_decided
         ? `${row.submission_ref} was already rejected.`
-        : `${row.submission_ref} rejected. No credits were awarded.`)
+        : `${row.submission_ref} rejected. No credits were awarded; ${employee} can correct it and reapply.`)
     } catch {
       setError('That submission could not be rejected. Check your connection and try again.')
     } finally {
@@ -408,7 +462,7 @@ function DecisionSheet({
   return (
     <ReviewSheet
       title={`${employee} · ${CUSTOM_REVIEW_TYPE_LABELS[row.review_type]}`}
-      subtitle={`${row.submission_ref} · ${CUSTOM_SUBMISSION_STATUS_META[row.status].label}`}
+      subtitle={`${row.submission_ref} · ${CUSTOM_SUBMISSION_STATUS_META[row.status].label}${row.reapplication_count > 0 ? ' · Reapplied' : ''}`}
       maxWidth="720px"
       dismissOnBackdrop={!busy}
       onClose={() => { if (!busy) onClose() }}
@@ -419,6 +473,21 @@ function DecisionSheet({
           <p role="alert" style={{ fontSize: '12.5px', color: colors.red, margin: 0 }}>{error}</p>
         )}
 
+        {pending && row.reapplication_count > 0 && (
+          <section style={{
+            padding: '10px 12px', borderRadius: '9px',
+            border: '1px solid rgba(79,111,208,0.25)', background: 'rgba(79,111,208,0.06)',
+            fontSize: '12.5px', color: colors.primary, lineHeight: 1.55,
+          }}>
+            <strong>Reapplied after a rejection</strong> — the same review, corrected. It still uses its one monthly slot.
+            {row.candidate_note && (
+              <div style={{ marginTop: '4px', color: colors.secondary, overflowWrap: 'anywhere' }}>
+                {employee}&rsquo;s note: {row.candidate_note}
+              </div>
+            )}
+          </section>
+        )}
+
         <CustomSubmissionProof
           supabase={supabase}
           path={row.proof_storage_path}
@@ -427,6 +496,8 @@ function DecisionSheet({
         />
 
         <CustomSubmissionFacts row={row} names={names} />
+
+        <CustomSubmissionTrail supabase={supabase} submissionId={row.id} viewerId={viewerId} names={names} />
 
         {pending && own && (
           <p style={{ margin: 0, fontSize: '12px', color: colors.secondary, lineHeight: 1.6 }}>
@@ -468,7 +539,7 @@ function DecisionSheet({
             )}
             <p style={{ margin: 0, fontSize: '11.5px', color: typeMeta.color, lineHeight: 1.6 }}>
               {configured != null
-                ? `The configured reward for a ${CUSTOM_REVIEW_TYPE_LABELS[row.review_type].toLowerCase()} is ${formatCredits(configured)}. `
+                ? `The configured reward for a ${CUSTOM_REVIEW_TYPE_LABELS[row.review_type]} is ${formatCredits(configured)}. `
                 : ''}
               {isAdmin
                 ? 'As a BOE Credits administrator you can award a different amount, up to two decimal places. '
@@ -497,7 +568,7 @@ function DecisionSheet({
               }}
             />
             <span style={{ fontSize: '11px', color: colors.muted, lineHeight: 1.5 }}>
-              The employee sees this reason. No credits are awarded, and the submission is kept.
+              The employee sees this reason and can correct the review and reapply it. No credits are awarded.
             </span>
           </label>
         )}
