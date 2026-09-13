@@ -40,8 +40,6 @@ export type OrderDashboardCounts = {
   reviewQueue: number | undefined
   /** running + on_hold + ready_for_dispatch. */
   activeOrders: number | undefined
-  /** Confirmed Orders past their due date and not yet dispatched. */
-  overdueOrders: number | undefined
   /** Payments recorded but not yet verified by Finance. */
   awaitingVerification: number | undefined
   /** Payments with a positive unallocated balance. */
@@ -52,7 +50,6 @@ export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
   piDrafts: undefined,
   reviewQueue: undefined,
   activeOrders: undefined,
-  overdueOrders: undefined,
   awaitingVerification: undefined,
   availableToAllocate: undefined,
 }
@@ -129,15 +126,6 @@ export function orderDashboardCards(input: {
     sub: 'Running, on hold, ready',
     href: '/orders/all',
     tone: 'neutral',
-  })
-
-  cards.push({
-    key: 'overdue_orders',
-    label: 'Overdue',
-    value: counts.overdueOrders ?? null,
-    sub: 'Past due date',
-    href: '/orders/all',
-    tone: (counts.overdueOrders ?? 0) > 0 ? 'attention' : 'neutral',
   })
 
   // ── The money ──
