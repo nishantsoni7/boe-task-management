@@ -302,6 +302,10 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // boe_credit_settings columns and a booking trigger on
       // customer_review_test_cards. It reaches nothing asserted here.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates customer_review_custom_submissions_trail() so a
+      // reapplied event records the right attempt number. It reaches nothing
+      // asserted here.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ], 'every migration at or after this one is accounted for')
   })
 })

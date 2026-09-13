@@ -614,6 +614,10 @@ describe('the migration is placed correctly', () => {
       // boe_credit_settings columns and a booking trigger on
       // customer_review_test_cards. It names no health-check object.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates customer_review_custom_submissions_trail() so a
+      // reapplied event records the right attempt number. It names no
+      // health-check object.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
