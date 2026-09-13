@@ -728,6 +728,11 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: reapplication, the monthly submission rules,
+      // reviewer notifications, an append-only history table of its own, two
+      // boe_credit_settings columns and a booking trigger on
+      // customer_review_test_cards. It reaches no task table or function.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

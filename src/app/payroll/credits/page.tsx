@@ -596,6 +596,7 @@ export default function BoeCreditsPage() {
                     {' · '}{formatCredits(h.image_review_reward_credits)} per image review
                     {' · '}{formatCreditValue(h.credit_value)} per credit
                     {' · '}Half Day {h.half_day_redemption_credits} · Full Day {h.full_day_redemption_credits} · {h.minimum_monthly_reviews} reviews a month
+                    {' · '}at most {h.max_monthly_review_submissions} submissions, {h.minimum_monthly_image_reviews} of them image
                     {h.note ? ` · ${h.note}` : ''}
                   </div>
                 ))}

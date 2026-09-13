@@ -172,6 +172,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // storage policy, and five new functions. It alters no existing table and
     // redefines no existing function, so it reaches nothing asserted here.
     '20261205000000_customer_review_custom_submissions.sql',
+    // The Custom Review phase: reapplication, the monthly submission rules,
+    // reviewer notifications, an append-only history table of its own, two
+    // boe_credit_settings columns and a booking trigger on
+    // customer_review_test_cards. It reaches nothing asserted here.
+    '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

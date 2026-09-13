@@ -107,8 +107,20 @@ export type BoeCreditSettings = {
   half_day_redemption_credits: number
   /** Credits that cover a chargeable Absent (full) day. Independent of the half day. */
   full_day_redemption_credits: number
-  /** Verified reviews a month needs before its rewards become spendable. */
+  /** Approved reviews a month needs before its review rewards become spendable. */
   minimum_monthly_reviews: number
+  /**
+   * Custom reviews one employee may submit for approval in one Asia/Kolkata
+   * month (20261206000000). A reapplication of a rejected review takes no second
+   * slot. Read when a review is submitted.
+   */
+  max_monthly_review_submissions: number
+  /**
+   * Of those monthly submissions, how many must be Image Reviews. A Text Review
+   * is refused when it would leave fewer slots than image reviews still needed.
+   * 0 turns the rule off.
+   */
+  minimum_monthly_image_reviews: number
 }
 
 // ─── Phase 1D records ─────────────────────────────────────────────────────────

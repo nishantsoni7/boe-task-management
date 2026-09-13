@@ -73,7 +73,7 @@ describe('1. an employee creates their own pending submission', () => {
   test('the proof is decoded and re-encoded, stored under a generated path, and removed if registration fails', () => {
     const route = read('src/app/api/customer-reviews/custom-submissions/route.ts')
     assert.ok(route.includes('processReviewImage(bytes, TEST_SCREENSHOT_MAX_BYTES)'))
-    assert.ok(route.includes('const storagePath = `${submissionId}/proof/${randomUUID()}.${extension}`'))
+    assert.ok(route.includes('const storagePath = `${submissionId}/proof/${randomUUID()}.${image.extension}`'))
     assert.ok(route.includes('.remove([storagePath])'))
     assert.ok(route.indexOf('.upload(storagePath') < route.indexOf("rpc('create_customer_review_custom_submission'"))
   })
@@ -298,7 +298,7 @@ describe('the employee screen', () => {
     const mine = read('src/app/customer-reviews/MyReviewsScreen.tsx')
     assert.ok(mine.includes('<CustomReviewSubmissions supabase={supabase} profileId={profile.id} canSubmit={caps.canUse} />'))
     const form = read('src/components/customerReviews/CustomReviewSubmissions.tsx')
-    for (const label of ['Submit Custom Review', 'Review Type', 'Review Published On', 'Screenshot / Proof', 'Remark', 'Submit for Verification', 'View Proof']) {
+    for (const label of ['Submit Custom Review', 'Review Type', 'Review Published On', 'Screenshot / Proof', 'Remark', 'Submit for Approval', 'Reapply for Approval', 'View Proof']) {
       assert.ok(form.includes(label), label)
     }
     assert.ok(form.includes("fetch('/api/customer-reviews/custom-submissions', { method: 'POST', body })"))
@@ -306,7 +306,8 @@ describe('the employee screen', () => {
   })
 
   test('status words and dates read as the brief asks', () => {
-    assert.deepEqual(Object.values(CUSTOM_SUBMISSION_STATUS_META).map(m => m.label), ['Pending Verification', 'Approved', 'Rejected'])
+    // The stored value is still pending_verification; the word a person reads is Pending Approval.
+    assert.deepEqual(Object.values(CUSTOM_SUBMISSION_STATUS_META).map(m => m.label), ['Pending Approval', 'Approved', 'Rejected'])
     assert.equal(formatSubmissionDay('2026-09-05'), '5 Sep 2026')
     assert.equal(customSubmissionErrorMessage('CUSTOMER_REVIEW_CUSTOM_SELF: You cannot approve or reject your own submission', 'x'),
       'You cannot approve or reject your own submission')

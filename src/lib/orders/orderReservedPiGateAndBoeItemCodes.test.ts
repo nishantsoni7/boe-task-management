@@ -297,6 +297,11 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: reapplication, the monthly submission rules,
+      // reviewer notifications, an append-only history table of its own, two
+      // boe_credit_settings columns and a booking trigger on
+      // customer_review_test_cards. It reaches nothing asserted here.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ], 'every migration at or after this one is accounted for')
   })
 })

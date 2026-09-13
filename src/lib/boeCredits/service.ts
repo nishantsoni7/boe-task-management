@@ -27,7 +27,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { creditAmountIssue, creditReasonIssue, hasCreditPrecision } from './ledger'
-import { parseBoeCreditSettings, DEFAULT_BOE_CREDIT_SETTINGS } from './settings'
+import { parseBoeCreditSettings, parseBoeCreditSettingsRow, DEFAULT_BOE_CREDIT_SETTINGS } from './settings'
 import { isRedeemableDeductionType, type RedeemableDeductionType } from './attendanceRedemption'
 import {
   isCreditTransactionType,
@@ -52,7 +52,7 @@ const BALANCE_COLUMNS =
   'employee_id, available_credits, provisional_credits, spendable_credits, transaction_count, last_transaction_at'
 
 const SETTINGS_COLUMNS =
-  'id, review_reward_credits, image_review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, note, created_at, created_by'
+  'id, review_reward_credits, image_review_reward_credits, credit_value, half_day_redemption_credits, full_day_redemption_credits, minimum_monthly_reviews, max_monthly_review_submissions, minimum_monthly_image_reviews, note, created_at, created_by'
 
 const MONTH_COLUMNS =
   'id, employee_id, review_month, minimum_reviews_snapshot, qualifying_review_count, earned_review_credits, status, qualified_at, finalized_at, lapse_transaction_id'
@@ -656,18 +656,11 @@ export type ActiveCreditSettings = {
 }
 
 function settingsFromRow(row: Record<string, unknown>) {
-  return parseBoeCreditSettings({
-    review_reward_credits:       row.review_reward_credits,
-    // A row written before the image reward existed carries no value for it.
-    // Falling back to the built-in default keeps fetchActiveCreditSettings()'s
-    // promise that it never fails and never returns null — a screen must not go
-    // blank because one column is younger than one row.
-    image_review_reward_credits: row.image_review_reward_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.image_review_reward_credits,
-    credit_value:                row.credit_value,
-    half_day_redemption_credits: row.half_day_redemption_credits,
-    full_day_redemption_credits: row.full_day_redemption_credits,
-    minimum_monthly_reviews:     row.minimum_monthly_reviews,
-  })
+  // A row written before a column existed carries no value for it. Falling back
+  // to the built-in default keeps fetchActiveCreditSettings()'s promise that it
+  // never fails and never returns null — a screen must not go blank because one
+  // column is younger than one row.
+  return parseBoeCreditSettingsRow(row)
 }
 
 /**
@@ -729,6 +722,8 @@ export async function saveCreditSettings(
       half_day_redemption_credits: parsed.settings.half_day_redemption_credits,
       full_day_redemption_credits: parsed.settings.full_day_redemption_credits,
       minimum_monthly_reviews:     parsed.settings.minimum_monthly_reviews,
+      max_monthly_review_submissions: parsed.settings.max_monthly_review_submissions,
+      minimum_monthly_image_reviews:  parsed.settings.minimum_monthly_image_reviews,
       created_by: createdBy,
       note: note ?? null,
     })
@@ -761,6 +756,8 @@ export async function fetchCreditSettingsHistory(svc: Svc, limit = 20): Promise<
     half_day_redemption_credits: Number(r.half_day_redemption_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.half_day_redemption_credits),
     full_day_redemption_credits: Number(r.full_day_redemption_credits ?? DEFAULT_BOE_CREDIT_SETTINGS.full_day_redemption_credits),
     minimum_monthly_reviews:     Number(r.minimum_monthly_reviews ?? DEFAULT_BOE_CREDIT_SETTINGS.minimum_monthly_reviews),
+    max_monthly_review_submissions: Number(r.max_monthly_review_submissions ?? DEFAULT_BOE_CREDIT_SETTINGS.max_monthly_review_submissions),
+    minimum_monthly_image_reviews:  Number(r.minimum_monthly_image_reviews ?? DEFAULT_BOE_CREDIT_SETTINGS.minimum_monthly_image_reviews),
     note:                        (r.note as string | null) ?? null,
     created_by:                  (r.created_by as string | null) ?? null,
     created_at:                  String(r.created_at),

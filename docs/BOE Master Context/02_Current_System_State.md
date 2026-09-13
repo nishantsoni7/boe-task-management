@@ -39,6 +39,7 @@ file may be edited again.
 | Attendance             | Early Stage    |
 | Payroll                | Early Stage    |
 | Assets & Access        | Active         |
+| Review Workflow        | Active — Custom Review phase (see REVIEW WORKFLOW) |
 | Employee Records       | Planned        |
 
 ---
@@ -459,6 +460,50 @@ Not yet done:
   displayed; nothing schedules itself).
 * Warranty-expiry reminders are produced by a sweep that runs when the inventory
   is opened, not by a scheduler — BOE has no cron for application code.
+
+---
+
+# REVIEW WORKFLOW
+
+Status: Operational — **Custom Review phase.** The generated / booked review
+workflow is paused for candidates (kept, not deleted).
+
+Reference: docs/Module Docs/CUSTOMER_REVIEW_OUTREACH.md, docs/Module Docs/BOE_CREDITS.md
+
+Database state (`supabase migration list --linked`, 2026-09-13): Custom Review
+Submissions `20261205000000` and decimal credits `20261204000000` are applied.
+**`20261206000000_customer_review_custom_reapply_and_monthly_rules.sql` is not
+yet applied** and must be applied before the code that reads it deploys.
+
+Implemented (with `20261206000000`):
+
+* **Candidate:** My Reviews is the Custom Review workspace — Submit Custom
+  Review (Text or Image), the live reward rules, **This month** and **Last
+  month** panels, own submissions with status, and **Edit & Reapply** for a
+  rejected review (the same review returns to Pending Approval, with an
+  optional note).
+* **Reviewer (`verify`):** Custom Submissions queue with Approve (the configured
+  Text 1 / Image 1.5 credit reward) and Reject (reason required), the review's
+  full history, a **pending count badge** on the sidebar entry, and a Review
+  Workflow notification feed.
+* **Notifications:** `customer_review_submitted` and `customer_review_reapplied`
+  to every active `verify` holder except the submitter, written by the database
+  with the change.
+* **Monthly rules, enforced in the database under a lock:** at most 10
+  submissions a month (a reapplication takes no new slot), at least 3 of them
+  Image Reviews (a Text Review is refused when the slots left after it would be
+  fewer than the Image Reviews still needed).
+* **Credits:** 1 credit = ₹50; a month earns review credits once it has 3
+  approved reviews; below that they stay pending and nothing is ever deducted as
+  a penalty. All values are admin settings.
+* **Generated reviews paused:** candidates see no generated cards, a card URL
+  shows a paused notice, and the database refuses a candidate's booking.
+
+Not yet done:
+
+* Apply `20261206000000` to production.
+* The pending badge refreshes for other users on its 30-second stale time, not
+  in real time; notifications are in-app only.
 
 ---
 

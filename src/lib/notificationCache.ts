@@ -31,7 +31,7 @@ import type { TaskHeaderMap, ActivityDetailMap } from '@/lib/notifications/pageE
 
 /** Every module whose notifications live in the shared `notifications` table. */
 export const NOTIFICATION_CATEGORIES: readonly NotificationCategory[] =
-  ['task', 'finance', 'order', 'asset', 'attendance_payroll']
+  ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review']
 
 export const notificationKeys = {
   /** Prefix covering every notification query (lists AND counts). Broadest possible. */

@@ -22,28 +22,32 @@ const inputStyle: React.CSSProperties = {
 
 type FieldKey = keyof BoeCreditSettings
 
-const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean; decimal?: boolean }[] = [
+const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean; decimal?: boolean; allowZero?: boolean }[] = [
   // TWO REWARDS, AND THE HINTS SAY WHICH IS WHICH RATHER THAN LEAVING THE
   // LABELS TO IMPLY IT. The stored field is still review_reward_credits; the
   // label is what changed, because the label is the part a person reads and the
   // field name is the part the history is written under. Both may be decimal
   // (1.5 credits); every other credit field stays a whole number.
-  { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one verified text review earns. Decimals such as 1.5 are allowed.', step: '0.01', decimal: true },
-  { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one verified image review earns, e.g. 1.5. Set on its own, not from the text reward.', step: '0.01', decimal: true },
+  { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one approved text review earns. Decimals such as 1.5 are allowed.', step: '0.01', decimal: true },
+  { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one approved image review earns, e.g. 1.5. Set on its own, not from the text reward.', step: '0.01', decimal: true },
   { key: 'credit_value',                label: 'Value of 1 Credit',            unit: '',          hint: 'Rupees one credit adds to salary when applied to payroll.', step: '0.01', money: true },
   { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1' },
   { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1' },
-  { key: 'minimum_monthly_reviews',     label: 'Minimum Reviews Per Month',    unit: 'reviews',   hint: 'Verified reviews a month needs before its credits become spendable.', step: '1' },
+  { key: 'minimum_monthly_reviews',     label: 'Minimum Approved Reviews Per Month', unit: 'reviews', hint: 'Approved reviews a month needs before its review credits become spendable. Below it the month earns nothing; no credit already held is taken.', step: '1' },
+  { key: 'max_monthly_review_submissions', label: 'Maximum Review Submissions Per Month', unit: 'reviews', hint: 'Custom reviews one employee may submit for approval in a month. Reapplying a rejected review takes no extra slot.', step: '1' },
+  { key: 'minimum_monthly_image_reviews',  label: 'Minimum Image Reviews Per Month',      unit: 'reviews', hint: 'Of the monthly maximum, how many must be Image Reviews. 0 turns this rule off.', step: '1', allowZero: true },
 ]
 
 function toDraft(s: BoeCreditSettings): Record<FieldKey, string> {
   return {
-    review_reward_credits:       String(s.review_reward_credits),
-    image_review_reward_credits: String(s.image_review_reward_credits),
-    credit_value:                Number.isInteger(s.credit_value) ? String(s.credit_value) : s.credit_value.toFixed(2),
-    half_day_redemption_credits: String(s.half_day_redemption_credits),
-    full_day_redemption_credits: String(s.full_day_redemption_credits),
-    minimum_monthly_reviews:     String(s.minimum_monthly_reviews),
+    review_reward_credits:          String(s.review_reward_credits),
+    image_review_reward_credits:    String(s.image_review_reward_credits),
+    credit_value:                   Number.isInteger(s.credit_value) ? String(s.credit_value) : s.credit_value.toFixed(2),
+    half_day_redemption_credits:    String(s.half_day_redemption_credits),
+    full_day_redemption_credits:    String(s.full_day_redemption_credits),
+    minimum_monthly_reviews:        String(s.minimum_monthly_reviews),
+    max_monthly_review_submissions: String(s.max_monthly_review_submissions),
+    minimum_monthly_image_reviews:  String(s.minimum_monthly_image_reviews),
   }
 }
 
@@ -131,7 +135,7 @@ export function CreditSettingsForm({
                       <input
                         type="number"
                         inputMode={f.money || f.decimal ? 'decimal' : 'numeric'}
-                        min={f.money || f.decimal ? 0.01 : 1}
+                        min={f.money || f.decimal ? 0.01 : f.allowZero ? 0 : 1}
                         step={f.step}
                         value={draft[f.key]}
                         disabled={saving}

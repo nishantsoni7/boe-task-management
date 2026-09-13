@@ -894,6 +894,11 @@ describe('the applied migrations are frozen', () => {
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: reapplication, the monthly submission rules,
+      // reviewer notifications, an append-only history table of its own, two
+      // boe_credit_settings columns and a booking trigger on
+      // customer_review_test_cards. It reaches nothing asserted here.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
   })
 
@@ -1054,6 +1059,11 @@ describe('the applied migrations are frozen', () => {
       // storage policy, and five new functions. It alters no existing table and
       // redefines no existing function, so it reaches nothing asserted here.
       '20261205000000_customer_review_custom_submissions.sql',
+      // The Custom Review phase: reapplication, the monthly submission rules,
+      // reviewer notifications, an append-only history table of its own, two
+      // boe_credit_settings columns and a booking trigger on
+      // customer_review_test_cards. Not applied; it reaches nothing asserted here.
+      '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

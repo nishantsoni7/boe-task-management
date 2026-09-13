@@ -248,6 +248,24 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
     }
   }
 
+  // ── Review Workflow ────────────────────────────────────────────────────────
+  // A custom review waiting for a decision. entity_id is the SUBMISSION, and
+  // the link opens it inside Custom Submissions, where the proof, the
+  // employee's note and Approve / Reject are one sheet. Exact type equality,
+  // so no `startsWith` prefix below can claim these.
+  if (type === 'customer_review_submitted' || type === 'customer_review_reapplied') {
+    return {
+      category: 'other',
+      heading: 'Review Workflow',
+      headingIsActor: false,
+      badge: type === 'customer_review_submitted'
+        ? { label: 'Needs approval', color: colors.amber, bg: colors.amberTint }
+        : { label: 'Reapplied',      color: colors.blue,  bg: colors.blueTint  },
+      href: n.entity_id ? `/customer-reviews/custom?submission=${n.entity_id}` : '/customer-reviews/custom',
+      actionLabel: 'Open review',
+    }
+  }
+
   // ── Finance ────────────────────────────────────────────────────────────────
   if (type.startsWith('finance')) {
     const badge = TYPE_BADGES[type] ?? NEUTRAL_BADGE

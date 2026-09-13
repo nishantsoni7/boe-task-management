@@ -1016,3 +1016,67 @@ docs. A route that could not find it was looking correctly and finding nothing,
 which is a deployment gap and not a naming disagreement. If document generation
 or PI saving reports `SERVER_NOT_CONFIGURED` on the preview, that variable is
 absent from the environment and needs adding under exactly that name.
+
+---
+
+# Review Workflow — the Custom Review phase
+
+Date: 13 September 2026
+
+Branch: `feat/review-custom-reapply-monthly-rules` (from `main` after PR #153).
+Migration: `20261206000000_customer_review_custom_reapply_and_monthly_rules.sql`
+— **not yet applied** at the time of writing.
+
+## Problem
+
+Custom Review Submissions (PR #153, `20261205000000`) let an employee submit
+proof of a review they arranged, but:
+
+* a reviewer was never told a review was waiting, and had no count of the queue;
+* a rejected review was final — the only way forward was a new submission;
+* there was no monthly limit and no requirement for Image Reviews;
+* candidates were still pointed at the generated / booked workflow the business
+  had decided to pause;
+* an approval landing in a month an administrator had already closed below the
+  minimum would have been spendable at once (only open months are provisional).
+
+## What was built
+
+* **Reapplication on the same row** (`reapply_customer_review_custom_submission`,
+  `PATCH /api/customer-reviews/custom-submissions`): owner only, rejected only,
+  corrections plus an optional note; `submitted_at` never moves, so the monthly
+  slot and the credit month stay put.
+* **An append-only history** (`customer_review_custom_submission_events`),
+  written by a trigger for every submission, rejection, reapplication and
+  approval.
+* **Reviewer notifications** from the same trigger, to active `verify` holders
+  except the submitter; a `review` notification category and feed.
+* **The pending badge** on Custom Submissions.
+* **Monthly rules** in `check_customer_review_custom_month_rules()` under a
+  per-employee lock: 10 submissions a month, at least 3 Image Reviews by the
+  remaining-slot formula. Two new settings; a settings row with ₹50 / text 1 /
+  image 1.5 / 3 / 10 / 3.
+* **Candidate Current Month and Last Month panels** and the live reward rules.
+* **The generated workflow paused for candidates** — UI routes and a booking
+  trigger — with nothing deleted.
+* **The closed-month guard** on approval and reapplication.
+
+## Decisions
+
+* **The status keeps its stored name** (`pending_verification`, shown "Pending
+  Approval"); no stored draft state — the unsaved form is the draft.
+* **The month of a review is its first submission**, for the slot and the credit
+  alike, so a reapplication cannot move either.
+* **Notifications are written inside the transaction**, not after commit, so a
+  notification cannot exist for a submission that rolled back and a retry that
+  changes nothing writes none.
+* **No penalty.** The existing provisional / lapse model already means a short
+  month earns nothing usable; no new negative ledger row was introduced, and the
+  knowledge page no longer shows a lapse as a minus figure.
+
+## Verification
+
+`npx tsc --noEmit` 0 errors; `npm run lint` 0 errors, 0 warnings; the SQL suites
+applied `20261204000000`–`20261206000000` twice on a bare PostgreSQL 16
+container and every assertion passed twice. Full `npm test`, `npm run build` and
+`git diff --check` results are in the branch's completion report.

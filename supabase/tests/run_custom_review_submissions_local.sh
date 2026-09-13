@@ -41,6 +41,7 @@ MARKER="boe-disposable-boe-credits"
 BASELINE="$REPO/supabase/tests/bootstrap/002_boe_credits_baseline.sql"
 STUBS_1D="$REPO/supabase/tests/bootstrap/003_boe_credits_phase_1d_stubs.sql"
 STUBS_HERE="$REPO/supabase/tests/bootstrap/004_decimal_credits_and_custom_reviews_stubs.sql"
+STUBS_PHASE="$REPO/supabase/tests/bootstrap/005_custom_review_phase_stubs.sql"
 PREREQS=(
   "20260611_create_payroll_periods.sql"
   "20260612000000_create_payroll_generation_tables.sql"
@@ -52,8 +53,12 @@ PHASE_1D="20261104000000_boe_credits_phase_1d.sql"
 PENDING=(
   "20261204000000_boe_credits_decimal_credits.sql"
   "20261205000000_customer_review_custom_submissions.sql"
+  "20261206000000_customer_review_custom_reapply_and_monthly_rules.sql"
 )
-ASSERTIONS="$REPO/supabase/tests/custom_review_submissions_assertions.sql"
+ASSERTION_FILES=(
+  "$REPO/supabase/tests/custom_review_submissions_assertions.sql"
+  "$REPO/supabase/tests/custom_review_phase_assertions.sql"
+)
 
 # shellcheck source=supabase/tests/lib/disposable_stack_guard.sh
 . "$REPO/supabase/tests/lib/disposable_stack_guard.sh"
@@ -120,6 +125,7 @@ done
 echo "── $n. test-only compile stubs for Phase 1D (NOT a migration)"; psql_file "$STUBS_1D"; n=$((n + 1))
 echo "── $n. real prerequisite: $PHASE_1D"; psql_file "$REPO/supabase/migrations/$PHASE_1D"; n=$((n + 1))
 echo "── $n. test-only stubs: image reward column, permission engine, storage (NOT a migration)"; psql_file "$STUBS_HERE"; n=$((n + 1))
+echo "── $n. test-only stubs: notification_type and notifications (NOT a migration)"; psql_file "$STUBS_PHASE"; n=$((n + 1))
 
 for pass in 1 2; do
   for m in "${PENDING[@]}"; do
@@ -130,23 +136,25 @@ for pass in 1 2; do
 done
 
 # ── Assert (repeatable: one transaction, rolled back) ────────────────────────
-for pass in 1 2; do
-  echo "── $n. custom_review_submissions_assertions.sql (pass $pass of 2 — it must leave nothing behind)"
-  set +e
-  OUTPUT="$(docker exec -i "$DB_CONTAINER" psql -U postgres -d "$DB_NAME" -v ON_ERROR_STOP=1 < "$ASSERTIONS" 2>&1)"
-  STATUS=$?
-  set -e
-  if [ "$pass" = 1 ]; then
-    printf '%s\n' "$OUTPUT" | grep -E 'NOTICE|ERROR|FATAL|ASSERT' | sed 's/^psql:[^ ]* *//; s/^NOTICE:  //'
-  fi
-  if [ $STATUS -ne 0 ] || ! printf '%s' "$OUTPUT" | grep -q 'ALL ASSERTIONS PASSED'; then
-    printf '%s\n' "$OUTPUT" | grep -E 'ERROR|FATAL|ASSERT|CONTEXT' >&2 || true
-    echo "FAIL: the suite did not reach the end on pass $pass (psql exit $STATUS)" >&2
-    exit 1
-  fi
-  n=$((n + 1))
+for ASSERTIONS in "${ASSERTION_FILES[@]}"; do
+  for pass in 1 2; do
+    echo "── $n. $(basename "$ASSERTIONS") (pass $pass of 2 — it must leave nothing behind)"
+    set +e
+    OUTPUT="$(docker exec -i "$DB_CONTAINER" psql -U postgres -d "$DB_NAME" -v ON_ERROR_STOP=1 < "$ASSERTIONS" 2>&1)"
+    STATUS=$?
+    set -e
+    if [ "$pass" = 1 ]; then
+      printf '%s\n' "$OUTPUT" | grep -E 'NOTICE|ERROR|FATAL|ASSERT' | sed 's/^psql:[^ ]* *//; s/^NOTICE:  //'
+    fi
+    if [ $STATUS -ne 0 ] || ! printf '%s' "$OUTPUT" | grep -q 'ALL ASSERTIONS PASSED'; then
+      printf '%s\n' "$OUTPUT" | grep -E 'ERROR|FATAL|ASSERT|CONTEXT' >&2 || true
+      echo "FAIL: $(basename "$ASSERTIONS") did not reach the end on pass $pass (psql exit $STATUS)" >&2
+      exit 1
+    fi
+    n=$((n + 1))
+  done
 done
 
 echo
-echo "OK: both migrations applied twice and every assertion passed twice on $DB_CONTAINER/$DB_NAME."
+echo "OK: the three migrations applied twice and every assertion passed twice on $DB_CONTAINER/$DB_NAME."
 echo "    Drop the container when done: docker rm -f $DB_CONTAINER"

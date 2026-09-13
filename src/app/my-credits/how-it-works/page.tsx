@@ -160,14 +160,14 @@ export default function HowCreditsWorkPage() {
         </section>
 
         {/* ── How you earn ───────────────────────────────────────────────── */}
-        <SectionHeading id="earn" title="How you earn" note="Five steps. The credit is recorded at the last one, and it counts for the month you handed the work over." />
+        <SectionHeading id="earn" title="How you earn" note="Five steps. The credit is recorded at the last one, and it counts for the month you first submitted the review." />
         <div className="payroll-guide-flow">
           {[
-            { Icon: MessageSquareHeart, title: 'Book a review', text: 'Pick one from Available in the Review Workflow.' },
-            { Icon: Send,               title: 'Send it',        text: 'Open WhatsApp, send, and confirm you sent it.' },
-            { Icon: ClipboardCheck,     title: 'Submit',         text: 'Attach your screenshot and submit for verification.' },
-            { Icon: ShieldCheck,        title: 'Verified',       text: 'A verifier checks it — or returns it to you to fix.' },
-            { Icon: Coins,              title: 'Credit recorded', text: `${reward} on your ledger, for the month you submitted.` },
+            { Icon: MessageSquareHeart, title: 'Arrange a review', text: 'A customer publishes a Text or Image review.' },
+            { Icon: Send,               title: 'Submit it',        text: `Submit Custom Review with its screenshot — up to ${s.max_monthly_review_submissions} a month, at least ${s.minimum_monthly_image_reviews} of them Image Reviews.` },
+            { Icon: ClipboardCheck,     title: 'Pending approval', text: 'A reviewer checks the screenshot.' },
+            { Icon: ShieldCheck,        title: 'Approved',         text: 'Or rejected with a reason — correct it and reapply the same review.' },
+            { Icon: Coins,              title: 'Credit recorded',  text: `${reward} on your ledger, for the month you first submitted.` },
           ].map((step, i, all) => (
             <div key={step.title} style={{ ...card, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 6, position: 'relative' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -183,9 +183,9 @@ export default function HowCreditsWorkPage() {
           ))}
         </div>
         <div style={{ ...card, marginTop: 10, padding: '11px 14px', fontSize: 12.5, color: '#3D4455', lineHeight: 1.55, background: 'rgba(0,0,0,0.02)' }}>
-          <strong>Which month does a credit belong to?</strong> The month you <em>submitted</em> the review — the month you handed the work over — not the
-          month it was verified. Submitted on 30 September and verified on 2 October counts for <strong>September</strong>. If a review is returned and
-          you resubmit it, the later submission is the one that counts.
+          <strong>Which month does a credit belong to?</strong> The month you <em>first submitted</em> the review — not the month it was approved.
+          Submitted on 30 September and approved on 2 October counts for <strong>September</strong>. If a review is rejected and you correct it and
+          reapply, it stays in the month you first submitted it, and it still uses only one of that month&rsquo;s submissions.
         </div>
 
         {/* ── Monthly target ─────────────────────────────────────────────── */}
@@ -212,9 +212,9 @@ export default function HowCreditsWorkPage() {
           <div style={{ ...card, padding: '14px 16px' }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.09em', color: colors.muted }}>If the month closes below target</div>
             <Row label="Credits you already had" value="17" />
-            <Row label="September review 1" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
-            <Row label="September review 2" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
-            <Row label="September closes below target" value={formatCredits(-2 * s.review_reward_credits, { signed: true })} tone="#B91C1C" />
+            <Row label="September review 1 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
+            <Row label="September review 2 · pending" value={formatCredits(s.review_reward_credits, { signed: true })} tone={AMBER} />
+            <Row label="September earns nothing — no penalty" value={formatCredits(0)} tone="#B91C1C" />
             <div style={{ height: 1, background: 'rgba(0,0,0,0.12)', margin: '6px 0' }} />
             <Row label="Spendable after" value="17" strong />
             <div style={{ fontSize: 11.5, color: colors.muted, marginTop: 8, lineHeight: 1.5 }}>

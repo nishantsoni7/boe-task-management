@@ -305,12 +305,19 @@ describe('settings', () => {
       tables: { boe_credit_settings: { data: { id: 's1', review_reward_credits: '150', credit_value: '2.00', half_day_redemption_credits: '8', full_day_redemption_credits: '15', minimum_monthly_reviews: '3', created_at: 't', created_by: ADMIN }, error: null } },
     })
     const active = await fetchActiveCreditSettings(svc)
-    // THE ROW IN THIS FIXTURE CARRIES NO IMAGE REWARD, which is exactly the
-    // shape of a settings row written before review types existed. The built-in
-    // default fills it in rather than letting the parse fail, because this
-    // function's whole promise is that it never throws and never returns null —
-    // a screen must not go blank because one column is younger than one row.
-    assert.deepEqual(active.settings, { review_reward_credits: 150, image_review_reward_credits: 1, credit_value: 2, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 })
+    // THE ROW IN THIS FIXTURE CARRIES NO IMAGE REWARD AND NO MONTHLY SUBMISSION
+    // RULES, which is exactly the shape of a settings row written before those
+    // columns existed. The built-in defaults fill them in rather than letting
+    // the parse fail, because this function's whole promise is that it never
+    // throws and never returns null — a screen must not go blank because one
+    // column is younger than one row.
+    assert.deepEqual(active.settings, {
+      review_reward_credits: 150,
+      image_review_reward_credits: DEFAULT_BOE_CREDIT_SETTINGS.image_review_reward_credits,
+      credit_value: 2, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3,
+      max_monthly_review_submissions: DEFAULT_BOE_CREDIT_SETTINGS.max_monthly_review_submissions,
+      minimum_monthly_image_reviews: DEFAULT_BOE_CREDIT_SETTINGS.minimum_monthly_image_reviews,
+    })
     assert.equal(active.fell_back, false)
     assert.deepEqual(calls.find(c => c.op === 'order')?.args, ['created_at', { ascending: false }])
 
@@ -336,14 +343,14 @@ describe('settings', () => {
 
   test('saving is an INSERT of a new row, never an UPDATE, and refuses invalid values', async () => {
     const { svc, calls } = fakeClient({ tables: { boe_credit_settings: { data: { id: 's2', created_at: 't2' }, error: null } } })
-    const saved = await saveCreditSettings(svc, { review_reward_credits: 120, image_review_reward_credits: 250, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 }, ADMIN, 'Raised for Q4')
+    const saved = await saveCreditSettings(svc, { review_reward_credits: 120, image_review_reward_credits: 250, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3, max_monthly_review_submissions: 10, minimum_monthly_image_reviews: 3 }, ADMIN, 'Raised for Q4')
     assert.deepEqual(saved, { id: 's2', created_at: 't2' })
     const insert = calls.find(c => c.op === 'insert')
-    assert.deepEqual(insert?.args, [{ review_reward_credits: 120, image_review_reward_credits: 250, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3, created_by: ADMIN, note: 'Raised for Q4' }])
+    assert.deepEqual(insert?.args, [{ review_reward_credits: 120, image_review_reward_credits: 250, credit_value: 1.5, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3, max_monthly_review_submissions: 10, minimum_monthly_image_reviews: 3, created_by: ADMIN, note: 'Raised for Q4' }])
     assert.equal(calls.some(c => c.op === 'update'), false)
 
     await assert.rejects(
-      () => saveCreditSettings(svc, { review_reward_credits: 0, image_review_reward_credits: 1, credit_value: 1, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3 }, ADMIN),
+      () => saveCreditSettings(svc, { review_reward_credits: 0, image_review_reward_credits: 1, credit_value: 1, half_day_redemption_credits: 8, full_day_redemption_credits: 15, minimum_monthly_reviews: 3, max_monthly_review_submissions: 10, minimum_monthly_image_reviews: 3 }, ADMIN),
       (e: unknown) => e instanceof CreditServiceError && e.marker === 'BOE_CREDITS_SETTINGS',
     )
   })

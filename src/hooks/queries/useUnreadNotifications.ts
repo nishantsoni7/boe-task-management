@@ -154,3 +154,11 @@ export function useUnreadAssetNotifications(): number {
 export function useUnreadAttendancePayrollNotifications(enabled = true): number {
   return useUnreadCount('attendance_payroll', enabled)
 }
+
+/**
+ * Review Workflow unread count. Every row in the feed is addressed to a
+ * verifier, so the sidebar asks only when the viewer resolves `verify`.
+ */
+export function useUnreadReviewNotifications(enabled = true): number {
+  return useUnreadCount('review', enabled)
+}

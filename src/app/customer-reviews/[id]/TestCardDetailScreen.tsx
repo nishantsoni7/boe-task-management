@@ -24,6 +24,7 @@ import { GROUP_IMAGE_BUCKET } from '@/lib/customerReviews/imageGroups'
 import { ProjectImages, useProjectImages } from '@/components/customerReviews/ProjectImages'
 import { ConfirmSentControl, WhatsAppTestPanel } from '@/components/customerReviews/WhatsAppLaunch'
 import { useCustomerReviews } from '@/hooks/useCustomerReviews'
+import { GENERATED_REVIEWS_PAUSED_MESSAGE, candidateGeneratedReviewsHidden } from '@/lib/customerReviews/generatedWorkflow'
 import { holdsThisCard } from '@/lib/permissions/customerReviewOutreach'
 import { nextStepFor, stageIndex, REVIEW_STAGES } from '@/lib/customerReviews/nextStep'
 import {
@@ -412,6 +413,36 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       setBusy(false)
     }
   }, [supabase, cardId, load, router])
+
+  // GENERATED REVIEWS ARE PAUSED FOR CANDIDATES, whatever URL they typed. The
+  // card is not rendered and no action is offered; the database refuses a
+  // candidate's booking independently (customer_review_generated_booking_paused).
+  // A verifier keeps this screen for audit and for verifying submitted reviews.
+  if (!authLoading && candidateGeneratedReviewsHidden(caps)) {
+    return (
+      <CustomerReviewsLayout
+        profile={profile}
+        title="Review"
+        subtitle="Generated reviews are paused"
+        canVerify={caps.canVerify}
+        onSignOut={signOut}
+      >
+        <div style={{ maxWidth: '640px', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'flex-start' }}>
+          <p role="status" style={{ margin: 0, fontSize: '13px', color: colors.secondary, lineHeight: 1.6 }}>
+            {GENERATED_REVIEWS_PAUSED_MESSAGE}
+          </p>
+          <button
+            type="button"
+            className="boe-btn boe-btn-primary"
+            onClick={() => router.push('/customer-reviews')}
+            style={{ padding: '8px 16px', fontSize: '13px', minHeight: '44px' }}
+          >
+            Go to My Reviews
+          </button>
+        </div>
+      </CustomerReviewsLayout>
+    )
+  }
 
   if (authLoading || loading) return <LoadingScreen />
 

@@ -6,6 +6,9 @@ import { BadgeCheck, BarChart3, Home, Image as ImageIcon, Layers, MessageSquareH
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
+import { NotificationsNavItem } from '@/components/layout/NotificationsNavItem'
+import { useUnreadReviewNotifications } from '@/hooks/queries/useUnreadNotifications'
+import { useCustomReviewPendingCount } from '@/hooks/queries/useCustomReviewPendingCount'
 
 // The Review Workflow module shell.
 //
@@ -14,27 +17,29 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // navigation in the middle, and the shared user area at the bottom. No
 // cross-module links.
 //
-// FIVE DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
+// SIX DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE:
 //
 //   Overview       what needs attention right now. The verifier's landing page.
 //   Reviews        the operational queue. The four workflow states live inside
 //                  it as tabs, because a state filters one queue rather than
 //                  being a place of its own.
-//   Custom Submissions  reviews employees arranged themselves: open the proof,
-//                  approve with credits or reject with a reason.
+//   Custom Submissions  custom reviews employees submitted: open the proof,
+//                  approve with credits or reject with a reason. Carries the
+//                  number of custom reviews waiting for a decision.
 //   Batches        generate → review → approve → assign, in one workspace.
 //   Image Library  the project image groups an image review draws from.
 //   Progress       assigned / posted / verified / remaining, per employee.
 //
-//   My Reviews     the candidate's single screen, and their only entry. It is
-//                  the same route as Overview; what it renders depends on
-//                  whether the viewer resolves `verify`.
+//   My Reviews     the candidate's single screen, and their only entry. During
+//                  the Custom Review phase it is the Custom Review workspace.
 //
-// THERE IS NO HISTORY ENTRY, AND THAT IS DELIBERATE. A verified card is
-// finished, and the product owner's rule is that a finished card appears in no
-// frontend list at all. The record and its audit trail stay in the database —
-// nothing is deleted — but the module offers no screen that reads them back.
-// Adding one later would be a new feature, not a restoration.
+// A verifier also gets the module's Notifications entry: custom reviews
+// submitted or reapplied for approval are addressed to them.
+//
+// THERE IS NO ENTRY FOR FINISHED CARDS, AND THAT IS DELIBERATE. A verified card
+// is finished, and the product owner's rule is that a finished card appears in
+// no frontend list at all. The record and its audit trail stay in the database
+// — nothing is deleted — but the module offers no screen that reads them back.
 
 type CustomerReviewsLayoutProps = {
   profile: UserProfile | null
@@ -54,10 +59,12 @@ type NavItem = {
   /** Only `pathname === path` lights this item. The module root needs it. */
   exact?: boolean
   verifierOnly?: boolean
+  /** Which count this entry carries, if any. */
+  count?: 'custom-pending'
 }
 
 /**
- * FIVE DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE — and each is a place,
+ * SIX DESTINATIONS FOR A VERIFIER, ONE FOR A CANDIDATE — and each is a place,
  * not a filter.
  *
  * WHAT THIS REPLACED, AND WHY. The sidebar used to list the five workflow
@@ -92,6 +99,7 @@ const NAV_ITEMS: NavItem[] = [
     path: '/customer-reviews/custom',
     icon: <BadgeCheck size={15} strokeWidth={1.8} />,
     verifierOnly: true,
+    count: 'custom-pending',
   },
   {
     label: 'Batches',
@@ -123,6 +131,11 @@ export function CustomerReviewsLayout({
   const router = useRouter()
   const pathname = usePathname()
 
+  // BOTH COUNTS ARE A VERIFIER'S. A candidate cannot act on the queue, so their
+  // sidebar never asks for either number — `enabled` is the resolved `verify`.
+  const pendingCustom = useCustomReviewPendingCount(canVerify)
+  const unreadReviews = useUnreadReviewNotifications(canVerify)
+
   const items = NAV_ITEMS
     .filter(item => !item.verifierOnly || canVerify)
     // The root entry is Overview for a verifier and My Reviews for everybody
@@ -133,8 +146,8 @@ export function CustomerReviewsLayout({
   // `exact` because otherwise it would claim every page beneath it.
   //
   // A DETAIL SCREEN LIGHTS NOTHING, deliberately. `/customer-reviews/<id>` is
-  // not one of the five questions the nav asks, and pretending "Reviews" is
-  // selected while somebody reads one card tells them nothing true.
+  // not one of the questions the nav asks, and pretending "Reviews" is selected
+  // while somebody reads one card tells them nothing true.
   const isActive = (item: NavItem): boolean =>
     item.exact ? pathname === item.path : pathname.startsWith(item.path)
 
@@ -186,6 +199,7 @@ export function CustomerReviewsLayout({
         <div className="boe-sidebar-section">
           {items.map(item => {
             const active = isActive(item)
+            const count = item.count === 'custom-pending' ? pendingCustom : undefined
             return (
               <button
                 key={item.path}
@@ -197,9 +211,35 @@ export function CustomerReviewsLayout({
                   {item.icon}
                 </span>
                 {item.label}
+                {/* The same neutral volume badge Finance's sidebar uses. Hidden
+                    at zero and while unknown: the queue's own empty state already
+                    says there is nothing waiting. */}
+                {typeof count === 'number' && count > 0 && (
+                  <span
+                    aria-label={`${count} waiting for approval`}
+                    style={{
+                      marginLeft: 'auto', flexShrink: 0,
+                      fontSize: '10px', fontWeight: 700, color: '#3D4455',
+                      background: 'rgba(0,0,0,0.08)', borderRadius: '999px',
+                      padding: '1px 6px', lineHeight: '15px', minWidth: '17px', textAlign: 'center',
+                    }}
+                  >
+                    {count > 999 ? '999+' : count}
+                  </span>
+                )}
               </button>
             )
           })}
+
+          {/* The module's own Notifications entry, for the people its rows are
+              addressed to. Scoped to the Review Workflow's notification types. */}
+          {canVerify && (
+            <NotificationsNavItem
+              onNavigate={() => setSidebarOpen(false)}
+              count={unreadReviews}
+              href="/customer-reviews/notifications"
+            />
+          )}
         </div>
 
         <ViewModeSidebarSection

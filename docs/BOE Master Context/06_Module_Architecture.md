@@ -381,6 +381,80 @@ never inside it. The feed, mark-read and delete behaviour are the shared
 
 ---
 
+# REVIEW WORKFLOW MODULE
+
+Status:
+
+Operational — **Custom Review phase**. Candidates submit Custom Reviews; the
+generated / booked review workflow is paused for candidates and kept intact.
+
+Reference:
+
+docs/Module Docs/CUSTOMER_REVIEW_OUTREACH.md, docs/Module Docs/BOE_CREDITS.md
+
+Purpose:
+
+Employees arrange customer reviews and submit proof; reviewers approve or
+reject; approved reviews earn BOE Credits under monthly rules.
+
+Route `/customer-reviews` · module key `customer_review_requests` (the key and
+route keep their original names; renaming the key would revoke every grant).
+
+## Screens
+
+| Route | Who | What it is |
+| --- | --- | --- |
+| `/customer-reviews` | candidate | My Reviews = the Custom Review workspace: Submit Custom Review, reward rules, This month, Last month, own submissions, Edit & Reapply |
+| `/customer-reviews` | verifier | Overview |
+| `/customer-reviews/custom` | verifier | Custom Submissions queue (Pending Approval / Approved / Rejected); `?submission=<id>` opens one review |
+| `/customer-reviews/notifications` | verifier | The module's notification feed |
+| `/customer-reviews/reviews`, `/batches`, `/images`, `/progress` | verifier | The generated-review workflow (kept for audit) |
+| `/customer-reviews/mine` | verifier (candidate → Custom Review workspace) | A verifier's own assigned generated reviews |
+| `/customer-reviews/[id]` | verifier (candidate → "paused" notice) | One generated review |
+
+## API routes
+
+| Route | What it does |
+| --- | --- |
+| `POST /api/customer-reviews/custom-submissions` | Submit: re-encodes the screenshot, checks the monthly rules before upload, registers on the service role |
+| `PATCH /api/customer-reviews/custom-submissions` | Reapply: optional new screenshot, calls `reapply_customer_review_custom_submission` with the session's user |
+
+Approve and reject are browser RPCs (`approve_…` / `reject_customer_review_custom_submission`).
+
+## Tables
+
+| Table | Holds | Mutability |
+| --- | --- | --- |
+| `customer_review_custom_submissions` | One custom review: type, dates, proof, status, decision, reapplication count and note | No client writes; a decided row is final except rejected → pending by reapplication |
+| `customer_review_custom_submission_events` | Submitted / rejected / reapplied / approved history | **Append-only**, written by a trigger |
+| `boe_credit_settings` | Rates, minimum, `max_monthly_review_submissions`, `minimum_monthly_image_reviews` | Append-only; newest row active |
+
+## Enforcement
+
+* `check_customer_review_custom_month_rules()` — the cap and the image mix, under
+  a per-employee advisory lock taken by the registration and the reapplication.
+* `approve_customer_review_custom_submission()` — refuses a review whose month
+  lapsed, under the employee's credits lock; posts one `review_reward`.
+* Trigger `customer_review_generated_booking_paused` — refuses a non-verifier's
+  booking while `customer_review_generated_booking_enabled()` returns false.
+
+## Notifications
+
+`customer_review_submitted` and `customer_review_reapplied` on the shared
+`notifications` table, SUBMISSION id in `entity_id`, category `review`. Written
+by the database trigger in the same transaction as the change, to every active
+user resolving `verify` except the submitter. Feed: the shared
+`NotificationsView`.
+
+## Navigation count
+
+"Custom Submissions" carries the number of reviews in `pending_verification`
+(`useCustomReviewPendingCount`, a head count under RLS, 30 s stale time,
+invalidated by the decisions, submissions and reapplications made in the tab).
+Asked for and drawn only for verifiers.
+
+---
+
 # EMPLOYEE RECORDS MODULE
 
 Status:

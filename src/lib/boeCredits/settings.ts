@@ -1,21 +1,20 @@
 // BOE Credits settings — the defaults, and the one parser both the form and
 // the API use, so the form cannot accept something the server will reject.
 //
-// SIX NUMBERS, SIX DIFFERENT THINGS.
+// EIGHT NUMBERS, EIGHT DIFFERENT THINGS.
 //
-//   review_reward_credits         how many credits ONE verified TEXT review
+//   review_reward_credits         how many credits ONE approved TEXT review
 //                                 earns. It keeps its name because it keeps its
 //                                 meaning: before review types existed every
 //                                 review was a text review and this was the
 //                                 reward, so every history row already stored
 //                                 under this name still says what it said.
-//   image_review_reward_credits   how many credits ONE verified IMAGE review
+//   image_review_reward_credits   how many credits ONE approved IMAGE review
 //                                 earns. Set on its own, never derived from the
 //                                 text reward. THE DATABASE CHOOSES BETWEEN THE
-//                                 TWO from the review's own stored review_type,
-//                                 read off the locked row inside the verify
-//                                 transition — no screen and no request decides
-//                                 which one is paid.
+//                                 TWO from the review's own stored review_type —
+//                                 no screen and no request decides which one is
+//                                 paid.
 //   credit_value                  how many rupees ONE credit is worth when an
 //                                 employee applies credits to payroll. It is
 //                                 SNAPSHOTTED on the application, so a later
@@ -23,10 +22,14 @@
 //   half_day_redemption_credits   what covering a chargeable Half Day costs.
 //   full_day_redemption_credits   what covering a chargeable Absent day costs.
 //                                 Independent of the half day — never derived.
-//   minimum_monthly_reviews       verified reviews a month needs before that
-//                                 month's rewards stop being provisional. It is
-//                                 snapshotted on the month row the first time
-//                                 the month earns a reward.
+//   minimum_monthly_reviews       approved reviews a month needs before that
+//                                 month's review rewards stop being provisional.
+//                                 Snapshotted on the month row the first time
+//                                 the month earns a reward. Below it nothing is
+//                                 taken away that the employee already held.
+//   max_monthly_review_submissions  custom reviews an employee may submit for
+//                                 approval in one month (20261206000000).
+//   minimum_monthly_image_reviews of those, how many must be Image Reviews.
 //
 // EVERY CHANGE APPLIES TO FUTURE ACTIONS ONLY. Rewards, redemptions and payroll
 // applications already recorded keep the numbers written on them.
@@ -39,22 +42,27 @@ import type { BoeCreditSettings } from './types'
 import { hasCreditPrecision, roundCredits } from './ledger'
 
 /**
- * The Phase 1D production values. Seeded by 20261104000000_boe_credits_phase_1d.sql
- * and asserted against it by settings.test.ts, so the two cannot drift.
+ * The Custom Review phase values. Seeded by
+ * 20261206000000_customer_review_custom_reapply_and_monthly_rules.sql and
+ * asserted against it by settings.test.ts, so the two cannot drift. Used only
+ * when no settings row can be read.
  */
 export const DEFAULT_BOE_CREDIT_SETTINGS: BoeCreditSettings = {
   review_reward_credits: 1,
-  image_review_reward_credits: 1,
-  credit_value: 100.0,
+  image_review_reward_credits: 1.5,
+  credit_value: 50.0,
   half_day_redemption_credits: 8,
   full_day_redemption_credits: 15,
   minimum_monthly_reviews: 3,
+  max_monthly_review_submissions: 10,
+  minimum_monthly_image_reviews: 3,
 }
 
 /** Bounds the database CHECKs also enforce. Stated once, here. */
 export const MAX_REVIEW_REWARD_CREDITS = 100_000
 export const MAX_REDEMPTION_CREDITS = 100_000
 export const MAX_MINIMUM_MONTHLY_REVIEWS = 1_000
+export const MAX_MONTHLY_REVIEW_SUBMISSIONS = 1_000
 /** numeric(12,2): ten digits before the point. */
 export const MAX_CREDIT_VALUE = 9_999_999_999.99
 
@@ -74,7 +82,7 @@ function asNumber(value: unknown): number | null {
 }
 
 /**
- * The two review rewards may be DECIMAL — an image review can earn 1.5 credits
+ * The two review rewards may be DECIMAL — an image review earns 1.5 credits
  * (numeric(12,2) in the database). Above zero, at most two decimal places.
  */
 const REWARD_FIELDS: { key: 'review_reward_credits' | 'image_review_reward_credits'; label: string; max: number }[] = [
@@ -82,11 +90,12 @@ const REWARD_FIELDS: { key: 'review_reward_credits' | 'image_review_reward_credi
   { key: 'image_review_reward_credits', label: 'Image review reward', max: MAX_REVIEW_REWARD_CREDITS },
 ]
 
-/** The three whole-number fields share one rule: a positive whole number within its bound. */
+/** The whole-number fields that must be at least 1. */
 const WHOLE_FIELDS: { key: keyof BoeCreditSettings; label: string; unit: string; max: number }[] = [
-  { key: 'half_day_redemption_credits', label: 'Half Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
-  { key: 'full_day_redemption_credits', label: 'Full Day redemption',        unit: 'credits', max: MAX_REDEMPTION_CREDITS },
-  { key: 'minimum_monthly_reviews',     label: 'Minimum reviews per month',  unit: 'reviews', max: MAX_MINIMUM_MONTHLY_REVIEWS },
+  { key: 'half_day_redemption_credits',    label: 'Half Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS },
+  { key: 'full_day_redemption_credits',    label: 'Full Day redemption',              unit: 'credits', max: MAX_REDEMPTION_CREDITS },
+  { key: 'minimum_monthly_reviews',        label: 'Minimum reviews per month',        unit: 'reviews', max: MAX_MINIMUM_MONTHLY_REVIEWS },
+  { key: 'max_monthly_review_submissions', label: 'Maximum review submissions a month', unit: 'reviews', max: MAX_MONTHLY_REVIEW_SUBMISSIONS },
 ]
 
 /**
@@ -124,6 +133,28 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
     }
   }
 
+  // The image minimum may be 0 — that turns the image rule off.
+  const images = asNumber(obj.minimum_monthly_image_reviews)
+  if (images == null) {
+    issues.push({ key: 'minimum_monthly_image_reviews', message: 'Minimum image reviews must be a number.' })
+  } else if (!Number.isInteger(images) || images < 0 || images > MAX_MONTHLY_REVIEW_SUBMISSIONS) {
+    issues.push({ key: 'minimum_monthly_image_reviews', message: 'Minimum image reviews must be a whole number, 0 or more.' })
+  } else {
+    out.minimum_monthly_image_reviews = images
+  }
+
+  // Two numbers that only make sense together. The database holds the first
+  // (a CHECK on the row); the second is a form rule, because a month whose
+  // target cannot be reached inside its own cap is a setting nobody meant.
+  if (out.max_monthly_review_submissions != null && out.minimum_monthly_image_reviews != null
+      && out.minimum_monthly_image_reviews > out.max_monthly_review_submissions) {
+    issues.push({ key: 'minimum_monthly_image_reviews', message: 'Minimum image reviews cannot be more than the monthly maximum.' })
+  }
+  if (out.max_monthly_review_submissions != null && out.minimum_monthly_reviews != null
+      && out.minimum_monthly_reviews > out.max_monthly_review_submissions) {
+    issues.push({ key: 'minimum_monthly_reviews', message: 'Minimum reviews per month cannot be more than the monthly maximum.' })
+  }
+
   const value = asNumber(obj.credit_value)
   if (value == null) {
     issues.push({ key: 'credit_value', message: 'Value of 1 credit must be a number.' })
@@ -141,7 +172,26 @@ export function parseBoeCreditSettings(input: unknown): ParsedSettings {
   return { ok: true, settings: out as BoeCreditSettings }
 }
 
-/** True when two settings objects carry the same six values. */
+/**
+ * A settings ROW, as PostgREST returns it, parsed. A row written before a
+ * column existed carries nothing for it; the built-in default stands in, so a
+ * screen never goes blank because one column is younger than one row.
+ */
+export function parseBoeCreditSettingsRow(row: Record<string, unknown>): ParsedSettings {
+  const or = <K extends keyof BoeCreditSettings>(key: K) => row[key] ?? DEFAULT_BOE_CREDIT_SETTINGS[key]
+  return parseBoeCreditSettings({
+    review_reward_credits:          row.review_reward_credits,
+    image_review_reward_credits:    or('image_review_reward_credits'),
+    credit_value:                   row.credit_value,
+    half_day_redemption_credits:    or('half_day_redemption_credits'),
+    full_day_redemption_credits:    or('full_day_redemption_credits'),
+    minimum_monthly_reviews:        or('minimum_monthly_reviews'),
+    max_monthly_review_submissions: or('max_monthly_review_submissions'),
+    minimum_monthly_image_reviews:  or('minimum_monthly_image_reviews'),
+  })
+}
+
+/** True when two settings objects carry the same eight values. */
 export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings): boolean {
   return roundCredits(a.review_reward_credits) === roundCredits(b.review_reward_credits)
     && roundCredits(a.image_review_reward_credits) === roundCredits(b.image_review_reward_credits)
@@ -149,19 +199,19 @@ export function sameBoeCreditSettings(a: BoeCreditSettings, b: BoeCreditSettings
     && a.half_day_redemption_credits === b.half_day_redemption_credits
     && a.full_day_redemption_credits === b.full_day_redemption_credits
     && a.minimum_monthly_reviews === b.minimum_monthly_reviews
+    && a.max_monthly_review_submissions === b.max_monthly_review_submissions
+    && a.minimum_monthly_image_reviews === b.minimum_monthly_image_reviews
 }
 
 /**
- * What a verified review of this type earns, under these settings.
+ * What an approved review of this type earns, under these settings.
  *
  * FOR LABELS ONLY, AND THAT IS NOT A HEDGE — it is the point. What is actually
- * paid is decided inside transition_customer_review_test_card(), from the
- * newest settings row and the review's own stored review_type, in the same
- * transaction that verifies the review. This function exists so the button can
- * say "Award +2 credits" before the verifier presses it; if the settings change
- * between the render and the press, the database pays the new amount and the
- * screen was showing the old one. That is the correct order of authority, and
- * it is why nothing here is passed to the RPC.
+ * paid is decided inside the database, from the newest settings row and the
+ * review's own stored review_type, in the same transaction that approves the
+ * review. This function exists so a screen can say "1.5 credits" before anyone
+ * presses anything; if the settings change between the render and the press,
+ * the database pays the new amount. That is the correct order of authority.
  *
  * An unknown type reads as text, which is what every review was before types
  * existed and what the database's own default says.

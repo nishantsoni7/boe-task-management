@@ -3,18 +3,22 @@
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { colors } from '@/lib/tokens'
-import { istDateOf } from '@/lib/istDate'
+import { istClockOf, istDateOf } from '@/lib/istDate'
 import { formatCredits } from '@/lib/boeCredits/ledger'
 import {
   CUSTOM_PROOF_BUCKET,
   CUSTOM_REVIEW_TYPE_LABELS,
+  CUSTOM_SUBMISSION_EVENT_COLUMNS,
+  CUSTOM_SUBMISSION_EVENT_LABELS,
   CUSTOM_SUBMISSION_STATUS_META,
   formatSubmissionDay,
   type CustomReviewSubmission,
+  type CustomSubmissionEvent,
 } from '@/lib/customerReviews/customSubmissions'
+import type { ReviewType } from '@/lib/customerReviews/types'
 
-// The two pieces the employee's history and the verifier's queue both show: the
-// proof screenshot, and the facts of one submission.
+// The pieces the employee's history and the verifier's queue both show: the
+// proof screenshot, the facts of one submission, and its history.
 //
 // THE PROOF IS READ THROUGH A SHORT-LIVED SIGNED URL, minted per open, governed
 // by the bucket's SELECT policy — the same question the table's policy asks
@@ -96,6 +100,11 @@ export function CustomSubmissionProof({
   )
 }
 
+/** "12 Sep 2026, 14:05" in Asia/Kolkata. */
+export function formatSubmissionMoment(iso: string | null): string {
+  return iso ? `${formatSubmissionDay(istDateOf(iso))}, ${istClockOf(iso)}` : '—'
+}
+
 /** The facts of one submission. `names` adds the people (the verifier's view). */
 export function CustomSubmissionFacts({
   row, names,
@@ -103,7 +112,6 @@ export function CustomSubmissionFacts({
   row: CustomReviewSubmission
   names?: Map<string, string>
 }) {
-  const day = (iso: string | null) => (iso ? formatSubmissionDay(istDateOf(iso)) : '—')
   const facts: { label: string; value: string }[] = []
 
   if (names) facts.push({ label: 'Employee', value: names.get(row.submitted_by) ?? '—' })
@@ -111,19 +119,29 @@ export function CustomSubmissionFacts({
     { label: 'Reference',    value: row.submission_ref },
     { label: 'Review Type',  value: CUSTOM_REVIEW_TYPE_LABELS[row.review_type] },
     { label: 'Published On', value: formatSubmissionDay(row.published_on) },
-    { label: 'Submitted On', value: day(row.submitted_at) },
+    { label: 'Submitted On', value: formatSubmissionMoment(row.submitted_at) },
     { label: 'Remark',       value: row.remark ?? '—' },
     { label: 'Status',       value: CUSTOM_SUBMISSION_STATUS_META[row.status].label },
   )
+  if (row.reapplication_count > 0) {
+    facts.push({
+      label: 'Reapplied',
+      value: `${row.reapplication_count} ${row.reapplication_count === 1 ? 'time' : 'times'} · last ${formatSubmissionMoment(row.last_reapplied_at)}`,
+    })
+    facts.push({ label: 'Employee Note', value: row.candidate_note ?? '—' })
+  }
   if (row.status === 'approved') {
     facts.push({ label: 'Credits Awarded', value: formatCredits(Number(row.credits_awarded ?? 0)) })
-    facts.push({ label: 'Approved On', value: day(row.approved_at) })
+    facts.push({ label: 'Approved On', value: formatSubmissionMoment(row.approved_at) })
     if (names && row.approved_by) facts.push({ label: 'Approved By', value: names.get(row.approved_by) ?? '—' })
   }
   if (row.status === 'rejected') {
     facts.push({ label: 'Rejection Reason', value: row.rejection_reason ?? '—' })
-    facts.push({ label: 'Rejected On', value: day(row.rejected_at) })
-    if (names && row.rejected_by) facts.push({ label: 'Rejected By', value: names.get(row.rejected_by) ?? '—' })
+    facts.push({ label: 'Rejected On', value: formatSubmissionMoment(row.rejected_at) })
+    if (row.rejected_by) {
+      const by = names?.get(row.rejected_by)
+      if (by) facts.push({ label: 'Rejected By', value: by })
+    }
   }
 
   return (
@@ -135,5 +153,97 @@ export function CustomSubmissionFacts({
         </div>
       ))}
     </dl>
+  )
+}
+
+const EVENT_TONE: Record<CustomSubmissionEvent['event_type'], string> = {
+  submitted: '#4F6FD0',
+  reapplied: '#4F6FD0',
+  rejected:  '#B91C1C',
+  approved:  '#047857',
+}
+
+function typeLabel(value: unknown): string | null {
+  return value === 'text' || value === 'image' ? CUSTOM_REVIEW_TYPE_LABELS[value as ReviewType] : null
+}
+
+/**
+ * The history of one submission — every submission, rejection, reapplication
+ * and approval, oldest first, read under the caller's own RLS (the same people
+ * who may read the submission). Append-only in the database.
+ */
+export function CustomSubmissionTrail({
+  supabase, submissionId, viewerId, names,
+}: {
+  supabase: SupabaseClient
+  submissionId: string
+  /** "You" for the viewer's own actions. */
+  viewerId: string | null
+  /** People already known to the screen; anyone else shows without a name. */
+  names?: Map<string, string>
+}) {
+  const [events, setEvents] = useState<CustomSubmissionEvent[] | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    const startFetch = () => {
+      void (async () => {
+        const { data, error } = await supabase
+          .from('customer_review_custom_submission_events')
+          .select(CUSTOM_SUBMISSION_EVENT_COLUMNS)
+          .eq('submission_id', submissionId)
+          .order('created_at', { ascending: true })
+        if (!active) return
+        if (error) { setFailed(true); return }
+        setEvents((data ?? []) as unknown as CustomSubmissionEvent[])
+      })()
+    }
+    startFetch()
+    return () => { active = false }
+  }, [supabase, submissionId])
+
+  if (failed) return <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>The history could not be loaded.</p>
+  if (!events) return <p style={{ margin: 0, fontSize: '12px', color: colors.muted }}>Loading history…</p>
+  if (events.length === 0) return null
+
+  const who = (id: string | null) => (id == null ? null : id === viewerId ? 'You' : names?.get(id) ?? null)
+
+  return (
+    <section aria-label="History" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <h3 style={{ margin: 0, fontSize: '11.5px', fontWeight: 700, letterSpacing: '0.05em', textTransform: 'uppercase', color: colors.secondary }}>
+        History
+      </h3>
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {events.map(e => {
+          const previous = (e.details?.previous ?? null) as Record<string, unknown> | null
+          const current = (e.details?.current ?? null) as Record<string, unknown> | null
+          const typeChange = previous && current && previous.review_type !== current.review_type
+            ? `${typeLabel(previous.review_type) ?? '—'} → ${typeLabel(current.review_type) ?? '—'}`
+            : null
+          const actor = who(e.actor_id)
+          return (
+            <li key={e.id} style={{ display: 'flex', gap: '9px', alignItems: 'flex-start' }}>
+              <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: '50%', background: EVENT_TONE[e.event_type], marginTop: 6, flexShrink: 0 }} />
+              <div style={{ minWidth: 0, fontSize: '12px', lineHeight: 1.5 }}>
+                <div style={{ color: colors.primary, fontWeight: 600 }}>
+                  {CUSTOM_SUBMISSION_EVENT_LABELS[e.event_type]}
+                  <span style={{ color: colors.muted, fontWeight: 400 }}>
+                    {' · '}{formatSubmissionMoment(e.created_at)}{actor ? ` · ${actor}` : ''}
+                  </span>
+                </div>
+                {e.reason && <div style={{ color: '#B91C1C', overflowWrap: 'anywhere' }}>Reason: {e.reason}</div>}
+                {e.note && <div style={{ color: colors.secondary, overflowWrap: 'anywhere' }}>Note: {e.note}</div>}
+                {typeChange && <div style={{ color: colors.secondary }}>Type changed: {typeChange}</div>}
+                {e.details?.proof_replaced === true && <div style={{ color: colors.secondary }}>Screenshot replaced</div>}
+                {e.event_type === 'approved' && e.details?.credits_awarded != null && (
+                  <div style={{ color: '#047857' }}>{formatCredits(Number(e.details.credits_awarded), { signed: true })}</div>
+                )}
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </section>
   )
 }
