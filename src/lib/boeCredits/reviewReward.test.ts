@@ -161,6 +161,9 @@ describe('the file, and where it sits', () => {
       // reviewer notifications. It does not touch the verify transition or the
       // Phase 1B reward. Asserted in src/lib/customerReviews/customReviewPhase.test.ts.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates the custom review trail function so a reapplied event
+      // records the right attempt number. It touches no credit function.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
   })
 

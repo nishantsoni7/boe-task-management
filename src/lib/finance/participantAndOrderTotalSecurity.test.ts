@@ -899,6 +899,10 @@ describe('the applied migrations are frozen', () => {
       // boe_credit_settings columns and a booking trigger on
       // customer_review_test_cards. It reaches nothing asserted here.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates customer_review_custom_submissions_trail() so a
+      // reapplied event records the right attempt number. One function; it
+      // reaches nothing asserted here.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
   })
 
@@ -1064,6 +1068,10 @@ describe('the applied migrations are frozen', () => {
       // boe_credit_settings columns and a booking trigger on
       // customer_review_test_cards. Not applied; it reaches nothing asserted here.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates customer_review_custom_submissions_trail() so a
+      // reapplied event records the right attempt number. Not applied; it reaches
+      // nothing asserted here.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

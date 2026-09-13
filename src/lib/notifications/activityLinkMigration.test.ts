@@ -272,6 +272,10 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // adds two notification_type values and writes review notifications with
       // no activity_log_id — it reaches nothing asserted here.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: a new migration, not an edit of this one. It re-creates the review
+      // trail function (the reapplied event's attempt number) — it reaches
+      // nothing asserted here.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
   })
 

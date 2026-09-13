@@ -367,6 +367,16 @@ begin
   assert e.details -> 'previous' ->> 'rejection_reason' = 'The screenshot is cropped', '§4 … and what was rejected';
   assert (e.details ->> 'proof_replaced')::boolean, '§4 … and that the proof changed';
 
+  -- REGRESSION (20261207000000): the trail runs AFTER the UPDATE, so the count
+  -- already includes this reapplication. The first one is attempt 1, not 2.
+  assert s.reapplication_count = 1,
+    format('§4 regression: the first reapplication leaves reapplication_count = 1, got %s', s.reapplication_count);
+  assert (select count(*) from public.customer_review_custom_submission_events
+           where submission_id = v_id and event_type = 'reapplied') = 1,
+    '§4 regression: exactly one reapplied history event';
+  assert e.details ->> 'attempt' = '1',
+    format('§4 regression: the first reapplied event records attempt 1, got %s', e.details ->> 'attempt');
+
   select count(*) into v_notified from public.notifications
    where entity_id = v_id and type::text = 'customer_review_reapplied';
   assert v_notified = 2, format('§4 both reviewers told about the reapplication, got %s', v_notified);

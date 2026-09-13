@@ -224,6 +224,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // It creates none of the three tables asserted below and changes no policy
       // this file asserts; the trigger fires only on available → booked.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates customer_review_custom_submissions_trail() so a
+      // reapplied event records attempt = reapplication_count. One function, the
+      // same grants; it touches none of the three tables asserted below.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ])
   })
 

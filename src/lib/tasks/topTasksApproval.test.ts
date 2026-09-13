@@ -177,6 +177,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // boe_credit_settings columns and a booking trigger on
     // customer_review_test_cards. It reaches nothing asserted here.
     '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+    // Repair: re-creates customer_review_custom_submissions_trail() so a reapplied
+    // event records the right attempt number. One function; it reaches nothing
+    // asserted here.
+    '20261207000000_customer_review_reapplied_event_attempt_number.sql',
   ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

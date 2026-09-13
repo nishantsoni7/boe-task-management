@@ -407,6 +407,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // grouping's doing and changes no notification column, policy or feed
       // grouping reads.
       '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql',
+      // Repair: re-creates the review trail function so a reapplied event records
+      // the right attempt number. Notification wording, recipients and columns
+      // are unchanged; it is not grouping's doing.
+      '20261207000000_customer_review_reapplied_event_attempt_number.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

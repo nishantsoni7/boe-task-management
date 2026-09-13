@@ -294,24 +294,32 @@ describe('the read side excludes system types too', () => {
     // on notifications — tells reviewers that a PERSON submitted or reapplied a
     // review, inside that person's own transaction. Nothing else in the
     // repository writes a notification from SQL, and none of them writes a
-    // system type.
+    // system type. A fourth file, 20261207000000, re-creates that same review
+    // trail function (the reapplied event's attempt number) and installs nothing.
     const REVIEW_PHASE = '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql'
+    const REVIEW_TRAIL_REPAIR = '20261207000000_customer_review_reapplied_event_attempt_number.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
       REVIEW_PHASE,
+      REVIEW_TRAIL_REPAIR,
     ])
     {
       const sql = read(join(dir, REVIEW_PHASE))
       assert.match(sql, /create trigger customer_review_custom_submissions_trail\s*\n\s*after insert or update of status on public\.customer_review_custom_submissions/,
         `${REVIEW_PHASE}: it fires on a submission or a status change, nothing scheduled`)
-      assert.ok(sql.includes("v_kind := 'customer_review_submitted';") && sql.includes("v_kind := 'customer_review_reapplied';"),
-        `${REVIEW_PHASE}: it writes the two review types`)
-      for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
-        assert.equal(sql.includes(`'${t}'`), false, `${REVIEW_PHASE} must not write ${t}`)
+      assert.equal(/create\s+(or\s+replace\s+)?trigger/i.test(read(join(dir, REVIEW_TRAIL_REPAIR))), false,
+        `${REVIEW_TRAIL_REPAIR}: it replaces the function only, and installs no trigger`)
+      for (const f of [REVIEW_PHASE, REVIEW_TRAIL_REPAIR]) {
+        const body = read(join(dir, f))
+        assert.ok(body.includes("v_kind := 'customer_review_submitted';") && body.includes("v_kind := 'customer_review_reapplied';"),
+          `${f}: it writes the two review types`)
+        for (const t of SYSTEM_GENERATED_NOTIFICATION_TYPES) {
+          assert.equal(body.includes(`'${t}'`), false, `${f} must not write ${t}`)
+        }
       }
     }
-    for (const f of inserters.filter(name => name !== REVIEW_PHASE)) {
+    for (const f of inserters.filter(name => name !== REVIEW_PHASE && name !== REVIEW_TRAIL_REPAIR)) {
       const rpc = read(join(dir, f))
       assert.ok(rpc.includes('v_uid        uuid := auth.uid()'), `${f}: it acts as a signed-in person`)
       assert.ok(rpc.includes('transition_task_review'), `${f}: and it is that one function`)

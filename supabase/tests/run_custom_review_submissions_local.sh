@@ -54,6 +54,7 @@ PENDING=(
   "20261204000000_boe_credits_decimal_credits.sql"
   "20261205000000_customer_review_custom_submissions.sql"
   "20261206000000_customer_review_custom_reapply_and_monthly_rules.sql"
+  "20261207000000_customer_review_reapplied_event_attempt_number.sql"
 )
 ASSERTION_FILES=(
   "$REPO/supabase/tests/custom_review_submissions_assertions.sql"
