@@ -903,6 +903,10 @@ describe('the applied migrations are frozen', () => {
       // reapplied event records the right attempt number. One function; it
       // reaches nothing asserted here.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches
+      // nothing asserted here.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
   })
 
@@ -1072,6 +1076,10 @@ describe('the applied migrations are frozen', () => {
       // reapplied event records the right attempt number. Not applied; it reaches
       // nothing asserted here.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. Not applied; it
+      // reaches nothing asserted here.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

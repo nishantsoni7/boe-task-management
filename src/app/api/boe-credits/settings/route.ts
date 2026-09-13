@@ -58,6 +58,8 @@ export async function GET(req: NextRequest) {
       minimum_monthly_reviews: h.minimum_monthly_reviews,
       max_monthly_review_submissions: h.max_monthly_review_submissions,
       minimum_monthly_image_reviews: h.minimum_monthly_image_reviews,
+      half_day_redemption_enabled: h.half_day_redemption_enabled,
+      full_day_redemption_enabled: h.full_day_redemption_enabled,
       note: h.note,
       created_at: h.created_at,
       created_by_name: h.created_by ? names.get(h.created_by) ?? null : null,
@@ -82,7 +84,10 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: 'A settings object is required.' }, { status: 400 })
   }
 
-  const parsed = parseBoeCreditSettings(payload.settings)
+  // A switched-off redemption keeps the price in force instead of requiring
+  // one, so the parser is handed the active row to carry it from.
+  const active = await fetchActiveCreditSettings(svc)
+  const parsed = parseBoeCreditSettings(payload.settings, active.settings)
   if (!parsed.ok) {
     return NextResponse.json({ error: 'Some values are not valid.', issues: parsed.issues }, { status: 422 })
   }

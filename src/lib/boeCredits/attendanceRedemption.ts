@@ -38,12 +38,27 @@ export function isRedeemableDeductionType(value: unknown): value is RedeemableDe
   return typeof value === 'string' && (REDEEMABLE_DEDUCTION_TYPES as readonly string[]).includes(value)
 }
 
-/** The two prices, as the settings carry them. */
-export type AttendanceRedemptionCosts = Pick<BoeCreditSettings, 'half_day_redemption_credits' | 'full_day_redemption_credits'>
+/** The two prices and their two switches, as the settings carry them. */
+export type AttendanceRedemptionCosts = Pick<
+  BoeCreditSettings,
+  'half_day_redemption_credits' | 'full_day_redemption_credits' | 'half_day_redemption_enabled' | 'full_day_redemption_enabled'
+>
 
 /** What covering this kind of day costs under these settings. */
-export function attendanceRedemptionCost(type: RedeemableDeductionType, costs: AttendanceRedemptionCosts): number {
+export function attendanceRedemptionCost(
+  type: RedeemableDeductionType,
+  costs: Pick<BoeCreditSettings, 'half_day_redemption_credits' | 'full_day_redemption_credits'>,
+): number {
   return type === 'half_day' ? costs.half_day_redemption_credits : costs.full_day_redemption_credits
+}
+
+/**
+ * Whether this kind of day may be covered at all (20261208000000). Anything but
+ * an explicit true is OFF: a redemption the business switched off must not be
+ * offered because a value went missing on the way.
+ */
+export function attendanceRedemptionEnabled(type: RedeemableDeductionType, costs: AttendanceRedemptionCosts): boolean {
+  return (type === 'half_day' ? costs.half_day_redemption_enabled : costs.full_day_redemption_enabled) === true
 }
 
 /** The waiver the engine writes on a line credits covered. */
@@ -118,6 +133,7 @@ export type RedemptionIneligibleReason =
   | 'not_day_deduction'
   | 'company_paid'
   | 'already_covered'
+  | 'redemption_disabled'
 
 export type RedemptionEligibility =
   | {
@@ -138,6 +154,8 @@ export const REDEMPTION_REFUSALS: Record<RedemptionIneligibleReason, string> = {
   not_day_deduction: 'Credits can only cover a half-day or absent-day deduction. Late arrivals, early departures and missing punches are not covered.',
   company_paid:      'This day is already covered by your paid leave, so no credits are needed.',
   already_covered:   'This day is already covered with BOE Credits.',
+  // Names no feature: for an employee a switched-off redemption does not exist.
+  redemption_disabled: 'BOE Credits cannot be used to cover this deduction.',
 }
 
 function refuse(reason: RedemptionIneligibleReason): RedemptionEligibility {
@@ -181,6 +199,10 @@ export function attendanceRedemptionEligibility(
   if (line.waived_by != null || line.amount_deducted <= 0) return refuse('company_paid')
 
   const deduction_type = line.deduction_type as RedeemableDeductionType
+  // A kind of day the administrator has switched off is neither offered nor
+  // accepted (20261208000000). Asked last, so a day already covered still says
+  // so: switching a redemption off never hides one already made.
+  if (!attendanceRedemptionEnabled(deduction_type, ctx.costs)) return refuse('redemption_disabled')
   return {
     eligible: true,
     deduction_type,

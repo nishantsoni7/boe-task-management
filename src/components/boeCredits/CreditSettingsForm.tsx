@@ -1,17 +1,26 @@
 'use client'
 
-// "BOE Credits Settings" — the six numbers, editable by an admin, in one
-// section. Saving writes a NEW settings row; the previous ones stay as
-// history, and nothing already recorded is touched.
+// "BOE Credits Settings" — the numbers and the two redemption switches,
+// editable by an admin, in one section. Saving writes a NEW settings row; the
+// previous ones stay as history, and nothing already recorded is touched.
 //
 // The form validates with parseBoeCreditSettings, the same function the API
 // uses, so it cannot accept something the server will reject. It never
 // submits twice: the button is disabled while a save is in flight and until
 // something has actually changed.
+//
+// A REDEMPTION SWITCHED OFF KEEPS ITS PRICE. Its credit field is disabled, not
+// cleared, and not validated — the parser carries the price in force — so the
+// value is still there when the redemption is switched back on.
 
 import { useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
-import { parseBoeCreditSettings, sameBoeCreditSettings } from '@/lib/boeCredits/settings'
+import {
+  MAX_REDEMPTION_CREDITS,
+  parseBoeCreditSettings,
+  sameBoeCreditSettings,
+  type RedemptionSwitchKey,
+} from '@/lib/boeCredits/settings'
 import type { BoeCreditSettings } from '@/lib/boeCredits/types'
 
 const inputStyle: React.CSSProperties = {
@@ -20,9 +29,15 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'inherit', boxSizing: 'border-box', fontVariantNumeric: 'tabular-nums', minHeight: 40,
 }
 
-type FieldKey = keyof BoeCreditSettings
+/** The typed fields. The two redemption switches are checkboxes, not boxes. */
+type FieldKey = Exclude<keyof BoeCreditSettings, RedemptionSwitchKey>
 
-const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: string; money?: boolean; decimal?: boolean; allowZero?: boolean }[] = [
+const FIELDS: {
+  key: FieldKey; label: string; unit: string; hint: string; step: string
+  money?: boolean; decimal?: boolean; allowZero?: boolean
+  /** The switch that turns this redemption on or off, and what it says. */
+  switchKey?: RedemptionSwitchKey; switchLabel?: string
+}[] = [
   // TWO REWARDS, AND THE HINTS SAY WHICH IS WHICH RATHER THAN LEAVING THE
   // LABELS TO IMPLY IT. The stored field is still review_reward_credits; the
   // label is what changed, because the label is the part a person reads and the
@@ -31,12 +46,14 @@ const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; step: 
   { key: 'review_reward_credits',       label: 'Text Review Reward',           unit: 'credit(s)', hint: 'Credits one approved text review earns. Decimals such as 1.5 are allowed.', step: '0.01', decimal: true },
   { key: 'image_review_reward_credits', label: 'Image Review Reward',          unit: 'credit(s)', hint: 'Credits one approved image review earns, e.g. 1.5. Set on its own, not from the text reward.', step: '0.01', decimal: true },
   { key: 'credit_value',                label: 'Value of 1 Credit',            unit: '',          hint: 'Rupees one credit adds to salary when applied to payroll.', step: '0.01', money: true },
-  { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1' },
-  { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1' },
+  { key: 'half_day_redemption_credits', label: 'Half Day Redemption',          unit: 'credits',   hint: 'Credits that cover a chargeable Half Day.', step: '1', switchKey: 'half_day_redemption_enabled', switchLabel: 'Enable half-day attendance redemption' },
+  { key: 'full_day_redemption_credits', label: 'Full Day / Absent Redemption', unit: 'credits',   hint: 'Credits that cover a chargeable Absent day. Set on its own, not from the half day.', step: '1', switchKey: 'full_day_redemption_enabled', switchLabel: 'Enable absent-day redemption' },
   { key: 'minimum_monthly_reviews',     label: 'Minimum Approved Reviews Per Month', unit: 'reviews', hint: 'Approved reviews a month needs before its review credits become spendable. Below it the month earns nothing; no credit already held is taken.', step: '1' },
   { key: 'max_monthly_review_submissions', label: 'Maximum Review Submissions Per Month', unit: 'reviews', hint: 'Custom reviews one employee may submit for approval in a month. Reapplying a rejected review takes no extra slot.', step: '1' },
   { key: 'minimum_monthly_image_reviews',  label: 'Minimum Image Reviews Per Month',      unit: 'reviews', hint: 'Of the monthly maximum, how many must be Image Reviews. 0 turns this rule off.', step: '1', allowZero: true },
 ]
+
+const OFF_HINT = 'Off — employees are not offered this and it is not explained to them. The value is kept for when it is switched back on.'
 
 function toDraft(s: BoeCreditSettings): Record<FieldKey, string> {
   return {
@@ -61,7 +78,11 @@ export function CreditSettingsForm({
   /** Resolves to null on success, or the error to show. */
   onSubmit: (input: { settings: BoeCreditSettings; note: string | null }) => Promise<string | null>
 }) {
-  const [draft,  setDraft]  = useState<Record<FieldKey, string>>(() => toDraft(current))
+  const [draft,    setDraft]    = useState<Record<FieldKey, string>>(() => toDraft(current))
+  const [switches, setSwitches] = useState<Record<RedemptionSwitchKey, boolean>>(() => ({
+    half_day_redemption_enabled: current.half_day_redemption_enabled,
+    full_day_redemption_enabled: current.full_day_redemption_enabled,
+  }))
   const [note,   setNote]   = useState('')
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState('')
@@ -71,9 +92,24 @@ export function CreditSettingsForm({
   // A fresh `current` (first load, or after a save) resets the draft: the
   // page keys this form by the settings' timestamp, so it remounts on it.
 
-  const parsed = parseBoeCreditSettings(draft)
+  const parsed = parseBoeCreditSettings({ ...draft, ...switches }, current)
   const issueFor = (key: FieldKey) => parsed.ok ? null : parsed.issues.find(i => i.key === key)?.message ?? null
   const dirty = parsed.ok && !sameBoeCreditSettings(parsed.settings, current)
+
+  const toggle = (key: FieldKey, switchKey: RedemptionSwitchKey, on: boolean) => {
+    setSwitches(s => ({ ...s, [switchKey]: on }))
+    // Switched off with an unusable value in the box: show the price in force,
+    // which is what the save will keep.
+    if (!on) {
+      setDraft(d => {
+        const n = Number(d[key])
+        const usable = d[key].trim() !== '' && Number.isInteger(n) && n >= 1 && n <= MAX_REDEMPTION_CREDITS
+        return usable ? d : { ...d, [key]: String(current[key]) }
+      })
+    }
+    setError('')
+    setSaved(false)
+  }
 
   const save = async () => {
     if (inFlight.current) return
@@ -127,28 +163,62 @@ export function CreditSettingsForm({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: 14 }}>
               {FIELDS.map(f => {
                 const issue = issueFor(f.key)
+                const on = f.switchKey ? switches[f.switchKey] : true
+                const title = <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>{f.label}</span>
+                const box = (
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {f.money && <span style={{ fontSize: 14, fontWeight: 600, color: colors.tertiary }}>₹</span>}
+                    <input
+                      type="number"
+                      inputMode={f.money || f.decimal ? 'decimal' : 'numeric'}
+                      min={f.money || f.decimal ? 0.01 : f.allowZero ? 0 : 1}
+                      step={f.step}
+                      value={draft[f.key]}
+                      disabled={saving || !on}
+                      aria-invalid={issue != null}
+                      aria-label={f.switchKey ? `${f.label} credits` : undefined}
+                      onChange={e => { setDraft(d => ({ ...d, [f.key]: e.target.value })); setError(''); setSaved(false) }}
+                      style={{ ...inputStyle, borderColor: issue ? '#DC2626' : colors.borderSoft, opacity: on ? 1 : 0.55 }}
+                    />
+                    {f.unit && <span style={{ fontSize: 12.5, color: colors.tertiary }}>{f.unit}</span>}
+                  </span>
+                )
+                const hint = (
+                  <span style={{ fontSize: 11.5, color: issue ? '#C13030' : colors.muted, lineHeight: 1.45 }}>
+                    {issue ?? (on ? f.hint : OFF_HINT)}
+                  </span>
+                )
+
+                if (!f.switchKey) {
+                  return (
+                    <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                      {title}{box}{hint}
+                    </label>
+                  )
+                }
+
+                // A div, not a label: a label wrapping both the switch and the
+                // box would hand every click on its text to the switch.
+                const switchKey = f.switchKey
                 return (
-                  <label key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, color: '#3D4455' }}>{f.label}</span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      {f.money && <span style={{ fontSize: 14, fontWeight: 600, color: colors.tertiary }}>₹</span>}
+                  <div key={f.key} style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0 }}>
+                    {title}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: '#3D4455', cursor: saving ? 'default' : 'pointer' }}>
                       <input
-                        type="number"
-                        inputMode={f.money || f.decimal ? 'decimal' : 'numeric'}
-                        min={f.money || f.decimal ? 0.01 : f.allowZero ? 0 : 1}
-                        step={f.step}
-                        value={draft[f.key]}
+                        type="checkbox"
+                        role="switch"
+                        checked={on}
                         disabled={saving}
-                        aria-invalid={issue != null}
-                        onChange={e => { setDraft(d => ({ ...d, [f.key]: e.target.value })); setError(''); setSaved(false) }}
-                        style={{ ...inputStyle, borderColor: issue ? '#DC2626' : colors.borderSoft }}
+                        onChange={e => toggle(f.key, switchKey, e.target.checked)}
+                        style={{ width: 16, height: 16, margin: 0, accentColor: '#4F6FD0', cursor: 'inherit' }}
                       />
-                      {f.unit && <span style={{ fontSize: 12.5, color: colors.tertiary }}>{f.unit}</span>}
-                    </span>
-                    <span style={{ fontSize: 11.5, color: issue ? '#C13030' : colors.muted, lineHeight: 1.45 }}>
-                      {issue ?? f.hint}
-                    </span>
-                  </label>
+                      <span>
+                        <strong style={{ fontWeight: 700, color: on ? '#047857' : colors.muted }}>{on ? 'ON' : 'OFF'}</strong>
+                        {' '}{f.switchLabel}
+                      </span>
+                    </label>
+                    {box}{hint}
+                  </div>
                 )
               })}
             </div>

@@ -51,6 +51,9 @@ describe('the defaults', () => {
       minimum_monthly_reviews: 3,
       max_monthly_review_submissions: 10,
       minimum_monthly_image_reviews: 3,
+      // OFF in code: see 'the redemption switches' below.
+      half_day_redemption_enabled: false,
+      full_day_redemption_enabled: false,
     })
   })
 
@@ -158,12 +161,14 @@ describe('the parser', () => {
       review_reward_credits: '2', image_review_reward_credits: '5', credit_value: '150.50',
       half_day_redemption_credits: '10', full_day_redemption_credits: '20', minimum_monthly_reviews: '4',
       max_monthly_review_submissions: '12', minimum_monthly_image_reviews: '0',
+      half_day_redemption_enabled: 'true', full_day_redemption_enabled: 'false',
     })
     assert.ok(r.ok)
     assert.deepEqual(r.ok && r.settings, {
       review_reward_credits: 2, image_review_reward_credits: 5, credit_value: 150.5,
       half_day_redemption_credits: 10, full_day_redemption_credits: 20, minimum_monthly_reviews: 4,
       max_monthly_review_submissions: 12, minimum_monthly_image_reviews: 0,
+      half_day_redemption_enabled: true, full_day_redemption_enabled: false,
     })
   })
 
@@ -198,7 +203,8 @@ describe('the parser', () => {
   for (const key of ['half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews', 'max_monthly_review_submissions'] as const) {
     test(`${key} must be a whole positive number`, () => {
       for (const bad of [0, -1, 1.5, 'abc', null, undefined, NaN, Infinity]) {
-        const r = parseBoeCreditSettings({ ...D, [key]: bad })
+        // Both redemptions switched ON: a switched-off price is not validated.
+        const r = parseBoeCreditSettings({ ...D, half_day_redemption_enabled: true, full_day_redemption_enabled: true, [key]: bad })
         assert.equal(r.ok, false, `${key} = ${String(bad)} must be refused`)
         assert.ok(!r.ok && r.issues.some(i => i.key === key))
       }
@@ -266,9 +272,10 @@ describe('the parser', () => {
     const r = parseBoeCreditSettings({
       review_reward_credits: 0, image_review_reward_credits: -2, credit_value: -1, half_day_redemption_credits: 'x',
       full_day_redemption_credits: 0.5, minimum_monthly_reviews: null, max_monthly_review_submissions: 0, minimum_monthly_image_reviews: -1,
+      half_day_redemption_enabled: 'yes', full_day_redemption_enabled: null,
     })
     assert.equal(r.ok, false)
-    assert.equal(!r.ok && r.issues.length, 8)
+    assert.equal(!r.ok && r.issues.length, 10)
   })
 
   test('a row written before the two monthly columns existed still parses, with the defaults standing in', () => {
@@ -291,11 +298,77 @@ describe('the parser', () => {
     assert.equal(sameBoeCreditSettings(D, { ...D, image_review_reward_credits: 4 }), false)
     assert.equal(sameBoeCreditSettings(D, { ...D, max_monthly_review_submissions: 12 }), false)
     assert.equal(sameBoeCreditSettings(D, { ...D, minimum_monthly_image_reviews: 2 }), false)
+    // A switch flipped with no number changed is still a change to save.
+    assert.equal(sameBoeCreditSettings(D, { ...D, half_day_redemption_enabled: true }), false)
+    assert.equal(sameBoeCreditSettings(D, { ...D, full_day_redemption_enabled: true }), false)
   })
 
   test('formatCreditValue prints whole rupees without paise and paise when present', () => {
     assert.equal(formatCreditValue(100), '₹100')
     assert.equal(formatCreditValue(150.5), '₹150.50')
     assert.equal(formatCreditValue(1234567), '₹12,34,567')
+  })
+})
+
+// ─── The redemption switches (20261208000000) ────────────────────────────────
+
+describe('the redemption switches', () => {
+  const TOGGLES = 'supabase/migrations/20261208000000_boe_credits_redemption_toggles.sql'
+  const ON = { ...D, half_day_redemption_enabled: true, full_day_redemption_enabled: true }
+
+  test('both default OFF in code, so a screen that cannot read the row never offers a switched-off redemption', () => {
+    assert.equal(D.half_day_redemption_enabled, false)
+    assert.equal(D.full_day_redemption_enabled, false)
+  })
+
+  test('the migration adds both columns defaulting OFF — every existing row reads OFF — and writes no settings row', () => {
+    const sql = read(TOGGLES)
+    const code = sql.split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+    assert.match(code, /add column if not exists half_day_redemption_enabled boolean not null default false/)
+    assert.match(code, /add column if not exists full_day_redemption_enabled boolean not null default false/)
+    assert.equal(/default true/.test(code), false, 'nothing switches a redemption on')
+    assert.equal(/update public\.|delete from|insert into/.test(code), false, 'no row is edited, removed or added')
+    assert.equal(/alter column|drop column|boe_credit_transactions|boe_credit_balances/.test(code), false, 'prices, history and balances untouched')
+  })
+
+  test('both switches are required, like every other setting — a payload that omits one is refused', () => {
+    const { half_day_redemption_enabled: _h, ...noHalf } = ON
+    void _h
+    const r = parseBoeCreditSettings(noHalf)
+    assert.equal(r.ok, false)
+    assert.deepEqual(!r.ok ? r.issues.map(i => i.key) : [], ['half_day_redemption_enabled'])
+    const fromForm = parseBoeCreditSettings({ ...ON, full_day_redemption_enabled: 'false' })
+    assert.equal(fromForm.ok && fromForm.settings.full_day_redemption_enabled, false)
+  })
+
+  test('the two switches are independent', () => {
+    const halfOnly = parseBoeCreditSettings({ ...ON, full_day_redemption_enabled: false })
+    assert.ok(halfOnly.ok && halfOnly.settings.half_day_redemption_enabled && !halfOnly.settings.full_day_redemption_enabled)
+    const fullOnly = parseBoeCreditSettings({ ...ON, half_day_redemption_enabled: false })
+    assert.ok(fullOnly.ok && !fullOnly.settings.half_day_redemption_enabled && fullOnly.settings.full_day_redemption_enabled)
+  })
+
+  test('OFF: an empty or unusable price is not an error, and the price in force is kept', () => {
+    const inForce = { ...ON, half_day_redemption_credits: 12, full_day_redemption_credits: 20 }
+    for (const bad of ['', null, 0, 1.5, 'x']) {
+      const r = parseBoeCreditSettings({ ...ON, half_day_redemption_enabled: false, half_day_redemption_credits: bad }, inForce)
+      assert.ok(r.ok, `Half Day OFF with ${String(bad)} still saves`)
+      assert.equal(r.ok && r.settings.half_day_redemption_credits, 12)
+    }
+    const typed = parseBoeCreditSettings({ ...ON, full_day_redemption_enabled: false, full_day_redemption_credits: 25 }, inForce)
+    assert.equal(typed.ok && typed.settings.full_day_redemption_credits, 25, 'a usable price typed before switching off is stored as typed')
+  })
+
+  test('ON: the price is required and validated exactly as before', () => {
+    const r = parseBoeCreditSettings({ ...ON, half_day_redemption_credits: '' })
+    assert.equal(r.ok, false)
+    assert.ok(!r.ok && r.issues.some(i => i.key === 'half_day_redemption_credits'))
+  })
+
+  test('the row parser reads the stored switches, and a row without them reads OFF', () => {
+    const stored = parseBoeCreditSettingsRow({ ...ON, half_day_redemption_enabled: false })
+    assert.ok(stored.ok && !stored.settings.half_day_redemption_enabled && stored.settings.full_day_redemption_enabled)
+    const older = parseBoeCreditSettingsRow({ ...ON, half_day_redemption_enabled: undefined, full_day_redemption_enabled: undefined })
+    assert.ok(older.ok && !older.settings.half_day_redemption_enabled && !older.settings.full_day_redemption_enabled)
   })
 })

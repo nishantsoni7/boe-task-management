@@ -124,12 +124,23 @@ export default function HowCreditsWorkPage() {
   const examplePayable = 30_000
   const target = s.minimum_monthly_reviews
   const isAdmin = profile?.role === 'admin'
+  // ONLY THE REDEMPTIONS THAT ARE SWITCHED ON. A redemption the administrator
+  // has switched off does not exist for an employee, so no sentence, number or
+  // example on this page names it; switching it back on brings its part of the
+  // page back at the price in force.
+  const halfDayOn = s.half_day_redemption_enabled
+  const fullDayOn = s.full_day_redemption_enabled
+  const attendanceOn = halfDayOn || fullDayOn
+  const dayKinds = halfDayOn && fullDayOn ? 'Half Day or Absent' : halfDayOn ? 'Half Day' : 'Absent'
+  const coverExample = halfDayOn ? s.half_day_redemption_credits : s.full_day_redemption_credits
 
   return (
     <AttendancePayrollLayout
       profile={profile}
       title="How BOE Credits Work"
-      subtitle="Earn credits through verified customer review work. Use them for attendance support or add them to your salary."
+      subtitle={attendanceOn
+        ? 'Earn credits through verified customer review work. Use them for attendance support or add them to your salary.'
+        : 'Earn credits through verified customer review work. Add them to your salary.'}
       onSignOut={handleSignOut}
       actions={
         <Link href={isAdmin ? '/payroll/credits' : MY_CREDITS_PATH} className="boe-btn boe-btn-ghost" style={{ fontSize: 12.5, padding: '6px 12px' }}>
@@ -144,18 +155,18 @@ export default function HowCreditsWorkPage() {
         <section style={{ ...card, padding: '16px 18px' }}>
           <p style={{ margin: 0, fontSize: 13.5, color: '#3D4455', lineHeight: 1.6, maxWidth: 760 }}>
             A verified review earns credits. Once your month reaches its target, those credits are yours to spend —
-            on a Half Day or Absent deduction, or as extra money on your salary. Unused credits never expire.
+            {attendanceOn ? ` on ${halfDayOn && fullDayOn ? 'a Half Day or Absent' : halfDayOn ? 'a Half Day' : 'an Absent'} deduction, or as extra money on your salary.` : ' as extra money on your salary.'} Unused credits never expire.
           </p>
           <div style={{ marginTop: 14, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 150px), 1fr))', gap: 10 }}>
             <Stat label="1 verified review" value={reward} />
             <Stat label="1 credit" value={value} note="on your salary" />
-            <Stat label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />
-            <Stat label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />
+            {halfDayOn && <Stat label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />}
+            {fullDayOn && <Stat label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />}
             <Stat label="Monthly target" value={`${target} verified ${target === 1 ? 'review' : 'reviews'}`} />
           </div>
           <p style={{ margin: '10px 0 0', fontSize: 11.5, color: colors.muted, lineHeight: 1.5 }}>
             {live ? 'These are the current settings.' : 'These are the standard settings.'} An administrator can change them; a change applies
-            to future reviews, redemptions and payroll applications only.
+            to {attendanceOn ? 'future reviews, redemptions and payroll applications' : 'future reviews and payroll applications'} only.
           </p>
         </section>
 
@@ -224,20 +235,28 @@ export default function HowCreditsWorkPage() {
         </div>
 
         {/* ── How you can use credits ────────────────────────────────────── */}
-        <SectionHeading id="use" title="How you can use credits" note="Two uses, both on your own payslip in My Payroll, while the month is still unlocked." />
-        <div className="payroll-guide-grid-2">
-          <div style={{ ...card, padding: '14px 16px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <CalendarCheck size={16} color={ACCENT} aria-hidden="true" />
-              <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Attendance</span>
+        <SectionHeading
+          id="use"
+          title="How you can use credits"
+          note={attendanceOn
+            ? 'Two uses, both on your own payslip in My Payroll, while the month is still unlocked.'
+            : 'On your own payslip in My Payroll, while the month is still unlocked.'}
+        />
+        <div className={attendanceOn ? 'payroll-guide-grid-2' : undefined}>
+          {attendanceOn && (
+            <div style={{ ...card, padding: '14px 16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <CalendarCheck size={16} color={ACCENT} aria-hidden="true" />
+                <span style={{ fontSize: 13.5, fontWeight: 700, color: colors.primary }}>Attendance</span>
+              </div>
+              {halfDayOn && <Row label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />}
+              {fullDayOn && <Row label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />}
+              <div style={{ fontSize: 12, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
+                Next to a chargeable {dayKinds} deduction on your payslip you will see <em>Use {coverExample} credits</em>.
+                Confirm, and the day is settled at ₹0. Late arrivals, missing punches and days already covered by paid leave cannot be covered.
+              </div>
             </div>
-            <Row label="Half Day" value={formatCredits(s.half_day_redemption_credits)} />
-            <Row label="Full Day / Absent" value={formatCredits(s.full_day_redemption_credits)} />
-            <div style={{ fontSize: 12, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
-              Next to a chargeable Half Day or Absent deduction on your payslip you will see <em>Use {s.half_day_redemption_credits} credits</em>.
-              Confirm, and the day is settled at ₹0. Late arrivals, missing punches and days already covered by paid leave cannot be covered.
-            </div>
-          </div>
+          )}
           <div style={{ ...card, padding: '14px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
               <Wallet size={16} color={ACCENT} aria-hidden="true" />
@@ -250,8 +269,10 @@ export default function HowCreditsWorkPage() {
             <div style={{ height: 1, background: 'rgba(0,0,0,0.12)', margin: '6px 0' }} />
             <Row label="Final Salary Payable" value={formatRupees(examplePayable + exampleAddition)} strong />
             <div style={{ fontSize: 12, color: '#5B6474', marginTop: 8, lineHeight: 1.55 }}>
-              Choose how many credits to use on your payslip; the rupees are worked out for you. You can use credits this way even
-              when you have no attendance deduction at all, and change or remove them until payroll is locked.
+              Choose how many credits to use on your payslip; the rupees are worked out for you.{' '}
+              {attendanceOn
+                ? 'You can use credits this way even when you have no attendance deduction at all, and change or remove them until payroll is locked.'
+                : 'You can change or remove them until payroll is locked.'}
             </div>
           </div>
         </div>
@@ -271,7 +292,7 @@ export default function HowCreditsWorkPage() {
             </div>
             <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#3D4455', lineHeight: 1.6 }}>
               <li>A payroll application made at {value} per credit stays at that rate even if the setting changes later.</li>
-              <li>A day covered for {formatCredits(s.half_day_redemption_credits)} stays {formatCredits(s.half_day_redemption_credits)} in your history.</li>
+              {attendanceOn && <li>A day covered for {formatCredits(coverExample)} stays {formatCredits(coverExample)} in your history.</li>}
               <li>Regenerating payroll never re-prices credits already applied.</li>
             </ul>
           </div>
@@ -311,12 +332,21 @@ export default function HowCreditsWorkPage() {
             ['Available credits', 'Pending credits become available the moment the target is reached; any further review that month is available at once.'],
             ['Lapse',          'When an administrator closes a month that ended below target, only that month’s still-pending credits lapse — as one line in your history.'],
             ['Carry forward',  'Available credits never expire and are not reset at month end.'],
-            ['Attendance',     `Cover a chargeable Half Day for ${formatCredits(s.half_day_redemption_credits)} or an Absent day for ${formatCredits(s.full_day_redemption_credits)}, from your payslip, before payroll is locked. If the day later stops being a deduction, the credits come back.`],
+            ...(attendanceOn
+              ? [['Attendance', `Cover ${[
+                  halfDayOn ? `a chargeable Half Day for ${formatCredits(s.half_day_redemption_credits)}` : null,
+                  fullDayOn ? `${halfDayOn ? 'an' : 'a chargeable'} Absent day for ${formatCredits(s.full_day_redemption_credits)}` : null,
+                ].filter(Boolean).join(' or ')}, from your payslip, before payroll is locked. If the day later stops being a deduction, the credits come back.`]]
+              : []),
             ['Payroll',        `Add credits to a month’s salary at ${value} each, from your payslip, before payroll is locked. Change or remove them any time until then.`],
-            ['Locked payroll', 'Once a month’s payroll is locked, its attendance coverage and salary addition are final.'],
-            ['Historical values', 'Every redemption and payroll application keeps the price and rate it was made at.'],
+            ['Locked payroll', attendanceOn
+              ? 'Once a month’s payroll is locked, its attendance coverage and salary addition are final.'
+              : 'Once a month’s payroll is locked, its salary addition is final.'],
+            ['Historical values', attendanceOn
+              ? 'Every redemption and payroll application keeps the price and rate it was made at.'
+              : 'Every payroll application keeps the rate it was made at.'],
             ['Cancellations',  'An invalid review’s credit is reversed on its own; a completed month is never reopened, and a lapsed month’s credit is never taken twice.'],
-            ['Settings',       'An administrator sets the five numbers above. Changes apply to future actions only.'],
+            ['Settings',       'An administrator sets the numbers above. Changes apply to future actions only.'],
           ].map(([term, meaning], i) => (
             <div key={term} style={{ padding: '10px 16px', borderTop: i === 0 ? 'none' : '1px solid rgba(0,0,0,0.05)', display: 'grid', gridTemplateColumns: 'minmax(110px, 150px) 1fr', gap: 12 }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: colors.primary }}>{term}</div>

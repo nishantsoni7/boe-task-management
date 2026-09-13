@@ -67,7 +67,8 @@ describe('10. a 1.5-credit review reward can be configured', () => {
 
   test('the attendance prices and the monthly minimum are still whole numbers', () => {
     for (const key of ['half_day_redemption_credits', 'full_day_redemption_credits', 'minimum_monthly_reviews'] as const) {
-      assert.equal(parseBoeCreditSettings({ ...D, [key]: 1.5 }).ok, false, key)
+      // Both redemptions switched ON: a switched-off price is not validated.
+      assert.equal(parseBoeCreditSettings({ ...D, half_day_redemption_enabled: true, full_day_redemption_enabled: true, [key]: 1.5 }).ok, false, key)
     }
   })
 

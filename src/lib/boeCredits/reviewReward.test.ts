@@ -164,6 +164,10 @@ describe('the file, and where it sits', () => {
       // Repair: re-creates the custom review trail function so a reapplied event
       // records the right attempt number. It touches no credit function.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
+      // reward function and not the verify transition.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ])
   })
 

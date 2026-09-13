@@ -411,6 +411,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // the right attempt number. Notification wording, recipients and columns
       // are unchanged; it is not grouping's doing.
       '20261207000000_customer_review_reapplied_event_attempt_number.sql',
+      // BOE Credits redemption switches: two boe_credit_settings columns and a
+      // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
+      // notification; it is not grouping's doing.
+      '20261208000000_boe_credits_redemption_toggles.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

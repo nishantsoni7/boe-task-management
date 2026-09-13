@@ -172,17 +172,24 @@ export default function MyCreditsPage() {
         <section aria-labelledby="credits-uses">
           <h2 id="credits-uses" style={{ ...eyebrow, margin: '0 0 8px' }}>What you can use them for</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))', gap: 12 }}>
-            <UseTile
-              icon={<CalendarCheck size={16} strokeWidth={1.9} color={ACCENT} />}
-              title="Cover an attendance deduction"
-              lines={[
-                `Half Day · ${formatCredits(settings.half_day_redemption_credits)}`,
-                `Full Day / Absent · ${formatCredits(settings.full_day_redemption_credits)}`,
-              ]}
-              note="On your payslip, next to the deduction. The day is settled at ₹0."
-              href="/my-payroll"
-              cta="Open My Payroll"
-            />
+            {/*
+              ONLY THE REDEMPTIONS THAT ARE SWITCHED ON. With both off the tile
+              is not rendered at all: for an employee the redemption does not
+              exist, so this page must not name it.
+            */}
+            {(settings.half_day_redemption_enabled || settings.full_day_redemption_enabled) && (
+              <UseTile
+                icon={<CalendarCheck size={16} strokeWidth={1.9} color={ACCENT} />}
+                title="Cover an attendance deduction"
+                lines={[
+                  ...(settings.half_day_redemption_enabled ? [`Half Day · ${formatCredits(settings.half_day_redemption_credits)}`] : []),
+                  ...(settings.full_day_redemption_enabled ? [`Full Day / Absent · ${formatCredits(settings.full_day_redemption_credits)}`] : []),
+                ]}
+                note="On your payslip, next to the deduction. The day is settled at ₹0."
+                href="/my-payroll"
+                cta="Open My Payroll"
+              />
+            )}
             <UseTile
               icon={<Wallet size={16} strokeWidth={1.9} color={ACCENT} />}
               title="Add to your salary"

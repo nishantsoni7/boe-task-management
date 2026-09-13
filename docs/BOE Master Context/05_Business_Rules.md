@@ -727,6 +727,25 @@ a Text Review is allowed only when remaining_slots_after_text ≥ images_still_r
   new settings row; nothing already posted is re-priced, and a month keeps the
   minimum it started with.
 
+## Attendance redemption can be switched off
+
+* **Half Day redemption** and **Full Day / Absent redemption** each have their
+  own switch in BOE Credits Settings (`half_day_redemption_enabled`,
+  `full_day_redemption_enabled`). The two are independent.
+* **Both are currently OFF.** An administrator may switch either one on later.
+  A settings row never switches a redemption on by itself (the columns default
+  to off).
+* **Off means the redemption does not exist for employees:** no *Use N credits*
+  offer on the payslip, no mention on My Credits or How BOE Credits Work, and
+  the server and the database refuse a new redemption of that kind.
+* **Off keeps the credit price.** While off the price is not required and is not
+  deleted; switching back on restores the redemption at the price in force.
+* **Off never touches the past.** Redemptions already made, their ledger rows
+  and balances stay as they are, and a day already covered stays covered — an
+  Absent → Half Day re-price is skipped while Half Day is off.
+* Switching a redemption on or off is an ordinary settings save: its own
+  history row, future actions only.
+
 ---
 
 # UI RULES

@@ -164,7 +164,16 @@ describe('Absent → Half Day: re-priced, never silently over-charged', () => {
  * with whatever the scenario says is active on each read, and every RPC is
  * recorded in order.
  */
-function fakeSvc(activeReads: StoredAttendanceRedemption[][], rpcFail: (name: string) => string | null = () => null) {
+/** The settings row the executor reads before a re-price: both redemptions switched on unless a test says otherwise. */
+const SETTINGS_ON: Record<string, unknown> = {
+  id: 's-1', review_reward_credits: 1, image_review_reward_credits: 1.5, credit_value: 50,
+  half_day_redemption_credits: 1, full_day_redemption_credits: 2, minimum_monthly_reviews: 3,
+  max_monthly_review_submissions: 10, minimum_monthly_image_reviews: 3,
+  half_day_redemption_enabled: true, full_day_redemption_enabled: true,
+  note: null, created_at: '2026-09-01T00:00:00Z', created_by: null,
+}
+
+function fakeSvc(activeReads: StoredAttendanceRedemption[][], rpcFail: (name: string) => string | null = () => null, settingsRow: Record<string, unknown> = SETTINGS_ON) {
   const rpcs: { name: string; args: Record<string, unknown> }[] = []
   let reads = 0
   const chain = (): Record<string, unknown> => {
@@ -177,8 +186,14 @@ function fakeSvc(activeReads: StoredAttendanceRedemption[][], rpcFail: (name: st
     }
     return c
   }
+  const settingsChain = (): Record<string, unknown> => {
+    const c: Record<string, unknown> = {}
+    for (const op of ['select', 'order', 'limit']) c[op] = () => c
+    c.maybeSingle = () => Promise.resolve({ data: settingsRow, error: null })
+    return c
+  }
   const svc = {
-    from: () => chain(),
+    from: (table: string) => table === 'boe_credit_settings' ? settingsChain() : chain(),
     rpc: (name: string, args: Record<string, unknown>) => {
       rpcs.push({ name, args })
       const fail = rpcFail(name)
@@ -251,5 +266,32 @@ describe('reconcileAttendanceCoverage', () => {
     assert.equal(out.failures.length, 1)
     assert.match(out.failures[0].error, /locked/)
     assert.deepEqual(out.redemptions, [r], 'still active, so the run still sees it')
+  })
+
+  test('HALF DAY SWITCHED OFF: an Absent → Half Day re-price is skipped and the absent-day coverage is kept', async () => {
+    // A re-price is a new half-day redemption. With that redemption switched
+    // off nothing is reversed and nothing is redeemed: the absent-day record
+    // still covers the half day, so the employee keeps the day they covered.
+    const r = stored('2026-07-22', 'absent')
+    const { svc, rpcs } = fakeSvc([[r]], () => null, { ...SETTINGS_ON, half_day_redemption_enabled: false })
+    const out = await reconcileAttendanceCoverage(svc, {
+      employeeId: employee.id, periodId: period.id, month: 7, year: 2026, actorId: 'admin-1',
+      run: coverage => run(TWO_ABSENCES, [correction('2026-07-22', 'half_day')], coverage),
+    })
+    assert.equal(rpcs.length, 0)
+    assert.deepEqual(out.actions, [])
+    assert.deepEqual(out.redemptions, [r])
+    const line = (out.outcome as EngineResult).deduction_lines.find(l => l.line_date === '2026-07-22')!
+    assert.equal(line.waived_by, 'boe_credits', 'the day stays covered')
+  })
+
+  test('the full-day switch does not stop a half-day re-price', async () => {
+    const r = stored('2026-07-22', 'absent')
+    const { svc, rpcs } = fakeSvc([[r], [r]], () => null, { ...SETTINGS_ON, full_day_redemption_enabled: false })
+    await reconcileAttendanceCoverage(svc, {
+      employeeId: employee.id, periodId: period.id, month: 7, year: 2026, actorId: 'admin-1',
+      run: coverage => run(TWO_ABSENCES, [correction('2026-07-22', 'half_day')], coverage),
+    })
+    assert.deepEqual(rpcs.map(c => c.name), ['reverse_boe_credit_attendance_redemption', 'redeem_boe_credits_for_attendance'])
   })
 })
