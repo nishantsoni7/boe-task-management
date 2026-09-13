@@ -446,6 +446,9 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches
       // nothing asserted here.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. It reaches
+      // nothing asserted here.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
   })
 

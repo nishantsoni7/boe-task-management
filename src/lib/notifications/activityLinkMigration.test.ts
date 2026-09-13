@@ -280,6 +280,9 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
       // notification, so it reaches nothing asserted here.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records: service-role
+      // functions and a wider deleted_source check. It writes no notification.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
   })
 

@@ -100,6 +100,11 @@ const APP_FILES = [
   'src/hooks/useCustomerReviews.ts',
   'src/lib/permissions/customerReviewOutreach.ts',
   'src/lib/customerReviews/status.ts',
+  // The administrator's permanent purge. Its authority is resolved IN THE
+  // DATABASE from the actor id; none of these files names or reads a role.
+  'src/app/api/customer-reviews/test-cards/purge/route.ts',
+  'src/components/customerReviews/PurgeTestRecord.tsx',
+  'src/lib/customerReviews/testCardPurge.ts',
 ]
 
 const MIGRATION = 'supabase/migrations/20261017000000_customer_review_outreach.sql'

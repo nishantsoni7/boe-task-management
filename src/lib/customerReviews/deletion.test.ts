@@ -174,11 +174,18 @@ describe('deletion never removes a row, and never touches storage', () => {
     assert.ok(SQL.includes("check (replaced_by_batch_id is null or deleted_source = 'replacement')"))
   })
 
-  test('the recorded sources are exactly the four the browser knows', () => {
+  test('the recorded sources are exactly the five the browser knows', () => {
     assert.deepEqual([...TEST_CARD_DELETION_SOURCES],
-      ['single', 'selected', 'all', 'replacement'])
-    for (const s of TEST_CARD_DELETION_SOURCES) {
+      ['single', 'selected', 'all', 'replacement', 'purge'])
+    // The verifier's four come from this migration. `purge` — an administrator's
+    // permanent deletion in progress — comes from 20261209000000, which
+    // re-creates the same CHECK with all five.
+    for (const s of TEST_CARD_DELETION_SOURCES.filter(s => s !== 'purge')) {
       assert.ok(SQL.includes(`'${s}'`), `${s} is not a value the CHECK allows`)
+    }
+    const purge = read('supabase/migrations/20261209000000_customer_review_test_card_admin_purge.sql')
+    for (const s of TEST_CARD_DELETION_SOURCES) {
+      assert.ok(purge.includes(`'${s}'`), `${s} is not a value the widened CHECK allows`)
     }
   })
 })

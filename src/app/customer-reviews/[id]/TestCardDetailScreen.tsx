@@ -36,6 +36,8 @@ import {
   type TestCardAction,
 } from '@/lib/customerReviews/status'
 import { DeleteReviewButton, DeleteReviewsSheet } from '@/components/customerReviews/DeleteReviews'
+import { PurgeRecordView, PurgeTestRecord } from '@/components/customerReviews/PurgeTestRecord'
+import { purgeRecordFrom, testCardPurgeBlocker, type PurgeRecord } from '@/lib/customerReviews/testCardPurge'
 import { ReviewSheet } from '@/components/customerReviews/ReviewSheet'
 import {
   TEST_CARD_COLUMNS,
@@ -98,6 +100,14 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
   /** Open while a verifier is confirming they mean to delete this review. */
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  /**
+   * Whether the viewer may PERMANENTLY delete a never-approved draft, and this
+   * card as the purge page sees it — both asked of the database, which is the
+   * only place that authority is read. Null until answered. The record is
+   * present only for somebody who may purge, and only while this card may be.
+   */
+  const [purgeCheck, setPurgeCheck] = useState<{ canPurge: boolean; record: PurgeRecord | null } | null>(null)
+  const canPurge = purgeCheck?.canPurge === true
   const acting = useRef(false)
 
   const load = useCallback(async () => {
@@ -222,6 +232,24 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
     const startFetch = () => { void load() }
     startFetch()
   }, [load])
+
+  // Same fetch-on-mount shape as above: every setState runs after the await.
+  const loadPurgeAuthority = useCallback(async () => {
+    if (!profile) return
+    const { data } = await supabase.rpc('can_purge_customer_review_test_cards')
+    const allowed = data === true
+    // The record is asked for only by somebody the database lets purge — and
+    // the function answers nobody else anyway.
+    const record = allowed
+      ? purgeRecordFrom((await supabase.rpc('customer_review_test_card_purge_record', { p_card_id: cardId })).data)
+      : null
+    setPurgeCheck({ canPurge: allowed, record })
+  }, [supabase, profile, cardId])
+
+  useEffect(() => {
+    const startCheck = () => { void loadPurgeAuthority() }
+    startCheck()
+  }, [loadPurgeAuthority])
 
   // THERE IS NO isAdmin HERE ANY MORE. It had two remaining uses and both were
   // authorization alternatives — a screenshot-removal control and the verifier
@@ -413,6 +441,45 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       setBusy(false)
     }
   }, [supabase, cardId, load, router])
+
+  // ── The purge page ─────────────────────────────────────────────────────────
+  //
+  // The purge answer arrives from its own read. Until it has, a page about to
+  // say "paused" or "not available" waits, so somebody who may purge this card
+  // is never told either about it.
+  const purgeRecord = purgeCheck?.record ?? null
+  const awaitingPurgeCheck = !!profile && purgeCheck === null
+  if (!authLoading && awaitingPurgeCheck && (candidateGeneratedReviewsHidden(caps) || (!loading && (notFound || !card)))) {
+    return <LoadingScreen />
+  }
+
+  // TWO CASES SHOW THE PURGE PAGE INSTEAD OF THE REVIEW, and the database
+  // decides both, because purgeRecord exists only for somebody it lets purge
+  // and only while this card may still be purged:
+  //
+  //   * a purge that started and did not finish — the card is frozen, and
+  //     continuing the deletion is the one thing left to do with it;
+  //   * a viewer without `verify` — they came to purge, and get the record and
+  //     the purge, never an approval, verification, booking or verifier Delete.
+  //
+  // Everybody else — every verifier on a live card, every candidate, and
+  // anybody the database will not let purge — falls through unchanged.
+  if (!authLoading && purgeRecord && (purgeRecord.purgeInProgress || !caps.canVerify)) {
+    return (
+      <CustomerReviewsLayout
+        profile={profile}
+        title={purgeRecord.testTitle}
+        subtitle={purgeRecord.cardRef}
+        canVerify={caps.canVerify}
+        onSignOut={signOut}
+      >
+        <PurgeRecordView
+          record={purgeRecord}
+          onPurged={() => router.push(caps.canAccessModule ? '/customer-reviews' : '/modules')}
+        />
+      </CustomerReviewsLayout>
+    )
+  }
 
   // GENERATED REVIEWS ARE PAUSED FOR CANDIDATES, whatever URL they typed. The
   // card is not rendered and no action is offered; the database refuses a
@@ -976,6 +1043,22 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
             </ol>
           )}
         </Section>
+
+        {/*
+          ── Permanently deleting a draft that was never approved ──
+          At the foot of the page, apart from the verifier's Delete beside Back.
+          Drawn only for a viewer the database says may purge, and only while
+          the card is still a never-approved draft by the browser's mirror of
+          the rule. The route and the database re-check both.
+        */}
+        {canPurge && testCardPurgeBlocker(card, events, [...screenshots, ...reviewImages]) === null && (
+          <PurgeTestRecord
+            card={card}
+            fileCount={screenshots.length + reviewImages.length}
+            eventCount={events.length}
+            onPurged={() => router.push('/customer-reviews')}
+          />
+        )}
       </div>
 
       {/*

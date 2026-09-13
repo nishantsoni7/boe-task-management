@@ -415,7 +415,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
       // notification; it is not grouping's doing.
       '20261208000000_boe_credits_redemption_toggles.sql',
-    ], 'the activity-link column and the three modules added by later work')
+      // Review Workflow admin purge of internal test records. It writes no
+      // notification; it is not grouping's doing.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
+    ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {
       const src = readFileSync(join(ROOT, f), 'utf8')

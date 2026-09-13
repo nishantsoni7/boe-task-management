@@ -90,15 +90,18 @@ export type TestCardStatus = (typeof TEST_CARD_STATUSES)[number]
  *   selected     part of a selection the verifier ticked
  *   all          the whole module, from Delete all reviews
  *   replacement  displaced by a newly approved batch, not chosen individually
+ *   purge        an administrator's permanent deletion that has started and
+ *                not yet finished; a finished purge leaves no row at all
  *
  * Mirrors customer_review_test_cards_deleted_source_check in
- * supabase/migrations/20261030000000.
+ * supabase/migrations/20261030000000, widened by 20261209000000.
  */
 export const TEST_CARD_DELETION_SOURCES = [
   'single',
   'selected',
   'all',
   'replacement',
+  'purge',
 ] as const
 
 export type TestCardDeletionSource = (typeof TEST_CARD_DELETION_SOURCES)[number]

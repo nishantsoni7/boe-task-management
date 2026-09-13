@@ -185,7 +185,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
     // task table and no task function.
     '20261208000000_boe_credits_redemption_toggles.sql',
-  ], 'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
+    // Review Workflow admin purge of internal test records. It touches no task
+    // table and no task function.
+    '20261209000000_customer_review_test_card_admin_purge.sql',
+  ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
 test('a one-time cleanup reaches the rows the trigger never could', () => {

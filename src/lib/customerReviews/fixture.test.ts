@@ -87,9 +87,17 @@ describe('IT CANNOT RUN AGAINST PRODUCTION', () => {
     // same sixteen rows so a deployed module has something to book. It is named
     // here rather than admitted by loosening the rule, so a SECOND unexplained
     // card-carrying migration still fails.
+    //
+    // 20261209000000 is NOT a card-carrying migration, and is named for the
+    // same reason: it carries the table's name because it adds the
+    // administrator's permanent purge of an internal test record. It inserts
+    // no card — the sweep below still proves that — and ships no fixture.
     assert.deepEqual(
       migrations.filter(f => f.includes('test_card')),
-      ['20261021000000_seed_customer_review_test_cards.sql'],
+      [
+        '20261021000000_seed_customer_review_test_cards.sql',
+        '20261209000000_customer_review_test_card_admin_purge.sql',
+      ],
     )
   })
 
