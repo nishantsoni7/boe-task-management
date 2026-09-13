@@ -232,6 +232,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches
       // none of the three tables asserted below.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records: it widens the
+      // deleted_source check and adds the purge functions. Asserted in
+      // testCardPurge.test.ts; nothing below reads either.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
   })
 

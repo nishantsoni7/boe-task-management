@@ -622,6 +622,9 @@ describe('the migration is placed correctly', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It names no
       // health-check object.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. It names no
+      // health-check object.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

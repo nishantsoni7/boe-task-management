@@ -310,6 +310,9 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches
       // nothing asserted here.
       '20261208000000_boe_credits_redemption_toggles.sql',
-    ], 'every migration at or after this one is accounted for')
+      // Review Workflow admin purge of internal test records. It reaches
+      // nothing asserted here.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
+    ],'every migration at or after this one is accounted for')
   })
 })

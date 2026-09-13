@@ -9,6 +9,7 @@ and kept intact for later.
 | Route | `/customer-reviews` |
 | Module key | `customer_review_requests` (permissions `use`, `verify`) |
 | Custom Review migrations | `20261205000000_customer_review_custom_submissions.sql` — **applied** · `20261206000000_customer_review_custom_reapply_and_monthly_rules.sql` — **in the repository, NOT yet applied** (`supabase migration list --linked`, 2026-09-13: remote head `20261205000000`) |
+| Test-record purge migration | `20261209000000_customer_review_test_card_admin_purge.sql` — **in the repository, NOT applied** (§22) |
 | Credits | `docs/Module Docs/BOE_CREDITS.md` |
 
 > **Why the route and the module key still say "customer review".** They are
@@ -303,8 +304,9 @@ can start the workflow.
 
 ## 17. Retained for reactivation
 
-Nothing was deleted: the card, draft, batch, image-group and screenshot tables
-and their data; every generated-review function, route, screen and test; the
+Nothing was deleted by the pause: the card, draft, batch, image-group and
+screenshot tables and their data; every generated-review function, route, screen
+and test; the
 review reward path in `transition_customer_review_test_card()`. **Re-enabling**
 is two changes together: `CANDIDATE_GENERATED_REVIEWS_ENABLED = true` in
 `src/lib/customerReviews/generatedWorkflow.ts`, and a migration re-creating
@@ -318,10 +320,13 @@ is two changes together: `CANDIDATE_GENERATED_REVIEWS_ENABLED = true` in
 | `customer_review_requests.use` | Submit a custom review; see and reapply **their own** |
 | `customer_review_requests.verify` | See every submission and its history; approve / reject (never their own); receive the notifications; the pending badge and the Notifications entry |
 | `can_manage_boe_credits()` (active admin) | Award a different amount than configured |
+| `users.role = 'admin'`, active and not deleted | Permanently delete an internal test record (§22) — not a Review permission; `verify` is neither required nor enough |
 
 The permission engine is the only authority — no role name is read by the
 submission, reapplication, decision or recipient functions. Inactive or deleted
-accounts are refused everywhere.
+accounts are refused everywhere. The one role read in the module is
+`customer_review_test_card_purge_authorized()`, which authorizes the §22 purge
+and nothing else.
 
 ## 19. Database objects, RPCs and routes
 
@@ -348,8 +353,11 @@ accounts are refused everywhere.
 | `customer_review_custom_reviewer_ids(uuid)` | service role | Notification recipients |
 | `customer_review_custom_submissions_trail()` | trigger | History + notifications |
 | `customer_review_generated_booking_enabled()` · `…_booking_guard()` | trigger | The candidate booking pause |
+| `begin_customer_review_test_card_purge(uuid, uuid)` · `finish_…(uuid, uuid)` | service role (purge route) | Permanent deletion of an internal test record (§22) |
+| `can_purge_customer_review_test_cards()` | authenticated | Whether to draw the purge control |
 
 **Routes and screens:** `POST` / `PATCH /api/customer-reviews/custom-submissions`;
+`POST /api/customer-reviews/test-cards/purge` (§22);
 `/customer-reviews` (candidate: `CustomReviewsScreen`), `/customer-reviews/custom`,
 `/customer-reviews/notifications`.
 
@@ -369,6 +377,8 @@ mapping), `customMonthlyRules.ts` (rules, summaries), `generatedWorkflow.ts`
 | `src/lib/customerReviews/customSubmissions.test.ts` | the submission, approval and rejection rules (20261205) |
 | `src/lib/boeCredits/settings.test.ts` | the eight settings, the phase seed, the parser |
 | `supabase/tests/custom_review_phase_assertions.sql` | **executed** on PostgreSQL via `run_custom_review_submissions_local.sh` (with `custom_review_submissions_assertions.sql`): every rule above, with SQLSTATEs, twice, rolled back |
+| `src/lib/customerReviews/testCardPurge.test.ts` | §22: the eligibility mirror, the start → files → finish order with every failure and retry, the adapter, and the migration / route / screen contract |
+| `supabase/tests/customer_review_test_card_purge_assertions.sql` | §22 **executed** on a local Supabase stack via `run_customer_review_test_card_purge_local.sh`: who, which records, the freeze, the refusal while files remain, nothing left, bystanders — twice, rolled back |
 
 Invariants: one row per review for ever; one slot per review; one reward per
 review; a decided row changes only by reapplication; history append-only;
@@ -384,6 +394,87 @@ nothing negative posted by this module; the database decides every rule.
 * A review in a lapsed month must be rejected; it cannot earn credit.
 * The concurrency guarantee is proven by its mechanism (a lock before the count)
   and by the SQL suite's single-session behaviour, not by a two-session race test.
+
+## 22. Permanently deleting an internal test record
+
+An administrator may erase a generated test card **while it is still provably
+internal**. Custom review submissions are never deletable, by this or anything
+else. The verifier's ordinary Delete (a tombstone that keeps the trail and the
+files) is unchanged.
+
+**Who:** an active, non-deleted `users.role = 'admin'`, resolved in the database
+from the session's user on both database calls. Review `verify` is not required.
+
+**An administrator without `verify`** (or without any Review permission) may open
+exactly one kind of page: `/customer-reviews/<card id>`. The module layout admits
+them there — and nowhere else in the module — only when
+`can_purge_customer_review_test_cards()` is true. The page then asks
+`customer_review_test_card_purge_record(card)`, which answers only an active
+admin and only while the card may still be purged, and shows the read-only
+record (reference, title, text, stored file names, activity) with the purge
+control. No approval, verification, booking, sharing, attachment or verifier
+Delete control is drawn; the workflow functions still refuse such a person
+because they resolve `use`/`verify`, which this grants nothing of. Anything the
+record function does not return shows the ordinary paused / not-available page.
+
+**Which records — the eligibility predicate** (`customer_review_test_card_purge_blocker()`,
+checked under the row lock at start and again at finish). All of:
+
+1. no `boe_credit_transactions.source_id` and no `boe_credit_review_rewards.card_id`
+   equal to the card id — a rewarded card is refused with *the reward must be
+   handled separately*; nothing is reversed;
+2. not a verifier's soft-deletion tombstone;
+3. never released: `status = 'pending_approval'`; `approved_at`, `assigned_to`,
+   `booked_by`, `whatsapp_opened_at`, `sent_confirmed_at`, `submitted_at`,
+   `verified_at` all null; `whatsapp_opened_count = 0`;
+4. history only `generated`, `revised`, `draft_edited`, `image_removed`,
+   `image_group_set` — any other type (including a future one) refuses;
+5. no attachment other than a verifier's review image.
+
+**Why approval is the boundary.** A pending draft is readable by verifiers only
+and cannot be assigned. Once approved, the text reached candidates (every `use`
+holder before `20261107000000`, the assignee since), and *Copy message* and the
+share fallback record nothing — so from approval onwards the schema cannot prove
+the text never left BOE, and every approved card is refused.
+
+**How** (`POST /api/customer-reviews/test-cards/purge`, `src/lib/customerReviews/testCardPurge.ts`):
+
+1. **Start** — `begin_customer_review_test_card_purge()` checks, writes a
+   `deleted` event and tombstones the card with `deleted_source = 'purge'`. The
+   existing freeze then refuses any approval, attachment or other change.
+2. **Files** — every object under `<card id>/` in `customer-review-test-screenshots`
+   is listed (recursively) and removed through the Storage API — including an
+   object whose metadata row was never written.
+3. **Finish** — `finish_customer_review_test_card_purge()` checks again, refuses
+   with `…_FILES_REMAIN` while any object under the prefix is still stored, then
+   deletes the card; its screenshot and event rows cascade. No purge log is kept.
+
+Both calls are repeatable: a failure at any step leaves a frozen card that still
+names its files, and running the purge again finishes it.
+
+**Screen:** a low-emphasis *Permanently delete test record* action at the foot of
+the detail page, drawn only when `can_purge_customer_review_test_cards()` is true
+and the card passes the browser mirror of the rule. The confirmation says the
+record, its screenshots and its activity history are removed and that it cannot
+be undone. There is no list or bulk purge.
+
+**An interrupted purge** leaves a card tombstoned with `deleted_source = 'purge'`.
+It stays frozen, and it stays hidden from everybody the database will not let
+purge: verifiers and candidates still get *not available*, exactly as for any
+tombstone, and a verifier's ordinary soft deletion is never offered this page.
+An active admin who reopens `/customer-reviews/<card id>` — after a reload, in
+another tab, days later — gets *Permanent deletion in progress* and a *Continue
+permanent deletion* control. Continuing sends the same request: *Start* returns
+the paths again without a second tombstone, every remaining file under the prefix
+is removed, and *Finish* deletes the card. There is no list of interrupted
+purges; the admin reaches one by its URL.
+
+**Limitations:** a card reaches the purge page only by its URL — there is no
+list of purgeable or interrupted records for an administrator without `verify`.
+If a BOE Credits row appears for a card after its purge started, *Finish* refuses
+and the record function stops returning it, so it stays a frozen tombstone for the
+reward to be handled first. A batch that lost a draft to a purge can no longer be
+assigned whole, exactly as after a verifier's Delete.
 
 ---
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { hasPermission } from '@/lib/permissions/resolver'
@@ -19,9 +19,18 @@ import { hasPermission } from '@/lib/permissions/resolver'
 // Entry is `use` OR `verify` — a verifier who could not open the module could
 // not verify anything, and a `use` holder who could not open it could not raise
 // a request. See src/lib/permissions/customerReviewOutreach.ts.
+
+// ONE CARD'S PAGE, and nothing else in the module: the only place an
+// administrator without `use` or `verify` may be let in, to permanently delete
+// an internal test record. See the exception below.
+const PURGE_PAGE = /^\/customer-reviews\/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\/?$/
+
 export default function CustomerReviewsGuard({ children }: { children: React.ReactNode }) {
   const [authorized, setAuthorized] = useState(false)
+  /** Admitted by the purge exception alone, so confined to one card's page. */
+  const [purgeOnly, setPurgeOnly] = useState(false)
   const router   = useRouter()
+  const pathname = usePathname()
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
@@ -56,8 +65,17 @@ export default function CustomerReviewsGuard({ children }: { children: React.Rea
         (await hasPermission(supabase, session.user.id, 'customer_review_requests', 'verify').catch(() => false))
 
       if (!allowed) {
-        router.replace('/coming-soon')
-        return
+        // THE ONE EXCEPTION, AND IT IS ONE PAGE. The database says whether this
+        // person may permanently delete internal test records; nothing here
+        // decides it. If so, a single card's page opens — and that page shows
+        // them the purge and nothing else. An unanswered question denies.
+        const purgeAllowed = PURGE_PAGE.test(pathname ?? '')
+          && (await supabase.rpc('can_purge_customer_review_test_cards').then(({ data }: { data: unknown }) => data === true, () => false))
+        if (!purgeAllowed) {
+          router.replace('/coming-soon')
+          return
+        }
+        setPurgeOnly(true)
       }
 
       setAuthorized(true)
@@ -66,8 +84,15 @@ export default function CustomerReviewsGuard({ children }: { children: React.Rea
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Admitted for the purge alone, the person stays on that one card's page.
+  const outsidePurgePage = purgeOnly && !PURGE_PAGE.test(pathname ?? '')
+  useEffect(() => {
+    if (outsidePurgePage) router.replace('/coming-soon')
+  }, [outsidePurgePage, router])
+
   // `children` render in no state but `authorized`, so a child that fetches on
   // mount cannot start before the check finishes.
   if (!authorized) return <LoadingScreen />
+  if (outsidePurgePage) return <LoadingScreen />
   return <>{children}</>
 }

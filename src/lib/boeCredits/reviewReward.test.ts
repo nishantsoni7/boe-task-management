@@ -168,6 +168,9 @@ describe('the file, and where it sits', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It touches no
       // reward function and not the verify transition.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. It READS the
+      // ledger to refuse a rewarded card and writes nothing to it.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
   })
 

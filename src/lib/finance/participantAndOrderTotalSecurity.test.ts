@@ -907,6 +907,9 @@ describe('the applied migrations are frozen', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches
       // nothing asserted here.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. It reaches
+      // nothing asserted here.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
   })
 
@@ -1080,6 +1083,9 @@ describe('the applied migrations are frozen', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. Not applied; it
       // reaches nothing asserted here.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. Not applied; it
+      // reaches nothing asserted here.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

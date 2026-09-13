@@ -741,6 +741,9 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // BEFORE INSERT guard on boe_credit_attendance_redemptions. It reaches no
       // task table or function.
       '20261208000000_boe_credits_redemption_toggles.sql',
+      // Review Workflow admin purge of internal test records. It reaches no
+      // task table or function.
+      '20261209000000_customer_review_test_card_admin_purge.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
