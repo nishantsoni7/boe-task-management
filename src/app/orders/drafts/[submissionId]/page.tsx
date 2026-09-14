@@ -158,6 +158,7 @@ import {
   formatPercent,
   loadPiPaymentSummary,
   recordPiPayment,
+  type PiPaymentFilter,
   type PiPaymentFormState,
   type PiPaymentSummary,
 } from '@/lib/finance/piPaymentView'
@@ -372,6 +373,9 @@ function PiDraftDetailPageInner() {
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
   /** Which payment dialog is open, if either. The summary card opens both. */
   const [paymentDialog, setPaymentDialog] = useState<'details' | 'add' | null>(null)
+  // Which rows Payment details opens on: every one, or the rows behind one of
+  // the status card's figures. The dialog can switch views itself once open.
+  const [paymentFilter, setPaymentFilter] = useState<PiPaymentFilter>('all')
   // The client dialog behind the name in the summary card. Nothing is
   // fetched for it — it reads the submission the page already holds.
   const [clientDialog, setClientDialog] = useState(false)
@@ -1910,17 +1914,27 @@ function PiDraftDetailPageInner() {
 
   /**
    * The compact payment block. Every figure is the RPC's, already summed in
-   * numeric; the only thing derived here is how many rows Finance has not
-   * decided yet, which is a count of rows and not a sum of money.
+   * numeric; the only things derived here are how many rows are confirmed and
+   * how many Finance has not decided yet, which are counts of rows and not sums
+   * of money.
    */
   const decisionOwnPaymentIds = canApprovePayments && !canDecideOwnPayments ? ownPaymentIds : NO_OWN_PAYMENTS
   const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [], decisionOwnPaymentIds)
   const paymentStatus = payments === null ? null : buildPaymentStatusView({
+    // RECEIVED IS THE DATABASE'S attached figure — verified plus awaiting
+    // verification, rejected payments and reversed allocations excluded — and
+    // its percentage of the FULL PI total. Never added up here from the two
+    // figures beside it.
+    received: formatInr(toNumber(payments.attached_amount)),
+    receivedPercent: formatPercent(payments.attached_percent),
+    receivedPercentValue: toNumber(payments.attached_percent),
     // formatInr, the page's own money format — the one the Commercial breakdown
     // and the page title already use. It prints whole rupees as whole rupees and
     // keeps paise only when there are any, so a summary reads `₹8,76,563` while
     // an odd figure still reads `₹3,50,625.20`. Nothing is rounded away.
     confirmed: formatInr(toNumber(payments.verified_amount)),
+    // A COUNT OF ROWS Finance verified. The money is verified_amount.
+    confirmedCount: paymentRowCounts.confirmed,
     required: payments.required_payment === undefined || payments.required_payment === null
       ? null
       : formatInr(toNumber(payments.required_payment)),
@@ -1936,6 +1950,7 @@ function PiDraftDetailPageInner() {
     // the database summed.
     pendingCount: paymentRowCounts.awaiting,
     pendingAmount: formatInr(toNumber(payments.unverified_amount)),
+    pendingPercent: formatPercent(payments.unverified_percent),
   })
 
   /** The breakdown card's selection of the same shared rows. Nothing is recomputed. */
@@ -2088,7 +2103,7 @@ function PiDraftDetailPageInner() {
               canVerify={canApprovePayments}
               decidableCount={paymentRowCounts.decidable}
               onAddPayment={() => setPaymentDialog('add')}
-              onOpenDetails={() => setPaymentDialog('details')}
+              onOpenDetails={filter => { setPaymentFilter(filter); setPaymentDialog('details') }}
               notice={paymentNotice}
               onDismissNotice={() => setPaymentNotice(null)}
             />
@@ -2528,6 +2543,7 @@ function PiDraftDetailPageInner() {
         <PiPaymentDetailsModal
           summary={payments}
           status={paymentStatus}
+          initialFilter={paymentFilter}
           loading={paymentsLoading}
           onOpenProof={openPaymentProof}
           onClose={() => setPaymentDialog(null)}

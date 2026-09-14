@@ -54,7 +54,6 @@ import {
   buildSubmissionContext,
   NOT_PROVIDED,
   buildDateSummary,
-  describePendingPayments,
   summaryCommercialFigures,
   telLink,
   type PaymentStatusView,
@@ -802,95 +801,187 @@ describe('the billing declaration, as the third figure', () => {
 
 // ── 2a. Payment status ────────────────────────────────────────────────────────
 
+// The mixed position is the default: ₹2,50,000 confirmed and ₹2,45,000 awaiting
+// verification against a ₹11,80,000 PI — the figures pi_submission_payment_summary()
+// would return, formatted as the page formats them.
 const statusView = (over: Partial<Parameters<typeof buildPaymentStatusView>[0]> = {}): PaymentStatusView =>
   buildPaymentStatusView({
-    confirmed: '₹3,50,625',
-    required: '₹3,50,625.20',
-    total: '₹8,76,563',
+    received: '₹4,95,000',
+    receivedPercent: '41.94%',
+    receivedPercentValue: 41.94,
+    confirmed: '₹2,50,000',
+    confirmedCount: 2,
+    required: '₹4,72,000',
+    total: '₹11,80,000',
     standardPercent: '40%',
     standardPercentValue: 40,
-    verifiedPercent: '39.99%',
-    verifiedPercentValue: 39.99,
+    verifiedPercent: '21.18%',
+    verifiedPercentValue: 21.18,
     meetsStandard: false,
-    pendingCount: 0,
-    pendingAmount: '₹0',
+    pendingCount: 1,
+    pendingAmount: '₹2,45,000',
+    pendingPercent: '20.76%',
     ...over,
   })
 
-const statusHtml = (over: {
-  status?: PaymentStatusView | null
-  canAdd?: boolean
-  canVerify?: boolean
-  decidableCount?: number
-} = {}) => renderToStaticMarkup(
-  <PiPaymentStatusCard
-    status={over.status === undefined ? statusView() : over.status}
-    canAdd={over.canAdd ?? false}
-    canVerify={over.canVerify ?? false}
-    decidableCount={over.decidableCount ?? 0}
-    onAddPayment={() => {}}
-    onOpenDetails={() => {}}
-    notice={null}
-    onDismissNotice={() => {}}
-  />,
-)
+const NO_PAYMENTS = {
+  received: '₹0', receivedPercent: '0%', receivedPercentValue: 0,
+  confirmed: '₹0', confirmedCount: 0, verifiedPercent: '0%', verifiedPercentValue: 0,
+  pendingCount: 0, pendingAmount: '₹0', pendingPercent: '0%',
+}
+const CONFIRMED_ONLY = {
+  received: '₹2,50,000', receivedPercent: '21.18%', receivedPercentValue: 21.18,
+  confirmed: '₹2,50,000', confirmedCount: 2, verifiedPercent: '21.18%', verifiedPercentValue: 21.18,
+  pendingCount: 0, pendingAmount: '₹0', pendingPercent: '0%',
+}
+const AWAITING_ONLY = {
+  received: '₹2,00,000', receivedPercent: '16.94%', receivedPercentValue: 16.94,
+  confirmed: '₹0', confirmedCount: 0, verifiedPercent: '0%', verifiedPercentValue: 0,
+  pendingCount: 2, pendingAmount: '₹2,00,000', pendingPercent: '16.94%',
+}
 
-describe('payment status: confirmed, required, and how far along', () => {
-  test('the card is headed Payment status and states confirmed and how far along — no Required figure', () => {
-    const html = statusHtml()
-    const t = text(html)
-    for (const part of ['Payment status', 'Confirmed', '₹3,50,625', 'Confirmed %', '39.99%', 'of ₹8,76,563']) {
-      assert.ok(t.includes(part), `${part} missing`)
-    }
-    assert.ok(!t.includes('Required'), 'the requirement is not a figure on this card')
-    assert.ok(!t.includes('₹3,50,625.20') && !t.includes('40% of ₹8,76,563'),
-      'neither the required amount nor its note is drawn')
-    assert.equal((html.match(/class="pi-detail-paystatus-figure"/g) ?? []).length, 2)
-    assert.ok(html.includes('left:40%'), 'the 40% marker stays on the bar')
+type StatusCardProps = Parameters<typeof PiPaymentStatusCard>[0]
+
+const statusProps = (over: Partial<StatusCardProps> = {}): StatusCardProps => ({
+  status: statusView(),
+  canAdd: false,
+  canVerify: false,
+  decidableCount: 0,
+  onAddPayment: () => {},
+  onOpenDetails: () => {},
+  notice: null,
+  onDismissNotice: () => {},
+  ...over,
+})
+
+const statusHtml = (over: Partial<StatusCardProps> = {}) =>
+  renderToStaticMarkup(<PiPaymentStatusCard {...statusProps(over)} />)
+
+// The bar's three shares, read off the rendered track. Green, amber and red are
+// the colors.green / colors.amber / colors.red tokens, pinned to the tokens in
+// piPaymentDetails.render.test.tsx.
+const segment = (html: string, name: 'confirmed' | 'awaiting' | 'unpaid') =>
+  html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
+const GREEN = 'background:#45A870'
+const AMBER = 'background:#E8A030'
+const RED = 'background:#D94F4F'
+
+/** The element one part of the received figure was drawn as: button or div. */
+const metricTag = (html: string, key: 'confirmed' | 'awaiting'): string | null =>
+  html.match(new RegExp(`<(button|div)\\b[^>]*data-metric="${key}"`))?.[1] ?? null
+
+describe('payment status: how much has been received, and what it is made of', () => {
+  test('the headline is received — confirmed plus awaiting — as a share of the full PI total', () => {
+    const t = text(statusHtml())
+    assert.ok(t.includes('Payment status'))
+    assert.ok(t.includes('41.94% received'))
+    assert.ok(t.includes('₹4,95,000 received of ₹11,80,000 PI Total'))
+    assert.ok(!t.includes('Required') && !t.includes('₹4,72,000'), 'the requirement is not a figure on this card')
+    assert.ok(!t.includes('Confirmed %'), 'the verified-only headline is gone')
   })
 
-  // The bar's two shares, read off the rendered track. Green and red are the
-  // colors.green / colors.red tokens (pinned to the tokens in
-  // piPaymentDetails.render.test.tsx); amber is the pending notice's, never the bar's.
-  const segment = (html: string, name: 'confirmed' | 'unconfirmed') =>
-    html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
-  const GREEN = 'background:#45A870'
-  const RED = 'background:#D94F4F'
+  test('beside it, Confirmed and Awaiting verification — each an amount, a count and a share', () => {
+    const t = text(statusHtml())
+    assert.ok(t.includes('Confirmed ₹2,50,000 2 payments · 21.18% of PI Total'))
+    assert.ok(t.includes('Awaiting verification ₹2,45,000 1 payment · 20.76% of PI Total'))
+    assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'money waiting on Finance is never called failed or unpaid')
+  })
 
-  test('zero: nothing confirmed, so the whole track is red', () => {
-    const view = statusView({ confirmed: '₹0', verifiedPercent: '0%', verifiedPercentValue: 0 })
-    assert.equal(view.barPercent, 0)
-    const html = statusHtml({ status: view })
+  test('every figure comes off the view — nothing is re-added in the browser', () => {
+    const t = text(statusHtml({ status: statusView({ received: '₹9,99,999', receivedPercent: '12.34%' }) }))
+    assert.ok(t.includes('12.34% received') && t.includes('₹9,99,999 received of ₹11,80,000 PI Total'),
+      'deliberately inconsistent figures survive unchanged')
+  })
+
+  test('no payments: 0% received, two quiet parts, and the whole track red', () => {
+    const html = statusHtml({ status: statusView(NO_PAYMENTS) })
+    const t = text(html)
+    assert.ok(t.includes('0% received') && t.includes('₹0 received of ₹11,80,000 PI Total'))
+    assert.ok(t.includes('No confirmed payments yet') && t.includes('Nothing awaiting verification'))
+    assert.equal(metricTag(html, 'confirmed'), 'div')
+    assert.equal(metricTag(html, 'awaiting'), 'div')
     assert.equal(segment(html, 'confirmed'), null)
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
     assert.ok(html.includes('aria-valuenow="0"'))
   })
 
-  test('partial below the requirement: the database percentage, unrounded, and red for the rest', () => {
-    const html = statusHtml()
-    assert.ok(segment(html, 'confirmed')?.includes('width:39.99%'))
+  test('confirmed only: green, then red for the rest — and only Confirmed opens anything', () => {
+    const html = statusHtml({ status: statusView(CONFIRMED_ONLY) })
+    assert.ok(text(html).includes('21.18% received'))
+    assert.equal(metricTag(html, 'confirmed'), 'button')
+    assert.equal(metricTag(html, 'awaiting'), 'div')
+    assert.ok(segment(html, 'confirmed')?.includes('width:21.18%'))
     assert.ok(segment(html, 'confirmed')?.includes(GREEN))
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
-    assert.ok(html.includes('left:40%'))
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
   })
 
-  test('partial above the requirement: the advance is met and the unconfirmed rest stays red', () => {
-    const view = statusView({ confirmed: '₹5,25,938', verifiedPercent: '60%', verifiedPercentValue: 60, meetsStandard: true })
-    assert.equal(view.requirementMet, true)
-    const html = statusHtml({ status: view })
-    assert.ok(segment(html, 'confirmed')?.includes('width:60%'))
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED), 'an advance confirmed is not a PI paid')
-    assert.ok(html.includes('left:40%'), 'the requirement tick stays')
-    assert.ok(!html.includes('#E8EBF0'), 'nothing goes neutral')
+  test('awaiting verification only: amber for that share, red for the balance', () => {
+    const html = statusHtml({ status: statusView(AWAITING_ONLY) })
+    assert.ok(text(html).includes('16.94% received'))
+    assert.equal(metricTag(html, 'confirmed'), 'div')
+    assert.equal(metricTag(html, 'awaiting'), 'button')
+    assert.equal(segment(html, 'confirmed'), null)
+    assert.ok(segment(html, 'awaiting')?.includes('width:16.94%'))
+    assert.ok(segment(html, 'awaiting')?.includes(AMBER))
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
   })
 
-  test('full: an overpaid PI fills the track with green, never overflows it, and shows no red', () => {
-    const view = statusView({ verifiedPercent: '140%', verifiedPercentValue: 140, meetsStandard: true })
-    assert.equal(view.barPercent, 100)
-    const html = statusHtml({ status: view })
+  test('mixed: green, amber, then red for the part not yet received', () => {
+    const html = statusHtml()
+    assert.equal(metricTag(html, 'confirmed'), 'button')
+    assert.equal(metricTag(html, 'awaiting'), 'button')
+    assert.ok(segment(html, 'confirmed')?.includes('width:21.18%'))
+    assert.ok(segment(html, 'awaiting')?.includes('width:20.76%'))
+    assert.ok(segment(html, 'unpaid')?.includes(RED), 'the remaining unpaid portion is red')
+    assert.ok(html.includes('aria-valuenow="42"'))
+  })
+
+  test('below, exactly at and above 40%: the tick marks the requirement and changes no colour', () => {
+    const cases = [
+      { receivedPercent: '39.99%', receivedPercentValue: 39.99, verifiedPercent: '39.99%', verifiedPercentValue: 39.99, pendingCount: 0 },
+      { receivedPercent: '40%', receivedPercentValue: 40, verifiedPercent: '25%', verifiedPercentValue: 25 },
+      { receivedPercent: '75%', receivedPercentValue: 75, verifiedPercent: '60%', verifiedPercentValue: 60, meetsStandard: true },
+    ]
+    for (const over of cases) {
+      const html = statusHtml({ status: statusView(over) })
+      assert.ok(html.includes('left:40%'), 'the 40% marker stays on the bar')
+      assert.ok(segment(html, 'confirmed')?.includes(GREEN))
+      assert.ok(segment(html, 'unpaid')?.includes(RED), 'meeting the advance does not stop the rest being red')
+      assert.ok(text(html).includes('40% advance marker'))
+      assert.ok(text(html).includes(`${over.receivedPercent} received`))
+    }
+    assert.equal(segment(statusHtml({ status: statusView(cases[0]) }), 'awaiting'), null)
+    assert.ok(segment(statusHtml({ status: statusView(cases[1]) }), 'awaiting')?.includes('width:15%'))
+    assert.ok(segment(statusHtml({ status: statusView(cases[2]) }), 'awaiting')?.includes('width:15%'))
+  })
+
+  test('100% confirmed: the track is entirely green', () => {
+    const html = statusHtml({ status: statusView({
+      received: '₹11,80,000', receivedPercent: '100%', receivedPercentValue: 100,
+      confirmed: '₹11,80,000', confirmedCount: 3, verifiedPercent: '100%', verifiedPercentValue: 100,
+      pendingCount: 0, pendingAmount: '₹0', pendingPercent: '0%', meetsStandard: true,
+    }) })
+    assert.ok(text(html).includes('100% received'))
     assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
-    assert.equal(segment(html, 'unconfirmed'), null)
-    assert.ok(!html.includes(RED))
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.equal(segment(html, 'unpaid'), null, 'no red share on the track — only the legend keeps its red swatch')
+  })
+
+  test('overpayment: the true figure is printed and the track is capped at full', () => {
+    const view = statusView({
+      received: '₹12,50,000', receivedPercent: '105.93%', receivedPercentValue: 105.93,
+      confirmed: '₹12,50,000', confirmedCount: 3, verifiedPercent: '105.93%', verifiedPercentValue: 105.93,
+      pendingCount: 0, pendingAmount: '₹0', pendingPercent: '0%', meetsStandard: true,
+    })
+    assert.equal(view.barPercent, 100)
+    assert.equal(view.receivedBarPercent, 100)
+    const html = statusHtml({ status: view })
+    assert.ok(text(html).includes('105.93% received'), 'the percentage is the database’s, uncapped')
+    assert.ok(text(html).includes('₹12,50,000 received of ₹11,80,000 PI Total'))
+    assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
+    assert.equal(segment(html, 'unpaid'), null)
   })
 
   test('a bar width is a width, never a figure', () => {
@@ -898,38 +989,101 @@ describe('payment status: confirmed, required, and how far along', () => {
     assert.equal(barWidth(Number.NaN), 0)
     assert.equal(barWidth(-5), 0)
     assert.equal(barWidth(40), 40)
+    assert.equal(statusView({ receivedPercentValue: 10 }).receivedBarPercent, 21.18,
+      'received never draws short of confirmed')
+    assert.equal(statusView({ receivedPercentValue: null }).receivedBarPercent, 21.18)
   })
 
-  test('pending verification is named beside the bar with its count and amount, and moves nothing', () => {
-    const view = statusView({
-      confirmed: '₹0', verifiedPercent: '0%', verifiedPercentValue: 0,
-      pendingCount: 2, pendingAmount: '₹1,00,000',
-    })
-    assert.equal(describePendingPayments(view), '2 payments pending verification · ₹1,00,000')
-    assert.equal(view.barPercent, 0, 'pending money is not in the bar')
-    const html = statusHtml({ status: view })
-    // Pending only: nothing is confirmed, so the whole track is red. Amber is the
-    // notice's colour and never enters the bar.
-    assert.equal(segment(html, 'confirmed'), null, 'pending money is not confirmed')
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
-    assert.ok(!html.includes('#E8A030'), 'amber never enters the bar')
-    assert.ok(html.includes('class="pi-detail-paystatus-pending"'))
-    assert.ok(text(html).includes('2 payments pending verification · ₹1,00,000 — not counted as confirmed'))
-    assert.equal(describePendingPayments(statusView({ pendingCount: 1, pendingAmount: '₹5,000' })),
-      '1 payment pending verification · ₹5,000')
+  test('a PI with no total leads with the amount rather than a dash', () => {
+    const t = text(statusHtml({ status: statusView({ receivedPercent: '—', receivedPercentValue: null, total: '—' }) }))
+    assert.ok(t.includes('₹4,95,000 received') && t.includes('PI Total not available'))
   })
 
-  test('nothing pending, no notice', () => {
-    assert.equal(describePendingPayments(statusView()), null)
-    assert.ok(!statusHtml().includes('pi-detail-paystatus-pending'))
-  })
-
-  test('an unknown requirement is a dash, and no note is invented for it', () => {
-    const view = statusView({ required: null })
+  test('an unknown requirement is a dash, and no note or tick label is invented for it', () => {
+    const view = statusView({ required: null, standardPercent: null, standardPercentValue: null })
     assert.equal(view.required, '—')
     assert.equal(view.requiredNote, null)
+    assert.equal(view.thresholdLabel, null)
+    assert.ok(!text(statusHtml({ status: view })).includes('advance marker'))
+  })
+})
+
+// The card as a tree of elements rather than markup, so a press can be made.
+// Every component on this path is a plain function of its props, so each is
+// called directly: nothing is mounted, nothing fetches.
+type AnyElement = { type: unknown; props: Record<string, unknown> }
+const isElement = (node: unknown): node is AnyElement =>
+  typeof node === 'object' && node !== null && 'type' in node && 'props' in node
+
+function pressables(node: unknown, out: AnyElement[] = []): AnyElement[] {
+  if (Array.isArray(node)) {
+    for (const child of node) pressables(child, out)
+    return out
+  }
+  if (!isElement(node)) return out
+  if (typeof node.type === 'function') {
+    return pressables((node.type as (props: unknown) => unknown)(node.props), out)
+  }
+  if (typeof node.props.onClick === 'function') out.push(node)
+  pressables(node.props.children, out)
+  return out
+}
+
+const labelOf = (control: AnyElement): string =>
+  text(renderToStaticMarkup(control as unknown as Parameters<typeof renderToStaticMarkup>[0])).trim()
+
+describe('each part opens the rows it is made of', () => {
+  test('Confirmed opens confirmed rows, Awaiting verification the pending ones, Payment details all of them', () => {
+    const opened: string[] = []
+    const controls = pressables(PiPaymentStatusCard(statusProps({
+      canAdd: true, canVerify: true, decidableCount: 1,
+      onAddPayment: () => opened.push('add'),
+      onOpenDetails: filter => opened.push(filter),
+    })))
+    const press = (prefix: string) => {
+      const control = controls.find(c => labelOf(c).startsWith(prefix))
+      assert.ok(control, `${prefix} must be pressable`)
+      ;(control.props.onClick as () => void)()
+    }
+    press('Confirmed')
+    press('Awaiting verification')
+    press('Payment details')
+    press('Verify 1 pending')
+    press('Add payment')
+    assert.deepEqual(opened, ['confirmed', 'awaiting', 'all', 'awaiting', 'add'])
   })
 
+  test('a part with nothing behind it cannot be pressed at all', () => {
+    const controls = pressables(PiPaymentStatusCard(statusProps({ status: statusView(NO_PAYMENTS) })))
+    assert.deepEqual(controls.map(labelOf), [PAYMENT_DETAILS_LABEL], 'only the way into every row remains')
+  })
+
+  test('only native buttons answer a press, so every control is reachable by keyboard', () => {
+    const controls = pressables(PiPaymentStatusCard(statusProps({ canAdd: true, canVerify: true, decidableCount: 1 })))
+    assert.equal(controls.length, 5)
+    for (const control of controls) {
+      assert.equal(control.type, 'button', 'no clickable div')
+      assert.equal(control.props.type, 'button')
+    }
+    const html = statusHtml()
+    assert.ok(!html.includes('tabindex'))
+    assert.equal((html.match(/<button[^>]*data-metric="[a-z]+"[^>]*aria-haspopup="dialog"/g) ?? []).length, 2,
+      'each part announces that it opens a dialog')
+  })
+
+  test('hover and keyboard focus are visible; an empty part keeps a plain cursor', () => {
+    const css = pageCss()
+    assert.ok(/button\.pi-detail-paystatus-metric \{[^}]*cursor: pointer/.test(css))
+    assert.ok(/button\.pi-detail-paystatus-metric-confirmed:hover \{[^}]*background/.test(css))
+    assert.ok(/button\.pi-detail-paystatus-metric-awaiting:hover \{[^}]*background/.test(css))
+    assert.ok(/button\.pi-detail-paystatus-metric:focus-visible \{[^}]*outline: 2px solid/.test(css))
+    assert.ok(/\.pi-detail-payfilter:focus-visible \{[^}]*outline: 2px solid/.test(css))
+    assert.ok(!/^\.pi-detail-paystatus-metric(\.is-empty)? \{[^}]*cursor: pointer/m.test(css),
+      'the pointer cursor belongs to the button form alone')
+  })
+})
+
+describe('the card’s actions keep their gates and their place', () => {
   test('Add payment only where the gate allows; Payment details for everybody', () => {
     assert.ok(buttonLabels(statusHtml({ canAdd: true })).includes('Add payment'))
     assert.ok(!buttonLabels(statusHtml({ canAdd: false })).includes('Add payment'))
@@ -943,11 +1097,31 @@ describe('payment status: confirmed, required, and how far along', () => {
     assert.ok(buttonLabels(statusHtml({ canVerify: true, decidableCount: 2 })).includes('Verify 2 pending'))
   })
 
+  test('the actions sit together in the card header, once each', () => {
+    const html = statusHtml({ canAdd: true, canVerify: true, decidableCount: 2 })
+    const head = text(html.slice(html.indexOf('pi-detail-paystatus-head'), html.indexOf('pi-detail-paystatus-body')))
+    for (const label of ['Verify 2 pending', 'Add payment', PAYMENT_DETAILS_LABEL]) {
+      assert.equal(buttonLabels(html).filter(l => l === label).length, 1, `${label} once`)
+      assert.ok(head.includes(label), `${label} in the header`)
+    }
+  })
+
+  test('no payment action is duplicated in Management review', () => {
+    const sections = read(SECTIONS)
+    const panel = sections.slice(sections.indexOf('export function PiWorkflowPanel('),
+      sections.indexOf('// ── Finance verification, as one line'))
+    assert.ok(panel.length > 0)
+    for (const leak of ['onOpenDetails', 'onAddPayment', 'Add payment', 'PAYMENT_DETAILS_LABEL', 'decidableCount', 'PiPaymentMetric']) {
+      assert.ok(!panel.includes(leak), `${leak} belongs to the payment status card`)
+    }
+  })
+
   test('nothing is shown or guessed until the summary has been read', () => {
     const html = statusHtml({ status: null })
     assert.ok(text(html).includes('Loading…'))
-    assert.ok(!text(html).includes('of ₹'))
+    assert.ok(!text(html).includes('received'))
     assert.ok(!html.includes('role="progressbar"'))
+    assert.ok(!html.includes('data-metric'))
   })
 })
 
@@ -2328,11 +2502,23 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 11\.5px/.test(css), 'and muted labels')
   })
 
-  test('payment status: two figures, actions full width on a narrow phone', () => {
-    assert.ok(/\.pi-detail-paystatus-figures \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
-    assert.ok(!/\.pi-detail-paystatus-figures \{[^}]*repeat\(3/.test(css), 'no third column for a figure that is gone')
+  test('payment status: headline beside its parts when wide, stacked when narrow, never wider than its column', () => {
+    assert.ok(/\.pi-detail-paystatus-body \{[^}]*container-type: inline-size/.test(css), 'measured on the card, not the viewport')
+    assert.ok(/\.pi-detail-paystatus-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css), 'stacked by default')
+    assert.ok(/@container \(min-width: 600px\) \{\s*\.pi-detail-paystatus-grid \{\s*grid-template-columns: minmax\(0, 2fr\) minmax\(0, 3fr\)/.test(css),
+      'the headline beside its two parts once the card is wide enough')
+    assert.ok(/\.pi-detail-paystatus-metrics \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
+    assert.ok(/@container \(max-width: 360px\) \{\s*\.pi-detail-paystatus-metrics \{\s*grid-template-columns: minmax\(0, 1fr\)/.test(css),
+      'one part per line on a phone')
     assert.ok(/@media \(max-width: 480px\) \{\s*\.pi-detail-paystatus-actions \{\s*width: 100%/.test(css))
-    assert.ok(/\.pi-detail-paystatus-value \{[^}]*font-size: 22px/.test(css))
+    assert.ok(/\.pi-detail-paystatus-percent \{[^}]*font-size: 34px/.test(css), 'the headline is the largest figure on the card')
+    for (const cls of ['percent', 'of', 'metric-value', 'metric-meta']) {
+      assert.ok(new RegExp(`\\.pi-detail-paystatus-${cls} \\{[^}]*overflow-wrap: anywhere`).test(css),
+        `${cls} wraps instead of widening the card`)
+    }
+    assert.ok(/^\.pi-detail-paystatus-metric \{[^}]*min-width: 0/m.test(css))
+    assert.ok(/\.pi-detail-paystatus-legend \{[^}]*flex-wrap: wrap/.test(css))
+    assert.ok(!/\.pi-detail-paystatus-(figures|pending) \{/.test(css), 'the two-figure layout and the pending chip are gone')
   })
 
   test('Payment status and Management review share one row: ~70/30 on a wide column, stacked when narrow', () => {

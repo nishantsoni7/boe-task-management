@@ -2,9 +2,11 @@
  * PAYMENT DETAILS ON A PI DRAFT, ACTUALLY RENDERED.
  *
  * The dialog behind "Payment details" is where a payment verifier can now
- * approve or reject a pending payment without leaving the PI. What these tests
- * hold is who is OFFERED that, on which rows, and that the figures above the
- * rows are the page's own — never a sum made here.
+ * approve or reject a pending payment without leaving the PI, and where the
+ * status card's Confirmed and Awaiting verification figures open the rows they
+ * are made of. What these tests hold is who is OFFERED a decision, on which
+ * rows, which rows each view lists, and that every figure above the rows is the
+ * page's own — never a sum made here.
  *
  * Run:
  *   npx tsx --test src/components/orders/piPaymentDetails.render.test.tsx
@@ -12,7 +14,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { colors } from '@/lib/tokens'
@@ -21,6 +23,7 @@ import {
   APPROVE_PAYMENT_LABEL,
   PAYMENT_BAR_COLORS,
   PAYMENT_DETAILS_TITLE,
+  PAYMENT_FILTER_TITLE,
   PiPaymentDetailsModal,
   PiPaymentProgress,
   PiPaymentRow,
@@ -29,7 +32,9 @@ import {
 } from './PiPaymentCard'
 import {
   countPiPaymentRows,
+  describePaymentCount,
   describePiPaymentRow,
+  filterPiPaymentRows,
   OWN_PAYMENT_DECISION_NOTE,
   type PiPaymentSummary,
   type PiPaymentSummaryRow,
@@ -63,13 +68,16 @@ function row(over: Partial<PiPaymentSummaryRow>): PiPaymentSummaryRow {
   }
 }
 
+// One of every kind of row the summary can return. `is_verified` is what the
+// database's finance_payment_status_is_verified() answered for the status.
 const ROWS: PiPaymentSummaryRow[] = [
   row({ allocation_id: 'a-pending', payment_id: 'p-pending', request_number: 'PAY-REQ-2026-0101' }),
   row({ allocation_id: 'a-clar', payment_id: 'p-clar', request_number: 'PAY-REQ-2026-0102', status: 'needs_clarification' }),
-  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', status: 'approved_unlinked', is_verified: true }),
+  row({ allocation_id: 'a-ok', payment_id: 'p-ok', request_number: 'PAY-REQ-2026-0103', status: 'approved_unlinked', is_verified: true, remarks: 'Advance via NEFT' }),
   row({ allocation_id: 'a-rej', payment_id: 'p-rej', request_number: 'PAY-REQ-2026-0104', status: 'rejected', admin_note: 'Duplicate of 0101' }),
   row({ allocation_id: 'a-rev', payment_id: 'p-rev', request_number: 'PAY-REQ-2026-0105', allocation_status: 'reversed' }),
-  row({ allocation_id: 'a-split', payment_id: 'p-split', request_number: 'PAY-REQ-2026-0106', status: 'approved_linked', amount: '250000.00', allocated_amount: '150000.00' }),
+  row({ allocation_id: 'a-split', payment_id: 'p-split', request_number: 'PAY-REQ-2026-0106', status: 'approved_linked', is_verified: true, amount: '250000.00', allocated_amount: '150000.00' }),
+  row({ allocation_id: 'a-rev-ok', payment_id: 'p-rev-ok', request_number: 'PAY-REQ-2026-0107', status: 'approved_unlinked', is_verified: true, allocation_status: 'reversed' }),
 ]
 
 const SUMMARY = {
@@ -77,8 +85,10 @@ const SUMMARY = {
   grand_total: '1180000.00',
   verified_amount: '250000.00',
   unverified_amount: '200000.00',
+  attached_amount: '450000.00',
   verified_percent: '21.18',
   unverified_percent: '16.94',
+  attached_percent: '38.13',
   needed_for_standard: '222000.00',
   pending_balance: '930000.00',
   standard_percent: 40,
@@ -87,16 +97,18 @@ const SUMMARY = {
 } as PiPaymentSummary
 
 const STATUS: PiPaymentStatusFigures = {
+  received: '₹4,50,000',
+  receivedPercent: '38.13%',
   confirmed: '₹2,50,000',
-  required: '₹4,72,000',
-  requiredNote: '40% of ₹11,80,000',
+  confirmedCount: 2,
   percent: '21.18%',
   total: '₹11,80,000',
   barPercent: 21.18,
+  receivedBarPercent: 38.13,
   thresholdPercent: 40,
-  requirementMet: false,
   pendingCount: 2,
   pendingAmount: '₹2,00,000',
+  pendingPercent: '16.94%',
 }
 
 const text = (html: string): string =>
@@ -182,33 +194,32 @@ describe('a verifier never decides a payment they recorded', () => {
       'a viewer who could not decide anyway is told nothing')
     assert.equal(describePiPaymentRow(ROWS[1], { canVerify: true, ownPayment: true }).ownPending, false,
       'only a pending payment is a decision withheld')
-    assert.deepEqual(countPiPaymentRows(ROWS, OWN), { awaiting: 2, decidable: 0 })
+    assert.deepEqual(countPiPaymentRows(ROWS, OWN), { confirmed: 2, awaiting: 2, decidable: 0 })
   })
 })
 
 // ── 2. The figures above the rows ─────────────────────────────────────────────
 
 describe('the dialog opens on the page’s own figures', () => {
-  test('Confirmed, Pending verification and PI Total, with the bar under them', () => {
+  test('Received, Confirmed, Awaiting verification and PI Total, with the bar under them', () => {
     const html = modal()
     const t = text(html)
-    for (const part of ['Confirmed', '₹2,50,000', 'Pending verification', '₹2,00,000', 'PI Total']) {
+    for (const part of [
+      'Received ₹4,50,000', 'Confirmed ₹2,50,000', 'Awaiting verification ₹2,00,000', 'PI Total ₹11,80,000',
+    ]) {
       assert.ok(t.includes(part), `${part} missing`)
     }
-    // The PI Total figure carries the PI's grand total, never the advance
-    // requirement it replaced.
-    assert.ok(t.includes('PI Total ₹11,80,000'), 'PI Total is the grand total')
     assert.ok(!t.includes('Required') && !t.includes('₹4,72,000'),
       'the requirement is neither labelled nor shown in the dialog')
-    assert.ok(t.includes('21.18% confirmed of ₹11,80,000'))
+    assert.ok(t.includes('38.13% received of ₹11,80,000 · 21.18% confirmed'))
     assert.ok(html.includes('role="progressbar"'))
-    assert.ok(html.includes('aria-valuenow="21"'))
+    assert.ok(html.includes('aria-valuenow="38"'), 'the bar announces what has been received')
     assert.ok(html.includes(`aria-label="${PAYMENT_DETAILS_TITLE}"`), 'the dialog is named')
   })
 
   test('nothing pending reads as a dash, never ₹0 in amber', () => {
     const t = text(modal({ status: { ...STATUS, pendingCount: 0, pendingAmount: '₹0' } }))
-    assert.ok(/Pending verification\s+—/.test(t))
+    assert.ok(/Awaiting verification\s+—/.test(t))
   })
 
   test('the component sums nothing and calls nothing', () => {
@@ -218,68 +229,255 @@ describe('the dialog opens on the page’s own figures', () => {
     }
   })
 
-  test('counts are counts of rows: two with Finance, one decidable now', () => {
-    assert.deepEqual(countPiPaymentRows(ROWS), { awaiting: 2, decidable: 1 },
-      'the reversed pending allocation is history and counts for neither')
+  test('counts are counts of rows: two confirmed, two with Finance, one decidable now', () => {
+    assert.deepEqual(countPiPaymentRows(ROWS), { confirmed: 2, awaiting: 2, decidable: 1 },
+      'reversed allocations are history and count for nothing; a rejected payment counts for nothing')
+  })
+
+  test('a count is worded once', () => {
+    assert.equal(describePaymentCount(0), '0 payments')
+    assert.equal(describePaymentCount(1), '1 payment')
+    assert.equal(describePaymentCount(3), '3 payments')
   })
 })
 
-describe('the progress bar: green is confirmed, red is everything else', () => {
-  const bar = (barPercent: number, thresholdPercent: number | null = 40) =>
-    renderToStaticMarkup(
-      <PiPaymentProgress barPercent={barPercent} thresholdPercent={thresholdPercent} label="Confirmed payment" />)
-  const segment = (html: string, name: 'confirmed' | 'unconfirmed') =>
-    html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
-  const GREEN = `background:${PAYMENT_BAR_COLORS.confirmed}`
-  const RED = `background:${PAYMENT_BAR_COLORS.unconfirmed}`
+// ── 3. Which rows each figure is made of ──────────────────────────────────────
 
-  test('the two colours are the product’s green and red — never amber, never neutral', () => {
-    assert.equal(PAYMENT_BAR_COLORS.confirmed, colors.green)
-    assert.equal(PAYMENT_BAR_COLORS.unconfirmed, colors.red)
-    assert.notEqual(PAYMENT_BAR_COLORS.unconfirmed, colors.amber, 'amber is reserved for awaiting verification')
+describe('each view lists exactly the rows its figure was summed from', () => {
+  const numbers = (rows: PiPaymentSummaryRow[]) => rows.map(r => r.request_number)
+
+  test('confirmed: active allocations of verified payments — never a reversed one', () => {
+    assert.deepEqual(numbers(filterPiPaymentRows(ROWS, 'confirmed')), ['PAY-REQ-2026-0103', 'PAY-REQ-2026-0106'])
   })
 
-  test('0%: the whole track is red, and it is still announced', () => {
-    const html = bar(0)
+  test('awaiting verification: active allocations still with Finance — rejected and reversed excluded', () => {
+    assert.deepEqual(numbers(filterPiPaymentRows(ROWS, 'awaiting')), ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102'])
+  })
+
+  test('no row is in both, and rejected or reversed rows are in neither', () => {
+    const confirmed = new Set(numbers(filterPiPaymentRows(ROWS, 'confirmed')))
+    const awaiting = numbers(filterPiPaymentRows(ROWS, 'awaiting'))
+    assert.ok(awaiting.every(n => !confirmed.has(n)), 'no payment is counted twice')
+    for (const excluded of ['PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0107']) {
+      assert.ok(!confirmed.has(excluded) && !awaiting.includes(excluded), `${excluded} is not received money`)
+    }
+    assert.equal(filterPiPaymentRows(ROWS, 'all').length, ROWS.length, 'All is every row, history included')
+  })
+
+  test('the predicates are the canonical summary’s own, in its latest definition', () => {
+    const dir = join(process.cwd(), 'supabase/migrations')
+    const defining = readdirSync(dir)
+      .filter(name => name.endsWith('.sql'))
+      .filter(name => readFileSync(join(dir, name), 'utf8')
+        .includes('create or replace function public.pi_submission_payment_summary('))
+      .sort()
+    const latest = readFileSync(join(dir, defining[defining.length - 1]), 'utf8')
+    const body = latest.slice(latest.indexOf('create or replace function public.pi_submission_payment_summary('))
+    assert.ok(body.includes("where public.finance_payment_status_is_verified(f.status)), 0)"),
+      'verified_amount sums the rows is_verified reports')
+    assert.ok(body.includes("where f.status in ('pending_approval', 'needs_clarification')), 0)"),
+      'unverified_amount sums pending and needs-clarification rows — the awaiting filter')
+    assert.ok(body.includes("and a.status = 'active';"), 'only active allocations are summed')
+    assert.ok(body.includes('v_attached := v_verified + v_unverif;'), 'received is the two parts, added in numeric')
+    assert.ok(body.includes("'is_verified',       public.finance_payment_status_is_verified(f.status)"))
+  })
+})
+
+describe('the Confirmed view', () => {
+  const html = modal({ initialFilter: 'confirmed', canVerify: true, onDecide: decide })
+  const t = text(html)
+
+  test('is titled for what it holds', () => {
+    assert.equal(PAYMENT_FILTER_TITLE.confirmed, 'Confirmed payments')
+    assert.ok(html.includes('aria-label="Confirmed payments"'))
+  })
+
+  test('shows only confirmed rows, and the database’s total for them', () => {
+    assert.ok(t.includes('PAY-REQ-2026-0103') && t.includes('PAY-REQ-2026-0106'))
+    for (const other of ['PAY-REQ-2026-0101', 'PAY-REQ-2026-0102', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0107']) {
+      assert.ok(!t.includes(other), `${other} is not a confirmed payment`)
+    }
+    assert.ok(t.includes('Confirmed total ₹2,50,000'))
+    assert.ok(t.includes('2 payments · 21.18% of ₹11,80,000 PI Total'))
+    assert.ok(!t.includes('Awaiting verification total'))
+  })
+
+  test('is read-only, even for a payment verifier', () => {
+    const labels = buttonLabels(html)
+    assert.ok(!labels.includes(APPROVE_PAYMENT_LABEL) && !labels.includes(REJECT_PAYMENT_LABEL))
+  })
+
+  test('says so plainly when there is nothing confirmed', () => {
+    const empty = text(modal({
+      initialFilter: 'confirmed',
+      summary: { ...SUMMARY, payments: filterPiPaymentRows(ROWS, 'awaiting') },
+      status: { ...STATUS, confirmed: '₹0', confirmedCount: 0, percent: '0%' },
+    }))
+    assert.ok(empty.includes('No payment against this PI has been confirmed yet.'))
+  })
+})
+
+describe('the Awaiting verification view', () => {
+  test('is titled for what it holds, and lists only pending rows with their total', () => {
+    const html = modal({ initialFilter: 'awaiting' })
+    const t = text(html)
+    assert.equal(PAYMENT_FILTER_TITLE.awaiting, 'Payments awaiting verification')
+    assert.ok(html.includes('aria-label="Payments awaiting verification"'))
+    assert.ok(t.includes('PAY-REQ-2026-0101') && t.includes('PAY-REQ-2026-0102'))
+    for (const other of ['PAY-REQ-2026-0103', 'PAY-REQ-2026-0104', 'PAY-REQ-2026-0105', 'PAY-REQ-2026-0106', 'PAY-REQ-2026-0107']) {
+      assert.ok(!t.includes(other), `${other} is not awaiting verification`)
+    }
+    assert.ok(t.includes('Awaiting verification total ₹2,00,000'))
+    assert.ok(t.includes('2 payments · 16.94% of ₹11,80,000 PI Total'))
+    assert.ok(!/failed|unpaid|non-confirmed/i.test(t), 'waiting money is never called failed or unpaid')
+  })
+
+  test('keeps Approve and Reject for a verifier, on the decidable row only', () => {
+    const labels = buttonLabels(modal({ initialFilter: 'awaiting', canVerify: true, onDecide: decide }))
+    assert.equal(labels.filter(l => l === APPROVE_PAYMENT_LABEL).length, 1)
+    assert.equal(labels.filter(l => l === REJECT_PAYMENT_LABEL).length, 1)
+  })
+
+  test('grants nothing to a viewer without the authority', () => {
+    const labels = buttonLabels(modal({ initialFilter: 'awaiting', canVerify: false, onDecide: decide }))
+    assert.ok(!labels.includes(APPROVE_PAYMENT_LABEL) && !labels.includes(REJECT_PAYMENT_LABEL))
+  })
+
+  test('keeps the self-decision restriction', () => {
+    const html = modal({ initialFilter: 'awaiting', canVerify: true, onDecide: decide, ownPaymentIds: new Set(['p-pending']) })
+    const labels = buttonLabels(html)
+    assert.ok(!labels.includes(APPROVE_PAYMENT_LABEL) && !labels.includes(REJECT_PAYMENT_LABEL))
+    assert.ok(text(html).includes(OWN_PAYMENT_DECISION_NOTE))
+  })
+})
+
+describe('the views switch inside the one dialog', () => {
+  test('All, Confirmed and Awaiting verification, with their row counts, the chosen one pressed', () => {
+    const html = modal({ initialFilter: 'awaiting' })
+    const toggles = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+      .filter(m => m[1].includes('pi-detail-payfilter'))
+    assert.deepEqual(toggles.map(m => text(m[2]).trim()), ['All 7', 'Confirmed 2', 'Awaiting verification 2'])
+    assert.deepEqual(toggles.map(m => /aria-pressed="true"/.test(m[1])), [false, false, true])
+    for (const m of toggles) assert.ok(m[1].includes('type="button"'))
+    assert.ok(html.includes('role="group" aria-label="Show payments"'))
+  })
+
+  test('All still lists every row, rejected and reversed history included', () => {
+    const t = text(modal())
+    for (let n = 101; n <= 107; n += 1) assert.ok(t.includes(`PAY-REQ-2026-0${n}`))
+  })
+
+  test('the dialog is reused, not duplicated, and a switch is held while a decision is open', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentCard.tsx'), 'utf8')
+    assert.equal((source.match(/<FinanceModal\b/g) ?? []).length, 2, 'Add payment and Payment details — no third dialog')
+    assert.ok(source.includes('title={PAYMENT_FILTER_TITLE[filter]}'))
+    assert.ok(source.includes('if (busyRef.current || armed !== null) return'))
+  })
+})
+
+// ── 4. The progress bar ───────────────────────────────────────────────────────
+
+describe('the progress bar: green confirmed, amber awaiting verification, red not yet received', () => {
+  const bar = (confirmedPercent: number, receivedPercent: number, thresholdPercent: number | null = 40) =>
+    renderToStaticMarkup(
+      <PiPaymentProgress
+        confirmedPercent={confirmedPercent}
+        receivedPercent={receivedPercent}
+        thresholdPercent={thresholdPercent}
+        label="Payment received"
+      />)
+  const segment = (html: string, name: 'confirmed' | 'awaiting' | 'unpaid') =>
+    html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
+  const GREEN = `background:${PAYMENT_BAR_COLORS.confirmed}`
+  const AMBER = `background:${PAYMENT_BAR_COLORS.awaiting}`
+  const RED = `background:${PAYMENT_BAR_COLORS.unpaid}`
+
+  test('the three colours are the product’s green, amber and red', () => {
+    assert.equal(PAYMENT_BAR_COLORS.confirmed, colors.green)
+    assert.equal(PAYMENT_BAR_COLORS.awaiting, colors.amber)
+    assert.equal(PAYMENT_BAR_COLORS.unpaid, colors.red)
+  })
+
+  test('no payments: the whole track is red, and it is still announced', () => {
+    const html = bar(0, 0)
     assert.equal(segment(html, 'confirmed'), null)
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
     assert.ok(html.includes('aria-valuenow="0"'))
   })
 
-  test('below the requirement: the green share, red for all the rest, the requirement ticked', () => {
-    const html = bar(21.18)
+  test('confirmed only: green, then red for the rest', () => {
+    const html = bar(21.18, 21.18)
     assert.ok(segment(html, 'confirmed')?.includes('width:21.18%'))
     assert.ok(segment(html, 'confirmed')?.includes(GREEN))
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
-    assert.ok(html.includes('left:40%'), 'the requirement marker sits on the same scale')
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
   })
 
-  test('above the requirement: the unconfirmed rest is STILL red', () => {
-    const html = bar(65)
-    assert.ok(segment(html, 'confirmed')?.includes('width:65%'))
-    assert.ok(segment(html, 'unconfirmed')?.includes(RED), 'meeting the advance does not turn the rest neutral')
-    assert.ok(html.includes('left:40%'), 'the tick stays, and changes no colour')
-    assert.ok(!html.includes('#E8EBF0'))
+  test('awaiting verification only: amber for that share, red for the balance', () => {
+    const html = bar(0, 16.94)
+    assert.equal(segment(html, 'confirmed'), null)
+    assert.ok(segment(html, 'awaiting')?.includes('width:16.94%'))
+    assert.ok(segment(html, 'awaiting')?.includes(AMBER))
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
+    assert.ok(html.includes('aria-valuenow="17"'))
   })
 
-  test('100%: entirely green, with no red remainder at all', () => {
-    const html = bar(100)
+  test('mixed: green, then amber for the gap to received, then red', () => {
+    const html = bar(21.18, 38.13)
+    assert.ok(segment(html, 'confirmed')?.includes('width:21.18%'))
+    assert.ok(segment(html, 'awaiting')?.includes('width:16.95%'))
+    assert.ok(segment(html, 'unpaid')?.includes(RED))
+    assert.ok(html.indexOf('data-segment="confirmed"') < html.indexOf('data-segment="awaiting"'))
+    assert.ok(html.indexOf('data-segment="awaiting"') < html.indexOf('data-segment="unpaid"'))
+  })
+
+  test('the 40% tick is a reference only: below, exactly at and above it, no colour changes', () => {
+    for (const [confirmed, received] of [[10, 39.99], [25, 40], [60, 75]] as const) {
+      const html = bar(confirmed, received)
+      assert.ok(html.includes('left:40%'), 'the requirement marker sits on the same scale')
+      assert.ok(segment(html, 'confirmed')?.includes(GREEN))
+      assert.ok(segment(html, 'awaiting')?.includes(AMBER))
+      assert.ok(segment(html, 'unpaid')?.includes(RED), 'meeting the advance does not stop the rest being red')
+    }
+  })
+
+  test('100% confirmed: entirely green, with no amber and no red', () => {
+    const html = bar(100, 100)
     assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
-    assert.equal(segment(html, 'unconfirmed'), null)
-    assert.ok(!html.includes(RED))
+    assert.equal(segment(html, 'awaiting'), null)
+    assert.equal(segment(html, 'unpaid'), null)
+    assert.ok(!html.includes(RED) && !html.includes(AMBER))
     assert.ok(html.includes('aria-valuenow="100"'))
   })
 
-  test('out-of-range widths are clamped: never overflowing, never inventing green', () => {
-    assert.ok(segment(bar(140), 'confirmed')?.includes('width:100%'))
-    assert.equal(segment(bar(140), 'unconfirmed'), null)
-    assert.equal(segment(bar(-5), 'confirmed'), null)
-    assert.equal(segment(bar(Number.NaN), 'confirmed'), null)
-    assert.ok(segment(bar(Number.NaN), 'unconfirmed')?.includes(RED))
+  test('100% received with some still pending: green and amber, no red', () => {
+    const html = bar(60, 100)
+    assert.ok(segment(html, 'awaiting')?.includes('width:40%'))
+    assert.equal(segment(html, 'unpaid'), null)
+  })
+
+  test('overpayment fills the track and never overflows it', () => {
+    assert.ok(segment(bar(140, 140), 'confirmed')?.includes('width:100%'))
+    assert.equal(segment(bar(140, 140), 'awaiting'), null)
+    assert.equal(segment(bar(140, 140), 'unpaid'), null)
+    const mixed = bar(80, 125)
+    assert.ok(segment(mixed, 'confirmed')?.includes('width:80%'))
+    assert.ok(segment(mixed, 'awaiting')?.includes('width:20%'))
+    assert.equal(segment(mixed, 'unpaid'), null)
+  })
+
+  test('received never draws short of confirmed, and nonsense widths are clamped', () => {
+    const short = bar(50, 30)
+    assert.equal(segment(short, 'awaiting'), null)
+    assert.ok(segment(short, 'confirmed')?.includes('width:50%'))
+    assert.equal(segment(bar(-5, -5), 'confirmed'), null)
+    assert.equal(segment(bar(Number.NaN, Number.NaN), 'confirmed'), null)
+    assert.ok(segment(bar(Number.NaN, Number.NaN), 'unpaid')?.includes(RED))
   })
 
   test('no requirement, no tick', () => {
-    assert.ok(!bar(10, null).includes('left:'))
+    assert.ok(!bar(10, 20, null).includes('left:'))
   })
 
   test('the requirement no longer decides any colour', () => {
@@ -291,7 +489,7 @@ describe('the progress bar: green is confirmed, red is everything else', () => {
   })
 })
 
-// ── 3. The rows ───────────────────────────────────────────────────────────────
+// ── 5. The rows ───────────────────────────────────────────────────────────────
 
 describe('each row says when, how, how much and where it stands', () => {
   const t = text(modal())
@@ -299,6 +497,16 @@ describe('each row says when, how, how much and where it stands', () => {
   test('date, mode, reference, request number, who recorded it', () => {
     for (const part of ['05 Aug 2026', 'Ref UTR123', 'PAY-REQ-2026-0101', 'Recorded by Priya Rao']) {
       assert.ok(t.includes(part), `${part} missing`)
+    }
+  })
+
+  test('the remarks typed with the payment', () => {
+    assert.ok(t.includes('Remarks: Advance via NEFT'))
+  })
+
+  test('no internal identifier reaches the reader', () => {
+    for (const id of ['a-pending', 'p-pending', 'a-ok', 'p-ok', 'sub-1', 'alloc-']) {
+      assert.ok(!t.includes(id), `${id} is an internal id`)
     }
   })
 

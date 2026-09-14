@@ -23,7 +23,8 @@ import {
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
-import { PiPaymentProgress } from '@/components/orders/PiPaymentCard'
+import { PAYMENT_BAR_COLORS, PiPaymentProgress } from '@/components/orders/PiPaymentCard'
+import type { PiPaymentFilter } from '@/lib/finance/piPaymentView'
 import { colors } from '@/lib/tokens'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
@@ -67,7 +68,8 @@ import {
   PAYMENT_STATUS_TITLE,
   RESERVED_ORDER_LABEL,
   STORED_COPY_NOTE,
-  describePendingPayments,
+  buildPaymentMetrics,
+  describeReceivedHeadline,
   describeRequestedException,
   type ApprovedOrderView,
   type BillingSummary,
@@ -75,6 +77,7 @@ import {
   type ClientDetails,
   type DateSummary,
   type OverviewMetaItem,
+  type PaymentMetric,
   type PaymentStatusView,
   type PiDetailTone,
   type SubmissionContext,
@@ -502,20 +505,25 @@ export function PiSummaryCard({
 // ── 2a. Payment status ────────────────────────────────────────────────────────
 
 /**
- * WHERE THE MONEY STANDS, in one card: confirmed, and how far along the PI total.
+ * WHERE THE MONEY STANDS, in one card: how much of the PI total has been
+ * reported as received, and what that is made of.
  *
- * NO REQUIRED FIGURE. The advance requirement is the tick on the bar; its amount
- * is not a headline number on this card.
+ * THE HEADLINE IS RECEIVED — the database's attached figure, confirmed plus
+ * awaiting verification — as a share of the FULL PI total. Beside it are its two
+ * parts: Confirmed (Finance verified it) in green, and Awaiting verification in
+ * amber, each with the count of rows behind it. Under both, one bar: green,
+ * amber, then red for what has not been received. The advance requirement is
+ * the tick on the bar and changes no colour. Every figure arrived formatted —
+ * see buildPaymentStatusView — and nothing here does arithmetic.
  *
- * VERIFIED ONLY. Confirmed and the bar are the database's verified figures;
- * payments still with Finance are named beside the bar, with their count and
- * amount, and move nothing. Every figure arrived formatted — see
- * buildPaymentStatusView — and nothing here does arithmetic.
+ * EACH PART OPENS THE ROWS IT IS MADE OF, in the one Payment details dialog,
+ * filtered. A part with no rows behind it is a plain block rather than a
+ * control, so nothing invites a click that would open an empty list.
  *
- * THREE CONTROLS AT MOST. Add payment for somebody canAddPiPayment allows;
- * Payment details for everybody who can read the PI; and, for a viewer the page
- * resolved as a payment verifier, one way into the pending rows. That control
- * decides nothing — the rows' Approve and Reject run Finance's own doors.
+ * THREE CONTROLS AT MOST, in the header. Add payment for somebody canAddPiPayment
+ * allows; Payment details for everybody who can read the PI; and, for a viewer
+ * the page resolved as a payment verifier, a way into the pending rows. That
+ * control decides nothing — the rows' Approve and Reject run Finance's own doors.
  */
 export function PiPaymentStatusCard({
   status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
@@ -528,11 +536,11 @@ export function PiPaymentStatusCard({
   /** Pending rows a verifier could decide now. A count of rows. */
   decidableCount: number
   onAddPayment: () => void
-  onOpenDetails: () => void
+  /** Opens Payment details on every row, or on the rows behind one figure. */
+  onOpenDetails: (filter: PiPaymentFilter) => void
   notice: string | null
   onDismissNotice: () => void
 }) {
-  const pending = status === null ? null : describePendingPayments(status)
   return (
     <PiCard>
       <section className="pi-detail-paystatus" aria-label={PAYMENT_STATUS_TITLE}>
@@ -540,7 +548,7 @@ export function PiPaymentStatusCard({
           <h2 className="pi-detail-paystatus-title">{PAYMENT_STATUS_TITLE}</h2>
           <div className="pi-detail-paystatus-actions">
             {canVerify && decidableCount > 0 && (
-              <button type="button" className="boe-btn boe-btn-ghost" onClick={onOpenDetails} aria-haspopup="dialog">
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('awaiting')} aria-haspopup="dialog">
                 <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
                 Verify {decidableCount} pending
               </button>
@@ -550,7 +558,7 @@ export function PiPaymentStatusCard({
                 Add payment
               </button>
             )}
-            <button type="button" className="boe-btn boe-btn-ghost" onClick={onOpenDetails} aria-haspopup="dialog">
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => onOpenDetails('all')} aria-haspopup="dialog">
               {PAYMENT_DETAILS_LABEL}
             </button>
           </div>
@@ -560,30 +568,7 @@ export function PiPaymentStatusCard({
           <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
         ) : (
           <>
-            <div className="pi-detail-paystatus-figures">
-              <div className="pi-detail-paystatus-figure">
-                <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.confirmed}</div>
-                <div className="pi-detail-paystatus-value pi-detail-paystatus-confirmed">{status.confirmed}</div>
-              </div>
-              <div className="pi-detail-paystatus-figure">
-                <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.percent}</div>
-                <div className="pi-detail-paystatus-value">{status.percent}</div>
-                <div className="pi-detail-paystatus-sub">of {status.total}</div>
-              </div>
-            </div>
-
-            <PiPaymentProgress
-              barPercent={status.barPercent}
-              thresholdPercent={status.thresholdPercent}
-              label={`Confirmed payment: ${status.percent} of the PI total`}
-            />
-
-            {pending && (
-              <div className="pi-detail-paystatus-pending">
-                <Clock size={13} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0 }} />
-                <span>{pending} — not counted as confirmed</span>
-              </div>
-            )}
+            <PiPaymentPosition status={status} onOpenDetails={onOpenDetails} />
 
             {notice && (
               <div className="pi-detail-paystatus-notice" role="status">
@@ -603,6 +588,95 @@ export function PiPaymentStatusCard({
         )}
       </section>
     </PiCard>
+  )
+}
+
+const METRIC_ICON: Record<PaymentMetric['key'], typeof Clock> = {
+  confirmed: CheckCircle2,
+  awaiting: Clock,
+}
+
+/**
+ * One part of the received figure. A real button — focusable, announced as
+ * opening a dialog — when there are rows behind it; a plain block when there are
+ * none, so a zero never looks like somewhere to press.
+ */
+function PiPaymentMetric({ metric, onOpen }: { metric: PaymentMetric; onOpen: () => void }) {
+  const Icon = METRIC_ICON[metric.key]
+  const className = `pi-detail-paystatus-metric pi-detail-paystatus-metric-${metric.key}`
+  const body = (
+    <>
+      <span className="pi-detail-paystatus-metric-label">
+        <Icon size={13} strokeWidth={2.2} aria-hidden="true" />
+        {metric.label}
+      </span>
+      <span className="pi-detail-paystatus-metric-value">{metric.amount}</span>
+      <span className="pi-detail-paystatus-metric-meta">{metric.meta}</span>
+    </>
+  )
+  if (!metric.interactive) {
+    return <div className={`${className} is-empty`} data-metric={metric.key}>{body}</div>
+  }
+  return (
+    <button type="button" className={className} data-metric={metric.key} onClick={onOpen} aria-haspopup="dialog">
+      {body}
+      <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-paystatus-metric-chevron" aria-hidden="true" />
+    </button>
+  )
+}
+
+/** The headline, its two parts, and the bar they make up — with the bar's key. */
+function PiPaymentPosition({ status, onOpenDetails }: {
+  status: PaymentStatusView
+  onOpenDetails: (filter: PiPaymentFilter) => void
+}) {
+  const headline = describeReceivedHeadline(status)
+  return (
+    <div className="pi-detail-paystatus-body">
+      <div className="pi-detail-paystatus-grid">
+        <div className="pi-detail-paystatus-position">
+          <div className="pi-detail-paystatus-headline">
+            <span className="pi-detail-paystatus-percent">{headline.figure}</span>
+            <span className="pi-detail-paystatus-word">{PAYMENT_STATUS_LABEL.received}</span>
+          </div>
+          <div className="pi-detail-paystatus-of">{headline.line}</div>
+        </div>
+        <div className="pi-detail-paystatus-metrics">
+          {buildPaymentMetrics(status).map(metric => (
+            <PiPaymentMetric key={metric.key} metric={metric} onOpen={() => onOpenDetails(metric.key)} />
+          ))}
+        </div>
+      </div>
+
+      <PiPaymentProgress
+        confirmedPercent={status.barPercent}
+        receivedPercent={status.receivedBarPercent}
+        thresholdPercent={status.thresholdPercent}
+        height={10}
+        label={`Received: ${status.receivedPercent} of the PI total — ${status.percent} confirmed, ${status.pendingPercent} awaiting verification`}
+      />
+
+      <ul className="pi-detail-paystatus-legend">
+        <li className="pi-detail-paystatus-legend-item">
+          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.confirmed }} aria-hidden="true" />
+          {PAYMENT_STATUS_LABEL.confirmed}
+        </li>
+        <li className="pi-detail-paystatus-legend-item">
+          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.awaiting }} aria-hidden="true" />
+          {PAYMENT_STATUS_LABEL.awaiting}
+        </li>
+        <li className="pi-detail-paystatus-legend-item">
+          <span className="pi-detail-paystatus-swatch" style={{ background: PAYMENT_BAR_COLORS.unpaid }} aria-hidden="true" />
+          {PAYMENT_STATUS_LABEL.unpaid}
+        </li>
+        {status.thresholdLabel && (
+          <li className="pi-detail-paystatus-legend-item">
+            <span className="pi-detail-paystatus-tick" aria-hidden="true" />
+            {status.thresholdLabel} advance marker
+          </li>
+        )}
+      </ul>
+    </div>
   )
 }
 
