@@ -968,7 +968,6 @@ export const PAYMENT_STATUS_TITLE = 'Payment status'
 
 export const PAYMENT_STATUS_LABEL = {
   confirmed: 'Confirmed',
-  required: 'Required',
   percent: 'Confirmed %',
 } as const
 
@@ -981,7 +980,11 @@ export function barWidth(value: number | null | undefined): number {
 export type PaymentStatusView = {
   /** Verified money, formatted. Awaiting verification is never in it. */
   confirmed: string
-  /** The standard requirement in rupees, or an em dash when there is none. */
+  /**
+   * The standard requirement in rupees, or an em dash when there is none. Kept
+   * on the view, but NOT drawn on the Payment status card — the requirement
+   * shows there only as the bar's tick.
+   */
   required: string
   /** "40% of ₹8,76,563", or null when either half is unknown. */
   requiredNote: string | null

@@ -502,7 +502,10 @@ export function PiSummaryCard({
 // ── 2a. Payment status ────────────────────────────────────────────────────────
 
 /**
- * WHERE THE MONEY STANDS, in one card: confirmed, required, and how far along.
+ * WHERE THE MONEY STANDS, in one card: confirmed, and how far along the PI total.
+ *
+ * NO REQUIRED FIGURE. The advance requirement is the tick on the bar; its amount
+ * is not a headline number on this card.
  *
  * VERIFIED ONLY. Confirmed and the bar are the database's verified figures;
  * payments still with Finance are named beside the bar, with their count and
@@ -561,11 +564,6 @@ export function PiPaymentStatusCard({
               <div className="pi-detail-paystatus-figure">
                 <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.confirmed}</div>
                 <div className="pi-detail-paystatus-value pi-detail-paystatus-confirmed">{status.confirmed}</div>
-              </div>
-              <div className="pi-detail-paystatus-figure">
-                <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.required}</div>
-                <div className="pi-detail-paystatus-value">{status.required}</div>
-                {status.requiredNote && <div className="pi-detail-paystatus-sub">{status.requiredNote}</div>}
               </div>
               <div className="pi-detail-paystatus-figure">
                 <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.percent}</div>
@@ -994,11 +992,10 @@ export function PiWorkflowPanel({
                     holding it up. `title` carries the same sentence the panel
                     prints, so a pointer user gets it too. */}
                 <button
-                  className="boe-btn boe-btn-primary"
+                  className="boe-btn boe-btn-primary pi-approve-btn"
                   onClick={onApprove}
                   disabled={acting || primaryDisabled}
                   title={primaryNote ?? undefined}
-                  style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
                 >
                   <CheckCircle2 size={13} strokeWidth={2} />
                   {primaryLabel}
@@ -1265,10 +1262,9 @@ export function PiAdvanceBand({
       {canDecide && (
         <div className="pi-detail-workflow-actions" style={{ paddingTop: '2px' }}>
           <button
-            className="boe-btn boe-btn-primary"
+            className="boe-btn boe-btn-primary pi-approve-btn"
             onClick={onApprove}
             disabled={acting}
-            style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
           >
             <ThumbsUp size={13} strokeWidth={2} />
             {APPROVE_EXCEPTION_BUTTON_LABEL}

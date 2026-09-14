@@ -3622,6 +3622,75 @@ body {
   background: #F8F9FB;
 }
 
+/* The green approval controls — Approve PI & Create Order, Approve PI, Create
+   Confirmed Order, Approve Exception. White text and icon on green in every
+   interactive state. A disabled one turns pale green with dark-green text, so it
+   reads as unavailable without becoming unreadable (it used to keep the green
+   ground under the grey disabled text). These selectors outrank the amber
+   .boe-btn-primary rules they sit on. */
+.boe-btn-primary.pi-approve-btn {
+  background: #2F7A52;
+  color: #FFFFFF;
+  box-shadow: 0 1px 4px rgba(47, 122, 82, 0.3);
+}
+.boe-btn-primary.pi-approve-btn:hover {
+  background: #276845;
+  color: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(47, 122, 82, 0.35);
+}
+.boe-btn-primary.pi-approve-btn:active {
+  background: #1F5A3A;
+  color: #FFFFFF;
+}
+.boe-btn-primary.pi-approve-btn:focus-visible {
+  outline: 2px solid #1F5A3A;
+  outline-offset: 2px;
+}
+.boe-btn-primary.pi-approve-btn:disabled {
+  background: #E3F0E8;
+  color: #1F5A3A;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Payment status beside Management review ─────────────────────────────────
+   ONE ROW on a wide column: payment ~70%, the review decisions ~30%. Measured on
+   the column itself rather than the viewport, so the sidebar cannot squeeze the
+   review card below a readable width; below that the two stack, payment first.
+   A workflow panel with nothing to draw leaves Payment status the whole row. */
+.pi-detail-decision-row {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.pi-detail-decision-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@container (min-width: 900px) {
+  .pi-detail-decision-grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  }
+  .pi-detail-decision-grid > :only-child {
+    grid-column: 1 / -1;
+  }
+  /* In the narrow review column the controls take the column's width, and the
+     approval control gets a line of its own, so no label is squeezed. */
+  .pi-detail-decision-grid .pi-detail-workflow-head > :not(:first-child) {
+    flex: 1 1 100%;
+  }
+  .pi-detail-decision-grid .pi-detail-workflow-actions > .boe-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .pi-detail-decision-grid .pi-detail-workflow-actions > .pi-approve-btn {
+    flex-basis: 100%;
+  }
+}
+
 /* ── The lower information grid ───────────────────────────────────────────────
    Activity ~62% on the left, commercial breakdown ~38% on the right.
 
@@ -4195,7 +4264,7 @@ body {
 
 .pi-detail-paystatus-figures {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px 20px;
 }
 
@@ -4256,12 +4325,6 @@ body {
   border: 1px solid rgba(69, 168, 112, 0.2);
   font-size: 12px;
   color: #4a5261;
-}
-
-@media (max-width: 560px) {
-  .pi-detail-paystatus-figures {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 480px) {

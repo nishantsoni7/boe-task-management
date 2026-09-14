@@ -2070,77 +2070,86 @@ function PiDraftDetailPageInner() {
           figures={summaryFigures}
         />
 
-        {/* ── 2a. Payment status ──
-            Confirmed against required, how far along, and what is still with
-            Finance — with the ways in to every payment record. The verify
-            control is drawn only for a payment verifier; the decisions it leads
-            to run Finance's own doors. */}
-        <PiPaymentStatusCard
-          status={paymentStatus}
-          canAdd={canAddPayment}
-          canVerify={canApprovePayments}
-          decidableCount={paymentRowCounts.decidable}
-          onAddPayment={() => setPaymentDialog('add')}
-          onOpenDetails={() => setPaymentDialog('details')}
-          notice={paymentNotice}
-          onDismissNotice={() => setPaymentNotice(null)}
-        />
+        {/* ── 2a + 3. Payment status beside Management review ──
+            One row on a wide column — payment ~70%, the review decisions ~30% —
+            stacked when the column is narrow, payment first. Each card keeps
+            its own controls: nothing about money moves into the review card,
+            and no review decision moves into the payment card. */}
+        <div className="pi-detail-decision-row">
+          <div className="pi-detail-decision-grid">
+            {/* ── 2a. Payment status ──
+                Confirmed and how far along the PI total, and what is still with
+                Finance — with the ways in to every payment record. The verify
+                control is drawn only for a payment verifier; the decisions it
+                leads to run Finance's own doors. */}
+            <PiPaymentStatusCard
+              status={paymentStatus}
+              canAdd={canAddPayment}
+              canVerify={canApprovePayments}
+              decidableCount={paymentRowCounts.decidable}
+              onAddPayment={() => setPaymentDialog('add')}
+              onOpenDetails={() => setPaymentDialog('details')}
+              notice={paymentNotice}
+              onDismissNotice={() => setPaymentNotice(null)}
+            />
 
-        {/* ── 3. Workflow and actions, ABOVE the products ──
-            Whatever is being asked of this viewer, in one coordinated panel, so
-            nobody scrolls a product table to find out that nothing is. */}
-        <PiWorkflowPanel
-          panel={workflow}
-          actions={actions}
-          status={submission.status}
-          reviewNote={submission.review_note}
-          employeeReply={employeeReply}
-          advanceRefusal={advanceRefusal}
-          blockingCount={draft.blocking.length}
-          /* The same list the approval control and the finance dialog read.
-             Offered only where submitting is the question: a reviewer looking
-             at a submitted PI is not the person who fills these in. */
-          readiness={actions.canSubmit ? submissionReadiness : null}
-          onFixReadiness={
-            canEditSubmission || canAdminAmend
-              ? section => {
-                  setClientFailure(null)
-                  setProductFailure(null)
-                  if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                  setEditSection(section)
-                }
-              : null
-          }
-          acting={acting}
-          onChangePi={() => router.push(changePiHref(submissionId))}
-          onSubmit={() => { setActionFailure(null); setDialog('submit') }}
-          onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
-          onReject={() => { setActionFailure(null); setDialog('reject') }}
-          finance={finance}
-          approvalBlocker={readiness.blocker}
-          approvalReady={readiness.ready}
-          decision={reviewDecision}
-          piApprovedLine={piApprovedText}
-          approvedOrder={approvedOrder}
-          onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
-          onApprove={() => {
-            setActionFailure(null)
-            // THE DOOR FOLLOWS THE DECISION, never the other way round: the
-            // PI-only dialog opens only when the payment condition is the one
-            // thing outstanding, and the create-Order dialog only when the PI
-            // already stands approved.
-            setDialog(
-              reviewDecision.mode === 'approve_pi' ? 'approve_pi'
-              : reviewDecision.mode === 'create_order' ? 'create_order'
-              : 'approve',
-            )
-          }}
-          onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
-          advanceBand={advanceBand}
-          /* The context row above already says who submitted it, when, and
-             where Finance stands; the panel keeps its controls and notes. */
-          statusShownAbove
-        />
+            {/* ── 3. Workflow and actions, ABOVE the products ──
+                Whatever is being asked of this viewer, in one coordinated panel,
+                so nobody scrolls a product table to find out that nothing is. */}
+            <PiWorkflowPanel
+              panel={workflow}
+              actions={actions}
+              status={submission.status}
+              reviewNote={submission.review_note}
+              employeeReply={employeeReply}
+              advanceRefusal={advanceRefusal}
+              blockingCount={draft.blocking.length}
+              /* The same list the approval control and the finance dialog read.
+                 Offered only where submitting is the question: a reviewer looking
+                 at a submitted PI is not the person who fills these in. */
+              readiness={actions.canSubmit ? submissionReadiness : null}
+              onFixReadiness={
+                canEditSubmission || canAdminAmend
+                  ? section => {
+                      setClientFailure(null)
+                      setProductFailure(null)
+                      if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
+                      setEditSection(section)
+                    }
+                  : null
+              }
+              acting={acting}
+              onChangePi={() => router.push(changePiHref(submissionId))}
+              onSubmit={() => { setActionFailure(null); setDialog('submit') }}
+              onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
+              onReject={() => { setActionFailure(null); setDialog('reject') }}
+              finance={finance}
+              approvalBlocker={readiness.blocker}
+              approvalReady={readiness.ready}
+              decision={reviewDecision}
+              piApprovedLine={piApprovedText}
+              approvedOrder={approvedOrder}
+              onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
+              onApprove={() => {
+                setActionFailure(null)
+                // THE DOOR FOLLOWS THE DECISION, never the other way round: the
+                // PI-only dialog opens only when the payment condition is the one
+                // thing outstanding, and the create-Order dialog only when the PI
+                // already stands approved.
+                setDialog(
+                  reviewDecision.mode === 'approve_pi' ? 'approve_pi'
+                  : reviewDecision.mode === 'create_order' ? 'create_order'
+                  : 'approve',
+                )
+              }}
+              onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
+              advanceBand={advanceBand}
+              /* The context row above already says who submitted it, when, and
+                 where Finance stands; the panel keeps its controls and notes. */
+              statusShownAbove
+            />
+          </div>
+        </div>
 
         {/* ── 4. What stops this being submitted ──
             Above the products, because it is the reason the primary action is

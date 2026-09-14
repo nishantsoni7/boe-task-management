@@ -836,12 +836,17 @@ const statusHtml = (over: {
 )
 
 describe('payment status: confirmed, required, and how far along', () => {
-  test('the card is headed Payment status and states all three figures', () => {
-    const t = text(statusHtml())
-    for (const part of ['Payment status', 'Confirmed', '₹3,50,625', 'Required', '₹3,50,625.20',
-      '40% of ₹8,76,563', 'Confirmed %', '39.99%', 'of ₹8,76,563']) {
+  test('the card is headed Payment status and states confirmed and how far along — no Required figure', () => {
+    const html = statusHtml()
+    const t = text(html)
+    for (const part of ['Payment status', 'Confirmed', '₹3,50,625', 'Confirmed %', '39.99%', 'of ₹8,76,563']) {
       assert.ok(t.includes(part), `${part} missing`)
     }
+    assert.ok(!t.includes('Required'), 'the requirement is not a figure on this card')
+    assert.ok(!t.includes('₹3,50,625.20') && !t.includes('40% of ₹8,76,563'),
+      'neither the required amount nor its note is drawn')
+    assert.equal((html.match(/class="pi-detail-paystatus-figure"/g) ?? []).length, 2)
+    assert.ok(html.includes('left:40%'), 'the 40% marker stays on the bar')
   })
 
   // The bar's two shares, read off the rendered track. Green and red are the
@@ -1110,6 +1115,97 @@ describe('the overview drops what the old one spent space on', () => {
 })
 
 // ── 2b. The workflow panel, beside the context row ────────────────────────────
+
+describe('Management review: every decision state keeps a readable approval control', () => {
+  const row = submission({
+    status: 'submitted',
+    submitted_by: OWNER,
+    submitted_at: '2026-08-03T04:00:00Z',
+    advance_condition: 'standard',
+  })
+  type Decision = NonNullable<Parameters<typeof PiWorkflowPanel>[0]['decision']>
+
+  const render = (decision: Decision, acting = false) => {
+    const s = viewerState(row, { id: REVIEWER, canReview: true })
+    return renderToStaticMarkup(
+      <PiWorkflowPanel
+        panel={s.panel}
+        actions={s.actions}
+        status={row.status}
+        reviewNote={null}
+        employeeReply={null}
+        advanceRefusal={null}
+        readiness={null}
+        onFixReadiness={null}
+        blockingCount={0}
+        acting={acting}
+        finance={s.finance}
+        approvalBlocker={s.readiness.blocker}
+        approvalReady={s.readiness.ready}
+        decision={decision}
+        approvedOrder={null}
+        onChangePi={() => {}}
+        onSubmit={() => {}}
+        onRequestChanges={() => {}}
+        onReject={() => {}}
+        onVerifyFinance={() => {}}
+        onApprove={() => {}}
+        onOpenOrder={() => {}}
+        advanceBand={null}
+        statusShownAbove
+      />,
+    )
+  }
+  /** The green approval control: its opening-tag attributes and its label. */
+  const approval = (html: string) => {
+    const found = [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+      .filter(m => m[1].includes('pi-approve-btn'))
+    assert.equal(found.length, 1, 'exactly one approval control')
+    return { attrs: found[0][1], label: text(found[0][2]).trim() }
+  }
+
+  test('before approval: Approve PI & Create Order, enabled, styled by class alone', () => {
+    const b = approval(render({ mode: 'approve_and_create', label: 'Approve PI & Create Order', rpc: 'approve_order_submission', note: null }))
+    assert.equal(b.label, 'Approve PI & Create Order')
+    assert.ok(!b.attrs.includes('disabled'))
+    assert.ok(!b.attrs.includes('style='), 'no inline colour to fight the readable states')
+  })
+
+  test('the PI can be approved while the Order waits: Approve PI, with its note', () => {
+    const html = render({ mode: 'approve_pi', label: 'Approve PI', rpc: 'approve_pi_review', note: 'The PI can be approved now; the Confirmed Order waits for the payment condition: 40% verified' })
+    const b = approval(html)
+    assert.equal(b.label, 'Approve PI')
+    assert.ok(!b.attrs.includes('disabled'))
+    assert.ok(text(html).includes('The PI can be approved now'))
+  })
+
+  test('after PI approval, awaiting payment: the control is disabled but keeps the readable class, and the note says why', () => {
+    const html = render({ mode: 'awaiting_payment', label: null, rpc: null, note: 'PI approved. The Confirmed Order will be created once the payment condition is cleared: 40% verified' })
+    const b = approval(html)
+    assert.ok(b.attrs.includes('disabled=""'))
+    assert.ok(!b.attrs.includes('style='))
+    assert.ok(text(html).includes('PI approved. The Confirmed Order will be created'))
+  })
+
+  test('Create Order available: Create Confirmed Order, enabled', () => {
+    const b = approval(render({ mode: 'create_order', label: 'Create Confirmed Order', rpc: 'approve_order_submission', note: null }))
+    assert.equal(b.label, 'Create Confirmed Order')
+    assert.ok(!b.attrs.includes('disabled'))
+  })
+
+  test('a busy panel disables the approval control without losing its readable styling', () => {
+    const b = approval(render({ mode: 'create_order', label: 'Create Confirmed Order', rpc: 'approve_order_submission', note: null }, true))
+    assert.ok(b.attrs.includes('disabled=""'))
+    assert.ok(b.attrs.includes('class="boe-btn boe-btn-primary pi-approve-btn"'))
+  })
+
+  test('the review decisions stay in the review card: no payment control appears here', () => {
+    const html = render({ mode: 'create_order', label: 'Create Confirmed Order', rpc: 'approve_order_submission', note: null })
+    for (const label of buttonLabels(html)) {
+      assert.ok(!/payment/i.test(label), `${label} belongs to Payment status`)
+    }
+  })
+})
 
 describe('the workflow panel does not repeat what the context row already says', () => {
   const submitted = submission({
@@ -2232,11 +2328,57 @@ describe('the layout is CSS, at real breakpoints', () => {
     assert.ok(/\.pi-detail-figure-label \{[^}]*font-size: 11\.5px/.test(css), 'and muted labels')
   })
 
-  test('payment status: three figures, two on a phone, actions full width on a narrow phone', () => {
-    assert.ok(/\.pi-detail-paystatus-figures \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/.test(css))
-    assert.ok(/@media \(max-width: 560px\) \{\s*\.pi-detail-paystatus-figures \{\s*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
+  test('payment status: two figures, actions full width on a narrow phone', () => {
+    assert.ok(/\.pi-detail-paystatus-figures \{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/.test(css))
+    assert.ok(!/\.pi-detail-paystatus-figures \{[^}]*repeat\(3/.test(css), 'no third column for a figure that is gone')
     assert.ok(/@media \(max-width: 480px\) \{\s*\.pi-detail-paystatus-actions \{\s*width: 100%/.test(css))
     assert.ok(/\.pi-detail-paystatus-value \{[^}]*font-size: 22px/.test(css))
+  })
+
+  test('Payment status and Management review share one row: ~70/30 on a wide column, stacked when narrow', () => {
+    const page = read(PAGE)
+    const start = page.indexOf('<div className="pi-detail-decision-row">')
+    const end = page.indexOf('{/* ── 4. What stops this being submitted')
+    assert.ok(start > 0 && end > start, 'the row wraps the two sections, above the blocking panel')
+    const row = page.slice(start, end)
+    assert.ok(row.includes('<div className="pi-detail-decision-grid">'))
+    assert.ok(row.indexOf('<PiPaymentStatusCard') > 0 && row.indexOf('<PiPaymentStatusCard') < row.indexOf('<PiWorkflowPanel'),
+      'payment first, which is also the order they stack in')
+    assert.equal((row.match(/<(PiPaymentStatusCard|PiWorkflowPanel)\b/g) ?? []).length, 2, 'and nothing else in the row')
+
+    assert.ok(/\.pi-detail-decision-row \{[^}]*container-type: inline-size/.test(css), 'measured on the column, not the viewport')
+    assert.ok(/\.pi-detail-decision-grid \{[^}]*grid-template-columns: minmax\(0, 1fr\)/.test(css), 'stacked by default')
+    assert.ok(/@container \(min-width: 900px\) \{\s*\.pi-detail-decision-grid \{\s*grid-template-columns: minmax\(0, 7fr\) minmax\(0, 3fr\)/.test(css),
+      'seven to three once the column is wide enough for the review card to breathe')
+    assert.ok(/\.pi-detail-decision-grid > :only-child \{\s*grid-column: 1 \/ -1/.test(css),
+      'a panel that draws nothing leaves Payment status the whole row')
+    assert.ok(/\.pi-detail-decision-grid \.pi-detail-workflow-actions > \.pi-approve-btn \{\s*flex-basis: 100%/.test(css),
+      'the approval control gets its own line in the narrow column')
+    assert.ok(!/\.pi-detail-decision-[a-z-]* \{[^}]*\border:/.test(css), 'CSS order never moves one card past the other')
+  })
+
+  test('the green approval controls stay readable in every state', () => {
+    const rule = (selector: string) => {
+      const match = css.match(new RegExp(`${selector.replace(/[.:]/g, m => `\\${m}`)} \\{([^}]*)\\}`))
+      assert.ok(match, `${selector} must be styled`)
+      return match[1]
+    }
+    for (const state of ['', ':hover', ':active']) {
+      const body = rule(`.boe-btn-primary.pi-approve-btn${state}`)
+      assert.ok(body.includes('color: #FFFFFF'), `white text and icon${state ? ` on ${state}` : ''}`)
+    }
+    assert.ok(rule('.boe-btn-primary.pi-approve-btn').includes('background: #2F7A52'))
+    assert.ok(rule('.boe-btn-primary.pi-approve-btn:focus-visible').includes('outline: 2px solid #1F5A3A'))
+    const disabled = rule('.boe-btn-primary.pi-approve-btn:disabled')
+    assert.ok(disabled.includes('background: #E3F0E8') && disabled.includes('color: #1F5A3A'),
+      'disabled: pale green with dark-green text, never grey text on the green ground')
+    assert.ok(css.indexOf('.boe-btn-primary.pi-approve-btn:disabled') > css.indexOf('.boe-btn-primary.pi-approve-btn:hover'),
+      'the disabled rule comes last, so hovering a disabled control changes nothing')
+
+    const sections = read(SECTIONS)
+    assert.ok(!sections.includes("background: '#2F7A52'"), 'no inline green that the disabled rule cannot reach')
+    assert.equal((sections.match(/className="boe-btn boe-btn-primary pi-approve-btn"/g) ?? []).length, 2,
+      'the review decision and the advance decision')
   })
 
   test('the progress bar cannot overflow its track', () => {
@@ -2250,7 +2392,7 @@ describe('the layout is CSS, at real breakpoints', () => {
   })
 
   test('no new surface shouts: no shadow and no gradient', () => {
-    for (const sel of ['context', 'overview', 'figures', 'dates', 'paystatus', 'breakdown']) {
+    for (const sel of ['context', 'overview', 'figures', 'dates', 'paystatus', 'breakdown', 'decision']) {
       assert.ok(!new RegExp(`\\.pi-detail-${sel}[a-z-]* \\{[^}]*(box-shadow|gradient)`).test(css),
         `${sel}: no shadow and no gradient`)
     }
