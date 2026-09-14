@@ -993,7 +993,10 @@ export type PaymentStatusView = {
   barPercent: number
   /** 0–100: where the requirement sits on the same bar, or null. */
   thresholdPercent: number | null
-  /** meets_standard, as the database decided it. Colours the remainder. */
+  /**
+   * meets_standard, as the database decided it. It does NOT colour the bar: the
+   * unconfirmed share stays red until the PI is confirmed in full.
+   */
   requirementMet: boolean
   /** Rows Finance has not decided (pending or needs clarification). A count of
    *  rows, not a sum. */

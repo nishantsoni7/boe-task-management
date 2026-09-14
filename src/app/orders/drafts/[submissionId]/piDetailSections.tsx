@@ -577,7 +577,6 @@ export function PiPaymentStatusCard({
             <PiPaymentProgress
               barPercent={status.barPercent}
               thresholdPercent={status.thresholdPercent}
-              requirementMet={status.requirementMet}
               label={`Confirmed payment: ${status.percent} of the PI total`}
             />
 

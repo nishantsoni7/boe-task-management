@@ -15,9 +15,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
+import { colors } from '@/lib/tokens'
 
 import {
   APPROVE_PAYMENT_LABEL,
+  PAYMENT_BAR_COLORS,
   PAYMENT_DETAILS_TITLE,
   PiPaymentDetailsModal,
   PiPaymentProgress,
@@ -217,34 +219,70 @@ describe('the dialog opens on the page’s own figures', () => {
   })
 })
 
-describe('the progress bar', () => {
-  const bar = (barPercent: number, requirementMet = false, thresholdPercent: number | null = 40) =>
+describe('the progress bar: green is confirmed, red is everything else', () => {
+  const bar = (barPercent: number, thresholdPercent: number | null = 40) =>
     renderToStaticMarkup(
-      <PiPaymentProgress barPercent={barPercent} thresholdPercent={thresholdPercent}
-        requirementMet={requirementMet} label="Confirmed payment" />)
+      <PiPaymentProgress barPercent={barPercent} thresholdPercent={thresholdPercent} label="Confirmed payment" />)
+  const segment = (html: string, name: 'confirmed' | 'unconfirmed') =>
+    html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
+  const GREEN = `background:${PAYMENT_BAR_COLORS.confirmed}`
+  const RED = `background:${PAYMENT_BAR_COLORS.unconfirmed}`
 
-  test('0%: an empty green share over a red remainder, still announced', () => {
+  test('the two colours are the product’s green and red — never amber, never neutral', () => {
+    assert.equal(PAYMENT_BAR_COLORS.confirmed, colors.green)
+    assert.equal(PAYMENT_BAR_COLORS.unconfirmed, colors.red)
+    assert.notEqual(PAYMENT_BAR_COLORS.unconfirmed, colors.amber, 'amber is reserved for awaiting verification')
+  })
+
+  test('0%: the whole track is red, and it is still announced', () => {
     const html = bar(0)
-    assert.ok(html.includes('width:0%'))
-    assert.ok(html.includes('background:#F4D9D9'), 'short of the requirement, the remainder is soft red')
+    assert.equal(segment(html, 'confirmed'), null)
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
     assert.ok(html.includes('aria-valuenow="0"'))
   })
 
-  test('partial: the green share is the database percentage, and the requirement is ticked', () => {
+  test('below the requirement: the green share, red for all the rest, the requirement ticked', () => {
     const html = bar(21.18)
-    assert.ok(html.includes('width:21.18%'))
+    assert.ok(segment(html, 'confirmed')?.includes('width:21.18%'))
+    assert.ok(segment(html, 'confirmed')?.includes(GREEN))
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
     assert.ok(html.includes('left:40%'), 'the requirement marker sits on the same scale')
   })
 
-  test('full: the track is green end to end and the remainder is neutral', () => {
-    const html = bar(100, true)
-    assert.ok(html.includes('width:100%'))
-    assert.ok(html.includes('background:#E8EBF0'))
+  test('above the requirement: the unconfirmed rest is STILL red', () => {
+    const html = bar(65)
+    assert.ok(segment(html, 'confirmed')?.includes('width:65%'))
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED), 'meeting the advance does not turn the rest neutral')
+    assert.ok(html.includes('left:40%'), 'the tick stays, and changes no colour')
+    assert.ok(!html.includes('#E8EBF0'))
+  })
+
+  test('100%: entirely green, with no red remainder at all', () => {
+    const html = bar(100)
+    assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
+    assert.equal(segment(html, 'unconfirmed'), null)
+    assert.ok(!html.includes(RED))
     assert.ok(html.includes('aria-valuenow="100"'))
   })
 
+  test('out-of-range widths are clamped: never overflowing, never inventing green', () => {
+    assert.ok(segment(bar(140), 'confirmed')?.includes('width:100%'))
+    assert.equal(segment(bar(140), 'unconfirmed'), null)
+    assert.equal(segment(bar(-5), 'confirmed'), null)
+    assert.equal(segment(bar(Number.NaN), 'confirmed'), null)
+    assert.ok(segment(bar(Number.NaN), 'unconfirmed')?.includes(RED))
+  })
+
   test('no requirement, no tick', () => {
-    assert.ok(!bar(10, false, null).includes('left:'))
+    assert.ok(!bar(10, null).includes('left:'))
+  })
+
+  test('the requirement no longer decides any colour', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/orders/PiPaymentCard.tsx'), 'utf8')
+    const progress = source.slice(source.indexOf('export function PiPaymentProgress('),
+      source.indexOf('/** The payment status figures'))
+    assert.ok(progress.length > 0 && !progress.includes('requirementMet'))
+    assert.ok(!source.includes('#E8EBF0') && !source.includes('#F4D9D9'), 'no neutral or alternate remainder colour remains')
   })
 })
 

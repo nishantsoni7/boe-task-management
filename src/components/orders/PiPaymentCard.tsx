@@ -58,25 +58,33 @@ function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
 
 // ── The progress bar ──────────────────────────────────────────────────────────
 
-/** The remainder while the requirement is not met: a soft red, never a solid one. */
-const REMAINDER_SHORT = '#F4D9D9'
-const REMAINDER_MET = '#E8EBF0'
+/**
+ * The two shares of the PI total the bar draws. Green is confirmed money; red is
+ * EVERYTHING not yet confirmed — including money still awaiting verification,
+ * which the amber notice beside the bar names but which never counts as
+ * confirmed. Meeting the advance requirement does not turn the red neutral: an
+ * advance confirmed is not a PI paid.
+ */
+export const PAYMENT_BAR_COLORS = {
+  confirmed: colors.green,
+  unconfirmed: colors.red,
+} as const
 
 /**
- * Confirmed money against the PI total, as ONE track.
- *
- * Green is the database's verified percentage; the rest of the track is the part
- * not yet confirmed — soft red while the requirement is unmet, neutral once it is
- * met. A thin tick marks the requirement on the same scale. Both widths arrive
- * clamped to 0–100, so an overpaid PI fills the track and never overflows it.
+ * Confirmed money against the FULL PI total, as one track: a green share for what
+ * the database verified, then a red share for all the rest. At 0% the track is
+ * entirely red; at 100% it is entirely green, with no red at all. A thin tick
+ * marks the advance requirement on the same scale and changes no colour. The
+ * width arrives clamped to 0–100 and is clamped again here, so an overpaid PI
+ * fills the track and never overflows it.
  */
-export function PiPaymentProgress({ barPercent, thresholdPercent, requirementMet, label }: {
+export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
   barPercent: number
   thresholdPercent: number | null
-  requirementMet: boolean
   /** The accessible name: what the bar measures, with the figure. */
   label: string
 }) {
+  const confirmed = Number.isFinite(barPercent) ? Math.max(0, Math.min(100, barPercent)) : 0
   const showTick = thresholdPercent !== null && thresholdPercent > 0 && thresholdPercent < 100
   return (
     <div
@@ -84,19 +92,30 @@ export function PiPaymentProgress({ barPercent, thresholdPercent, requirementMet
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(barPercent)}
+      aria-valuenow={Math.round(confirmed)}
       style={{
-        position: 'relative', width: '100%', height: '8px', borderRadius: '999px',
-        overflow: 'hidden', background: requirementMet ? REMAINDER_MET : REMAINDER_SHORT,
+        position: 'relative', display: 'flex', width: '100%', height: '8px', borderRadius: '999px',
+        overflow: 'hidden',
       }}
     >
-      <div style={{ width: `${barPercent}%`, height: '100%', borderRadius: '999px', background: colors.green }} />
+      {confirmed > 0 && (
+        <div
+          data-segment="confirmed"
+          style={{ width: `${confirmed}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.confirmed }}
+        />
+      )}
+      {confirmed < 100 && (
+        <div
+          data-segment="unconfirmed"
+          style={{ flexGrow: 1, height: '100%', background: PAYMENT_BAR_COLORS.unconfirmed }}
+        />
+      )}
       {showTick && (
         <span
           aria-hidden="true"
           style={{
             position: 'absolute', top: 0, bottom: 0, left: `${thresholdPercent}%`,
-            width: '2px', marginLeft: '-1px', background: 'rgba(17,19,24,0.32)',
+            width: '2px', marginLeft: '-1px', background: '#FFFFFF',
           }}
         />
       )}
@@ -533,7 +552,6 @@ export function PiPaymentDetailsModal({
             <PiPaymentProgress
               barPercent={status.barPercent}
               thresholdPercent={status.thresholdPercent}
-              requirementMet={status.requirementMet}
               label={`Confirmed payment: ${status.percent} of the PI total`}
             />
             <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>

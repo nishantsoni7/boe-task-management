@@ -844,28 +844,48 @@ describe('payment status: confirmed, required, and how far along', () => {
     }
   })
 
-  test('zero: nothing confirmed reads as nothing, over a red remainder', () => {
+  // The bar's two shares, read off the rendered track. Green and red are the
+  // colors.green / colors.red tokens (pinned to the tokens in
+  // piPaymentDetails.render.test.tsx); amber is the pending notice's, never the bar's.
+  const segment = (html: string, name: 'confirmed' | 'unconfirmed') =>
+    html.match(new RegExp(`data-segment="${name}" style="([^"]*)"`))?.[1] ?? null
+  const GREEN = 'background:#45A870'
+  const RED = 'background:#D94F4F'
+
+  test('zero: nothing confirmed, so the whole track is red', () => {
     const view = statusView({ confirmed: '₹0', verifiedPercent: '0%', verifiedPercentValue: 0 })
     assert.equal(view.barPercent, 0)
     const html = statusHtml({ status: view })
-    assert.ok(html.includes('width:0%'))
-    assert.ok(html.includes('background:#F4D9D9'), 'short of the requirement, the rest is soft red')
+    assert.equal(segment(html, 'confirmed'), null)
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
     assert.ok(html.includes('aria-valuenow="0"'))
   })
 
-  test('partial: the database percentage, unrounded, with the requirement ticked', () => {
+  test('partial below the requirement: the database percentage, unrounded, and red for the rest', () => {
     const html = statusHtml()
-    assert.ok(html.includes('width:39.99%'))
+    assert.ok(segment(html, 'confirmed')?.includes('width:39.99%'))
+    assert.ok(segment(html, 'confirmed')?.includes(GREEN))
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
     assert.ok(html.includes('left:40%'))
   })
 
-  test('full: an overpaid PI fills the track and never overflows it; the rest goes neutral', () => {
-    const view = statusView({ verifiedPercent: '140%', verifiedPercentValue: 140, meetsStandard: true })
-    assert.equal(view.barPercent, 100)
+  test('partial above the requirement: the advance is met and the unconfirmed rest stays red', () => {
+    const view = statusView({ confirmed: '₹5,25,938', verifiedPercent: '60%', verifiedPercentValue: 60, meetsStandard: true })
     assert.equal(view.requirementMet, true)
     const html = statusHtml({ status: view })
-    assert.ok(html.includes('width:100%'))
-    assert.ok(html.includes('background:#E8EBF0'))
+    assert.ok(segment(html, 'confirmed')?.includes('width:60%'))
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED), 'an advance confirmed is not a PI paid')
+    assert.ok(html.includes('left:40%'), 'the requirement tick stays')
+    assert.ok(!html.includes('#E8EBF0'), 'nothing goes neutral')
+  })
+
+  test('full: an overpaid PI fills the track with green, never overflows it, and shows no red', () => {
+    const view = statusView({ verifiedPercent: '140%', verifiedPercentValue: 140, meetsStandard: true })
+    assert.equal(view.barPercent, 100)
+    const html = statusHtml({ status: view })
+    assert.ok(segment(html, 'confirmed')?.includes('width:100%'))
+    assert.equal(segment(html, 'unconfirmed'), null)
+    assert.ok(!html.includes(RED))
   })
 
   test('a bar width is a width, never a figure', () => {
@@ -883,6 +903,11 @@ describe('payment status: confirmed, required, and how far along', () => {
     assert.equal(describePendingPayments(view), '2 payments pending verification · ₹1,00,000')
     assert.equal(view.barPercent, 0, 'pending money is not in the bar')
     const html = statusHtml({ status: view })
+    // Pending only: nothing is confirmed, so the whole track is red. Amber is the
+    // notice's colour and never enters the bar.
+    assert.equal(segment(html, 'confirmed'), null, 'pending money is not confirmed')
+    assert.ok(segment(html, 'unconfirmed')?.includes(RED))
+    assert.ok(!html.includes('#E8A030'), 'amber never enters the bar')
     assert.ok(html.includes('class="pi-detail-paystatus-pending"'))
     assert.ok(text(html).includes('2 payments pending verification · ₹1,00,000 — not counted as confirmed'))
     assert.equal(describePendingPayments(statusView({ pendingCount: 1, pendingAmount: '₹5,000' })),
