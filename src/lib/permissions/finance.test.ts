@@ -125,6 +125,13 @@ describe('admin compatibility', () => {
     }
   })
 
+  test('only an admin may decide a payment they recorded — no grant confers it', () => {
+    assert.equal(deriveFinanceCapabilities('admin', []).canDecideOwnPayment, true)
+    const everything = perms(FINANCE_ACTIONS)
+    assert.equal(deriveFinanceCapabilities('manager', everything).canDecideOwnPayment, false)
+    assert.equal(deriveFinanceCapabilities('member', everything).canDecideOwnPayment, false)
+  })
+
   test('an admin is not reduced by an explicit deny', () => {
     const caps = deriveFinanceCapabilities('admin', perms([]))
     assert.equal(caps.canApprovePayment, true)

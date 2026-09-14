@@ -2742,7 +2742,12 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
     // The page writes no payment and names no payment table or RPC. Approve and
     // Reject run through the one shared helper, which calls only the two
     // server-gated decision RPCs — see src/lib/finance/paymentDecision.test.ts.
-    assert.ok(page.includes("import { decidePayment, type PaymentDecision } from '@/lib/finance/paymentDecision'"))
+    assert.ok(page.includes("import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision } from '@/lib/finance/paymentDecision'"))
+    // A non-admin verifier's own pending payments draw no decision; an admin's do.
+    assert.ok(page.includes('canApprovePayments && !canDecideOwnPayments ? ownPaymentIds : NO_OWN_PAYMENTS'))
+    assert.ok(page.includes('setCanDecideOwnPayments(financeCaps.canDecideOwnPayment)'),
+      'the override comes from the Finance capability helper, never a role literal')
+    assert.ok(page.includes('ownPaymentIds={decisionOwnPaymentIds}'))
     assert.equal((page.match(/decidePayment\(/g) ?? []).length, 1, 'one call site')
     assert.ok(!/approve_finance_payment_request|reject_finance_payment_request|finance_payment_requests/.test(page))
   })

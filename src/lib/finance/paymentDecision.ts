@@ -56,6 +56,7 @@ export const PAYMENT_DECISION_MESSAGE = {
   unavailable: 'This payment could not be opened. It may have been removed, or you may not have access to it.',
   notPending: 'This payment is no longer awaiting verification — it may already have been decided. The list has been refreshed.',
   notPermitted: 'You do not have permission to verify payments.',
+  selfDecision: 'You recorded this payment, so another payment verifier must approve or reject it.',
   targetChanged: 'This payment changed while it was being decided. Refresh and try again.',
   needsFinance: 'This payment cannot be verified from here. Open it in Finance to correct its destination first.',
   failed: 'The decision could not be saved. Please try again.',
@@ -80,6 +81,8 @@ export function describePaymentDecisionError(
 ): string {
   const code = error?.code ?? ''
   const message = error?.message ?? ''
+  // Before the generic 42501: this refusal has a reason the viewer can act on.
+  if (message.includes('PAYMENT_SELF_DECISION_FORBIDDEN')) return PAYMENT_DECISION_MESSAGE.selfDecision
   if (code === '42501' || /row-level security|permission denied/i.test(message)) {
     return PAYMENT_DECISION_MESSAGE.notPermitted
   }
@@ -89,6 +92,31 @@ export function describePaymentDecisionError(
   if (/ORDER_REQUEST_|no linked order/i.test(message)) return PAYMENT_DECISION_MESSAGE.needsFinance
   if (code === 'P0002') return PAYMENT_DECISION_MESSAGE.unavailable
   return PAYMENT_DECISION_MESSAGE.failed
+}
+
+/** A stable empty set, so an unresolved viewer re-renders nothing. */
+export const NO_OWN_PAYMENTS: ReadonlySet<string> = new Set()
+
+/**
+ * Which of these payments the viewer recorded themselves. A non-admin never
+ * approves, rejects or sends back their own payment — 20261211000000 refuses it
+ * in the database — so the PI dialog uses this only to stop DRAWING a decision
+ * it would refuse. A read of ids under the caller's own RLS; a failure resolves
+ * to no ids, and the database still refuses the decision.
+ */
+export async function loadOwnPaymentIds(
+  client: Pick<SupabaseClient, 'from'>,
+  paymentIds: readonly string[],
+  viewerId: string | null,
+): Promise<ReadonlySet<string>> {
+  if (!viewerId || paymentIds.length === 0) return NO_OWN_PAYMENTS
+  const { data, error } = await client
+    .from('finance_payment_requests')
+    .select('id')
+    .in('id', [...paymentIds])
+    .eq('submitted_by', viewerId)
+  if (error || !data) return NO_OWN_PAYMENTS
+  return new Set((data as { id: string }[]).map(p => p.id))
 }
 
 export async function decidePayment(

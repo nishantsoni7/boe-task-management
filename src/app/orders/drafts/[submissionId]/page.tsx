@@ -143,7 +143,7 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
-import { decidePayment, type PaymentDecision } from '@/lib/finance/paymentDecision'
+import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   describeReservation,
   reservationApprovalMessage,
@@ -470,6 +470,8 @@ function PiDraftDetailPageInner() {
    * approver-decide policy re-derive it on every decision.
    */
   const [canApprovePayments, setCanApprovePayments] = useState(false)
+  /** The administrator override on separating payment entry from decision. */
+  const [canDecideOwnPayments, setCanDecideOwnPayments] = useState(false)
 
   /** Which decision dialog is open, if any. */
   const [dialog, setDialog] = useState<
@@ -805,6 +807,7 @@ function PiDraftDetailPageInner() {
       // Finance screens read. Deliberately not derived from any Orders
       // capability, and deliberately granting nothing on the PI itself.
       setCanApprovePayments(financeCaps.canApprovePayment)
+      setCanDecideOwnPayments(financeCaps.canDecideOwnPayment)
       // finance.allocate — the PROTECTED action, never a preset, and the only
       // Finance capability that opens payment entry. Wider Finance access
       // (view, view_all, approve, manage) deliberately does not, which is the
@@ -896,6 +899,25 @@ function PiDraftDetailPageInner() {
     setPayments(await loadPiPaymentSummary(supabase, submissionId))
     setPaymentsLoading(false)
   }, [supabase, submissionId])
+
+  // WHICH PENDING PAYMENTS THIS VIEWER RECORDED. Separation of entry and
+  // decision: a non-admin never approves or rejects their own payment, and the
+  // database refuses it (20261211000000). Asked only of a non-admin payment
+  // verifier with something pending, so nobody else pays for the read.
+  const [ownPaymentIds, setOwnPaymentIds] = useState<ReadonlySet<string>>(NO_OWN_PAYMENTS)
+  useEffect(() => {
+    const pending = (payments?.payments ?? [])
+      .filter(p => p.status === 'pending_approval')
+      .map(p => p.payment_id)
+    if (!canApprovePayments || canDecideOwnPayments || !viewerId || pending.length === 0) return
+    let active = true
+    const run = async () => {
+      const ids = await loadOwnPaymentIds(supabase, pending, viewerId)
+      if (active) setOwnPaymentIds(ids)
+    }
+    void run()
+    return () => { active = false }
+  }, [supabase, payments, canApprovePayments, canDecideOwnPayments, viewerId])
 
   // The same shape every other load on this page uses: an inner async runner and
   // an `active` guard, so a navigation away mid-flight cannot set state on an
@@ -1005,9 +1027,9 @@ function PiDraftDetailPageInner() {
   /**
    * Approve or reject one pending payment, from Payment details.
    *
-   * THE SAME DOORS FINANCE USES, through the one shared helper — the approval
-   * RPC, or the three-column status write the approver-decide policy admits —
-   * so the payment ends in the same status, with the same activity entry and
+   * SERVER-GATED DOORS, through the one shared helper — the approval RPC or the
+   * rejection RPC, never a direct status write — so the payment ends in the
+   * same status, with the same activity entry and
    * the same notifications, whichever screen decided it. Offered only where
    * canApprovePayments is true, and the database re-derives that authority on
    * every call.
@@ -1891,7 +1913,8 @@ function PiDraftDetailPageInner() {
    * numeric; the only thing derived here is how many rows Finance has not
    * decided yet, which is a count of rows and not a sum of money.
    */
-  const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [])
+  const decisionOwnPaymentIds = canApprovePayments && !canDecideOwnPayments ? ownPaymentIds : NO_OWN_PAYMENTS
+  const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [], decisionOwnPaymentIds)
   const paymentStatus = payments === null ? null : buildPaymentStatusView({
     // formatInr, the page's own money format — the one the Commercial breakdown
     // and the page title already use. It prints whole rupees as whole rupees and
@@ -2503,6 +2526,7 @@ function PiDraftDetailPageInner() {
           /* Null for anybody who is not a payment verifier: then no row draws a
              decision control at all. The database decides again either way. */
           onDecide={canApprovePayments ? decidePendingPayment : null}
+          ownPaymentIds={decisionOwnPaymentIds}
         />
       )}
 

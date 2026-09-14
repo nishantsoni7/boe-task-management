@@ -24,6 +24,7 @@ import {
   PI_PAYMENT_RECORDED_BODY,
   canSubmitPiPayment,
   describePiPaymentRow,
+  OWN_PAYMENT_DECISION_NOTE,
   piPaymentErrorMessage,
   piPaymentTermLines,
   validatePiPaymentForm,
@@ -357,6 +358,12 @@ export function PiPaymentRow({
         </div>
       )}
 
+      {row.ownPending && (
+        <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
+          {OWN_PAYMENT_DECISION_NOTE}
+        </div>
+      )}
+
       {row.canDecide && armed === null && (
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '2px' }}>
           <button
@@ -441,7 +448,7 @@ export function PiPaymentRow({
  * and then no row draws a decision control at all.
  */
 export function PiPaymentDetailsModal({
-  summary, status, loading, onOpenProof, onClose, canVerify, onDecide,
+  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds,
 }: {
   summary: PiPaymentSummary | null
   /** The page's own status figures, so the dialog and the card cannot disagree. */
@@ -453,6 +460,8 @@ export function PiPaymentDetailsModal({
   canVerify: boolean
   /** Runs the decision and refreshes the summary. Resolves to an error sentence, or null. */
   onDecide: ((paymentId: string, decision: PaymentDecision, note: string) => Promise<string | null>) | null
+  /** Payments this viewer recorded: they draw no decision, whatever the capability. */
+  ownPaymentIds?: ReadonlySet<string>
 }) {
   const [armed, setArmed] = useState<ArmedDecision | null>(null)
   const [note, setNote] = useState('')
@@ -464,7 +473,10 @@ export function PiPaymentDetailsModal({
   const busyRef = useRef(false)
 
   const decisionsAllowed = canVerify && onDecide !== null
-  const rows = (summary?.payments ?? []).map(row => describePiPaymentRow(row, { canVerify: decisionsAllowed }))
+  const rows = (summary?.payments ?? []).map(row => describePiPaymentRow(row, {
+    canVerify: decisionsAllowed,
+    ownPayment: ownPaymentIds?.has(row.payment_id) ?? false,
+  }))
   const terms = piPaymentTermLines(summary)
 
   const close = useCallback(() => {

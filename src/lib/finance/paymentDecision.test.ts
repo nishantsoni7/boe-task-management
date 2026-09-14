@@ -30,6 +30,7 @@ import {
   PAYMENT_DECISION_MESSAGE,
   decidePayment,
   describePaymentDecisionError,
+  loadOwnPaymentIds,
   type PaymentDecisionNotifiers,
 } from './paymentDecision'
 
@@ -39,6 +40,7 @@ type Call =
   | { kind: 'update'; values: Record<string, unknown> }
   | { kind: 'eq'; column: string; value: unknown }
   | { kind: 'rpc'; fn: string; args: Record<string, unknown> }
+  | { kind: 'in'; column: string; values: unknown[] }
 
 const PENDING = {
   id: 'pay-1',
@@ -55,6 +57,8 @@ function stub(opts: {
   row?: Record<string, unknown> | null
   readError?: { code?: string; message?: string } | null
   rpcError?: { code?: string; message?: string } | null
+  ownRows?: { id: string }[] | null
+  ownError?: { code?: string; message?: string } | null
 } = {}) {
   const calls: Call[] = []
   const chain = () => {
@@ -63,6 +67,12 @@ function stub(opts: {
       // Recorded so a direct write would be caught, not because one is expected.
       update(values: Record<string, unknown>) { calls.push({ kind: 'update', values }); return c },
       eq(column: string, value: unknown) { calls.push({ kind: 'eq', column, value }); return c },
+      in(column: string, values: unknown[]) { calls.push({ kind: 'in', column, values }); return c },
+      // Awaiting the chain itself is the id read loadOwnPaymentIds makes.
+      then(resolve: (v: unknown) => unknown, reject?: (e: unknown) => unknown) {
+        return Promise.resolve({ data: opts.ownRows === undefined ? [] : opts.ownRows, error: opts.ownError ?? null })
+          .then(resolve, reject)
+      },
       maybeSingle() {
         return Promise.resolve({ data: opts.row === undefined ? PENDING : opts.row, error: opts.readError ?? null })
       },
@@ -163,6 +173,8 @@ describe('reject goes through the rejection RPC, never a direct write', () => {
         PAYMENT_DECISION_MESSAGE.notPermitted],
       [{ code: '22023', message: 'PAYMENT_REJECTION_REASON_REQUIRED: enter a reason before rejecting this payment.' },
         PAYMENT_DECISION_MESSAGE.reasonRequired],
+      [{ code: '42501', message: 'PAYMENT_SELF_DECISION_FORBIDDEN: payment PAY-REQ-2026-0042 was recorded by you; another payment verifier must decide it' },
+        PAYMENT_DECISION_MESSAGE.selfDecision],
     ]
     for (const [rpcError, expected] of cases) {
       const { n, finance, orders } = notifiers()
@@ -217,10 +229,23 @@ describe('refusals are early, silent on the database, and worded', () => {
     assert.equal(finance.length, 0)
   })
 
+  test('a verifier deciding a payment they recorded is told why, and nobody is notified', async () => {
+    for (const decision of ['approve', 'reject'] as const) {
+      const { client } = stub({ rpcError: { code: '42501',
+        message: 'PAYMENT_SELF_DECISION_FORBIDDEN: payment PAY-REQ-2026-0042 was recorded by you; another payment verifier must decide it' } })
+      const { n, finance, orders } = notifiers()
+      const result = await decidePayment(client, { paymentId: 'pay-1', decision, note: 'x' }, n)
+      assert.deepEqual(result, { ok: false, message: PAYMENT_DECISION_MESSAGE.selfDecision }, decision)
+      assert.equal(finance.length + orders.length, 0)
+    }
+  })
+
   test('every database refusal maps to a fixed sentence, never the raw message', () => {
     const cases: [{ code?: string; message?: string }, string][] = [
       [{ code: '42501', message: 'Only an admin may approve a payment request' }, PAYMENT_DECISION_MESSAGE.notPermitted],
       [{ code: '42501', message: 'Only a payment verifier may reject a payment request' }, PAYMENT_DECISION_MESSAGE.notPermitted],
+      [{ code: '42501', message: 'PAYMENT_SELF_DECISION_FORBIDDEN: payment X was recorded by you; another payment verifier must decide it' }, PAYMENT_DECISION_MESSAGE.selfDecision],
+      [{ code: '42501', message: 'FINANCE_NOTE_PROTECTED: the Finance note on payment X changes only with a Finance decision or correction' }, PAYMENT_DECISION_MESSAGE.notPermitted],
       [{ code: '42501', message: 'Payment X can be rejected or sent back only by a payment verifier while it awaits verification' }, PAYMENT_DECISION_MESSAGE.notPermitted],
       [{ message: 'new row violates row-level security policy' }, PAYMENT_DECISION_MESSAGE.notPermitted],
       [{ code: 'P0001', message: 'Only a pending payment request can be approved (X is rejected)' }, PAYMENT_DECISION_MESSAGE.notPending],
@@ -238,6 +263,35 @@ describe('refusals are early, silent on the database, and worded', () => {
       assert.ok(sentences.has(said))
       assert.ok(!said.includes(error.message ?? ' '), 'the database message never reaches the screen')
     }
+  })
+})
+
+describe('which payments the viewer recorded', () => {
+  test('nothing to ask about, or nobody asking, reads nothing', async () => {
+    const cases: [readonly string[], string | null][] = [[[], 'v-1'], [['pay-1'], null], [['pay-1'], '']]
+    for (const [ids, viewer] of cases) {
+      const { client, calls } = stub()
+      const own = await loadOwnPaymentIds(client, ids, viewer)
+      assert.equal(own.size, 0)
+      assert.equal(calls.length, 0)
+    }
+  })
+
+  test('one read of ids, narrowed to these payments and this submitter', async () => {
+    const { client, calls } = stub({ ownRows: [{ id: 'pay-2' }] })
+    const own = await loadOwnPaymentIds(client, ['pay-1', 'pay-2'], 'v-1')
+    assert.deepEqual([...own], ['pay-2'])
+    assert.deepEqual(calls, [
+      { kind: 'from', table: 'finance_payment_requests' },
+      { kind: 'select', columns: 'id' },
+      { kind: 'in', column: 'id', values: ['pay-1', 'pay-2'] },
+      { kind: 'eq', column: 'submitted_by', value: 'v-1' },
+    ])
+  })
+
+  test('a failed read resolves to no ids — the database still refuses the decision', async () => {
+    const { client } = stub({ ownError: { code: '42501', message: 'denied' }, ownRows: null })
+    assert.equal((await loadOwnPaymentIds(client, ['pay-1'], 'v-1')).size, 0)
   })
 })
 
@@ -273,7 +327,7 @@ describe('the helper opens only the two decision RPCs', () => {
     }
     assert.ok(!/\bstatus\s*:\s*['"`]/.test(code), 'the helper must not name a status to write')
     const tables = [...code.matchAll(/\.from\('([^']+)'\)/g)].map(m => m[1])
-    assert.deepEqual(tables, ['finance_payment_requests'])
+    assert.deepEqual([...new Set(tables)], ['finance_payment_requests'])
     assert.ok(code.includes('.select(PAYMENT_DECISION_COLUMNS)'))
   })
 
@@ -295,7 +349,7 @@ describe('the helper opens only the two decision RPCs', () => {
 describe('the authority both decisions rely on is still the database’s', () => {
   const MIGRATIONS = 'supabase/migrations'
   const DECISIONS = '20261211000000_finance_payment_decisions_belong_to_verifiers.sql'
-  const migration = (name: string) => readFileSync(join(process.cwd(), MIGRATIONS, name), 'utf8')
+  const migration = (name: string) => readFileSync(join(process.cwd(), MIGRATIONS, name), 'utf8').replace(/\r\n/g, '\n')
   const files = readdirSync(join(process.cwd(), MIGRATIONS)).sort()
 
   test('approval is gated on finance.approve, with module entry, and nothing wider', () => {
@@ -317,6 +371,7 @@ describe('the authority both decisions rely on is still the database’s', () =>
       assert.ok(!body.includes(wider), `rejection must not consult ${wider}`)
     }
     assert.ok(body.includes('PAYMENT_REJECTION_REASON_REQUIRED'))
+    assert.ok(body.includes('PAYMENT_SELF_DECISION_FORBIDDEN'), 'never the person who recorded the payment')
     assert.ok(body.includes('for update'))
     assert.ok(body.includes("if v_req.status <> 'pending_approval' then"))
     assert.ok(body.includes("set status     = 'rejected'"))
@@ -338,8 +393,15 @@ describe('the authority both decisions rely on is still the database’s', () =>
     assert.ok(guard.includes("new.status is distinct from 'pending_approval'"), 'a new payment is born pending')
     assert.ok(guard.includes('public.in_finance_payment_verification(old.id)'), 'verifying is the approval RPC alone')
     assert.ok(guard.includes('if v_was_verified and not v_is_verified then'), 'a verified payment is not un-verified')
-    assert.ok(guard.includes("if old.status = 'pending_approval'\n       and public.actor_has_module_permission('finance', 'approve') then"),
+    assert.ok(guard.includes("if old.status is distinct from 'pending_approval'\n         or not public.actor_has_module_permission('finance', 'approve') then"),
       'rejecting or sending back is a verifier deciding a pending payment')
+    assert.ok(guard.includes('PAYMENT_REJECTION_REASON_REQUIRED'), 'a direct rejection needs a reason too')
+    const self = guard.indexOf('PAYMENT_SELF_DECISION_FORBIDDEN')
+    assert.ok(self > 0 && self < guard.indexOf('public.in_finance_payment_verification(old.id)'),
+      'nobody decides their own payment — checked before the approval marker admits a verification')
+    assert.ok(guard.includes('v_self         := old.submitted_by = v_actor or new.submitted_by = v_actor;'))
+    assert.ok(guard.includes('if new.admin_note is distinct from old.admin_note then'), 'the Finance note is guarded')
+    assert.ok(guard.includes('FINANCE_NOTE_PROTECTED'))
     // The policies are not what changed: no policy is created, dropped or altered.
     assert.ok(!/create policy|drop policy|alter policy/i.test(sql))
   })

@@ -497,6 +497,9 @@ describe('the detail page renders only what it fetched', () => {
     const READ_ONLY_HELPERS = [
       'loadPiPaymentSummary',   // pi_submission_payment_summary
       'paymentProofSignedUrl',  // a signed URL for an existing object
+      // Which pending payments this viewer recorded, so their own draw no
+      // decision. Ids only, under the caller's own RLS.
+      'loadOwnPaymentIds',
     ] as const
 
     // Pure decisions. They touch no database at all — they only decide whether a
@@ -1307,7 +1310,7 @@ describe('the top summary answers four questions and repeats none of them', () =
     }
     // The derived quantities: a count of ROWS still with Finance, and two CSS
     // widths clamped to the track and never shown as figures.
-    assert.ok(page.includes('const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [])'))
+    assert.ok(page.includes('const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [], decisionOwnPaymentIds)'))
     assert.ok(view.includes('return Math.max(0, Math.min(100, value))'))
   })
 

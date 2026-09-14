@@ -99,6 +99,14 @@ export type FinanceCapabilities = {
    * migration 20260725000000.
    */
   canManageFinance: boolean
+  /**
+   * May approve, reject or send back a payment they recorded themselves — the
+   * administrator override on the separation of payment entry and decision.
+   * No grant confers it: finance_payment_requests_guard_decision_status and
+   * reject_finance_payment_request (20261211000000) exempt admins only, so this
+   * is true for an admin and false for everybody else, whatever they hold.
+   */
+  canDecideOwnPayment: boolean
 }
 
 export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
@@ -113,6 +121,7 @@ export const NO_FINANCE_CAPABILITIES: FinanceCapabilities = {
   canAllocatePayment: false,
   canCorrectPaymentAllocation: false,
   canManageFinance: false,
+  canDecideOwnPayment: false,
 }
 
 export function deriveFinanceCapabilities(
@@ -137,6 +146,7 @@ export function deriveFinanceCapabilities(
       canAllocatePayment: true,
       canCorrectPaymentAllocation: true,
       canManageFinance: true,
+      canDecideOwnPayment: true,
     }
   }
 
@@ -167,5 +177,7 @@ export function deriveFinanceCapabilities(
     canAllocatePayment: withEntry('allocate'),
     canCorrectPaymentAllocation: withEntry('allocate_correct'),
     canManageFinance: withEntry('manage'),
+    // The database exempts admins only; no action key reaches it.
+    canDecideOwnPayment: false,
   }
 }

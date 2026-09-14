@@ -28,6 +28,7 @@ import {
 import {
   countPiPaymentRows,
   describePiPaymentRow,
+  OWN_PAYMENT_DECISION_NOTE,
   type PiPaymentSummary,
   type PiPaymentSummaryRow,
 } from '@/lib/finance/piPaymentView'
@@ -152,6 +153,34 @@ describe('approve and reject are offered only to a payment verifier', () => {
     const routing = readFileSync(join(process.cwd(), 'src/lib/finance/piPaymentView.ts'), 'utf8')
     assert.ok(routing.includes("import { canVerifyPayment } from '@/app/finance/paymentRouting'"),
       'the row reuses canVerifyPayment rather than restating it')
+  })
+})
+
+describe('a verifier never decides a payment they recorded', () => {
+  const OWN = new Set(['p-pending'])
+
+  test('their own pending row draws no Approve or Reject, and says why', () => {
+    const html = modal({ canVerify: true, onDecide: decide, ownPaymentIds: OWN })
+    const labels = buttonLabels(html)
+    assert.ok(!labels.includes(APPROVE_PAYMENT_LABEL) && !labels.includes(REJECT_PAYMENT_LABEL))
+    assert.ok(text(html).includes(OWN_PAYMENT_DECISION_NOTE))
+  })
+
+  test('somebody else’s pending row is still decidable, with no such note', () => {
+    const html = modal({ canVerify: true, onDecide: decide, ownPaymentIds: new Set(['p-clar']) })
+    assert.equal(buttonLabels(html).filter(l => l === APPROVE_PAYMENT_LABEL).length, 1)
+    assert.ok(!text(html).includes(OWN_PAYMENT_DECISION_NOTE))
+  })
+
+  test('the row rule and the count agree', () => {
+    const view = describePiPaymentRow(ROWS[0], { canVerify: true, ownPayment: true })
+    assert.equal(view.canDecide, false)
+    assert.equal(view.ownPending, true)
+    assert.equal(describePiPaymentRow(ROWS[0], { canVerify: false, ownPayment: true }).ownPending, false,
+      'a viewer who could not decide anyway is told nothing')
+    assert.equal(describePiPaymentRow(ROWS[1], { canVerify: true, ownPayment: true }).ownPending, false,
+      'only a pending payment is a decision withheld')
+    assert.deepEqual(countPiPaymentRows(ROWS, OWN), { awaiting: 2, decidable: 0 })
   })
 })
 

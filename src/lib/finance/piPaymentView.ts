@@ -302,11 +302,21 @@ export type PiPaymentRowView = {
    * counts here. The database re-derives all of it when either is pressed.
    */
   canDecide: boolean
+  /**
+   * A pending payment the verifier looking at it recorded themselves. It draws
+   * no decision — a non-admin never decides their own payment, and the database
+   * refuses it — and says why instead.
+   */
+  ownPending: boolean
 }
+
+/** Shown on a pending row its own verifier recorded, in place of Approve / Reject. */
+export const OWN_PAYMENT_DECISION_NOTE =
+  'You recorded this payment, so another payment verifier must approve or reject it.'
 
 export function describePiPaymentRow(
   row: PiPaymentSummaryRow,
-  opts: { canVerify: boolean },
+  opts: { canVerify: boolean; ownPayment?: boolean },
 ): PiPaymentRowView {
   const reversed = row.allocation_status === 'reversed'
   const amount = displayMoney(row.allocated_amount)
@@ -330,7 +340,8 @@ export function describePiPaymentRow(
       ? null
       : { heading: rejected ? 'Rejection reason' : 'Finance note', text: remark, rejected },
     canOpenProof: row.proof_count > 0 && row.can_view_proof,
-    canDecide: !reversed && canVerifyPayment(row.status, opts.canVerify),
+    canDecide: !reversed && !opts.ownPayment && canVerifyPayment(row.status, opts.canVerify),
+    ownPending: !reversed && Boolean(opts.ownPayment) && canVerifyPayment(row.status, opts.canVerify),
   }
 }
 
@@ -339,7 +350,11 @@ export function describePiPaymentRow(
  * now. COUNTS OF ROWS, never sums: the money is unverified_amount, which the
  * database added up.
  */
-export function countPiPaymentRows(rows: readonly PiPaymentSummaryRow[]): {
+export function countPiPaymentRows(
+  rows: readonly PiPaymentSummaryRow[],
+  /** Payments this viewer recorded, which they may not decide. */
+  ownPaymentIds?: ReadonlySet<string>,
+): {
   awaiting: number
   decidable: number
 } {
@@ -348,7 +363,7 @@ export function countPiPaymentRows(rows: readonly PiPaymentSummaryRow[]): {
   for (const row of rows) {
     if (row.allocation_status !== 'active') continue
     if (isAwaitingVerification(row.status)) awaiting += 1
-    if (row.status === 'pending_approval') decidable += 1
+    if (row.status === 'pending_approval' && !ownPaymentIds?.has(row.payment_id)) decidable += 1
   }
   return { awaiting, decidable }
 }

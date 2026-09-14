@@ -37,7 +37,7 @@ import {
   type TabAccent,
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
-import { REQUEST_STAGE_STATUSES, canVerifyPayment } from './paymentRouting'
+import { REQUEST_STAGE_STATUSES, canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
 import {
   COUNTED_TABS,
   archiveCutoffIso,
@@ -606,7 +606,10 @@ function DetailsModal({
   // approval authority. Both are re-derived inside
   // approve_finance_payment_request under a row lock on every call, so this
   // decides whether a control is DRAWN and never whether it is allowed.
+  // Never on a payment this viewer recorded themselves, unless they are an
+  // admin — the database refuses that decision, so it is not offered.
   const canVerify = canVerifyPayment(r.status, mayApprovePayments)
+    && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)
   const [verifyArmed, setVerifyArmed] = useState(false)
   const [verifyNote,  setVerifyNote]  = useState('')
   const [verifying,   setVerifying]   = useState(false)
@@ -3130,7 +3133,7 @@ function FinancePageInner() {
           setTimeout(() => setHighlightId(null), 3000)
           document.getElementById(`payment-row-${match.id}`)?.scrollIntoView({ block: 'center' })
         }
-        if (caps.canApprovePayment && match.status === 'pending_approval') {
+        if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, isAdmin)) {
           setReviewRequest(match)
         } else {
           setDetailRequest(match)
@@ -3175,7 +3178,7 @@ function FinancePageInner() {
 
   // ── Row click handler ────────────────────────────────────────────────────────
   const handleRowClick = (r: PaymentRequest) => {
-    if (caps.canApprovePayment && r.status === 'pending_approval') {
+    if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)) {
       setReviewRequest(r)
     } else {
       setDetailRequest(r)
