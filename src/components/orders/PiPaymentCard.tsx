@@ -547,7 +547,7 @@ export function PiPaymentDetailsModal({
                 value={status.pendingCount > 0 ? status.pendingAmount : '—'}
                 tone={status.pendingCount > 0 ? 'amber' : undefined}
               />
-              <Figure label="Required" value={status.required} />
+              <Figure label="PI Total" value={status.total} />
             </div>
             <PiPaymentProgress
               barPercent={status.barPercent}

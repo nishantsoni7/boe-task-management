@@ -189,12 +189,17 @@ describe('a verifier never decides a payment they recorded', () => {
 // ── 2. The figures above the rows ─────────────────────────────────────────────
 
 describe('the dialog opens on the page’s own figures', () => {
-  test('Confirmed, Pending verification and Required, with the bar under them', () => {
+  test('Confirmed, Pending verification and PI Total, with the bar under them', () => {
     const html = modal()
     const t = text(html)
-    for (const part of ['Confirmed', '₹2,50,000', 'Pending verification', '₹2,00,000', 'Required', '₹4,72,000']) {
+    for (const part of ['Confirmed', '₹2,50,000', 'Pending verification', '₹2,00,000', 'PI Total']) {
       assert.ok(t.includes(part), `${part} missing`)
     }
+    // The PI Total figure carries the PI's grand total, never the advance
+    // requirement it replaced.
+    assert.ok(t.includes('PI Total ₹11,80,000'), 'PI Total is the grand total')
+    assert.ok(!t.includes('Required') && !t.includes('₹4,72,000'),
+      'the requirement is neither labelled nor shown in the dialog')
     assert.ok(t.includes('21.18% confirmed of ₹11,80,000'))
     assert.ok(html.includes('role="progressbar"'))
     assert.ok(html.includes('aria-valuenow="21"'))
