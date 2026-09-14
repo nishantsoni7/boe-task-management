@@ -6,7 +6,8 @@
 // existing colour tokens and the existing Finance modal shell.
 //
 // Every figure it prints is computed in the database (pi_submission_payment_summary)
-// in numeric. This file formats; it never calculates money.
+// in numeric. This file formats; it never calculates money. The only quantities
+// derived here are bar WIDTHS, clamped to the track and never shown as figures.
 //
 // AND IT DECIDES NOTHING. Approve and Reject are drawn on a row only when the
 // page hands this dialog a decision handler AND the shared Finance rule allows
@@ -23,11 +24,15 @@ import {
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canSubmitPiPayment,
+  countPiPaymentRows,
+  describePaymentCount,
   describePiPaymentRow,
+  filterPiPaymentRows,
   OWN_PAYMENT_DECISION_NOTE,
   piPaymentErrorMessage,
   piPaymentTermLines,
   validatePiPaymentForm,
+  type PiPaymentFilter,
   type PiPaymentFormState,
   type PiPaymentRowView,
   type PiPaymentSummary,
@@ -59,32 +64,49 @@ function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
 // ── The progress bar ──────────────────────────────────────────────────────────
 
 /**
- * The two shares of the PI total the bar draws. Green is confirmed money; red is
- * EVERYTHING not yet confirmed — including money still awaiting verification,
- * which the amber notice beside the bar names but which never counts as
- * confirmed. Meeting the advance requirement does not turn the red neutral: an
- * advance confirmed is not a PI paid.
+ * The three shares of the PI total the bar draws, left to right. Green is money
+ * Finance verified; amber is money recorded as received and still awaiting
+ * verification; red is the part of the PI total not yet received. Meeting the
+ * advance requirement changes none of them: an advance confirmed is not a PI
+ * paid.
  */
 export const PAYMENT_BAR_COLORS = {
   confirmed: colors.green,
-  unconfirmed: colors.red,
+  awaiting: colors.amber,
+  unpaid: colors.red,
 } as const
 
+/** A share of the track: a pixel quantity, clamped to 0–100, never a figure. */
+const trackWidth = (value: number): number =>
+  Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0
+
 /**
- * Confirmed money against the FULL PI total, as one track: a green share for what
- * the database verified, then a red share for all the rest. At 0% the track is
- * entirely red; at 100% it is entirely green, with no red at all. A thin tick
- * marks the advance requirement on the same scale and changes no colour. The
- * width arrives clamped to 0–100 and is clamped again here, so an overpaid PI
- * fills the track and never overflows it.
+ * Received money against the FULL PI total, as one track: green for the
+ * confirmed share, amber for the rest of what was received, then red for
+ * everything not yet received. At 0% the track is entirely red; at 100%
+ * confirmed it is entirely green. A thin tick marks the advance requirement on
+ * the same scale and changes no colour.
+ *
+ * Both shares arrive as the database's own percentages of the PI total and are
+ * clamped here, so an overpaid PI fills the track and never overflows it. The
+ * received share never draws short of the confirmed one — confirmed money IS
+ * received money — and the amber width is the gap between the two, rounded to
+ * hundredths only so the style attribute stays readable.
  */
-export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
-  barPercent: number
+export function PiPaymentProgress({ confirmedPercent, receivedPercent, thresholdPercent, label, height = 8 }: {
+  /** verified_percent: confirmed money as a share of the PI total. */
+  confirmedPercent: number
+  /** attached_percent: confirmed plus awaiting verification, as a share of the PI total. */
+  receivedPercent: number
   thresholdPercent: number | null
-  /** The accessible name: what the bar measures, with the figure. */
+  /** The accessible name: what the bar measures, with the figures. */
   label: string
+  /** Track height in pixels. */
+  height?: number
 }) {
-  const confirmed = Number.isFinite(barPercent) ? Math.max(0, Math.min(100, barPercent)) : 0
+  const confirmed = trackWidth(confirmedPercent)
+  const received = Math.max(confirmed, trackWidth(receivedPercent))
+  const awaiting = Math.round((received - confirmed) * 100) / 100
   const showTick = thresholdPercent !== null && thresholdPercent > 0 && thresholdPercent < 100
   return (
     <div
@@ -92,9 +114,9 @@ export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
       aria-label={label}
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={Math.round(confirmed)}
+      aria-valuenow={Math.round(received)}
       style={{
-        position: 'relative', display: 'flex', width: '100%', height: '8px', borderRadius: '999px',
+        position: 'relative', display: 'flex', width: '100%', height: `${height}px`, borderRadius: '999px',
         overflow: 'hidden',
       }}
     >
@@ -104,10 +126,16 @@ export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
           style={{ width: `${confirmed}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.confirmed }}
         />
       )}
-      {confirmed < 100 && (
+      {awaiting > 0 && (
         <div
-          data-segment="unconfirmed"
-          style={{ flexGrow: 1, height: '100%', background: PAYMENT_BAR_COLORS.unconfirmed }}
+          data-segment="awaiting"
+          style={{ width: `${awaiting}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.awaiting }}
+        />
+      )}
+      {received < 100 && (
+        <div
+          data-segment="unpaid"
+          style={{ flexGrow: 1, height: '100%', background: PAYMENT_BAR_COLORS.unpaid }}
         />
       )}
       {showTick && (
@@ -125,16 +153,28 @@ export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
 
 /** The payment status figures a page has already built from the summary. */
 export type PiPaymentStatusFigures = {
+  /** attached_amount, formatted: confirmed plus awaiting verification. */
+  received: string
+  /** attached_percent, formatted. */
+  receivedPercent: string
+  /** verified_amount, formatted. */
   confirmed: string
-  required: string
-  requiredNote: string | null
+  /** Active allocations Finance verified. A count of rows. */
+  confirmedCount: number
+  /** verified_percent, formatted. */
   percent: string
   total: string
+  /** 0–100: the confirmed share of the bar. */
   barPercent: number
+  /** 0–100: the received share of the bar, never less than barPercent. */
+  receivedBarPercent: number
   thresholdPercent: number | null
-  requirementMet: boolean
+  /** Active allocations still with Finance. A count of rows. */
   pendingCount: number
+  /** unverified_amount, formatted. */
   pendingAmount: string
+  /** unverified_percent, formatted. */
+  pendingPercent: string
 }
 
 // ── Add Payment ───────────────────────────────────────────────────────────────
@@ -283,6 +323,31 @@ export const PAYMENT_DETAILS_TITLE = 'Payment details'
 export const APPROVE_PAYMENT_LABEL = 'Approve'
 export const REJECT_PAYMENT_LABEL = 'Reject'
 
+/**
+ * The dialog's three views, each titled for what it holds. Payment details is
+ * every row recorded against the PI; the other two are exactly the rows behind
+ * the status card's Confirmed and Awaiting verification figures.
+ */
+export const PAYMENT_FILTER_TITLE: Record<PiPaymentFilter, string> = {
+  all: PAYMENT_DETAILS_TITLE,
+  confirmed: 'Confirmed payments',
+  awaiting: 'Payments awaiting verification',
+}
+
+export const PAYMENT_FILTER_TAB: Record<PiPaymentFilter, string> = {
+  all: 'All',
+  confirmed: 'Confirmed',
+  awaiting: 'Awaiting verification',
+}
+
+const PAYMENT_FILTER_EMPTY: Record<PiPaymentFilter, string> = {
+  all: 'No payment has been recorded against this PI yet.',
+  confirmed: 'No payment against this PI has been confirmed yet.',
+  awaiting: 'No payment against this PI is awaiting verification.',
+}
+
+const PAYMENT_FILTERS: readonly PiPaymentFilter[] = ['all', 'confirmed', 'awaiting']
+
 /** The decision a verifier has started on one row, before confirming it. */
 type ArmedDecision = { paymentId: string; requestNumber: string; decision: PaymentDecision }
 
@@ -291,16 +356,52 @@ const SMALL_BUTTON: React.CSSProperties = {
   whiteSpace: 'nowrap',
 }
 
-function Figure({ label, value, tone }: { label: string; value: string; tone?: 'amber' }) {
+function Figure({ label, value, tone }: { label: string; value: string; tone?: 'amber' | 'green' }) {
   return (
     <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <span style={{ fontSize: '11px', color: colors.muted }}>{label}</span>
       <span style={{
         fontSize: '16px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
-        color: tone === 'amber' ? '#9A6212' : colors.primary,
+        color: tone === 'amber' ? '#9A6212' : tone === 'green' ? '#2F7A52' : colors.primary,
         overflowWrap: 'anywhere',
       }}>
         {value}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * The total a filtered view is made of: the database's own sum for exactly the
+ * rows listed under it, how many rows that is, and its share of the PI total.
+ */
+function FilteredTotal({ tone, label, amount, count, share, total }: {
+  tone: 'green' | 'amber'
+  label: string
+  amount: string
+  count: number
+  share: string
+  total: string
+}) {
+  const t = TONE_COLOR[tone]
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', alignItems: 'flex-end', justifyContent: 'space-between',
+      gap: '6px 16px', padding: '10px 12px', borderRadius: '8px',
+      background: t.bg, border: `1px solid ${t.border}`,
+    }}>
+      <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+        <span style={{ fontSize: '11.5px', fontWeight: 600, color: t.fg }}>{label}</span>
+        <span style={{
+          fontSize: '20px', fontWeight: 700, color: colors.primary,
+          fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere',
+        }}>
+          {amount}
+        </span>
+      </div>
+      <span style={{ fontSize: '12px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums', overflowWrap: 'anywhere' }}>
+        {describePaymentCount(count)}
+        {share !== '—' && ` · ${share} of ${total} PI Total`}
       </span>
     </div>
   )
@@ -365,6 +466,12 @@ export function PiPaymentRow({
           </button>
         )}
       </div>
+
+      {row.remarks && (
+        <div style={{ fontSize: '12px', lineHeight: 1.45, color: colors.secondary, overflowWrap: 'anywhere' }}>
+          Remarks: {row.remarks}
+        </div>
+      )}
 
       {row.note && (
         <div style={{
@@ -460,14 +567,21 @@ export function PiPaymentRow({
 
 /**
  * Every payment against this PI, in the dialog the rest of the application
- * already uses: the same figures and bar as the page's status card, then one
- * row per payment.
+ * already uses — or only the rows behind one of the status card's figures.
+ *
+ * ONE DIALOG, THREE VIEWS. All shows the same figures and bar as the page's
+ * status card, then every row. Confirmed and Awaiting verification show the
+ * database's total for that figure, then exactly the rows it was summed from —
+ * picked by the same predicates the database sums with (filterPiPaymentRows).
+ * The toggle switches between them without closing, and is held still while a
+ * decision is open so a typed reason cannot scroll out of view.
  *
  * `onDecide` is null for anybody the page did not resolve as a payment verifier,
- * and then no row draws a decision control at all.
+ * and then no row draws a decision control at all. A confirmed row never draws
+ * one either: only a payment awaiting verification can be decided.
  */
 export function PiPaymentDetailsModal({
-  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds,
+  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds, initialFilter = 'all',
 }: {
   summary: PiPaymentSummary | null
   /** The page's own status figures, so the dialog and the card cannot disagree. */
@@ -481,7 +595,10 @@ export function PiPaymentDetailsModal({
   onDecide: ((paymentId: string, decision: PaymentDecision, note: string) => Promise<string | null>) | null
   /** Payments this viewer recorded: they draw no decision, whatever the capability. */
   ownPaymentIds?: ReadonlySet<string>
+  /** Which rows the dialog opens on. */
+  initialFilter?: PiPaymentFilter
 }) {
+  const [filter, setFilter] = useState<PiPaymentFilter>(initialFilter)
   const [armed, setArmed] = useState<ArmedDecision | null>(null)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
@@ -492,16 +609,29 @@ export function PiPaymentDetailsModal({
   const busyRef = useRef(false)
 
   const decisionsAllowed = canVerify && onDecide !== null
-  const rows = (summary?.payments ?? []).map(row => describePiPaymentRow(row, {
+  const allRows = summary?.payments ?? []
+  const counts = countPiPaymentRows(allRows)
+  const rows = filterPiPaymentRows(allRows, filter).map(row => describePiPaymentRow(row, {
     canVerify: decisionsAllowed,
     ownPayment: ownPaymentIds?.has(row.payment_id) ?? false,
   }))
-  const terms = piPaymentTermLines(summary)
+  const terms = filter === 'all' ? piPaymentTermLines(summary) : []
+  const filterLocked = armed !== null || busy
+  const filterCount: Record<PiPaymentFilter, number> = {
+    all: allRows.length,
+    confirmed: counts.confirmed,
+    awaiting: counts.awaiting,
+  }
 
   const close = useCallback(() => {
     if (busyRef.current) return
     onClose()
   }, [onClose])
+
+  const showFilter = (next: PiPaymentFilter) => {
+    if (busyRef.current || armed !== null) return
+    setFilter(next)
+  }
 
   const arm = (row: PiPaymentRowView, decision: PaymentDecision) => {
     if (busyRef.current) return
@@ -531,33 +661,75 @@ export function PiPaymentDetailsModal({
 
   return (
     <FinanceModal
-      title={PAYMENT_DETAILS_TITLE}
+      title={PAYMENT_FILTER_TITLE[filter]}
       onClose={close}
       width="640px"
       // A typed reason is unsaved input: a backdrop click must not discard it.
       closeOnBackdropClick={armed === null}
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        {status && (
+        {summary && (
+          <div role="group" aria-label="Show payments" style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {PAYMENT_FILTERS.map(key => {
+              const selected = filter === key
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className="boe-btn boe-btn-ghost pi-detail-payfilter"
+                  aria-pressed={selected}
+                  disabled={filterLocked && !selected}
+                  onClick={() => showFilter(key)}
+                  style={selected
+                    ? { background: colors.primary, borderColor: colors.primary, color: '#FFFFFF' }
+                    : undefined}
+                >
+                  {PAYMENT_FILTER_TAB[key]}
+                  <span style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.75 }}>{filterCount[key]}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {status && filter === 'all' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
-              <Figure label="Confirmed" value={status.confirmed} />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: '12px' }}>
+              <Figure label="Received" value={status.received} />
+              <Figure label="Confirmed" value={status.confirmed} tone="green" />
               <Figure
-                label="Pending verification"
+                label="Awaiting verification"
                 value={status.pendingCount > 0 ? status.pendingAmount : '—'}
                 tone={status.pendingCount > 0 ? 'amber' : undefined}
               />
               <Figure label="PI Total" value={status.total} />
             </div>
             <PiPaymentProgress
-              barPercent={status.barPercent}
+              confirmedPercent={status.barPercent}
+              receivedPercent={status.receivedBarPercent}
               thresholdPercent={status.thresholdPercent}
-              label={`Confirmed payment: ${status.percent} of the PI total`}
+              label={`Received: ${status.receivedPercent} of the PI total, ${status.percent} confirmed`}
             />
             <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
-              {status.percent} confirmed of {status.total}
+              {status.receivedPercent} received of {status.total} · {status.percent} confirmed
             </div>
           </div>
+        )}
+
+        {status && filter === 'confirmed' && (
+          <FilteredTotal
+            tone="green" label="Confirmed total"
+            amount={status.confirmed} count={status.confirmedCount}
+            share={status.percent} total={status.total}
+          />
+        )}
+
+        {status && filter === 'awaiting' && (
+          <FilteredTotal
+            tone="amber" label="Awaiting verification total"
+            amount={status.pendingAmount} count={status.pendingCount}
+            share={status.pendingPercent} total={status.total}
+          />
         )}
 
         {notice && (
@@ -571,7 +743,7 @@ export function PiPaymentDetailsModal({
 
         {rows.length === 0 ? (
           <div style={{ padding: '14px 0 4px', fontSize: '12px', color: colors.secondary, borderTop: `1px solid ${colors.border}` }}>
-            {loading ? 'Loading payments…' : 'No payment has been recorded against this PI yet.'}
+            {loading ? 'Loading payments…' : PAYMENT_FILTER_EMPTY[filter]}
           </div>
         ) : (
           <ul style={{ margin: 0, padding: 0 }}>

@@ -1299,7 +1299,11 @@ describe('the top summary answers four questions and repeats none of them', () =
 
   test('the payment figures are the database’s; only a row count and bar widths are derived', () => {
     for (const figure of [
+      'received: formatInr(toNumber(payments.attached_amount))',
+      'receivedPercent: formatPercent(payments.attached_percent)',
+      'receivedPercentValue: toNumber(payments.attached_percent)',
       'confirmed: formatInr(toNumber(payments.verified_amount))',
+      'pendingPercent: formatPercent(payments.unverified_percent)',
       'total: formatInr(toNumber(payments.grand_total))',
       'formatInr(toNumber(payments.required_payment))',
       'verifiedPercent: formatPercent(payments.verified_percent)',

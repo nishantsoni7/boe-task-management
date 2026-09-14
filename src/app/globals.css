@@ -4262,56 +4262,221 @@ body {
   gap: 8px;
 }
 
-.pi-detail-paystatus-figures {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px 20px;
-}
-
-.pi-detail-paystatus-figure {
+/* The body is measured on itself: the card is the 70% column on a wide page
+   and the full width when stacked, and the viewport can tell neither apart. */
+.pi-detail-paystatus-body {
+  container-type: inline-size;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 14px;
 }
 
-.pi-detail-paystatus-label {
-  font-size: 11.5px;
-  color: #6b7384;
+/* The headline beside its two parts once there is room; stacked before. */
+.pi-detail-paystatus-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 14px;
 }
 
-.pi-detail-paystatus-value {
-  font-size: 22px;
+@container (min-width: 600px) {
+  .pi-detail-paystatus-grid {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    align-items: center;
+  }
+}
+
+.pi-detail-paystatus-position {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pi-detail-paystatus-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.pi-detail-paystatus-percent {
+  font-size: 34px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.1;
   color: #111318;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-.pi-detail-paystatus-confirmed { color: #2f7a52; }
+.pi-detail-paystatus-word {
+  font-size: 15px;
+  font-weight: 600;
+  color: #4a5261;
+}
 
-.pi-detail-paystatus-sub {
-  font-size: 11.5px;
-  color: #8c94a6;
+.pi-detail-paystatus-of {
+  font-size: 12.5px;
+  color: #6b7384;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 
-/* Pending money is amber and beside the bar — never inside it. */
-.pi-detail-paystatus-pending {
-  align-self: flex-start;
-  max-width: 100%;
+.pi-detail-paystatus-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+@container (max-width: 360px) {
+  .pi-detail-paystatus-metrics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* One part of the received figure. A button only when there are rows behind
+   it; a zero-count part is a plain block and does not answer the pointer. */
+.pi-detail-paystatus-metric {
+  position: relative;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 0;
+  padding: 11px 32px 11px 13px;
+  border-radius: 9px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #f8f9fb;
+  font: inherit;
+  text-align: left;
+  color: #111318;
+}
+
+button.pi-detail-paystatus-metric {
+  cursor: pointer;
+  transition: background-color 0.14s ease, border-color 0.14s ease;
+}
+
+.pi-detail-paystatus-metric-confirmed {
+  background: rgba(69, 168, 112, 0.07);
+  border-color: rgba(69, 168, 112, 0.3);
+}
+
+.pi-detail-paystatus-metric-awaiting {
+  background: rgba(232, 160, 48, 0.08);
+  border-color: rgba(232, 160, 48, 0.35);
+}
+
+button.pi-detail-paystatus-metric-confirmed:hover {
+  background: rgba(69, 168, 112, 0.15);
+  border-color: rgba(47, 122, 82, 0.55);
+}
+
+button.pi-detail-paystatus-metric-awaiting:hover {
+  background: rgba(232, 160, 48, 0.17);
+  border-color: rgba(154, 98, 18, 0.5);
+}
+
+button.pi-detail-paystatus-metric:focus-visible {
+  outline: 2px solid #2f5bb7;
+  outline-offset: 2px;
+}
+
+.pi-detail-paystatus-metric.is-empty {
+  background: #f8f9fb;
+  border-color: rgba(0, 0, 0, 0.08);
+  padding-right: 13px;
+}
+
+.pi-detail-paystatus-metric-label {
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 6px 10px;
-  border-radius: 7px;
-  background: rgba(232, 160, 48, 0.1);
-  border: 1px solid rgba(232, 160, 48, 0.3);
-  font-size: 12px;
-  font-weight: 600;
-  color: #9a6212;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.pi-detail-paystatus-metric-confirmed .pi-detail-paystatus-metric-label { color: #2f7a52; }
+.pi-detail-paystatus-metric-awaiting .pi-detail-paystatus-metric-label { color: #9a6212; }
+.pi-detail-paystatus-metric.is-empty .pi-detail-paystatus-metric-label { color: #6b7384; }
+
+.pi-detail-paystatus-metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-paystatus-metric.is-empty .pi-detail-paystatus-metric-value { color: #8c94a6; }
+
+.pi-detail-paystatus-metric-meta {
+  font-size: 11.5px;
+  color: #6b7384;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-paystatus-metric-chevron {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: #8c94a6;
+  transition: transform 0.14s ease, color 0.14s ease;
+}
+
+button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
+  color: #111318;
+  transform: translate(2px, -50%);
+}
+
+/* The bar's key. Colour is never the only channel: every swatch has its words. */
+.pi-detail-paystatus-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: -4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11.5px;
+  color: #6b7384;
+}
+
+.pi-detail-paystatus-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pi-detail-paystatus-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.pi-detail-paystatus-tick {
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: #4a5261;
+  flex-shrink: 0;
+}
+
+/* The Payment details dialog's view toggle. */
+.pi-detail-payfilter:focus-visible {
+  outline: 2px solid #2f5bb7;
+  outline-offset: 2px;
+}
+
+.pi-detail-payfilter:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .pi-detail-paystatus-notice {

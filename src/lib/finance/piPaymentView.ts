@@ -294,6 +294,8 @@ export type PiPaymentRowView = {
   /** A reversed allocation is history: shown, and visibly not counting. */
   reversed: boolean
   recordedBy: string | null
+  /** The remarks typed when the payment was recorded, or null. */
+  remarks: string | null
   note: { heading: string; text: string; rejected: boolean } | null
   canOpenProof: boolean
   /**
@@ -336,6 +338,7 @@ export function describePiPaymentRow(
     statusTone: piPaymentStatusTone(row.status),
     reversed,
     recordedBy: (row.entered_by ?? '').trim() || null,
+    remarks: (row.remarks ?? '').trim() || null,
     note: remark === ''
       ? null
       : { heading: rejected ? 'Rejection reason' : 'Finance note', text: remark, rejected },
@@ -345,27 +348,71 @@ export function describePiPaymentRow(
   }
 }
 
+// ── Which rows make up each figure ────────────────────────────────────────────
+//
+// THE SAME TWO PREDICATES THE DATABASE SUMS WITH, stated once so a list can show
+// exactly the rows behind a figure. pi_submission_payment_summary() adds an
+// ACTIVE allocation to verified_amount when finance_payment_status_is_verified()
+// holds — which it returns on every row as `is_verified` — and to
+// unverified_amount when the status is pending_approval or needs_clarification.
+// A rejected payment and a reversed allocation are in neither. A payment has at
+// most one active allocation to a PI (finance_payment_allocations_unique_active_
+// submission), so a row here is a payment and no payment is listed twice.
+//
+// These PICK rows. They never add them up: every total is the database's.
+
+export type PiPaymentFilter = 'all' | 'confirmed' | 'awaiting'
+
+/** An active allocation of a payment Finance verified: part of verified_amount. */
+export function isConfirmedPaymentRow(row: PiPaymentSummaryRow): boolean {
+  return row.allocation_status === 'active' && row.is_verified === true
+}
+
+/** An active allocation of a payment still with Finance: part of unverified_amount. */
+export function isAwaitingVerificationRow(row: PiPaymentSummaryRow): boolean {
+  return row.allocation_status === 'active' && isAwaitingVerification(row.status)
+}
+
+/** The rows behind one figure, in the order the database returned them. */
+export function filterPiPaymentRows(
+  rows: readonly PiPaymentSummaryRow[],
+  filter: PiPaymentFilter,
+): PiPaymentSummaryRow[] {
+  if (filter === 'confirmed') return rows.filter(isConfirmedPaymentRow)
+  if (filter === 'awaiting') return rows.filter(isAwaitingVerificationRow)
+  return [...rows]
+}
+
+/** "1 payment", "3 payments" — a count of rows, worded the same everywhere. */
+export function describePaymentCount(count: number): string {
+  const n = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0
+  return `${n} ${n === 1 ? 'payment' : 'payments'}`
+}
+
 /**
- * How many rows are still with Finance, and how many of those can be decided
- * now. COUNTS OF ROWS, never sums: the money is unverified_amount, which the
- * database added up.
+ * How many rows are confirmed, how many are still with Finance, and how many of
+ * those can be decided now. COUNTS OF ROWS, never sums: the money is
+ * verified_amount and unverified_amount, which the database added up.
  */
 export function countPiPaymentRows(
   rows: readonly PiPaymentSummaryRow[],
   /** Payments this viewer recorded, which they may not decide. */
   ownPaymentIds?: ReadonlySet<string>,
 ): {
+  confirmed: number
   awaiting: number
   decidable: number
 } {
+  let confirmed = 0
   let awaiting = 0
   let decidable = 0
   for (const row of rows) {
-    if (row.allocation_status !== 'active') continue
-    if (isAwaitingVerification(row.status)) awaiting += 1
+    if (isConfirmedPaymentRow(row)) confirmed += 1
+    if (!isAwaitingVerificationRow(row)) continue
+    awaiting += 1
     if (row.status === 'pending_approval' && !ownPaymentIds?.has(row.payment_id)) decidable += 1
   }
-  return { awaiting, decidable }
+  return { confirmed, awaiting, decidable }
 }
 
 // ── Who may add a payment ─────────────────────────────────────────────────────

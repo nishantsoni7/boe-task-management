@@ -50,6 +50,7 @@ import {
   readBillingPercentage,
 } from '@/lib/orders/billingPercentage'
 import { formatInr, type PiAmountRow } from '@/lib/pi/previewView'
+import { describePaymentCount } from '@/lib/finance/piPaymentView'
 import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
@@ -967,8 +968,11 @@ export function buildDateSummary(input: {
 export const PAYMENT_STATUS_TITLE = 'Payment status'
 
 export const PAYMENT_STATUS_LABEL = {
+  received: 'received',
   confirmed: 'Confirmed',
-  percent: 'Confirmed %',
+  awaiting: 'Awaiting verification',
+  unpaid: 'Not yet received',
+  piTotal: 'PI Total',
 } as const
 
 /** A percentage as a bar width: a pixel quantity, clamped, never shown as a figure. */
@@ -978,8 +982,17 @@ export function barWidth(value: number | null | undefined): number {
 }
 
 export type PaymentStatusView = {
+  /**
+   * attached_amount, formatted: confirmed plus awaiting verification, summed by
+   * the database. Rejected payments and reversed allocations are not in it.
+   */
+  received: string
+  /** attached_percent of the full PI total, formatted. */
+  receivedPercent: string
   /** Verified money, formatted. Awaiting verification is never in it. */
   confirmed: string
+  /** Active allocations Finance verified. A count of rows, not a sum. */
+  confirmedCount: number
   /**
    * The standard requirement in rupees, or an em dash when there is none. Kept
    * on the view, but NOT drawn on the Payment status card — the requirement
@@ -990,15 +1003,21 @@ export type PaymentStatusView = {
   requiredNote: string | null
   /** The database's verified percentage of the PI total, formatted. */
   percent: string
-  /** The PI total the percentage is measured against. */
+  /** The PI total every percentage is measured against. */
   total: string
   /** 0–100: the confirmed share of the bar. */
   barPercent: number
+  /** 0–100: the received share of the bar — confirmed plus awaiting
+   *  verification — never less than the confirmed share. */
+  receivedBarPercent: number
   /** 0–100: where the requirement sits on the same bar, or null. */
   thresholdPercent: number | null
+  /** "40%": the requirement the tick marks, for the bar's legend — or null
+   *  when no tick is drawn. */
+  thresholdLabel: string | null
   /**
    * meets_standard, as the database decided it. It does NOT colour the bar: the
-   * unconfirmed share stays red until the PI is confirmed in full.
+   * share not yet received stays red until the PI is received in full.
    */
   requirementMet: boolean
   /** Rows Finance has not decided (pending or needs clarification). A count of
@@ -1006,18 +1025,28 @@ export type PaymentStatusView = {
   pendingCount: number
   /** unverified_amount, formatted — the database's sum of those rows. */
   pendingAmount: string
+  /** unverified_percent of the PI total, formatted. */
+  pendingPercent: string
 }
 
 /**
  * The payment position, as figures and a bar.
  *
- * NOT ONE FIGURE IS COMPUTED HERE. Every amount and both percentages were decided
- * in numeric by pi_submission_payment_summary() and arrive already formatted;
- * this arranges them and clamps two bar widths. Money awaiting verification is
- * reported beside the bar and never moves it.
+ * NOT ONE FIGURE IS COMPUTED HERE. Every amount and every percentage was decided
+ * in numeric by pi_submission_payment_summary() and arrives already formatted;
+ * this arranges them and clamps the bar widths. Received is the database's
+ * attached figure — verified plus awaiting verification — and is never added up
+ * here from the two figures beside it.
  */
 export function buildPaymentStatusView(input: {
+  /** attached_amount, formatted. */
+  received: string
+  /** attached_percent, formatted. */
+  receivedPercent: string
+  receivedPercentValue: number | null
   confirmed: string
+  /** Active allocations Finance verified. A count of rows. */
+  confirmedCount: number
   required: string | null
   total: string
   /** "40%" — the standard percentage, formatted. */
@@ -1028,29 +1057,107 @@ export function buildPaymentStatusView(input: {
   meetsStandard: boolean | null | undefined
   pendingCount: number
   pendingAmount: string
+  /** unverified_percent, formatted. */
+  pendingPercent: string
 }): PaymentStatusView {
   const required = input.required ?? '—'
+  const barPercent = barWidth(input.verifiedPercentValue)
+  const thresholdPercent = input.standardPercentValue === null ? null : barWidth(input.standardPercentValue)
   return {
+    received: input.received,
+    receivedPercent: input.receivedPercent,
     confirmed: input.confirmed,
+    confirmedCount: Math.max(0, input.confirmedCount),
     required,
     requiredNote: input.required !== null && input.standardPercent !== null
       ? `${input.standardPercent} of ${input.total}`
       : null,
     percent: input.verifiedPercent,
     total: input.total,
-    barPercent: barWidth(input.verifiedPercentValue),
-    thresholdPercent: input.standardPercentValue === null ? null : barWidth(input.standardPercentValue),
+    barPercent,
+    receivedBarPercent: Math.max(barPercent, barWidth(input.receivedPercentValue)),
+    thresholdPercent,
+    thresholdLabel: thresholdPercent !== null && thresholdPercent > 0 && thresholdPercent < 100
+      ? input.standardPercent
+      : null,
     requirementMet: input.meetsStandard === true,
     pendingCount: Math.max(0, input.pendingCount),
     pendingAmount: input.pendingAmount,
+    pendingPercent: input.pendingPercent,
   }
 }
 
-/** "2 payments pending verification · ₹1,00,000", or null when nothing waits. */
-export function describePendingPayments(view: PaymentStatusView): string | null {
-  if (view.pendingCount <= 0) return null
-  const noun = view.pendingCount === 1 ? 'payment' : 'payments'
-  return `${view.pendingCount} ${noun} pending verification · ${view.pendingAmount}`
+/** The card's headline: how much of the PI total has been reported as received. */
+export type ReceivedHeadline = {
+  /** "41.94%" — or the received amount itself, when there is no PI total to
+   *  measure it against. */
+  figure: string
+  /** "₹4,95,000 received of ₹11,80,000 PI Total". */
+  line: string
+}
+
+/**
+ * The headline, in words the database's figures already say.
+ *
+ * A PI with no stored total has no percentage (the database returns null, shown
+ * as a dash). The headline then leads with the amount instead of a dash, and the
+ * line says what it could not be measured against.
+ */
+export function describeReceivedHeadline(view: PaymentStatusView): ReceivedHeadline {
+  if (view.receivedPercent === '—') {
+    return {
+      figure: view.received,
+      line: view.total === '—' ? 'PI Total not available' : `of ${view.total} PI Total`,
+    }
+  }
+  return {
+    figure: view.receivedPercent,
+    line: `${view.received} received of ${view.total} ${PAYMENT_STATUS_LABEL.piTotal}`,
+  }
+}
+
+/** One of the two parts received money is made of. */
+export type PaymentMetric = {
+  key: 'confirmed' | 'awaiting'
+  label: string
+  /** The database's sum, formatted. */
+  amount: string
+  /** How many rows it is summed from. */
+  count: number
+  /** "2 payments · 21.18% of PI Total", or what an empty part means. */
+  meta: string
+  /** Whether there are rows behind it to open. A part with none is not a control. */
+  interactive: boolean
+}
+
+/**
+ * Confirmed, then Awaiting verification — each the database's own amount and
+ * percentage, beside the count of the rows it was summed from.
+ */
+export function buildPaymentMetrics(view: PaymentStatusView): PaymentMetric[] {
+  const share = (percent: string) => (percent === '—' ? '' : ` · ${percent} of ${PAYMENT_STATUS_LABEL.piTotal}`)
+  return [
+    {
+      key: 'confirmed',
+      label: PAYMENT_STATUS_LABEL.confirmed,
+      amount: view.confirmed,
+      count: view.confirmedCount,
+      meta: view.confirmedCount > 0
+        ? `${describePaymentCount(view.confirmedCount)}${share(view.percent)}`
+        : 'No confirmed payments yet',
+      interactive: view.confirmedCount > 0,
+    },
+    {
+      key: 'awaiting',
+      label: PAYMENT_STATUS_LABEL.awaiting,
+      amount: view.pendingAmount,
+      count: view.pendingCount,
+      meta: view.pendingCount > 0
+        ? `${describePaymentCount(view.pendingCount)}${share(view.pendingPercent)}`
+        : 'Nothing awaiting verification',
+      interactive: view.pendingCount > 0,
+    },
+  ]
 }
 
 // ── The context row: the reserved number, and where review stands ─────────────
