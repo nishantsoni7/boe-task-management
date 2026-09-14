@@ -103,7 +103,6 @@ import {
   PiProductThumbnail,
   PiCustomizationCell,
   PiProductTableHead,
-  PiCommercialSummary,
   PiImageViewer,
   PI_THUMBNAIL_SIZE,
   type PiThumbnailProps,
@@ -144,6 +143,7 @@ import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
+import { decidePayment, loadOwnPaymentIds, NO_OWN_PAYMENTS, type PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   describeReservation,
   reservationApprovalMessage,
@@ -153,9 +153,9 @@ import {
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canAddPiPayment,
+  countPiPaymentRows,
   formatMoney,
   formatPercent,
-  isAwaitingVerification,
   loadPiPaymentSummary,
   recordPiPayment,
   type PiPaymentFormState,
@@ -215,6 +215,7 @@ import {
   PI_DRAFT_ITEM_IMAGE_COLUMNS,
   draftStatusLabel,
   draftStatusTone,
+  formatDateOnly,
   formatSavedAt,
   persistedCommercial,
   persistedDiagnostics,
@@ -237,10 +238,12 @@ import {
   describeAdvanceForReview,
   buildApprovalSummary,
   buildBillingSummary,
+  buildBreakdownView,
   buildClientDetails,
   buildDateSummary,
-  buildOwnership,
-  buildPaymentSummaryView,
+  buildOverviewMeta,
+  buildPaymentStatusView,
+  buildSubmissionContext,
   commercialBreakdownRows,
   summaryCommercialFigures,
   describeApprovedOrder,
@@ -251,8 +254,10 @@ import {
   PiActivityTimeline,
   PiAdvanceBand,
   PiBlockingPanel,
+  PiCommercialBreakdown,
+  PiContextRow,
   PiLowerGrid,
-  PiOrderNumberPanel,
+  PiPaymentStatusCard,
   PiSummaryCard,
   PiSavedStrip,
   PiStoredCopyNote,
@@ -453,6 +458,20 @@ function PiDraftDetailPageInner() {
    * is the whole point of the two-authority rule.
    */
   const [canVerifyFinance, setCanVerifyFinance] = useState(false)
+  /**
+   * The authority to APPROVE OR REJECT A PENDING PAYMENT — finance.approve with
+   * Finance module entry, resolved exactly as the Finance screens resolve it
+   * (caps.canApprovePayment).
+   *
+   * The same capability the finance check above reads, kept under its own name
+   * because it answers a different question. It draws the payment decision
+   * controls in Payment details and NOTHING ELSE: no PI edit, no Change PI, no
+   * Order approval and no wider visibility. The approval RPC and the
+   * approver-decide policy re-derive it on every decision.
+   */
+  const [canApprovePayments, setCanApprovePayments] = useState(false)
+  /** The administrator override on separating payment entry from decision. */
+  const [canDecideOwnPayments, setCanDecideOwnPayments] = useState(false)
 
   /** Which decision dialog is open, if any. */
   const [dialog, setDialog] = useState<
@@ -784,6 +803,11 @@ function PiDraftDetailPageInner() {
       // deriveFinanceCapabilities' withEntry('approve'). The same expression
       // can_verify_pi_finance() evaluates in the database.
       setCanVerifyFinance(financeCaps.canApprovePayment)
+      // The payment decision controls, from the SAME Finance capability the
+      // Finance screens read. Deliberately not derived from any Orders
+      // capability, and deliberately granting nothing on the PI itself.
+      setCanApprovePayments(financeCaps.canApprovePayment)
+      setCanDecideOwnPayments(financeCaps.canDecideOwnPayment)
       // finance.allocate — the PROTECTED action, never a preset, and the only
       // Finance capability that opens payment entry. Wider Finance access
       // (view, view_all, approve, manage) deliberately does not, which is the
@@ -875,6 +899,25 @@ function PiDraftDetailPageInner() {
     setPayments(await loadPiPaymentSummary(supabase, submissionId))
     setPaymentsLoading(false)
   }, [supabase, submissionId])
+
+  // WHICH PENDING PAYMENTS THIS VIEWER RECORDED. Separation of entry and
+  // decision: a non-admin never approves or rejects their own payment, and the
+  // database refuses it (20261211000000). Asked only of a non-admin payment
+  // verifier with something pending, so nobody else pays for the read.
+  const [ownPaymentIds, setOwnPaymentIds] = useState<ReadonlySet<string>>(NO_OWN_PAYMENTS)
+  useEffect(() => {
+    const pending = (payments?.payments ?? [])
+      .filter(p => p.status === 'pending_approval')
+      .map(p => p.payment_id)
+    if (!canApprovePayments || canDecideOwnPayments || !viewerId || pending.length === 0) return
+    let active = true
+    const run = async () => {
+      const ids = await loadOwnPaymentIds(supabase, pending, viewerId)
+      if (active) setOwnPaymentIds(ids)
+    }
+    void run()
+    return () => { active = false }
+  }, [supabase, payments, canApprovePayments, canDecideOwnPayments, viewerId])
 
   // The same shape every other load on this page uses: an inner async runner and
   // an `active` guard, so a navigation away mid-flight cannot set state on an
@@ -980,6 +1023,30 @@ function PiDraftDetailPageInner() {
     const url = await paymentProofSignedUrl(supabase, paymentId)
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
   }, [supabase])
+
+  /**
+   * Approve or reject one pending payment, from Payment details.
+   *
+   * SERVER-GATED DOORS, through the one shared helper — the approval RPC or the
+   * rejection RPC, never a direct status write — so the payment ends in the
+   * same status, with the same activity entry and
+   * the same notifications, whichever screen decided it. Offered only where
+   * canApprovePayments is true, and the database re-derives that authority on
+   * every call.
+   *
+   * The summary is re-read whatever the outcome: a decision moves the figures,
+   * and a refusal because somebody decided first means the list is stale. What
+   * comes back is a fixed sentence, never a database message.
+   */
+  const decidePendingPayment = useCallback(async (
+    paymentId: string,
+    decision: PaymentDecision,
+    note: string,
+  ): Promise<string | null> => {
+    const result = await decidePayment(supabase, { paymentId, decision, note })
+    await loadPayments()
+    return result.ok ? null : result.message
+  }, [supabase, loadPayments])
 
   /**
    * Submit, with the employee's optional reply on a resubmission.
@@ -1480,7 +1547,6 @@ function PiDraftDetailPageInner() {
 
   const { submission, products } = draft
   const tone = statusTone(draftStatusTone(submission.status))
-  const savedAt = formatSavedAt(submission.updated_at ?? submission.created_at)
 
   /** Null unless the record actually names a workbook, so the strip can omit it. */
   const workbookName = submission.source_workbook_name?.trim() || null
@@ -1669,11 +1735,33 @@ function PiDraftDetailPageInner() {
     ? null
     : `${formatMoney(payments.verified_amount)} · ${formatPercent(payments.verified_percent)}`
 
-  const ownership = buildOwnership({
-    documentAuthor,
+  /**
+   * The overview's metadata strip — Salesperson, PI submitted by, Created date —
+   * each said once. The salesperson is the name the PI document itself carries;
+   * the created date is the PI's own date where it gave one, and the day the
+   * record was saved where it did not.
+   */
+  const overviewMeta = buildOverviewMeta({
+    salesperson: documentAuthor,
+    submitterName: draft.submitterName,
+    createdOn: omitDash(headerValue('created')) ?? formatDateOnly(submission.created_at),
+  })
+
+  /**
+   * The "Submitted for review" half of the context row: who, when, and one line
+   * each for management review and the Finance check. Every sentence is one the
+   * page has already derived above; nothing here decides who may act.
+   */
+  const submissionContext = buildSubmissionContext({
+    status: submission.status,
     submitterName: draft.submitterName,
     submittedAt,
-    savedAt,
+    finance,
+    piApprovedLine: piApprovedText,
+    rejectedLine: rejectedAt
+      ? `Rejected by ${draft.rejectedByName ?? 'a colleague'} · ${rejectedAt}`
+      : null,
+    hasOrder: Boolean(submission.order_id),
   })
 
   /**
@@ -1825,18 +1913,33 @@ function PiDraftDetailPageInner() {
    * numeric; the only thing derived here is how many rows Finance has not
    * decided yet, which is a count of rows and not a sum of money.
    */
-  const paymentSummary = payments === null ? null : buildPaymentSummaryView({
+  const decisionOwnPaymentIds = canApprovePayments && !canDecideOwnPayments ? ownPaymentIds : NO_OWN_PAYMENTS
+  const paymentRowCounts = countPiPaymentRows(payments?.payments ?? [], decisionOwnPaymentIds)
+  const paymentStatus = payments === null ? null : buildPaymentStatusView({
     // formatInr, the page's own money format — the one the Commercial breakdown
     // and the page title already use. It prints whole rupees as whole rupees and
     // keeps paise only when there are any, so a summary reads `₹8,76,563` while
     // an odd figure still reads `₹3,50,625.20`. Nothing is rounded away.
-    verifiedAmount: formatInr(toNumber(payments.verified_amount)),
-    grandTotal: formatInr(toNumber(payments.grand_total)),
+    confirmed: formatInr(toNumber(payments.verified_amount)),
+    required: payments.required_payment === undefined || payments.required_payment === null
+      ? null
+      : formatInr(toNumber(payments.required_payment)),
+    total: formatInr(toNumber(payments.grand_total)),
+    standardPercent: payments.standard_percent === undefined || payments.standard_percent === null
+      ? null
+      : formatPercent(payments.standard_percent),
+    standardPercentValue: toNumber(payments.standard_percent),
     verifiedPercent: formatPercent(payments.verified_percent),
-    percentValue: Number(payments.verified_percent ?? 0),
-    awaitingCount: (payments.payments ?? []).filter(
-      row => row.allocation_status === 'active' && isAwaitingVerification(row.status)).length,
+    verifiedPercentValue: toNumber(payments.verified_percent),
+    meetsStandard: payments.meets_standard,
+    // A COUNT OF ROWS still with Finance. The money is unverified_amount, which
+    // the database summed.
+    pendingCount: paymentRowCounts.awaiting,
+    pendingAmount: formatInr(toNumber(payments.unverified_amount)),
   })
+
+  /** The breakdown card's selection of the same shared rows. Nothing is recomputed. */
+  const breakdown = buildBreakdownView(commercialRows)
 
   /**
    * The employee's reply, shown to a reviewer WHILE THE PI IS WITH THEM.
@@ -1897,15 +2000,38 @@ function PiDraftDetailPageInner() {
 
         {justSaved && <PiSavedStrip />}
 
-        {/* ── 1. Page identity ──
-            The layout header above already carries the client name. This is the
-            state, the size of the record, when it last moved, and the file it
-            came from — one line, not a card. */}
-        {/* ── 2. The top summary ──
-            Who the client is and how to reach them, when the order was
-            confirmed and when it is due, and how much VERIFIED money has
-            arrived against what the order is worth — with the way in to every
-            payment record, and to recording another, beside the figure. */}
+        {/* ── 1. The context row ──
+            The Order number this PI will carry, beside where it stands with
+            management and Finance: two equal columns on a desktop, stacked on
+            a phone, and the first thing under any save banner. */}
+        <PiContextRow
+          reservation={reservationView}
+          confirmedNumber={draft.orderDisplayNumber}
+          reserving={reserving}
+          reservationFailure={reservationFailure}
+          /* THE COMPATIBILITY ACTION, and only that. A PI created after
+             20261009000000 takes its number automatically as soon as its file
+             is uploaded, so there is nothing for anybody to press — offering a
+             button there would suggest a decision that is not being made. The
+             control exists for the grandfathered population, which reserves by
+             hand or not at all.
+
+             Offered only where the RPC would accept it. The RPC re-derives
+             every one of these conditions under its own lock, so this is a
+             drawing rule and authorizes nothing. */
+          onReserve={reservationView.state === 'available' && !submission.reservation_required
+            ? () => { setCopiedNumber(false); void reserveOrderNumber() }
+            : null}
+          onCopy={copyOrderNumber}
+          copied={copiedNumber}
+          context={submissionContext}
+          statusLabel={draftStatusLabel(submission.status)}
+          tone={tone}
+        />
+
+        {/* ── 2. The PI overview ──
+            Who it is for, who prepared and submitted it, when it was confirmed
+            and when it is due — beside what it is worth. */}
         <PiSummaryCard
           client={clientDetails}
           onOpenClient={() => setClientDialog(true)}
@@ -1938,99 +2064,92 @@ function PiDraftDetailPageInner() {
               ? null
               : paymentReadiness.summary
           }
-          ownership={ownership}
-          statusLabel={draftStatusLabel(submission.status)}
-          tone={tone}
           workbookName={workbookName}
+          meta={overviewMeta}
           dates={summaryDates}
           figures={summaryFigures}
-          payment={paymentSummary}
-          canAdd={canAddPayment}
-          onOpenPayments={() => setPaymentDialog('details')}
-          onAddPayment={() => setPaymentDialog('add')}
-          notice={paymentNotice}
-          onDismissNotice={() => setPaymentNotice(null)}
         />
 
-        {/* ── 2a. The Order number, before there is an Order ──
-            Between the summary and the controls, because it is a fact about
-            this PI that the person is about to act on: reserve it, put it in
-            the revised file, upload that file, then submit. Absent entirely
-            where 20261009000000 has not been applied. */}
-        <PiOrderNumberPanel
-            view={reservationView}
-            confirmedNumber={draft.orderDisplayNumber}
-            acting={reserving}
-            failure={reservationFailure}
-            /* THE COMPATIBILITY ACTION, and only that. A PI created after
-               20261009000000 takes its number automatically as soon as its file
-               is uploaded, so there is nothing for anybody to press — offering a
-               button there would suggest a decision that is not being made. The
-               control exists for the grandfathered population, which reserves by
-               hand or not at all.
+        {/* ── 2a + 3. Payment status beside Management review ──
+            One row on a wide column — payment ~70%, the review decisions ~30% —
+            stacked when the column is narrow, payment first. Each card keeps
+            its own controls: nothing about money moves into the review card,
+            and no review decision moves into the payment card. */}
+        <div className="pi-detail-decision-row">
+          <div className="pi-detail-decision-grid">
+            {/* ── 2a. Payment status ──
+                Confirmed and how far along the PI total, and what is still with
+                Finance — with the ways in to every payment record. The verify
+                control is drawn only for a payment verifier; the decisions it
+                leads to run Finance's own doors. */}
+            <PiPaymentStatusCard
+              status={paymentStatus}
+              canAdd={canAddPayment}
+              canVerify={canApprovePayments}
+              decidableCount={paymentRowCounts.decidable}
+              onAddPayment={() => setPaymentDialog('add')}
+              onOpenDetails={() => setPaymentDialog('details')}
+              notice={paymentNotice}
+              onDismissNotice={() => setPaymentNotice(null)}
+            />
 
-               Offered only where the RPC would accept it. The RPC re-derives
-               every one of these conditions under its own lock, so this is a
-               drawing rule and authorizes nothing. */
-            onReserve={reservationView.state === 'available' && !submission.reservation_required
-              ? () => { setCopiedNumber(false); void reserveOrderNumber() }
-              : null}
-            onCopy={copyOrderNumber}
-            copied={copiedNumber}
-          />
-
-        {/* ── 3. Workflow and actions, ABOVE the products ──
-            Whatever is being asked of this viewer, in one coordinated panel, so
-            nobody scrolls a product table to find out that nothing is. */}
-        <PiWorkflowPanel
-          panel={workflow}
-          actions={actions}
-          status={submission.status}
-          reviewNote={submission.review_note}
-          employeeReply={employeeReply}
-          advanceRefusal={advanceRefusal}
-          blockingCount={draft.blocking.length}
-          /* The same list the approval control and the finance dialog read.
-             Offered only where submitting is the question: a reviewer looking
-             at a submitted PI is not the person who fills these in. */
-          readiness={actions.canSubmit ? submissionReadiness : null}
-          onFixReadiness={
-            canEditSubmission || canAdminAmend
-              ? section => {
-                  setClientFailure(null)
-                  setProductFailure(null)
-                  if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
-                  setEditSection(section)
-                }
-              : null
-          }
-          acting={acting}
-          onChangePi={() => router.push(changePiHref(submissionId))}
-          onSubmit={() => { setActionFailure(null); setDialog('submit') }}
-          onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
-          onReject={() => { setActionFailure(null); setDialog('reject') }}
-          finance={finance}
-          approvalBlocker={readiness.blocker}
-          approvalReady={readiness.ready}
-          decision={reviewDecision}
-          piApprovedLine={piApprovedText}
-          approvedOrder={approvedOrder}
-          onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
-          onApprove={() => {
-            setActionFailure(null)
-            // THE DOOR FOLLOWS THE DECISION, never the other way round: the
-            // PI-only dialog opens only when the payment condition is the one
-            // thing outstanding, and the create-Order dialog only when the PI
-            // already stands approved.
-            setDialog(
-              reviewDecision.mode === 'approve_pi' ? 'approve_pi'
-              : reviewDecision.mode === 'create_order' ? 'create_order'
-              : 'approve',
-            )
-          }}
-          onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
-          advanceBand={advanceBand}
-        />
+            {/* ── 3. Workflow and actions, ABOVE the products ──
+                Whatever is being asked of this viewer, in one coordinated panel,
+                so nobody scrolls a product table to find out that nothing is. */}
+            <PiWorkflowPanel
+              panel={workflow}
+              actions={actions}
+              status={submission.status}
+              reviewNote={submission.review_note}
+              employeeReply={employeeReply}
+              advanceRefusal={advanceRefusal}
+              blockingCount={draft.blocking.length}
+              /* The same list the approval control and the finance dialog read.
+                 Offered only where submitting is the question: a reviewer looking
+                 at a submitted PI is not the person who fills these in. */
+              readiness={actions.canSubmit ? submissionReadiness : null}
+              onFixReadiness={
+                canEditSubmission || canAdminAmend
+                  ? section => {
+                      setClientFailure(null)
+                      setProductFailure(null)
+                      if (section === 'workbook') { router.push(changePiHref(submissionId)); return }
+                      setEditSection(section)
+                    }
+                  : null
+              }
+              acting={acting}
+              onChangePi={() => router.push(changePiHref(submissionId))}
+              onSubmit={() => { setActionFailure(null); setDialog('submit') }}
+              onRequestChanges={() => { setActionFailure(null); setDialog('needs_changes') }}
+              onReject={() => { setActionFailure(null); setDialog('reject') }}
+              finance={finance}
+              approvalBlocker={readiness.blocker}
+              approvalReady={readiness.ready}
+              decision={reviewDecision}
+              piApprovedLine={piApprovedText}
+              approvedOrder={approvedOrder}
+              onVerifyFinance={() => { setActionFailure(null); setDialog('verify_finance') }}
+              onApprove={() => {
+                setActionFailure(null)
+                // THE DOOR FOLLOWS THE DECISION, never the other way round: the
+                // PI-only dialog opens only when the payment condition is the one
+                // thing outstanding, and the create-Order dialog only when the PI
+                // already stands approved.
+                setDialog(
+                  reviewDecision.mode === 'approve_pi' ? 'approve_pi'
+                  : reviewDecision.mode === 'create_order' ? 'create_order'
+                  : 'approve',
+                )
+              }}
+              onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
+              advanceBand={advanceBand}
+              /* The context row above already says who submitted it, when, and
+                 where Finance stands; the panel keeps its controls and notes. */
+              statusShownAbove
+            />
+          </div>
+        </div>
 
         {/* ── 4. What stops this being submitted ──
             Above the products, because it is the reason the primary action is
@@ -2256,11 +2375,10 @@ function PiDraftDetailPageInner() {
             stacked in this order on anything narrower. */}
         <PiLowerGrid
           commercial={
-            /* The stored figures, through the shared rows builder. Nothing on
-               this page recomputes a total, and `fill` only tells the shared
-               component to use its column rather than cap and right-align
-               itself the way it does under the import preview's table. */
-            <PiCommercialSummary rows={commercialRows} title="Commercial breakdown" variant="detail" />
+            /* The stored figures, through the shared rows builder, selected by
+               buildBreakdownView: the PI total large, then only the lines that
+               say something. Nothing on this page recomputes a total. */
+            <PiCommercialBreakdown view={breakdown} />
           }
           activity={<PiActivityTimeline entries={draft.activity} />}
         />
@@ -2409,10 +2527,15 @@ function PiDraftDetailPageInner() {
       {paymentDialog === 'details' && (
         <PiPaymentDetailsModal
           summary={payments}
+          status={paymentStatus}
           loading={paymentsLoading}
-          isMobile={isMobile}
           onOpenProof={openPaymentProof}
           onClose={() => setPaymentDialog(null)}
+          canVerify={canApprovePayments}
+          /* Null for anybody who is not a payment verifier: then no row draws a
+             decision control at all. The database decides again either way. */
+          onDecide={canApprovePayments ? decidePendingPayment : null}
+          ownPaymentIds={decisionOwnPaymentIds}
         />
       )}
 

@@ -17,13 +17,14 @@
 // These draw the answers.
 
 import {
-  AlertTriangle, Ban, CheckCircle2, ChevronRight, ExternalLink, FileSpreadsheet,
-  Hash, History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  AlertTriangle, Ban, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Copy, ExternalLink,
+  FileSpreadsheet, Hash, History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
+  User,
 } from 'lucide-react'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { PiCard, PiCardHeader, PiDiagnosticList } from '@/components/orders/piPreview'
+import { PiPaymentProgress } from '@/components/orders/PiPaymentCard'
 import { colors } from '@/lib/tokens'
-import { Avatar } from '@/components/ui/atoms'
 import { draftStatusLabel, type PiDraftStatusTone } from '@/lib/orders/draftsView'
 import {
   APPROVE_BUTTON_LABEL,
@@ -50,7 +51,6 @@ import {
 import { BLOCKING_PANEL_TITLE, WARNING_PANEL_TITLE, type PiDiagnosticEntry } from '@/lib/pi/previewView'
 import {
   NUMBER_LABEL,
-  RESERVED_HEADING,
   RESERVE_ACTION_LABEL,
   type ReservationView,
 } from '@/lib/orders/orderNumberReservation'
@@ -58,19 +58,27 @@ import type { PiReadiness, PiRequirement } from '@/lib/orders/piReadiness'
 import type { ActivityEntry, PiActivityTone } from '@/lib/orders/submissionActivity'
 import {
   ADVANCE_BAND_TITLE,
+  BILLING_LABEL,
+  BILLING_NOT_DECLARED_LABEL,
+  BILLING_VALUE_LABEL,
   BLOCKING_INSTRUCTION,
+  NOT_SUBMITTED_TEXT,
+  PAYMENT_STATUS_LABEL,
+  PAYMENT_STATUS_TITLE,
+  RESERVED_ORDER_LABEL,
   STORED_COPY_NOTE,
+  describePendingPayments,
   describeRequestedException,
   type ApprovedOrderView,
-  BILLING_LABEL,
-  BILLING_VALUE_LABEL,
   type BillingSummary,
+  type BreakdownView,
   type ClientDetails,
   type DateSummary,
-  type PiOwnership,
-  type SummaryFigure,
-  type PaymentSummaryView,
+  type OverviewMetaItem,
+  type PaymentStatusView,
   type PiDetailTone,
+  type SubmissionContext,
+  type SummaryFigure,
   type WorkflowPanel,
 } from './piDetailView'
 
@@ -114,100 +122,206 @@ export function PiStatusBadge({ label, tone }: { label: string; tone: ToneStyle 
   )
 }
 
-// ── 2. The top summary ────────────────────────────────────────────────────────
+// ── 1. The context row ────────────────────────────────────────────────────────
 
 /**
- * THE TOP SUMMARY: who, when, and how much has actually arrived.
+ * The two facts a reader looks for first, side by side: the Order number this
+ * PI will carry, and where it stands with management and Finance.
  *
- * WHAT REPLACED WHAT. This card replaces an overview that answered a different
- * set of questions from the ones people actually open a saved PI to ask. It
- * printed Bill to and Ship to as two strong fields — the same company name
- * twice on most orders, and the page title a third time — a PI-created date and
- * a prose dispatch commitment, a product-line count the Products card states on
- * its own header, and a large standalone Grand Total whose only job was to be
- * the thing payment is measured against. It answered "how much has been paid"
- * in a small block here and again in a full card several screens down.
+ * ONE CARD, TWO EQUAL COLUMNS from tablet width up, stacked on a phone — the
+ * arrangement is the `pi-detail-context` block in globals.css.
  *
- * The three groups below are the four questions instead: who the client is and
- * how to reach them, when the order was confirmed and when it is due, and how
- * much VERIFIED money has arrived against the order's worth — with the way in
- * to every payment record, and to recording another, on the same line as the
- * figure.
+ * DRAWING ONLY. describeReservation decides the number's standing and whether a
+ * Reserve control is offered at all; buildSubmissionContext words the status.
+ * The copy control writes to the clipboard and nothing else. The number is
+ * issued by the database and immutable once issued, so there is no input here.
+ */
+export function PiContextRow({
+  reservation, confirmedNumber, reserving, reservationFailure, onReserve, onCopy, copied,
+  context, statusLabel, tone,
+}: {
+  reservation: ReservationView
+  /** The Confirmed Order's number, once there is one and this viewer can read it. */
+  confirmedNumber: string | null
+  reserving: boolean
+  reservationFailure: string | null
+  /** The compatibility Reserve action, or null wherever the RPC would refuse it. */
+  onReserve: (() => void) | null
+  onCopy: (value: string) => void
+  copied: boolean
+  context: SubmissionContext
+  statusLabel: string
+  tone: ToneStyle
+}) {
+  const number = reservation.number
+  return (
+    <PiCard>
+      <div className="pi-detail-context">
+        <section className="pi-detail-context-cell" aria-label={RESERVED_ORDER_LABEL}>
+          <div className="pi-detail-context-label">
+            <Hash size={12} strokeWidth={2.2} aria-hidden="true" />
+            {RESERVED_ORDER_LABEL}
+          </div>
+
+          {number ? (
+            <div className="pi-detail-context-number-row">
+              <span className="pi-detail-context-number">{number}</span>
+              {reservation.canCopy && (
+                <button
+                  type="button"
+                  className="pi-detail-copy"
+                  onClick={() => onCopy(number)}
+                  aria-label={copied ? 'Order number copied' : `Copy Order number ${number}`}
+                >
+                  {copied
+                    ? <Check size={12} strokeWidth={2.4} aria-hidden="true" />
+                    : <Copy size={12} strokeWidth={2.2} aria-hidden="true" />}
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+          ) : onReserve ? (
+            <button
+              type="button"
+              onClick={onReserve}
+              disabled={reserving}
+              className="boe-btn boe-btn-primary"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              {reserving ? 'Reserving…' : RESERVE_ACTION_LABEL}
+            </button>
+          ) : (
+            <div className="pi-detail-context-absent">Not reserved</div>
+          )}
+
+          {/* ONE LINE saying where the number stands. The blocked reason takes
+              its place only where there is no number to stand. */}
+          <div className="pi-detail-context-note">
+            {!number && reservation.blockedReason ? reservation.blockedReason : reservation.standing}
+          </div>
+
+          {/* The Confirmed Order's number under its own label, never beside the
+              reserved one without it. Read back from the Order — composed nowhere. */}
+          {confirmedNumber && (
+            <div className="pi-detail-context-note">
+              {NUMBER_LABEL.confirmed}{' '}
+              <strong className="pi-detail-context-confirmed">{confirmedNumber}</strong>
+            </div>
+          )}
+
+          {reservationFailure && (
+            <div role="alert" className="pi-detail-context-error">{reservationFailure}</div>
+          )}
+        </section>
+
+        <section className="pi-detail-context-cell" aria-label={context.heading}>
+          <div className="pi-detail-context-head">
+            <div className="pi-detail-context-label">
+              <Send size={12} strokeWidth={2.2} aria-hidden="true" />
+              {context.heading}
+            </div>
+            <PiStatusBadge label={statusLabel} tone={tone} />
+          </div>
+
+          {context.submittedAt ? (
+            <div className="pi-detail-context-who">
+              <span className="pi-detail-context-name">{context.submittedBy ?? 'A colleague'}</span>
+              <span className="pi-detail-context-when">{context.submittedAt}</span>
+            </div>
+          ) : (
+            <div className="pi-detail-context-absent">{NOT_SUBMITTED_TEXT}</div>
+          )}
+
+          {/* Colour is never the only channel: every dot sits beside its words. */}
+          <ul className="pi-detail-context-lines">
+            {context.lines.map(line => (
+              <li key={line.key} className="pi-detail-context-line">
+                <span
+                  className="pi-detail-context-dot"
+                  style={{ background: CONTEXT_DOT[line.tone] }}
+                  aria-hidden="true"
+                />
+                <span className="pi-detail-context-line-label">{line.label}</span>
+                <span className="pi-detail-context-line-text">{line.text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+    </PiCard>
+  )
+}
+
+/** The status dots, at the same intensity the activity trail uses. */
+const CONTEXT_DOT: Record<PiDetailTone, string> = {
+  neutral: '#A4ABB9',
+  blue: '#5585E8',
+  amber: '#D9A552',
+  green: '#45A870',
+  red: '#D94F4F',
+}
+
+// ── 2. The PI overview ────────────────────────────────────────────────────────
+
+/** One icon per metadata item, so the strip scans without reading every label. */
+const META_ICON: Record<OverviewMetaItem['key'], typeof User> = {
+  salesperson: User,
+  submittedBy: Send,
+  created: CalendarDays,
+}
+
+/**
+ * THE PI OVERVIEW: who it is for and when it moves, beside what it is worth.
  *
- * PAYMENT IS THE STRONGEST GROUP and takes the most width, because it is the
- * one thing on this card that changes.
+ * LEFT — the client (the name opens the contact dialog), a compact metadata
+ * strip (Salesperson · PI submitted by · Created date, each said once), and the
+ * two dates in a band of their own at a size that reads at a glance.
  *
- * NOT ONE FIGURE IS COMPUTED HERE. See ./piDetailView.
+ * RIGHT — three figures and nothing else: Product value, Total before GST, and
+ * the billing declaration as a clear state. They fill their column; there is no
+ * payment here, because payment has its own card below.
+ *
+ * NOT ONE FIGURE IS COMPUTED HERE. The two commercial figures are the breakdown's
+ * own strings; billing is buildBillingSummary's. Every edit control is drawn from
+ * a capability the page asked the database for, and every write re-derives it.
  */
 export function PiSummaryCard({
-  client, onOpenClient, ownership, statusLabel, tone, workbookName,
+  client, onOpenClient, workbookName, meta,
   dates, figures, billing, canEditBilling, onEditBilling,
   canEditDetails, onEditDetails, onEditSchedule, onRequestCorrection, missingSummary,
-  payment, canAdd, onOpenPayments, onAddPayment, notice, onDismissNotice,
 }: {
   client: ClientDetails
   /** Opens the client dialog. The card carries the name; the dialog carries
       the contact and the two parties. */
   onOpenClient: () => void
-  /** Who the PI belongs to, and when it last moved. */
-  ownership: PiOwnership
-  statusLabel: string
-  tone: ToneStyle
   /** Provenance, only when the record names a workbook. */
   workbookName: string | null
+  /** Salesperson, PI submitted by, Created date. */
+  meta: readonly OverviewMetaItem[]
   dates: readonly DateSummary[]
   /** The two commercial figures, picked out of the breakdown's own rows. */
   figures: readonly SummaryFigure[]
   /** The billing declaration, and what it comes to. */
   billing: BillingSummary
-  /**
-   * Whether THIS viewer may declare one — describeSubmissionActions' answer,
-   * which is draft/needs_changes and owner-or-admin. Hiding the control is not
-   * the security: set_order_submission_billing_percentage re-derives the same
-   * rule against the record's own state.
-   */
+  /** can_edit_order_submission OR can_admin_edit_order_submission, as the page
+      resolved them. set_order_submission_billing_percentage re-derives it. */
   canEditBilling: boolean
   onEditBilling: () => void
-  /**
-   * Whether this viewer may correct the client and party details — the owner in
-   * draft/needs_changes, or an active admin at any stage. As everywhere else on
-   * this page, hiding the control is not the security:
-   * update_order_submission_client_details re-derives the whole rule.
-   */
+  /** The owner in draft/needs_changes, or an active admin at any stage. The
+      client-details RPC re-derives the whole rule. */
   canEditDetails: boolean
   onEditDetails: () => void
   /** Opens the dates-and-terms section of the same editor. */
   onEditSchedule: () => void
-  /**
-   * The OWNER's channel for a PI that has left their hands, or null.
-   *
-   * Shown INSTEAD OF the edit controls, never alongside them: the two answer
-   * the same impulse, and offering both would suggest the owner has a choice
-   * about which one works.
-   */
+  /** The OWNER's channel for a PI that has left their hands, or null. Shown
+      INSTEAD OF the edit controls, never alongside them. */
   onRequestCorrection: (() => void) | null
-  /**
-   * What this PI still needs before it can take a payment, as one sentence.
-   *
-   * Null when nothing is missing. Present, this is the whole point of the
-   * panel: a workbook imported without a client name used to leave the reader
-   * with "Not provided" and a payment refusal, and no way to connect the two.
-   */
+  /** What this PI still needs before it can take a payment, or null. */
   missingSummary: string | null
-  /** null only while the payment summary has not been read yet. */
-  payment: PaymentSummaryView | null
-  canAdd: boolean
-  onOpenPayments: () => void
-  onAddPayment: () => void
-  notice: string | null
-  onDismissNotice: () => void
 }) {
   return (
     <PiCard>
-      {/* ── What is still missing, and the way to fix it ──
-          Above the summary rather than beside the field, because it is about
-          the record as a whole and because a reader who cannot proceed needs to
-          meet this before they go looking for the reason. */}
+      {/* ── What is still missing, and the way to fix it ── */}
       {missingSummary && (
         <div
           role="status"
@@ -232,25 +346,11 @@ export function PiSummaryCard({
         </div>
       )}
 
-      <div className="pi-detail-summary">
+      <div className="pi-detail-overview">
+        <div className="pi-detail-overview-main">
 
-        {/* ── The left column: everything ABOUT the order ──
-            Who it is for, when it moves, and whose record it is — three groups
-            stacked and separated by hairlines rather than by boxes. Ownership
-            used to sit top-right, level with the client, where it read as a
-            header control belonging to the page rather than a fact about this
-            record. At the foot of this column it is plainly the last thing the
-            order says about itself. */}
-        <div className="pi-detail-summary-left">
-
-          {/* THE NAME IS THE CONTROL, and it still looks like the name.
-              A button element carries Enter, Space, focus and the announcement
-              for free — what it must not carry is the LOOK of a button, because
-              this is the heading of the card. So: no border, no ground, no
-              padding beyond what the focus ring needs, and a chevron that says
-              there is more behind it. The contact number and both addresses
-              used to sit under here as a supporting line; they are reference
-              material, and they live in the dialog now. */}
+          {/* THE NAME IS THE CONTROL, and it still looks like the name. The edit
+              control is a sibling, never nested: a button cannot hold a button. */}
           <div className="pi-detail-summary-party">
             <button
               type="button"
@@ -260,25 +360,13 @@ export function PiSummaryCard({
               title="Contact number, billing and shipping details"
             >
               <MultilineText style={{
-                fontSize: '16px', fontWeight: 650, color: colors.primary, margin: 0, lineHeight: 1.25,
+                fontSize: '18px', fontWeight: 700, color: colors.primary, margin: 0, lineHeight: 1.25,
               }}>
                 {client.name}
               </MultilineText>
               <ChevronRight size={15} strokeWidth={2.2} className="pi-detail-summary-client-more" />
             </button>
 
-            {/* ── THE WAY TO CORRECT WHAT THIS NAMES, BESIDE THE NAME ──
-                The name has always opened a READ-ONLY dialog; the editor was
-                reachable only from the missing-data strip, so a reader looking
-                at a wrong phone number on a complete PI had nowhere to go. A
-                sibling control rather than something inside the name: a button
-                cannot be nested in a button, and the name must keep carrying
-                Enter, Space and focus for the dialog it already opens.
-
-                The owner's correction channel takes the same slot when they may
-                no longer edit — never both, because the two answer the same
-                impulse and offering each would suggest a choice about which
-                one works. */}
             {canEditDetails && (
               <button
                 type="button"
@@ -303,289 +391,268 @@ export function PiSummaryCard({
             )}
           </div>
 
-          {/* ── ONE SCHEDULE BAND, not two treatments ──
-              The due date used to sit in its own warm box behind a 2px accent,
-              which read as a card inserted into a card and made the two dates
-              look like different KINDS of fact. They are the same kind: when
-              the order was agreed, and when it is owed. So one soft surface
-              holds both, split by a hairline that stops inside the band's own
-              padding, and the emphasis the due date still needs is carried by a
-              dot and a heavier figure rather than by a ground of its own. */}
-          <section className="pi-detail-summary-schedule">
-            {/* ── THE DATES ARE EDITED WHERE THE DATES ARE ──
-                This control used to read "Dates and terms" and sat in the
-                FINANCE surface, two columns away from the values it changes and
-                between the billing label and the billing control. It belongs
-                here. Rendered only when there is something to press, so a
-                read-only viewer still sees the band exactly as it was. */}
-            {canEditDetails && (
-              <div className="pi-detail-summary-sched-head">
-                <button
-                  type="button"
-                  onClick={onEditSchedule}
-                  className="pi-detail-summary-inline-action"
-                  aria-haspopup="dialog"
-                  aria-label="Edit dates and terms"
-                >
-                  <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
-                  Edit
-                </button>
-              </div>
-            )}
-            {dates.flatMap((date, i) => [
-              i > 0
-                ? <div key={`${date.key}-rule`} className="pi-detail-summary-sched-rule" role="presentation" />
-                : null,
-              (
-                <div key={date.key} className="pi-detail-summary-sched-cell">
-                  <div className="pi-detail-summary-metric-label">
-                    {date.label}
-                    {/* The whole of the due date's emphasis at label level: one
-                        small amber dot. Decorative — the label already says
-                        which date this is. */}
-                    {date.key === 'due' && (
-                      <span className="pi-detail-summary-due-dot" aria-hidden="true" />
-                    )}
-                  </div>
-                  {date.value ? (
-                    <div className={date.key === 'due'
-                      ? 'pi-detail-summary-metric-value pi-detail-summary-due-value'
-                      : 'pi-detail-summary-metric-value'}>
-                      {date.value}
-                    </div>
-                  ) : (
-                    <div className="pi-detail-summary-metric-absent">{date.absent}</div>
-                  )}
-                  {/* Clamped to two lines. A long commitment is prose about a
-                      lead time; left unbounded it sets the height of the band
-                      the other date has to align inside. */}
-                  {date.note && <div className="pi-detail-summary-metric-note">{date.note}</div>}
+          {workbookName && (
+            <span className="pi-detail-overview-file" title={workbookName}>
+              <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} aria-hidden="true" />
+              <span className="pi-detail-summary-file-name">{workbookName}</span>
+            </span>
+          )}
+
+          {/* ── The metadata strip: icon, label, value — each fact once ── */}
+          <dl className="pi-detail-meta">
+            {meta.map(item => {
+              const Icon = META_ICON[item.key]
+              return (
+                <div key={item.key} className="pi-detail-meta-item">
+                  <Icon size={13} strokeWidth={2} className="pi-detail-meta-icon" aria-hidden="true" />
+                  <dt className="pi-detail-meta-label">{item.label}</dt>
+                  <dd className={item.value ? 'pi-detail-meta-value' : 'pi-detail-meta-absent'}>
+                    {item.value ?? item.absent}
+                  </dd>
                 </div>
-              ),
-            ])}
+              )
+            })}
+          </dl>
+
+          {/* ── The dates, at a size that reads at a glance ──
+              The commitment stays secondary: a muted line under an absent due
+              date, clamped, and never a date of its own. */}
+          <section className="pi-detail-dates" aria-label="Order dates">
+            <div className="pi-detail-dates-grid">
+              {dates.map(date => (
+                <div key={date.key} className="pi-detail-date">
+                  <div className="pi-detail-date-label">{date.label}</div>
+                  {date.value ? (
+                    <div className="pi-detail-date-value">{date.value}</div>
+                  ) : (
+                    <div className="pi-detail-date-absent">{date.absent}</div>
+                  )}
+                  {date.note && <div className="pi-detail-date-note">{date.note}</div>}
+                </div>
+              ))}
+            </div>
+            {canEditDetails && (
+              <button
+                type="button"
+                onClick={onEditSchedule}
+                className="pi-detail-summary-inline-action pi-detail-dates-edit"
+                aria-haspopup="dialog"
+                aria-label="Edit dates and terms"
+              >
+                <Pencil size={11} strokeWidth={2.1} aria-hidden="true" />
+                Edit
+              </button>
+            )}
           </section>
+        </div>
 
-          {/* ── Whose record this is, at the FOOT of the column it belongs to ──
-              Avatar beside three lines: the creator's name with the record's
-              state anchored opposite it, what that name means and when the
-              record last moved, and the workbook it came from when there is
-              one. Pushed to the bottom of the column so it reads as the last
-              thing the order says about itself rather than as a control. */}
-          <div className="pi-detail-summary-hr pi-detail-summary-hr-foot" role="presentation" />
+        {/* ── Three figures, filling their column ── */}
+        {/* The outer element is the CONTAINER the column's width is measured
+            on; the grid inside it is what that width rearranges. A container
+            query cannot restyle the element it measures. */}
+        <div className="pi-detail-figures">
+          <div className="pi-detail-figures-grid">
+            {figures.map(figure => (
+              <div key={figure.key} className="pi-detail-figure">
+                <div className="pi-detail-figure-label">{figure.label}</div>
+                <div className={figure.kind === 'missing' ? 'pi-detail-figure-absent' : 'pi-detail-figure-value'}>
+                  {figure.value}
+                </div>
+              </div>
+            ))}
 
-          <div className="pi-detail-summary-owner">
-            {ownership.name && <Avatar name={ownership.name} size={30} />}
-            <div className="pi-detail-summary-owner-text">
-              <div className="pi-detail-summary-owner-top">
-                <span className="pi-detail-summary-owner-name">
-                  {ownership.name ?? 'Not named'}
-                </span>
-                <PiStatusBadge label={statusLabel} tone={tone} />
+            <div className="pi-detail-figure">
+              <div className="pi-detail-figure-head">
+                <span className="pi-detail-figure-label">{BILLING_LABEL}</span>
+                {canEditBilling && (
+                  <button
+                    type="button"
+                    onClick={onEditBilling}
+                    className="pi-detail-summary-billing-action"
+                    aria-haspopup="dialog"
+                    aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
+                  >
+                    {billing.action}
+                  </button>
+                )}
               </div>
-              {/* "PI created by", never "Assignee": nobody was assigned this
-                  record — somebody made it. */}
-              <div className="pi-detail-summary-owner-when">
-                PI created by · {ownership.when}
-              </div>
-              {workbookName && (
-                <span
-                  className="pi-detail-summary-file"
-                  title={workbookName}
-                  style={{ fontSize: '11px', color: colors.tertiary }}
-                >
-                  <FileSpreadsheet size={11.5} strokeWidth={1.9} style={{ flexShrink: 0 }} />
-                  <span className="pi-detail-summary-file-name">{workbookName}</span>
-                </span>
+              {/* DECLARED IS A FIGURE; UNDECLARED IS A STATE. Never 0%, never a
+                  muted word standing where a number should be. */}
+              {billing.declared ? (
+                <>
+                  <div className="pi-detail-figure-value">{billing.percent}</div>
+                  <div className="pi-detail-figure-sub">
+                    {BILLING_VALUE_LABEL}{' '}
+                    <span className={billing.amountMissing ? 'pi-detail-figure-sub-absent' : 'pi-detail-figure-sub-value'}>
+                      {billing.amount}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <span className="pi-detail-state-chip">{BILLING_NOT_DECLARED_LABEL}</span>
               )}
             </div>
           </div>
         </div>
-
-      {/* ── The finance surface ──
-            What the order is worth, a rule, then what has arrived against it:
-            the label and the percentage on one line, the amount as the
-            strongest number under them, one full-width bar, and the two
-            controls beneath. The percentage lives in the header rather than
-            floating beside the bar, where it read as a caption for the track
-            instead of a figure in its own right. */}
-        <section className="pi-detail-summary-paycard">
-
-          {/* The order's worth, as label-left / figure-right rows — the same
-              idiom the Commercial breakdown card below uses, because these are
-              two lines OF that breakdown. Side by side as label-over-value
-              pairs they drifted to opposite ends of the surface and stopped
-              reading as a pair at all.
-
-              Outside the payment branch below because these come from the
-              record itself: they must not blank out while the payment summary
-              is still being read. */}
-          {/* ── The surface's two upper areas, side by side ──
-              What the order is WORTH on the left, what has ARRIVED against it
-              on the right, one hairline between them. The hairline is an
-              element rather than a border, so it insets from the surface's top
-              and bottom padding instead of running its whole height; at phone
-              width the same element lies down and becomes the horizontal rule
-              between the two stacked areas. */}
-          <div className="pi-detail-summary-paybody">
-
-            <div className="pi-detail-summary-values">
-              {figures.map(figure => (
-                /* Label OVER value, the same way in both rows. Side by side as
-                   label-left/figure-right they need ~166px, and 38% of this
-                   surface at tablet is not that — the label wrapped, which is
-                   the compressed reading a narrow column has to avoid. */
-                <div key={figure.key} className="pi-detail-summary-value-row">
-                  <div className="pi-detail-summary-metric-label">{figure.label}</div>
-                  <div className={figure.kind === 'missing'
-                    ? 'pi-detail-summary-metric-absent'
-                    : 'pi-detail-summary-money'}>
-                    {figure.value}
-                  </div>
-                </div>
-              ))}
-
-              {/* ── The billing declaration ──
-                  Below the two figures it is measured against, in space this
-                  column already had. Not another card and not behind a rule: a
-                  wider gap above it is what says "a different kind of fact",
-                  and the label treatment is the figures' own. */}
-              <div className="pi-detail-summary-value-row pi-detail-summary-billing">
-                {/* ── THE LABEL AND ITS OWN CONTROL, AND NOTHING ELSE ──
-                    Two unrelated buttons used to sit between them — the dates
-                    editor and the correction channel — so the control nearest
-                    "Billing percentage" was the one that did not change it.
-                    Both have moved beside the things they do change. */}
-                <div className="pi-detail-summary-billing-head">
-                  <span className="pi-detail-summary-metric-label">{BILLING_LABEL}</span>
-                  {canEditBilling && (
-                    <button
-                      type="button"
-                      onClick={onEditBilling}
-                      className="pi-detail-summary-billing-action"
-                      aria-haspopup="dialog"
-                      aria-label={`${billing.action} ${BILLING_LABEL.toLowerCase()}`}
-                    >
-                      {billing.action}
-                    </button>
-                  )}
-                </div>
-                {/* UNDECLARED IS MUTED, and says so in words. Not 0%, not an em
-                    dash — nobody has decided yet. */}
-                <div className={billing.declared
-                  ? 'pi-detail-summary-money'
-                  : 'pi-detail-summary-metric-absent'}>
-                  {billing.percent}
-                </div>
-              </div>
-
-              {/* Only where there is a percentage to measure. A missing pre-GST
-                  total shows the card's own missing treatment, never ₹0. */}
-              {billing.declared && (
-                <div className="pi-detail-summary-value-row">
-                  <div className="pi-detail-summary-metric-label">{BILLING_VALUE_LABEL}</div>
-                  <div className={billing.amountMissing
-                    ? 'pi-detail-summary-metric-absent'
-                    : 'pi-detail-summary-money'}>
-                    {billing.amount}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="pi-detail-summary-payrule" role="presentation" />
-
-            <div className="pi-detail-summary-paystate">
-          {payment === null ? (
-            <>
-              <div className="pi-detail-summary-payhead">
-                <span className="pi-detail-summary-metric-label">Payment received</span>
-              </div>
-              <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
-            </>
-          ) : (
-            <>
-              <div className="pi-detail-summary-payhead">
-                <span className="pi-detail-summary-metric-label">Payment received</span>
-                <span className="pi-detail-summary-percent">{payment.percent}</span>
-              </div>
-
-              {/* The figure IS the way in — one control carrying the amount
-                  and the total it is measured against. */}
-              <button
-                type="button"
-                onClick={onOpenPayments}
-                aria-haspopup="dialog"
-                className="pi-detail-summary-open"
-                title="Show every payment recorded against this PI"
-              >
-                <span className="pi-detail-summary-received">{payment.received}</span>
-                <span className="pi-detail-summary-oftotal">{payment.ofTotal}</span>
-              </button>
-
-              <div className="pi-detail-summary-bar" role="presentation">
-                <div
-                  className="pi-detail-summary-bar-fill"
-                  style={{ width: `${payment.barPercent}%` }}
-                />
-              </div>
-
-              {/* Money Finance has not decided is NOT in the bar or the
-                  percentage, and saying so is what keeps the two honest. */}
-              {payment.awaitingCount > 0 && (
-                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-awaiting">
-                  {payment.awaitingCount} payment{payment.awaitingCount === 1 ? '' : 's'} awaiting
-                  verification — not counted above
-                </button>
-              )}
-
-              {notice && (
-                <div className="pi-detail-summary-notice">
-                  <span style={{ fontSize: '11.5px', color: colors.secondary }}>{notice}</span>
-                  <button
-                    type="button" onClick={onDismissNotice} aria-label="Dismiss"
-                    style={{
-                      background: 'none', border: 'none', cursor: 'pointer',
-                      color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                    }}
-                  >
-                    ×
-                  </button>
-                </div>
-              )}
-
-              {/* THE CONTROLS BELONG TO THE PAYMENT SECTION, immediately under
-                  the bar they act on. As a footer spanning the whole surface
-                  they were detached from the thing they change, and the auto
-                  margin that pushed them down opened a hole in the middle of
-                  the card. */}
-              <div className="pi-detail-summary-actions">
-                {/* Unchanged gate: canAddPiPayment decides this, exactly as
-                    record_pi_submission_payment() decides it server-side. */}
-                {canAdd && (
-                  <button type="button" onClick={onAddPayment} className="pi-detail-summary-add">
-                    Add payment
-                  </button>
-                )}
-                {/* ONE label, always. It opens PiPaymentDetailsModal in either
-                    case, so wording that changed with the record made the same
-                    control look like two. */}
-                <button type="button" onClick={onOpenPayments} className="pi-detail-summary-view">
-                  {PAYMENT_DETAILS_LABEL}
-                </button>
-              </div>
-            </>
-          )}
-            </div>
-          </div>
-        </section>
-
       </div>
     </PiCard>
   )
 }
 
-/** A small sentence-case group label. Not uppercase: three shouted words over
- *  every group was noise on a card meant to be scanned. */
+// ── 2a. Payment status ────────────────────────────────────────────────────────
+
+/**
+ * WHERE THE MONEY STANDS, in one card: confirmed, and how far along the PI total.
+ *
+ * NO REQUIRED FIGURE. The advance requirement is the tick on the bar; its amount
+ * is not a headline number on this card.
+ *
+ * VERIFIED ONLY. Confirmed and the bar are the database's verified figures;
+ * payments still with Finance are named beside the bar, with their count and
+ * amount, and move nothing. Every figure arrived formatted — see
+ * buildPaymentStatusView — and nothing here does arithmetic.
+ *
+ * THREE CONTROLS AT MOST. Add payment for somebody canAddPiPayment allows;
+ * Payment details for everybody who can read the PI; and, for a viewer the page
+ * resolved as a payment verifier, one way into the pending rows. That control
+ * decides nothing — the rows' Approve and Reject run Finance's own doors.
+ */
+export function PiPaymentStatusCard({
+  status, canAdd, canVerify, decidableCount, onAddPayment, onOpenDetails, notice, onDismissNotice,
+}: {
+  /** null only while the summary has not been read. */
+  status: PaymentStatusView | null
+  canAdd: boolean
+  /** finance.approve with Finance module entry, as the page resolved it. */
+  canVerify: boolean
+  /** Pending rows a verifier could decide now. A count of rows. */
+  decidableCount: number
+  onAddPayment: () => void
+  onOpenDetails: () => void
+  notice: string | null
+  onDismissNotice: () => void
+}) {
+  const pending = status === null ? null : describePendingPayments(status)
+  return (
+    <PiCard>
+      <section className="pi-detail-paystatus" aria-label={PAYMENT_STATUS_TITLE}>
+        <div className="pi-detail-paystatus-head">
+          <h2 className="pi-detail-paystatus-title">{PAYMENT_STATUS_TITLE}</h2>
+          <div className="pi-detail-paystatus-actions">
+            {canVerify && decidableCount > 0 && (
+              <button type="button" className="boe-btn boe-btn-ghost" onClick={onOpenDetails} aria-haspopup="dialog">
+                <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
+                Verify {decidableCount} pending
+              </button>
+            )}
+            {canAdd && (
+              <button type="button" className="boe-btn boe-btn-primary" onClick={onAddPayment} aria-haspopup="dialog">
+                Add payment
+              </button>
+            )}
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={onOpenDetails} aria-haspopup="dialog">
+              {PAYMENT_DETAILS_LABEL}
+            </button>
+          </div>
+        </div>
+
+        {status === null ? (
+          <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
+        ) : (
+          <>
+            <div className="pi-detail-paystatus-figures">
+              <div className="pi-detail-paystatus-figure">
+                <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.confirmed}</div>
+                <div className="pi-detail-paystatus-value pi-detail-paystatus-confirmed">{status.confirmed}</div>
+              </div>
+              <div className="pi-detail-paystatus-figure">
+                <div className="pi-detail-paystatus-label">{PAYMENT_STATUS_LABEL.percent}</div>
+                <div className="pi-detail-paystatus-value">{status.percent}</div>
+                <div className="pi-detail-paystatus-sub">of {status.total}</div>
+              </div>
+            </div>
+
+            <PiPaymentProgress
+              barPercent={status.barPercent}
+              thresholdPercent={status.thresholdPercent}
+              label={`Confirmed payment: ${status.percent} of the PI total`}
+            />
+
+            {pending && (
+              <div className="pi-detail-paystatus-pending">
+                <Clock size={13} strokeWidth={2.2} aria-hidden="true" style={{ flexShrink: 0 }} />
+                <span>{pending} — not counted as confirmed</span>
+              </div>
+            )}
+
+            {notice && (
+              <div className="pi-detail-paystatus-notice" role="status">
+                <span>{notice}</span>
+                <button
+                  type="button" onClick={onDismissNotice} aria-label="Dismiss"
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </PiCard>
+  )
+}
+
+// ── 6a. The commercial breakdown ──────────────────────────────────────────────
+
+export const BREAKDOWN_TITLE = 'Commercial breakdown'
+
+/**
+ * The PI total, large, then the lines that lead to it.
+ *
+ * THE ROWS ARE THE SHARED BUILDER'S, selected by buildBreakdownView and never
+ * recomputed. Amounts are right-aligned tabular figures; a worded value
+ * ("Included", "as applicable") keeps its words and a lighter weight. Total
+ * before GST opens the tax group, the one rule inside the card.
+ */
+export function PiCommercialBreakdown({ view }: { view: BreakdownView }) {
+  return (
+    <PiCard>
+      <section className="pi-detail-breakdown" aria-label={BREAKDOWN_TITLE}>
+        <div className="pi-detail-breakdown-head">
+          <div className="pi-detail-breakdown-title">{BREAKDOWN_TITLE}</div>
+          {view.total && (
+            <div className="pi-detail-breakdown-total">
+              <span className="pi-detail-breakdown-total-label">{view.total.label}</span>
+              <span className={view.total.kind === 'amount'
+                ? 'pi-detail-breakdown-total-value'
+                : 'pi-detail-breakdown-total-absent'}>
+                {view.total.value}
+              </span>
+            </div>
+          )}
+        </div>
+        <dl className="pi-detail-breakdown-rows">
+          {view.rows.map(row => (
+            <div
+              key={row.key}
+              className={row.groupStart ? 'pi-detail-breakdown-row pi-detail-breakdown-subtotal' : 'pi-detail-breakdown-row'}
+            >
+              <dt>{row.label}</dt>
+              <dd className={row.kind === 'amount' ? 'pi-detail-breakdown-amount' : 'pi-detail-breakdown-word'}>
+                {row.value}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    </PiCard>
+  )
+}
+
 // ── 3. Workflow and actions ───────────────────────────────────────────────────
 
 /** Somebody's own words, verbatim, on a tinted ground. */
@@ -684,6 +751,7 @@ export function PiWorkflowPanel({
   onApprove,
   onOpenOrder,
   advanceBand,
+  statusShownAbove = false,
 }: {
   panel: WorkflowPanel
   actions: SubmissionActions
@@ -748,6 +816,14 @@ export function PiWorkflowPanel({
   onOpenOrder: () => void
   /** The pending advance decision, or null. */
   advanceBand: React.ReactNode
+  /**
+   * True where the page already states who submitted the PI, when, and where
+   * Finance and management stand — the context row above the overview. The
+   * panel then keeps its controls and the notes people wrote, and drops the
+   * three restatements: the metadata line, the finance line when there is
+   * nothing to press on it, and the PI-approved line.
+   */
+  statusShownAbove?: boolean
 }) {
   const tone = TONE_STYLE[panel.tone]
   const isReviewer = actions.canRequestChanges || actions.canReject
@@ -774,9 +850,15 @@ export function PiWorkflowPanel({
   const primaryDisabled = decision ? decision.rpc === null : !approvalReady
   const primaryNote = decision ? decision.note : approvalBlocker
 
+  // What the context row already says is not said again. The Verify Finance
+  // control is never dropped: it is an action, not a restatement.
+  const showMeta = panel.meta !== null && !statusShownAbove
+  const showFinance = finance !== null && (!statusShownAbove || finance.canVerify)
+  const showPiApproved = piApprovedLine !== null && !statusShownAbove
+
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || advanceRefusal
-    || finance || approvedOrder || piApprovedLine || (isReviewer && primaryNote),
+    || showFinance || approvedOrder || showPiApproved || (isReviewer && primaryNote),
   )
 
   /**
@@ -796,7 +878,7 @@ export function PiWorkflowPanel({
    * line, a reviewer's decisions, an approved one naming its Order — still
    * renders exactly as before, because each sets hasActions or hasBody.
    */
-  if (!hasActions && !hasBody && !panel.meta && !advanceBand) return null
+  if (!hasActions && !hasBody && !showMeta && !advanceBand) return null
 
   return (
     <PiCard style={panel.closed ? undefined : { borderColor: tone.border }}>
@@ -805,7 +887,7 @@ export function PiWorkflowPanel({
           <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary }}>
             {panel.heading}
           </div>
-          {panel.meta && (
+          {showMeta && (
             <div style={{ fontSize: '11.5px', color: colors.muted, marginTop: '3px' }}>
               {panel.meta}
             </div>
@@ -910,11 +992,10 @@ export function PiWorkflowPanel({
                     holding it up. `title` carries the same sentence the panel
                     prints, so a pointer user gets it too. */}
                 <button
-                  className="boe-btn boe-btn-primary"
+                  className="boe-btn boe-btn-primary pi-approve-btn"
                   onClick={onApprove}
                   disabled={acting || primaryDisabled}
                   title={primaryNote ?? undefined}
-                  style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
                 >
                   <CheckCircle2 size={13} strokeWidth={2} />
                   {primaryLabel}
@@ -938,12 +1019,12 @@ export function PiWorkflowPanel({
           {/* Where finance stands: one compact line, never a card of its own.
               A second full-size panel for a single boolean would outweigh the
               decision it reports. */}
-          {finance && (
+          {showFinance && finance && (
             <PiFinanceLine finance={finance} acting={acting} onVerify={onVerifyFinance} />
           )}
           {/* THE PI DECISION, once it stands: one line, the same weight as the
-              finance line above it, for every viewer who can read the PI. */}
-          {piApprovedLine && (
+              finance line above it — unless the context row already says it. */}
+          {showPiApproved && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap',
               fontSize: '12px', color: TONE_STYLE.green.color, lineHeight: 1.5,
@@ -1181,10 +1262,9 @@ export function PiAdvanceBand({
       {canDecide && (
         <div className="pi-detail-workflow-actions" style={{ paddingTop: '2px' }}>
           <button
-            className="boe-btn boe-btn-primary"
+            className="boe-btn boe-btn-primary pi-approve-btn"
             onClick={onApprove}
             disabled={acting}
-            style={{ background: '#2F7A52', borderColor: '#2F7A52' }}
           >
             <ThumbsUp size={13} strokeWidth={2} />
             {APPROVE_EXCEPTION_BUTTON_LABEL}
@@ -1461,160 +1541,3 @@ export function PiSavedStrip() {
 
 /** The status label, so the page and this file cannot word a state differently. */
 export { draftStatusLabel }
-
-// ── The Order number, before there is an Order ────────────────────────────────
-//
-// THE PANEL THE PI-FIRST WORKFLOW NEEDED. The number used to exist only after
-// approval — by which time the PI's own owner may no longer replace its
-// workbook — so this takes it from the real cycle early. 20261124000000
-// removed the requirement that the revised PI print it: the reserved number
-// becomes the Order's number regardless of what the PI file itself carries,
-// so what follows says what IS true, not what to do about it.
-//
-// THE NUMBERS ARE NAMED APART. The reserved Order number and — once approved —
-// the Confirmed Order number, each under its own label from NUMBER_LABEL rather
-// than a shared "Number". Reading one as the other is exactly how a document
-// goes out with the wrong number on it.
-//
-// AND THE PI'S OWN REFERENCE IS NOT SHOWN, here or anywhere on these screens.
-// The workbook's B20 is normally the number of whatever older PI this one was
-// copied from; beside a reserved Order number it could only be read as a rival
-// answer to the same question. A PI Draft has no Order number of its own, which
-// is what this panel says when there is no reservation.
-//
-// NOT EDITABLE, BY ANYBODY, THROUGH THIS PANEL. There is no input: the number is
-// issued by the database and is immutable once issued
-// (order_submissions_protect_reserved_number). A field here would suggest
-// otherwise.
-//
-// A DRAWING RULE ONLY. reserve_order_number_for_submission() re-derives the
-// actor, re-asks the workbook-editor authority, locks the PI and re-reads its
-// state. What this decides is whether to OFFER the control, so nobody is handed
-// a button that will certainly be refused.
-
-export function PiOrderNumberPanel({
-  view,
-  confirmedNumber,
-  acting,
-  failure,
-  onReserve,
-  onCopy,
-  copied,
-}: {
-  view: ReservationView
-  confirmedNumber: string | null
-  acting: boolean
-  failure: string | null
-  onReserve: (() => void) | null
-  onCopy: (value: string) => void
-  copied: boolean
-}) {
-  // Amber used to mark 'awaiting_revised_pi' as something to act on — it no
-  // longer is (20261124000000): a held reservation needs nothing from
-  // anybody until the PI is approved, whether or not the file has since
-  // changed, so both "held" states read the same calm blue.
-  const tone =
-    view.state === 'used' ? TONE_STYLE.green
-    : view.state === 'revised_pi_uploaded' ? TONE_STYLE.blue
-    : view.state === 'awaiting_revised_pi' ? TONE_STYLE.blue
-    : TONE_STYLE.neutral
-
-  return (
-    <PiCard>
-      <PiCardHeader title={RESERVED_HEADING} />
-      <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-
-        {/* The number itself, and the one action that goes with it. Large,
-            monospaced and selectable, because it is going to be typed into a
-            spreadsheet by hand as often as it is copied. */}
-        {view.number ? (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap',
-            background: tone.bg, border: `1px solid ${tone.border}`,
-            borderRadius: '8px', padding: '12px 14px',
-          }}>
-            <Hash size={16} color={tone.color} style={{ flexShrink: 0 }} />
-            <span style={{
-              fontSize: '22px', fontWeight: 800, color: tone.color,
-              fontVariantNumeric: 'tabular-nums', letterSpacing: '0.04em', userSelect: 'all',
-            }}>
-              {view.number}
-            </span>
-            {view.canCopy && (
-              <button
-                onClick={() => onCopy(view.number as string)}
-                className="boe-btn boe-btn-ghost"
-                style={{ marginLeft: 'auto', padding: '4px 12px', fontSize: '12px', flexShrink: 0 }}
-              >
-                {copied ? 'Copied' : 'Copy'}
-              </button>
-            )}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-            {onReserve && (
-              <button
-                onClick={onReserve}
-                disabled={acting}
-                className="boe-btn boe-btn-primary"
-                style={{
-                  padding: '7px 14px', fontSize: '13px',
-                  opacity: acting ? 0.6 : 1, cursor: acting ? 'not-allowed' : 'pointer',
-                }}
-              >
-                {acting ? 'Reserving…' : RESERVE_ACTION_LABEL}
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* WHERE THIS PI STANDS, in one sentence — including the instruction,
-            which is the whole point of showing the number this early. */}
-        <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>
-          {view.standing}
-        </div>
-
-        {/* THE CONFIRMED ORDER NUMBER, once there is one, under its own label
-            and never beside the reserved one without it. Read back from the
-            Order that was created — this panel composes no number. */}
-        {confirmedNumber && (
-          <div style={{
-            borderTop: `1px solid ${colors.border}`, paddingTop: '10px', minWidth: 0,
-          }}>
-            <div style={{
-              fontSize: '10px', fontWeight: 600, color: colors.muted,
-              textTransform: 'uppercase', letterSpacing: '0.05em',
-            }}>
-              {NUMBER_LABEL.confirmed}
-            </div>
-            <div style={{
-              fontSize: '13px', fontWeight: 700, color: colors.primary,
-              fontVariantNumeric: 'tabular-nums',
-            }}>
-              {confirmedNumber}
-            </div>
-          </div>
-        )}
-
-        {/* Why the control is not offered, always said. A panel that simply
-            shows nothing leaves somebody wondering whether the feature is
-            broken or whether it is not for them. */}
-        {view.blockedReason && (
-          <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.55 }}>
-            {view.blockedReason}
-          </div>
-        )}
-
-        {failure && (
-          <div style={{
-            fontSize: '12px', color: colors.red, background: colors.redTint,
-            border: `1px solid ${colors.border}`, borderRadius: '6px',
-            padding: '8px 12px', lineHeight: 1.5,
-          }}>
-            {failure}
-          </div>
-        )}
-      </div>
-    </PiCard>
-  )
-}

@@ -898,8 +898,13 @@ describe('the commercial summary renders worded zeroes distinctly', () => {
     // where they are composed rather than inline in the JSX.
     assert.ok(detail.includes('const commercialRows = commercialBreakdownRows(buildCommercialRows('),
       'the detail page runs the same builder through the same named filter')
-    assert.ok(detail.includes('<PiCommercialSummary rows={commercialRows}'),
-      'and the breakdown renders exactly those rows')
+    // The detail page's breakdown is a card of its own now — the preview's
+    // component is untouched — and it is handed a SELECTION of exactly those
+    // rows: nothing rebuilt, nothing recomputed.
+    assert.ok(detail.includes('const breakdown = buildBreakdownView(commercialRows)'),
+      'the breakdown selects from exactly those rows')
+    assert.ok(detail.includes('<PiCommercialBreakdown view={breakdown} />'),
+      'and renders that selection')
     assert.ok(detail.includes('summaryCommercialFigures(commercialRows)'),
       'and the summary card picks its two figures out of the same array')
   })

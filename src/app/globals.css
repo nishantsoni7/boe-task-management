@@ -3307,81 +3307,6 @@ body {
 /* Comfortable but compact either side of it, and no dead gap above. */
 .pi-detail-summary-hr-foot { margin-bottom: -3px; }
 
-/* Avatar beside three lines: the name with the record's state opposite it,
-   what the name means and when the record last moved, then the workbook. */
-.pi-detail-summary-owner {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  min-width: 0;
-}
-
-/* The hairline immediately before ownership carries the auto margin, so the
-   pair travels to the bottom together rather than the rule staying put and
-   the block sliding away from it. */
-.pi-detail-summary-hr + .pi-detail-summary-owner { margin-top: 0; }
-
-.pi-detail-summary-owner-text {
-  min-width: 0;
-  flex: 1 1 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  align-items: flex-start;
-}
-
-/* Name left, state far right, on one line. */
-.pi-detail-summary-owner-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-}
-
-.pi-detail-summary-owner-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13.5px;
-  font-weight: 650;
-  color: #111318;
-  line-height: 1.25;
-}
-
-/* What the name above MEANS, and when the record last moved — one quiet line
-   rather than four elements strung into a sentence. */
-.pi-detail-summary-owner-when {
-  font-size: 11px;
-  color: #8c94a6;
-  line-height: 1.35;
-}
-
-/* ── The client's supporting line ─────────────────────────────────────────── */
-
-
-
-
-
-
-/* An absence is MUTED, never the link colour: a blue "Contact not provided"
-   offers a click on something that does not exist. */
-
-
-.pi-detail-summary-file {
-  max-width: 160px;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 2px 8px;
-  border-radius: 5px;
-  background: rgba(0, 0, 0, 0.035);
-  border: 1px solid rgba(0, 0, 0, 0.07);
-}
-
 .pi-detail-summary-file-name {
   min-width: 0;
   overflow: hidden;
@@ -3412,15 +3337,6 @@ body {
   padding: 8px 12px 9px;
   border-radius: 7px;
   background: #f7f8fa;
-}
-
-/* Right-aligned and captionless. A heading here would name what the two labels
-   under it already say. */
-.pi-detail-summary-sched-head {
-  grid-column: 1 / -1;
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 2px;
 }
 
 .pi-detail-summary-sched-cell {
@@ -3552,32 +3468,6 @@ body {
    "Payment received" across the divider. */
 .pi-detail-summary-values { align-self: start; }
 
-/* An element, not a border — and inset top and bottom, so it divides the
-   content rather than standing up as a wall the height of the surface. */
-.pi-detail-summary-payrule {
-  align-self: stretch;
-  width: 1px;
-  /* Vertical inset only. Horizontal margins on a 1px TRACK overflow it and
-     quietly steal width from both columns — which is what pulled the split
-     off its 38 / 60. The grid gap is what separates it from the content. */
-  margin: 3px 0;
-  background: rgba(0, 0, 0, 0.075);
-}
-
-/* THE PAYMENT COLUMN IS THE ONE THAT GROWS. Its reading matter stays at the
-   top; the controls take the foot; the slack lands between them. */
-.pi-detail-summary-paystate {
-  min-width: 0;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-/* Names the surface, quietly, on the same footing as "Order dates" opposite.
-   Its own line rather than a heading: it identifies the area without competing
-   with the figures inside it, and the tightening below pays for its height. */
-
 /* What the order is WORTH, at the top of the surface that also carries what
    has been paid against it — label left, figure right, which is the idiom the
    Commercial breakdown card uses for the very same two lines. As label-over-
@@ -3652,168 +3542,6 @@ body {
   white-space: nowrap;
 }
 
-/* Label left, percentage right. The percentage belongs to the amount, not to
-   the track — beside the bar it read as a caption for the track. */
-.pi-detail-summary-payhead {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-  min-width: 0;
-  line-height: 1.25;
-}
-
-.pi-detail-summary-percent {
-  font-size: 12.5px;
-  font-weight: 700;
-  color: #111318;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.pi-detail-summary-open {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  align-items: flex-start;
-  width: fit-content;
-  max-width: 100%;
-  margin: -3px -6px -1px;
-  padding: 3px 6px;
-  border: none;
-  border-radius: 6px;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-
-.pi-detail-summary-open:hover { background: rgba(0, 0, 0, 0.035); }
-
-.pi-detail-summary-open:focus-visible {
-  outline: 2px solid rgba(85, 133, 232, 0.6);
-  outline-offset: 1px;
-}
-
-/* THE STRONGEST NUMBER ON THE CARD, and deliberately stronger than the two
-   controls beneath it: the amount is the answer, the buttons are the way to
-   change it. */
-.pi-detail-summary-received {
-  font-size: 21px;
-  font-weight: 700;
-  color: #111318;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-.pi-detail-summary-oftotal {
-  font-size: 11.5px;
-  line-height: 1.3;
-  color: #4a5261;
-  font-variant-numeric: tabular-nums;
-}
-
-/* One full-width track. Verified payment only — nothing awaiting a Finance
-   decision reaches this width. See buildPaymentSummaryView. */
-.pi-detail-summary-bar {
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: #e8ebf0;
-  overflow: hidden;
-}
-
-.pi-detail-summary-bar-fill {
-  height: 100%;
-  border-radius: 999px;
-  background: #45a870;
-  transition: width 220ms ease;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .pi-detail-summary-bar-fill { transition: none; }
-}
-
-.pi-detail-summary-awaiting {
-  align-self: flex-start;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-  font-size: 11.5px;
-  line-height: 1.4;
-  color: #9a6212;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.pi-detail-summary-notice {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 9px;
-  border-radius: 6px;
-  background: rgba(69, 168, 112, 0.09);
-  border: 1px solid rgba(69, 168, 112, 0.2);
-}
-
-/* Both controls on one row beneath the bar, compact and left-aligned with the
-   figure they act on. */
-/* THE CONTROLS SIT AT THE FOOT of the surface. The auto margin takes whatever
-   room the ledger left over, so the buttons meet the bottom edge instead of
-   leaving a pool of empty ground beneath them — and where there is no room to
-   take (a phone, or an awaiting-verification line filling the surface) it
-   collapses to nothing and the padding below is the whole separation.
-
-   The padding is the FLOOR on that separation: auto can go to zero, and the
-   bar must never end up sitting on the buttons. 8px here plus the surface's
-   own 3px gap is 11px between the track and the controls at worst. */
-/* AT THE FOOT OF THE PAYMENT COLUMN — and of nothing wider. The auto margin
-   takes the surface's spare height, so the breathing room appears between the
-   progress bar and these two controls rather than as a band under both areas.
-   With no spare height (a phone, where the surface is its content) it collapses
-   and the 8px plus the column's own gap leave the usual 10-12px under the bar. */
-.pi-detail-summary-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: auto;
-  padding-top: 3px;
-}
-
-/* THE HIERARCHY STAYS, THE SHOUT GOES. Solid black against a near-white
-   surface was the loudest thing in a calm card, and it was competing with the
-   figure above it for the eye. The primary is the app's own ink at a lighter
-   weight; the secondary loses its border and keeps only a ground. */
-/* 9px of side padding, not 12: at tablet the payment column is ~218px and the
-   pair needs to sit on ONE row under the bar they act on. */
-.pi-detail-summary-add,
-.pi-detail-summary-view {
-  padding: 6px 9px;
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.pi-detail-summary-add {
-  border: none;
-  background: #2f3542;
-  color: #fff;
-}
-
-.pi-detail-summary-add:hover { background: #454c5c; }
-
-.pi-detail-summary-view {
-  border: none;
-  background: rgba(0, 0, 0, 0.045);
-  color: #4a5261;
-}
-
-.pi-detail-summary-view:hover { background: rgba(0, 0, 0, 0.075); }
-
 /* ── Where the two areas separate ─────────────────────────────────────────── */
 
 /* WEIGHT FOLLOWS CONTENT. The left column is three short groups; the finance
@@ -3830,8 +3558,6 @@ body {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px 0;
   }
-
-  .pi-detail-summary-payrule { display: none; }
 
   .pi-detail-summary-values { align-self: stretch; }
 
@@ -3855,14 +3581,6 @@ body {
      column is the ownership block itself, so the type selector matched nothing
      and the rule silently did nothing at all. */
   .pi-detail-summary-hr-foot { margin-top: auto; }
-}
-
-/* Wide enough that ownership can take its natural width and keep its second
-   line whole — it wraps mid-timestamp only when it has to share the row. */
-@media (min-width: 1180px) {
-  .pi-detail-summary-owner {
-    flex: 0 1 auto;
-  }
 }
 
 /* ── Workflow and actions ─────────────────────────────────────────────────── */
@@ -3902,6 +3620,75 @@ body {
   padding: 14px 20px;
   border-top: 1px solid rgba(0, 0, 0, 0.08);
   background: #F8F9FB;
+}
+
+/* The green approval controls — Approve PI & Create Order, Approve PI, Create
+   Confirmed Order, Approve Exception. White text and icon on green in every
+   interactive state. A disabled one turns pale green with dark-green text, so it
+   reads as unavailable without becoming unreadable (it used to keep the green
+   ground under the grey disabled text). These selectors outrank the amber
+   .boe-btn-primary rules they sit on. */
+.boe-btn-primary.pi-approve-btn {
+  background: #2F7A52;
+  color: #FFFFFF;
+  box-shadow: 0 1px 4px rgba(47, 122, 82, 0.3);
+}
+.boe-btn-primary.pi-approve-btn:hover {
+  background: #276845;
+  color: #FFFFFF;
+  box-shadow: 0 2px 8px rgba(47, 122, 82, 0.35);
+}
+.boe-btn-primary.pi-approve-btn:active {
+  background: #1F5A3A;
+  color: #FFFFFF;
+}
+.boe-btn-primary.pi-approve-btn:focus-visible {
+  outline: 2px solid #1F5A3A;
+  outline-offset: 2px;
+}
+.boe-btn-primary.pi-approve-btn:disabled {
+  background: #E3F0E8;
+  color: #1F5A3A;
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Payment status beside Management review ─────────────────────────────────
+   ONE ROW on a wide column: payment ~70%, the review decisions ~30%. Measured on
+   the column itself rather than the viewport, so the sidebar cannot squeeze the
+   review card below a readable width; below that the two stack, payment first.
+   A workflow panel with nothing to draw leaves Payment status the whole row. */
+.pi-detail-decision-row {
+  container-type: inline-size;
+  min-width: 0;
+}
+
+.pi-detail-decision-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@container (min-width: 900px) {
+  .pi-detail-decision-grid {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 3fr);
+  }
+  .pi-detail-decision-grid > :only-child {
+    grid-column: 1 / -1;
+  }
+  /* In the narrow review column the controls take the column's width, and the
+     approval control gets a line of its own, so no label is squeezed. */
+  .pi-detail-decision-grid .pi-detail-workflow-head > :not(:first-child) {
+    flex: 1 1 100%;
+  }
+  .pi-detail-decision-grid .pi-detail-workflow-actions > .boe-btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .pi-detail-decision-grid .pi-detail-workflow-actions > .pi-approve-btn {
+    flex-basis: 100%;
+  }
 }
 
 /* ── The lower information grid ───────────────────────────────────────────────
@@ -4014,6 +3801,638 @@ body {
 
 .pi-detail-timeline-item:last-child .pi-detail-timeline-body {
   padding-bottom: 0;
+}
+
+/* ── The context row ──────────────────────────────────────────────────────────
+   Reserved Order no. | Submitted for review — ONE card, two equal columns from
+   tablet width up, stacked on a phone. The divider is the second cell's own
+   edge: a top rule while stacked, a left rule side by side. */
+
+.pi-detail-context {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pi-detail-context-cell {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px 15px;
+}
+
+.pi-detail-context-cell + .pi-detail-context-cell {
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+@media (min-width: 768px) {
+  .pi-detail-context {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .pi-detail-context-cell + .pi-detail-context-cell {
+    border-top: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.07);
+  }
+}
+
+.pi-detail-context-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.pi-detail-context-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b7384;
+}
+
+.pi-detail-context-number-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+/* Large and tabular, so 0413 and 0431 cannot be confused — and selectable,
+   because it is typed into a spreadsheet as often as it is copied. */
+.pi-detail-context-number {
+  font-size: 26px;
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: 0.03em;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #4a5261;
+  cursor: pointer;
+}
+
+.pi-detail-copy:hover { background: #f4f5f7; }
+
+.pi-detail-copy:focus-visible {
+  outline: 2px solid rgba(85, 133, 232, 0.6);
+  outline-offset: 1px;
+}
+
+.pi-detail-context-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6b7384;
+}
+
+.pi-detail-context-confirmed {
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-context-absent {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #8c94a6;
+}
+
+.pi-detail-context-error {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(217, 79, 79, 0.08);
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b23b3b;
+}
+
+.pi-detail-context-who {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 10px;
+  min-width: 0;
+}
+
+.pi-detail-context-name {
+  font-size: 16px;
+  font-weight: 650;
+  color: #111318;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-context-when {
+  font-size: 12.5px;
+  color: #4a5261;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-context-lines {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pi-detail-context-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.pi-detail-context-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 50%;
+}
+
+.pi-detail-context-line-label {
+  flex-shrink: 0;
+  min-width: 54px;
+  color: #8c94a6;
+}
+
+.pi-detail-context-line-text {
+  min-width: 0;
+  color: #111318;
+  overflow-wrap: anywhere;
+}
+
+/* ── The PI overview ──────────────────────────────────────────────────────────
+   Who and when on the left, what it is worth on the right, as two balanced
+   columns once there is room; one column, in that order, below it. */
+
+.pi-detail-overview {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  padding: 16px 18px 18px;
+}
+
+@media (min-width: 1024px) {
+  .pi-detail-overview {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: stretch;
+  }
+}
+
+.pi-detail-overview-main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pi-detail-overview-file {
+  align-self: flex-start;
+  max-width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: -6px;
+  font-size: 11px;
+  color: #6b7384;
+}
+
+/* Icon, label, value — three facts on one wrapping line. */
+.pi-detail-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  min-width: 0;
+}
+
+.pi-detail-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pi-detail-meta-icon {
+  flex-shrink: 0;
+  color: #8c94a6;
+}
+
+.pi-detail-meta-label {
+  font-size: 11.5px;
+  color: #8c94a6;
+  white-space: nowrap;
+}
+
+.pi-detail-meta-value,
+.pi-detail-meta-absent {
+  margin: 0;
+  min-width: 0;
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-meta-value {
+  font-weight: 600;
+  color: #111318;
+}
+
+.pi-detail-meta-absent {
+  color: #8c94a6;
+}
+
+/* ONE soft band for both dates, and the date VALUES are what carry the weight. */
+.pi-detail-dates {
+  position: relative;
+  min-width: 0;
+  padding: 12px 14px 13px;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.pi-detail-dates-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+}
+
+.pi-detail-dates-edit {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+}
+
+.pi-detail-date {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pi-detail-date-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6b7384;
+}
+
+.pi-detail-date-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Not set is warm, never red: nothing in this system decides a PI is late. */
+.pi-detail-date-absent {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: #96702e;
+}
+
+.pi-detail-date-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8c94a6;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* THREE FIGURES THAT FILL THEIR COLUMN. The column's own width — not the
+   window's — decides whether three large figures fit side by side, so the outer
+   element is a size container and the grid inside it answers to it. Without
+   container-query support the figures simply stay stacked. */
+.pi-detail-figures {
+  container-type: inline-size;
+  min-width: 0;
+  display: flex;
+  border-radius: 9px;
+  background: #fafbfc;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pi-detail-figures-grid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pi-detail-figure {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 13px 16px;
+}
+
+.pi-detail-figure + .pi-detail-figure {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@container (min-width: 480px) {
+  .pi-detail-figures-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .pi-detail-figure + .pi-detail-figure {
+    border-top: none;
+    border-left: 1px solid rgba(0, 0, 0, 0.06);
+  }
+}
+
+.pi-detail-figure-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+}
+
+.pi-detail-figure-label {
+  font-size: 11.5px;
+  color: #6b7384;
+}
+
+.pi-detail-figure-value,
+.pi-detail-figure-absent {
+  font-size: 22px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-figure-value {
+  font-weight: 700;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-figure-absent {
+  font-weight: 600;
+  color: #8c94a6;
+}
+
+.pi-detail-figure-sub {
+  font-size: 11.5px;
+  color: #6b7384;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-figure-sub-value {
+  font-weight: 600;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-figure-sub-absent {
+  color: #8c94a6;
+}
+
+/* Billing with no declaration is a STATE, said in a chip — not a muted word
+   standing where a figure should be. */
+.pi-detail-state-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: rgba(232, 160, 48, 0.12);
+  border: 1px solid rgba(232, 160, 48, 0.35);
+  font-size: 13px;
+  font-weight: 700;
+  color: #9a6212;
+}
+
+/* ── Payment status ───────────────────────────────────────────────────────── */
+
+.pi-detail-paystatus {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 15px 18px 16px;
+}
+
+.pi-detail-paystatus-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.pi-detail-paystatus-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-detail-paystatus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.pi-detail-paystatus-figures {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 20px;
+}
+
+.pi-detail-paystatus-figure {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pi-detail-paystatus-label {
+  font-size: 11.5px;
+  color: #6b7384;
+}
+
+.pi-detail-paystatus-value {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.pi-detail-paystatus-confirmed { color: #2f7a52; }
+
+.pi-detail-paystatus-sub {
+  font-size: 11.5px;
+  color: #8c94a6;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Pending money is amber and beside the bar — never inside it. */
+.pi-detail-paystatus-pending {
+  align-self: flex-start;
+  max-width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: rgba(232, 160, 48, 0.1);
+  border: 1px solid rgba(232, 160, 48, 0.3);
+  font-size: 12px;
+  font-weight: 600;
+  color: #9a6212;
+}
+
+.pi-detail-paystatus-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: rgba(69, 168, 112, 0.09);
+  border: 1px solid rgba(69, 168, 112, 0.2);
+  font-size: 12px;
+  color: #4a5261;
+}
+
+@media (max-width: 480px) {
+  .pi-detail-paystatus-actions {
+    width: 100%;
+  }
+  .pi-detail-paystatus-actions > * {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+}
+
+/* ── The commercial breakdown ─────────────────────────────────────────────── */
+
+.pi-detail-breakdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.pi-detail-breakdown-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pi-detail-breakdown-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111318;
+}
+
+.pi-detail-breakdown-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.pi-detail-breakdown-total-label {
+  font-size: 12px;
+  color: #6b7384;
+}
+
+.pi-detail-breakdown-total-value {
+  font-size: 24px;
+  font-weight: 750;
+  line-height: 1.2;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+}
+
+.pi-detail-breakdown-total-absent {
+  font-size: 20px;
+  font-weight: 600;
+  color: #8c94a6;
+}
+
+.pi-detail-breakdown-rows {
+  margin: 0;
+  padding: 8px 18px 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pi-detail-breakdown-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+}
+
+.pi-detail-breakdown-row dt {
+  min-width: 0;
+  font-size: 12.5px;
+  color: #4a5261;
+}
+
+.pi-detail-breakdown-row dd {
+  margin: 0;
+  text-align: right;
+  font-size: 13px;
+}
+
+.pi-detail-breakdown-amount {
+  font-weight: 600;
+  color: #111318;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pi-detail-breakdown-word {
+  font-weight: 500;
+  color: #6b7384;
+}
+
+.pi-detail-breakdown-subtotal {
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.pi-detail-breakdown-subtotal dt {
+  font-weight: 600;
+  color: #111318;
 }
 
 /* ─────────────────────────────────────────────────────

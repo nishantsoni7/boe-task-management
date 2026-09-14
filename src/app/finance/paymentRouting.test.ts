@@ -9,6 +9,7 @@ import {
   isConfirmedPayment,
   isRequestStageStatus,
   canVerifyPayment,
+  isOwnPaymentDecision,
 } from './paymentRouting'
 import {
   CLASSIFIED_PAYMENT_STATUSES,
@@ -264,6 +265,37 @@ describe('a pending payment can be verified', () => {
     for (const status of REQUEST_STAGE_STATUSES) {
       assert.equal(typeof canVerifyPayment(status, true), 'boolean', status)
     }
+  })
+})
+
+describe('nobody decides a payment they recorded, unless an admin', () => {
+  test('a non-admin who recorded the payment is barred', () => {
+    assert.equal(isOwnPaymentDecision('u-1', 'u-1', false), true)
+    assert.equal(isOwnPaymentDecision('u-1', 'u-1', null), true)
+    assert.equal(isOwnPaymentDecision('u-1', 'u-1', undefined), true)
+  })
+
+  test('an admin keeps the established override', () => {
+    assert.equal(isOwnPaymentDecision('u-1', 'u-1', true), false)
+  })
+
+  test('somebody else’s payment, or an unknown submitter or viewer, is not "own"', () => {
+    assert.equal(isOwnPaymentDecision('u-1', 'u-2', false), false)
+    assert.equal(isOwnPaymentDecision(null, null, false), false)
+    assert.equal(isOwnPaymentDecision(undefined, undefined, false), false)
+    assert.equal(isOwnPaymentDecision('', '', false), false)
+  })
+
+  test('every Finance entry point into a decision asks it', () => {
+    const SOURCE = readFileSync(join(process.cwd(), 'src/app/finance/page.tsx'), 'utf8')
+    assert.ok(SOURCE.includes('&& !isOwnPaymentDecision(r.submitted_by, userId, isAdmin)'),
+      'the details modal Verify Payment control')
+    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin))"),
+      'the row click into the review dialog')
+    assert.ok(SOURCE.includes("if (caps.canApprovePayment && match.status === 'pending_approval' && !isOwnPaymentDecision(match.submitted_by, userId, isAdmin))"),
+      'a deep link into the review dialog')
+    assert.equal((SOURCE.match(/setReviewRequest\((r|match)\)/g) ?? []).length, 2,
+      'and there is no third way into the review dialog')
   })
 })
 

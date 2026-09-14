@@ -28,6 +28,8 @@ import {
   paymentModeLabel as sharedPaymentModeLabel,
   type PaymentMode,
 } from './paymentEntry'
+import { canVerifyPayment } from '@/app/finance/paymentRouting'
+import { formatInr } from '@/lib/pi/previewView'
 
 export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending_approval:    'Awaiting Verification',
@@ -253,6 +255,117 @@ export function piPaymentTermLines(summary: PiPaymentSummary | null): PiPaymentT
   if (payment !== '') lines.push({ key: 'payment_terms', label: 'Payment terms', value: payment })
   if (billing !== '') lines.push({ key: 'billing_terms', label: 'Billing terms', value: billing })
   return lines
+}
+
+// ── One payment, as the PI screen lists it ────────────────────────────────────
+//
+// FORMATS AND DECIDES WHAT TO DRAW; COMPUTES NO MONEY. The allocated amount is
+// the figure that counts against this PI. The payment's own amount is shown
+// beside it only when the two differ — the one piece of allocation context a
+// reader needs — and the two are compared as displayed strings, not subtracted.
+
+/** A stored payment date, for display. */
+export function formatPaymentDate(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+const displayMoney = (value: string | number | null | undefined): string => {
+  if (value === null || value === undefined || value === '') return '—'
+  const n = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(n) ? formatInr(n) : '—'
+}
+
+export type PiPaymentRowView = {
+  key: string
+  paymentId: string
+  requestNumber: string
+  date: string
+  mode: string
+  reference: string | null
+  /** Allocated to this PI. */
+  amount: string
+  /** The whole payment, only when it differs from the allocation. */
+  paymentAmount: string | null
+  statusLabel: string
+  statusTone: PiPaymentTone
+  /** A reversed allocation is history: shown, and visibly not counting. */
+  reversed: boolean
+  recordedBy: string | null
+  note: { heading: string; text: string; rejected: boolean } | null
+  canOpenProof: boolean
+  /**
+   * Whether Approve and Reject are DRAWN on this row: the shared Finance rule —
+   * pending_approval and the approval authority — on an allocation that still
+   * counts here. The database re-derives all of it when either is pressed.
+   */
+  canDecide: boolean
+  /**
+   * A pending payment the verifier looking at it recorded themselves. It draws
+   * no decision — a non-admin never decides their own payment, and the database
+   * refuses it — and says why instead.
+   */
+  ownPending: boolean
+}
+
+/** Shown on a pending row its own verifier recorded, in place of Approve / Reject. */
+export const OWN_PAYMENT_DECISION_NOTE =
+  'You recorded this payment, so another payment verifier must approve or reject it.'
+
+export function describePiPaymentRow(
+  row: PiPaymentSummaryRow,
+  opts: { canVerify: boolean; ownPayment?: boolean },
+): PiPaymentRowView {
+  const reversed = row.allocation_status === 'reversed'
+  const amount = displayMoney(row.allocated_amount)
+  const whole = displayMoney(row.amount)
+  const remark = (row.admin_note ?? '').trim()
+  const rejected = row.status === 'rejected'
+  return {
+    key: row.allocation_id,
+    paymentId: row.payment_id,
+    requestNumber: row.request_number ?? '—',
+    date: formatPaymentDate(row.payment_date),
+    mode: paymentModeLabel(row.payment_mode),
+    reference: (row.reference ?? '').trim() || null,
+    amount,
+    paymentAmount: whole !== amount && whole !== '—' ? whole : null,
+    statusLabel: piPaymentStatusLabel(row.status),
+    statusTone: piPaymentStatusTone(row.status),
+    reversed,
+    recordedBy: (row.entered_by ?? '').trim() || null,
+    note: remark === ''
+      ? null
+      : { heading: rejected ? 'Rejection reason' : 'Finance note', text: remark, rejected },
+    canOpenProof: row.proof_count > 0 && row.can_view_proof,
+    canDecide: !reversed && !opts.ownPayment && canVerifyPayment(row.status, opts.canVerify),
+    ownPending: !reversed && Boolean(opts.ownPayment) && canVerifyPayment(row.status, opts.canVerify),
+  }
+}
+
+/**
+ * How many rows are still with Finance, and how many of those can be decided
+ * now. COUNTS OF ROWS, never sums: the money is unverified_amount, which the
+ * database added up.
+ */
+export function countPiPaymentRows(
+  rows: readonly PiPaymentSummaryRow[],
+  /** Payments this viewer recorded, which they may not decide. */
+  ownPaymentIds?: ReadonlySet<string>,
+): {
+  awaiting: number
+  decidable: number
+} {
+  let awaiting = 0
+  let decidable = 0
+  for (const row of rows) {
+    if (row.allocation_status !== 'active') continue
+    if (isAwaitingVerification(row.status)) awaiting += 1
+    if (row.status === 'pending_approval' && !ownPaymentIds?.has(row.payment_id)) decidable += 1
+  }
+  return { awaiting, decidable }
 }
 
 // ── Who may add a payment ─────────────────────────────────────────────────────

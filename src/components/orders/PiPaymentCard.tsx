@@ -1,165 +1,140 @@
 'use client'
 
-// ── The PI payment card ───────────────────────────────────────────────────────
+// ── PI payments: the entry form, the progress bar and the details dialog ──────
 //
-// ONE card on the existing PI detail page. It shows what has been received
-// against this PI, what is still waiting on Finance, and what is still needed —
-// and offers Add Payment to the people permitted to record one.
-//
-// It deliberately does NOT redesign anything: it reuses PiCard/PiCardHeader, the
-// existing colour tokens and the existing Finance modal shell, and it sits in the
-// same lower grid as the Commercial Summary and Activity cards it is styled to
-// match. No banner, no dashboard, no chart.
+// It deliberately does NOT redesign anything outside itself: it reuses the
+// existing colour tokens and the existing Finance modal shell.
 //
 // Every figure it prints is computed in the database (pi_submission_payment_summary)
 // in numeric. This file formats; it never calculates money.
+//
+// AND IT DECIDES NOTHING. Approve and Reject are drawn on a row only when the
+// page hands this dialog a decision handler AND the shared Finance rule allows
+// the row; the handler runs the same server doors Finance uses
+// (src/lib/finance/paymentDecision.ts), which re-derive every permission.
 
-import { useRef, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import type { PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   EMPTY_PI_PAYMENT_FORM,
   PI_PAYMENT_MODES,
   PI_PAYMENT_PROOF_FAILED,
   PI_PAYMENT_RECORDED_BODY,
   canSubmitPiPayment,
-  formatMoney,
-  paymentModeLabel,
+  describePiPaymentRow,
+  OWN_PAYMENT_DECISION_NOTE,
   piPaymentErrorMessage,
-  piPaymentStatusLabel,
-  piPaymentStatusTone,
   piPaymentTermLines,
-  piPaymentTiles,
   validatePiPaymentForm,
   type PiPaymentFormState,
+  type PiPaymentRowView,
   type PiPaymentSummary,
-  type PiPaymentSummaryRow,
   type PiPaymentTone,
 } from '@/lib/finance/piPaymentView'
-import {
-  PAYMENT_POSITION_HINT,
-  PAYMENT_POSITION_LABEL,
-  PAYMENT_POSITION_TONE,
-  asPaymentPosition,
-  type PaymentPositionTone,
-} from '@/lib/orders/paymentGate'
 
 const TONE_COLOR: Record<PiPaymentTone, { fg: string; bg: string; border: string }> = {
-  amber:   { fg: colors.amber, bg: colors.amberTint, border: 'rgba(232,160,48,0.25)' },
-  blue:    { fg: colors.blue,  bg: colors.blueTint,  border: 'rgba(85,133,232,0.25)' },
-  red:     { fg: colors.red,   bg: colors.redTint,   border: 'rgba(217,79,79,0.25)' },
-  green:   { fg: colors.green, bg: colors.greenTint, border: 'rgba(69,168,112,0.25)' },
+  amber:   { fg: '#9A6212',    bg: colors.amberTint, border: 'rgba(232,160,48,0.28)' },
+  blue:    { fg: '#2F5BB7',    bg: colors.blueTint,  border: 'rgba(85,133,232,0.28)' },
+  red:     { fg: '#B23B3B',    bg: colors.redTint,   border: 'rgba(217,79,79,0.28)' },
+  green:   { fg: '#2F7A52',    bg: colors.greenTint, border: 'rgba(69,168,112,0.28)' },
   neutral: { fg: colors.tertiary, bg: colors.raised, border: colors.border },
 }
 
-function StatusChip({ status }: { status: string }) {
-  const tone = TONE_COLOR[piPaymentStatusTone(status)]
+function StatusChip({ label, tone }: { label: string; tone: PiPaymentTone }) {
+  const t = TONE_COLOR[tone]
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
       padding: '2px 8px', borderRadius: '5px', whiteSpace: 'nowrap',
       fontSize: '11px', fontWeight: 600,
-      color: tone.fg, background: tone.bg, border: `1px solid ${tone.border}`,
+      color: t.fg, background: t.bg, border: `1px solid ${t.border}`,
     }}>
-      {piPaymentStatusLabel(status)}
+      {label}
     </span>
   )
 }
 
-function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', minWidth: 0 }}>
-      <div style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>{label}</div>
-      <div style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
-        {value}
-      </div>
-      {hint && <div style={{ fontSize: '10px', color: colors.muted }}>{hint}</div>}
-    </div>
-  )
-}
+// ── The progress bar ──────────────────────────────────────────────────────────
 
-function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
-}
+/**
+ * The two shares of the PI total the bar draws. Green is confirmed money; red is
+ * EVERYTHING not yet confirmed — including money still awaiting verification,
+ * which the amber notice beside the bar names but which never counts as
+ * confirmed. Meeting the advance requirement does not turn the red neutral: an
+ * advance confirmed is not a PI paid.
+ */
+export const PAYMENT_BAR_COLORS = {
+  confirmed: colors.green,
+  unconfirmed: colors.red,
+} as const
 
-// ── One row of the payment list ───────────────────────────────────────────────
-
-function PaymentRow({ row, isMobile, onOpenProof }: {
-  row: PiPaymentSummaryRow
-  isMobile: boolean
-  onOpenProof: (paymentId: string) => void
+/**
+ * Confirmed money against the FULL PI total, as one track: a green share for what
+ * the database verified, then a red share for all the rest. At 0% the track is
+ * entirely red; at 100% it is entirely green, with no red at all. A thin tick
+ * marks the advance requirement on the same scale and changes no colour. The
+ * width arrives clamped to 0–100 and is clamped again here, so an overpaid PI
+ * fills the track and never overflows it.
+ */
+export function PiPaymentProgress({ barPercent, thresholdPercent, label }: {
+  barPercent: number
+  thresholdPercent: number | null
+  /** The accessible name: what the bar measures, with the figure. */
+  label: string
 }) {
-  const reversed = row.allocation_status === 'reversed'
-  // A reversed allocation is history: shown, but visibly not counting.
-  const dim = reversed ? 0.55 : 1
-
-  const remark = row.admin_note ?? null
-
+  const confirmed = Number.isFinite(barPercent) ? Math.max(0, Math.min(100, barPercent)) : 0
+  const showTick = thresholdPercent !== null && thresholdPercent > 0 && thresholdPercent < 100
   return (
-    <div style={{
-      padding: isMobile ? '12px 16px' : '12px 20px',
-      borderTop: `1px solid ${colors.border}`,
-      display: 'flex', flexDirection: 'column', gap: '6px',
-      opacity: dim,
-    }}>
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        gap: '10px', flexWrap: 'wrap',
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          <span style={{
-            fontSize: '14px', fontWeight: 700, color: colors.primary,
-            fontVariantNumeric: 'tabular-nums',
-          }}>
-            {formatMoney(row.allocated_amount)}
-          </span>
-          <StatusChip status={row.status} />
-          {reversed && (
-            <span style={{ fontSize: '11px', color: colors.muted }}>allocation reversed</span>
-          )}
-        </div>
-        <div style={{ fontSize: '11px', color: colors.muted, fontFamily: 'var(--font-mono)' }}>
-          {row.request_number ?? '—'}
-        </div>
-      </div>
-
-      <div style={{
-        display: 'flex', gap: '14px', flexWrap: 'wrap',
-        fontSize: '12px', color: colors.secondary,
-      }}>
-        <span>{formatDate(row.payment_date)}</span>
-        <span>{paymentModeLabel(row.payment_mode)}</span>
-        {row.reference && <span style={{ color: colors.tertiary }}>Ref {row.reference}</span>}
-        <span style={{ color: colors.muted }}>by {row.entered_by ?? '—'}</span>
-        {row.proof_count > 0 && row.can_view_proof && (
-          <button
-            type="button"
-            onClick={() => onOpenProof(row.payment_id)}
-            style={{
-              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-              fontSize: '12px', color: colors.blue, textDecoration: 'underline',
-            }}
-          >
-            Proof
-          </button>
-        )}
-      </div>
-
-      {remark && (
-        <div style={{
-          fontSize: '12px', color: row.status === 'rejected' ? colors.red : colors.secondary,
-          background: row.status === 'rejected' ? colors.redTint : colors.raised,
-          border: `1px solid ${row.status === 'rejected' ? 'rgba(217,79,79,0.2)' : colors.border}`,
-          borderRadius: '6px', padding: '6px 10px',
-        }}>
-          {row.status === 'rejected' ? 'Rejected: ' : 'Finance note: '}{remark}
-        </div>
+    <div
+      role="progressbar"
+      aria-label={label}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(confirmed)}
+      style={{
+        position: 'relative', display: 'flex', width: '100%', height: '8px', borderRadius: '999px',
+        overflow: 'hidden',
+      }}
+    >
+      {confirmed > 0 && (
+        <div
+          data-segment="confirmed"
+          style={{ width: `${confirmed}%`, flexShrink: 0, height: '100%', background: PAYMENT_BAR_COLORS.confirmed }}
+        />
+      )}
+      {confirmed < 100 && (
+        <div
+          data-segment="unconfirmed"
+          style={{ flexGrow: 1, height: '100%', background: PAYMENT_BAR_COLORS.unconfirmed }}
+        />
+      )}
+      {showTick && (
+        <span
+          aria-hidden="true"
+          style={{
+            position: 'absolute', top: 0, bottom: 0, left: `${thresholdPercent}%`,
+            width: '2px', marginLeft: '-1px', background: '#FFFFFF',
+          }}
+        />
       )}
     </div>
   )
+}
+
+/** The payment status figures a page has already built from the summary. */
+export type PiPaymentStatusFigures = {
+  confirmed: string
+  required: string
+  requiredNote: string | null
+  percent: string
+  total: string
+  barPercent: number
+  thresholdPercent: number | null
+  requirementMet: boolean
+  pendingCount: number
+  pendingAmount: string
 }
 
 // ── Add Payment ───────────────────────────────────────────────────────────────
@@ -302,130 +277,338 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
   )
 }
 
-// ── The approval position ─────────────────────────────────────────────────────
+// ── Payment details ───────────────────────────────────────────────────────────
 
-const POSITION_COLOR: Record<PaymentPositionTone, { fg: string; bg: string; border: string }> = {
-  green: { fg: '#166534', bg: colors.greenTint, border: 'rgba(69,168,112,0.28)' },
-  amber: { fg: '#9A6212', bg: colors.amberTint, border: 'rgba(232,160,48,0.28)' },
-  red:   { fg: '#991B1B', bg: colors.redTint,   border: 'rgba(217,79,79,0.28)' },
-  blue:  { fg: '#1E3A8A', bg: colors.blueTint,  border: 'rgba(85,133,232,0.28)' },
+export const PAYMENT_DETAILS_TITLE = 'Payment details'
+export const APPROVE_PAYMENT_LABEL = 'Approve'
+export const REJECT_PAYMENT_LABEL = 'Reject'
+
+/** The decision a verifier has started on one row, before confirming it. */
+type ArmedDecision = { paymentId: string; requestNumber: string; decision: PaymentDecision }
+
+const SMALL_BUTTON: React.CSSProperties = {
+  padding: '5px 11px', fontSize: '12px', fontWeight: 600, borderRadius: '6px', cursor: 'pointer',
+  whiteSpace: 'nowrap',
 }
 
-function PositionBand({ position }: { position: keyof typeof PAYMENT_POSITION_LABEL }) {
-  const tone = POSITION_COLOR[PAYMENT_POSITION_TONE[position]]
+function Figure({ label, value, tone }: { label: string; value: string; tone?: 'amber' }) {
   return (
-    <div style={{
-      margin: '0 20px 14px', padding: '9px 11px', borderRadius: '7px',
-      background: tone.bg, border: `1px solid ${tone.border}`, color: tone.fg,
-      fontSize: '12px', lineHeight: 1.45,
-    }}>
-      <strong>{PAYMENT_POSITION_LABEL[position]}</strong>
-      <span style={{ display: 'block', marginTop: '2px' }}>{PAYMENT_POSITION_HINT[position]}</span>
+    <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      <span style={{ fontSize: '11px', color: colors.muted }}>{label}</span>
+      <span style={{
+        fontSize: '16px', fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+        color: tone === 'amber' ? '#9A6212' : colors.primary,
+        overflowWrap: 'anywhere',
+      }}>
+        {value}
+      </span>
     </div>
   )
 }
 
-// ── The card ──────────────────────────────────────────────────────────────────
-
 /**
- * Everything recorded against this PI, with no card and no chrome of its own.
- *
- * WHY THIS IS A BODY RATHER THAN A CARD. It used to be a full card sitting in
- * the page, below the product table, which meant the page answered "how much has
- * been paid" twice — once in the summary at the top and again several screens
- * down. The summary at the top is now the only place that question is answered,
- * and this is what opens out of it: the same tiles, the same approval position,
- * the same agreed terms and the same rows, rendered inside the dialog.
- *
- * Nothing about the figures changed. Every one is still the database's, and this
- * file still formats and never calculates.
+ * One payment against this PI: when, how, how much, and where it stands —
+ * with Approve and Reject only where this viewer may decide it.
  */
-export function PiPaymentDetailBody({ summary, loading, isMobile, onOpenProof }: {
-  summary: PiPaymentSummary | null
-  loading: boolean
-  isMobile: boolean
+export function PiPaymentRow({
+  row, armed, note, busy, error, onOpenProof, onArm, onNote, onCancel, onConfirm,
+}: {
+  row: PiPaymentRowView
+  /** The decision started on THIS row, or null. */
+  armed: PaymentDecision | null
+  note: string
+  busy: boolean
+  error: string | null
   onOpenProof: (paymentId: string) => void
+  onArm: (decision: PaymentDecision) => void
+  onNote: (value: string) => void
+  onCancel: () => void
+  onConfirm: () => void
 }) {
-  const tiles = piPaymentTiles(summary)
-  const terms = piPaymentTermLines(summary)
-  const position = asPaymentPosition(summary?.approval_position)
-  const rows = summary?.payments ?? []
-
+  const noteId = `pi-payment-note-${row.key}`
+  const reasonMissing = armed === 'reject' && note.trim() === ''
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{
-        padding: isMobile ? '0 0 14px' : '0 0 14px',
-        display: 'grid',
-        gridTemplateColumns: isMobile ? '1fr 1fr' : 'repeat(3, minmax(0, 1fr))',
-        gap: isMobile ? '12px' : '14px',
-      }}>
-        {loading && tiles.length === 0
-          ? <div style={{ fontSize: '12px', color: colors.muted }}>Loading…</div>
-          : tiles.map(t => <Tile key={t.key} label={t.label} value={t.value} hint={t.hint} />)}
+    <li style={{
+      listStyle: 'none', padding: '12px 0', borderTop: `1px solid ${colors.border}`,
+      display: 'flex', flexDirection: 'column', gap: '5px',
+      opacity: row.reversed ? 0.55 : 1,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap' }}>
+        <div style={{ minWidth: 0, fontSize: '12.5px', color: colors.primary, fontWeight: 600 }}>
+          {row.date}
+          <span style={{ color: colors.tertiary, fontWeight: 400 }}> · {row.mode}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '14px', fontWeight: 700, color: colors.primary, fontVariantNumeric: 'tabular-nums' }}>
+            {row.amount}
+          </span>
+          <StatusChip label={row.statusLabel} tone={row.statusTone} />
+        </div>
       </div>
 
-      {/* WHERE THIS PI STANDS ON APPROVAL. The position is the DATABASE'S,
-          resolved in the same order approve_order_submission() resolves it —
-          money first, then the decision that stands in for money, then what is
-          missing. Nothing here re-derives it. */}
-      {position && (
-        <div style={{ marginBottom: '14px' }}>
-          <PositionBand position={position} />
-        </div>
-      )}
+      <div style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', fontSize: '11.5px', color: colors.tertiary }}>
+        {row.reference && <span>Ref {row.reference}</span>}
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{row.requestNumber}</span>
+        {row.recordedBy && <span>Recorded by {row.recordedBy}</span>}
+        {row.paymentAmount && <span>Part of a {row.paymentAmount} payment</span>}
+        {row.reversed && <span>Allocation reversed</span>}
+        {row.canOpenProof && (
+          <button
+            type="button"
+            onClick={() => onOpenProof(row.paymentId)}
+            style={{
+              background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              fontSize: '11.5px', color: colors.blue, textDecoration: 'underline',
+            }}
+          >
+            Proof
+          </button>
+        )}
+      </div>
 
-      {/* The agreed commercial terms, when there are any. Plain text, printed as
-          typed: this is not a schedule and nothing here parses it. */}
-      {terms.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingBottom: '14px' }}>
-          {terms.map(t => (
-            <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
-              <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
-              <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.45 }}>{t.value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {rows.length === 0 ? (
+      {row.note && (
         <div style={{
-          padding: '16px 0 4px', fontSize: '12px', color: colors.secondary,
-          borderTop: `1px solid ${colors.border}`,
+          fontSize: '12px', lineHeight: 1.45, borderRadius: '6px', padding: '6px 10px',
+          color: row.note.rejected ? '#B23B3B' : colors.secondary,
+          background: row.note.rejected ? colors.redTint : colors.raised,
+          border: `1px solid ${row.note.rejected ? 'rgba(217,79,79,0.2)' : colors.border}`,
         }}>
-          {loading ? 'Loading payments…' : 'No payment has been recorded against this PI yet.'}
-        </div>
-      ) : (
-        <div>
-          {rows.map(r => (
-            <PaymentRow key={r.allocation_id} row={r} isMobile={isMobile} onOpenProof={onOpenProof} />
-          ))}
+          {row.note.heading}: {row.note.text}
         </div>
       )}
-    </div>
+
+      {row.ownPending && (
+        <div style={{ fontSize: '12px', color: colors.tertiary, lineHeight: 1.5 }}>
+          {OWN_PAYMENT_DECISION_NOTE}
+        </div>
+      )}
+
+      {row.canDecide && armed === null && (
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', paddingTop: '2px' }}>
+          <button
+            type="button"
+            onClick={() => onArm('approve')}
+            disabled={busy}
+            style={{ ...SMALL_BUTTON, border: 'none', background: '#2F7A52', color: '#fff' }}
+          >
+            {APPROVE_PAYMENT_LABEL}
+          </button>
+          <button
+            type="button"
+            onClick={() => onArm('reject')}
+            disabled={busy}
+            style={{ ...SMALL_BUTTON, border: '1px solid rgba(217,79,79,0.35)', background: colors.base, color: colors.red }}
+          >
+            {REJECT_PAYMENT_LABEL}
+          </button>
+        </div>
+      )}
+
+      {row.canDecide && armed !== null && (
+        <div style={{
+          marginTop: '4px', padding: '10px 12px', borderRadius: '8px',
+          background: colors.raised, border: `1px solid ${colors.border}`,
+          display: 'flex', flexDirection: 'column', gap: '8px',
+        }}>
+          <label htmlFor={noteId} style={{ fontSize: '11.5px', fontWeight: 600, color: colors.secondary }}>
+            {armed === 'reject' ? 'Reason for rejecting (required)' : 'Note (optional)'}
+          </label>
+          <textarea
+            id={noteId}
+            value={note}
+            onChange={e => onNote(e.target.value)}
+            rows={2}
+            disabled={busy}
+            style={{
+              width: '100%', boxSizing: 'border-box', resize: 'vertical',
+              padding: '7px 9px', fontSize: '12.5px', fontFamily: 'inherit',
+              border: `1px solid ${colors.borderSoft}`, borderRadius: '6px', background: colors.base,
+            }}
+          />
+          {error && (
+            <div role="alert" style={{ fontSize: '12px', color: '#B23B3B' }}>{error}</div>
+          )}
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={busy}
+              style={{ ...SMALL_BUTTON, border: `1px solid ${colors.borderSoft}`, background: colors.base, color: colors.secondary }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={busy || reasonMissing}
+              style={{
+                ...SMALL_BUTTON, border: 'none', color: '#fff',
+                background: armed === 'reject' ? colors.red : '#2F7A52',
+                opacity: busy || reasonMissing ? 0.6 : 1,
+              }}
+            >
+              {busy
+                ? (armed === 'reject' ? 'Rejecting…' : 'Approving…')
+                : (armed === 'reject' ? 'Confirm rejection' : 'Confirm approval')}
+            </button>
+          </div>
+        </div>
+      )}
+    </li>
   )
 }
 
 /**
- * The same detail, in the dialog the rest of the application already uses.
+ * Every payment against this PI, in the dialog the rest of the application
+ * already uses: the same figures and bar as the page's status card, then one
+ * row per payment.
  *
- * FinanceModal, not a new drawer: it is what Add payment opens, what the Finance
- * screens open, and it already locks background scroll and closes on Escape.
+ * `onDecide` is null for anybody the page did not resolve as a payment verifier,
+ * and then no row draws a decision control at all.
  */
-export function PiPaymentDetailsModal({ summary, loading, isMobile, onOpenProof, onClose }: {
+export function PiPaymentDetailsModal({
+  summary, status, loading, onOpenProof, onClose, canVerify, onDecide, ownPaymentIds,
+}: {
   summary: PiPaymentSummary | null
+  /** The page's own status figures, so the dialog and the card cannot disagree. */
+  status: PiPaymentStatusFigures | null
   loading: boolean
-  isMobile: boolean
   onOpenProof: (paymentId: string) => void
   onClose: () => void
+  /** finance.approve with Finance module entry, as the page resolved it. */
+  canVerify: boolean
+  /** Runs the decision and refreshes the summary. Resolves to an error sentence, or null. */
+  onDecide: ((paymentId: string, decision: PaymentDecision, note: string) => Promise<string | null>) | null
+  /** Payments this viewer recorded: they draw no decision, whatever the capability. */
+  ownPaymentIds?: ReadonlySet<string>
 }) {
+  const [armed, setArmed] = useState<ArmedDecision | null>(null)
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  // State updates are async; this is not. Two clicks in the same tick cannot
+  // both send a decision.
+  const busyRef = useRef(false)
+
+  const decisionsAllowed = canVerify && onDecide !== null
+  const rows = (summary?.payments ?? []).map(row => describePiPaymentRow(row, {
+    canVerify: decisionsAllowed,
+    ownPayment: ownPaymentIds?.has(row.payment_id) ?? false,
+  }))
+  const terms = piPaymentTermLines(summary)
+
+  const close = useCallback(() => {
+    if (busyRef.current) return
+    onClose()
+  }, [onClose])
+
+  const arm = (row: PiPaymentRowView, decision: PaymentDecision) => {
+    if (busyRef.current) return
+    setArmed({ paymentId: row.paymentId, requestNumber: row.requestNumber, decision })
+    setNote('')
+    setError(null)
+    setNotice(null)
+  }
+
+  const confirm = async () => {
+    if (!armed || !onDecide || busyRef.current) return
+    if (armed.decision === 'reject' && note.trim() === '') return
+    busyRef.current = true
+    setBusy(true)
+    setError(null)
+    try {
+      const failure = await onDecide(armed.paymentId, armed.decision, note)
+      if (failure) { setError(failure); return }
+      setNotice(`${armed.requestNumber} ${armed.decision === 'approve' ? 'approved' : 'rejected'}. Payment status updated.`)
+      setArmed(null)
+      setNote('')
+    } finally {
+      busyRef.current = false
+      setBusy(false)
+    }
+  }
+
   return (
-    <FinanceModal title="Payments" onClose={onClose} width="620px">
-      <PiPaymentDetailBody
-        summary={summary}
-        loading={loading}
-        isMobile={isMobile}
-        onOpenProof={onOpenProof}
-      />
+    <FinanceModal
+      title={PAYMENT_DETAILS_TITLE}
+      onClose={close}
+      width="640px"
+      // A typed reason is unsaved input: a backdrop click must not discard it.
+      closeOnBackdropClick={armed === null}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {status && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px' }}>
+              <Figure label="Confirmed" value={status.confirmed} />
+              <Figure
+                label="Pending verification"
+                value={status.pendingCount > 0 ? status.pendingAmount : '—'}
+                tone={status.pendingCount > 0 ? 'amber' : undefined}
+              />
+              <Figure label="PI Total" value={status.total} />
+            </div>
+            <PiPaymentProgress
+              barPercent={status.barPercent}
+              thresholdPercent={status.thresholdPercent}
+              label={`Confirmed payment: ${status.percent} of the PI total`}
+            />
+            <div style={{ fontSize: '11.5px', color: colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>
+              {status.percent} confirmed of {status.total}
+            </div>
+          </div>
+        )}
+
+        {notice && (
+          <div role="status" style={{
+            fontSize: '12px', color: '#2F7A52', background: colors.greenTint,
+            border: '1px solid rgba(69,168,112,0.25)', borderRadius: '6px', padding: '8px 10px',
+          }}>
+            {notice}
+          </div>
+        )}
+
+        {rows.length === 0 ? (
+          <div style={{ padding: '14px 0 4px', fontSize: '12px', color: colors.secondary, borderTop: `1px solid ${colors.border}` }}>
+            {loading ? 'Loading payments…' : 'No payment has been recorded against this PI yet.'}
+          </div>
+        ) : (
+          <ul style={{ margin: 0, padding: 0 }}>
+            {rows.map(row => {
+              const mine = armed !== null && armed.paymentId === row.paymentId
+              return (
+                <PiPaymentRow
+                  key={row.key}
+                  row={row}
+                  armed={mine ? armed.decision : null}
+                  note={mine ? note : ''}
+                  busy={busy}
+                  error={mine ? error : null}
+                  onOpenProof={onOpenProof}
+                  onArm={decision => arm(row, decision)}
+                  onNote={setNote}
+                  onCancel={() => { if (!busyRef.current) { setArmed(null); setError(null) } }}
+                  onConfirm={() => { void confirm() }}
+                />
+              )
+            })}
+          </ul>
+        )}
+
+        {/* The agreed commercial terms, when there are any. Plain text, printed
+            as typed: this is not a schedule and nothing here parses it. */}
+        {terms.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '10px', borderTop: `1px solid ${colors.border}` }}>
+            {terms.map(t => (
+              <div key={t.key} style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+                <div style={{ fontSize: '11px', color: colors.muted }}>{t.label}</div>
+                <div style={{ fontSize: '12.5px', color: colors.secondary, lineHeight: 1.45 }}>{t.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </FinanceModal>
   )
 }

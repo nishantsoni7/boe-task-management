@@ -50,72 +50,12 @@ import {
   readBillingPercentage,
 } from '@/lib/orders/billingPercentage'
 import { formatInr, type PiAmountRow } from '@/lib/pi/previewView'
+import { SALESPERSON_LABEL } from '@/lib/orders/orderConfirmation'
 
 // ── Tones ─────────────────────────────────────────────────────────────────────
 
 /** The restrained palette this page spends state colour from. */
 export type PiDetailTone = 'neutral' | 'blue' | 'amber' | 'red' | 'green'
-
-// ── 1. Page identity ──────────────────────────────────────────────────────────
-
-/**
- * The one metadata line under the client name.
- *
- * SHORT FACTS ONLY, and only the ones a record actually carries. A block that
- * would read "Created by —" is not printed at all: a labelled hole is worse than
- * the absence it reports, and this line has no labels to hang one on.
- *
- * The WORKBOOK FILENAME is deliberately not in here. It is the one fact that can
- * be sixty characters long, and it gets its own quiet file treatment beside the
- * line rather than being allowed to push everything else onto a second row.
- */
-export type PiOwnership = {
-  /** Whose PI this is, for the avatar and the name. Null when nobody is named. */
-  name: string | null
-  /** "Submitted 03 Aug 2026, 09:30 AM" — already formatted by the caller. */
-  when: string
-}
-
-/**
- * WHO THIS PI BELONGS TO, as one group rather than a strip of loose facts.
- *
- * It used to be a dot-separated line above the card — "Submitted … by R. Sharma
- * · PI by R. Sharma" — which printed the same person twice on the common PI and
- * left the card's own identity band with only the client in it. The name, the
- * timestamp and the status now sit together inside the card, beside the client
- * they belong next to.
- *
- * THE NAME IS THE DOCUMENT'S OWN AUTHOR where the PI named one — that is what
- * "PI created by" means, and it is a fact about the document rather than about
- * the record's progress. The submitter is the fallback, because a PI that named
- * nobody was still put there by somebody.
- *
- * AND IT IS NEVER SAID TWICE. When the submitter IS the named creator — which is
- * the ordinary case — the timestamp line drops the "by …" it would otherwise
- * carry, because the avatar beside it already answers who.
- */
-export function buildOwnership(input: {
-  /** order_submissions.source_created_by — whoever the PI document itself named. */
-  documentAuthor: string | null
-  /** Resolved display name of the person who submitted it, when it was. */
-  submitterName: string | null
-  /** Already formatted. This module does no date work. */
-  submittedAt: string | null
-  savedAt: string
-}): PiOwnership {
-  const name = input.documentAuthor ?? input.submitterName ?? null
-
-  if (!input.submittedAt) return { name, when: `Saved ${input.savedAt}` }
-
-  const submitter = input.submitterName
-  const attribute = submitter !== null && submitter !== name
-  return {
-    name,
-    when: attribute
-      ? `Submitted ${input.submittedAt} by ${submitter}`
-      : `Submitted ${input.submittedAt}`,
-  }
-}
 
 // ── 2. Order overview ─────────────────────────────────────────────────────────
 
@@ -1022,46 +962,240 @@ export function buildDateSummary(input: {
   ]
 }
 
-export type PaymentSummaryView = {
-  /** The verified figure alone, for the strong line. */
-  received: string
-  /** "₹0 of ₹8,76,563" — the same verified figure against the order's worth. */
-  ofTotal: string
-  /** "0%" — verified only. Awaiting verification is deliberately excluded. */
+// ── The payment status card ───────────────────────────────────────────────────
+
+export const PAYMENT_STATUS_TITLE = 'Payment status'
+
+export const PAYMENT_STATUS_LABEL = {
+  confirmed: 'Confirmed',
+  percent: 'Confirmed %',
+} as const
+
+/** A percentage as a bar width: a pixel quantity, clamped, never shown as a figure. */
+export function barWidth(value: number | null | undefined): number {
+  if (value === null || value === undefined || !Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+export type PaymentStatusView = {
+  /** Verified money, formatted. Awaiting verification is never in it. */
+  confirmed: string
+  /**
+   * The standard requirement in rupees, or an em dash when there is none. Kept
+   * on the view, but NOT drawn on the Payment status card — the requirement
+   * shows there only as the bar's tick.
+   */
+  required: string
+  /** "40% of ₹8,76,563", or null when either half is unknown. */
+  requiredNote: string | null
+  /** The database's verified percentage of the PI total, formatted. */
   percent: string
-  /** 0–100, for the bar's width. A pixel quantity, never shown as a figure. */
+  /** The PI total the percentage is measured against. */
+  total: string
+  /** 0–100: the confirmed share of the bar. */
   barPercent: number
-  /** How many rows Finance has not decided yet, for the one-line note. */
-  awaitingCount: number
+  /** 0–100: where the requirement sits on the same bar, or null. */
+  thresholdPercent: number | null
+  /**
+   * meets_standard, as the database decided it. It does NOT colour the bar: the
+   * unconfirmed share stays red until the PI is confirmed in full.
+   */
+  requirementMet: boolean
+  /** Rows Finance has not decided (pending or needs clarification). A count of
+   *  rows, not a sum. */
+  pendingCount: number
+  /** unverified_amount, formatted — the database's sum of those rows. */
+  pendingAmount: string
 }
 
 /**
- * The compact payment block: what arrived, against what, and how far that is.
+ * The payment position, as figures and a bar.
  *
- * VERIFIED ONLY, everywhere. `verified_amount` and `verified_percent` are the
- * database's, computed against the same grand total shown beside them, and a
- * payment Finance has not decided contributes to NEITHER. It is not hidden —
- * the count below sends the reader into the details, where the row and its
- * status are — but it may not move a bar that reads as money in hand.
+ * NOT ONE FIGURE IS COMPUTED HERE. Every amount and both percentages were decided
+ * in numeric by pi_submission_payment_summary() and arrive already formatted;
+ * this arranges them and clamps two bar widths. Money awaiting verification is
+ * reported beside the bar and never moves it.
  */
-export function buildPaymentSummaryView(input: {
-  verifiedAmount: string
-  grandTotal: string
+export function buildPaymentStatusView(input: {
+  confirmed: string
+  required: string | null
+  total: string
+  /** "40%" — the standard percentage, formatted. */
+  standardPercent: string | null
+  standardPercentValue: number | null
   verifiedPercent: string
-  /** The raw percentage, for the bar only. */
-  percentValue: number | null
-  awaitingCount: number
-}): PaymentSummaryView {
-  const raw = input.percentValue
-  const barPercent = raw === null || !Number.isFinite(raw)
-    ? 0
-    : Math.max(0, Math.min(100, raw))
+  verifiedPercentValue: number | null
+  meetsStandard: boolean | null | undefined
+  pendingCount: number
+  pendingAmount: string
+}): PaymentStatusView {
+  const required = input.required ?? '—'
+  return {
+    confirmed: input.confirmed,
+    required,
+    requiredNote: input.required !== null && input.standardPercent !== null
+      ? `${input.standardPercent} of ${input.total}`
+      : null,
+    percent: input.verifiedPercent,
+    total: input.total,
+    barPercent: barWidth(input.verifiedPercentValue),
+    thresholdPercent: input.standardPercentValue === null ? null : barWidth(input.standardPercentValue),
+    requirementMet: input.meetsStandard === true,
+    pendingCount: Math.max(0, input.pendingCount),
+    pendingAmount: input.pendingAmount,
+  }
+}
+
+/** "2 payments pending verification · ₹1,00,000", or null when nothing waits. */
+export function describePendingPayments(view: PaymentStatusView): string | null {
+  if (view.pendingCount <= 0) return null
+  const noun = view.pendingCount === 1 ? 'payment' : 'payments'
+  return `${view.pendingCount} ${noun} pending verification · ${view.pendingAmount}`
+}
+
+// ── The context row: the reserved number, and where review stands ─────────────
+
+export const RESERVED_ORDER_LABEL = 'Reserved Order no.'
+export const NOT_SUBMITTED_TEXT = 'Not submitted yet'
+
+export type ContextLine = {
+  key: 'review' | 'finance'
+  label: string
+  text: string
+  tone: PiDetailTone
+}
+
+export type SubmissionContext = {
+  heading: string
+  /** "Nishant Soni", or null when nobody has submitted it. */
+  submittedBy: string | null
+  /** Already formatted, or null. */
+  submittedAt: string | null
+  lines: ContextLine[]
+}
+
+/**
+ * The "Submitted for review" half of the context row.
+ *
+ * One status line for management review and — once the question exists — one
+ * for Finance's check of the PI figures. Every sentence comes from the record's
+ * own state or from a helper that already words it; nothing here decides who
+ * may act on either.
+ */
+export function buildSubmissionContext(input: {
+  status: string
+  submitterName: string | null
+  submittedAt: string | null
+  finance: { verified: boolean; text: string } | null
+  /** "PI approved by X · date", when a current PI decision stands. */
+  piApprovedLine: string | null
+  /** Already formatted "Rejected by X · date", when the PI was rejected. */
+  rejectedLine: string | null
+  hasOrder: boolean
+}): SubmissionContext {
+  const review = ((): ContextLine => {
+    const line = (text: string, tone: PiDetailTone): ContextLine =>
+      ({ key: 'review', label: 'Review', text, tone })
+    switch (input.status) {
+      case 'draft':         return line('Draft — not yet with management', 'neutral')
+      case 'needs_changes': return line('Returned for changes', 'amber')
+      case 'rejected':      return line(input.rejectedLine ?? 'Rejected', 'red')
+      case 'approved':      return line(input.hasOrder ? 'Approved · Order created' : 'Approved', 'green')
+      case 'submitted':     return input.piApprovedLine
+        ? line(input.piApprovedLine, 'green')
+        : line('Awaiting management review', 'blue')
+      default:              return line(draftStatusLabel(input.status), 'neutral')
+    }
+  })()
+
+  const lines: ContextLine[] = [review]
+  if (input.finance) {
+    lines.push({
+      key: 'finance',
+      label: 'Finance',
+      text: input.finance.text,
+      tone: input.finance.verified ? 'green' : 'amber',
+    })
+  }
 
   return {
-    received: input.verifiedAmount,
-    ofTotal: `${input.verifiedAmount} of ${input.grandTotal}`,
-    percent: input.verifiedPercent,
-    barPercent,
-    awaitingCount: input.awaitingCount,
+    heading: WORKFLOW_HEADING.submitted,
+    submittedBy: input.submittedAt ? input.submitterName : null,
+    submittedAt: input.submittedAt,
+    lines,
   }
+}
+
+// ── The overview's metadata strip ─────────────────────────────────────────────
+
+export const SUBMITTED_BY_LABEL = 'PI submitted by'
+export const CREATED_DATE_LABEL = 'Created date'
+
+export type OverviewMetaItem = {
+  key: 'salesperson' | 'submittedBy' | 'created'
+  label: string
+  /** null prints `absent`, quietly. */
+  value: string | null
+  absent: string
+}
+
+/**
+ * Salesperson, PI submitted by, Created date — each said once.
+ *
+ * THE SALESPERSON IS THE NAME THE PI ITSELF CARRIES (source_created_by), the
+ * person who prepared the document. It is never filled from the submitter: that
+ * is the second item, and borrowing it would print one person under two labels.
+ */
+export function buildOverviewMeta(input: {
+  salesperson: string | null
+  submitterName: string | null
+  /** Already formatted. */
+  createdOn: string | null
+}): OverviewMetaItem[] {
+  const clean = (value: string | null) => {
+    const trimmed = (value ?? '').trim()
+    return trimmed === '' || trimmed === '—' ? null : trimmed
+  }
+  return [
+    { key: 'salesperson', label: SALESPERSON_LABEL, value: clean(input.salesperson), absent: 'Not named' },
+    { key: 'submittedBy', label: SUBMITTED_BY_LABEL, value: clean(input.submitterName), absent: NOT_SUBMITTED_TEXT },
+    { key: 'created', label: CREATED_DATE_LABEL, value: clean(input.createdOn), absent: NOT_PROVIDED },
+  ]
+}
+
+// ── The billing metric ────────────────────────────────────────────────────────
+
+/** Said as a state, not as a muted word in a figure's place. */
+export const BILLING_NOT_DECLARED_LABEL = 'Not declared'
+
+// ── The commercial breakdown ──────────────────────────────────────────────────
+
+export type BreakdownView = {
+  /** The PI total, for the large figure. Null when the builder produced none. */
+  total: PiAmountRow | null
+  /** The lines that lead to it, meaningless ones left out. */
+  rows: PiAmountRow[]
+}
+
+/**
+ * The breakdown, as a reader scans it: the PI total first, then only the lines
+ * that say something.
+ *
+ * SELECTION AND WORDING ONLY. The rows are the shared builder's, already
+ * formatted; nothing is recomputed. What is dropped is what carries no
+ * information here — a line the PI never stated, one it marked not applicable,
+ * a zero discount, and a subtotal identical to the product value above it
+ * (compared as the displayed strings, not by arithmetic) — plus the advance row
+ * and the total itself, which leads the card instead of closing it.
+ */
+export function buildBreakdownView(rows: readonly PiAmountRow[]): BreakdownView {
+  const total = rows.find(row => row.key === 'grandTotal') ?? null
+  const gross = rows.find(row => row.key === 'gross')?.value ?? null
+  const shown = rows
+    .filter(row => row.key !== 'grandTotal' && row.key !== ADVANCE_ROW_KEY)
+    .filter(row => row.kind !== 'missing' && row.kind !== 'notApplicable')
+    .filter(row => !(row.key === 'discount' && row.value === formatInr(0)))
+    .filter(row => !(row.key === 'subtotal' && gross !== null && row.value === gross))
+    .map(row => row.key === 'gross' ? { ...row, label: SUMMARY_FIGURE_LABEL.gross } : row)
+  return { total, rows: shown }
 }

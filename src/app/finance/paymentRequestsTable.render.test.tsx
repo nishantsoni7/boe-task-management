@@ -182,7 +182,8 @@ describe('2. Pending is stated once, in Status', () => {
     // Approval authority still gates the row-click review router and the modal
     // it opens. What is gone is a table taking it to tint a cell.
     assert.equal(SOURCE.includes('canApprove={caps.canApprovePayment}'), false)
-    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval')"))
+    // ...and never routes a non-admin to review a payment they recorded.
+    assert.ok(SOURCE.includes("if (caps.canApprovePayment && r.status === 'pending_approval' && !isOwnPaymentDecision(r.submitted_by, userId, isAdmin))"))
     assert.ok(SOURCE.includes('mayApprovePayments={caps.canApprovePayment}'))
   })
 })

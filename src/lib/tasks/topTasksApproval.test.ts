@@ -192,6 +192,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // minop_webhook_deliveries auth_method CHECK by one value. It reaches
     // nothing asserted here.
     '20261210000000_minop_webhook_url_path_token_auth.sql',
+    // Payment decisions belong to payment verifiers: one BEFORE INSERT OR
+    // UPDATE trigger on finance_payment_requests and one new RPC,
+    // reject_finance_payment_request(). It changes no column, policy or
+    // existing function, so it reaches nothing asserted here.
+    '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
