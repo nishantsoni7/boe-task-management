@@ -1,29 +1,31 @@
 // ── Deciding one pending payment from a PI Draft ──────────────────────────────
 //
-// THE SAME TWO DOORS FINANCE USES, AND NO THIRD.
+// TWO SERVER-GATED DOORS, AND NO DIRECT STATUS WRITE.
 //
 //   approve  approve_finance_payment_request(p_request_id, p_admin_note), the
 //            one approval RPC. It re-derives finance.approve (with Finance module
 //            entry), locks the row, refuses anything that is not
 //            pending_approval, links an Order where one is named and applies the
 //            payment's allocation intents — all inside one transaction.
-//   reject   a direct UPDATE of status, admin_note and updated_at: exactly the
-//            write Finance's review dialog makes. RLS decides who may make it —
-//            finance_payment_requests_approver_decide admits a PENDING row only
-//            for finance.approve, and only into rejected / needs_clarification —
-//            and finance_payment_requests_guard_pending_decision refuses every
-//            other column.
+//   reject   reject_finance_payment_request(p_request_id, p_reason)
+//            (20261211000000). The SAME authority as approval, a required
+//            reason, the row locked, pending only, status and reason written in
+//            one statement. This screen never writes the status column itself:
+//            a direct UPDATE is an RLS question, and permissive UPDATE policies
+//            OR their WITH CHECK clauses, which is how a submitter was once able
+//            to reject their own payment.
 //
-// Both writes fire finance_payment_requests_log_activity, so a decision taken on
-// a PI Draft leaves the same activity entry as one taken in Finance, and the
-// notifications below are Finance's own, with the same payloads.
+// Both RPCs fire finance_payment_requests_log_activity under the caller's own
+// auth.uid(), so a decision taken on a PI Draft leaves the same activity entry,
+// with the verifier as actor, as one taken in Finance; and the notifications
+// below are Finance's own, with the same payloads.
 //
 // WHAT IS DIFFERENT, AND WHY. Finance holds the whole payment row in memory; a PI
 // Draft holds only its allocation summary. So the row is read once first — for
 // the notification context, and to refuse a decision on a payment that is no
-// longer pending before anything is written. And the rejection asks for a row
-// COUNT, because an UPDATE that RLS filters out succeeds with zero rows, and
-// this screen must not report a rejection that did not happen.
+// longer pending before anything is written. The RPCs re-check pending under a
+// row lock, so a payment decided elsewhere in the meantime is refused, not
+// decided twice.
 //
 // NOTHING HERE DECIDES WHO MAY ACT. canVerifyPayment() decides what is drawn;
 // the database decides what is allowed. A raw database message never leaves
@@ -81,6 +83,7 @@ export function describePaymentDecisionError(
   if (code === '42501' || /row-level security|permission denied/i.test(message)) {
     return PAYMENT_DECISION_MESSAGE.notPermitted
   }
+  if (message.includes('PAYMENT_REJECTION_REASON_REQUIRED')) return PAYMENT_DECISION_MESSAGE.reasonRequired
   if (/Only a pending payment request/i.test(message)) return PAYMENT_DECISION_MESSAGE.notPending
   if (message.includes('PAYMENT_TARGET_CHANGED')) return PAYMENT_DECISION_MESSAGE.targetChanged
   if (/ORDER_REQUEST_|no linked order/i.test(message)) return PAYMENT_DECISION_MESSAGE.needsFinance
@@ -129,19 +132,11 @@ export async function decidePayment(
     return { ok: true, decision: 'approve', requestNumber: r.request_number }
   }
 
-  const { count, error: updateError } = await client
-    .from('finance_payment_requests')
-    .update({
-      admin_note: note,
-      status:     'rejected',
-      updated_at: new Date().toISOString(),
-    }, { count: 'exact' })
-    .eq('id', r.id)
-    // Only the pending decision this screen offered. A payment decided elsewhere
-    // in the meantime is left exactly as that decision left it.
-    .eq('status', 'pending_approval')
-  if (updateError) return { ok: false, message: describePaymentDecisionError(updateError) }
-  if (!count) return { ok: false, message: PAYMENT_DECISION_MESSAGE.notPending }
+  const { error: rejectError } = await client.rpc('reject_finance_payment_request', {
+    p_request_id: r.id,
+    p_reason:     note,
+  })
+  if (rejectError) return { ok: false, message: describePaymentDecisionError(rejectError) }
 
   void notifiers.notifyFinance({
     event: 'finance_rejected',

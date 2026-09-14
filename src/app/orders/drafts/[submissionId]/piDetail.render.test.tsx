@@ -2740,11 +2740,11 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
 
   test('payment decisions reach the database only through Finance’s own doors', () => {
     // The page writes no payment and names no payment table or RPC. Approve and
-    // Reject run through the one shared helper, which makes exactly the calls
-    // Finance's review dialog makes — see src/lib/finance/paymentDecision.test.ts.
+    // Reject run through the one shared helper, which calls only the two
+    // server-gated decision RPCs — see src/lib/finance/paymentDecision.test.ts.
     assert.ok(page.includes("import { decidePayment, type PaymentDecision } from '@/lib/finance/paymentDecision'"))
     assert.equal((page.match(/decidePayment\(/g) ?? []).length, 1, 'one call site')
-    assert.ok(!/approve_finance_payment_request|finance_payment_requests/.test(page))
+    assert.ok(!/approve_finance_payment_request|reject_finance_payment_request|finance_payment_requests/.test(page))
   })
 
   test('only the Finance approval authority draws a payment decision', () => {

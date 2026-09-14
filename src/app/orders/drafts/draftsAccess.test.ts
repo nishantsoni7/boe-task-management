@@ -488,10 +488,9 @@ describe('the detail page renders only what it fetched', () => {
       // src/lib/finance/paymentProof.ts — storage upload + metadata row
       'attachPaymentProof',
       // src/lib/finance/paymentDecision.ts — approve or reject ONE pending
-      // payment through Finance's own doors: approve_finance_payment_request, or
-      // the three-column status write the approver-decide policy admits. Drawn
-      // only for finance.approve; pinned call-for-call to Finance's review
-      // dialog in paymentDecision.test.ts.
+      // payment through the two server-gated RPCs, approve_finance_payment_request
+      // and reject_finance_payment_request, both requiring finance.approve. Drawn
+      // only for finance.approve; pinned call-for-call in paymentDecision.test.ts.
       'decidePayment',
     ] as const
 

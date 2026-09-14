@@ -317,6 +317,11 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // minop_webhook_deliveries auth_method CHECK by one value. It reaches
       // nothing asserted here.
       '20261210000000_minop_webhook_url_path_token_auth.sql',
+      // Payment decisions belong to payment verifiers: one BEFORE INSERT OR
+      // UPDATE trigger on finance_payment_requests and one new RPC,
+      // reject_finance_payment_request(). It changes no column, policy or
+      // existing function, so it reaches nothing asserted here.
+      '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
     ],'every migration at or after this one is accounted for')
   })
 })
