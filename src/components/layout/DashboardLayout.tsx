@@ -22,6 +22,7 @@ import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
+import { shouldShowTaskCreateActions } from '@/lib/tasks/taskCreateActions'
 
 // ─── DashboardLayout ──────────────────────────────────────────────────────────
 
@@ -30,6 +31,8 @@ type DashboardLayoutProps = {
   title: React.ReactNode
   subtitle?: string
   actions?: React.ReactNode
+  /** Withholds Self Task / Delegate Task where the route alone cannot tell — a quotation's `/tasks/[id]`. */
+  hideTaskCreateActions?: boolean
   onSignOut: () => void
   children: React.ReactNode
 }
@@ -39,6 +42,7 @@ export function DashboardLayout({
   title,
   subtitle,
   actions,
+  hideTaskCreateActions = false,
   onSignOut,
   children,
 }: DashboardLayoutProps) {
@@ -93,6 +97,7 @@ export function DashboardLayout({
   const { viewAsUserId } = useViewAs()
 
   const inViewMode  = !!viewAsUserId
+  const showTaskCreateActions = shouldShowTaskCreateActions({ pathname, inViewMode, hideTaskCreateActions })
 
   // System Adoption: record that Task Management was opened. Fires at most once
   // per browser session, ignores non-Task-Management routes, and cannot delay or
@@ -420,8 +425,9 @@ export function DashboardLayout({
                 creation controls. Both are plain navigations to the EXISTING
                 creation routes — this component holds no task logic.
                 Hidden while impersonating, exactly like the sidebar group they
-                replace: View As is read-only. */}
-            {!inViewMode && (
+                replace: View As is read-only. Also absent on Notifications and
+                every Quotation screen (src/lib/tasks/taskCreateActions.ts). */}
+            {showTaskCreateActions && (
               <>
                 <button
                   type="button"

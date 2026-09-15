@@ -1292,6 +1292,7 @@ export default function TaskDetailPage() {
           </span>
         </div>
       }
+      hideTaskCreateActions={isQuotation}
       onSignOut={handleLogout}
     >
 
