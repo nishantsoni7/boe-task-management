@@ -75,7 +75,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace
 
 test('DashboardLayout renders the buttons only through the shared decision', () => {
   const src = read('src/components/layout/DashboardLayout.tsx')
-  assert.match(src, /shouldShowTaskCreateActions\(\{[^}]*pathname[^}]*inViewMode[^}]*hideTaskCreateActions/s)
+  assert.match(src, /shouldShowTaskCreateActions\(\{[^}]*pathname[^}]*inViewMode[^}]*hideTaskCreateActions/)
   assert.match(src, /\{showTaskCreateActions && \(/)
   assert.doesNotMatch(src, /\{!inViewMode && \(\s*<>\s*<button[^>]*>\s*[^]*?Self Task/)
 })
