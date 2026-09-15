@@ -5,7 +5,7 @@ import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 import { isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
-import { chunkIds, selectVisibleTaskNotificationIds } from '@/lib/notifications/taskNotificationPolicy'
+import { mutateInChunks, selectVisibleTaskNotificationIds } from '@/lib/notifications/taskNotificationPolicy'
 
 /** Ceiling on an explicit id list, matching /api/notifications/delete-selected. */
 const MAX_IDS = 200
@@ -136,20 +136,25 @@ export async function POST(req: NextRequest) {
         console.error('[notifications/mark-read] visible set failed:', visible.error.message)
         return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
       }
-      let updatedCount = 0
-      for (const chunk of chunkIds(visible.ids)) {
-        const { data, error } = await supabase
-          .from('notifications')
-          .update(update)
-          .eq('user_id', user.id)
-          .eq('is_read', false)
-          .in('id', chunk)
-          .select('id')
-        if (error) {
-          console.error('[notifications/mark-read] update failed:', error.message)
-          return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
-        }
-        updatedCount += data?.length ?? 0
+      // A few chunks at a time. A failure part-way returns what was already
+      // marked, so the client re-reads instead of un-reading rows the server has
+      // flipped (mutateInChunks). Retrying is safe: the update filters is_read.
+      const applied = await mutateInChunks<{ id: string }>(visible.ids, chunk => supabase
+        .from('notifications')
+        .update(update)
+        .eq('user_id', user.id)
+        .eq('is_read', false)
+        .in('id', chunk)
+        .select('id'))
+      const updatedCount = applied.rows.length
+      if (applied.error) {
+        console.error('[notifications/mark-read] update failed:', applied.error.message)
+        return NextResponse.json(applied.completedChunks > 0
+          ? {
+            error: 'Some notifications could not be marked as read. Please try again.',
+            partial: true, updatedCount, unreadAffected: updatedCount,
+          }
+          : { error: 'Could not update the notification' }, { status: 500 })
       }
       return NextResponse.json({ success: true, updatedCount, unreadAffected: updatedCount })
     }

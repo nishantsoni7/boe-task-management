@@ -9,7 +9,7 @@ import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pa
 import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
 import {
   APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
-  chunkIds, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
+  mutateInChunks, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from '@/lib/notifications/taskNotificationPolicy'
 
 /**
@@ -298,6 +298,9 @@ export async function DELETE(req: NextRequest) {
   // success — an accurate idempotent result, not a failure.
   let data: { id: string; is_read: boolean }[] | null = null
   let error: { message: string } | null = null
+  // Some chunks committed before another failed: rows ARE gone, so the refusal
+  // must say how many rather than read as "nothing happened".
+  let partial = false
 
   if (categoryResult.category === 'task') {
     // THE TASK FEED DELETES WHAT IT SHOWS, AND NOTHING IT HIDES. Quotation
@@ -306,21 +309,21 @@ export async function DELETE(req: NextRequest) {
     // is resolved with the list's own predicate first and removed by id. A
     // hidden row is history the reader never saw; "Delete all" must not erase
     // it. Each chunk still reports its own deleted rows, so `unreadAffected`
-    // comes from the deletes themselves. See taskNotificationPolicy.ts.
+    // comes from the deletes themselves; chunks run a few at a time, and a
+    // failure part-way is reported with what was already removed
+    // (mutateInChunks). See taskNotificationPolicy.ts.
     const visible = await selectVisibleTaskNotificationIds(supabase, { userId: user.id, taskId })
     error = visible.error
     if (!error) {
-      data = []
-      for (const ids of chunkIds(visible.ids)) {
-        const res = await supabase
-          .from('notifications')
-          .delete()
-          .eq('user_id', user.id)
-          .in('id', ids)
-          .select('id, is_read')
-        if (res.error) { error = res.error; break }
-        data.push(...((res.data ?? []) as { id: string; is_read: boolean }[]))
-      }
+      const applied = await mutateInChunks<{ id: string; is_read: boolean }>(visible.ids, ids => supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', user.id)
+        .in('id', ids)
+        .select('id, is_read'))
+      data = applied.rows
+      error = applied.error
+      partial = applied.error !== null && applied.completedChunks > 0
     }
   } else {
     let deleteQuery = supabase
@@ -338,14 +341,25 @@ export async function DELETE(req: NextRequest) {
     error = res.error
   }
 
+  const deleted = data ?? []
   if (error) {
     // Message only — never the deleted rows, whose titles/bodies carry task
     // titles and client names.
     console.error('[notifications/delete-all] failed:', error.message)
+    if (partial) {
+      // PART OF IT HAPPENED. Still a failure, but with the exact counts, so the
+      // client re-reads instead of restoring rows that are gone. Retrying is
+      // safe: every chunk deletes by id.
+      return NextResponse.json({
+        error: 'Some notifications could not be deleted. Please try again.',
+        partial: true,
+        category: categoryResult.category,
+        deletedCount: deleted.length,
+        unreadAffected: deleted.filter(r => !r.is_read).length,
+      }, { status: 500 })
+    }
     return NextResponse.json({ error: 'Could not delete notifications' }, { status: 500 })
   }
-
-  const deleted = data ?? []
   return NextResponse.json({
     success: true,
     category: categoryResult.category,

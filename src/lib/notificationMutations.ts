@@ -12,7 +12,8 @@
 //   2. cancel in-flight refetches, so a slower GET cannot undo step 3
 //   3. write the optimistic change
 //   4. on ANY failure — thrown network error or non-2xx — restore the snapshot
-//      and report a message
+//      and report a message. A bulk action the server reports as PARTIAL is
+//      the one exception: it re-reads instead (settleBulkFailure)
 //   5. on success — patch the unread count directly, then invalidate only this
 //      module's list and count
 
@@ -64,6 +65,35 @@ export type TaskGroupResult = {
   deletedCount?: number
   /** Exact unread rows the server touched — including ones never loaded here. */
   unreadAffected?: number
+}
+
+/**
+ * A bulk action that PART-WAY succeeded: the server removed or marked some rows
+ * and then failed (the response carries `partial: true`).
+ *
+ * Distinct from an ordinary failure because the right response differs.
+ * Restoring the snapshot would put back rows the server has really deleted, or
+ * un-read rows it has really marked, so the caches are re-read instead.
+ */
+export class PartialBulkMutationError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PartialBulkMutationError'
+  }
+}
+
+/** Read a failed bulk response once; a partial failure becomes PartialBulkMutationError. */
+async function bulkFailure(res: Response, fallback: string): Promise<Error> {
+  let body: { error?: unknown; partial?: unknown } | null = null
+  try {
+    body = await res.json()
+  } catch {
+    // Non-JSON body (proxy error page, empty 502, …) — an ordinary failure.
+  }
+  const message = body && typeof body.error === 'string' && body.error.trim()
+    ? body.error
+    : `${fallback} (HTTP ${res.status})`
+  return body?.partial === true ? new PartialBulkMutationError(message) : new Error(message)
 }
 
 /**
@@ -168,6 +198,24 @@ function rollback(deps: NotificationMutationDeps, ctx: OptimisticContext | undef
   deps.reportError(err instanceof Error && err.message ? err.message : fallback)
 }
 
+/**
+ * Settle a failed BULK action (mark all, delete all, and their task-group forms).
+ *
+ * An ordinary failure changed nothing on the server and rolls back exactly as
+ * before. A PARTIAL one did change some rows: the truth lies somewhere between
+ * the snapshot and the optimistic state, and only the server knows where. So
+ * the optimistic change is kept and this module's list and count are re-read.
+ */
+function settleBulkFailure(deps: NotificationMutationDeps, ctx: OptimisticContext | undefined, err: unknown, fallback: string) {
+  if (!(err instanceof PartialBulkMutationError)) {
+    rollback(deps, ctx, err, fallback)
+    return
+  }
+  deps.qc.invalidateQueries({ queryKey: notificationKeys.list(deps.category), exact: true })
+  deps.qc.invalidateQueries({ queryKey: notificationKeys.count(deps.category), exact: true })
+  deps.reportError(err.message || fallback)
+}
+
 /** Rows currently cached for this module (used to decide unread-count deltas). */
 function cachedList(deps: NotificationMutationDeps, snap: NotificationCacheSnapshot): Notification[] | undefined {
   return snap.lists.find(l => l.category === deps.category)?.data
@@ -252,7 +300,7 @@ export function deleteAllOptions(deps: NotificationMutationDeps) {
         // Category is always sent explicitly so the server can never fall back
         // to its `task` default and clear a different module's rows.
         const res = await doFetch(deps)(`/api/notifications?category=${deps.category}`, { method: 'DELETE' })
-        if (!res.ok) throw new Error(await readApiError(res, 'Could not delete all notifications'))
+        if (!res.ok) throw await bulkFailure(res, 'Could not delete all notifications')
         return (await res.json().catch(() => ({ success: true }))) as DeleteAllResult
       }),
     onMutate: async (): Promise<OptimisticContext> => {
@@ -265,7 +313,7 @@ export function deleteAllOptions(deps: NotificationMutationDeps) {
       return { snapshot }
     },
     onError: (err: unknown, _v: void, ctx: OptimisticContext | undefined) =>
-      rollback(deps, ctx, err, 'Could not delete all notifications.'),
+      settleBulkFailure(deps, ctx, err, 'Could not delete all notifications.'),
     onSuccess: () => reconcile(deps),
   }
 }
@@ -364,7 +412,7 @@ export function markTaskGroupReadOptions(deps: NotificationMutationDeps) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ taskId, category: deps.category }),
         })
-        if (!res.ok) throw new Error(await readApiError(res, 'Could not mark this task’s updates as read'))
+        if (!res.ok) throw await bulkFailure(res, 'Could not mark this task’s updates as read')
         return (await res.json().catch(() => ({ success: true }))) as MarkReadResult
       }),
     onMutate: async (taskId: string): Promise<TaskGroupContext> => {
@@ -382,7 +430,7 @@ export function markTaskGroupReadOptions(deps: NotificationMutationDeps) {
       return { snapshot, optimisticUnread: loadedUnread }
     },
     onError: (err: unknown, _taskId: string, ctx: TaskGroupContext | undefined) =>
-      rollback(deps, ctx, err, 'Could not mark this task’s updates as read.'),
+      settleBulkFailure(deps, ctx, err, 'Could not mark this task’s updates as read.'),
     onSuccess: (data: MarkReadResult, _taskId: string, ctx: TaskGroupContext | undefined) =>
       reconcileGroup(deps, ctx?.optimisticUnread ?? 0, data?.unreadAffected),
   }
@@ -397,7 +445,7 @@ export function deleteTaskGroupOptions(deps: NotificationMutationDeps) {
         const res = await doFetch(deps)(
           `/api/notifications?category=${deps.category}&taskId=${encodeURIComponent(taskId)}`,
           { method: 'DELETE' })
-        if (!res.ok) throw new Error(await readApiError(res, 'Could not delete this task’s notifications'))
+        if (!res.ok) throw await bulkFailure(res, 'Could not delete this task’s notifications')
         return (await res.json().catch(() => ({ success: true }))) as TaskGroupResult
       }),
     onMutate: async (taskId: string): Promise<TaskGroupContext> => {
@@ -409,7 +457,7 @@ export function deleteTaskGroupOptions(deps: NotificationMutationDeps) {
       return { snapshot, optimisticUnread: loadedUnread }
     },
     onError: (err: unknown, _taskId: string, ctx: TaskGroupContext | undefined) =>
-      rollback(deps, ctx, err, 'Could not delete this task’s notifications.'),
+      settleBulkFailure(deps, ctx, err, 'Could not delete this task’s notifications.'),
     onSuccess: (data: TaskGroupResult, _taskId: string, ctx: TaskGroupContext | undefined) =>
       reconcileGroup(deps, ctx?.optimisticUnread ?? 0, data?.unreadAffected),
   }
@@ -426,7 +474,7 @@ export function markAllReadOptions(deps: NotificationMutationDeps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ all: true, category: deps.category }),
       })
-      if (!res.ok) throw new Error(await readApiError(res, 'Could not mark all as read'))
+      if (!res.ok) throw await bulkFailure(res, 'Could not mark all as read')
       return (await res.json().catch(() => ({ success: true }))) as MarkReadResult
     },
     onMutate: async (): Promise<OptimisticContext> => {
@@ -438,7 +486,7 @@ export function markAllReadOptions(deps: NotificationMutationDeps) {
       return { snapshot }
     },
     onError: (err: unknown, _v: void, ctx: OptimisticContext | undefined) =>
-      rollback(deps, ctx, err, 'Could not mark all notifications as read.'),
+      settleBulkFailure(deps, ctx, err, 'Could not mark all notifications as read.'),
     onSuccess: () => reconcile(deps),
   }
 }

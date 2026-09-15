@@ -108,6 +108,72 @@ export function chunkIds(ids: readonly string[], size = MUTATION_ID_CHUNK_SIZE):
 }
 
 /**
+ * Chunks in flight at once. Bounded, so the largest real inbox (about 400
+ * visible rows in production, September 2026) finishes in one wave while a
+ * pathological one can never open dozens of requests.
+ */
+export const MUTATION_CONCURRENCY = 4
+
+export type ChunkedMutationResult<R> = {
+  /** Rows the database reported changed, from every chunk that committed. */
+  rows: R[]
+  completedChunks: number
+  totalChunks: number
+  /** The first failure, or null when every chunk committed. */
+  error: { message: string } | null
+}
+
+/**
+ * Apply one id-scoped mutation to `ids`, a chunk at a time, several at once.
+ *
+ * WHY NOT ONE STATEMENT. The visible set is defined by a filter on the embedded
+ * task, which PostgREST refuses on UPDATE and DELETE, so the ids are resolved
+ * first and mutated in chunks that fit a URL. Run one after another, every
+ * chunk cost a server round trip; run a few at a time, the latency no longer
+ * grows with the inbox.
+ *
+ * PARTIAL FAILURE IS REPORTED, NOT HIDDEN. Chunks are separate statements, so
+ * one can fail after others have committed. The first failure stops further
+ * chunks from STARTING (those already sent finish), and the result carries the
+ * rows that did change beside the error. The routes return both, so the client
+ * re-reads the server rather than restoring rows that are really gone. Every
+ * mutation is by id and idempotent: pressing the button again finishes the job.
+ */
+export async function mutateInChunks<R>(
+  ids: readonly string[],
+  run: (chunk: string[]) => PromiseLike<{ data: R[] | null; error: { message: string } | null }>,
+  { size = MUTATION_ID_CHUNK_SIZE, concurrency = MUTATION_CONCURRENCY }: { size?: number; concurrency?: number } = {},
+): Promise<ChunkedMutationResult<R>> {
+  const chunks = chunkIds(ids, size)
+  const rows: R[] = []
+  let failure: { message: string } | null = null
+  let completedChunks = 0
+  let next = 0
+
+  const worker = async () => {
+    while (failure === null && next < chunks.length) {
+      const chunk = chunks[next++]
+      let res: { data: R[] | null; error: { message: string } | null }
+      try {
+        res = await run(chunk)
+      } catch (err) {
+        res = { data: null, error: { message: err instanceof Error ? err.message : String(err) } }
+      }
+      if (res.error) {
+        if (failure === null) failure = res.error
+        continue
+      }
+      completedChunks++
+      rows.push(...(res.data ?? []))
+    }
+  }
+
+  const workers = Math.min(Math.max(1, concurrency), chunks.length)
+  await Promise.all(Array.from({ length: workers }, () => worker()))
+  return { rows, completedChunks, totalChunks: chunks.length, error: failure }
+}
+
+/**
  * Every Task notification the reader can SEE, by id — the set a bulk mutation
  * may touch.
  *
