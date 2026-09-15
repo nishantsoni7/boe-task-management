@@ -12,6 +12,36 @@ import {
   mutateInChunks, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
 } from '@/lib/notifications/taskNotificationPolicy'
 
+// ─── TEMPORARY MEASUREMENT — reverted before review ─────────────────────────
+//
+// Stage names and durations in a Server-Timing header, nothing else: no ids,
+// no counts, no content. Answers where GET spends its time in the deployed
+// region. `cold` is yes on the first request an instance serves.
+let instanceServedRequest = false
+function startServerTiming() {
+  const cold = !instanceServedRequest
+  instanceServedRequest = true
+  const start = performance.now()
+  let last = start
+  const parts: string[] = []
+  return {
+    mark(name: string) {
+      const now = performance.now()
+      parts.push(name + ';dur=' + (now - last).toFixed(1))
+      last = now
+    },
+    track(name: string, promise: PromiseLike<unknown>) {
+      const begun = performance.now()
+      promise.then(() => { parts.push(name + ';dur=' + (performance.now() - begun).toFixed(1)) }, () => {})
+    },
+    apply<T extends Response>(res: T): T {
+      const total = 'total;dur=' + (performance.now() - start).toFixed(1)
+      res.headers.set('Server-Timing', [...parts, total, 'cold;desc="' + (cold ? 'yes' : 'no') + '"'].join(', '))
+      return res
+    },
+  }
+}
+
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
  *
@@ -33,8 +63,10 @@ function clampNotificationLimit(raw: string | null): number {
 // Reads go through the service-role key so the feature does not depend on
 // client-side RLS; every query is explicitly scoped to the caller's user id.
 export async function GET(req: NextRequest) {
+  const timing = startServerTiming()
   const authClient = await createClient()
   const { data: { user } } = await authClient.auth.getUser()
+  timing.mark('auth')
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -87,6 +119,7 @@ export async function GET(req: NextRequest) {
   // before reading, because its query names somebody else.
   const requestedSubjectId = req.nextUrl.searchParams.get('subjectUserId')
   const subjectCheck = resolveViewAsSubject(supabase, user.id, requestedSubjectId)
+  timing.track('viewas', subjectCheck)
   let subjectId = user.id
   if (requestedSubjectId && requestedSubjectId !== user.id) {
     const decision = await subjectCheck
@@ -131,12 +164,13 @@ export async function GET(req: NextRequest) {
         .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
     }
     const [refused, { count, error }] = await Promise.all([refusal(), countQuery])
+    timing.mark('wave')
     if (refused) return refused
     if (error) {
       console.error('[notifications] count failed:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
-    return NextResponse.json({ unreadCount: count ?? 0 })
+    return timing.apply(NextResponse.json({ unreadCount: count ?? 0 }))
   }
 
   // BOUNDED, ALWAYS. `?limit=` lets the page ask for a further block when the
@@ -173,6 +207,7 @@ export async function GET(req: NextRequest) {
     .order('id', { ascending: false })
     .limit(limit + 1)])
 
+  timing.mark('wave')
   // Before enrichment, before the response: a refused caller gets nothing else.
   if (refused) return refused
   if (error) {
@@ -203,6 +238,7 @@ export async function GET(req: NextRequest) {
     ? await enrichNotificationPage(supabase, notifications)
     : { taskHeaders: {}, activityDetails: {} }
   const { taskHeaders, activityDetails } = enrichment
+  timing.mark('enrich')
 
   // ── THE DETAIL TRAVELS ON THE ROW, NOT BESIDE IT ──
   //
@@ -223,7 +259,7 @@ export async function GET(req: NextRequest) {
   // what `?count=1` is for, and the badge reads it from there. Kept in the
   // response because callers have always had it.
   const unreadCount = notifications.filter(n => !n.is_read).length
-  return NextResponse.json({ notifications: enrichedRows, unreadCount, hasMore, limit, taskHeaders, activityDetails })
+  return timing.apply(NextResponse.json({ notifications: enrichedRows, unreadCount, hasMore, limit, taskHeaders, activityDetails }))
 }
 
 // Deletes ONE module's notifications for the authenticated user —

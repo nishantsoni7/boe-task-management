@@ -31,6 +31,10 @@ export function Providers({ children }: { children: ReactNode }) {
       })
   )
 
+  // TEMPORARY MEASUREMENT — reverted before review. Marks when the client tree
+  // first committed, so a first-visit trace can tell hydration from data waits.
+  useEffect(() => { performance.mark('boe:providers-mounted') }, [])
+
   return (
     <QueryClientProvider client={queryClient}>
       {/* Owns the single auth listener for THIS QueryClient, and must sit

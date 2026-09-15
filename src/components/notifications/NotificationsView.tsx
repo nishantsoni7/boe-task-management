@@ -67,6 +67,10 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isMobile, setIsMobile] = useState(false)
 
+  // TEMPORARY MEASUREMENT — reverted before review. Marks when this view first
+  // committed; its list query subscribes at the same moment.
+  useEffect(() => { performance.mark('boe:notifications-view-mounted') }, [])
+
   // Same breakpoint the rest of the app uses. Only affects layout: the group
   // summary wraps and its actions get taller touch targets; nothing is hidden
   // at either width.
