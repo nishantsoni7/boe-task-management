@@ -40,6 +40,21 @@ export const REMOTE_OVERRIDE_VAR = 'UAT_ALLOW_REMOTE_TARGET'
 export const REMOTE_OVERRIDE_PHRASE = 'I-KNOW-THIS-IS-NOT-PRODUCTION'
 
 /**
+ * The BOE production project. Never a permissible target, by any route.
+ *
+ * The override below is already strong — it must name the exact project and
+ * must come from the shell — but it is still a promise the operator makes
+ * about the target, and `I-KNOW-THIS-IS-NOT-PRODUCTION:<production-ref>` is a
+ * promise someone can type by mistake or by habit. Bulk create/modify/delete
+ * against production must not be one string away, so this project is refused
+ * before the override is even considered.
+ *
+ * Not a secret: the ref is the first label of NEXT_PUBLIC_SUPABASE_URL, which
+ * ships in the client bundle, and it already appears elsewhere in this repo.
+ */
+export const PRODUCTION_PROJECT_REF = 'albnsrohngkljfsrrrhf'
+
+/**
  * The shell's value for the override, captured BEFORE the dotenv calls below.
  *
  * This ordering is the whole mechanism: `import` only binds `config`, it does
@@ -156,6 +171,17 @@ export function assertTargetAllowed(url, shellOverride) {
       'Refusing to run: no project reference could be read from NEXT_PUBLIC_SUPABASE_URL, so the ' +
         'target cannot be confirmed as a UAT project. Check that the variable holds a full ' +
         'https URL for a hosted project, or point it at a local stack.',
+    )
+  }
+
+  // Checked before the override, so no value of it can authorize production.
+  if (projectRef === PRODUCTION_PROJECT_REF) {
+    throw new UatEnvError(
+      'Refusing to run: NEXT_PUBLIC_SUPABASE_URL points at the BOE production project. These ' +
+        'scripts and the live-DB fixture suites create, modify and delete records in bulk, and ' +
+        'production is permanently excluded — no value of ' +
+        `${REMOTE_OVERRIDE_VAR} can authorize it.\n` +
+        'Point NEXT_PUBLIC_SUPABASE_URL at a local stack or a disposable UAT project instead.',
     )
   }
 
