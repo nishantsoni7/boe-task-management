@@ -1125,3 +1125,37 @@ screen always described both redemptions.
   settings never offers a switched-off redemption.
 * **A trigger, not a re-created redemption function**, so the decimal-credits
   function body is not copied again.
+
+---
+
+# Notifications — quotation and approval silence, and the loading delay
+
+Date: 15 September 2026
+
+Branch: `fix/notifications-quotation-approval` (from `main` at `78869984`).
+Migration: `20261212000000_task_review_approval_stops_notifying.sql` — **not
+applied**, prepared for review.
+
+## What was built
+
+* Quotation requests write no notification: every Task Management writer reads
+  `tasks.task_type`. Approval writes none (the migration). Submit for approval,
+  return and reopen still notify. See 05_Business_Rules → NOTIFICATION RULES.
+* The Task feed, its unread count, Mark all read and Delete all hide existing
+  quotation and approval rows before paging and counting. Nothing is deleted.
+* Self Task / Delegate Task are withheld on `/notifications`, every
+  `/tasks/quotation-requests` screen and a quotation's detail page.
+* `/api/notifications` no longer waits for the View As subject check before an
+  ordinary read; the decision is still enforced before anything is returned.
+
+## Measured cause of the loading delay
+
+Production responses carry `x-vercel-id: bom1::iad1`: the API runs in US East,
+while the database answers a browser in India in ~50 ms. Each server-side
+database round trip therefore costs ~0.45 s. The list made five in sequence
+(median 2.5–3.0 s), the unread count three (median 1.6 s). The console messages
+reported with the problem ("message channel closed", "Receiving end does not
+exist", "No resource with given URL found", an unused CSS preload) are
+browser-extension, DevTools and prefetch messages, not application failures.
+Placing the functions in the database's region is the larger fix and is a
+deployment decision; it is not made on this branch.
