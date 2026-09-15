@@ -7,6 +7,10 @@ import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
 import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
 import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
+import {
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  chunkIds, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
+} from '@/lib/notifications/taskNotificationPolicy'
 
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
@@ -81,15 +85,29 @@ export async function GET(req: NextRequest) {
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
+  // THE TASK FEED'S TWO SILENT EVENTS. Quotation requests (by tasks.task_type,
+  // joined through task_id) and approvals are not announced, and rows written
+  // before that rule stay hidden rather than deleted. Applied to the count and
+  // the list alike, BEFORE counting and paging, so a hidden row can neither
+  // hold the badge up nor turn a page into an empty one. See
+  // src/lib/notifications/taskNotificationPolicy.ts.
+  const isTaskFeed = categoryResult.category === 'task'
+
   // Lightweight badge path: just the unread count.
   if (req.nextUrl.searchParams.get('count') === '1') {
-    const { count, error } = await supabase
+    let countQuery = supabase
       .from('notifications')
-      .select('id', { count: 'exact', head: true })
+      .select(isTaskFeed ? `id, ${TASK_FEED_TASK_EMBED}` : 'id', { count: 'exact', head: true })
       .eq('user_id', subjectId)
       .eq('is_read', false)
       .or(activityFilter)
       .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+    if (isTaskFeed) {
+      countQuery = countQuery
+        .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+        .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+    }
+    const { count, error } = await countQuery
     if (error) {
       console.error('[notifications] count failed:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -107,12 +125,19 @@ export async function GET(req: NextRequest) {
   // One extra row than asked for, purely to answer "is there anything older?".
   // It is dropped before the response, so the client still receives exactly
   // `limit` rows and `hasMore` costs no second query.
-  const { data, error } = await supabase
+  const columns = 'id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id'
+  let listQuery = supabase
     .from('notifications')
-    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id')
+    .select(isTaskFeed ? `${columns}, ${TASK_FEED_TASK_EMBED}` : columns)
     .eq('user_id', subjectId)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+  if (isTaskFeed) {
+    listQuery = listQuery
+      .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+      .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+  }
+  const { data, error } = await listQuery
     .order('created_at', { ascending: false })
     // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
     // (every admin notified of one objection, the warranty sweep) writes many
@@ -129,7 +154,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const rows = data ?? []
+  // The select string is chosen at runtime (with or without the task embed), so
+  // the client cannot infer a row type from it; the rows are exactly the columns
+  // named above, as they always were. The embed existed only to filter and never
+  // leaves the server.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fetched = (data ?? []) as any[]
+  const rows = isTaskFeed ? stripTaskFeedEmbed(fetched) : fetched
   const hasMore = rows.length > limit
   const notifications = hasMore ? rows.slice(0, limit) : rows
 
@@ -239,17 +270,47 @@ export async function DELETE(req: NextRequest) {
   //
   // A category (or task) with nothing in it deletes 0 rows and is still a
   // success — an accurate idempotent result, not a failure.
-  let deleteQuery = supabase
-    .from('notifications')
-    .delete()
-    .eq('user_id', user.id)
-    .or(activityFilter)
-    .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
-  // An EXTRA condition on top of the caller, category and system filters —
-  // never a replacement for any of them.
-  if (taskId !== null) deleteQuery = deleteQuery.eq('task_id', taskId)
+  let data: { id: string; is_read: boolean }[] | null = null
+  let error: { message: string } | null = null
 
-  const { data, error } = await deleteQuery.select('id, is_read')
+  if (categoryResult.category === 'task') {
+    // THE TASK FEED DELETES WHAT IT SHOWS, AND NOTHING IT HIDES. Quotation
+    // requests and approvals are kept out of this feed by a filter on the
+    // embedded task, which PostgREST refuses on a DELETE — so the visible set
+    // is resolved with the list's own predicate first and removed by id. A
+    // hidden row is history the reader never saw; "Delete all" must not erase
+    // it. Each chunk still reports its own deleted rows, so `unreadAffected`
+    // comes from the deletes themselves. See taskNotificationPolicy.ts.
+    const visible = await selectVisibleTaskNotificationIds(supabase, { userId: user.id, taskId })
+    error = visible.error
+    if (!error) {
+      data = []
+      for (const ids of chunkIds(visible.ids)) {
+        const res = await supabase
+          .from('notifications')
+          .delete()
+          .eq('user_id', user.id)
+          .in('id', ids)
+          .select('id, is_read')
+        if (res.error) { error = res.error; break }
+        data.push(...((res.data ?? []) as { id: string; is_read: boolean }[]))
+      }
+    }
+  } else {
+    let deleteQuery = supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', user.id)
+      .or(activityFilter)
+      .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+    // An EXTRA condition on top of the caller, category and system filters —
+    // never a replacement for any of them.
+    if (taskId !== null) deleteQuery = deleteQuery.eq('task_id', taskId)
+
+    const res = await deleteQuery.select('id, is_read')
+    data = res.data
+    error = res.error
+  }
 
   if (error) {
     // Message only — never the deleted rows, whose titles/bodies carry task

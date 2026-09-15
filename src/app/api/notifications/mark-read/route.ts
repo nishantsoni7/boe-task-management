@@ -5,6 +5,7 @@ import { getNotificationCategoryFilter, resolveNotificationCategory, SYSTEM_TYPE
 import { canReadNotificationCategory, CATEGORY_FORBIDDEN } from '@/lib/notificationAccess'
 import { isValidUUID } from '@/lib/ui'
 import { isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
+import { chunkIds, selectVisibleTaskNotificationIds } from '@/lib/notifications/taskNotificationPolicy'
 
 /** Ceiling on an explicit id list, matching /api/notifications/delete-selected. */
 const MAX_IDS = 200
@@ -118,6 +119,39 @@ export async function POST(req: NextRequest) {
     // names no category at all.
     if (!(await canReadNotificationCategory(supabase, user.id, categoryResult.category))) {
       return NextResponse.json({ error: CATEGORY_FORBIDDEN }, { status: 403 })
+    }
+    // THE TASK FEED MARKS WHAT IT SHOWS. Quotation requests and approvals are
+    // hidden by a filter on the embedded task, which PostgREST refuses on an
+    // UPDATE, so the visible unread set is resolved with the list's predicate
+    // and updated by id. A row the reader never saw is not silently flipped.
+    // See src/lib/notifications/taskNotificationPolicy.ts.
+    if (categoryResult.category === 'task') {
+      const visible = await selectVisibleTaskNotificationIds(supabase, {
+        userId: user.id,
+        unreadOnly: true,
+        taskId: taskId != null ? taskId as string : null,
+        entityId: entityId != null ? entityId as string : null,
+      })
+      if (visible.error) {
+        console.error('[notifications/mark-read] visible set failed:', visible.error.message)
+        return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
+      }
+      let updatedCount = 0
+      for (const chunk of chunkIds(visible.ids)) {
+        const { data, error } = await supabase
+          .from('notifications')
+          .update(update)
+          .eq('user_id', user.id)
+          .eq('is_read', false)
+          .in('id', chunk)
+          .select('id')
+        if (error) {
+          console.error('[notifications/mark-read] update failed:', error.message)
+          return NextResponse.json({ error: 'Could not update the notification' }, { status: 500 })
+        }
+        updatedCount += data?.length ?? 0
+      }
+      return NextResponse.json({ success: true, updatedCount, unreadAffected: updatedCount })
     }
     // "Mark all" only affects visible task-activity rows, never hidden summary/digest ones.
     query = query.eq('is_read', false).or(getNotificationCategoryFilter(categoryResult.category)).not('type', 'in', SYSTEM_TYPE_EXCLUSION)
