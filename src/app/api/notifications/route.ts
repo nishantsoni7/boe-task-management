@@ -75,13 +75,36 @@ export async function GET(req: NextRequest) {
   // authenticated caller, not about whose screen is being drawn. An admin
   // previewing an employee is still an admin, and an ordinary employee cannot
   // use this parameter at all.
-  const subjectDecision = await resolveViewAsSubject(
-    supabase, user.id, req.nextUrl.searchParams.get('subjectUserId'),
-  )
-  if (!subjectDecision.allowed) {
-    return NextResponse.json({ error: subjectDecision.reason }, { status: subjectDecision.status })
+  //
+  // THE ORDINARY READ DOES NOT QUEUE BEHIND THIS CHECK. Measured in production
+  // (September 2026) every server-side round trip from this function costs
+  // ~0.45 s, and the list was five of them in a row. When no other employee is
+  // named, the subject can only ever be the caller, so the notification query
+  // starts at once — scoped to `user.id` — while the check runs beside it. The
+  // decision is still AWAITED BEFORE ANYTHING IS RETURNED OR ENRICHED: a refused
+  // caller receives the refusal, and the rows read on their behalf (their own,
+  // never anybody else's) are discarded. A preview still waits for the check
+  // before reading, because its query names somebody else.
+  const requestedSubjectId = req.nextUrl.searchParams.get('subjectUserId')
+  const subjectCheck = resolveViewAsSubject(supabase, user.id, requestedSubjectId)
+  let subjectId = user.id
+  if (requestedSubjectId && requestedSubjectId !== user.id) {
+    const decision = await subjectCheck
+    if (!decision.allowed) {
+      return NextResponse.json({ error: decision.reason }, { status: decision.status })
+    }
+    subjectId = decision.subjectId
   }
-  const subjectId = subjectDecision.subjectId
+  const refusal = async (): Promise<NextResponse | null> => {
+    const decision = await subjectCheck
+    if (!decision.allowed) {
+      return NextResponse.json({ error: decision.reason }, { status: decision.status })
+    }
+    if (decision.subjectId !== subjectId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    return null
+  }
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
@@ -107,7 +130,8 @@ export async function GET(req: NextRequest) {
         .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
         .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
     }
-    const { count, error } = await countQuery
+    const [refused, { count, error }] = await Promise.all([refusal(), countQuery])
+    if (refused) return refused
     if (error) {
       console.error('[notifications] count failed:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -137,7 +161,7 @@ export async function GET(req: NextRequest) {
       .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
       .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
   }
-  const { data, error } = await listQuery
+  const [refused, { data, error }] = await Promise.all([refusal(), listQuery
     .order('created_at', { ascending: false })
     // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
     // (every admin notified of one objection, the warranty sweep) writes many
@@ -147,8 +171,10 @@ export async function GET(req: NextRequest) {
     // falls on, and "Load older" could come back missing a row it had already
     // shown. `id` is the primary key, so this makes the sort total.
     .order('id', { ascending: false })
-    .limit(limit + 1)
+    .limit(limit + 1)])
 
+  // Before enrichment, before the response: a refused caller gets nothing else.
+  if (refused) return refused
   if (error) {
     console.error('[notifications] list failed:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
