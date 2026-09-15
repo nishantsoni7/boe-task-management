@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import { restoreTargetStatus } from '@/lib/tasks/reviewTransitions'
+import { isQuotationTask } from '@/lib/notifications/taskNotificationPolicy'
 
 export async function POST(req: NextRequest) {
   const authClient = await createClient()
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   const { data: task, error: fetchErr } = await supabase
     .from('tasks')
-    .select('id, title, status, assigned_to, created_by')
+    .select('id, title, status, assigned_to, created_by, task_type')
     .eq('id', taskId)
     .single()
 
@@ -102,9 +103,11 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  // Notify the other party
+  // Notify the other party — unless it is a quotation request, which writes no
+  // notification (taskNotificationPolicy.ts). Reopening an approved task still
+  // tells the assignee: only the approval itself is silent.
   const recipient = user.id === task.created_by ? task.assigned_to : task.created_by
-  if (recipient && recipient !== user.id) {
+  if (recipient && recipient !== user.id && !isQuotationTask(task)) {
     const actor = typeof actorName === 'string' && actorName.trim()
       ? actorName.trim()
       : null

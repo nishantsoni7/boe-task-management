@@ -427,6 +427,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() so an approval
+      // writes no notification. It is not grouping's doing and changes no
+      // notification column.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

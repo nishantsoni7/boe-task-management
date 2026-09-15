@@ -197,6 +197,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // reject_finance_payment_request(). It changes no column, policy or
     // existing function, so it reaches nothing asserted here.
     '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+    // 20261212000000 re-creates transition_task_review() with the approval
+    // notification skipped. It touches neither user_top_tasks nor the
+    // completion trigger.
+    '20261212000000_task_review_approval_stops_notifying.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

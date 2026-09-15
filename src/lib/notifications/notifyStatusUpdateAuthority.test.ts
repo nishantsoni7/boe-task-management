@@ -115,7 +115,9 @@ describe('the CALLER must be a party to the task', () => {
 
 describe('the recipient is checked against the stored task', () => {
   test('both sides of the task are read from the row', () => {
-    assert.ok(ROUTE.includes(".from('tasks').select('created_by, assigned_to, title').eq('id', taskId)"))
+    // `task_type` joined the read so a quotation request is recognised by its
+    // column (taskNotificationPolicy.ts); the party check is unchanged.
+    assert.ok(ROUTE.includes(".from('tasks').select('created_by, assigned_to, title, task_type').eq('id', taskId)"))
   })
 
   test('a recipient who is neither party is refused with 403, and logged', () => {

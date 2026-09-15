@@ -919,6 +919,10 @@ describe('the applied migrations are frozen', () => {
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() with the approval
+      // notification skipped. It changes no table, column, policy or grant, so
+      // it reaches nothing asserted here.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ])
   })
 
@@ -1104,6 +1108,10 @@ describe('the applied migrations are frozen', () => {
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() with the approval
+      // notification skipped. It changes no table, column, policy or grant, so
+      // it reaches nothing asserted here.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

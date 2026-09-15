@@ -292,6 +292,11 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() from THIS file's
+      // body with one condition added (approval writes no notification). It
+      // edits no existing file; taskNotificationPolicy.test.ts proves the body
+      // differs only by that condition.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ])
   })
 

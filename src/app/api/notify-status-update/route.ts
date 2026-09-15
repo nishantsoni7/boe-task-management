@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import { verifyActivityBelongsToTask } from '@/lib/notifications/activityLink'
+import { shouldNotifyTaskStatusEvent } from '@/lib/notifications/taskNotificationPolicy'
 import { isValidUUID } from '@/lib/ui'
 
 export async function POST(req: NextRequest) {
@@ -52,10 +53,12 @@ export async function POST(req: NextRequest) {
   // already sees on the task itself. Never `select('*')` on users: several of
   // its columns are column-granted and reading them is a 42501.
   const [taskRes, actorRes] = await Promise.all([
-    supabase.from('tasks').select('created_by, assigned_to, title').eq('id', taskId).maybeSingle(),
+    supabase.from('tasks').select('created_by, assigned_to, title, task_type').eq('id', taskId).maybeSingle(),
     supabase.from('users').select('full_name').eq('id', user.id).maybeSingle(),
   ])
-  const task = taskRes.data as { created_by: string | null; assigned_to: string | null; title: string | null } | null
+  const task = taskRes.data as {
+    created_by: string | null; assigned_to: string | null; title: string | null; task_type: string | null
+  } | null
   if (!task) {
     return NextResponse.json({ error: 'Task not found' }, { status: 404 })
   }
@@ -109,6 +112,14 @@ export async function POST(req: NextRequest) {
       caller: user.id, taskId,
     })
     return NextResponse.json({ error: 'Invalid recipient' }, { status: 403 })
+  }
+
+  // NOT ANNOUNCED, BY RULE — after both party checks, so a refusal still reads
+  // as one. A quotation request writes no notification, and a delegated task's
+  // "completed" is its creator's approval arriving by this generic road. See
+  // src/lib/notifications/taskNotificationPolicy.ts.
+  if (!shouldNotifyTaskStatusEvent(task, action)) {
+    return NextResponse.json({ success: true, skipped: true })
   }
 
   // Composed here, from the action and the actor resolved by `auth.uid()`.

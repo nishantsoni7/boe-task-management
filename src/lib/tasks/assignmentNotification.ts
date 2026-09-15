@@ -95,6 +95,8 @@ export type AssignmentNotificationOutcome =
   | { status: 'skipped_self' }
   /** An assignment notification for this task already exists. */
   | { status: 'skipped_duplicate' }
+  /** A quotation request — quotation events write no notification. */
+  | { status: 'skipped_quotation' }
   | { status: 'not_found' }
   | { status: 'forbidden' }
   | { status: 'error'; message: string }
@@ -104,6 +106,7 @@ export const ASSIGNMENT_OUTCOME_STATUS: Record<AssignmentNotificationOutcome['st
   created:           200,
   skipped_self:      200,
   skipped_duplicate: 200,
+  skipped_quotation: 200,
   not_found:         404,
   forbidden:         403,
   error:             500,
@@ -127,7 +130,7 @@ export const ASSIGNMENT_NOTIFICATION_RECOVERED_MESSAGE =
   'Assignee notified.'
 
 export type AssignmentNotificationRequest =
-  | { ok: true; status: 'created' | 'skipped_self' | 'skipped_duplicate' }
+  | { ok: true; status: 'created' | 'skipped_self' | 'skipped_duplicate' | 'skipped_quotation' }
   | { ok: false; reason: string }
 
 /**
@@ -153,7 +156,7 @@ export async function requestAssignmentNotification(
       if (res.ok) {
         const body = await res.json().catch(() => ({})) as { status?: string }
         const status = body.status
-        if (status === 'created' || status === 'skipped_self' || status === 'skipped_duplicate') {
+        if (status === 'created' || status === 'skipped_self' || status === 'skipped_duplicate' || status === 'skipped_quotation') {
           return { retryable: false, result: { ok: true, status } }
         }
         // A 200 without a status we recognise is not a notification we can

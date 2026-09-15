@@ -322,6 +322,9 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() with the approval
+      // notification skipped. It touches no Order or PI object.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

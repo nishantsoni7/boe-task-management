@@ -2,6 +2,7 @@ import { createClient as createServerClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { insertUserNotifications } from '@/lib/notificationWrites'
+import { isQuotationTask } from '@/lib/notifications/taskNotificationPolicy'
 
 export async function POST(req: NextRequest) {
   const authClient = await createClient()
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest) {
 
   const { data: task, error: fetchErr } = await supabase
     .from('tasks')
-    .select('id, title, status, assigned_to, created_by')
+    .select('id, title, status, assigned_to, created_by, task_type')
     .eq('id', taskId)
     .single()
 
@@ -82,8 +83,9 @@ export async function POST(req: NextRequest) {
     .select('id')
     .single()
 
-  // Notify assignee (if different from the actor)
-  if (task.assigned_to && task.assigned_to !== user.id) {
+  // Notify assignee (if different from the actor). A quotation request writes
+  // no notification — see src/lib/notifications/taskNotificationPolicy.ts.
+  if (task.assigned_to && task.assigned_to !== user.id && !isQuotationTask(task)) {
     const actor = typeof actorName === 'string' && actorName.trim() ? actorName.trim() : null
     const title = actor ? `${actor} cancelled a task` : 'Task cancelled'
     await insertUserNotifications(supabase, {
