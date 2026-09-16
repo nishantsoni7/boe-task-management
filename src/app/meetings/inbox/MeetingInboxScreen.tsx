@@ -40,8 +40,9 @@ import { MEETING_TYPE_META, formatMeetingTimestamp } from '@/lib/meetings/types'
 // An Inbox item has no meeting, so it cannot derive visibility from one. It is
 // readable by its creator — the person who raised it from a task, who must be able
 // to see what became of it — and by meeting editors and managers, who are the
-// people who triage it. That rule lives in can_view_discussion_item(); this screen
-// simply reads what comes back.
+// people who triage it. That rule lives in can_view_discussion_item(), and WHICH
+// issues are in the Inbox at all is decided by list_meeting_discussion_inbox():
+// only the database can see an appearance on a meeting this reader cannot open.
 
 export function MeetingInboxScreen() {
   const { supabase, profile, caps, loading: authLoading, signOut } = useMeetings()
@@ -60,6 +61,9 @@ export function MeetingInboxScreen() {
   const load = useCallback(async () => {
     const rows = await fetchMeetingInbox(supabase)
     if (!rows) {
+      // Nothing stale and nothing empty is left on screen: a failed read shows only
+      // the failure.
+      setItems([])
       setError('Could not load the Meeting Inbox. Check your connection and try again.')
       setLoading(false)
       return
@@ -167,6 +171,9 @@ export function MeetingInboxBody({
         </div>
       )}
 
+      {/* A load failure is never drawn as "Nothing is waiting": the list, its count
+          and its empty state appear only after a successful read. */}
+      {!loadError && (
       <div style={{
         background: colors.base, border: `1px solid ${colors.border}`,
         borderRadius: '10px', overflow: 'hidden',
@@ -281,6 +288,7 @@ export function MeetingInboxBody({
           </ul>
         )}
       </div>
+      )}
     </>
   )
 }

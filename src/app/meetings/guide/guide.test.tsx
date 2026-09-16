@@ -189,8 +189,9 @@ describe('every rule the guide states is the rule the system applies', () => {
     const inbox = FAQS.find(f => f.question.includes('no upcoming meeting'))
     assert.ok(inbox, 'the Inbox question must be answered')
     assert.ok(inbox!.answer.includes('Meeting Inbox'))
-    // The Inbox is "open items with no appearance" — the same condition in both places.
-    assert.match(read('src/lib/meetings/discussionReads.ts'), /state', 'open'/)
+    // The Inbox is "open items with no appearance ANYWHERE" — and the database
+    // decides it, because a browser cannot see appearances on meetings it may not open.
+    assert.match(read('src/lib/meetings/discussionReads.ts'), /\.rpc\('list_meeting_discussion_inbox'\)/)
     assert.match(MIGRATION, /NOT EXISTS \(\s*\n\s*SELECT 1 FROM public\.meeting_discussion_appearances a/)
   })
 

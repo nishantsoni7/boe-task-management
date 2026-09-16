@@ -18,6 +18,7 @@ import { MultilineText } from '@/components/ui/MultilineText'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { AddToMeetingButton, AddToMeetingModal } from '@/components/tasks/AddToMeetingModal'
+import { canOfferAddToMeeting } from '@/lib/tasks/addToMeetingAccess'
 import { hasPermission } from '@/lib/permissions/resolver'
 import { useToast, Toast } from '@/components/ui/toast'
 import { getFileTypeLabel, compressImageFile, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
@@ -197,9 +198,10 @@ export default function TaskDetailPage() {
   //
   // Deny-by-default, so the action cannot flash for somebody who may not use it.
   // It needs Meetings module entry — the same 'view' grant an attendee holds — and
-  // nothing stronger: without a meeting they can edit, the issue lands in the
-  // Meeting Inbox for somebody who can. The database re-derives all of this; this
-  // only decides what is drawn.
+  // the task relationship the database accepts: creator, current assignee or admin
+  // (canOfferAddToMeeting). A delegator is not offered it. Without a meeting they
+  // can edit, the issue lands in the Meeting Inbox for somebody who can. The
+  // database re-derives all of this; this only decides what is drawn.
   const [addToMeetingOpen, setAddToMeetingOpen] = useState(false)
   const [canAddToMeeting,  setCanAddToMeeting]  = useState(false)
 
@@ -1231,6 +1233,9 @@ export default function TaskDetailPage() {
   const agingColor = aging ? (aging.severity === 'danger' ? colors.red : colors.amber) : colors.muted
 
   const isQuotation = task.task_type === 'quotation_request'
+  const offerAddToMeeting = canOfferAddToMeeting({
+    hasMeetingAccess: canAddToMeeting, isCreator, isAssignee, isAdmin, isQuotation,
+  })
   const canCopyAssign = isAdmin && !isQuotation   // admin-only; the API enforces this too
 
   // The legacy single attachment, as an object path. De-duplication compares
@@ -1845,7 +1850,7 @@ export default function TaskDetailPage() {
                   {/* Add to Meeting sits with the other secondary actions. It is
                       not destructive and it changes nothing about the task, so it
                       reads before Copy & Assign and Cancel. */}
-                  {canAddToMeeting && !isQuotation && (
+                  {offerAddToMeeting && (
                     <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} />
                   )}
                   {/* Copy & Assign is placed before Cancel so the destructive action
@@ -1956,7 +1961,7 @@ export default function TaskDetailPage() {
               {/* Add to Meeting for a closed task. A completed task can still have an
                   unresolved business issue behind it — that is precisely the case
                   management needs on an agenda. */}
-              {canAddToMeeting && !isQuotation && !isActiveTask && (
+              {offerAddToMeeting && !isActiveTask && (
                 <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`, display: 'flex' }}>
                   <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} />
                 </div>

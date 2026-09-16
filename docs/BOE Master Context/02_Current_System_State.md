@@ -42,7 +42,7 @@ file may be edited again.
 | Payroll                | Early Stage    |
 | Assets & Access        | Active         |
 | Review Workflow        | Active — Custom Review phase (see REVIEW WORKFLOW) |
-| Meetings               | Active — order-discussion workflow pending its migration (see MEETINGS) |
+| Meetings               | Active — order-discussion workflow built, its migration not yet applied (see MEETINGS) |
 | Employee Records       | Planned        |
 
 ---
@@ -512,8 +512,9 @@ Not yet done:
 
 # MEETINGS
 
-Status: Operational. Structured order-review meetings, plus an **order-discussion
-workflow** that carries one business issue across as many meetings as it takes.
+Status: Operational for structured order-review meetings. The **order-discussion
+workflow** — one business issue carried across as many meetings as it takes — is
+built and in review (PR #164); it goes live only once `20261213000000` is applied.
 
 Routes: `/meetings` (Active & Upcoming), `/meetings/completed`,
 `/meetings/follow-ups`, `/meetings/inbox` (Meeting Inbox),
@@ -524,10 +525,10 @@ Database state (`supabase migration list --linked`, 2026-09-16): the module
 (`20260814000000`), the select-policy fix (`20260815000000`), the PI import
 (`20260831000000`) and Order evidence (`20261203000000`) are applied.
 **`20261213000000_meeting_order_discussion_workflow.sql` is NOT applied** and
-must be applied before the code that reads it deploys. It has been rehearsed
-against the linked database inside an explicit `BEGIN … ROLLBACK`: the whole
-file executed, its own assertion block passed, and the transaction left no table,
-column, function or trigger behind.
+must be applied before the code that reads it deploys. An earlier version was
+rehearsed against the linked database inside an explicit `BEGIN … ROLLBACK`; the
+file has changed since (PR #164 review), so that rehearsal no longer counts and
+must be repeated on the frozen file before it is applied.
 
 ## What was already there
 
@@ -572,11 +573,18 @@ Implemented (with `20261213000000`):
   Category, order number, short issue, target meeting; the order number,
   customer and issue line are read out of the task where they can be. Nothing
   about the task changes. Pressing it twice returns the issue already open for
-  that task rather than making a second one.
+  that task rather than making a second one — and if that issue is on a meeting
+  the person cannot open, it says so without naming or linking the meeting.
+  The action is drawn only for the task's creator, its current assignee or an
+  admin, and only with Meetings access — the same three the database accepts; a
+  delegator is not offered it. If the list of meetings cannot be loaded, Add is
+  blocked with the error shown; it never quietly sends the issue to the Inbox.
 * **Meeting Inbox** (`/meetings/inbox`) — open issues no meeting has claimed.
-  Not a table: the absence of an appearance IS the Inbox, so nothing can be lost
-  from it and the source task link cannot be dropped. A meeting editor can
-  attach one now; otherwise the next relevant review takes it automatically.
+  Not a table: the absence of an appearance ANYWHERE is the Inbox, so nothing can
+  be lost from it and the source task link cannot be dropped. It is read through
+  `list_meeting_discussion_inbox()`, because only the database can see an
+  appearance on a meeting the reader cannot open. A meeting editor can attach one
+  now; otherwise the next relevant review takes it automatically.
 * **The discussion board** on the meeting screen, above the Order rail —
   category, order, customer, the issue, the latest position, discussed today,
   earlier meetings, evidence and linked-task counts, next review, Open/Resolved.
@@ -586,7 +594,9 @@ Implemented (with `20261213000000`):
   desktop (update, decision, next review, images, one Save), the source task
   link when the viewer may open that task, linked tasks read live from Task
   Management, this issue's earlier meetings newest-first and read-only, a link
-  to the Order's separate general history, and Resolve.
+  to the Order's separate general history, and Resolve. "Earlier meetings" lists
+  only meetings held before this one — never this meeting or a later one. Clearing
+  a recorded decision is sent as an explicit clear, and the trail records it.
 * **Automatic carry-forward** — an AFTER INSERT trigger on `public.meetings`
   adds every unresolved item of the matching category, and every applicable
   Inbox item, in the same transaction that creates the meeting. Exactly once.
@@ -599,27 +609,51 @@ Implemented (with `20261213000000`):
   append-only trail; a later resolve or reopen is shown beside it as "Now …",
   never in its place.
 * **Resolve and Reopen**, each requiring a note or a reason, each recording the
-  actor and the time, each writing a trail event.
+  actor and the time, each writing a trail event. "Resolved today" counts only a
+  resolution still in force, so an issue reopened later in the same meeting is
+  not counted.
+* **Meeting notes follow the meeting.** Updates, decisions, next review dates,
+  resolution notes, reopening reasons, follow-up task titles and evidence are
+  readable only by people who can open the meeting they were recorded in. The
+  issue row (order, customer, title, details, Open/Resolved) is also readable by
+  its creator and — only while it waits in the Inbox — by meeting editors;
+  `resolution_note` is not readable from the row by any signed-in user.
+* **A draft holding a discussion cannot be deleted.** Any update, decision, next
+  review date, Discussed Today, evidence, resolution, task link or manual
+  placement on it refuses the delete. A mistaken draft whose only content is
+  untouched, automatically inherited issues can still be deleted; those issues go
+  back to being carried forward.
+* **A failed read is never shown as an empty state** — on the board, in the
+  Inbox, in Add to Meeting and in the attach dialog.
 * **How Meetings Work** (`/meetings/guide`) — the in-app visual guide, inside
   the Meetings module, offered from the module header on every Meetings screen.
   It reads no meeting, order or task, so Meetings module entry is the whole
   requirement to see it.
 
-Permissions are unchanged: no new module, no new action key, no widened grant.
-`npm run permissions:check` reports 13 modules in sync.
+Permissions: no new module and no new action key (the registry in
+`src/lib/permissions/modules.ts` is unchanged). What the existing grants reveal
+is narrower than a plain reading of the new policies might suggest: a Meetings
+`edit` or `manage` grant shows an issue only while it is in the Inbox, and
+notes only for meetings the holder can open.
 
 Verification (2026-09-16):
 
-* **Database behaviour, on a disposable local Supabase stack** —
-  `supabase/tests/run_meeting_discussion_workflow_local.sh` applies the real
-  Meetings chain and `20261213000000` twice, then runs
-  `meeting_discussion_workflow_assertions.sql` twice: 23 scenarios as real users
-  through RLS (Inbox, duplicate capture, both categories, source-task isolation,
-  review-type matching, back-dated meetings, retries, view-only refusal,
-  completed-meeting protection, resolve, reopen, carry-forward, evidence,
-  visibility, deleting an inherited-only draft). All pass.
-* **Production rehearsal** — the migration executed against the linked production
-  database inside `BEGIN … ROLLBACK` and left no residue.
+* **Database behaviour, on a disposable local Supabase stack** — on a freshly
+  reset stack, `supabase/tests/run_meeting_discussion_workflow_local.sh` applies
+  the real Meetings chain, applies `20261213000000`, applies the same file again
+  (a deliberate check that it is safe to run twice), then runs
+  `meeting_discussion_workflow_assertions.sql` twice, each pass in a rolled-back
+  transaction: 29 numbered sections (32 checks) as real users through RLS —
+  Inbox, duplicate capture, both categories, source-task isolation, review-type
+  matching, back-dated meetings, retries, view-only refusal, completed-meeting
+  protection, resolve, reopen, carry-forward, evidence, visibility, meeting notes
+  following the meeting, an edit-only grant, the authoritative Inbox read, a user
+  without Meetings access, real task linking, decision clearing, and draft
+  deletion for every kind of activity. All pass. Three deliberate breakages of the
+  migration (notes readable outside their meeting, a weakened delete guard, an
+  Inbox read that trusts visible appearances) were each caught.
+* **Production rehearsal** — owed. The earlier rollback rehearsal predates the
+  PR #164 review changes and must be repeated on the frozen file.
 * **Rendered review** — the real components, with fixture data, at 1366px and
   375px. A signed-in click-through of the live screens has NOT been done: it needs
   the migration applied and a real session.
@@ -630,8 +664,10 @@ Verification (2026-09-16):
 
 Not yet done:
 
-* Apply `20261213000000` to production, before the code deploys (the evidence
-  read selects the new `discussion_appearance_id` column).
+* Freeze the migration, repeat the production rollback rehearsal, then apply
+  `20261213000000` to production before the code deploys (the evidence read
+  selects the new `discussion_appearance_id` column, and the Inbox calls
+  `list_meeting_discussion_inbox()`).
 * A signed-in click-through of the live screens once the migration is applied.
 
 ---

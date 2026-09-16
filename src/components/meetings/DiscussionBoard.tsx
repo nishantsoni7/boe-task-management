@@ -44,12 +44,56 @@ type Props = {
    * false. The words change; the counts do not.
    */
   meetingCompleted?: boolean
+  /**
+   * The agenda read failed. A failure is never drawn as an empty agenda: no
+   * counts, no filters, no "Add the first issue" — only what happened and Retry.
+   */
+  loadFailed?: boolean
+  onRetry?: () => void
 }
 
 export function DiscussionBoard({
   rows, filter, onFilter, search, onSearch, isMobile, onOpen, onNewIssue,
-  inboxCount, onOpenInbox, meetingCompleted = false,
+  inboxCount, onOpenInbox, meetingCompleted = false, loadFailed = false, onRetry,
 }: Props) {
+  if (loadFailed) {
+    return (
+      <section
+        aria-labelledby="discussion-board-heading"
+        style={{
+          background: colors.base, border: `1px solid ${colors.border}`,
+          borderRadius: '10px', overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '11px 13px 9px', borderBottom: `1px solid ${colors.border}` }}>
+          <h2
+            id="discussion-board-heading"
+            style={{ fontSize: '13.5px', fontWeight: 700, color: colors.primary, margin: 0 }}
+          >
+            Discussion items
+          </h2>
+        </div>
+        <div role="alert" style={{
+          padding: '22px 18px', textAlign: 'center', fontSize: '12.5px', color: colors.red, lineHeight: 1.55,
+        }}>
+          The discussion items for this meeting could not be loaded. This does not mean the agenda is empty.
+          {onRetry && (
+            <div>
+              <button
+                type="button"
+                onClick={onRetry}
+                className="boe-btn boe-btn-ghost"
+                style={{ marginTop: '10px', padding: '6px 14px', fontSize: '12.5px' }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
+        </div>
+      </section>
+    )
+  }
+
   const resolvedWords = meetingCompleted ? 'resolved in this meeting' : 'resolved today'
   const summary = discussionSummary(rows)
   const visible = filterDiscussionRows(rows, filter, search)

@@ -8,7 +8,7 @@ import {
   MeetingModal, MeetingField, MeetingModalActions, MeetingModalError,
 } from '@/components/meetings/MeetingModal'
 import { AfterSalesTagPicker, CategoryPicker } from '@/components/meetings/DiscussionModals'
-import { logMeetingFailure, meetingErrorMessage } from '@/lib/meetings/errors'
+import { logMeetingFailure, meetingErrorMessage, type MeetingErrorLike } from '@/lib/meetings/errors'
 import {
   buildTaskCapturePrefill, capturePrefillIsSubmittable, captureDetails,
 } from '@/lib/meetings/taskCapture'
@@ -54,8 +54,17 @@ type CaptureResult = {
   item_id: string
   status: 'created' | 'existing'
   appearance_id: string | null
+  /** The most recent meeting it is on that THIS caller can open — null otherwise. */
   meeting_id: string | null
+  /** On any agenda at all, including one this caller cannot open. */
+  on_agenda: boolean
   in_inbox: boolean
+}
+
+/** The toast for a finished capture. Each one says only what the result proves. */
+export function captureToastMessage(result: Pick<CaptureResult, 'status' | 'in_inbox'>): string {
+  if (result.status === 'existing') return 'This task already has an open discussion item'
+  return result.in_inbox ? 'Saved to the Meeting Inbox' : 'Added to the meeting agenda'
 }
 
 /** No meeting chosen — the issue waits in the Meeting Inbox. */
@@ -90,6 +99,11 @@ export function AddToMeetingModal({
   // function of what is already in state.
   const [chosenMeetingId, setChosenMeetingId] = useState<string | null>(null)
   const [meetings, setMeetings]   = useState<MeetingOption[] | null>(null)
+  // A failed meeting read is NOT "no meetings". Treating it as one would quietly
+  // send the issue to the Inbox while a live review exists, so it blocks the Add
+  // and says what happened instead.
+  const [meetingsError, setMeetingsError] = useState<string | null>(null)
+  const [loadAttempt, setLoadAttempt]     = useState(0)
 
   const [saving, setSaving]   = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -104,22 +118,31 @@ export function AddToMeetingModal({
   useEffect(() => {
     let active = true
     const load = async () => {
-      const [{ data }, effective] = await Promise.all([
-        supabase
-          .from('meetings')
-          .select('id, title, meeting_date, meeting_type, status, lead_id, created_by')
-          .in('status', ['draft', 'in_progress'])
-          .order('meeting_date', { ascending: true }),
-        getEffectivePermissions(supabase, userId, 'meetings').catch(() => []),
-      ])
-      if (!active) return
-      const caps = deriveMeetingsCapabilities(userRole, effective)
-      const rows = ((data ?? []) as MeetingOption[]).filter(m => canEditThisMeeting(m, userId, caps))
-      setMeetings(rows)
+      try {
+        const [{ data, error: readError }, effective] = await Promise.all([
+          supabase
+            .from('meetings')
+            .select('id, title, meeting_date, meeting_type, status, lead_id, created_by')
+            .in('status', ['draft', 'in_progress'])
+            .order('meeting_date', { ascending: true }),
+          getEffectivePermissions(supabase, userId, 'meetings'),
+        ])
+        if (!active) return
+        if (readError) throw readError
+        const caps = deriveMeetingsCapabilities(userRole, effective)
+        const rows = ((data ?? []) as MeetingOption[]).filter(m => canEditThisMeeting(m, userId, caps))
+        setMeetingsError(null)
+        setMeetings(rows)
+      } catch (loadError) {
+        if (!active) return
+        logMeetingFailure('capture-discussion', loadError instanceof Error ? { message: loadError.message } : (loadError as MeetingErrorLike))
+        setMeetings(null)
+        setMeetingsError('The meetings you can add to could not be loaded, so nothing can be added yet.')
+      }
     }
     void load()
     return () => { active = false }
-  }, [supabase, userId, userRole])
+  }, [supabase, userId, userRole, loadAttempt])
 
   // Only meetings of the review type this category belongs in. The database
   // refuses any other (attach_meeting_discussion_item raises
@@ -141,7 +164,7 @@ export function AddToMeetingModal({
   // Not while the meeting list is still loading: the target would silently be the
   // Inbox, and a quick tap would send an issue there even though a live meeting of
   // the right type exists.
-  const canSubmit = !saving && result === null && meetings !== null && capturePrefillIsSubmittable({
+  const canSubmit = !saving && result === null && meetings !== null && meetingsError === null && capturePrefillIsSubmittable({
     category, orderNumber, issue, afterSalesTag: tag,
   })
 
@@ -188,9 +211,7 @@ export function AddToMeetingModal({
         title={result.status === 'existing'
           ? 'Already raised from this task'
           : result.in_inbox ? 'Saved to the Meeting Inbox' : 'Added to the meeting'}
-        onClose={() => onDone(result.status === 'existing'
-          ? 'This task already has an open discussion item'
-          : 'Added to the meeting agenda')}
+        onClose={() => onDone(captureToastMessage(result))}
         width={460}
       >
         {error && <MeetingModalError message={error} />}
@@ -214,10 +235,15 @@ export function AddToMeetingModal({
                   This task already has an open discussion item, so nothing new was created. It is
                   waiting in the <strong>Meeting Inbox</strong> for the next review.
                 </>
-              ) : (
+              ) : result.meeting_id ? (
                 <>
                   This task already has an open discussion item, so nothing new was created. It is
                   already on a meeting agenda.
+                </>
+              ) : (
+                <>
+                  This task already has an open discussion item, so nothing new was created. It is
+                  already on the agenda of a meeting you are not part of.
                 </>
               )
             ) : result.in_inbox ? (
@@ -250,9 +276,7 @@ export function AddToMeetingModal({
           )}
           <button
             type="button"
-            onClick={() => onDone(result.status === 'existing'
-              ? 'This task already has an open discussion item'
-              : 'Added to the meeting agenda')}
+            onClick={() => onDone(captureToastMessage(result))}
             className="boe-btn boe-btn-primary"
             style={{ padding: '8px 16px', fontSize: '12.5px' }}
           >
@@ -272,6 +296,23 @@ export function AddToMeetingModal({
       width={520}
     >
       {error && <MeetingModalError message={error} />}
+      {meetingsError && (
+        <div role="alert" style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap',
+          padding: '9px 12px', borderRadius: '8px', background: colors.redTint,
+          fontSize: '12px', color: colors.red, lineHeight: 1.5,
+        }}>
+          <span>{meetingsError}</span>
+          <button
+            type="button"
+            onClick={() => { setMeetingsError(null); setLoadAttempt(n => n + 1) }}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '5px 12px', fontSize: '12px' }}
+          >
+            Try again
+          </button>
+        </div>
+      )}
 
       <MeetingField label="Category" group>
         <CategoryPicker
@@ -325,7 +366,9 @@ export function AddToMeetingModal({
 
       <MeetingField
         label="Target meeting"
-        hint={meetings === null
+        hint={meetingsError
+          ? 'Unavailable until the meetings load.'
+          : meetings === null
           ? 'Looking for meetings you can add to…'
           : matchingMeetings.length === 0
             ? `There is no live ${MEETING_TYPE_META[preferredType].label} review you can add to. It will wait in the Meeting Inbox.`

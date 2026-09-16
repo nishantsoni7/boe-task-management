@@ -141,7 +141,10 @@ export type MeetingDiscussionItem = {
   updated_at: string
   resolved_at: string | null
   resolved_by: string | null
-  resolution_note: string | null
+  // resolution_note is deliberately absent. It is meeting-specific text, and the
+  // issue row is readable by people who may not open the meeting that resolved it,
+  // so no client role may select that column. The note is the 'resolved' trail
+  // row's `detail`, which follows that meeting's visibility.
   // Joined for display — never selected with `*`.
   created_by_name?: string | null
   resolved_by_name?: string | null
@@ -156,6 +159,8 @@ export type MeetingDiscussionAppearance = {
   agenda_position: number
   /** The appearance this was inherited from, when it was carried forward. */
   carried_from_id: string | null
+  /** 'automatic' = carry-forward (from a meeting or the Inbox); 'manual' = an editor put it here. */
+  placement: 'manual' | 'automatic'
   latest_update: string | null
   decision: string | null
   next_review_date: string | null
@@ -191,12 +196,12 @@ export const MEETING_DISCUSSION_ITEM_COLUMNS = [
   'id', 'category', 'after_sales_tag', 'order_number', 'order_number_key',
   'customer_name', 'title', 'details', 'source_task_id', 'state',
   'created_by', 'created_at', 'updated_at',
-  'resolved_at', 'resolved_by', 'resolution_note',
+  'resolved_at', 'resolved_by',
 ].join(', ')
 
 export const MEETING_DISCUSSION_APPEARANCE_COLUMNS = [
   'id', 'meeting_id', 'discussion_item_id', 'meeting_order_id', 'agenda_position',
-  'carried_from_id', 'latest_update', 'decision', 'next_review_date',
+  'carried_from_id', 'placement', 'latest_update', 'decision', 'next_review_date',
   'discussed_at', 'discussed_by', 'created_by', 'created_at', 'updated_at',
 ].join(', ')
 
@@ -236,7 +241,11 @@ export type DiscussionRow = {
   earlierMeetings: number
   evidenceCount: number
   linkedTaskIds: string[]
-  /** Resolved in THIS meeting, for the "resolved today" count. */
+  /**
+   * Resolved in THIS meeting and still resolved as this meeting records it — the
+   * "resolved today" count. An issue resolved here and then reopened later in the
+   * same live meeting is not resolved today.
+   */
   resolvedHere: boolean
   /**
    * The state THIS meeting shows. For a completed meeting it is the state when the
@@ -375,7 +384,6 @@ export function buildDiscussionRows(input: {
   }
 
   const taskIds = new Map<string, string[]>()
-  const resolvedHere = new Set<string>()
   for (const event of events) {
     if (!event.appearance_id) continue
     if (event.event_type === 'task_linked' && event.task_id) {
@@ -383,7 +391,6 @@ export function buildDiscussionRows(input: {
       if (!list.includes(event.task_id)) list.push(event.task_id)
       taskIds.set(event.appearance_id, list)
     }
-    if (event.event_type === 'resolved') resolvedHere.add(event.appearance_id)
   }
 
   const eventsByItem = new Map<string, MeetingDiscussionEvent[]>()
@@ -406,7 +413,9 @@ export function buildDiscussionRows(input: {
       earlierMeetings: earlierCount.get(item.id) ?? 0,
       evidenceCount: evidenceCount.get(appearance.id) ?? 0,
       linkedTaskIds: taskIds.get(appearance.id) ?? [],
-      resolvedHere: resolvedHere.has(appearance.id),
+      // The resolution IN FORCE for this meeting, and it was taken here. A resolve
+      // followed by a reopen leaves no resolution in force, so it is not counted.
+      resolvedHere: recorded.recorded === 'resolved' && recorded.resolution?.appearance_id === appearance.id,
       recordedState: recorded.recorded,
       resolution: recorded.resolution,
       changedSince: recorded.changedSince,
@@ -467,6 +476,25 @@ export function stateInMeeting(
   return { recorded: state, current, resolution, changedSince: state !== current }
 }
 
+/**
+ * The note of the most recent resolution of an issue that THIS reader can see — what
+ * the Reopen dialog quotes. It comes from the trail, never from the issue row: the
+ * row's resolution_note is not readable by any client role, because the resolving
+ * meeting's visibility is what decides who may read it. Null when no resolution is
+ * visible, and the dialog then quotes nothing rather than guessing.
+ */
+export function latestResolutionNote(
+  events: readonly MeetingDiscussionEvent[],
+  itemId: string,
+): string | null {
+  let latest: MeetingDiscussionEvent | null = null
+  for (const event of events) {
+    if (event.discussion_item_id !== itemId || event.event_type !== 'resolved') continue
+    if (!latest || event.created_at > latest.created_at) latest = event
+  }
+  return latest?.detail ?? null
+}
+
 /** Meeting `a` was held before meeting `b`: by date, then by when it was raised. */
 export function heldBefore(
   a: { meeting_date: string; created_at: string },
@@ -483,6 +511,8 @@ export type DiscussionMeetingGroup = {
   meetingId: string | null
   meetingTitle: string
   meetingDate: string | null
+  /** When the meeting was raised — the tie-break when two share a date. */
+  meetingCreatedAt: string | null
   appearanceId: string | null
   /** That meeting's own recorded position — never an earlier meeting's. */
   update: string | null
@@ -523,6 +553,7 @@ export function groupDiscussionHistory(input: {
       meetingId: appearance.meeting_id,
       meetingTitle: meeting?.title ?? 'A meeting you cannot see',
       meetingDate: meeting?.meeting_date ?? null,
+      meetingCreatedAt: meeting?.created_at ?? null,
       appearanceId: appearance.id,
       update: appearance.latest_update,
       decision: appearance.decision,
@@ -572,6 +603,7 @@ export function groupDiscussionHistory(input: {
       // too. These are the things that happened to the issue OUTSIDE a meeting.
       meetingTitle: 'Outside a meeting',
       meetingDate: null,
+      meetingCreatedAt: null,
       appearanceId: null,
       update: null,
       decision: null,
@@ -584,6 +616,45 @@ export function groupDiscussionHistory(input: {
   }
 
   return groups
+}
+
+/**
+ * The part of an issue's thread that is EARLIER than a given meeting — what the
+ * workspace's "Earlier meetings" panel shows.
+ *
+ *   * a meeting group counts only if that meeting was held BEFORE this one (by
+ *     date, then by when it was raised). This meeting and every later one are
+ *     excluded, so opening last month's review never shows this month's
+ *     discussion as if it came first. A group whose meeting did not come back has
+ *     no date to compare and is excluded rather than guessed.
+ *   * the outside-a-meeting group keeps only what happened before this meeting's
+ *     cut-off: for a completed meeting, its completion; for a live one, now. A
+ *     reopen taken after a meeting closed is not part of that meeting's past.
+ */
+export function earlierDiscussionHistory(
+  groups: readonly DiscussionMeetingGroup[],
+  current: {
+    id: string
+    meeting_date: string
+    created_at: string
+    status?: MeetingStatus
+    completed_at?: string | null
+  },
+): DiscussionMeetingGroup[] {
+  const cutoff = current.status === 'completed' && current.completed_at ? current.completed_at : null
+  const earlier: DiscussionMeetingGroup[] = []
+  for (const group of groups) {
+    if (group.meetingId === null) {
+      const events = cutoff === null ? group.events : group.events.filter(e => e.created_at <= cutoff)
+      if (events.length > 0) earlier.push({ ...group, events })
+      continue
+    }
+    if (group.meetingId === current.id) continue
+    if (!group.meetingDate || !group.meetingCreatedAt) continue
+    if (!heldBefore({ meeting_date: group.meetingDate, created_at: group.meetingCreatedAt }, current)) continue
+    earlier.push(group)
+  }
+  return earlier
 }
 
 // ─── Carry-forward, stated in the browser's own words ─────────────────────────

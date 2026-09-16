@@ -36,7 +36,7 @@ import {
   canEditThisMeeting, canReopenDiscussionItem, canSetThisMeetingStatus,
 } from '@/lib/permissions/meetings'
 import {
-  buildDiscussionRows, groupDiscussionHistory,
+  buildDiscussionRows, groupDiscussionHistory, latestResolutionNote,
   type DiscussionFilter, type DiscussionRow,
 } from '@/lib/meetings/discussion'
 import {
@@ -846,6 +846,8 @@ export function MeetingWorkScreen() {
             inboxCount={inboxCount}
             onOpenInbox={() => router.push('/meetings/inbox')}
             meetingCompleted={meeting.status === 'completed'}
+            loadFailed={discussion === null}
+            onRetry={refresh}
           />
 
           <div>
@@ -1028,6 +1030,7 @@ export function MeetingWorkScreen() {
         <ReopenDiscussionModal
           supabase={supabase}
           item={modal.row.item}
+          resolutionNote={latestResolutionNote(discussion?.events ?? [], modal.row.item.id)}
           onClose={() => setModal({ kind: 'none' })}
           onReopened={message => afterWrite(message)}
         />

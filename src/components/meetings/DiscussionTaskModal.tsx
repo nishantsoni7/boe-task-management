@@ -21,9 +21,15 @@ import type { Meeting } from '@/lib/meetings/types'
 // enough for the assignee to act in three days without the meeting in front of
 // them.
 //
-// Three things are NOT prefilled, because each is a decision: assignee, due date
-// and priority. A task that arrives pre-assigned to a default person on a default
-// date is a task nobody owns.
+// Assignee and priority are NOT prefilled, because each is a decision: a task that
+// arrives pre-assigned to a default person is a task nobody owns. The due date is
+// suggested only when this meeting set a next review date, and stays editable;
+// otherwise it starts empty.
+//
+// IF THE LINK FAILS, THE TASK IS NOT CREATED AGAIN. The task row is written first
+// and the relationship last, so a failed link leaves a real task behind. Its id is
+// kept, Create is replaced by "Retry link", and a retry only re-records the link —
+// pressing the button again can never make a second task.
 //
 // It never quotes the SOURCE task. An issue captured from a task carries only the
 // issue line somebody chose to write, so a task created here cannot leak the
@@ -65,6 +71,9 @@ export function DiscussionTaskModal({
   // Its presence also disables Create, so the still-filled form cannot be
   // submitted a second time and produce a duplicate task.
   const [createdTaskId, setCreatedTaskId] = useState<string | null>(null)
+  // A task that exists but is not yet linked to this item, and whether its
+  // assignee was notified — carried into the retry so its outcome is unchanged.
+  const [unlinked, setUnlinked] = useState<{ taskId: string; notified: boolean } | null>(null)
 
   useEffect(() => {
     let active = true
@@ -77,7 +86,7 @@ export function DiscussionTaskModal({
     return () => { active = false }
   }, [supabase])
 
-  const canSubmit = createdTaskId === null
+  const canSubmit = createdTaskId === null && unlinked === null
     && title.trim() !== '' && assigneeId !== '' && dueDate !== '' && priority !== ''
 
   const handleCreate = async () => {
@@ -128,31 +137,44 @@ export function DiscussionTaskModal({
     if (!notified.ok) console.error('[meetings:create-task] assignment notification failed:', notified.reason)
 
     // Record the relationship last. If this fails the task still exists and is
-    // reported — losing the task would be far worse than losing the link, and the
-    // link can be re-made by creating the task again from the item.
+    // reported — losing the task would be far worse than losing the link.
+    await linkTask(task.id, notified.ok)
+  }
+
+  const linkTask = async (taskId: string, notified: boolean) => {
     const { error: linkErr } = await supabase.rpc('link_meeting_discussion_task', {
       p_appearance_id: appearance.id,
-      p_task_id: task.id,
+      p_task_id: taskId,
     })
 
     if (linkErr) {
       logMeetingFailure('link-discussion-task', linkErr)
+      setUnlinked({ taskId, notified })
       setError(
-        'The task was created, but linking it back to this discussion item failed. '
-        + 'The task is in Task Management; try creating the link again from this item.',
+        'The task was created, but linking it to this discussion item failed. '
+        + 'The task is in Task Management. Retry the link — no second task will be created.',
       )
       setSaving(false)
       return
     }
 
-    if (!notified.ok) {
-      setCreatedTaskId(task.id)
+    setUnlinked(null)
+    setError(null)
+    if (!notified) {
+      setCreatedTaskId(taskId)
       setSaving(false)
       return
     }
 
     setSaving(false)
-    onCreated(task.id)
+    onCreated(taskId)
+  }
+
+  const retryLink = async () => {
+    if (!unlinked || saving) return
+    setSaving(true)
+    setError(null)
+    await linkTask(unlinked.taskId, unlinked.notified)
   }
 
   return (
@@ -245,13 +267,23 @@ export function DiscussionTaskModal({
         resolving this item does not close the task — each is closed where it belongs.
       </p>
 
-      <MeetingModalActions
-        onClose={onClose}
-        onSave={handleCreate}
-        saving={saving}
-        disabled={!canSubmit}
-        saveLabel="Create Task"
-      />
+      {unlinked ? (
+        <MeetingModalActions
+          onClose={onClose}
+          onSave={retryLink}
+          saving={saving}
+          disabled={saving}
+          saveLabel="Retry link"
+        />
+      ) : (
+        <MeetingModalActions
+          onClose={onClose}
+          onSave={handleCreate}
+          saving={saving}
+          disabled={!canSubmit}
+          saveLabel="Create Task"
+        />
+      )}
     </MeetingModal>
   )
 }

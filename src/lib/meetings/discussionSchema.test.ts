@@ -224,7 +224,13 @@ describe('the three tables are readable and nothing else', () => {
         `REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public\\.${table}\\s+FROM authenticated`,
       ))
       assert.match(code, new RegExp(`REVOKE ALL ON public\\.${table}\\s+FROM anon`))
-      assert.match(code, new RegExp(`GRANT SELECT ON public\\.${table}\\s+TO authenticated`))
+      if (table === 'meeting_discussion_items') {
+        // Column by column, and never resolution_note (see "meeting notes follow the meeting").
+        assert.match(code, /REVOKE SELECT ON public\.meeting_discussion_items FROM authenticated;/)
+        assert.match(code, /GRANT SELECT \(\s*id, category,[\s\S]*?resolved_at, resolved_by\s*\) ON public\.meeting_discussion_items TO authenticated/)
+      } else {
+        assert.match(code, new RegExp(`GRANT SELECT ON public\\.${table}\\s+TO authenticated`))
+      }
     })
   }
 
@@ -497,7 +503,18 @@ describe('automatic carry-forward', () => {
   test('a repeat capture reports where an existing issue really is', () => {
     const body = fnBody('capture_meeting_discussion_item')
     assert.match(body, /'meeting_id',\s+COALESCE\(v_appearance\.meeting_id, v_latest_meeting\)/)
-    assert.match(body, /'in_inbox',\s+v_appearance\.id IS NULL AND v_latest_meeting IS NULL/)
+    assert.match(body, /'on_agenda',\s+v_on_agenda/)
+    assert.match(body, /'in_inbox',\s+NOT v_on_agenda/)
+  })
+
+  test('…but never names a meeting the caller cannot open', () => {
+    const body = fnBody('capture_meeting_discussion_item')
+    // Both lookups of the "latest meeting": the normal path and the race handler.
+    const lookups = body.match(/SELECT a\.meeting_id INTO v_latest_meeting[\s\S]*?LIMIT 1;/g) ?? []
+    assert.equal(lookups.length, 2)
+    for (const lookup of lookups) {
+      assert.match(lookup, /public\.can_view_meeting\(a\.meeting_id, v_uid\)/)
+    }
   })
 
   test('only from meetings HELD BEFORE this one, of the same type', () => {
@@ -710,5 +727,77 @@ describe('the migration asserts its own guarantees when it runs', () => {
 
   test('it checks that no client role can reach the internal writers', () => {
     assert.ok(code.includes('a client role can execute'))
+  })
+})
+
+// ─── Review fixes (PR #164) ──────────────────────────────────────────────────
+
+describe('meeting notes follow the meeting', () => {
+  test('every trail row is gated per row, and a meeting row on that meeting', () => {
+    assert.match(code, /CREATE POLICY "meeting_discussion_events_select"[\s\S]*?USING \(public\.can_view_discussion_event\(discussion_item_id, meeting_id, event_type, created_at, auth\.uid\(\)\)\)/)
+    const body = fnBody('can_view_discussion_event')
+    assert.match(body, /WHEN p_meeting_id IS NOT NULL THEN\s+public\.can_view_meeting\(p_meeting_id, p_user_id\)/)
+    assert.match(body, /WHEN p_event_type = 'captured' THEN\s+public\.can_view_discussion_item\(p_item_id, p_user_id\)/)
+    // A reopening reason follows the meeting whose resolution it reopens.
+    assert.match(body, /WHEN p_event_type = 'reopened' THEN[\s\S]*?can_view_meeting\(r\.meeting_id, p_user_id\)[\s\S]*?r\.event_type = 'resolved'/)
+    // Anything else with no meeting (a deleted draft's detached rows): nobody.
+    assert.match(body, /ELSE false\s+END/)
+  })
+
+  test('resolution_note is not granted to any client role', () => {
+    const grant = code.match(/GRANT SELECT \(([\s\S]*?)\) ON public\.meeting_discussion_items TO authenticated/)
+    assert.ok(grant, 'the issue row is granted column by column')
+    assert.ok(!grant![1].includes('resolution_note'))
+    assert.match(code, /has_column_privilege\('authenticated', 'public\.meeting_discussion_items', 'resolution_note', 'SELECT'\)/)
+  })
+
+  test("a meetings 'edit' or 'manage' grant reveals only Inbox issues", () => {
+    const body = fnBody('can_view_discussion_item')
+    assert.match(body, /NOT EXISTS \([\s\S]*?\)\s+AND \([\s\S]*?resolve_permission\(p_user_id, 'meetings', 'edit'\)[\s\S]*?resolve_permission\(p_user_id, 'meetings', 'manage'\)/)
+  })
+})
+
+describe('a draft holding a discussion cannot be deleted', () => {
+  const body = fnBody('meetings_prevent_delete_with_discussion')
+
+  test('every kind of substantive activity refuses', () => {
+    for (const needle of [
+      "a.placement <> 'automatic'",
+      'a.latest_update    IS NOT NULL',
+      'a.decision         IS NOT NULL',
+      'a.next_review_date IS NOT NULL',
+      'a.discussed_at     IS NOT NULL',
+      'a.meeting_order_id IS NOT NULL',
+      'ev.discussion_appearance_id = a.id',
+      "e.event_type IN ('update', 'task_linked', 'resolved', 'reopened')",
+    ]) {
+      assert.ok(body.includes(needle), `the guard does not check ${needle}`)
+    }
+    assert.match(body, /RAISE EXCEPTION 'MEETING_HAS_DISCUSSION:/)
+  })
+
+  test('it is a BEFORE DELETE trigger, and carry-forward marks what it adds as automatic', () => {
+    assert.match(code, /CREATE TRIGGER meetings_prevent_delete_with_discussion_trg\s+BEFORE DELETE ON public\.meetings/)
+    assert.match(fnBody('apply_meeting_discussion_carry_forward'), /'automatic', p_actor_id/)
+    assert.match(code, /placement text NOT NULL DEFAULT 'manual' CHECK \(placement IN \('manual', 'automatic'\)\)/)
+  })
+})
+
+describe('the Meeting Inbox is read by the database', () => {
+  test('no appearance ANYWHERE, filtered to what this reader may see, behind module entry', () => {
+    const body = fnBody('list_meeting_discussion_inbox')
+    assert.match(body, /IF NOT public\.module_entry_open\('meetings'\) THEN/)
+    assert.match(body, /NOT EXISTS \(\s*SELECT 1 FROM public\.meeting_discussion_appearances a\s+WHERE a\.discussion_item_id = i\.id\s*\)/)
+    assert.match(body, /public\.can_view_discussion_item\(i\.id, v_uid\)/)
+    assert.ok(!body.includes('resolution_note'), 'the Inbox read returns no meeting note')
+  })
+})
+
+describe('clearing a decision is explicit', () => {
+  test('a NULL decision leaves it alone; only p_clear_decision removes it', () => {
+    const body = fnBody('save_meeting_discussion_update')
+    assert.match(body, /p_clear_decision\s+boolean DEFAULT false/)
+    assert.match(body, /decision\s+= CASE\s+WHEN p_clear_decision THEN NULL\s+ELSE COALESCE\(v_decision, decision\)/)
+    assert.match(body, /'Decision cleared'/)
   })
 })

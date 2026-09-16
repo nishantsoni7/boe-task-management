@@ -18,7 +18,7 @@ import {
 } from '@/lib/meetings/evidence'
 import {
   AFTER_SALES_TAG_LABEL, DISCUSSION_CATEGORY_META, DISCUSSION_EVENT_LABEL,
-  DISCUSSION_STATE_META,
+  DISCUSSION_STATE_META, earlierDiscussionHistory,
   type DiscussionMeetingGroup, type DiscussionRow, type MeetingDiscussionEvent,
 } from '@/lib/meetings/discussion'
 import {
@@ -92,8 +92,9 @@ export function DiscussionWorkspace({
   const resolved = row.recordedState === 'resolved'
   // The issue as it stands today, which can differ only for a completed meeting.
   const resolvedNow = item.state === 'resolved'
-  // This meeting's own group is rendered inline above; the rest are "earlier".
-  const earlier = history.filter(group => group.appearanceId !== appearance.id)
+  // This meeting's own group is rendered inline above. "Earlier" is strictly
+  // earlier: this meeting and every later one are left out.
+  const earlier = earlierDiscussionHistory(history, meeting)
 
   return (
     <div>
@@ -542,6 +543,9 @@ function DiscussionComposer({
   const updateText    = update.trim()
   const decisionText  = decision.trim()
   const decisionMoved = decisionText !== (appearance.decision ?? '').trim()
+  // Emptying a recorded decision is a deliberate act, sent as its own flag: the
+  // database reads a NULL decision as "leave it alone", never as "remove it".
+  const clearsDecision = decisionMoved && decisionText === ''
   const reviewMoved   = review !== (appearance.next_review_date ?? '')
   const writesUpdate  = updateText !== '' || decisionMoved || reviewMoved
   const attachable    = staged.filter(s => (s.state === 'ready' || s.state === 'failed') && s.file && s.mime && s.ext)
@@ -558,9 +562,10 @@ function DiscussionComposer({
       const { error } = await supabase.rpc('save_meeting_discussion_update', {
         p_appearance_id: appearance.id,
         p_update: updateText || null,
-        p_decision: decisionMoved ? (decisionText || null) : null,
+        p_decision: decisionMoved && !clearsDecision ? decisionText : null,
         p_next_review_date: review || null,
         p_clear_next_review: (appearance.next_review_date ?? '') !== '' && review === '',
+        p_clear_decision: clearsDecision,
       })
       if (error) {
         logMeetingFailure('update-discussion', error)

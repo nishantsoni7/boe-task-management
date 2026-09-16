@@ -152,51 +152,34 @@ export async function fetchMeetingDiscussion(
 }
 
 /**
- * The Meeting Inbox: OPEN issues with no appearance on any meeting.
+ * The Meeting Inbox: OPEN issues with no appearance on ANY meeting.
  *
  * There is no inbox table, and that is the design. An issue waiting for a meeting
  * is simply an issue no meeting has yet claimed, so nothing can be lost from the
  * Inbox, nothing has to be swept out of it, and the source task link cannot be
- * dropped on the way. Automatic carry-forward reads the same condition inside the
+ * dropped on the way.
+ *
+ * DECIDED BY THE DATABASE, NOT HERE. A browser only receives the appearances on
+ * meetings it may open, so "open issues minus the appearances I can see" would
+ * list an issue that sits on somebody else's agenda as waiting — and invite a
+ * second placement. list_meeting_discussion_inbox() tests for an appearance
+ * anywhere, with RLS bypassed for that test only, and returns just the issues this
+ * reader may see. Automatic carry-forward reads the same condition inside the
  * transaction that creates a meeting.
  *
- * Two reads rather than a `NOT EXISTS`, because PostgREST cannot express an
- * anti-join: every open issue the reader may see, then the appearance ids among
- * them, then the difference. Bounded by how many issues are genuinely unresolved.
+ * Null on any failure, so the screen says "could not load" rather than "empty".
  */
 export async function fetchMeetingInbox(
   supabase: MeetingsClient,
 ): Promise<MeetingDiscussionItem[] | null> {
-  const open = await fetchAllRows<MeetingDiscussionItem & { creator?: { full_name: string } | null }>((from, to) =>
+  const inbox = await fetchAllRows<MeetingDiscussionItem>((from, to) =>
     supabase
-      .from('meeting_discussion_items')
-      .select(`${MEETING_DISCUSSION_ITEM_COLUMNS}, creator:users!created_by(full_name)`)
-      .eq('state', 'open')
-      .order('id', { ascending: true })
+      .rpc('list_meeting_discussion_inbox')
       .range(from, to),
   )
-  if (!open.ok || open.truncated) {
-    console.error('[meetings:inbox] load failed', open)
+  if (!inbox.ok || inbox.truncated) {
+    console.error('[meetings:inbox] load failed', inbox)
     return null
   }
-  if (open.rows.length === 0) return []
-
-  const claimed = await fetchAllRows<{ discussion_item_id: string }>((from, to) =>
-    supabase
-      .from('meeting_discussion_appearances')
-      .select('discussion_item_id')
-      .in('discussion_item_id', open.rows.map(row => row.id))
-      .order('discussion_item_id', { ascending: true })
-      .range(from, to),
-  )
-  if (!claimed.ok || claimed.truncated) {
-    console.error('[meetings:inbox] appearance load failed', claimed)
-    return null
-  }
-
-  const onAnAgenda = new Set(claimed.rows.map(row => row.discussion_item_id))
-  return open.rows
-    .filter(row => !onAnAgenda.has(row.id))
-    .map(({ creator, ...row }) => ({ ...row, created_by_name: creator?.full_name ?? null }))
-    .sort((a, b) => b.created_at.localeCompare(a.created_at))
+  return inbox.rows
 }

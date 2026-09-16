@@ -33,7 +33,8 @@ import {
   AFTER_SALES_TAGS, DISCUSSION_CATEGORIES, DISCUSSION_CATEGORY_META,
   DISCUSSION_FILTERS, DISCUSSION_STATE_META,
   afterSalesTagAllowed, buildDiscussionRows, carriesForward, categoryForMeetingType,
-  discussionSummary, filterDiscussionRows, groupDiscussionHistory, heldBefore,
+  discussionSummary, earlierDiscussionHistory, filterDiscussionRows, groupDiscussionHistory, heldBefore,
+  latestResolutionNote,
   isAfterSalesTag, isDiscussedHere, isDiscussionCategory, isInInbox,
   matchesDiscussionFilter, meetingTypeForCategory, sortDiscussionRows, stateInMeeting,
   type DiscussionItemState, type DiscussionRow,
@@ -63,7 +64,6 @@ function makeItem(over: Partial<MeetingDiscussionItem> = {}): MeetingDiscussionI
     updated_at: '2026-01-01T00:00:00Z',
     resolved_at: null,
     resolved_by: null,
-    resolution_note: null,
     ...over,
   }
 }
@@ -79,6 +79,7 @@ function makeAppearance(
     meeting_order_id: null,
     agenda_position: 1,
     carried_from_id: null,
+    placement: 'manual',
     latest_update: null,
     decision: null,
     next_review_date: null,
@@ -259,7 +260,7 @@ describe('the board filters', () => {
   const afterResolved = makeRow(
     makeItem({
       category: 'after_sales', state: 'resolved', title: 'Repair required',
-      resolution_note: 'done', resolved_at: 'x', resolved_by: 'u',
+      resolved_at: 'x', resolved_by: 'u',
     }),
     makeAppearance('b'),
   )
@@ -311,7 +312,7 @@ describe('the meeting summary', () => {
       makeRow(makeItem(), makeAppearance('b')),
       // resolved in THIS meeting
       makeRow(
-        makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u', resolution_note: 'n' }),
+        makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u' }),
         makeAppearance('c', { discussed_at: '2026-01-02T11:00:00Z', discussed_by: 'u1' }),
         { resolvedHere: true },
       ),
@@ -325,7 +326,7 @@ describe('the meeting summary', () => {
     // The defect this exists for: counting it would tell the meeting it has an
     // outstanding item that nobody can act on, every month, forever.
     const rows = [makeRow(
-      makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u', resolution_note: 'n' }),
+      makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u' }),
       makeAppearance('a'),
     )]
     const summary = discussionSummary(rows)
@@ -449,7 +450,7 @@ describe('buildDiscussionRows', () => {
   })
 
   test('resolvedHere is true only when the resolve event happened on THIS appearance', () => {
-    const resolvedItem = makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u', resolution_note: 'n' })
+    const resolvedItem = makeItem({ state: 'resolved', resolved_at: 'x', resolved_by: 'u' })
     const hereApp = makeAppearance(resolvedItem.id, { meeting_id: 'm2' })
     const rows = buildDiscussionRows({
       appearances: [hereApp],
@@ -693,5 +694,106 @@ describe('the state a meeting shows is the state it RECORDED', () => {
     assert.equal(filterDiscussionRows(rows, 'open').length, 0)
     assert.equal(discussionSummary(rows).toDiscuss, 0, 'a meeting that resolved it has nothing left to discuss')
     assert.equal(rows[0].changedSince, true)
+  })
+})
+
+// ─── Review fixes (PR #164) ──────────────────────────────────────────────────
+
+describe('"Earlier meetings" is strictly earlier', () => {
+  const meetingsById = new Map([
+    ['m-jan', { id: 'm-jan', title: 'January', meeting_date: '2026-01-10', created_at: '2026-01-01T00:00:00Z' }],
+    ['m-feb', { id: 'm-feb', title: 'February', meeting_date: '2026-02-10', created_at: '2026-02-01T00:00:00Z' }],
+    ['m-feb-2', { id: 'm-feb-2', title: 'February, second', meeting_date: '2026-02-10', created_at: '2026-02-02T00:00:00Z' }],
+    ['m-mar', { id: 'm-mar', title: 'March', meeting_date: '2026-03-10', created_at: '2026-03-01T00:00:00Z' }],
+  ])
+  const appearances = ['m-jan', 'm-feb', 'm-feb-2', 'm-mar'].map(meetingId =>
+    makeAppearance('item-h', { id: `app-${meetingId}`, meeting_id: meetingId }))
+  const events = [
+    makeEvent({ discussion_item_id: 'item-h', meeting_id: null, event_type: 'captured', created_at: '2026-01-05T00:00:00Z' }),
+    makeEvent({ discussion_item_id: 'item-h', meeting_id: null, event_type: 'reopened', created_at: '2026-02-20T00:00:00Z' }),
+  ]
+  const history = groupDiscussionHistory({ appearances, meetingsById, events, evidence: [], currentMeetingId: 'm-feb' })
+
+  test('opening a completed February meeting shows January only — never February or March', () => {
+    const earlier = earlierDiscussionHistory(history, {
+      id: 'm-feb', meeting_date: '2026-02-10', created_at: '2026-02-01T00:00:00Z',
+      status: 'completed', completed_at: '2026-02-11T00:00:00Z',
+    })
+    assert.deepEqual(earlier.filter(g => g.meetingId !== null).map(g => g.meetingId), ['m-jan'])
+    // Outside a meeting: the capture came before; the reopen came after it closed.
+    const loose = earlier.find(g => g.meetingId === null)
+    assert.deepEqual(loose?.events.map(e => e.event_type), ['captured'])
+  })
+
+  test('the same date is settled by which meeting was raised first', () => {
+    const earlier = earlierDiscussionHistory(history, {
+      id: 'm-feb-2', meeting_date: '2026-02-10', created_at: '2026-02-02T00:00:00Z', status: 'in_progress',
+    })
+    assert.deepEqual(earlier.filter(g => g.meetingId !== null).map(g => g.meetingId).sort(), ['m-feb', 'm-jan'])
+  })
+
+  test('a group whose meeting did not come back is not guessed to be earlier', () => {
+    const blind = groupDiscussionHistory({
+      appearances: [makeAppearance('item-h', { id: 'app-unknown', meeting_id: 'm-unknown' })],
+      meetingsById, events: [], evidence: [], currentMeetingId: 'm-mar',
+    })
+    assert.deepEqual(earlierDiscussionHistory(blind, {
+      id: 'm-mar', meeting_date: '2026-03-10', created_at: '2026-03-01T00:00:00Z', status: 'in_progress',
+    }), [])
+  })
+})
+
+describe('"resolved today" counts only a resolution still in force', () => {
+  const meeting = { id: 'm1', meeting_date: '2026-01-02', created_at: '2026-01-01T00:00:00Z', status: 'in_progress' as const }
+
+  test('resolved here and still resolved: counted', () => {
+    const item = makeItem({ id: 'i-live', state: 'resolved', resolved_at: 'x', resolved_by: 'u' })
+    const appearance = makeAppearance(item.id, { id: 'a-live' })
+    const rows = buildDiscussionRows({
+      appearances: [appearance], itemsById: new Map([[item.id, item]]), evidence: [], currentMeeting: meeting,
+      events: [makeEvent({ discussion_item_id: item.id, appearance_id: appearance.id, event_type: 'resolved', detail: 'Fixed' })],
+    })
+    assert.equal(rows[0].resolvedHere, true)
+    assert.equal(discussionSummary(rows).resolvedHere, 1)
+  })
+
+  test('resolved here, then reopened in the same live meeting: not counted', () => {
+    const item = makeItem({ id: 'i-reopened', state: 'open' })
+    const appearance = makeAppearance(item.id, { id: 'a-reopened' })
+    const rows = buildDiscussionRows({
+      appearances: [appearance], itemsById: new Map([[item.id, item]]), evidence: [], currentMeeting: meeting,
+      events: [
+        makeEvent({ discussion_item_id: item.id, appearance_id: appearance.id, event_type: 'resolved', created_at: '2026-01-02T10:00:00Z' }),
+        makeEvent({ discussion_item_id: item.id, meeting_id: null, event_type: 'reopened', created_at: '2026-01-02T11:00:00Z' }),
+      ],
+    })
+    assert.equal(rows[0].resolvedHere, false)
+    assert.equal(discussionSummary(rows).resolvedHere, 0)
+  })
+
+  test('resolved in ANOTHER meeting: not counted here', () => {
+    const item = makeItem({ id: 'i-elsewhere', state: 'resolved', resolved_at: 'x', resolved_by: 'u' })
+    const appearance = makeAppearance(item.id, { id: 'a-here' })
+    const rows = buildDiscussionRows({
+      appearances: [appearance], itemsById: new Map([[item.id, item]]), evidence: [], currentMeeting: meeting,
+      events: [makeEvent({ discussion_item_id: item.id, appearance_id: 'a-elsewhere', meeting_id: 'm-other', event_type: 'resolved' })],
+    })
+    assert.equal(rows[0].resolvedHere, false)
+  })
+})
+
+describe('the Reopen dialog quotes the resolution from the trail', () => {
+  test('the latest visible resolution, and nothing when none is visible', () => {
+    const events = [
+      makeEvent({ discussion_item_id: 'i1', event_type: 'resolved', detail: 'First fix', created_at: '2026-01-01T00:00:00Z' }),
+      makeEvent({ discussion_item_id: 'i1', event_type: 'resolved', detail: 'Second fix', created_at: '2026-03-01T00:00:00Z' }),
+      makeEvent({ discussion_item_id: 'i2', event_type: 'resolved', detail: 'Other issue', created_at: '2026-04-01T00:00:00Z' }),
+    ]
+    assert.equal(latestResolutionNote(events, 'i1'), 'Second fix')
+    assert.equal(latestResolutionNote(events, 'i3'), null)
+  })
+
+  test('the issue row type has no resolution_note to read', () => {
+    assert.ok(!('resolution_note' in makeItem()))
   })
 })

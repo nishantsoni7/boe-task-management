@@ -41,6 +41,15 @@
 --  20  evidence: lazy order folder, verified object, tagged to the issue
 --  21  visibility of issues: attendee, creator, editor, outsider
 --  22  deleting an empty draft that only inherited issues
+--  23  meeting notes follow the meeting: updates, resolution, reopening reason,
+--      evidence, and the resolution_note column
+--  24  a meetings 'edit' grant alone sees Inbox issues only
+--  25  the authoritative Inbox read; a repeat capture never names a hidden meeting
+--  26  a user without Meetings access: refused, and reads nothing
+--  27  real follow-up task linking: once, refused for a task the caller cannot hold
+--  28  clearing a decision needs the explicit flag
+--  29  deleting a draft: every kind of substantive activity refuses; untouched
+--      automatic appearances do not
 
 \set ON_ERROR_STOP on
 
@@ -59,7 +68,30 @@ insert into public.users (id, full_name, role, team, is_active, created_at, upda
   ('00000000-0000-4000-8000-0000000000e1', 'Editor Fixture',  'manager', 'management', true, now(), now()),
   ('00000000-0000-4000-8000-0000000000f1', 'Viewer Fixture',  'member',  'operations', true, now(), now()),
   ('00000000-0000-4000-8000-0000000000c1', 'Sales Fixture',   'member',  'sales',      true, now(), now()),
-  ('00000000-0000-4000-8000-0000000000d1', 'Outsider Fixture','member',  'design',     true, now(), now());
+  ('00000000-0000-4000-8000-0000000000d1', 'Outsider Fixture','member',  'design',     true, now(), now()),
+  ('00000000-0000-4000-8000-0000000000b1', 'Edit-only Fixture','member', 'operations', true, now(), now()),
+  ('00000000-0000-4000-8000-0000000000b2', 'No-access Fixture','member', 'operations', true, now(), now());
+
+-- X (b1) holds Meetings 'edit' but not 'manage', and attends nothing.
+-- N (b2) has Meetings 'view' taken away: no module entry at all. The member role
+-- default grants 'view' on this chain, so the override is what removes it.
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select u.id, pm.id, pa.id, u.allowed, '00000000-0000-4000-8000-0000000000a1'
+from (values
+  ('00000000-0000-4000-8000-0000000000b1'::uuid, 'edit', true),
+  ('00000000-0000-4000-8000-0000000000b2'::uuid, 'view', false)
+) as u(id, action_key, allowed)
+join public.permission_modules pm on pm.module_key = 'meetings'
+join public.permission_actions pa on pa.action_key = u.action_key;
+
+do $$
+begin
+  if not public.resolve_permission('00000000-0000-4000-8000-0000000000b1', 'meetings', 'edit')
+     or public.resolve_permission('00000000-0000-4000-8000-0000000000b1', 'meetings', 'manage')
+     or public.resolve_permission('00000000-0000-4000-8000-0000000000b2', 'meetings', 'view') then
+    raise exception 'FIXTURE: the edit-only / no-access permission overrides did not take effect';
+  end if;
+end $$;
 
 -- T1, T2: raised by Sales, assigned to the Editor. T3: the Outsider's own task.
 insert into public.tasks (id, title, note, team, created_by, assigned_to) values
@@ -77,20 +109,23 @@ select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000
 set local role authenticated;
 
 do $$
-declare r jsonb; v_item public.meeting_discussion_items;
+declare r jsonb; v_id uuid; v_task uuid; v_state text; v_key text;
 begin
   r := public.capture_meeting_discussion_item('running_order', '2041', 'Fabric approval pending',
          null, 'Blue Lagoon', null, null, '00000000-0000-4000-8000-00000000a001');
   if r->>'status' <> 'created' then raise exception 'ASSERT 1: status %', r->>'status'; end if;
-  if (r->>'in_inbox')::boolean is not true then raise exception 'ASSERT 1: not in inbox'; end if;
+  if (r->>'in_inbox')::boolean is not true or (r->>'on_agenda')::boolean then raise exception 'ASSERT 1: not in inbox'; end if;
   if r->>'appearance_id' is not null then raise exception 'ASSERT 1: has an appearance'; end if;
-  select * into v_item from public.meeting_discussion_items where id = (r->>'item_id')::uuid;
-  if v_item.source_task_id <> '00000000-0000-4000-8000-00000000a001' then raise exception 'ASSERT 1: source task lost'; end if;
-  if v_item.state <> 'open' or v_item.order_number_key <> '2041' then raise exception 'ASSERT 1: state/key'; end if;
-  if (select count(*) from public.meeting_discussion_events where discussion_item_id = v_item.id and event_type = 'captured') <> 1 then
+  -- Named columns: resolution_note is not selectable by a client role, so `select *` is refused.
+  select id, source_task_id, state, order_number_key into v_id, v_task, v_state, v_key
+  from public.meeting_discussion_items where id = (r->>'item_id')::uuid;
+  if v_id is null then raise exception 'ASSERT 1: the creator cannot read the issue'; end if;
+  if v_task <> '00000000-0000-4000-8000-00000000a001' then raise exception 'ASSERT 1: source task lost'; end if;
+  if v_state <> 'open' or v_key <> '2041' then raise exception 'ASSERT 1: state/key'; end if;
+  if (select count(*) from public.meeting_discussion_events where discussion_item_id = v_id and event_type = 'captured') <> 1 then
     raise exception 'ASSERT 1: captured event count';
   end if;
-  insert into ctx values ('run1', v_item.id);
+  insert into ctx values ('run1', v_id);
   raise notice 'PASS 1  capture with no meeting lands in the Meeting Inbox, source task kept';
 end $$;
 
@@ -160,7 +195,9 @@ begin
 end $$;
 
 reset role;
--- …and the Viewer, who will attend the meeting that shows T1's issue, cannot read T1.
+-- SANITY CHECK OF THE TASKS STUB, not of this migration (which adds no tasks
+-- policy): the Viewer, who will attend the meeting that shows T1's issue, cannot
+-- read T1 under production's tasks SELECT policy as 007 reproduces it.
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
 set local role authenticated;
 do $$
@@ -474,10 +511,14 @@ reset role;
 
 do $$
 begin
+  -- Not vacuous: M1 held both issues when it completed.
+  if (select count(*) from m1_snapshot) <> 2 then
+    raise exception 'ASSERT 13: the M1 snapshot holds % rows, so the comparison below would prove nothing', (select count(*) from m1_snapshot);
+  end if;
   if exists (
     select 1 from m1_snapshot s
-    join public.meeting_discussion_appearances a on a.id = s.id
-    where md5(row(a.*)::text) <> s.h
+    left join public.meeting_discussion_appearances a on a.id = s.id
+    where a.id is null or md5(row(a.*)::text) <> s.h
   ) then
     raise exception 'ASSERT 13: a completed meeting''s agenda changed when the next meeting was created';
   end if;
@@ -499,12 +540,23 @@ begin
   values ('new_order', (now() at time zone 'Asia/Kolkata')::date + 1, 'M2 New Order',
           '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000e1')
   returning id into v_twin;
+  -- The twin inherited the same open issues as M2 — no more, no fewer — each once.
+  if (select count(*) from public.meeting_discussion_appearances where meeting_id = v_twin) = 0 then
+    raise exception 'ASSERT 14: the retried meeting inherited nothing, so this proves nothing';
+  end if;
   if exists (
-    select discussion_item_id from public.meeting_discussion_appearances
-    where meeting_id in ((select v from ctx where k = 'm2'), v_twin)
-    group by meeting_id, discussion_item_id having count(*) > 1
+    (select discussion_item_id from public.meeting_discussion_appearances where meeting_id = v_twin
+     except all
+     select discussion_item_id from public.meeting_discussion_appearances where meeting_id = (select v from ctx where k = 'm2'))
+    union all
+    (select discussion_item_id from public.meeting_discussion_appearances where meeting_id = (select v from ctx where k = 'm2')
+     except all
+     select discussion_item_id from public.meeting_discussion_appearances where meeting_id = v_twin)
   ) then
-    raise exception 'ASSERT 14: an issue appears twice in one meeting';
+    raise exception 'ASSERT 14: the retried meeting did not inherit exactly M2''s issues, once each';
+  end if;
+  if exists (select 1 from public.meeting_discussion_appearances where meeting_id = v_twin and placement <> 'automatic') then
+    raise exception 'ASSERT 14: an inherited appearance is not marked automatic';
   end if;
   insert into ctx values ('m2twin', v_twin);
 
@@ -631,8 +683,11 @@ reset role;
 
 do $$
 begin
-  if exists (select 1 from m2_snapshot s join public.meeting_discussion_appearances a on a.id = s.id
-             where md5(row(a.*)::text) <> s.h) then
+  if (select count(*) from m2_snapshot) <> 2 then
+    raise exception 'ASSERT 16: the M2 snapshot holds % rows, so the comparison below would prove nothing', (select count(*) from m2_snapshot);
+  end if;
+  if exists (select 1 from m2_snapshot s left join public.meeting_discussion_appearances a on a.id = s.id
+             where a.id is null or md5(row(a.*)::text) <> s.h) then
     raise exception 'ASSERT 16: the completed meeting that resolved it changed on reopen';
   end if;
   if exists (select 1 from resolved_event_snapshot s join public.meeting_discussion_events e on e.id = s.id
@@ -674,13 +729,18 @@ reset role;
 -- ═══ 18. Two issues on one order keep separate threads ══════════════════════
 do $$
 begin
+  -- Both threads exist, so the checks below are not comparing empty sets.
+  if (select count(*) from public.meeting_discussion_events where discussion_item_id = (select v from ctx where k = 'run1')) = 0
+     or (select count(*) from public.meeting_discussion_events where discussion_item_id = (select v from ctx where k = 'run2')) = 0 then
+    raise exception 'ASSERT 18: one of the two issues has no trail, so this proves nothing';
+  end if;
+  -- Every trail row that names an appearance names one of ITS OWN issue.
   if exists (
-    select 1 from public.meeting_discussion_events e1
-    join public.meeting_discussion_events e2 on e1.id = e2.id
-    where e1.discussion_item_id = (select v from ctx where k = 'run1')
-      and e2.discussion_item_id = (select v from ctx where k = 'run2')
+    select 1 from public.meeting_discussion_events e
+    join public.meeting_discussion_appearances a on a.id = e.appearance_id
+    where a.discussion_item_id <> e.discussion_item_id
   ) then
-    raise exception 'ASSERT 18: a trail row belongs to both issues';
+    raise exception 'ASSERT 18: a trail row points at another issue''s appearance';
   end if;
   if exists (
     select 1 from public.meeting_discussion_events
@@ -715,6 +775,7 @@ begin
       where discussion_item_id = (r->>'item_id')::uuid and event_type = 'carried_forward') <> 1 then
     raise exception 'ASSERT 19: not carried into M5 once';
   end if;
+  insert into ctx values ('m5', v_m5);
   raise notice 'PASS 19 an Inbox item is placed once by hand and then moves on by carry-forward';
 end $$;
 reset role;
@@ -852,6 +913,488 @@ begin
   ) then
     raise exception 'ASSERT 22: the deleted draft''s trail rows were erased';
   end if;
+end $$;
+
+-- …and nobody reads those detached rows: they name a meeting that never happened.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+begin
+  if exists (select 1 from public.meeting_discussion_events where meeting_title = 'M6 raised by mistake') then
+    raise exception 'ASSERT 22: a detached trail row of a deleted draft is readable';
+  end if;
+end $$;
+reset role;
+
+-- ═══ 23. Meeting notes follow the meeting ═══════════════════════════════════
+-- The Viewer attends M1 only. run1's thread holds: an update + decision in M1,
+-- a resolution in M2, a reopening reason (quoting M2's note), and an image in M4.
+-- EXPECT: the Viewer reads M1's rows and the capture; nothing from M2 or M4; not
+--         the reopening reason; never resolution_note from the issue row. Once
+--         made an attendee of M2, the resolution and the reason become readable.
+do $$
+begin
+  -- Not vacuous: every row the Viewer must NOT see really exists.
+  if (select count(*) from public.meeting_discussion_events
+      where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'update'
+        and meeting_id = (select v from ctx where k = 'm1')) <> 1
+     or (select count(*) from public.meeting_discussion_events
+         where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'resolved'
+           and meeting_id = (select v from ctx where k = 'm2')) <> 1
+     or (select count(*) from public.meeting_discussion_events
+         where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'reopened') <> 1
+     or (select count(*) from public.meeting_order_evidence
+         where discussion_appearance_id = (select v from ctx where k = 'a_m4_run1')) <> 1 then
+    raise exception 'ASSERT 23: the fixture thread is not what this section needs';
+  end if;
+end $$;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_msg text; v_note text;
+begin
+  if (select count(*) from public.meeting_discussion_events
+      where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'update'
+        and meeting_id = (select v from ctx where k = 'm1')) <> 1 then
+    raise exception 'ASSERT 23: an attendee cannot read their own meeting''s update';
+  end if;
+  if (select count(*) from public.meeting_discussion_events
+      where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'captured') <> 1 then
+    raise exception 'ASSERT 23: an attendee cannot read how the issue was raised';
+  end if;
+  if exists (select 1 from public.meeting_discussion_events
+             where discussion_item_id = (select v from ctx where k = 'run1')
+               and (meeting_id is distinct from (select v from ctx where k = 'm1'))
+               and event_type <> 'captured') then
+    raise exception 'ASSERT 23: an attendee of M1 reads trail rows from another meeting';
+  end if;
+  if exists (select 1 from public.meeting_discussion_appearances
+             where discussion_item_id = (select v from ctx where k = 'run1')
+               and meeting_id <> (select v from ctx where k = 'm1')) then
+    raise exception 'ASSERT 23: an attendee of M1 reads another meeting''s update, decision or review date';
+  end if;
+  if exists (select 1 from public.meeting_order_evidence
+             where discussion_appearance_id = (select v from ctx where k = 'a_m4_run1')) then
+    raise exception 'ASSERT 23: an attendee of M1 reads evidence recorded in M4';
+  end if;
+  begin
+    select resolution_note into v_note from public.meeting_discussion_items
+    where id = (select v from ctx where k = 'run1');
+    raise exception 'ASSERT 23: resolution_note was selectable by a client role';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg like 'ASSERT%' then raise; end if;
+    if v_msg not like 'permission denied%' then raise exception 'ASSERT 23: wrong refusal %', v_msg; end if;
+  end;
+end $$;
+reset role;
+
+insert into public.meeting_attendees (meeting_id, user_id)
+select v, '00000000-0000-4000-8000-0000000000f1' from ctx where k = 'm2';
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+begin
+  if (select count(*) from public.meeting_discussion_events
+      where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'resolved') <> 1 then
+    raise exception 'ASSERT 23: an attendee of the resolving meeting cannot read the resolution';
+  end if;
+  if (select count(*) from public.meeting_discussion_events
+      where discussion_item_id = (select v from ctx where k = 'run1') and event_type = 'reopened') <> 1 then
+    raise exception 'ASSERT 23: an attendee of the resolving meeting cannot read the reopening reason';
+  end if;
+  raise notice 'PASS 23 meeting notes, resolutions, reopening reasons and evidence follow the meeting they were recorded in';
+end $$;
+reset role;
+
+delete from public.meeting_attendees
+where user_id = '00000000-0000-4000-8000-0000000000f1' and meeting_id = (select v from ctx where k = 'm2');
+
+-- ═══ 24. A meetings 'edit' grant alone sees Inbox issues only ════════════════
+-- X holds 'edit' (not 'manage') and attends nothing.
+-- EXPECT: X reads exactly the Inbox issues and their capture rows; nothing on any
+--         agenda; once X attaches an Inbox issue to a meeting X cannot open, X no
+--         longer reads it — while the Editor still does.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.capture_meeting_discussion_item('after_sales', '7700', 'Cushion cover replacement', null, null, 'replacement', null, null);
+  insert into ctx values ('inbox_as', (r->>'item_id')::uuid);
+  r := public.capture_meeting_discussion_item('running_order', '7701', 'Dispatch date not confirmed', null, null, null, null, null);
+  insert into ctx values ('inbox_run', (r->>'item_id')::uuid);
+end $$;
+reset role;
+
+do $$
+begin
+  if (select count(*) from public.meeting_discussion_items i
+      where not exists (select 1 from public.meeting_discussion_appearances a where a.discussion_item_id = i.id)) <> 2
+     or (select count(*) from public.meeting_discussion_items) <= 2 then
+    raise exception 'ASSERT 24: expected exactly two Inbox issues and others on agendas';
+  end if;
+end $$;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_msg text;
+begin
+  if (select count(*) from public.meeting_discussion_items) <> 2
+     or exists (select 1 from public.meeting_discussion_items
+                where id not in ((select v from ctx where k = 'inbox_as'), (select v from ctx where k = 'inbox_run'))) then
+    raise exception 'ASSERT 24: an edit grant reads issues outside the Inbox';
+  end if;
+  if (select count(*) from public.list_meeting_discussion_inbox()) <> 2 then
+    raise exception 'ASSERT 24: the Inbox read does not give an edit grant the two Inbox issues';
+  end if;
+  if exists (select 1 from public.meeting_discussion_events where event_type <> 'captured')
+     or (select count(*) from public.meeting_discussion_events) <> 2 then
+    raise exception 'ASSERT 24: an edit grant reads trail rows beyond the Inbox captures';
+  end if;
+  if exists (select 1 from public.meeting_discussion_appearances) then
+    raise exception 'ASSERT 24: an edit grant reads an agenda it cannot open';
+  end if;
+
+  -- 'edit' may still triage: put the After Sales issue on R1.
+  perform public.attach_meeting_discussion_item((select v from ctx where k = 'r1'), (select v from ctx where k = 'inbox_as'));
+  if exists (select 1 from public.meeting_discussion_items where id = (select v from ctx where k = 'inbox_as')) then
+    raise exception 'ASSERT 24: after attaching, an edit grant still reads an issue on a meeting it cannot open';
+  end if;
+  raise notice 'PASS 24 a meetings edit grant alone reads Inbox issues only, and loses them to a meeting it cannot open';
+end $$;
+reset role;
+
+-- ═══ 25. The authoritative Inbox read ═══════════════════════════════════════
+-- EXPECT: Sales raises 8800 (Inbox, visible to Sales as creator). The Editor puts it
+--         on M5 and records a note. Sales still reads the issue row, but not the
+--         note, not the agenda — and the Inbox read no longer lists it, although
+--         "open issues minus the agendas I can see" would. A repeat capture from a
+--         task says "on an agenda" without naming a meeting Sales cannot open.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.capture_meeting_discussion_item('running_order', '8800', 'Carving detail differs from drawing', null, null, null, null, null);
+  insert into ctx values ('sales_item', (r->>'item_id')::uuid);
+  if not exists (select 1 from public.list_meeting_discussion_inbox() where id = (r->>'item_id')::uuid) then
+    raise exception 'ASSERT 25: the creator does not see their own Inbox issue';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare a public.meeting_discussion_appearances;
+begin
+  a := public.attach_meeting_discussion_item((select v from ctx where k = 'm5'), (select v from ctx where k = 'sales_item'));
+  perform public.save_meeting_discussion_update(a.id, 'Confidential: supplier price revised', null, null, false, false);
+  if exists (select 1 from public.list_meeting_discussion_inbox() where id = (select v from ctx where k = 'sales_item')) then
+    raise exception 'ASSERT 25: an issue on an agenda is listed in the Editor''s Inbox';
+  end if;
+  if not exists (select 1 from public.list_meeting_discussion_inbox() where id = (select v from ctx where k = 'inbox_run'))
+     or exists (select 1 from public.list_meeting_discussion_inbox() where id = (select v from ctx where k = 'inbox_as')) then
+    raise exception 'ASSERT 25: the Editor''s Inbox is not exactly the unplaced issues';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000c1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare r jsonb;
+begin
+  if not exists (select 1 from public.meeting_discussion_items where id = (select v from ctx where k = 'sales_item')) then
+    raise exception 'ASSERT 25: the creator lost sight of their issue row';
+  end if;
+  if exists (select 1 from public.meeting_discussion_appearances where discussion_item_id = (select v from ctx where k = 'sales_item'))
+     or exists (select 1 from public.meeting_discussion_events
+                where discussion_item_id = (select v from ctx where k = 'sales_item') and event_type <> 'captured') then
+    raise exception 'ASSERT 25: the creator reads a meeting''s notes on their issue';
+  end if;
+  -- The naive browser inference would still call it waiting…
+  if not exists (
+    select 1 from public.meeting_discussion_items i
+    where i.id = (select v from ctx where k = 'sales_item') and i.state = 'open'
+      and not exists (select 1 from public.meeting_discussion_appearances a where a.discussion_item_id = i.id)
+  ) then
+    raise exception 'ASSERT 25: expected the visible-appearance inference to be wrong here, or this proves nothing';
+  end if;
+  -- …the database does not.
+  if exists (select 1 from public.list_meeting_discussion_inbox() where id = (select v from ctx where k = 'sales_item')) then
+    raise exception 'ASSERT 25: the Inbox read lists an issue that is on an agenda';
+  end if;
+
+  -- Sales created T1, whose open issue (run1) is on M4 and M5 — neither of which Sales can open.
+  r := public.capture_meeting_discussion_item('running_order', '2041', 'Fabric again', null, null, null, null,
+         '00000000-0000-4000-8000-00000000a001');
+  if r->>'status' <> 'existing' or (r->>'on_agenda')::boolean is not true or (r->>'in_inbox')::boolean
+     or r->>'meeting_id' is not null then
+    raise exception 'ASSERT 25: a repeat capture reported %', r;
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+begin
+  -- The Viewer is neither a creator nor a triager: an Inbox that exists is not theirs.
+  if exists (select 1 from public.list_meeting_discussion_inbox()) then
+    raise exception 'ASSERT 25: a view-only member reads the Meeting Inbox';
+  end if;
+  raise notice 'PASS 25 the Inbox is decided by the database, not by the agendas a reader can see; a repeat capture names no hidden meeting';
+end $$;
+reset role;
+
+-- ═══ 26. No Meetings access ═════════════════════════════════════════════════
+-- N has 'view' removed, and is made an attendee of M4 so that visibility — not the
+-- absence of any relationship — is what the module gate has to refuse.
+insert into public.meeting_attendees (meeting_id, user_id)
+select v, '00000000-0000-4000-8000-0000000000b2' from ctx where k = 'm4';
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000b2","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_msg text;
+begin
+  begin
+    perform public.capture_meeting_discussion_item('running_order', '9000', 'no access', null, null, null, null, null);
+    raise exception 'ASSERT 26: captured without Meetings access';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg like 'ASSERT%' then raise; end if;
+    if v_msg not like 'MEETING_FORBIDDEN:%' then raise exception 'ASSERT 26: wrong refusal %', v_msg; end if;
+  end;
+  begin
+    perform public.list_meeting_discussion_inbox();
+    raise exception 'ASSERT 26: read the Inbox without Meetings access';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg like 'ASSERT%' then raise; end if;
+    if v_msg not like 'MEETING_FORBIDDEN:%' then raise exception 'ASSERT 26: wrong refusal %', v_msg; end if;
+  end;
+  if exists (select 1 from public.meeting_discussion_items)
+     or exists (select 1 from public.meeting_discussion_appearances)
+     or exists (select 1 from public.meeting_discussion_events) then
+    raise exception 'ASSERT 26: a user without Meetings access reads discussion data';
+  end if;
+end $$;
+reset role;
+
+do $$
+begin
+  if not exists (select 1 from public.meeting_discussion_appearances where meeting_id = (select v from ctx where k = 'm4'))
+     or not public.can_view_meeting((select v from ctx where k = 'm4'), '00000000-0000-4000-8000-0000000000b2') then
+    raise exception 'ASSERT 26: M4 is empty or N is not its attendee, so the refusal above proves nothing';
+  end if;
+  raise notice 'PASS 26 without Meetings access a user is refused capture and the Inbox, and reads nothing even as an attendee';
+end $$;
+
+-- ═══ 27. Real follow-up task linking ════════════════════════════════════════
+-- EXPECT: the Editor (assignee of T1) links T1 to run1 in M4: one 'task_linked' row
+--         with the task title; linking again adds nothing; T3 (the Outsider's) is
+--         refused and leaves no row; the Viewer can neither see nor make a link.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_msg text;
+begin
+  perform public.link_meeting_discussion_task((select v from ctx where k = 'a_m4_run1'), '00000000-0000-4000-8000-00000000a001');
+  perform public.link_meeting_discussion_task((select v from ctx where k = 'a_m4_run1'), '00000000-0000-4000-8000-00000000a001');
+  if (select count(*) from public.meeting_discussion_events
+      where appearance_id = (select v from ctx where k = 'a_m4_run1') and event_type = 'task_linked'
+        and task_id = '00000000-0000-4000-8000-00000000a001'
+        and detail = 'Follow-up task: Order 2041 fabric approval pending') <> 1 then
+    raise exception 'ASSERT 27: expected exactly one task_linked row with the task title';
+  end if;
+  begin
+    perform public.link_meeting_discussion_task((select v from ctx where k = 'a_m4_run1'), '00000000-0000-4000-8000-00000000a003');
+    raise exception 'ASSERT 27: linked a task the caller neither created nor holds';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg like 'ASSERT%' then raise; end if;
+    if v_msg not like 'MEETING_TASK_NOT_LINKABLE:%' then raise exception 'ASSERT 27: wrong refusal %', v_msg; end if;
+  end;
+end $$;
+reset role;
+
+do $$
+begin
+  if exists (select 1 from public.meeting_discussion_events where task_id = '00000000-0000-4000-8000-00000000a003') then
+    raise exception 'ASSERT 27: a refused link left a trail row';
+  end if;
+end $$;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000f1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_msg text;
+begin
+  if exists (select 1 from public.meeting_discussion_events where event_type = 'task_linked') then
+    raise exception 'ASSERT 27: a follow-up task title is readable outside its meeting';
+  end if;
+  begin
+    perform public.link_meeting_discussion_task((select v from ctx where k = 'a_m4_run1'), '00000000-0000-4000-8000-00000000a001');
+    raise exception 'ASSERT 27: a non-editor linked a task';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg like 'ASSERT%' then raise; end if;
+    if v_msg not like 'MEETING_FORBIDDEN:%' then raise exception 'ASSERT 27: wrong refusal %', v_msg; end if;
+  end;
+  raise notice 'PASS 27 a follow-up task links once, only for a task the caller holds, and its title stays inside the meeting';
+end $$;
+reset role;
+
+-- ═══ 28. Clearing a decision ════════════════════════════════════════════════
+-- EXPECT: NULL and '' leave a decision alone; p_clear_decision removes it and the
+--         trail says so; exactly two 'update' rows (set, clear) are written.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare a public.meeting_discussion_appearances; n_before int;
+begin
+  n_before := (select count(*) from public.meeting_discussion_events
+               where appearance_id = (select v from ctx where k = 'a_m4_run1') and event_type = 'update');
+  a := public.save_meeting_discussion_update((select v from ctx where k = 'a_m4_run1'), null, 'Hold dispatch', null, false, false);
+  if a.decision is distinct from 'Hold dispatch' then raise exception 'ASSERT 28: decision not recorded'; end if;
+  a := public.save_meeting_discussion_update(a.id, null, null, null, false, false);
+  if a.decision is distinct from 'Hold dispatch' then raise exception 'ASSERT 28: a NULL decision removed it'; end if;
+  a := public.save_meeting_discussion_update(a.id, null, '', null, false, false);
+  if a.decision is distinct from 'Hold dispatch' then raise exception 'ASSERT 28: an empty decision removed it'; end if;
+  a := public.save_meeting_discussion_update(a.id, null, null, null, false, true);
+  if a.decision is not null then raise exception 'ASSERT 28: the clear flag did not remove the decision'; end if;
+  if (select count(*) from public.meeting_discussion_events
+      where appearance_id = a.id and event_type = 'update') <> n_before + 2 then
+    raise exception 'ASSERT 28: expected two update rows (set, clear)';
+  end if;
+  if not exists (select 1 from public.meeting_discussion_events
+                 where appearance_id = a.id and event_type = 'update' and detail = 'Decision cleared') then
+    raise exception 'ASSERT 28: the trail does not record the decision being cleared';
+  end if;
+  raise notice 'PASS 28 a decision is removed only by the explicit clear flag, and the trail records it';
+end $$;
+reset role;
+
+-- ═══ 29. Deleting a draft ═══════════════════════════════════════════════════
+-- EXPECT: M7 is a fresh draft that inherited open issues automatically. Each
+--         probe does ONE substantive thing and then tries to delete M7, inside a
+--         sub-block that is rolled back afterwards: every probe is refused. With
+--         nothing done, M7 deletes, no issue is lost, and its detached rows are
+--         unreadable.
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare v_m7 uuid;
+begin
+  insert into public.meetings (meeting_type, meeting_date, title, lead_id, created_by)
+  values ('new_order', (now() at time zone 'Asia/Kolkata')::date + 6, 'M7 draft under test',
+          '00000000-0000-4000-8000-0000000000e1', '00000000-0000-4000-8000-0000000000e1')
+  returning id into v_m7;
+  insert into ctx values ('m7', v_m7),
+    ('a_m7_run1', (select id from public.meeting_discussion_appearances where meeting_id = v_m7 and discussion_item_id = (select v from ctx where k = 'run1'))),
+    ('a_m7_run2', (select id from public.meeting_discussion_appearances where meeting_id = v_m7 and discussion_item_id = (select v from ctx where k = 'run2')));
+end $$;
+reset role;
+
+do $$
+begin
+  if (select v from ctx where k = 'a_m7_run1') is null or (select v from ctx where k = 'a_m7_run2') is null
+     or exists (select 1 from public.meeting_discussion_appearances
+                where meeting_id = (select v from ctx where k = 'm7') and placement <> 'automatic') then
+    raise exception 'ASSERT 29: M7 did not inherit run1 and run2 automatically, so the probes prove nothing';
+  end if;
+end $$;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare
+  v_m7 uuid := (select v from ctx where k = 'm7');
+  v_a1 uuid := (select v from ctx where k = 'a_m7_run1');
+  v_a2 uuid := (select v from ctx where k = 'a_m7_run2');
+  v_probe text;
+  v_msg text;
+  n int;
+begin
+  foreach v_probe in array array[
+    'update', 'decision', 'next_review', 'decision_then_cleared', 'resolved',
+    'task_link', 'evidence_folder', 'manual_attach'
+  ] loop
+    begin
+      case v_probe
+        when 'update'      then perform public.save_meeting_discussion_update(v_a1, 'Discussed today', null, null, false, false);
+        when 'decision'    then perform public.save_meeting_discussion_update(v_a1, null, 'Proceed', null, false, false);
+        when 'next_review' then perform public.save_meeting_discussion_update(v_a1, null, null, current_date + 14, false, false);
+        when 'decision_then_cleared' then
+          perform public.save_meeting_discussion_update(v_a1, null, 'Proceed', null, false, false);
+          perform public.save_meeting_discussion_update(v_a1, null, null, null, false, true);
+        when 'resolved'    then perform public.resolve_meeting_discussion_item(v_a2, 'Closed in the draft');
+        when 'task_link'   then perform public.link_meeting_discussion_task(v_a1, '00000000-0000-4000-8000-00000000a001');
+        when 'evidence_folder' then perform public.ensure_meeting_discussion_order(v_a1);
+        when 'manual_attach' then
+          perform public.capture_meeting_discussion_item('running_order', '9100', 'Raised straight onto the draft', v_m7, null, null, null, null);
+      end case;
+
+      begin
+        delete from public.meetings where id = v_m7;
+        get diagnostics n = row_count;
+        if n = 0 then raise exception 'ASSERT 29: [%] the delete was filtered, not refused — this proves nothing', v_probe; end if;
+        raise exception 'ASSERT 29: [%] a draft holding a discussion was deleted', v_probe;
+      exception when others then
+        get stacked diagnostics v_msg = message_text;
+        if v_msg like 'ASSERT%' then raise; end if;
+        if v_msg not like 'MEETING_HAS_DISCUSSION:%'
+           and not (v_probe = 'evidence_folder' and v_msg like 'MEETING_HAS_CONTENT:%') then
+          raise exception 'ASSERT 29: [%] wrong refusal %', v_probe, v_msg;
+        end if;
+      end;
+
+      raise exception 'PROBE_ROLLBACK';
+    exception when others then
+      get stacked diagnostics v_msg = message_text;
+      if v_msg <> 'PROBE_ROLLBACK' then raise; end if;
+    end;
+  end loop;
+
+  -- Every probe was rolled back: M7 is untouched again.
+  if exists (select 1 from public.meeting_discussion_appearances
+             where meeting_id = v_m7
+               and (placement <> 'automatic' or latest_update is not null or decision is not null
+                    or next_review_date is not null or discussed_at is not null or meeting_order_id is not null)) then
+    raise exception 'ASSERT 29: a probe was not rolled back';
+  end if;
+end $$;
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare n_items int := (select count(*) from public.meeting_discussion_items); n int;
+begin
+  delete from public.meetings where id = (select v from ctx where k = 'm7');
+  get diagnostics n = row_count;
+  if n <> 1 then raise exception 'ASSERT 29: the untouched draft could not be deleted'; end if;
+  if (select count(*) from public.meeting_discussion_items) <> n_items then
+    raise exception 'ASSERT 29: deleting the untouched draft removed an issue';
+  end if;
+  if exists (select 1 from public.meeting_discussion_events where meeting_title = 'M7 draft under test') then
+    raise exception 'ASSERT 29: the deleted draft''s detached rows are readable';
+  end if;
+end $$;
+reset role;
+
+do $$
+begin
+  if not exists (select 1 from public.meeting_discussion_events where meeting_title = 'M7 draft under test' and meeting_id is null) then
+    raise exception 'ASSERT 29: expected detached carry-forward rows for M7, or the unreadability check proves nothing';
+  end if;
+  raise notice 'PASS 29 a draft with any recorded activity cannot be deleted; an untouched inherited draft can';
   raise notice 'ALL ASSERTIONS PASSED';
 end $$;
 

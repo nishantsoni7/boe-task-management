@@ -1225,7 +1225,8 @@ missing unit was the issue itself.
 (`meeting_discussion_appearances`) and the issue's append-only trail
 (`meeting_discussion_events`) — plus one nullable column on
 `meeting_order_evidence` so an image attached while discussing an issue is known
-to belong to it. No existing table, policy, grant or function was edited.
+to belong to it, and two new triggers on `public.meetings`. No existing policy,
+grant, function or trigger was edited.
 
 **Four decisions worth remembering.**
 
@@ -1262,7 +1263,10 @@ passed, on two things no repository test could see:
   was wrong in a way that only an apply could reveal.
 
 Afterwards: no table, column, function or trigger left behind, and
-`migration list --linked` still shows `20261213000000` local-only.
+`migration list --linked` still shows `20261213000000` local-only. That rehearsal
+was of an EARLIER version of the file; after the PR review changes below it no
+longer counts, and must be repeated on the frozen file before the migration is
+applied.
 
 **How Meetings Work** (`/meetings/guide`) ships with it — an in-app visual
 guide inside the Meetings module, offered from the module header on every
@@ -1306,3 +1310,48 @@ block at the end of `globals.css` made `piDetail.render.test.tsx` — whose
 `pageCss()` slices from its own heading to the end of the file — judge the
 Meetings rules as PI rules. The block now sits before the PI block, and that test
 is untouched.
+
+**PR #164 review — the second round (2026-09-16).** Reading the complete diff
+against the database the migration builds on found seven defects, four of them in
+the migration itself. They were fixed in a follow-up commit rather than an
+amended one, so the review trail stays readable:
+
+1. **A draft holding a discussion could be deleted.** The existing delete guard
+   only looks for Order rows, and appearances cascade with their meeting — so a
+   draft in which issues had been updated or resolved could be deleted, taking
+   that meeting's record with it and leaving a resolution attached to no meeting.
+   A second BEFORE DELETE trigger now refuses any substantive activity; only
+   untouched automatic appearances (the new `placement` column) may go.
+2. **Meeting notes were readable outside the meeting.** Trail rows followed the
+   ISSUE's visibility, so an attendee of one meeting could read another meeting's
+   updates and decisions, and a Meetings `edit` grant could read every issue in
+   the company. Trail rows now follow the meeting they were recorded in
+   (`can_view_discussion_event`), `resolution_note` is not granted to any client
+   role, and `edit`/`manage` reveal an issue only while it is in the Inbox.
+   This is the same rule `meeting_update_history` already follows.
+3. **The Inbox was computed in the browser** as "open issues minus the agendas I
+   can see", which lists an issue on somebody else's meeting as waiting. It is now
+   `list_meeting_discussion_inbox()`.
+4. **Clearing a decision silently did nothing**, because NULL meant "leave alone".
+   Clearing is now an explicit flag.
+5. **"Earlier meetings" included later meetings** on a completed meeting's view.
+6. **Add to Meeting was drawn for people the database always refuses** — any
+   Meetings user on a closed task, and task delegators. It is now drawn only for
+   the creator, the current assignee or an admin.
+7. **Retrying a failed follow-up link created a second task.** The created task
+   is now kept and only "Retry link" is offered.
+
+Smaller: the Inbox save showed "Added to the meeting agenda"; a failed meeting
+list in Add to Meeting read as "no live meeting" and sent the issue to the Inbox;
+the guide promised a Task Detail indicator that does not exist; "resolved today"
+counted an issue reopened later; and a failed load could render as an empty board
+or an empty Inbox.
+
+**Proving the new checks can fail.** The local suite grew to 29 sections, with
+fixtures for an edit-only grant and a user whose Meetings access is removed, and
+every "cannot see" check first proves the hidden rows exist. Three checks that
+could never fail were rewritten. Then three deliberate breakages of the migration
+were run against it — notes readable through issue visibility, a deletion guard that
+only checks manual placement, and an Inbox read that trusts visible appearances — and
+each was caught by the section written for it before the file was restored
+byte-for-byte.

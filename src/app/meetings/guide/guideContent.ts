@@ -163,7 +163,7 @@ export const CAPTURE_FLOW: CaptureStep[] = [
 ]
 
 export const CAPTURE_NOTES: string[] = [
-  'The original task stays linked, so the meeting can see where the issue came from — and anyone who works on the task can see it went to a meeting.',
+  'The source task stays linked inside the Meeting discussion, so the meeting can see where the issue came from. The task itself is not changed.',
   'If there is no suitable upcoming meeting, the item waits in the Meeting Inbox and is brought into the next relevant meeting.',
   'Pressing Add to Meeting twice does not create a second item. The one already open is shown instead.',
 ]

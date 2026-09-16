@@ -236,9 +236,15 @@ it passes through (`20261213000000`).
   meeting twice returns the issue already open for it rather than creating a
   second. A partial unique index keeps that true under a double submit or two
   tabs; the button is not the guard.
-* **The Meeting Inbox is not a table.** An open issue that no meeting has claimed
-  IS the Inbox. Nothing is moved out of it and nothing can be lost from it, and
-  the source task link cannot be dropped on the way.
+* **Only the source task's owner can raise it into Meetings.** Add to Meeting is
+  accepted from the task's creator, its current assignee or an admin — the same
+  three the database checks — and only with Meetings access. A delegator can open
+  a delegated task but is not offered the action.
+* **The Meeting Inbox is not a table.** An open issue with no appearance on ANY
+  meeting IS the Inbox. Nothing is moved out of it and nothing can be lost from
+  it, and the source task link cannot be dropped on the way. Whether an issue is
+  in the Inbox is decided by the database, never inferred by the browser from the
+  agendas it happens to be able to see.
 * **Carry-forward is automatic, transactional and idempotent.** Creating a
   meeting adds, in the SAME transaction, every OPEN item of the matching category
   whose most recent earlier appearance was in a meeting of that type held before
@@ -259,7 +265,8 @@ it passes through (`20261213000000`).
   that history. If no review of the right type is ever created, the issue simply
   stays in the Inbox for manual attachment.
 * **"Earlier" means the same thing it means for an Order** — held before this
-  meeting by meeting date, then creation time.
+  meeting by meeting date, then creation time. A meeting's "Earlier meetings"
+  never includes itself or any later meeting.
 * **A completed meeting keeps showing what it recorded.** The state it displays
   for an issue is the state when it was completed, replayed from
   `meeting_discussion_events`; if the issue was resolved or reopened since, that
@@ -270,6 +277,10 @@ it passes through (`20261213000000`).
 * **Resolving requires a note, and stops carry-forward.** The actor and the time
   are recorded, every earlier appearance, update and image is preserved, and a
   trail event is written. Only a Meeting EDITOR of a LIVE meeting can resolve.
+  "Resolved today" counts only a resolution still in force.
+* **A recorded decision is removed only deliberately.** Saving without a decision
+  leaves the recorded one alone; removing it is an explicit clear, and the trail
+  records "Decision cleared".
 * **Reopening requires a reason.** The same item returns to Open and becomes
   eligible again. `resolved_at`/`resolved_by`/`resolution_note` are CURRENT
   state and are cleared — exactly as `meetings.completed_at` is — so the
@@ -281,21 +292,42 @@ it passes through (`20261213000000`).
   its linked tasks. Completing a task does not resolve the discussion item — a
   permitted user has to resolve it. Assignee, due date, priority, working state
   and completion are the Task module's, and Meetings never mirrors them.
-* **A meeting viewer never gains task access.** An issue stores a source task
-  ID and never a task title. Every task link on a meeting screen is drawn from a
-  read made with the VIEWER'S OWN client, so a task that does not come back is
-  named as inaccessible rather than linked.
-* **Nothing is deleted.** The three tables have no client INSERT, UPDATE, DELETE
-  or TRUNCATE privilege and no write policy; every mutation goes through a
-  SECURITY DEFINER function that writes the row and its trail entry in ONE
-  transaction. There is no Undo on Add to Meeting: no operation removes an
-  agenda entry, and Resolve must never stand in for one, because it records that
-  the business issue is finished.
-* **Visibility.** An issue is readable by whoever can read a meeting it has been
-  on, by its creator (so the person who raised it from a task can see what became
-  of it), and by a meeting editor or manager (so the Inbox, which has no meeting
-  to derive visibility from, can be triaged). Plain `meetings:view` grants
-  nothing beyond the meetings that person already sees.
+* **A meeting viewer never gains task access.** An issue row stores a source
+  task ID and never that task's title. A FOLLOW-UP task created from a meeting is
+  recorded in that meeting's trail with its title, and so is readable only by
+  people who can open that meeting. Every task link on a meeting screen is drawn
+  from a read made with the VIEWER'S OWN client, so a task that does not come back
+  is named as inaccessible rather than linked.
+* **No client deletes anything, and a discussed draft cannot be deleted.** The
+  three tables have no client INSERT, UPDATE, DELETE or TRUNCATE privilege and no
+  write policy; every mutation goes through a SECURITY DEFINER function that
+  writes the row and its trail entry in ONE transaction. Issues and trail rows are
+  never deleted. The one thing that can disappear is an agenda entry on a DRAFT
+  meeting deleted by mistake — and only when nobody did anything with it: any
+  update, decision, next review date, Discussed Today, evidence, resolution, task
+  link, or manual placement on that draft refuses the delete. Untouched
+  automatically inherited entries go with the draft, their issues return to being
+  carried forward, and their detached trail rows are kept but shown to no one.
+  There is no Undo on Add to Meeting: no operation removes an agenda entry, and
+  Resolve must never stand in for one, because it records that the business issue
+  is finished.
+* **Meeting notes follow the meeting.** Anything recorded IN a meeting — an
+  update, a decision, a next review date, a resolution note, a follow-up task's
+  title, evidence — is readable only by people who can open that meeting. A
+  reopening reason follows the meeting whose resolution it reopens. A Meetings
+  `edit` or `manage` grant does not widen this.
+* **Visibility of the issue itself.** The issue row (order, customer, title,
+  details, category, Open/Resolved) is readable by whoever can read a meeting it
+  has been on; by its creator, so the person who raised it can see whether it is
+  still open; and, ONLY while it is in the Inbox, by a meeting editor, manager or
+  admin, so the Inbox can be triaged. The creator does not see what any meeting
+  said about it unless they can open that meeting. Plain `meetings:view` grants
+  nothing beyond the meetings that person already sees. Without Meetings access a
+  person reads nothing, even as an attendee.
+* **A failure is never an empty state.** A screen that could not load its issues,
+  its Inbox or its list of meetings says so and offers a retry; it never shows
+  "nothing here", and Add to Meeting never falls back to the Inbox because the
+  meeting list failed to load.
 
 ---
 

@@ -331,10 +331,12 @@ export function ResolveDiscussionModal({
  * writes to the issue.
  */
 export function ReopenDiscussionModal({
-  supabase, item, onClose, onReopened,
+  supabase, item, resolutionNote, onClose, onReopened,
 }: {
   supabase: SupabaseClient
   item: MeetingDiscussionItem
+  /** The latest resolution the reader can see, from the trail. */
+  resolutionNote: string | null
   onClose: () => void
   onReopened: (message: string) => void
 }) {
@@ -377,13 +379,13 @@ export function ReopenDiscussionModal({
         history, including the resolution recorded before, is kept unchanged.
       </p>
 
-      {item.resolution_note && (
+      {resolutionNote && (
         <div style={{
           padding: '9px 12px', borderRadius: '8px', background: colors.raised,
           border: `1px solid ${colors.border}`, fontSize: '12px', color: colors.secondary, lineHeight: 1.55,
         }}>
           <strong style={{ fontWeight: 600, color: colors.primary }}>Resolved earlier as: </strong>
-          {item.resolution_note}
+          {resolutionNote}
         </div>
       )}
 
@@ -434,6 +436,8 @@ export function AttachDiscussionItemModal({
   onAttached: (message: string, meetingId: string) => void
 }) {
   const [meetings, setMeetings] = useState<MeetingOption[] | null>(null)
+  // A failed read is not "no live meeting": it shows only the error.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [chosen, setChosen]     = useState('')
   const [saving, setSaving]     = useState(false)
   const [error, setError]       = useState<string | null>(null)
@@ -452,7 +456,12 @@ export function AttachDiscussionItemModal({
       .order('meeting_date', { ascending: true })
       .then(({ data, error: loadError }) => {
         if (!active) return
-        if (loadError) { setMeetings([]); setError(meetingErrorMessage('attach-discussion', loadError)); return }
+        if (loadError) {
+          logMeetingFailure('attach-discussion', loadError)
+          setLoadFailed(true)
+          setError('The live meetings could not be loaded, so this issue cannot be added yet. Close and try again.')
+          return
+        }
         const rows = (data ?? []) as MeetingOption[]
         setMeetings(rows)
         if (rows.length > 0) setChosen(rows[0].id)
@@ -490,7 +499,7 @@ export function AttachDiscussionItemModal({
     >
       {error && <MeetingModalError message={error} />}
 
-      {meetings === null ? (
+      {loadFailed ? null : meetings === null ? (
         <p style={{ margin: 0, fontSize: '12.5px', color: colors.muted }}>Loading meetings…</p>
       ) : meetings.length === 0 ? (
         <p style={{ margin: 0, fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6 }}>

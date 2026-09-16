@@ -256,7 +256,7 @@ describe('the reads scale with the meeting, not with the number of issues', () =
   })
 
   test('every read is paged, because PostgREST caps a response silently', () => {
-    const selects = (READS.match(/\.select\(/g) ?? []).length
+    const selects = (READS.match(/\.select\(|\.rpc\(/g) ?? []).length
     const paged   = (READS.match(/fetchAllRows</g) ?? []).length
     assert.equal(selects, paged, 'a read that is not paged can lose an issue’s oldest updates')
   })
@@ -392,5 +392,87 @@ describe('defects found by rendering the real components', () => {
   test('the Inbox waiting chip does not wear the After Sales amber', () => {
     const chip = INBOX.slice(INBOX.indexOf('Waiting for a meeting') - 500, INBOX.indexOf('Waiting for a meeting'))
     assert.ok(!/#FFFBEB|#FDE68A|#92400E/.test(chip))
+  })
+})
+
+// ─── 9. Review fixes (PR #164) ───────────────────────────────────────────────
+
+const TASK_MODAL = read('src/components/meetings/DiscussionTaskModal.tsx')
+
+describe('a failure is never shown as an empty state', () => {
+  test('the board: a failed agenda read shows the failure and Retry, not "Add the first issue"', () => {
+    assert.match(SCREEN, /loadFailed=\{discussion === null\}/)
+    const failed = BOARD.slice(BOARD.indexOf('if (loadFailed) {'), BOARD.indexOf('const resolvedWords'))
+    assert.match(failed, /role="alert"/)
+    assert.match(failed, /does not mean the agenda is empty/)
+    assert.ok(!failed.includes('EmptyBoard') && !failed.includes('Add the first issue'))
+  })
+
+  test('the Inbox: the list, its count and its empty state render only after a successful read', () => {
+    assert.match(INBOX, /\{!loadError && \(/)
+    assert.match(INBOX, /if \(!rows\) \{\s*\n[\s\S]*?setItems\(\[\]\)/)
+  })
+
+  test('Add to Meeting: a failed meeting read blocks the Add and says so — it never falls back to the Inbox', () => {
+    assert.match(CAPTURE, /const \[meetingsError, setMeetingsError\]/)
+    assert.match(CAPTURE, /meetings !== null && meetingsError === null && capturePrefillIsSubmittable/)
+    assert.match(CAPTURE, /if \(readError\) throw readError/)
+    // The permission read may not silently become "no permissions" either.
+    assert.ok(!/getEffectivePermissions\([^)]*\)\.catch/.test(CAPTURE))
+  })
+
+  test('the attach dialog: a failed meeting read is not "no live meeting"', () => {
+    assert.match(MODALS, /setLoadFailed\(true\)/)
+    assert.match(MODALS, /\{loadFailed \? null : meetings === null \?/)
+  })
+})
+
+describe('the capture result says only what happened', () => {
+  test('the toast follows the outcome, including the Inbox', () => {
+    assert.match(CAPTURE, /return result\.in_inbox \? 'Saved to the Meeting Inbox' : 'Added to the meeting agenda'/)
+    assert.equal((CAPTURE.match(/onDone\(captureToastMessage\(result\)\)/g) ?? []).length, 2)
+  })
+
+  test('an existing issue on a meeting the caller cannot open is described without a link', () => {
+    assert.match(CAPTURE, /already on the agenda of a meeting you are not part of/)
+    assert.match(CAPTURE, /\{result\.meeting_id && \(/)
+  })
+})
+
+describe('Task Detail offers Add to Meeting only to the people the database accepts', () => {
+  test('both rows use the one rule: creator, current assignee or admin, with Meetings access', () => {
+    assert.match(TASK_PAGE, /canOfferAddToMeeting\(\{\s*\n?\s*hasMeetingAccess: canAddToMeeting, isCreator, isAssignee, isAdmin, isQuotation,/)
+    assert.equal((TASK_PAGE.match(/\{offerAddToMeeting && /g) ?? []).length, 2)
+    assert.ok(!/\{canAddToMeeting && /.test(TASK_PAGE), 'no row may draw the action on Meetings access alone')
+  })
+})
+
+describe('a follow-up task whose link failed is never created twice', () => {
+  test('the created task is kept and only Retry link is offered', () => {
+    assert.match(TASK_MODAL, /setUnlinked\(\{ taskId, notified \}\)/)
+    assert.match(TASK_MODAL, /const canSubmit = createdTaskId === null && unlinked === null/)
+    assert.match(TASK_MODAL, /\{unlinked \? \(\s*<MeetingModalActions[\s\S]*?onSave=\{retryLink\}[\s\S]*?saveLabel="Retry link"/)
+    // The retry re-records the link; it never inserts a task.
+    const retry = TASK_MODAL.slice(TASK_MODAL.indexOf('const retryLink'), TASK_MODAL.indexOf('return (', TASK_MODAL.indexOf('const retryLink')))
+    assert.ok(!retry.includes(".from('tasks')"))
+    assert.match(retry, /linkTask\(unlinked\.taskId, unlinked\.notified\)/)
+  })
+})
+
+describe('the workspace', () => {
+  test('"Earlier meetings" leaves out this meeting and every later one', () => {
+    assert.match(WORKSPACE, /const earlier = earlierDiscussionHistory\(history, meeting\)/)
+  })
+
+  test('emptying a decision is sent as the explicit clear flag', () => {
+    assert.match(WORKSPACE, /const clearsDecision = decisionMoved && decisionText === ''/)
+    assert.match(WORKSPACE, /p_decision: decisionMoved && !clearsDecision \? decisionText : null/)
+    assert.match(WORKSPACE, /p_clear_decision: clearsDecision/)
+  })
+
+  test('nothing in the browser selects the resolution_note column', () => {
+    for (const source of [SCREEN, WORKSPACE, MODALS, READS, INBOX, CAPTURE]) {
+      assert.ok(!source.includes('resolution_note'))
+    }
   })
 })

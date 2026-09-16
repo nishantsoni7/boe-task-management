@@ -103,17 +103,31 @@
 --   evidence bucket, unlinking a task, deleting an event, and any change to the
 --   Order rail's own behaviour.
 --
+-- WHO READS WHAT
+-- A meeting's notes belong to that meeting. Every piece of text recorded IN a
+-- meeting — an update, a decision, a next review date, a resolution note, a
+-- follow-up task's title, evidence — is readable only by somebody who can open
+-- that meeting (can_view_meeting), exactly as meeting_update_history is. The
+-- issue ROW itself (order, customer, title, details, category, Open/Resolved) is
+-- readable a little more widely — by its creator and, while it waits in the
+-- Inbox, by the meeting editors who triage it — and for that reason the one
+-- meeting-specific column on it, resolution_note, is not granted to any client
+-- role at all: the note is read from its 'resolved' trail row, which carries the
+-- resolving meeting's visibility. A reopening reason follows the meeting whose
+-- resolution it reopens.
+--
 -- DATA IMPACT
 -- Additive only. Three new tables, one nullable column on an existing table, and
--- one new AFTER INSERT trigger on public.meetings. NO existing row is read,
--- rewritten or deleted; no existing policy, grant, function or trigger is
--- dropped or re-emitted, and add_meeting_order_evidence() keeps its exact
--- signature (§19 asserts it). There is NO backfill: an issue exists only once
--- someone captures it, and inventing discussion items from historical SKU lines
--- would fabricate a business record nobody wrote.
+-- two new triggers on public.meetings (carry-forward AFTER INSERT; a deletion
+-- guard BEFORE DELETE). NO existing row is read, rewritten or deleted; no
+-- existing policy, grant, function or trigger is dropped or re-emitted, and
+-- add_meeting_order_evidence() keeps its exact signature (§19 asserts it).
+-- There is NO backfill: an issue exists only once someone captures it, and
+-- inventing discussion items from historical SKU lines would fabricate a business
+-- record nobody wrote.
 --
 -- ROLLBACK / CORRECTIVE FORWARD
--- Forward-only. To retire: drop the trigger on public.meetings, drop the
+-- Forward-only. To retire: drop the two triggers on public.meetings, drop the
 -- functions named below, drop the column meeting_order_evidence
 -- .discussion_appearance_id, then drop the three tables (events, appearances,
 -- items).
@@ -226,9 +240,12 @@ CREATE TABLE IF NOT EXISTS public.meeting_discussion_appearances (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- CASCADE is safe and deliberate: a meeting can only be deleted while it is a
-  -- draft with nothing discussed in it (meetings_prevent_delete_with_content),
-  -- and a deleted draft must hand its inherited items straight back to the
-  -- carry-forward pool rather than pin them to a meeting that never happened.
+  -- draft with no order under review (meetings_prevent_delete_with_content) and
+  -- nothing substantive recorded against any issue on it
+  -- (meetings_prevent_delete_with_discussion, §17b), so the only rows this can
+  -- take are untouched automatic appearances. A deleted draft must hand those
+  -- straight back to the carry-forward pool rather than pin them to a meeting
+  -- that never happened.
   meeting_id uuid NOT NULL REFERENCES public.meetings(id) ON DELETE CASCADE,
 
   -- NO ACTION: nothing deletes an issue, so nothing may take its appearances.
@@ -249,6 +266,13 @@ CREATE TABLE IF NOT EXISTS public.meeting_discussion_appearances (
   -- Where this appearance came from, when it was inherited rather than added.
   -- The audit record of one carry-forward, alongside created_by / created_at.
   carried_from_id uuid REFERENCES public.meeting_discussion_appearances(id) ON DELETE SET NULL,
+
+  -- HOW it reached this agenda. 'automatic' is carry-forward (from an earlier
+  -- meeting or from the Inbox), which nobody chose; 'manual' is an editor's
+  -- deliberate attach or capture. The distinction is what lets a draft raised by
+  -- mistake be deleted with its untouched inherited agenda, while a draft that an
+  -- editor has put anything on cannot be (§17b).
+  placement text NOT NULL DEFAULT 'manual' CHECK (placement IN ('manual', 'automatic')),
 
   -- THIS meeting's own position on the issue. Never copied from an earlier
   -- meeting: an appearance with no update means the issue was inherited and has
@@ -422,14 +446,18 @@ COMMENT ON COLUMN public.meeting_order_evidence.discussion_appearance_id IS
 
 -- ═══ 5. Visibility predicate ═══════════════════════════════════════════════
 --
--- An issue is readable by whoever can read a meeting it has been on. Two extra
--- branches, and each earns itself:
+-- The ISSUE ROW — order, customer, title, details, category, Open/Resolved — is
+-- readable by whoever can read a meeting it has been on. Two extra branches, and
+-- each is as narrow as its reason:
 --
 --   * its creator — otherwise the sales employee who raised it from a task can
---     never see what became of it;
---   * a meeting EDITOR or manager — because the Meeting Inbox (items with no
---     appearance at all) has no meeting to derive visibility from, and somebody
---     has to be able to triage it.
+--     never see whether it is still open. The creator sees the row they wrote,
+--     not what any meeting said about it (see can_view_discussion_event).
+--   * a meeting EDITOR, manager or admin, WHILE THE ISSUE IS IN THE INBOX (no
+--     appearance anywhere) — because the Inbox has no meeting to derive
+--     visibility from, and somebody has to triage it. Once an issue is on an
+--     agenda, meeting visibility alone decides; 'edit' does not reveal issues on
+--     meetings the holder cannot open.
 --
 -- Plain 'view' grants nothing extra: an ordinary employee sees the issues on the
 -- meetings they attended, and nothing else.
@@ -454,18 +482,80 @@ AS $$
           WHERE a.discussion_item_id = i.id
             AND public.can_view_meeting(a.meeting_id, p_user_id)
         )
-        OR EXISTS (
-          SELECT 1 FROM public.users u
-          WHERE u.id = p_user_id AND u.is_active AND u.role = 'admin'
+        OR (
+          NOT EXISTS (
+            SELECT 1 FROM public.meeting_discussion_appearances a
+            WHERE a.discussion_item_id = i.id
+          )
+          AND (
+            EXISTS (
+              SELECT 1 FROM public.users u
+              WHERE u.id = p_user_id AND u.is_active AND u.role = 'admin'
+            )
+            OR public.resolve_permission(p_user_id, 'meetings', 'edit')
+            OR public.resolve_permission(p_user_id, 'meetings', 'manage')
+          )
         )
-        OR public.resolve_permission(p_user_id, 'meetings', 'edit')
-        OR public.resolve_permission(p_user_id, 'meetings', 'manage')
       )
   );
 $$;
 
 REVOKE EXECUTE ON FUNCTION public.can_view_discussion_item(uuid, uuid) FROM public, anon;
 GRANT  EXECUTE ON FUNCTION public.can_view_discussion_item(uuid, uuid) TO authenticated;
+
+-- ONE TRAIL ROW, and whether this reader may see it.
+--
+-- A trail row is meeting-specific text — an update, a decision, a follow-up
+-- task's title, a resolution note, a reopening reason — so it follows the
+-- meeting, never the issue:
+--
+--   * a row recorded IN a meeting      → whoever can open that meeting;
+--   * 'captured'                       → whoever can see the issue row. It carries
+--                                        a fixed phrase and the source task's id,
+--                                        never the task's title;
+--   * 'reopened' (taken outside a      → whoever can open the meeting whose
+--     meeting)                           resolution it reopens, because it quotes
+--                                        that resolution's note;
+--   * anything else with no meeting    → nobody. That is an 'added_to_agenda' or
+--                                        'carried_forward' row detached when an
+--                                        untouched draft was deleted: its title
+--                                        snapshot names a meeting that no longer
+--                                        exists and was never held.
+CREATE OR REPLACE FUNCTION public.can_view_discussion_event(
+  p_item_id    uuid,
+  p_meeting_id uuid,
+  p_event_type text,
+  p_created_at timestamptz,
+  p_user_id    uuid DEFAULT auth.uid()
+)
+RETURNS boolean
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+STABLE
+AS $$
+  SELECT p_user_id IS NOT NULL AND CASE
+    WHEN p_meeting_id IS NOT NULL THEN
+      public.can_view_meeting(p_meeting_id, p_user_id)
+    WHEN p_event_type = 'captured' THEN
+      public.can_view_discussion_item(p_item_id, p_user_id)
+    WHEN p_event_type = 'reopened' THEN
+      COALESCE((
+        SELECT public.can_view_meeting(r.meeting_id, p_user_id)
+        FROM public.meeting_discussion_events r
+        WHERE r.discussion_item_id = p_item_id
+          AND r.event_type = 'resolved'
+          AND r.meeting_id IS NOT NULL
+          AND r.created_at <= p_created_at
+        ORDER BY r.created_at DESC
+        LIMIT 1
+      ), false)
+    ELSE false
+  END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.can_view_discussion_event(uuid, uuid, text, timestamptz, uuid) FROM public, anon;
+GRANT  EXECUTE ON FUNCTION public.can_view_discussion_event(uuid, uuid, text, timestamptz, uuid) TO authenticated;
 
 -- ═══ 6. Row Level Security ═════════════════════════════════════════════════
 --
@@ -492,7 +582,7 @@ CREATE POLICY "meeting_discussion_appearances_select" ON public.meeting_discussi
 DROP POLICY IF EXISTS "meeting_discussion_events_select" ON public.meeting_discussion_events;
 CREATE POLICY "meeting_discussion_events_select" ON public.meeting_discussion_events
   FOR SELECT TO authenticated
-  USING (public.can_view_discussion_item(discussion_item_id, auth.uid()));
+  USING (public.can_view_discussion_event(discussion_item_id, meeting_id, event_type, created_at, auth.uid()));
 
 -- The parent module gate every meeting table carries (20260905000000).
 DROP POLICY IF EXISTS "meeting_discussion_items_module_entry_gate" ON public.meeting_discussion_items;
@@ -521,7 +611,19 @@ REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.meeting_discussion_items      
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.meeting_discussion_appearances FROM authenticated;
 REVOKE INSERT, UPDATE, DELETE, TRUNCATE ON public.meeting_discussion_events      FROM authenticated;
 
-GRANT SELECT ON public.meeting_discussion_items       TO authenticated;
+-- The issue row is readable column by column, and resolution_note is not one of
+-- the columns. It is the only meeting-specific text on the row, and the row is
+-- readable by people (the creator, Inbox triage) who may not open the meeting
+-- that resolved it. The note is read from its 'resolved' trail row instead, which
+-- can_view_discussion_event() gates on that meeting. REVOKE first: production's
+-- default privileges grant table-wide SELECT, which would make any column grant
+-- meaningless.
+REVOKE SELECT ON public.meeting_discussion_items FROM authenticated;
+GRANT SELECT (
+  id, category, after_sales_tag, order_number, order_number_key, customer_name,
+  title, details, source_task_id, state, created_by, created_at, updated_at,
+  resolved_at, resolved_by
+) ON public.meeting_discussion_items TO authenticated;
 GRANT SELECT ON public.meeting_discussion_appearances TO authenticated;
 GRANT SELECT ON public.meeting_discussion_events      TO authenticated;
 
@@ -679,6 +781,7 @@ DECLARE
   v_order      text := btrim(COALESCE(p_order_number, ''));
   v_tag        text := NULLIF(btrim(COALESCE(p_after_sales_tag, '')), '');
   v_created    boolean := false;
+  v_on_agenda  boolean := false;
   v_latest_meeting uuid;
 BEGIN
   IF v_uid IS NULL THEN
@@ -772,14 +875,28 @@ BEGIN
   END IF;
 
   -- Where the issue actually is, for an issue that already existed and was not
-  -- placed by this call: its most recent agenda, if it has one. Without this an
-  -- existing issue already on a meeting would be reported as waiting in the Inbox.
+  -- placed by this call. Without this an existing issue already on a meeting
+  -- would be reported as waiting in the Inbox.
+  --
+  -- `on_agenda` says whether it is on ANY agenda; `meeting_id` names the most
+  -- recent one THIS CALLER CAN OPEN, and is NULL otherwise. A task's assignee who
+  -- presses the button again learns that the issue is already on a meeting, never
+  -- which meeting they are not part of.
   IF v_appearance.id IS NULL THEN
+    SELECT EXISTS (
+      SELECT 1 FROM public.meeting_discussion_appearances a
+      WHERE a.discussion_item_id = v_item.id
+    ) INTO v_on_agenda;
+
     SELECT a.meeting_id INTO v_latest_meeting
     FROM public.meeting_discussion_appearances a
+    JOIN public.meetings m ON m.id = a.meeting_id
     WHERE a.discussion_item_id = v_item.id
-    ORDER BY a.created_at DESC
+      AND public.can_view_meeting(a.meeting_id, v_uid)
+    ORDER BY m.meeting_date DESC, m.created_at DESC
     LIMIT 1;
+  ELSE
+    v_on_agenda := true;
   END IF;
 
   RETURN jsonb_build_object(
@@ -790,7 +907,8 @@ BEGIN
     'category',      v_item.category,
     'order_number',  v_item.order_number,
     'title',         v_item.title,
-    'in_inbox',      v_appearance.id IS NULL AND v_latest_meeting IS NULL
+    'on_agenda',     v_on_agenda,
+    'in_inbox',      NOT v_on_agenda
   );
 EXCEPTION
   WHEN unique_violation THEN
@@ -800,16 +918,23 @@ EXCEPTION
     FROM public.meeting_discussion_items
     WHERE source_task_id = p_source_task_id AND state = 'open';
     IF v_item.id IS NULL THEN RAISE; END IF;
+    SELECT EXISTS (
+      SELECT 1 FROM public.meeting_discussion_appearances a
+      WHERE a.discussion_item_id = v_item.id
+    ) INTO v_on_agenda;
     SELECT a.meeting_id INTO v_latest_meeting
     FROM public.meeting_discussion_appearances a
+    JOIN public.meetings m ON m.id = a.meeting_id
     WHERE a.discussion_item_id = v_item.id
-    ORDER BY a.created_at DESC
+      AND public.can_view_meeting(a.meeting_id, v_uid)
+    ORDER BY m.meeting_date DESC, m.created_at DESC
     LIMIT 1;
     RETURN jsonb_build_object(
       'item_id', v_item.id, 'status', 'existing', 'appearance_id', NULL,
       'meeting_id', v_latest_meeting, 'category', v_item.category,
       'order_number', v_item.order_number, 'title', v_item.title,
-      'in_inbox', v_latest_meeting IS NULL
+      'on_agenda', v_on_agenda,
+      'in_inbox', NOT v_on_agenda
     );
 END;
 $$;
@@ -901,16 +1026,20 @@ GRANT  EXECUTE ON FUNCTION public.attach_meeting_discussion_item(uuid, uuid) TO 
 
 -- ═══ 10. This meeting's update ═════════════════════════════════════════════
 --
--- Every parameter defaults to NULL and NULL means "leave alone", the same
+-- Every value parameter defaults to NULL and NULL means "leave alone", the same
 -- contract save_meeting_order_update() has: this door cannot blank a field it
--- was not asked about. A save that moves nothing writes no trail row — the trail
--- records decisions, not clicks.
+-- was not asked about. Blanking is therefore its own explicit flag —
+-- p_clear_decision and p_clear_next_review — never an empty string, so "the
+-- editor deleted the decision" and "the editor did not touch it" cannot be
+-- confused. A save that moves nothing writes no trail row — the trail records
+-- decisions, not clicks.
 CREATE OR REPLACE FUNCTION public.save_meeting_discussion_update(
   p_appearance_id     uuid,
   p_update            text    DEFAULT NULL,
   p_decision          text    DEFAULT NULL,
   p_next_review_date  date    DEFAULT NULL,
-  p_clear_next_review boolean DEFAULT false
+  p_clear_next_review boolean DEFAULT false,
+  p_clear_decision    boolean DEFAULT false
 )
 RETURNS public.meeting_discussion_appearances
 LANGUAGE plpgsql
@@ -946,7 +1075,10 @@ BEGIN
 
   UPDATE public.meeting_discussion_appearances
      SET latest_update = COALESCE(v_update, latest_update),
-         decision      = COALESCE(v_decision, decision),
+         decision      = CASE
+                           WHEN p_clear_decision THEN NULL
+                           ELSE COALESCE(v_decision, decision)
+                         END,
          next_review_date = CASE
                               WHEN p_clear_next_review THEN NULL
                               ELSE COALESCE(p_next_review_date, next_review_date)
@@ -967,7 +1099,10 @@ BEGIN
   RETURNING * INTO v_after;
 
   IF v_after.decision IS DISTINCT FROM v_before.decision THEN
-    v_detail := format('Decision recorded: %s', v_after.decision);
+    v_detail := CASE
+                  WHEN v_after.decision IS NULL THEN 'Decision cleared'
+                  ELSE format('Decision recorded: %s', v_after.decision)
+                END;
   END IF;
 
   IF v_update IS NOT NULL
@@ -990,8 +1125,8 @@ BEGIN
 END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.save_meeting_discussion_update(uuid, text, text, date, boolean) FROM public, anon;
-GRANT  EXECUTE ON FUNCTION public.save_meeting_discussion_update(uuid, text, text, date, boolean) TO authenticated;
+REVOKE EXECUTE ON FUNCTION public.save_meeting_discussion_update(uuid, text, text, date, boolean, boolean) FROM public, anon;
+GRANT  EXECUTE ON FUNCTION public.save_meeting_discussion_update(uuid, text, text, date, boolean, boolean) TO authenticated;
 
 -- ═══ 11. Resolve ═══════════════════════════════════════════════════════════
 --
@@ -1497,9 +1632,9 @@ BEGIN
     v_position := v_position + 1;
 
     INSERT INTO public.meeting_discussion_appearances (
-      meeting_id, discussion_item_id, agenda_position, carried_from_id, created_by
+      meeting_id, discussion_item_id, agenda_position, carried_from_id, placement, created_by
     ) VALUES (
-      p_meeting_id, r.discussion_item_id, v_position, r.source_appearance_id, p_actor_id
+      p_meeting_id, r.discussion_item_id, v_position, r.source_appearance_id, 'automatic', p_actor_id
     )
     ON CONFLICT ON CONSTRAINT meeting_discussion_appearances_unique_per_meeting DO NOTHING
     RETURNING * INTO v_appearance;
@@ -1588,6 +1723,138 @@ $$;
 REVOKE EXECUTE ON FUNCTION public.carry_forward_meeting_discussions(uuid) FROM public, anon;
 GRANT  EXECUTE ON FUNCTION public.carry_forward_meeting_discussions(uuid) TO authenticated;
 
+-- ═══ 17b. A draft that holds a discussion cannot be deleted ═════════════════
+--
+-- meetings_delete lets the creator discard a DRAFT raised by mistake, and
+-- meetings_prevent_delete_with_content refuses once an Order is under review in
+-- it. A discussion needs the same protection, because the database lets an
+-- editor work a draft: without this, deleting it would cascade away that
+-- meeting's recorded update, decision and next review date, and leave its
+-- resolution attached to no meeting at all.
+--
+-- What still may go with a mistaken draft is exactly what nobody did: an
+-- AUTOMATIC appearance (carry-forward, from an earlier meeting or the Inbox)
+-- with nothing recorded against it. Everything else is substantive and refuses:
+--   * a MANUAL appearance — an editor chose to put the issue on this agenda;
+--   * an update, a decision, a next review date, or Discussed Today;
+--   * an Order folder or any evidence tagged to the issue here;
+--   * any 'update', 'task_linked', 'resolved' or 'reopened' trail row in this
+--     meeting — so a decision that was recorded and then cleared still counts.
+-- Agenda position is not in the list because nothing can change it: it is set
+-- when the appearance is created and no function edits it.
+CREATE OR REPLACE FUNCTION public.meetings_prevent_delete_with_discussion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM public.meeting_discussion_appearances a
+    WHERE a.meeting_id = OLD.id
+      AND (
+        a.placement <> 'automatic'
+        OR a.latest_update    IS NOT NULL
+        OR a.decision         IS NOT NULL
+        OR a.next_review_date IS NOT NULL
+        OR a.discussed_at     IS NOT NULL
+        OR a.meeting_order_id IS NOT NULL
+        OR EXISTS (
+          SELECT 1 FROM public.meeting_order_evidence ev
+          WHERE ev.discussion_appearance_id = a.id
+        )
+        OR EXISTS (
+          SELECT 1 FROM public.meeting_discussion_events e
+          WHERE e.appearance_id = a.id
+            AND e.event_type IN ('update', 'task_linked', 'resolved', 'reopened')
+        )
+      )
+  ) OR EXISTS (
+    SELECT 1 FROM public.meeting_discussion_events e
+    WHERE e.meeting_id = OLD.id
+      AND e.event_type IN ('update', 'task_linked', 'resolved', 'reopened')
+  ) THEN
+    RAISE EXCEPTION 'MEETING_HAS_DISCUSSION: Issues have already been discussed in this meeting, so it cannot be deleted'
+      USING ERRCODE = '42501';
+  END IF;
+  RETURN OLD;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.meetings_prevent_delete_with_discussion()
+  FROM public, anon, authenticated;
+
+DROP TRIGGER IF EXISTS meetings_prevent_delete_with_discussion_trg ON public.meetings;
+CREATE TRIGGER meetings_prevent_delete_with_discussion_trg
+  BEFORE DELETE ON public.meetings
+  FOR EACH ROW EXECUTE FUNCTION public.meetings_prevent_delete_with_discussion();
+
+-- ═══ 18b. The Meeting Inbox, read by the database ════════════════════════════
+--
+-- "In the Inbox" means NO appearance on ANY meeting. A browser cannot compute
+-- that: it only receives the appearances on meetings it may open, so an issue
+-- sitting on somebody else's agenda would look unclaimed to it — and could then
+-- be put on a second live meeting. This function answers the question with RLS
+-- bypassed for the "any appearance anywhere" test only, and returns just the
+-- issues this caller may see (can_view_discussion_item). It returns issue-row
+-- columns only; resolution_note is not among them, and an open issue has none.
+CREATE OR REPLACE FUNCTION public.list_meeting_discussion_inbox()
+RETURNS TABLE (
+  id               uuid,
+  category         text,
+  after_sales_tag  text,
+  order_number     text,
+  order_number_key text,
+  customer_name    text,
+  title            text,
+  details          text,
+  source_task_id   uuid,
+  state            text,
+  created_by       uuid,
+  created_at       timestamptz,
+  updated_at       timestamptz,
+  resolved_at      timestamptz,
+  resolved_by      uuid,
+  created_by_name  text
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  END IF;
+
+  IF NOT public.module_entry_open('meetings') THEN
+    RAISE EXCEPTION 'MEETING_FORBIDDEN: You do not have access to Meetings'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN QUERY
+  SELECT i.id, i.category, i.after_sales_tag, i.order_number, i.order_number_key,
+         i.customer_name, i.title, i.details, i.source_task_id, i.state,
+         i.created_by, i.created_at, i.updated_at, i.resolved_at, i.resolved_by,
+         u.full_name
+  FROM public.meeting_discussion_items i
+  LEFT JOIN public.users u ON u.id = i.created_by
+  WHERE i.state = 'open'
+    AND NOT EXISTS (
+      SELECT 1 FROM public.meeting_discussion_appearances a
+      WHERE a.discussion_item_id = i.id
+    )
+    AND public.can_view_discussion_item(i.id, v_uid)
+  ORDER BY i.created_at DESC, i.id;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.list_meeting_discussion_inbox() FROM public, anon;
+GRANT  EXECUTE ON FUNCTION public.list_meeting_discussion_inbox() TO authenticated;
+
 -- ═══ 19. Assertions ═══════════════════════════════════════════════════════
 --
 -- Read-only. Each needle is one the named object itself contains, so a partially
@@ -1634,10 +1901,52 @@ BEGIN
       RAISE EXCEPTION 'authenticated still holds a write privilege on %', v_table;
     END IF;
 
-    IF NOT has_table_privilege('authenticated', 'public.' || v_table, 'SELECT') THEN
+    IF NOT has_any_column_privilege('authenticated', 'public.' || v_table, 'SELECT') THEN
       RAISE EXCEPTION 'authenticated cannot read %', v_table;
     END IF;
   END LOOP;
+
+  -- A meeting's notes follow the meeting. The one meeting-specific column on the
+  -- issue row is not readable by any client role; the rest of the row is.
+  IF has_column_privilege('authenticated', 'public.meeting_discussion_items', 'resolution_note', 'SELECT')
+     OR has_column_privilege('anon', 'public.meeting_discussion_items', 'resolution_note', 'SELECT') THEN
+    RAISE EXCEPTION 'a client role can read meeting_discussion_items.resolution_note directly';
+  END IF;
+  IF NOT has_column_privilege('authenticated', 'public.meeting_discussion_items', 'title', 'SELECT') THEN
+    RAISE EXCEPTION 'authenticated cannot read an issue title';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policy p
+    WHERE p.polrelid = 'public.meeting_discussion_events'::regclass
+      AND p.polname = 'meeting_discussion_events_select'
+      AND pg_get_expr(p.polqual, p.polrelid) LIKE '%can_view_discussion_event%'
+  ) THEN
+    RAISE EXCEPTION 'meeting_discussion_events is not gated per trail row';
+  END IF;
+
+  IF pg_get_functiondef('public.can_view_discussion_event(uuid,uuid,text,timestamptz,uuid)'::regprocedure)
+     NOT LIKE '%can_view_meeting(p_meeting_id%' THEN
+    RAISE EXCEPTION 'can_view_discussion_event does not gate meeting rows on the meeting';
+  END IF;
+
+  -- A meeting-edit grant reveals only Inbox issues, never issues on meetings the
+  -- holder cannot open.
+  v_bad := pg_get_functiondef('public.can_view_discussion_item(uuid,uuid)'::regprocedure);
+  IF position('NOT EXISTS' IN v_bad) = 0
+     OR position('NOT EXISTS' IN v_bad)
+        > position('resolve_permission(p_user_id, ''meetings'', ''edit'')' IN v_bad) THEN
+    RAISE EXCEPTION 'can_view_discussion_item lets a meetings edit grant see issues outside the Inbox';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgrelid = 'public.meetings'::regclass
+      AND tgname = 'meetings_prevent_delete_with_discussion_trg'
+      AND NOT tgisinternal
+  ) THEN
+    RAISE EXCEPTION 'a draft holding a discussion can be deleted: the guard is missing';
+  END IF;
 
   -- Duplicate prevention, the two rules the whole workflow leans on.
   IF NOT EXISTS (
@@ -1690,7 +1999,7 @@ BEGIN
 
   -- Every write path authorizes before it writes.
   FOREACH v_table IN ARRAY ARRAY[
-    'public.save_meeting_discussion_update(uuid,text,text,date,boolean)',
+    'public.save_meeting_discussion_update(uuid,text,text,date,boolean,boolean)',
     'public.resolve_meeting_discussion_item(uuid,text)',
     'public.link_meeting_discussion_task(uuid,uuid)',
     'public.ensure_meeting_discussion_order(uuid)',
@@ -1730,10 +2039,11 @@ BEGIN
     RAISE EXCEPTION 'reopen_meeting_discussion_item does not authorize the caller';
   END IF;
 
-  -- The two functions no client may ever call directly.
+  -- The functions no client may ever call directly.
   FOREACH v_table IN ARRAY ARRAY[
     'public.record_meeting_discussion_event(uuid,uuid,uuid,text,text,text,uuid,text,text,text,text,date,date,uuid,text)',
-    'public.apply_meeting_discussion_carry_forward(uuid,uuid)'
+    'public.apply_meeting_discussion_carry_forward(uuid,uuid)',
+    'public.meetings_prevent_delete_with_discussion()'
   ] LOOP
     IF has_function_privilege('authenticated', v_table, 'EXECUTE')
        OR has_function_privilege('anon', v_table, 'EXECUTE') THEN
@@ -1744,13 +2054,14 @@ BEGIN
   FOREACH v_table IN ARRAY ARRAY[
     'public.capture_meeting_discussion_item(text,text,text,uuid,text,text,text,uuid)',
     'public.attach_meeting_discussion_item(uuid,uuid)',
-    'public.save_meeting_discussion_update(uuid,text,text,date,boolean)',
+    'public.save_meeting_discussion_update(uuid,text,text,date,boolean,boolean)',
     'public.resolve_meeting_discussion_item(uuid,text)',
     'public.reopen_meeting_discussion_item(uuid,text)',
     'public.link_meeting_discussion_task(uuid,uuid)',
     'public.ensure_meeting_discussion_order(uuid)',
     'public.add_meeting_discussion_evidence(uuid,text,text)',
-    'public.carry_forward_meeting_discussions(uuid)'
+    'public.carry_forward_meeting_discussions(uuid)',
+    'public.list_meeting_discussion_inbox()'
   ] LOOP
     IF has_function_privilege('anon', v_table, 'EXECUTE') THEN
       RAISE EXCEPTION 'anon can execute %', v_table;
