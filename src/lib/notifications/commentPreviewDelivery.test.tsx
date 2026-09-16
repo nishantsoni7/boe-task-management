@@ -87,10 +87,18 @@ function client(opts: {
     from: (table: string) => ({
       select: () => ({
         in: async () => {
+          // Names ride along with the rows, as PostgREST embeds them.
+          const NAMES: Record<string, string> = { [ACTOR]: 'Aditya', [ASSIGNEE]: 'Nishant' }
+          const person = (id: unknown) => (typeof id === 'string' && NAMES[id] ? { full_name: NAMES[id] } : null)
           if (table === 'tasks') {
-            return { data: [{ id: TASK, title: 'Balcony railing', assigned_to: ASSIGNEE }], error: null }
+            return {
+              data: [{ id: TASK, title: 'Balcony railing', assigned_to: ASSIGNEE, assignee: person(ASSIGNEE), creator: null }],
+              error: null,
+            }
           }
-          if (table === 'task_activity_log') return { data: activity, error: null }
+          if (table === 'task_activity_log') {
+            return { data: activity.map(r => ({ ...r, actor: person(r.actor_id) })), error: null }
+          }
           return {
             data: [{ id: ACTOR, full_name: 'Aditya' }, { id: ASSIGNEE, full_name: 'Nishant' }],
             error: null,
@@ -403,7 +411,7 @@ describe('15. the query count is unchanged and bounded', () => {
     assert.equal(calls, 0)
   })
 
-  test('15b. five queries per page, whatever the number of cards', async () => {
+  test('15b. four queries per page, whatever the number of cards', async () => {
     const tables: string[] = []
     const counting = {
       from: (t: string) => {
@@ -414,8 +422,9 @@ describe('15. the query count is unchanged and bounded', () => {
     const rows = Array.from({ length: 40 }, (_, i) =>
       n({ id: `bulk${i}`, activity_log_id: ACT }))
     await serverPage(rows, counting as ReturnType<typeof client>)
-    // notifications itself is the fifth, issued by the route.
-    assert.deepEqual(tables, ['tasks', 'task_activity_log', 'task_attachments', 'users'])
+    // notifications itself is the fourth, issued by the route. Names are
+    // embedded on the rows above, so they cost no query and no second wave.
+    assert.deepEqual(tables, ['tasks', 'task_activity_log', 'task_attachments'])
   })
 
   test('15c. the card component issues no request of its own', () => {

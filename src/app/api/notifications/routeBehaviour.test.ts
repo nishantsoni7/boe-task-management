@@ -98,6 +98,13 @@ let peakInFlightMutations: number
 
 const RELATIONSHIPS: Partial<Record<TableName, Record<string, { table: TableName; fk: string }>>> = {
   notifications: { tasks: { table: 'tasks', fk: 'task_id' } },
+  // Named by the FOREIGN KEY COLUMN, which is how PostgREST disambiguates the
+  // several relationships these tables have to `users`.
+  tasks: {
+    assigned_to: { table: 'users', fk: 'assigned_to' },
+    created_by: { table: 'users', fk: 'created_by' },
+  },
+  task_activity_log: { actor_id: { table: 'users', fk: 'actor_id' } },
 }
 const EMBED = /^(?:(\w+):)?(\w+)(?:!(\w+))?\((.*)\)$/
 

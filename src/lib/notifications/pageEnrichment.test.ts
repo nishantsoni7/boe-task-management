@@ -27,6 +27,24 @@ function stubClient(
   errors: { tasks?: string; users?: string; task_activity_log?: string; task_attachments?: string } = {},
 ) {
   const calls: { table: string; ids: readonly string[] }[] = []
+
+  // PostgREST answers `assignee:assigned_to(full_name)` by following the foreign
+  // key and attaching the row, so the stub does the same: a fixture still lists
+  // its people under `users`, and they arrive WITH the task or activity row.
+  // A person with no `users` fixture embeds as null — a deleted employee.
+  const people = new Map<string, { full_name: unknown }>(
+    ((rows.users ?? []) as { id?: unknown; full_name?: unknown }[])
+      .filter(u => typeof u.id === 'string')
+      .map(u => [u.id as string, { full_name: u.full_name }]))
+  const person = (id: unknown) => (typeof id === 'string' ? people.get(id) ?? null : null)
+  const embed = (table: string, row: unknown) => {
+    if (!row || typeof row !== 'object') return row
+    const r = row as Record<string, unknown>
+    if (table === 'tasks') return { ...r, assignee: person(r.assigned_to), creator: person(r.created_by) }
+    if (table === 'task_activity_log') return { ...r, actor: person(r.actor_id) }
+    return r
+  }
+
   const client = {
     from(table: 'tasks' | 'users' | 'task_activity_log' | 'task_attachments') {
       return {
@@ -36,7 +54,7 @@ function stubClient(
               calls.push({ table, ids })
               const err = errors[table]
               return Promise.resolve({
-                data: err ? null : (rows[table] ?? []),
+                data: err ? null : (rows[table] ?? []).map(r => embed(table, r)),
                 error: err ? { message: err } : null,
               })
             },
@@ -51,15 +69,15 @@ function stubClient(
 // ── 11. No per-group request ─────────────────────────────────────────────────
 
 describe('11. the lookup is batched, never one request per group', () => {
-  test('twenty tasks cost exactly two queries', async () => {
+  test('twenty tasks cost exactly one query', async () => {
     const ids = Array.from({ length: 20 }, (_, i) => `${T1.slice(0, -2)}${String(i).padStart(2, '0')}`)
     const { client, calls } = stubClient({
       tasks: ids.map(id => ({ id, title: 't', assigned_to: U1 })),
       users: [{ id: U1, full_name: 'Nishant' }],
     })
     await enrichNotificationPage(client, ids.map(id => ({ task_id: id })))
-    assert.equal(calls.length, 2, 'one tasks query, one users query — regardless of count')
-    assert.deepEqual(calls.map(c => c.table), ['tasks', 'users'])
+    assert.equal(calls.length, 1, 'one tasks query — regardless of count, names included')
+    assert.deepEqual(calls.map(c => c.table), ['tasks'])
     assert.equal(calls[0].ids.length, 20, 'all ids in ONE in() filter')
   })
 
@@ -69,13 +87,15 @@ describe('11. the lookup is batched, never one request per group', () => {
     assert.equal(calls.length, 0)
   })
 
-  test('one users query even when many tasks share assignees', async () => {
+  test('tasks sharing an assignee still cost one query, and both resolve', async () => {
     const { client, calls } = stubClient({
       tasks: [{ id: T1, title: 'a', assigned_to: U1 }, { id: T2, title: 'b', assigned_to: U1 }],
       users: [{ id: U1, full_name: 'Nishant' }],
     })
-    await enrichNotificationPage(client, [{ task_id: T1 }, { task_id: T2 }])
-    assert.equal(calls[1].ids.length, 1, 'distinct assignee ids only')
+    const { taskHeaders: map } = await enrichNotificationPage(client, [{ task_id: T1 }, { task_id: T2 }])
+    assert.equal(calls.length, 1, 'no people query to repeat')
+    assert.equal(map[T1].assigneeName, 'Nishant')
+    assert.equal(map[T2].assigneeName, 'Nishant')
   })
 
   test('the id set is bounded by the page, and de-duplicated', () => {
@@ -101,8 +121,8 @@ describe('2. the header people come from the task, never from an event', () => {
   test('the names are read from tasks.assigned_to / created_by → users.full_name', async () => {
     // BOTH SIDES ARE FETCHED NOW. The header names the person the reader is
     // dealing with, and when the reader IS the assignee that is the creator —
-    // see headerCounterpart. Both ids resolve through the SAME users query, so
-    // this is still three lookups for the whole page.
+    // see headerCounterpart. Both names are EMBEDDED on the task row, so the
+    // second side costs neither a query nor a wait.
     const { client, calls } = stubClient({
       tasks: [{ id: T1, title: 'test task', assigned_to: U1, created_by: U2 }],
       users: [{ id: U1, full_name: 'Nishant' }, { id: U2, full_name: 'Shravi' }],
@@ -113,16 +133,23 @@ describe('2. the header people come from the task, never from an event', () => {
       assigneeName: 'Nishant', assigneeId: U1,
       creatorName: 'Shravi',   creatorId: U2,
     })
-    assert.deepEqual(calls[1].ids.slice().sort(), [U1, U2].sort(),
-      'both ids came from the task row, in one query')
+    assert.deepEqual(calls.map(c => c.table), ['tasks'],
+      'both names came back with the task row, in one query')
   })
 
-  test('a task whose creator is also its assignee resolves one person, once', () => {
-    // The union is what keeps this at one users query — asserted directly
-    // because a regression here doubles a lookup on most pages.
+  test('a task whose creator is also its assignee resolves one person, embedded', async () => {
+    // Names arrive WITH the rows that carry the ids, so there is no people
+    // query left to deduplicate — and none to wait for.
+    const { client, calls } = stubClient({
+      tasks: [{ id: T1, title: 'a', assigned_to: U1, created_by: U1 }],
+      users: [{ id: U1, full_name: 'Nishant' }],
+    })
+    const { taskHeaders: map } = await enrichNotificationPage(client, [{ task_id: T1 }])
+    assert.equal(map[T1].assigneeName, 'Nishant')
+    assert.equal(map[T1].creatorName, 'Nishant')
+    assert.equal(calls.some(c => c.table === 'users'), false, 'no second wave for names')
     const src = read('src/lib/notifications/pageEnrichment.ts')
-    assert.ok(src.includes('const peopleIds = new Set<string>()'))
-    assert.equal((src.match(/from\('users'\)/g) ?? []).length, 1)
+    assert.equal((src.match(/from\('users'\)/g) ?? []).length, 0)
   })
 
   test('the module reads no notification field that could carry an actor', () => {
@@ -138,14 +165,16 @@ describe('2. the header people come from the task, never from an event', () => {
     // created_by joined assigned_to: one more RELATIONSHIP column on a table
     // the page already reads, and no additional query. Still nothing about a
     // person beyond the display name the reader already sees on the task.
-    assert.ok(src.includes("select('id, title, assigned_to, created_by')"))
-    assert.ok(src.includes("select('id, full_name')"))
+    assert.ok(src.includes("select('id, title, assigned_to, created_by, assignee:assigned_to(full_name), creator:created_by(full_name)')"))
+    // The person columns are EMBEDS through the foreign keys, so a name costs
+    // no query of its own — and still nothing but the display name travels.
+    assert.equal(src.includes("select('id, full_name')"), false)
     // attachment_url is the LEGACY single-file column. It is read so a
     // historical update can be described as an attachment rather than a bare
     // comment — a column on a table already being read, NOT a fifth query — and
     // it is consumed server-side; the behavioural test below proves the value
     // never reaches the client.
-    assert.ok(src.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url')"))
+    assert.ok(src.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url, actor:actor_id(full_name)')"))
     // The attachment lookup names the LINK and the two display columns, and
     // deliberately not `url` or `storage_path`: it decides one word in a
     // sentence ("attached a document"), and a reference that locates the object
@@ -153,11 +182,10 @@ describe('2. the header people come from the task, never from an event', () => {
     assert.ok(src.includes("select('activity_log_id, file_name, file_type')"))
     const selects = [...src.matchAll(/select\('([^']*)'\)/g)].map(m => m[1])
     assert.deepEqual(selects, [
-      'id, title, assigned_to, created_by',
-      'id, actor_id, action, note, from_status, to_status, attachment_url',
+      'id, title, assigned_to, created_by, assignee:assigned_to(full_name), creator:created_by(full_name)',
+      'id, actor_id, action, note, from_status, to_status, attachment_url, actor:actor_id(full_name)',
       'activity_log_id, file_name, file_type',
-      'id, full_name',
-    ], 'exactly four selects, exactly these columns')
+    ], 'exactly three selects, exactly these columns')
     for (const column of ['url', 'storage_path', 'attachment_storage_path']) {
       assert.equal(selects.some(sel => sel.split(/,\s*/).includes(column)), false,
         `the lookup must not select ${column}`)
@@ -197,10 +225,9 @@ describe('12. every missing case has one honest answer', () => {
     assert.equal(assigneeLabel({ title: 'x', assigneeName: '   ' }), ASSIGNEE_UNAVAILABLE)
   })
 
-  test('a failed users query still yields titles, and never throws', async () => {
-    const { client } = stubClient(
-      { tasks: [{ id: T1, title: 'test task', assigned_to: U1 }] },
-      { users: 'connection reset' })
+  test('a person with no readable row still yields titles, and never throws', async () => {
+    // Nothing embeds for them, exactly as the old lookup returned no row.
+    const { client } = stubClient({ tasks: [{ id: T1, title: 'test task', assigned_to: U1 }], users: [] })
     const { taskHeaders: map } = await enrichNotificationPage(client, [{ task_id: T1 }])
     assert.equal(map[T1].title, 'test task')
     assert.equal(assigneeLabel(map[T1]), ASSIGNEE_UNAVAILABLE)
@@ -247,7 +274,7 @@ describe('13-18. linked activity detail', () => {
     assert.equal(activityDetails[ACT2].toStatus, 'waiting')
   })
 
-  test('15. assignees AND actors resolve through ONE deduplicated user batch', async () => {
+  test('15. assignees AND actors resolve in the SAME wave, with no people query', async () => {
     const { client, calls } = stubClient({
       tasks: [{ id: T1, title: 'a', assigned_to: U1 }, { id: T2, title: 'b', assigned_to: U2 }],
       task_activity_log: [
@@ -260,10 +287,9 @@ describe('13-18. linked activity detail', () => {
       { task_id: T1, activity_log_id: ACT1 },
       { task_id: T2, activity_log_id: ACT2 },
     ])
-    const userCalls = calls.filter(c => c.table === 'users')
-    assert.equal(userCalls.length, 1, 'ONE users query for assignees and actors together')
-    assert.equal(userCalls[0].ids.length, 2, 'and each person asked for once')
-    assert.deepEqual([...userCalls[0].ids].sort(), [U1, U2].sort())
+    assert.equal(calls.filter(c => c.table === 'users').length, 0, 'no people query at all')
+    assert.deepEqual(calls.map(c => c.table).sort(), ['task_activity_log', 'task_attachments', 'tasks'],
+      'three reads, one wave: the names ride along with the rows that name them')
   })
 
   test('16. only ids taken from the caller\'s own rows are ever requested', async () => {

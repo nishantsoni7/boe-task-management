@@ -71,9 +71,16 @@ function client(opts: { taskTitle?: string; assigneeId?: string | null } = {}) {
     from: (table: string) => ({
       select: () => ({
         in: async () => {
+          // The name arrives WITH the row, through the foreign key, exactly as
+          // PostgREST answers `assignee:assigned_to(full_name)`.
+          const NAMES: Record<string, string> = { [ACTOR]: 'Mohit Sharma', [ASSIGNEE]: 'Aditya' }
+          const person = (id: string | null) => (id && NAMES[id] ? { full_name: NAMES[id] } : null)
           if (table === 'tasks') {
             return {
-              data: [{ id: TASK, title: opts.taskTitle ?? 'Ertiga Service and Part Change', assigned_to: assignee }],
+              data: [{
+                id: TASK, title: opts.taskTitle ?? 'Ertiga Service and Part Change',
+                assigned_to: assignee, assignee: person(assignee), creator: null,
+              }],
               error: null,
             }
           }
@@ -82,7 +89,7 @@ function client(opts: { taskTitle?: string; assigneeId?: string | null } = {}) {
               data: [{
                 id: ACT, actor_id: ACTOR, action: 'note_added',
                 note: 'Please confirm the revised dimensions before production.',
-                from_status: null, to_status: null,
+                from_status: null, to_status: null, actor: person(ACTOR),
               }],
               error: null,
             }
@@ -372,21 +379,21 @@ describe('16-17. this is presentation only', () => {
       assert.equal(SRC.includes(forbidden), false,
         `the card must not ${forbidden} — a header is not a data source`)
     }
-    // The page-level enrichment is FOUR lookups, all page-scoped `in()` batches
-    // — never one per card. The task select gained created_by so the header can
-    // name the other side of the task; that is a column on a table already
-    // being read. The fourth query is the attachment lookup, which is what lets
-    // an update that carried a file say so instead of "Comment added"; it is
-    // keyed by the SAME activity ids the third query uses.
+    // The page-level enrichment is THREE lookups, all page-scoped `in()`
+    // batches — never one per card. People are EMBEDDED through the foreign
+    // keys on the rows that already name them, so a name costs no query of
+    // its own and no second wave. The third query is the attachment lookup,
+    // which is what lets an update that carried a file say so instead of
+    // "Comment added"; it is keyed by the SAME activity ids the second uses.
     const enrich = read('src/lib/notifications/pageEnrichment.ts')
-    assert.equal((enrich.match(/\.select\(/g) ?? []).length, 4, 'four batched lookups')
-    assert.ok(enrich.includes("select('id, title, assigned_to, created_by')"))
+    assert.equal((enrich.match(/\.select\(/g) ?? []).length, 3, 'three batched lookups')
+    assert.ok(enrich.includes("select('id, title, assigned_to, created_by, assignee:assigned_to(full_name), creator:created_by(full_name)')"))
     // attachment_url joined the activity select so a HISTORICAL single-file
     // update is described as one; that is a column on a table already being
-    // read, not a fifth query.
-    assert.ok(enrich.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url')"))
+    // read, not a fourth query.
+    assert.ok(enrich.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url, actor:actor_id(full_name)')"))
     assert.ok(enrich.includes("select('activity_log_id, file_name, file_type')"))
-    assert.ok(enrich.includes("select('id, full_name')"))
+    assert.equal(enrich.includes("select('id, full_name')"), false, 'no people query left to wait for')
   })
 
   test('17b. grouping, unread and the mutation handlers are all still wired', async () => {
