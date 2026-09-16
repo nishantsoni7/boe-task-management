@@ -42,9 +42,28 @@ crossing the Pacific. Fewer trips would help; so would shorter ones.
 
 `hnd1` is Vercel's Tokyo region — the same city as the database.
 
-Next.js's per-route `preferredRegion` is **not** an option here: on Vercel it
-applies only to routes with `runtime = 'edge'`, and these are Node routes. The
-region is therefore set for the whole deployment.
+Next.js's per-route `preferredRegion` is **not** the mechanism here: on Vercel
+it applies only to routes with `runtime = 'edge'`, and these are Node routes.
+
+Vercel's own per-function configuration IS available for Node functions, so the
+move does not have to be all-or-nothing
+([Vercel docs, 11 August 2026](https://vercel.com/docs/functions/configuring-functions/region)):
+
+```json
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "src/app/api/notifications/route.ts": { "regions": ["hnd1"] }
+  }
+}
+```
+
+That would move only the notification endpoints and leave every other function
+— including the Image Editor's fal calls — in `iad1`. The plan limit decides
+whether it is usable: **Hobby is a single region**, Pro allows 5, so on Hobby a
+deployment that names two regions fails before the build. The project's plan has
+not been confirmed from here, so the whole-deployment form above remains the
+fallback.
 
 ## What it affects
 
