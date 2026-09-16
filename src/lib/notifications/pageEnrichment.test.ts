@@ -440,3 +440,59 @@ describe('a historical single-file update is described, not shipped', () => {
     assert.deepEqual(out.activityDetails[ACT1].attachments, [])
   })
 })
+
+// ── The embedded person ──────────────────────────────────────────────────────
+
+describe('embedded people, in both shapes PostgREST can answer', () => {
+  test('a to-one embed returned as an ARRAY still resolves the name', async () => {
+    const client = {
+      from: (table: string) => ({
+        select: () => ({
+          in: async () => {
+            if (table === 'tasks') {
+              return {
+                data: [{ id: T1, title: 'x', assigned_to: U1, created_by: U1,
+                  assignee: [{ full_name: 'Nishant' }], creator: [{ full_name: 'Nishant' }] }],
+                error: null,
+              }
+            }
+            if (table === 'task_activity_log') {
+              return {
+                data: [{ id: ACT1, actor_id: U1, action: 'note_added', note: 'x',
+                  from_status: null, to_status: null, actor: [{ full_name: 'Nishant' }] }],
+                error: null,
+              }
+            }
+            return { data: [], error: null }
+          },
+        }),
+      }),
+    }
+    const out = await enrichNotificationPage(client, [{ task_id: T1, activity_log_id: ACT1 }])
+    assert.equal(out.taskHeaders[T1].assigneeName, 'Nishant')
+    assert.equal(out.taskHeaders[T1].creatorName, 'Nishant')
+    assert.equal(out.activityDetails[ACT1].actorName, 'Nishant')
+  })
+
+  test('one person missing leaves the other intact, and the card keeps its fallbacks', async () => {
+    // U2 has no readable row: nothing embeds for them, exactly as the old
+    // lookup returned no row for a deleted employee.
+    const { client } = stubClient({
+      tasks: [{ id: T1, title: 'x', assigned_to: U1, created_by: U2 }],
+      users: [{ id: U1, full_name: 'Nishant' }],
+      task_activity_log: [{ id: ACT1, actor_id: U2, action: 'note_added', note: 'x', from_status: null, to_status: null }],
+    })
+    const out = await enrichNotificationPage(client, [{ task_id: T1, activity_log_id: ACT1 }])
+    assert.equal(out.taskHeaders[T1].assigneeName, 'Nishant')
+    assert.equal(out.taskHeaders[T1].creatorName, null)
+    assert.equal(out.activityDetails[ACT1].actorName, null)
+    assert.equal(assigneeLabel(out.taskHeaders[T1]), 'Nishant')
+    assert.equal(out.activityDetails[ACT1].note, 'x', 'the event itself still renders')
+  })
+
+  test('a blank embedded name renders as unavailable, never as empty space', async () => {
+    const { client } = stubClient({ tasks: [{ id: T1, title: 'x', assigned_to: U1 }], users: [{ id: U1, full_name: '   ' }] })
+    const out = await enrichNotificationPage(client, [{ task_id: T1 }])
+    assert.equal(assigneeLabel(out.taskHeaders[T1]), ASSIGNEE_UNAVAILABLE)
+  })
+})
