@@ -450,6 +450,41 @@ Users may:
 
 Notification noise should be minimized.
 
+## Task approval notifications (September 2026)
+
+* **Submit for approval** — the task's creator (the reviewer) is notified.
+* **Approve** — nobody is notified. The task is complete; the approval stays in
+  the activity history and in performance calculations.
+* **Return to Working / reopen** — the responsible employee is notified, once.
+* A generic status update cannot bring the approval back: a delegated task
+  reaches Completed only through approval, so a "completed" status
+  notification for one is not written.
+
+## Quotation requests are silent (September 2026)
+
+* No quotation event writes a notification — creation, comment, completion,
+  reopening or cancellation. A quotation is identified by
+  `tasks.task_type = 'quotation_request'`, never by its title.
+* Quotation workflows, activity history and the Quotation sidebar counts are
+  unchanged.
+
+## Hidden, never deleted
+
+Rows written before these rules stay in the table. The feed, every unread
+count, Mark all read and Delete all exclude them before paging or counting, so
+they never inflate a badge or leave an empty page, and Delete all never removes
+one. The rule lives in `src/lib/notifications/taskNotificationPolicy.ts`; the
+approval write stop is migration `20261212000000` (prepared for review).
+
+## A bulk action that half-succeeds says so
+
+Mark all read and Delete all work through the visible rows in chunks, so the
+server can change some and then fail. It answers with `partial: true` and the
+exact number of rows it changed. The screen keeps what it already showed and
+re-reads the list and badge from the server, rather than restoring rows that
+are really gone. Pressing the button again is safe and finishes the job. A
+failure that changed nothing still restores the previous screen.
+
 ---
 
 # PERFORMANCE MANAGEMENT RULES

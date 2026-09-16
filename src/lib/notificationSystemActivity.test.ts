@@ -298,12 +298,19 @@ describe('the read side excludes system types too', () => {
     // trail function (the reapplied event's attempt number) and installs nothing.
     const REVIEW_PHASE = '20261206000000_customer_review_custom_reapply_and_monthly_rules.sql'
     const REVIEW_TRAIL_REPAIR = '20261207000000_customer_review_reapplied_event_attempt_number.sql'
+    // A fifth, 20261212000000, re-creates the creator-approval RPC once more so
+    // that an APPROVAL writes no row; submit and return keep their one insert.
+    // It installs nothing.
+    const APPROVAL_SILENCE = '20261212000000_task_review_approval_stops_notifying.sql'
     assert.deepEqual(inserters, [
       '20260833000000_task_creator_approval.sql',
       '20261016000000_notifications_link_activity_log.sql',
       REVIEW_PHASE,
       REVIEW_TRAIL_REPAIR,
+      APPROVAL_SILENCE,
     ])
+    assert.equal(/create\s+(or\s+replace\s+)?trigger/i.test(read(join(dir, APPROVAL_SILENCE))), false,
+      `${APPROVAL_SILENCE}: it replaces the function only, and installs no trigger`)
     {
       const sql = read(join(dir, REVIEW_PHASE))
       assert.match(sql, /create trigger customer_review_custom_submissions_trail\s*\n\s*after insert or update of status on public\.customer_review_custom_submissions/,

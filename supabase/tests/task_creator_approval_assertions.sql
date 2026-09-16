@@ -312,6 +312,7 @@ do $$
 declare
   v_res jsonb;
   v_msg text;
+  v_before_notifs bigint;
 begin
   perform pg_temp.act_as(current_setting('test.creator_id'));
 
@@ -356,18 +357,29 @@ begin
 
   -- The creator approves.
   perform pg_temp.act_as(current_setting('test.creator_id'));
+  select count(*) into v_before_notifs from public.notifications
+   where task_id = current_setting('t.delegated')::uuid;
   v_res := public.transition_task_review(current_setting('t.delegated')::uuid, 'approve');
   assert v_res->>'status' = 'completed', 'approve must complete the task';
   assert v_res->>'completed_at' is not null, 'completed_at is set ONLY on approval';
   assert (select completed_at is not null from public.tasks
            where id = current_setting('t.delegated')::uuid),
     'the stored row must carry completed_at';
-  assert exists (
+  -- 20261212000000: approval writes NO notification, to anyone.
+  assert (select count(*) from public.notifications
+           where task_id = current_setting('t.delegated')::uuid) = v_before_notifs,
+    'approve must write no notification';
+  assert not exists (
     select 1 from public.notifications
      where task_id = current_setting('t.delegated')::uuid
-       and user_id = current_setting('test.assignee_id')::uuid
        and title like '%approved and completed task'),
-    'the assignee must be told their work was accepted';
+    'nobody may be told the work was approved';
+  assert exists (
+    select 1 from public.task_activity_log
+     where task_id = current_setting('t.delegated')::uuid
+       and from_status::text = 'pending_approval' and to_status::text = 'completed'
+       and actor_id = current_setting('test.creator_id')::uuid),
+    'the approval must still be recorded in the activity history';
 
   -- No second approval.
   begin

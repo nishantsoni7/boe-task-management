@@ -1125,3 +1125,77 @@ screen always described both redemptions.
   settings never offers a switched-off redemption.
 * **A trigger, not a re-created redemption function**, so the decimal-credits
   function body is not copied again.
+
+---
+
+# Notifications — quotation and approval silence, and the loading delay
+
+Date: 15 September 2026
+
+Branch: `fix/notifications-quotation-approval` (from `main` at `78869984`).
+Migration: `20261212000000_task_review_approval_stops_notifying.sql` — **not
+applied**, prepared for review.
+
+## What was built
+
+* Quotation requests write no notification: every Task Management writer reads
+  `tasks.task_type`. Approval writes none (the migration). Submit for approval,
+  return and reopen still notify. See 05_Business_Rules → NOTIFICATION RULES.
+* The Task feed, its unread count, Mark all read and Delete all hide existing
+  quotation and approval rows before paging and counting. Nothing is deleted.
+* Self Task / Delegate Task are withheld on `/notifications`, every
+  `/tasks/quotation-requests` screen and a quotation's detail page.
+* `/api/notifications` no longer waits for the View As subject check before an
+  ordinary read; the decision is still enforced before anything is returned.
+
+* Mark all read and Delete all send their id chunks up to four at a time, and
+  report a failure part-way with exact counts (`partial: true`) instead of
+  looking like nothing happened; the browser then re-reads rather than
+  restoring rows the server really removed.
+* The list, count, delete-all and mark-read handlers are covered by tests that
+  RUN them (`src/app/api/notifications/routeBehaviour.test.ts`).
+
+## Measured cause of the loading delay (16 September 2026)
+
+Measured on a preview deployment with temporary `Server-Timing`
+instrumentation, since reverted.
+
+WHERE THE TIME GOES, first visit to `/notifications` after signing in:
+
+| Stage | Measured |
+| --- | --- |
+| Document, first paint | 0.08 s, 0.64 s |
+| Page JavaScript ready (one 12 KB chunk took 4.78 s) | 5.35 s |
+| List request sent (view mounts at the same moment) | 5.39 s |
+| Server time for that request | 3.08 s |
+| List data on screen | ~10.1 s |
+
+On a repeat visit, with the JavaScript cached, the same request is sent at
+0.18 s and the rows are on screen at 3.07 s — so the first-visit gap is
+JavaScript loading, not application logic.
+
+SERVER STAGES (list request): `auth` 0.73 s, `viewas` 0.65 s, query wave
+0.97 s, enrichment 1.38 s, total 3.08 s. The unread count: `auth` 0.67 s,
+`viewas` 0.26 s, query 0.32 s, total 0.99 s.
+
+REGION, STATED PRECISELY. The Supabase project is in `ap-northeast-1` (Tokyo,
+from the Supabase Management API) and every response carries
+`x-vercel-id: …::iad1`, so the functions run in US East. Each server-side round
+trip to the database measured 0.26–0.97 s, while the same kind of read straight
+from the browser measured 0.25–0.7 s. The server time above is five such trips.
+A function region matching the database is therefore supported by the stage
+timings, but the improvement is an estimate until it is measured:
+`docs/proposals/notifications-function-region.md` holds the exact change,
+affected routes and rollback. It is a deployment decision and is NOT made on
+this branch.
+
+NOT the cause: the console messages reported with the problem ("message channel
+closed", "Receiving end does not exist", "No resource with given URL found", an
+unused CSS preload) are browser-extension, DevTools and prefetch messages. None
+of them appeared in a browser without extensions.
+
+RETURNING FROM A TASK. Pressing Back after opening a task showed the list
+0.23 s after the click, served from the browser's cache with no server request
+(the API answers `Cache-Control: public, max-age=0, must-revalidate`), so a
+returning reader can briefly see a pre-deletion list. Pre-existing, not changed
+here.

@@ -634,6 +634,9 @@ describe('the migration is placed correctly', () => {
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() with the approval
+      // notification skipped. It names no health-check object.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

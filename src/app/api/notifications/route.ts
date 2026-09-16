@@ -7,6 +7,10 @@ import { isValidUUID } from '@/lib/ui'
 import { NOTIFICATION_PAGE_SIZE, NOTIFICATION_MAX_ROWS } from '@/lib/notificationPaging'
 import { attachRowContext, enrichNotificationPage } from '@/lib/notifications/pageEnrichment'
 import { resolveViewAsSubject, isPreviewRequest, PREVIEW_WRITE_REFUSED } from '@/lib/viewAs'
+import {
+  APPROVAL_NOTIFICATION_TITLE_PATTERN, QUOTATION_TASK_TYPE, TASK_FEED_TASK_EMBED, TASK_FEED_TASK_TYPE_COLUMN,
+  mutateInChunks, selectVisibleTaskNotificationIds, stripTaskFeedEmbed,
+} from '@/lib/notifications/taskNotificationPolicy'
 
 /**
  * Clamp a caller-supplied `?limit=` into [1, NOTIFICATION_MAX_ROWS].
@@ -71,25 +75,63 @@ export async function GET(req: NextRequest) {
   // authenticated caller, not about whose screen is being drawn. An admin
   // previewing an employee is still an admin, and an ordinary employee cannot
   // use this parameter at all.
-  const subjectDecision = await resolveViewAsSubject(
-    supabase, user.id, req.nextUrl.searchParams.get('subjectUserId'),
-  )
-  if (!subjectDecision.allowed) {
-    return NextResponse.json({ error: subjectDecision.reason }, { status: subjectDecision.status })
+  //
+  // THE ORDINARY READ DOES NOT QUEUE BEHIND THIS CHECK. Measured in production
+  // (September 2026) every server-side round trip from this function costs
+  // ~0.45 s, and the list was five of them in a row. When no other employee is
+  // named, the subject can only ever be the caller, so the notification query
+  // starts at once — scoped to `user.id` — while the check runs beside it. The
+  // decision is still AWAITED BEFORE ANYTHING IS RETURNED OR ENRICHED: a refused
+  // caller receives the refusal, and the rows read on their behalf (their own,
+  // never anybody else's) are discarded. A preview still waits for the check
+  // before reading, because its query names somebody else.
+  const requestedSubjectId = req.nextUrl.searchParams.get('subjectUserId')
+  const subjectCheck = resolveViewAsSubject(supabase, user.id, requestedSubjectId)
+  let subjectId = user.id
+  if (requestedSubjectId && requestedSubjectId !== user.id) {
+    const decision = await subjectCheck
+    if (!decision.allowed) {
+      return NextResponse.json({ error: decision.reason }, { status: decision.status })
+    }
+    subjectId = decision.subjectId
   }
-  const subjectId = subjectDecision.subjectId
+  const refusal = async (): Promise<NextResponse | null> => {
+    const decision = await subjectCheck
+    if (!decision.allowed) {
+      return NextResponse.json({ error: decision.reason }, { status: decision.status })
+    }
+    if (decision.subjectId !== subjectId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+    return null
+  }
 
   const activityFilter = getNotificationCategoryFilter(categoryResult.category)
 
+  // THE TASK FEED'S TWO SILENT EVENTS. Quotation requests (by tasks.task_type,
+  // joined through task_id) and approvals are not announced, and rows written
+  // before that rule stay hidden rather than deleted. Applied to the count and
+  // the list alike, BEFORE counting and paging, so a hidden row can neither
+  // hold the badge up nor turn a page into an empty one. See
+  // src/lib/notifications/taskNotificationPolicy.ts.
+  const isTaskFeed = categoryResult.category === 'task'
+
   // Lightweight badge path: just the unread count.
   if (req.nextUrl.searchParams.get('count') === '1') {
-    const { count, error } = await supabase
+    let countQuery = supabase
       .from('notifications')
-      .select('id', { count: 'exact', head: true })
+      .select(isTaskFeed ? `id, ${TASK_FEED_TASK_EMBED}` : 'id', { count: 'exact', head: true })
       .eq('user_id', subjectId)
       .eq('is_read', false)
       .or(activityFilter)
       .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+    if (isTaskFeed) {
+      countQuery = countQuery
+        .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+        .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+    }
+    const [refused, { count, error }] = await Promise.all([refusal(), countQuery])
+    if (refused) return refused
     if (error) {
       console.error('[notifications] count failed:', error)
       return NextResponse.json({ error: error.message }, { status: 500 })
@@ -107,12 +149,19 @@ export async function GET(req: NextRequest) {
   // One extra row than asked for, purely to answer "is there anything older?".
   // It is dropped before the response, so the client still receives exactly
   // `limit` rows and `hasMore` costs no second query.
-  const { data, error } = await supabase
+  const columns = 'id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id'
+  let listQuery = supabase
     .from('notifications')
-    .select('id, user_id, task_id, entity_id, type, title, body, is_read, is_push_sent, is_digest, created_at, read_at, activity_log_id')
+    .select(isTaskFeed ? `${columns}, ${TASK_FEED_TASK_EMBED}` : columns)
     .eq('user_id', subjectId)
     .or(activityFilter)
     .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+  if (isTaskFeed) {
+    listQuery = listQuery
+      .neq(TASK_FEED_TASK_TYPE_COLUMN, QUOTATION_TASK_TYPE)
+      .not('title', 'like', APPROVAL_NOTIFICATION_TITLE_PATTERN)
+  }
+  const [refused, { data, error }] = await Promise.all([refusal(), listQuery
     .order('created_at', { ascending: false })
     // DETERMINISTIC TIEBREAK. `created_at` is not unique — a batch insert
     // (every admin notified of one objection, the warranty sweep) writes many
@@ -122,14 +171,22 @@ export async function GET(req: NextRequest) {
     // falls on, and "Load older" could come back missing a row it had already
     // shown. `id` is the primary key, so this makes the sort total.
     .order('id', { ascending: false })
-    .limit(limit + 1)
+    .limit(limit + 1)])
 
+  // Before enrichment, before the response: a refused caller gets nothing else.
+  if (refused) return refused
   if (error) {
     console.error('[notifications] list failed:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  const rows = data ?? []
+  // The select string is chosen at runtime (with or without the task embed), so
+  // the client cannot infer a row type from it; the rows are exactly the columns
+  // named above, as they always were. The embed existed only to filter and never
+  // leaves the server.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fetched = (data ?? []) as any[]
+  const rows = isTaskFeed ? stripTaskFeedEmbed(fetched) : fetched
   const hasMore = rows.length > limit
   const notifications = hasMore ? rows.slice(0, limit) : rows
 
@@ -239,26 +296,70 @@ export async function DELETE(req: NextRequest) {
   //
   // A category (or task) with nothing in it deletes 0 rows and is still a
   // success — an accurate idempotent result, not a failure.
-  let deleteQuery = supabase
-    .from('notifications')
-    .delete()
-    .eq('user_id', user.id)
-    .or(activityFilter)
-    .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
-  // An EXTRA condition on top of the caller, category and system filters —
-  // never a replacement for any of them.
-  if (taskId !== null) deleteQuery = deleteQuery.eq('task_id', taskId)
+  let data: { id: string; is_read: boolean }[] | null = null
+  let error: { message: string } | null = null
+  // Some chunks committed before another failed: rows ARE gone, so the refusal
+  // must say how many rather than read as "nothing happened".
+  let partial = false
 
-  const { data, error } = await deleteQuery.select('id, is_read')
+  if (categoryResult.category === 'task') {
+    // THE TASK FEED DELETES WHAT IT SHOWS, AND NOTHING IT HIDES. Quotation
+    // requests and approvals are kept out of this feed by a filter on the
+    // embedded task, which PostgREST refuses on a DELETE — so the visible set
+    // is resolved with the list's own predicate first and removed by id. A
+    // hidden row is history the reader never saw; "Delete all" must not erase
+    // it. Each chunk still reports its own deleted rows, so `unreadAffected`
+    // comes from the deletes themselves; chunks run a few at a time, and a
+    // failure part-way is reported with what was already removed
+    // (mutateInChunks). See taskNotificationPolicy.ts.
+    const visible = await selectVisibleTaskNotificationIds(supabase, { userId: user.id, taskId })
+    error = visible.error
+    if (!error) {
+      const applied = await mutateInChunks<{ id: string; is_read: boolean }>(visible.ids, ids => supabase
+        .from('notifications')
+        .delete()
+        .eq('user_id', user.id)
+        .in('id', ids)
+        .select('id, is_read'))
+      data = applied.rows
+      error = applied.error
+      partial = applied.error !== null && applied.completedChunks > 0
+    }
+  } else {
+    let deleteQuery = supabase
+      .from('notifications')
+      .delete()
+      .eq('user_id', user.id)
+      .or(activityFilter)
+      .not('type', 'in', SYSTEM_TYPE_EXCLUSION)
+    // An EXTRA condition on top of the caller, category and system filters —
+    // never a replacement for any of them.
+    if (taskId !== null) deleteQuery = deleteQuery.eq('task_id', taskId)
 
+    const res = await deleteQuery.select('id, is_read')
+    data = res.data
+    error = res.error
+  }
+
+  const deleted = data ?? []
   if (error) {
     // Message only — never the deleted rows, whose titles/bodies carry task
     // titles and client names.
     console.error('[notifications/delete-all] failed:', error.message)
+    if (partial) {
+      // PART OF IT HAPPENED. Still a failure, but with the exact counts, so the
+      // client re-reads instead of restoring rows that are gone. Retrying is
+      // safe: every chunk deletes by id.
+      return NextResponse.json({
+        error: 'Some notifications could not be deleted. Please try again.',
+        partial: true,
+        category: categoryResult.category,
+        deletedCount: deleted.length,
+        unreadAffected: deleted.filter(r => !r.is_read).length,
+      }, { status: 500 })
+    }
     return NextResponse.json({ error: 'Could not delete notifications' }, { status: 500 })
   }
-
-  const deleted = data ?? []
   return NextResponse.json({
     success: true,
     category: categoryResult.category,

@@ -24,6 +24,7 @@
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import type { NotificationInsert } from '@/lib/notificationWrites'
 import { findTaskCreationActivityId } from '@/lib/notifications/activityLink'
+import { isQuotationTask } from '@/lib/notifications/taskNotificationPolicy'
 import {
   buildTaskAssignmentNotification,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
@@ -38,6 +39,8 @@ export type AssignmentTaskRow = {
   title: string | null
   assigned_to: string | null
   created_by: string | null
+  /** Read so a quotation request can be recognised by its column. */
+  task_type?: string | null
 }
 
 /**
@@ -141,6 +144,11 @@ export async function createAssignmentNotification(
   const isCreator = task.created_by != null && task.created_by === callerId
   if (!isCreator && !(await store.isAdmin(callerId))) return { status: 'forbidden' }
 
+  // A quotation request writes no notification — including this one, at
+  // creation. Decided by `task_type`, after authorization so a stranger still
+  // gets `forbidden`. See src/lib/notifications/taskNotificationPolicy.ts.
+  if (isQuotationTask(task)) return { status: 'skipped_quotation' }
+
   if (!task.assigned_to) return { status: 'skipped_self' }
   if (task.assigned_to === task.created_by) return { status: 'skipped_self' }
 
@@ -209,7 +217,7 @@ export function supabaseAssignmentStore(client: ServiceClient): AssignmentNotifi
     async fetchTask(taskId) {
       const { data, error } = await client
         .from('tasks')
-        .select('id, title, assigned_to, created_by')
+        .select('id, title, assigned_to, created_by, task_type')
         .eq('id', taskId)
         .maybeSingle()
       return { task: (data as AssignmentTaskRow | null) ?? null, error: error ?? null }

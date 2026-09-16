@@ -753,6 +753,9 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // reject_finance_payment_request(). It changes no column, policy or
       // existing function, so it reaches nothing asserted here.
       '20261211000000_finance_payment_decisions_belong_to_verifiers.sql',
+      // 20261212000000 re-creates transition_task_review() with the approval
+      // notification skipped. It names no health-check object.
+      '20261212000000_task_review_approval_stops_notifying.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.
