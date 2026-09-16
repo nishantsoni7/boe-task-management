@@ -476,6 +476,15 @@ they never inflate a badge or leave an empty page, and Delete all never removes
 one. The rule lives in `src/lib/notifications/taskNotificationPolicy.ts`; the
 approval write stop is migration `20261212000000` (prepared for review).
 
+## A bulk action that half-succeeds says so
+
+Mark all read and Delete all work through the visible rows in chunks, so the
+server can change some and then fail. It answers with `partial: true` and the
+exact number of rows it changed. The screen keeps what it already showed and
+re-reads the list and badge from the server, rather than restoring rows that
+are really gone. Pressing the button again is safe and finishes the job. A
+failure that changed nothing still restores the previous screen.
+
 ---
 
 # PERFORMANCE MANAGEMENT RULES

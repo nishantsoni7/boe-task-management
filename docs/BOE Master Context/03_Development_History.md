@@ -1148,14 +1148,54 @@ applied**, prepared for review.
 * `/api/notifications` no longer waits for the View As subject check before an
   ordinary read; the decision is still enforced before anything is returned.
 
-## Measured cause of the loading delay
+* Mark all read and Delete all send their id chunks up to four at a time, and
+  report a failure part-way with exact counts (`partial: true`) instead of
+  looking like nothing happened; the browser then re-reads rather than
+  restoring rows the server really removed.
+* The list, count, delete-all and mark-read handlers are covered by tests that
+  RUN them (`src/app/api/notifications/routeBehaviour.test.ts`).
 
-Production responses carry `x-vercel-id: bom1::iad1`: the API runs in US East,
-while the database answers a browser in India in ~50 ms. Each server-side
-database round trip therefore costs ~0.45 s. The list made five in sequence
-(median 2.5–3.0 s), the unread count three (median 1.6 s). The console messages
-reported with the problem ("message channel closed", "Receiving end does not
-exist", "No resource with given URL found", an unused CSS preload) are
-browser-extension, DevTools and prefetch messages, not application failures.
-Placing the functions in the database's region is the larger fix and is a
-deployment decision; it is not made on this branch.
+## Measured cause of the loading delay (16 September 2026)
+
+Measured on a preview deployment with temporary `Server-Timing`
+instrumentation, since reverted.
+
+WHERE THE TIME GOES, first visit to `/notifications` after signing in:
+
+| Stage | Measured |
+| --- | --- |
+| Document, first paint | 0.08 s, 0.64 s |
+| Page JavaScript ready (one 12 KB chunk took 4.78 s) | 5.35 s |
+| List request sent (view mounts at the same moment) | 5.39 s |
+| Server time for that request | 3.08 s |
+| List data on screen | ~10.1 s |
+
+On a repeat visit, with the JavaScript cached, the same request is sent at
+0.18 s and the rows are on screen at 3.07 s — so the first-visit gap is
+JavaScript loading, not application logic.
+
+SERVER STAGES (list request): `auth` 0.73 s, `viewas` 0.65 s, query wave
+0.97 s, enrichment 1.38 s, total 3.08 s. The unread count: `auth` 0.67 s,
+`viewas` 0.26 s, query 0.32 s, total 0.99 s.
+
+REGION, STATED PRECISELY. The Supabase project is in `ap-northeast-1` (Tokyo,
+from the Supabase Management API) and every response carries
+`x-vercel-id: …::iad1`, so the functions run in US East. Each server-side round
+trip to the database measured 0.26–0.97 s, while the same kind of read straight
+from the browser measured 0.25–0.7 s. The server time above is five such trips.
+A function region matching the database is therefore supported by the stage
+timings, but the improvement is an estimate until it is measured:
+`docs/proposals/notifications-function-region.md` holds the exact change,
+affected routes and rollback. It is a deployment decision and is NOT made on
+this branch.
+
+NOT the cause: the console messages reported with the problem ("message channel
+closed", "Receiving end does not exist", "No resource with given URL found", an
+unused CSS preload) are browser-extension, DevTools and prefetch messages. None
+of them appeared in a browser without extensions.
+
+RETURNING FROM A TASK. Pressing Back after opening a task showed the list
+0.23 s after the click, served from the browser's cache with no server request
+(the API answers `Cache-Control: public, max-age=0, must-revalidate`), so a
+returning reader can briefly see a pre-deletion list. Pre-existing, not changed
+here.
