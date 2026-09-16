@@ -1,4 +1,4 @@
-// EVERYTHING THE FEED NEEDS BEYOND THE NOTIFICATION ROWS, IN FOUR QUERIES.
+// EVERYTHING THE FEED NEEDS BEYOND THE NOTIFICATION ROWS, IN THREE QUERIES.
 //
 // A page of notifications answers "what happened", but the card also shows the
 // task's title and owner, and each event shows its detail and its actor. None
@@ -16,18 +16,22 @@
 //                        file_type                   — one in(), so an update
 //                                                      that carried a file can
 //                                                      say so
-//   4. users             id, full_name               — ONE in(), covering
-//                                                      assignees AND actors
+//   4. the people        full_name, EMBEDDED on the rows above through their
+//                        foreign keys — no query of its own
 //
-// Five queries per page including the notification list itself, whatever the
+// Four queries per page including the notification list itself, whatever the
 // number of cards. Never one per card, and never one per event.
 //
-// ── WHY THE USER QUERY IS SHARED ────────────────────────────────────────────
+// ── WHY THE NAMES ARE EMBEDDED ──────────────────────────────────────────────
 //
-// Assignees and actors are the same kind of thing — people — read from the same
-// table for the same column. Two queries would fetch the same rows twice on any
-// page where somebody acts on their own task, which is most of them. The id
-// sets are unioned before the query and the resulting map serves both.
+// Assignees, creators and actors are all people, and their ids exist only once
+// the task and activity rows have come back — so a separate `users` query could
+// not start until those had returned. Names were therefore a SECOND round trip
+// after the first three, measured at roughly 0.7 s of a notification page's
+// server time (September 2026, functions in iad1 reading a database in Tokyo).
+// PostgREST can follow the foreign key and attach the display name to each row
+// instead, which costs no query and no second wait. Exactly one column about a
+// person still travels, and a deleted employee still embeds as nothing.
 //
 // ── WHY THIS CANNOT REACH SOMEBODY ELSE'S DATA ──────────────────────────────
 //
@@ -212,6 +216,22 @@ type Res = { data: Record<string, unknown>[] | null; error: { message: string } 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
 
 /**
+ * The display name PostgREST embedded for a person column.
+ *
+ * ONE COLUMN ABOUT A PERSON: their display name, which the reader already
+ * sees on the task itself. No email, no phone, no role, no employment field.
+ * A deleted or unreadable employee embeds as null and reads as no name at
+ * all — the same answer a separate lookup gave when it could not find them.
+ * An array is accepted because PostgREST answers a to-one embed that way in
+ * some versions; the first row is the person.
+ */
+function embeddedName(value: unknown): string | null {
+  const row = Array.isArray(value) ? value[0] : value
+  if (!row || typeof row !== 'object') return null
+  return str((row as Record<string, unknown>).full_name)
+}
+
+/**
  * The ONE file a historical update carried, as an attachment-shaped item.
  *
  * WHY IT EXISTS. Before `task_attachments`, an update's single file lived in
@@ -256,7 +276,9 @@ export async function enrichNotificationPage(
   // so waiting for them in sequence would double the latency for nothing.
   const [taskRes, actRes, attRes]: [Res, Res, Res] = await Promise.all([
     taskIds.length
-      ? client.from('tasks').select('id, title, assigned_to, created_by').in('id', taskIds)
+      ? client.from('tasks')
+          .select('id, title, assigned_to, created_by, assignee:assigned_to(full_name), creator:created_by(full_name)')
+          .in('id', taskIds)
       : Promise.resolve({ data: [], error: null }),
     // `attachment_url` is the LEGACY single-file column, read here so a
     // historical update that carried a file is not described as a bare comment.
@@ -265,7 +287,7 @@ export async function enrichNotificationPage(
     // See `legacyAttachment` below.
     activityIds.length
       ? client.from('task_activity_log')
-          .select('id, actor_id, action, note, from_status, to_status, attachment_url')
+          .select('id, actor_id, action, note, from_status, to_status, attachment_url, actor:actor_id(full_name)')
           .in('id', activityIds)
       : Promise.resolve({ data: [], error: null }),
     // Scoped by the SAME activity ids as the query above, which came from the
@@ -286,26 +308,20 @@ export async function enrichNotificationPage(
   if (attRes.error) console.error('[notifications] attachment lookup failed:', attRes.error.message)
 
   const taskHeaders: TaskHeaderMap = {}
-  const assigneeOf = new Map<string, string>()
-  const creatorOf = new Map<string, string>()
-  // ONE set of people to resolve, from both sources.
-  const peopleIds = new Set<string>()
 
   for (const t of taskRes.data ?? []) {
     const id = str(t.id)
     if (!id) continue
     taskHeaders[id] = {
       title: typeof t.title === 'string' ? t.title : '',
-      assigneeName: null,
+      // The name arrives WITH the task, through the foreign key — see the note
+      // on the select above. A deleted or unreadable employee embeds as null and
+      // renders exactly as it did when a separate lookup missed them.
+      assigneeName: embeddedName(t.assignee),
       assigneeId: str(t.assigned_to),
-      creatorName: null,
+      creatorName: embeddedName(t.creator),
       creatorId: str(t.created_by),
     }
-    const assignee = str(t.assigned_to)
-    if (assignee) { assigneeOf.set(id, assignee); peopleIds.add(assignee) }
-    // The creator joins the SAME people query — no extra round trip.
-    const creator = str(t.created_by)
-    if (creator) { creatorOf.set(id, creator); peopleIds.add(creator) }
   }
 
   // Grouped before the details are built so each one is handed a complete list
@@ -320,7 +336,6 @@ export async function enrichNotificationPage(
   }
 
   const activityDetails: ActivityDetailMap = {}
-  const actorOf = new Map<string, string>()
   for (const a of actRes.data ?? []) {
     const id = str(a.id)
     if (!id) continue
@@ -329,44 +344,9 @@ export async function enrichNotificationPage(
       note: typeof a.note === 'string' ? a.note : null,
       fromStatus: str(a.from_status),
       toStatus: str(a.to_status),
-      actorName: null,
+      actorName: embeddedName(a.actor),
       attachments: filesOf.get(id) ?? legacyAttachment(a.attachment_url),
     }
-    const actor = str(a.actor_id)
-    if (actor) { actorOf.set(id, actor); peopleIds.add(actor) }
-  }
-
-  if (peopleIds.size === 0) return { taskHeaders, activityDetails }
-
-  // ONE COLUMN ABOUT A PERSON: their display name, which the caller already
-  // sees on the task itself. No email, no phone, no role, no employment fields.
-  const { data: users, error: userErr }: Res = await client
-    .from('users')
-    .select('id, full_name')
-    .in('id', [...peopleIds])
-  if (userErr || !users) {
-    // Names did not resolve. Assignees read "Assignee unavailable" and actors
-    // fall back to the name parsed from the notification title — both true.
-    console.error('[notifications] name lookup failed:', userErr?.message)
-    return { taskHeaders, activityDetails }
-  }
-
-  const nameById = new Map<string, string>()
-  for (const u of users) {
-    const id = str(u.id)
-    const name = str(u.full_name)
-    if (id && name) nameById.set(id, name)
-  }
-  // A missing entry is a deleted or unreadable employee: left null, rendered as
-  // ASSIGNEE_UNAVAILABLE for a task and as the parsed fallback for an actor.
-  for (const [taskId, userId] of assigneeOf) {
-    if (taskHeaders[taskId]) taskHeaders[taskId].assigneeName = nameById.get(userId) ?? null
-  }
-  for (const [taskId, userId] of creatorOf) {
-    if (taskHeaders[taskId]) taskHeaders[taskId].creatorName = nameById.get(userId) ?? null
-  }
-  for (const [activityId, userId] of actorOf) {
-    if (activityDetails[activityId]) activityDetails[activityId].actorName = nameById.get(userId) ?? null
   }
 
   return { taskHeaders, activityDetails }
