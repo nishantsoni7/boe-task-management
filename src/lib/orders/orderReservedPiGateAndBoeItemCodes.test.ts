@@ -325,6 +325,12 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // 20261212000000 re-creates transition_task_review() with the approval
       // notification skipped. It touches no Order or PI object.
       '20261212000000_task_review_approval_stops_notifying.sql',
+      // 20261213000000 adds the Meetings order-discussion workflow: three new
+      // tables (meeting_discussion_items / _appearances / _events), one nullable
+      // column on meeting_order_evidence and one AFTER INSERT trigger on
+      // public.meetings. It edits no existing table, policy, grant or function,
+      // so it reaches nothing asserted here.
+      '20261213000000_meeting_order_discussion_workflow.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

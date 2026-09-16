@@ -17,6 +17,8 @@ import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
+import { AddToMeetingButton, AddToMeetingModal } from '@/components/tasks/AddToMeetingModal'
+import { hasPermission } from '@/lib/permissions/resolver'
 import { useToast, Toast } from '@/components/ui/toast'
 import { getFileTypeLabel, compressImageFile, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
 import {
@@ -190,6 +192,17 @@ export default function TaskDetailPage() {
   const [copyNotifyFailedFor, setCopyNotifyFailedFor] = useState<string | null>(null)
   const { toast, show: showToast, dismiss: dismissToast } = useToast()
 
+  // Add to Meeting. The ONLY thing this feature adds to Task Detail: one action
+  // and one dialog. Nothing about the task changes when it is used.
+  //
+  // Deny-by-default, so the action cannot flash for somebody who may not use it.
+  // It needs Meetings module entry — the same 'view' grant an attendee holds — and
+  // nothing stronger: without a meeting they can edit, the issue lands in the
+  // Meeting Inbox for somebody who can. The database re-derives all of this; this
+  // only decides what is drawn.
+  const [addToMeetingOpen, setAddToMeetingOpen] = useState(false)
+  const [canAddToMeeting,  setCanAddToMeeting]  = useState(false)
+
   // The "View new task" chip is a convenience, not a banner — auto-clear it after a short while.
   useEffect(() => {
     if (!lastCopied) return
@@ -241,6 +254,20 @@ export default function TaskDetailPage() {
 
   const queryClient = useQueryClient()
   const taskId      = params.id as string
+
+  // Resolved asynchronously even for an admin, so nothing sets state
+  // synchronously inside the effect and no cascading render is triggered.
+  useEffect(() => {
+    if (!signedInUserId) return           // stays false — the initial, denying value
+    let active = true
+    const resolved = profile?.role === 'admin'
+      ? Promise.resolve(true)
+      : hasPermission(supabase, signedInUserId, 'meetings', 'view')
+    resolved
+      .then(allowed => { if (active) setCanAddToMeeting(allowed) })
+      .catch(() => { if (active) setCanAddToMeeting(false) })
+    return () => { active = false }
+  }, [supabase, signedInUserId, profile?.role])
 
   // ── Background attachment uploads ───────────────────────────────────────────
   // One queue per task for the page's lifetime. Created here rather than per
@@ -1815,6 +1842,12 @@ export default function TaskDetailPage() {
                     </button>
                   )}
 
+                  {/* Add to Meeting sits with the other secondary actions. It is
+                      not destructive and it changes nothing about the task, so it
+                      reads before Copy & Assign and Cancel. */}
+                  {canAddToMeeting && !isQuotation && (
+                    <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} />
+                  )}
                   {/* Copy & Assign is placed before Cancel so the destructive action
                       reads last — and, in the review grid, sits bottom-right. */}
                   {canCopyAssign && (
@@ -1917,6 +1950,15 @@ export default function TaskDetailPage() {
                   >
                     {reopening ? 'Restoring…' : 'Restore Task'}
                   </button>
+                </div>
+              )}
+
+              {/* Add to Meeting for a closed task. A completed task can still have an
+                  unresolved business issue behind it — that is precisely the case
+                  management needs on an agenda. */}
+              {canAddToMeeting && !isQuotation && !isActiveTask && (
+                <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.border}`, display: 'flex' }}>
+                  <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} />
                 </div>
               )}
 
@@ -3125,6 +3167,18 @@ export default function TaskDetailPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {addToMeetingOpen && currentUserId && (
+        <AddToMeetingModal
+          supabase={supabase}
+          task={{ id: task.id, title: task.title, note: task.note ?? null }}
+          userId={currentUserId}
+          userRole={profile?.role}
+          onClose={() => setAddToMeetingOpen(false)}
+          onDone={message => { setAddToMeetingOpen(false); showToast(message, 'success') }}
+          onOpenMeeting={meetingId => { setAddToMeetingOpen(false); router.push(`/meetings/${meetingId}`) }}
+        />
       )}
 
       {copyModalOpen && (

@@ -431,6 +431,12 @@ describe('34/35. no regression into suppressed territory', () => {
       // writes no notification. It is not grouping's doing and changes no
       // notification column.
       '20261212000000_task_review_approval_stops_notifying.sql',
+      // 20261213000000 adds the Meetings order-discussion workflow: three new
+      // tables (meeting_discussion_items / _appearances / _events), one nullable
+      // column on meeting_order_evidence and one AFTER INSERT trigger on
+      // public.meetings. It edits no existing table, policy, grant or function,
+      // so it reaches nothing asserted here.
+      '20261213000000_meeting_order_discussion_workflow.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

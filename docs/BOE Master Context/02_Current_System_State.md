@@ -2,7 +2,9 @@
 
 # Current System State
 
-Last Updated: September 2026 — Order Management state, routes, storage and permissions. See "Order Management — where it stands".
+Last Updated: September 2026 — Meetings gains the order-discussion workflow and
+an in-app guide (see "MEETINGS"). Order Management state, routes, storage and
+permissions are under "Order Management — where it stands".
 
 **Branch — Order Requests retired, and one payment classification.** The Order
 Request workflow is retired; PI Drafts are the only pre-approval Order workflow,
@@ -40,6 +42,7 @@ file may be edited again.
 | Payroll                | Early Stage    |
 | Assets & Access        | Active         |
 | Review Workflow        | Active — Custom Review phase (see REVIEW WORKFLOW) |
+| Meetings               | Active — order-discussion workflow pending its migration (see MEETINGS) |
 | Employee Records       | Planned        |
 
 ---
@@ -504,6 +507,132 @@ Not yet done:
 * Apply `20261206000000` to production.
 * The pending badge refreshes for other users on its 30-second stale time, not
   in real time; notifications are in-app only.
+
+---
+
+# MEETINGS
+
+Status: Operational. Structured order-review meetings, plus an **order-discussion
+workflow** that carries one business issue across as many meetings as it takes.
+
+Routes: `/meetings` (Active & Upcoming), `/meetings/completed`,
+`/meetings/follow-ups`, `/meetings/inbox` (Meeting Inbox),
+`/meetings/guide` (How Meetings Work), `/meetings/[id]` (the working screen;
+`?order=` opens an Order, `?item=` opens a discussion item).
+
+Database state (`supabase migration list --linked`, 2026-09-16): the module
+(`20260814000000`), the select-policy fix (`20260815000000`), the PI import
+(`20260831000000`) and Order evidence (`20261203000000`) are applied.
+**`20261213000000_meeting_order_discussion_workflow.sql` is NOT applied** and
+must be applied before the code that reads it deploys. It has been rehearsed
+against the linked database inside an explicit `BEGIN … ROLLBACK`: the whole
+file executed, its own assertion block passed, and the transaction left no table,
+column, function or trigger behind.
+
+## What was already there
+
+* **Meetings and attendees** — two review types (New Order, Repair Order), a
+  lead, a date, a title, attendees from the employee directory. Draft →
+  In Progress → Completed, and Completed → In Progress to correct a record.
+* **The Order rail** — `meeting_orders` is one Order as discussed in ONE
+  meeting, matched across meetings on a normalised `order_number_key`;
+  `meeting_order_items` is a SKU line under it; product-level updates,
+  follow-up dates, linked tasks and a spreadsheet import.
+* **Order evidence** — images in a private `meeting-evidence` bucket, recorded
+  append-only, never replaced or removed.
+* **Trails** — `meeting_update_history` (what was said about an Order or SKU)
+  and `meeting_activity_log` (the meeting's own lifecycle).
+* **Add from Last Meeting**, the Order board, the inline Today composer and the
+  earlier-meeting history for an Order.
+
+## What the order-discussion workflow adds
+
+The Order rail answers "what is happening with 2041". It could not answer "what
+is happening with this particular repair complaint", because one Order can carry
+two unrelated running-order concerns and an after-sales replacement at once, and
+because a `meeting_orders` row belongs to one meeting. `20261213000000` adds
+the missing unit: the **persistent discussion item**.
+
+* `meeting_discussion_items` — one row for the life of one business issue.
+  Category (`running_order` / `after_sales`), optional after-sales tag,
+  order number and normalised key, customer, a short issue line, optional
+  details, the source task when captured from one, and **Open or Resolved**.
+* `meeting_discussion_appearances` — that issue on ONE meeting's agenda, with
+  that meeting's own update, decision, next review date and discussed-today
+  state. `UNIQUE (meeting_id, discussion_item_id)`.
+* `meeting_discussion_events` — the issue's append-only trail: captured, added
+  to an agenda, carried forward, updated, task linked, resolved, reopened.
+* One nullable column on `meeting_order_evidence`
+  (`discussion_appearance_id`), so an image attached while discussing an issue
+  is known to belong to it. Same bucket, same three storage policies, unchanged.
+
+Implemented (with `20261213000000`):
+
+* **Add to Meeting from Task Detail** — one compact action and one quick sheet.
+  Category, order number, short issue, target meeting; the order number,
+  customer and issue line are read out of the task where they can be. Nothing
+  about the task changes. Pressing it twice returns the issue already open for
+  that task rather than making a second one.
+* **Meeting Inbox** (`/meetings/inbox`) — open issues no meeting has claimed.
+  Not a table: the absence of an appearance IS the Inbox, so nothing can be lost
+  from it and the source task link cannot be dropped. A meeting editor can
+  attach one now; otherwise the next relevant review takes it automatically.
+* **The discussion board** on the meeting screen, above the Order rail —
+  category, order, customer, the issue, the latest position, discussed today,
+  earlier meetings, evidence and linked-task counts, next review, Open/Resolved.
+  Filters: All / Running Order / After Sales / Open / Resolved. Summary: total,
+  discussed, still to discuss, resolved today.
+* **The in-meeting discussion view** (`?item=`) — the Today composer INLINE on
+  desktop (update, decision, next review, images, one Save), the source task
+  link when the viewer may open that task, linked tasks read live from Task
+  Management, this issue's earlier meetings newest-first and read-only, a link
+  to the Order's separate general history, and Resolve.
+* **Automatic carry-forward** — an AFTER INSERT trigger on `public.meetings`
+  adds every unresolved item of the matching category, and every applicable
+  Inbox item, in the same transaction that creates the meeting. Exactly once.
+  The ONLY matching relationship is the existing review type — Running Order ↔
+  New Order review, After Sales ↔ Repair Order review — and it is enforced on
+  every placing path (carry-forward, manual attach, capture with a target). An
+  Inbox item enters only a meeting dated on or after the day it was raised.
+* **A completed meeting keeps showing what it recorded.** Its board and discussion
+  view show the state the issue had when the meeting closed, replayed from the
+  append-only trail; a later resolve or reopen is shown beside it as "Now …",
+  never in its place.
+* **Resolve and Reopen**, each requiring a note or a reason, each recording the
+  actor and the time, each writing a trail event.
+* **How Meetings Work** (`/meetings/guide`) — the in-app visual guide, inside
+  the Meetings module, offered from the module header on every Meetings screen.
+  It reads no meeting, order or task, so Meetings module entry is the whole
+  requirement to see it.
+
+Permissions are unchanged: no new module, no new action key, no widened grant.
+`npm run permissions:check` reports 13 modules in sync.
+
+Verification (2026-09-16):
+
+* **Database behaviour, on a disposable local Supabase stack** —
+  `supabase/tests/run_meeting_discussion_workflow_local.sh` applies the real
+  Meetings chain and `20261213000000` twice, then runs
+  `meeting_discussion_workflow_assertions.sql` twice: 23 scenarios as real users
+  through RLS (Inbox, duplicate capture, both categories, source-task isolation,
+  review-type matching, back-dated meetings, retries, view-only refusal,
+  completed-meeting protection, resolve, reopen, carry-forward, evidence,
+  visibility, deleting an inherited-only draft). All pass.
+* **Production rehearsal** — the migration executed against the linked production
+  database inside `BEGIN … ROLLBACK` and left no residue.
+* **Rendered review** — the real components, with fixture data, at 1366px and
+  375px. A signed-in click-through of the live screens has NOT been done: it needs
+  the migration applied and a real session.
+* **Types** — this repository has no generated Supabase type file; the Supabase
+  clients are untyped and row shapes are hand-maintained. The hand-maintained
+  column lists and every RPC call site were compared against the migrated local
+  schema and match.
+
+Not yet done:
+
+* Apply `20261213000000` to production, before the code deploys (the evidence
+  read selects the new `discussion_appearance_id` column).
+* A signed-in click-through of the live screens once the migration is applied.
 
 ---
 

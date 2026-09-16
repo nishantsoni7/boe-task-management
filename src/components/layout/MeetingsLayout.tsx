@@ -2,7 +2,9 @@
 
 import { useState } from 'react'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { CalendarClock, CheckCircle2, CalendarCheck, AlertTriangle, Home } from 'lucide-react'
+import {
+  CalendarClock, CheckCircle2, CalendarCheck, AlertTriangle, BookOpen, HelpCircle, Home, Inbox,
+} from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -14,8 +16,8 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // middle, and the shared user area at the bottom (profile, Account Settings,
 // View As, Sign Out). No cross-module links.
 //
-// The four entries are the module's four operational questions, in the order
-// they are asked during a week:
+// The first four entries are the module's four operational questions, in the
+// order they are asked during a week:
 //
 //   Active & Upcoming — what am I about to run, or still running
 //   Due Follow-ups    — what did we commit to that lands today
@@ -26,6 +28,17 @@ import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/Admi
 // its date filter preset, not two screens. That is why they are matched on the
 // query string as well as the path: a nav item must not light up for a filter
 // the user is not looking at.
+//
+// Two more were added with the order-discussion workflow (20261213000000):
+//
+//   Meeting Inbox        — issues raised from a task that have no meeting yet
+//   How Meetings Work    — the in-app guide
+//
+// Both are module-scoped routes, so they comply with the BOE Module Layout
+// Standard's "only current module options" rule. The guide is also offered as a
+// Help button in the module HEADER, which is what makes it reachable from every
+// screen in the module including a live meeting — without adding it to the global
+// sidebar, the dashboard, or any other module.
 
 type MeetingsLayoutProps = {
   profile: UserProfile | null
@@ -50,7 +63,12 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Due Follow-ups',    path: '/meetings/follow-ups',  icon: <CalendarCheck size={15} strokeWidth={1.8} />, exact: false, due: 'today' },
   { label: 'Overdue',           path: '/meetings/follow-ups',  icon: <AlertTriangle size={15} strokeWidth={1.8} />, exact: false, due: 'overdue' },
   { label: 'Completed',         path: '/meetings/completed',   icon: <CheckCircle2  size={15} strokeWidth={1.8} />, exact: false },
+  { label: 'Meeting Inbox',     path: '/meetings/inbox',       icon: <Inbox         size={15} strokeWidth={1.8} />, exact: false },
+  { label: 'How Meetings Work', path: '/meetings/guide',       icon: <BookOpen      size={15} strokeWidth={1.8} />, exact: false },
 ]
+
+/** The in-app guide. One route, reachable from the module header on every screen. */
+const GUIDE_PATH = '/meetings/guide'
 
 export function MeetingsLayout({
   profile, title, subtitle, actions, onSignOut, children,
@@ -161,11 +179,30 @@ export function MeetingsLayout({
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
-          {actions && (
-            <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
-              {actions}
-            </div>
-          )}
+          {/* The module header's Help action. Present on EVERY Meetings screen,
+              including a live meeting, so somebody who is unsure mid-review does
+              not have to leave what they are doing to find the explanation.
+              Hidden on the guide itself, where it would point at the page the
+              reader is already on. It needs no capability: the guide reads no
+              meeting, so module entry — which every person seeing this shell
+              already has — is the whole requirement. */}
+          <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
+            {!pathname.startsWith(GUIDE_PATH) && (
+              <button
+                onClick={() => router.push(GUIDE_PATH)}
+                className="boe-btn boe-btn-ghost"
+                title="How Meetings Work"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '5px',
+                  padding: '7px 11px', fontSize: '12.5px', flexShrink: 0,
+                }}
+              >
+                <HelpCircle size={14} strokeWidth={2} aria-hidden="true" />
+                How Meetings Work
+              </button>
+            )}
+            {actions}
+          </div>
         </div>
 
         {/* Page body */}

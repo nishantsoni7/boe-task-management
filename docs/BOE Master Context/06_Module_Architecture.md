@@ -455,6 +455,120 @@ Asked for and drawn only for verifiers.
 
 ---
 
+# MEETINGS MODULE
+
+Status: Operational. Two things sit side by side on one screen and must not be
+confused: the **Order rail** (what is happening with order 2041) and the
+**discussion agenda** (what is happening with this particular issue).
+
+## Screens
+
+| Route | What it is |
+| --- | --- |
+| `/meetings` | Active & Upcoming reviews |
+| `/meetings/completed` | Past reviews, a permanent record |
+| `/meetings/follow-ups` | Due and Overdue SKU follow-ups (one screen, two nav entries) |
+| `/meetings/inbox` | Meeting Inbox — open issues no meeting has claimed |
+| `/meetings/guide` | How Meetings Work — the in-app visual guide |
+| `/meetings/[id]` | The working screen. `?order=` opens an Order, `?item=` opens a discussion item |
+
+The shell is `MeetingsLayout` (BOE Module Layout Standard: module-only
+navigation, Home to `/modules`, the shared user area). The guide is also a
+**Help action in the module header**, so it is reachable from every Meetings
+screen including a live meeting — and from nowhere outside the module.
+
+## Tables
+
+| Table | Holds | Mutability |
+| --- | --- | --- |
+| `meetings` | The review session: type, date, title, lead, status | Header columns only; status moves through `set_meeting_status()` |
+| `meeting_attendees` | Who was in it | The one child table a client writes |
+| `meeting_orders` | One Order as discussed in ONE meeting; `order_number_key` is the cross-meeting match | No client writes |
+| `meeting_order_items` | One SKU line under that Order | No client writes |
+| `meeting_update_history` | What was said about an Order or a SKU | **Append-only** |
+| `meeting_activity_log` | The meeting's own lifecycle | **Append-only** |
+| `meeting_order_evidence` | Images, in the private `meeting-evidence` bucket | **Append-only**; `discussion_appearance_id` tags an image to an issue |
+| `meeting_discussion_items` | ONE business issue, for its whole life. Category, order, issue, source task, Open/Resolved | No client writes |
+| `meeting_discussion_appearances` | That issue on ONE meeting's agenda, with that meeting's own update, decision and review date | No client writes; `UNIQUE (meeting_id, discussion_item_id)` |
+| `meeting_discussion_events` | The issue's trail: captured, added, carried forward, updated, task linked, resolved, reopened | **Append-only** |
+
+## Why three tables and not a wider one
+
+`meeting_order_items` is keyed `(meeting_order_id, sku_key)`, requires a SKU
+and a product name, and belongs to one meeting. An after-sales complaint has no
+SKU, must not invent one, and must be the SAME row next month. Widening it would
+have made `sku` nullable — the one column that keeps an orphaned history row
+readable. `meeting_update_history` was left alone for the same reason
+`20261203000000` left it alone for evidence: its `entry_type` CHECK is shared
+by six functions and its NOT NULL subject is an Order, not an issue. The
+consequence is the one the guide relies on: **issue history and general order
+history are different tables**, so they can never be confused on screen.
+
+## Enforcement
+
+| Function | What it guarantees |
+| --- | --- |
+| `meeting_discussion_category_for_type()` | The one mapping every placing path shares: `new_order` → `running_order`, `repair_order` → `after_sales`, anything else → NULL (matches nothing). Pure `IMMUTABLE` SQL, deliberately not a definer function |
+| `can_view_discussion_item()` | Readable by whoever can read a meeting it has been on, its creator, or a meeting editor/manager (for the Inbox) |
+| `assert_meeting_discussion_editor()` | Locks the appearance and its issue, then `assert_meeting_editor()` — which is what refuses a COMPLETED meeting |
+| `capture_meeting_discussion_item()` | Two independent halves: Meetings module entry (+ `can_edit_meeting` for a named target), and a real relationship to the source task |
+| `attach_meeting_discussion_item()` | Editor-only, idempotent — a second call returns the existing appearance. Refuses an issue whose category does not match the review type |
+| `save_meeting_discussion_update()` | NULL means "leave alone"; a save that moves nothing writes no trail row |
+| `resolve_meeting_discussion_item()` | Note required, actor and time recorded, carry-forward stops |
+| `reopen_meeting_discussion_item()` | Reason required; `can_edit_meeting(..., allow_completed := true)` on a meeting the issue has been on, and writes nothing to that meeting |
+| `link_meeting_discussion_task()` | The same creator/assignee/admin task predicate `link_meeting_item_task()` uses |
+| `ensure_meeting_discussion_order()` | Creates or adopts the Order's row in this meeting, lazily, so a new draft stays deletable |
+| `add_meeting_discussion_evidence()` | Records only an object that really exists, under this Order's folder, uploaded by the caller |
+| `apply_meeting_discussion_carry_forward()` | The engine. Not granted to any client role |
+| `carry_forward_meeting_discussions()` | The same engine, editor-run, for a meeting raised before the migration |
+
+Carry-forward runs from an **AFTER INSERT trigger on `public.meetings`**
+(`meetings_carry_forward_discussions_trg`), so a review cannot exist without its
+inherited agenda and no client can suppress it — the same reasoning
+`meetings_log_creation()` uses for the opening trail row.
+
+## Where the logic lives
+
+| Concern | File |
+| --- | --- |
+| Categories, states, board filters, summary, history grouping, the state a meeting recorded (`stateInMeeting`) | `src/lib/meetings/discussion.ts` |
+| The five batched reads, and the Inbox | `src/lib/meetings/discussionReads.ts` |
+| Prefilling Add to Meeting from a task | `src/lib/meetings/taskCapture.ts` |
+| Capability derivation | `src/lib/permissions/meetings.ts` |
+| Failure classification and reader-facing messages | `src/lib/meetings/errors.ts` |
+| The guide's every sentence, as data | `src/app/meetings/guide/guideContent.ts` |
+| The guide's content, without the shell or a session | `src/app/meetings/guide/MeetingGuide.tsx` |
+| The Inbox rows, without the shell or a session | `MeetingInboxBody` in `src/app/meetings/inbox/MeetingInboxScreen.tsx` |
+
+## Row types
+
+There is no generated Supabase type file in this repository and the clients are
+untyped, so row shapes are hand-maintained next to their column lists
+(`MEETING_DISCUSSION_*_COLUMNS` in `discussion.ts`, `MEETING_EVIDENCE_COLUMNS` in
+`types.ts`). A column added to a table must be added to its type and its list.
+
+## Testing the database
+
+`supabase/tests/run_meeting_discussion_workflow_local.sh` executes the migration
+on a disposable, marked, empty local Supabase stack and runs
+`meeting_discussion_workflow_assertions.sql` twice. Its bootstraps are test-only:
+`006_meeting_discussion_default_privileges.sql` reproduces PRODUCTION's default
+privileges (a current CLI starts a stack that grants `authenticated` far less,
+which would make the suite fail where production succeeds);
+`007_meeting_discussion_stubs.sql` supplies `public.tasks` with production's real
+SELECT policy and `module_entry_open()`; `008_meeting_discussion_gates.sql`
+reproduces the six meeting-table entry gates from `20260905000000`, which cannot
+itself run on a partial chain.
+
+## Permissions
+
+No new module and no new action key. `meetings:view` is module entry,
+`edit`/`manage` is conducting a review, and the guide needs entry only —
+it reads no meeting, order or task. `npm run permissions:check` reports the
+registry in sync.
+
+---
+
 # EMPLOYEE RECORDS MODULE
 
 Status:
