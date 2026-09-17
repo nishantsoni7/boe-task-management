@@ -10,8 +10,10 @@ import {
 import { AfterSalesTagPicker, CategoryPicker } from '@/components/meetings/DiscussionModals'
 import { logMeetingFailure, meetingErrorMessage, type MeetingErrorLike } from '@/lib/meetings/errors'
 import {
-  buildTaskCapturePrefill, capturePrefillIsSubmittable, captureDetails,
+  CAPTURE_INBOX, buildTaskCapturePrefill, capturePrefillIsSubmittable, captureDetails,
+  captureSubmitAllowed, captureTargetId, captureTargetMeetings,
 } from '@/lib/meetings/taskCapture'
+import { istToday } from '@/lib/istDate'
 import { meetingTypeForCategory, type AfterSalesTag, type DiscussionCategory } from '@/lib/meetings/discussion'
 import { canEditThisMeeting, deriveMeetingsCapabilities } from '@/lib/permissions/meetings'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -48,7 +50,7 @@ import { MEETING_TYPE_META, formatMeetingDate, type Meeting, type MeetingType } 
 // keeps that true under a double submit or two tabs. The dialog then says so
 // plainly instead of pretending it created something.
 
-type MeetingOption = Pick<Meeting, 'id' | 'title' | 'meeting_date' | 'meeting_type' | 'status' | 'lead_id' | 'created_by'>
+type MeetingOption = Pick<Meeting, 'id' | 'title' | 'meeting_date' | 'meeting_type' | 'status' | 'lead_id' | 'created_by' | 'created_at'>
 
 type CaptureResult = {
   item_id: string
@@ -68,7 +70,7 @@ export function captureToastMessage(result: Pick<CaptureResult, 'status' | 'in_i
 }
 
 /** No meeting chosen — the issue waits in the Meeting Inbox. */
-const INBOX = ''
+const INBOX = CAPTURE_INBOX
 
 export function AddToMeetingModal({
   supabase, task, userId, userRole, onClose, onDone, onOpenMeeting,
@@ -99,6 +101,9 @@ export function AddToMeetingModal({
   // function of what is already in state.
   const [chosenMeetingId, setChosenMeetingId] = useState<string | null>(null)
   const [meetings, setMeetings]   = useState<MeetingOption[] | null>(null)
+  // The Indian business date the meeting list was read for. Quick capture offers
+  // only meetings dated on or after it.
+  const [meetingsDay, setMeetingsDay] = useState<string | null>(null)
   // A failed meeting read is NOT "no meetings". Treating it as one would quietly
   // send the issue to the Inbox while a live review exists, so it blocks the Add
   // and says what happened instead.
@@ -111,19 +116,26 @@ export function AddToMeetingModal({
 
   const preferredType: MeetingType = meetingTypeForCategory(category)
 
-  // The live meetings this person may actually WRITE to. RLS narrows the read to
-  // meetings they can see; canEditThisMeeting — the browser mirror of
+  // The UPCOMING live meetings this person may actually WRITE to. RLS narrows the
+  // read to meetings they can see; canEditThisMeeting — the browser mirror of
   // can_edit_meeting() — narrows it to the ones the RPC will accept. Offering one
   // it would refuse is the defect this avoids.
+  //
+  // Only meetings dated TODAY OR LATER, in Indian business dates (istToday, never
+  // the browser's UTC date). A live meeting dated in the past is a stale draft or
+  // a QA meeting left behind; a few taps from a task must never put a real issue
+  // on one. Those stay manageable inside Meetings — they are just not offered here.
   useEffect(() => {
     let active = true
     const load = async () => {
       try {
+        const day = istToday()
         const [{ data, error: readError }, effective] = await Promise.all([
           supabase
             .from('meetings')
-            .select('id, title, meeting_date, meeting_type, status, lead_id, created_by')
+            .select('id, title, meeting_date, meeting_type, status, lead_id, created_by, created_at')
             .in('status', ['draft', 'in_progress'])
+            .gte('meeting_date', day)
             .order('meeting_date', { ascending: true }),
           getEffectivePermissions(supabase, userId, 'meetings'),
         ])
@@ -132,6 +144,7 @@ export function AddToMeetingModal({
         const caps = deriveMeetingsCapabilities(userRole, effective)
         const rows = ((data ?? []) as MeetingOption[]).filter(m => canEditThisMeeting(m, userId, caps))
         setMeetingsError(null)
+        setMeetingsDay(day)
         setMeetings(rows)
       } catch (loadError) {
         if (!active) return
@@ -144,28 +157,29 @@ export function AddToMeetingModal({
     return () => { active = false }
   }, [supabase, userId, userRole, loadAttempt])
 
-  // Only meetings of the review type this category belongs in. The database
-  // refuses any other (attach_meeting_discussion_item raises
-  // MEETING_DISCUSSION_CATEGORY_MISMATCH), so offering one would only produce an
-  // error. Switching the category therefore changes the list.
+  // Only upcoming meetings of the review type this category belongs in, nearest
+  // first. The database refuses any other type (attach_meeting_discussion_item
+  // raises MEETING_DISCUSSION_CATEGORY_MISMATCH), so offering one would only
+  // produce an error. Switching the category therefore changes the list.
   const matchingMeetings = useMemo(
-    () => (meetings ?? []).filter(meeting => meeting.meeting_type === preferredType),
-    [meetings, preferredType],
+    () => (meetings && meetingsDay ? captureTargetMeetings(meetings, category, meetingsDay) : []),
+    [meetings, meetingsDay, category],
   )
 
-  // The earliest live meeting of the right type leads. A choice the user made is
-  // kept only while it is still in the list — so a category change can never leave
-  // a meeting of the wrong type selected.
-  const meetingId = chosenMeetingId !== null
-    && (chosenMeetingId === INBOX || matchingMeetings.some(meeting => meeting.id === chosenMeetingId))
-    ? chosenMeetingId
-    : (matchingMeetings[0]?.id ?? INBOX)
+  // The nearest upcoming meeting leads; with none, the Meeting Inbox. A choice the
+  // user made is kept only while it is still in the list — so a category change can
+  // never leave a meeting of the wrong type selected, and nothing ever falls back
+  // to a past meeting.
+  const meetingId = captureTargetId(chosenMeetingId, matchingMeetings)
 
-  // Not while the meeting list is still loading: the target would silently be the
-  // Inbox, and a quick tap would send an issue there even though a live meeting of
-  // the right type exists.
-  const canSubmit = !saving && result === null && meetings !== null && meetingsError === null && capturePrefillIsSubmittable({
-    category, orderNumber, issue, afterSalesTag: tag,
+  // Not while the meeting list is still loading or failed to load: the target would
+  // silently be the Inbox although an upcoming meeting of the right type may exist.
+  const canSubmit = captureSubmitAllowed({
+    saving,
+    finished: result !== null,
+    meetingsLoaded: meetings !== null,
+    meetingsError,
+    draftSubmittable: capturePrefillIsSubmittable({ category, orderNumber, issue, afterSalesTag: tag }),
   })
 
   const save = async () => {
@@ -371,8 +385,8 @@ export function AddToMeetingModal({
           : meetings === null
           ? 'Looking for meetings you can add to…'
           : matchingMeetings.length === 0
-            ? `There is no live ${MEETING_TYPE_META[preferredType].label} review you can add to. It will wait in the Meeting Inbox.`
-            : `Live ${MEETING_TYPE_META[preferredType].label} reviews you can record in. Choose the Inbox to let the next one pick it up.`}
+            ? `No upcoming ${MEETING_TYPE_META[preferredType].label} review is scheduled, so this issue will go to the Meeting Inbox and join the next one created.`
+            : `Upcoming ${MEETING_TYPE_META[preferredType].label} reviews you can record in, nearest first. Choose the Inbox to let the next one pick it up.`}
       >
         <select
           className="boe-input"

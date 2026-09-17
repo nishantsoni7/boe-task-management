@@ -19,9 +19,12 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  buildTaskCapturePrefill, captureDetails, capturePrefillIsSubmittable,
+  CAPTURE_INBOX, buildTaskCapturePrefill, captureDetails, capturePrefillIsSubmittable,
+  captureSubmitAllowed, captureTargetId, captureTargetMeetings,
   extractCustomerName, extractOrderNumber, suggestCategory,
+  type CaptureMeetingOption,
 } from './taskCapture'
+import { istToday } from '@/lib/istDate'
 import { buildMeetingTaskDraft } from './taskDraft'
 import type { Meeting, MeetingOrder, MeetingOrderItem } from './types'
 
@@ -222,5 +225,157 @@ describe('the details sent with a capture', () => {
     const details = captureDetails({ extra: 'Vendor says two weeks' })
     assert.ok(!details!.toLowerCase().includes('task title'))
     assert.equal(details, 'Vendor says two weeks')
+  })
+})
+
+// ─── Which meeting quick capture offers, and which it selects ───────────────
+//
+// Deterministic: "today" is passed in. The production shape that motivated this —
+// a stale 12 Aug New Order draft and a 5 Aug "ZZ TEST" Repair Order review still
+// live in September — is reproduced below.
+
+const TODAY = '2026-09-17'
+
+function meeting(over: Partial<CaptureMeetingOption> & { id: string }): CaptureMeetingOption & { title: string } {
+  return {
+    meeting_date: TODAY,
+    meeting_type: 'new_order',
+    status: 'draft',
+    created_at: '2026-09-01T00:00:00Z',
+    title: over.id,
+    ...over,
+  }
+}
+
+const PRODUCTION_SHAPE = [
+  meeting({ id: 'stale-new-order-draft-12-aug', meeting_date: '2026-08-12', meeting_type: 'new_order', status: 'draft' }),
+  meeting({ id: 'new-order-16-sept-in-progress', meeting_date: '2026-09-16', meeting_type: 'new_order', status: 'in_progress' }),
+  meeting({ id: 'zz-test-repair-5-aug', meeting_date: '2026-08-05', meeting_type: 'repair_order', status: 'in_progress' }),
+  meeting({ id: 'stale-repair-draft-18-aug', meeting_date: '2026-08-18', meeting_type: 'repair_order', status: 'draft' }),
+]
+
+describe('quick capture offers only upcoming meetings, nearest first', () => {
+  test('several upcoming meetings: the nearest is chosen', () => {
+    const offered = captureTargetMeetings([
+      meeting({ id: 'in-two-weeks', meeting_date: '2026-10-01' }),
+      meeting({ id: 'tomorrow', meeting_date: '2026-09-18' }),
+      meeting({ id: 'next-week', meeting_date: '2026-09-24' }),
+    ], 'running_order', TODAY)
+    assert.deepEqual(offered.map(m => m.id), ['tomorrow', 'next-week', 'in-two-weeks'])
+    assert.equal(captureTargetId(null, offered), 'tomorrow')
+  })
+
+  test('a meeting dated today counts as upcoming', () => {
+    const offered = captureTargetMeetings([meeting({ id: 'today' })], 'running_order', TODAY)
+    assert.equal(captureTargetId(null, offered), 'today')
+  })
+
+  test('two on the same day: the one raised first leads, deterministically', () => {
+    const offered = captureTargetMeetings([
+      meeting({ id: 'b', meeting_date: '2026-09-20', created_at: '2026-09-10T10:00:00Z' }),
+      meeting({ id: 'a', meeting_date: '2026-09-20', created_at: '2026-09-10T09:00:00Z' }),
+    ], 'running_order', TODAY)
+    assert.deepEqual(offered.map(m => m.id), ['a', 'b'])
+  })
+
+  test('past and future meetings: the future one is chosen, the past one is not offered', () => {
+    const offered = captureTargetMeetings([
+      meeting({ id: 'last-week', meeting_date: '2026-09-10', status: 'in_progress' }),
+      meeting({ id: 'next-week', meeting_date: '2026-09-24' }),
+    ], 'running_order', TODAY)
+    assert.deepEqual(offered.map(m => m.id), ['next-week'])
+    assert.equal(captureTargetId(null, offered), 'next-week')
+  })
+
+  test('only past meetings: the Meeting Inbox is chosen — never the most recent past meeting', () => {
+    const offered = captureTargetMeetings([
+      meeting({ id: 'yesterday', meeting_date: '2026-09-16', status: 'in_progress' }),
+      meeting({ id: 'last-month', meeting_date: '2026-08-12' }),
+    ], 'running_order', TODAY)
+    assert.deepEqual(offered, [])
+    assert.equal(captureTargetId(null, offered), CAPTURE_INBOX)
+  })
+
+  test('stale drafts and test meetings from production are excluded in both categories', () => {
+    const running = captureTargetMeetings(PRODUCTION_SHAPE, 'running_order', TODAY)
+    const afterSales = captureTargetMeetings(PRODUCTION_SHAPE, 'after_sales', TODAY)
+    assert.ok(!running.some(m => m.id === 'stale-new-order-draft-12-aug'), 'Running Order must not offer the 12 Aug draft')
+    assert.ok(!afterSales.some(m => m.id === 'zz-test-repair-5-aug'), 'After Sales must not offer ZZ TEST')
+    // Everything in that shape is in the past, so both categories go to the Inbox.
+    assert.equal(captureTargetId(null, running), CAPTURE_INBOX)
+    assert.equal(captureTargetId(null, afterSales), CAPTURE_INBOX)
+  })
+
+  test('completed meetings and the other review type are never offered', () => {
+    const offered = captureTargetMeetings([
+      meeting({ id: 'completed-future', meeting_date: '2026-09-20', status: 'completed' }),
+      meeting({ id: 'repair-future', meeting_date: '2026-09-20', meeting_type: 'repair_order' }),
+      meeting({ id: 'new-order-future', meeting_date: '2026-09-21' }),
+    ], 'running_order', TODAY)
+    assert.deepEqual(offered.map(m => m.id), ['new-order-future'])
+  })
+})
+
+describe('the selected target follows the category', () => {
+  const upcoming = [
+    ...PRODUCTION_SHAPE,
+    meeting({ id: 'new-order-23-sept', meeting_date: '2026-09-23', meeting_type: 'new_order' }),
+    meeting({ id: 'new-order-19-sept', meeting_date: '2026-09-19', meeting_type: 'new_order' }),
+    meeting({ id: 'repair-25-sept', meeting_date: '2026-09-25', meeting_type: 'repair_order' }),
+  ]
+
+  test('switching category recalculates the default to that category’s nearest upcoming meeting', () => {
+    const running = captureTargetMeetings(upcoming, 'running_order', TODAY)
+    const afterSales = captureTargetMeetings(upcoming, 'after_sales', TODAY)
+    assert.equal(captureTargetId(null, running), 'new-order-19-sept')
+    assert.equal(captureTargetId(null, afterSales), 'repair-25-sept')
+  })
+
+  test('a meeting chosen under one category does not survive a switch to the other', () => {
+    const afterSales = captureTargetMeetings(upcoming, 'after_sales', TODAY)
+    assert.equal(captureTargetId('new-order-23-sept', afterSales), 'repair-25-sept')
+  })
+
+  test('a switch to a category with no upcoming meeting lands on the Inbox', () => {
+    const onlyNewOrders = upcoming.filter(m => m.meeting_type === 'new_order')
+    const afterSales = captureTargetMeetings(onlyNewOrders, 'after_sales', TODAY)
+    assert.equal(captureTargetId('new-order-19-sept', afterSales), CAPTURE_INBOX)
+  })
+
+  test('an explicit choice that is still offered, or the Inbox, is kept', () => {
+    const running = captureTargetMeetings(upcoming, 'running_order', TODAY)
+    assert.equal(captureTargetId('new-order-23-sept', running), 'new-order-23-sept')
+    assert.equal(captureTargetId(CAPTURE_INBOX, running), CAPTURE_INBOX)
+  })
+})
+
+describe('Add is blocked until the meeting list has loaded successfully', () => {
+  const ready = { saving: false, finished: false, meetingsLoaded: true, meetingsError: null, draftSubmittable: true }
+
+  test('loaded, no error, a complete draft: allowed', () => {
+    assert.equal(captureSubmitAllowed(ready), true)
+  })
+
+  test('a load failure blocks submission — it never silently becomes the Inbox', () => {
+    assert.equal(captureSubmitAllowed({ ...ready, meetingsLoaded: false, meetingsError: 'could not be loaded' }), false)
+    assert.equal(captureSubmitAllowed({ ...ready, meetingsError: 'could not be loaded' }), false)
+  })
+
+  test('still loading, saving, finished or an incomplete draft: blocked', () => {
+    assert.equal(captureSubmitAllowed({ ...ready, meetingsLoaded: false }), false)
+    assert.equal(captureSubmitAllowed({ ...ready, saving: true }), false)
+    assert.equal(captureSubmitAllowed({ ...ready, finished: true }), false)
+    assert.equal(captureSubmitAllowed({ ...ready, draftSubmittable: false }), false)
+  })
+})
+
+describe('"today" is the Indian business date', () => {
+  test('just after midnight IST is already the new day, although UTC is still yesterday', () => {
+    // 2026-09-17 00:30 IST = 2026-09-16 19:00 UTC.
+    const now = new Date('2026-09-16T19:00:00Z')
+    assert.equal(now.toISOString().slice(0, 10), '2026-09-16')
+    assert.equal(istToday(now), '2026-09-17')
+    const offered = captureTargetMeetings([meeting({ id: 'dated-16-sept', meeting_date: '2026-09-16' })], 'running_order', istToday(now))
+    assert.deepEqual(offered, [], 'a meeting dated yesterday in India is not offered at 00:30 IST')
   })
 })

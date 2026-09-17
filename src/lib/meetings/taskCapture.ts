@@ -176,3 +176,80 @@ export function captureDetails(input: {
   if (input.taskRef) lines.push(`Raised from task ${input.taskRef}.`)
   return lines.length > 0 ? lines.join('\n\n') : null
 }
+
+// ─── Which meeting quick capture offers ─────────────────────────────────────
+
+/** What quick capture needs to know about a meeting it might offer. */
+export type CaptureMeetingOption = {
+  id: string
+  meeting_date: string
+  meeting_type: string
+  status: string
+  created_at?: string | null
+}
+
+/** No meeting chosen: the issue waits in the Meeting Inbox. */
+export const CAPTURE_INBOX = ''
+
+/**
+ * The meetings Task Detail's quick capture may put an issue on, nearest first.
+ *
+ * Only a LIVE meeting (draft or in progress) of the review type the category
+ * belongs in, dated TODAY OR LATER in Indian business dates (`today` comes from
+ * istToday()). A draft dated in the past is a meeting that did not happen as
+ * planned — a stale draft, or a QA meeting left behind — and a few taps from a
+ * task must never write a real issue into it. Past drafts stay manageable inside
+ * Meetings; they are simply not quick-capture targets. Editability is decided by
+ * the caller (canEditThisMeeting) before this runs.
+ *
+ * Dates are compared as YYYY-MM-DD strings, which order correctly; ties are
+ * broken by when the meeting was raised, then by id, so the order is stable.
+ */
+export function captureTargetMeetings<T extends CaptureMeetingOption>(
+  meetings: readonly T[],
+  category: DiscussionCategory,
+  today: string,
+): T[] {
+  const type = category === 'running_order' ? 'new_order' : 'repair_order'
+  return meetings
+    .filter(meeting =>
+      meeting.meeting_type === type
+      && (meeting.status === 'draft' || meeting.status === 'in_progress')
+      && meeting.meeting_date >= today)
+    .sort((a, b) =>
+      a.meeting_date.localeCompare(b.meeting_date)
+      || (a.created_at ?? '').localeCompare(b.created_at ?? '')
+      || a.id.localeCompare(b.id))
+}
+
+/**
+ * The target actually selected: the person's own choice while it is still one of
+ * the offered meetings (or the Inbox), otherwise the nearest upcoming meeting,
+ * otherwise the Meeting Inbox. There is deliberately no fallback to a past
+ * meeting. Recomputed on every render, so switching the category can never leave
+ * a meeting of the other review type selected.
+ */
+export function captureTargetId(
+  chosenId: string | null,
+  offered: readonly Pick<CaptureMeetingOption, 'id'>[],
+): string {
+  if (chosenId === CAPTURE_INBOX) return CAPTURE_INBOX
+  if (chosenId !== null && offered.some(meeting => meeting.id === chosenId)) return chosenId
+  return offered[0]?.id ?? CAPTURE_INBOX
+}
+
+/**
+ * Whether Add may be pressed. Never while the meeting list is still loading or
+ * failed to load: either would silently turn into "Inbox" although an upcoming
+ * meeting may exist.
+ */
+export function captureSubmitAllowed(state: {
+  saving: boolean
+  finished: boolean
+  meetingsLoaded: boolean
+  meetingsError: string | null
+  draftSubmittable: boolean
+}): boolean {
+  return !state.saving && !state.finished && state.meetingsLoaded
+    && state.meetingsError === null && state.draftSubmittable
+}

@@ -365,7 +365,7 @@ describe('defects found by rendering the real components', () => {
   test('Add to Meeting cannot be submitted while the meeting list is still loading', () => {
     // Otherwise the target is silently the Inbox, and a quick tap sends the issue
     // there even though a live meeting of the right type exists.
-    assert.match(CAPTURE, /const canSubmit = !saving && result === null && meetings !== null &&/)
+    assert.match(CAPTURE, /const canSubmit = captureSubmitAllowed\(\{\s*saving,\s*finished: result !== null,\s*meetingsLoaded: meetings !== null,/)
   })
 
   test('the capture outcome never contradicts itself', () => {
@@ -415,10 +415,24 @@ describe('a failure is never shown as an empty state', () => {
 
   test('Add to Meeting: a failed meeting read blocks the Add and says so — it never falls back to the Inbox', () => {
     assert.match(CAPTURE, /const \[meetingsError, setMeetingsError\]/)
-    assert.match(CAPTURE, /meetings !== null && meetingsError === null && capturePrefillIsSubmittable/)
+    // The rule itself is unit-tested (captureSubmitAllowed); this pins that the
+    // dialog passes it the real loading and error state.
+    assert.match(CAPTURE, /const canSubmit = captureSubmitAllowed\(\{[\s\S]*?meetingsLoaded: meetings !== null,\s*meetingsError,/)
     assert.match(CAPTURE, /if \(readError\) throw readError/)
     // The permission read may not silently become "no permissions" either.
     assert.ok(!/getEffectivePermissions\([^)]*\)\.catch/.test(CAPTURE))
+  })
+
+  test('Add to Meeting offers only upcoming meetings by Indian date, nearest first, else the Inbox', () => {
+    assert.match(CAPTURE, /import \{ istToday \} from '@\/lib\/istDate'/)
+    assert.match(CAPTURE, /const day = istToday\(\)/)
+    assert.match(CAPTURE, /\.gte\('meeting_date', day\)/)
+    assert.match(CAPTURE, /captureTargetMeetings\(meetings, category, meetingsDay\)/)
+    assert.match(CAPTURE, /const meetingId = captureTargetId\(chosenMeetingId, matchingMeetings\)/)
+    // No browser-UTC "today", and no fallback that could pick a past meeting.
+    assert.ok(!/toISOString\(\)\.slice\(0, 10\)/.test(CAPTURE))
+    assert.ok(!/matchingMeetings\[0\]\?\.id \?\? INBOX/.test(CAPTURE))
+    assert.match(CAPTURE, /No upcoming \$\{MEETING_TYPE_META\[preferredType\]\.label\} review is scheduled, so this issue will go to the Meeting Inbox/)
   })
 
   test('the attach dialog: a failed meeting read is not "no live meeting"', () => {
