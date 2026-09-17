@@ -1355,3 +1355,19 @@ were run against it — notes readable through issue visibility, a deletion guar
 only checks manual placement, and an Inbox read that trusts visible appearances — and
 each was caught by the section written for it before the file was restored
 byte-for-byte.
+
+**PR #164 security review — the third round (2026-09-17).** A review of the
+follow-up against a local stack proved that seven discussion RPCs (attach, update,
+resolve, reopen, task link, Order folder, carry-forward) still accepted a caller
+whose Meetings `view` had been removed, provided they led or created the meeting
+or held Meetings `edit`: the tables' RESTRICTIVE entry gate does not reach a
+SECURITY DEFINER function, and the shared guards `assert_meeting_editor()` and
+`can_edit_meeting()` never checked module entry. A second commit added
+`assert_meeting_discussion_access()`, called first by every callable discussion
+function (the evidence functions through the editor guard); made the two
+visibility predicates answer false outside the module; stopped granting the pure
+category mapping to clients; changed the three select policies to
+`(SELECT auth.uid())`; indexed `meeting_discussion_events(meeting_id)`; and
+removed an unused variable. Section 30 enumerates the callable functions from the
+catalogue, so a future one without a probe fails. The same gap in the already
+shipped Order-rail RPCs was deliberately left for its own migration.

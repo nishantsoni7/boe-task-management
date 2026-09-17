@@ -618,6 +618,11 @@ Implemented (with `20261213000000`):
   issue row (order, customer, title, details, Open/Resolved) is also readable by
   its creator and — only while it waits in the Inbox — by meeting editors;
   `resolution_note` is not readable from the row by any signed-in user.
+* **Nothing without Meetings access.** The three tables carry the Meetings entry
+  gate, and every function a signed-in user can call checks Meetings entry first
+  (`assert_meeting_discussion_access`) — including the evidence functions. Being
+  a meeting's lead or creator, or holding Meetings `edit`, is not enough once
+  Meetings `view` has been removed: every call is refused and nothing is returned.
 * **A draft holding a discussion cannot be deleted.** Any update, decision, next
   review date, Discussed Today, evidence, resolution, task link or manual
   placement on it refuses the delete. A mistaken draft whose only content is
@@ -643,15 +648,21 @@ Verification (2026-09-16):
   the real Meetings chain, applies `20261213000000`, applies the same file again
   (a deliberate check that it is safe to run twice), then runs
   `meeting_discussion_workflow_assertions.sql` twice, each pass in a rolled-back
-  transaction: 29 numbered sections (32 checks) as real users through RLS —
+  transaction: 30 numbered sections (33 checks) as real users through RLS —
   Inbox, duplicate capture, both categories, source-task isolation, review-type
   matching, back-dated meetings, retries, view-only refusal, completed-meeting
   protection, resolve, reopen, carry-forward, evidence, visibility, meeting notes
   following the meeting, an edit-only grant, the authoritative Inbox read, a user
-  without Meetings access, real task linking, decision clearing, and draft
-  deletion for every kind of activity. All pass. Three deliberate breakages of the
-  migration (notes readable outside their meeting, a weakened delete guard, an
-  Inbox read that trusts visible appearances) were each caught.
+  without Meetings access, real task linking, decision clearing, draft deletion for
+  every kind of activity, and — enumerated from the catalogue — every callable
+  function refusing a meeting lead and an edit holder whose Meetings access was
+  removed. All pass. Five deliberate breakages of the migration (notes readable
+  outside their meeting, a weakened delete guard, an Inbox read that trusts
+  visible appearances, a disabled access guard, visibility predicates without the
+  module check) were each caught. A third application of the file leaves the
+  catalogue — grants, column grants, policies, functions, triggers, constraints,
+  indexes — identical. `supabase db advisors --local` reports no security finding
+  on this migration's objects, and `supabase db lint --local` is clean.
 * **Production rehearsal** — owed. The earlier rollback rehearsal predates the
   PR #164 review changes and must be repeated on the frozen file.
 * **Rendered review** — the real components, with fixture data, at 1366px and
@@ -669,6 +680,12 @@ Not yet done:
   selects the new `discussion_appearance_id` column, and the Inbox calls
   `list_meeting_discussion_inbox()`).
 * A signed-in click-through of the live screens once the migration is applied.
+* **Separate security task (outside PR #164):** the Order-rail RPCs from
+  `20260814000000` authorize through `assert_meeting_editor()` /
+  `can_edit_meeting()`, which do not check Meetings module entry, so a meeting
+  lead or `edit` holder whose Meetings `view` was removed can still write through
+  them. Proven on a local stack; the discussion RPCs in `20261213000000` are not
+  affected because they check entry themselves. To be fixed by its own migration.
 
 ---
 

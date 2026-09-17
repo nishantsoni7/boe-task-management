@@ -254,7 +254,11 @@ describe('the three tables are readable and nothing else', () => {
 })
 
 describe('the internal writers are unreachable from a client', () => {
-  for (const fn of ['record_meeting_discussion_event', 'apply_meeting_discussion_carry_forward']) {
+  for (const fn of [
+    'record_meeting_discussion_event', 'apply_meeting_discussion_carry_forward',
+    'assert_meeting_discussion_access', 'assert_meeting_discussion_editor',
+    'meeting_discussion_category_for_type', 'meetings_prevent_delete_with_discussion',
+  ]) {
     test(`${fn} is revoked from authenticated as well as anon`, () => {
       assert.match(code, new RegExp(
         `REVOKE EXECUTE ON FUNCTION public\\.${fn}\\([\\s\\S]{0,240}?\\)\\s*\\n?\\s*FROM public, anon, authenticated`,
@@ -324,7 +328,7 @@ describe('authorization comes before the write, in every path', () => {
 
   test('capture checks the MEETINGS half and the TASK half independently', () => {
     const body = fnBody('capture_meeting_discussion_item')
-    assert.match(body, /module_entry_open\('meetings'\)/)
+    assert.match(body, /v_uid := public\.assert_meeting_discussion_access\(\);/)
     // The task predicate: creator, assignee or admin. Without it a caller could pin
     // any task id in the company to an issue and read it back.
     assert.match(body, /t\.created_by\s*= v_uid/)
@@ -734,7 +738,7 @@ describe('the migration asserts its own guarantees when it runs', () => {
 
 describe('meeting notes follow the meeting', () => {
   test('every trail row is gated per row, and a meeting row on that meeting', () => {
-    assert.match(code, /CREATE POLICY "meeting_discussion_events_select"[\s\S]*?USING \(public\.can_view_discussion_event\(discussion_item_id, meeting_id, event_type, created_at, auth\.uid\(\)\)\)/)
+    assert.match(code, /CREATE POLICY "meeting_discussion_events_select"[\s\S]*?USING \(public\.can_view_discussion_event\(discussion_item_id, meeting_id, event_type, created_at, \(SELECT auth\.uid\(\)\)\)\)/)
     const body = fnBody('can_view_discussion_event')
     assert.match(body, /WHEN p_meeting_id IS NOT NULL THEN\s+public\.can_view_meeting\(p_meeting_id, p_user_id\)/)
     assert.match(body, /WHEN p_event_type = 'captured' THEN\s+public\.can_view_discussion_item\(p_item_id, p_user_id\)/)
@@ -786,7 +790,7 @@ describe('a draft holding a discussion cannot be deleted', () => {
 describe('the Meeting Inbox is read by the database', () => {
   test('no appearance ANYWHERE, filtered to what this reader may see, behind module entry', () => {
     const body = fnBody('list_meeting_discussion_inbox')
-    assert.match(body, /IF NOT public\.module_entry_open\('meetings'\) THEN/)
+    assert.match(body, /v_uid := public\.assert_meeting_discussion_access\(\);/)
     assert.match(body, /NOT EXISTS \(\s*SELECT 1 FROM public\.meeting_discussion_appearances a\s+WHERE a\.discussion_item_id = i\.id\s*\)/)
     assert.match(body, /public\.can_view_discussion_item\(i\.id, v_uid\)/)
     assert.ok(!body.includes('resolution_note'), 'the Inbox read returns no meeting note')
@@ -799,5 +803,94 @@ describe('clearing a decision is explicit', () => {
     assert.match(body, /p_clear_decision\s+boolean DEFAULT false/)
     assert.match(body, /decision\s+= CASE\s+WHEN p_clear_decision THEN NULL\s+ELSE COALESCE\(v_decision, decision\)/)
     assert.match(body, /'Decision cleared'/)
+  })
+})
+
+// ─── Meetings module entry on every callable function (PR #164, 3rd round) ──
+
+describe('no Meetings access means no discussion RPC', () => {
+  // Every function this migration grants to a signed-in user, read from the SQL
+  // rather than typed out: a GRANT added later is checked automatically.
+  const granted = [...code.matchAll(/GRANT\s+EXECUTE ON FUNCTION public\.(\w+)\(/g)].map(m => m[1])
+
+  test('the granted set is exactly the reviewed one', () => {
+    assert.deepEqual([...new Set(granted)].sort(), [
+      'add_meeting_discussion_evidence', 'attach_meeting_discussion_item',
+      'can_view_discussion_event', 'can_view_discussion_item',
+      'capture_meeting_discussion_item', 'carry_forward_meeting_discussions',
+      'ensure_meeting_discussion_order', 'link_meeting_discussion_task',
+      'list_meeting_discussion_inbox', 'reopen_meeting_discussion_item',
+      'resolve_meeting_discussion_item', 'save_meeting_discussion_update',
+    ])
+    for (const fn of granted) {
+      assert.match(code, new RegExp(`GRANT\\s+EXECUTE ON FUNCTION public\\.${fn}\\([^)]*\\)\\s*TO authenticated;`), `${fn} is granted to a role other than authenticated`)
+    }
+  })
+
+  test('every granted function checks module entry before it looks anything up', () => {
+    for (const fn of granted) {
+      const body = fnBody(fn)
+      if (fn.startsWith('can_view_')) {
+        // Visibility predicates: false for a caller outside the module.
+        assert.match(body, /SELECT p_user_id IS NOT NULL AND public\.module_entry_open\('meetings'\) AND/, fn)
+        continue
+      }
+      const begin = body.indexOf('\nBEGIN')
+      const guard = Math.min(
+        ...['assert_meeting_discussion_access()', 'assert_meeting_discussion_editor(']
+          .map(needle => body.indexOf(needle, begin))
+          .filter(i => i >= 0),
+      )
+      assert.ok(Number.isFinite(guard), `${fn} never checks module entry`)
+      const firstRead = body.slice(begin).search(/\bSELECT\b[\s\S]*?\bFROM public\./)
+      assert.ok(firstRead < 0 || begin + firstRead > guard, `${fn} reads a row before checking module entry`)
+    }
+  })
+
+  test('the guards: access first, then editor rights', () => {
+    const access = fnBody('assert_meeting_discussion_access')
+    assert.match(access, /IF v_uid IS NULL THEN[\s\S]*?IF NOT public\.module_entry_open\('meetings'\) THEN\s+RAISE EXCEPTION 'MEETING_FORBIDDEN:/)
+    const editor = fnBody('assert_meeting_discussion_editor')
+    assert.ok(editor.indexOf('assert_meeting_discussion_access()') < editor.indexOf('FROM public.meeting_discussion_appearances'),
+      'the editor guard must check module entry before reading the appearance')
+    // attach, reopen and carry-forward do not go through the editor guard.
+    for (const fn of ['attach_meeting_discussion_item', 'reopen_meeting_discussion_item', 'carry_forward_meeting_discussions']) {
+      const body = fnBody(fn)
+      const access = body.indexOf('assert_meeting_discussion_access()')
+      assert.ok(access > 0, `${fn} does not call the access guard`)
+      for (const later of ['assert_meeting_editor(', 'can_edit_meeting(', 'FROM public.meeting_discussion_items']) {
+        const at = body.indexOf(later)
+        assert.ok(at < 0 || at > access, `${fn}: ${later} runs before the access guard`)
+      }
+    }
+  })
+
+  test('the pure category mapping is not callable by a client', () => {
+    assert.match(code, /REVOKE EXECUTE ON FUNCTION public\.meeting_discussion_category_for_type\(text\) FROM public, anon, authenticated;/)
+    assert.ok(!/GRANT\s+EXECUTE ON FUNCTION public\.meeting_discussion_category_for_type/.test(code))
+  })
+})
+
+describe('RLS and index hygiene', () => {
+  test('the three select policies evaluate auth.uid() once per statement', () => {
+    for (const [policy, predicate] of [
+      ['meeting_discussion_items_select', 'can_view_discussion_item(id, '],
+      ['meeting_discussion_appearances_select', 'can_view_meeting(meeting_id, '],
+      ['meeting_discussion_events_select', 'can_view_discussion_event(discussion_item_id, meeting_id, event_type, created_at, '],
+    ] as const) {
+      const at = code.indexOf(`CREATE POLICY "${policy}"`)
+      assert.ok(at >= 0, policy)
+      const statement = code.slice(at, code.indexOf(';', at))
+      assert.ok(statement.includes(`${predicate}(SELECT auth.uid())`), `${policy} re-evaluates auth.uid() per row`)
+      assert.equal((statement.match(/auth\.uid\(\)/g) ?? []).length, 1, `${policy} has a second, bare auth.uid()`)
+    }
+  })
+
+  test('the trail’s meeting_id foreign key is indexed', () => {
+    assert.match(code, /CREATE INDEX IF NOT EXISTS meeting_discussion_events_meeting_idx\s+ON public\.meeting_discussion_events \(meeting_id\);/)
+  })
+
+  test('add_meeting_discussion_evidence declares no unused v_item', () => {
+    assert.ok(!fnBody('add_meeting_discussion_evidence').includes('v_item'))
   })
 })

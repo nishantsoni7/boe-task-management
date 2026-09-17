@@ -510,6 +510,7 @@ history are different tables**, so they can never be confused on screen.
 | Function | What it guarantees |
 | --- | --- |
 | `meeting_discussion_category_for_type()` | The one mapping every placing path shares: `new_order` → `running_order`, `repair_order` → `after_sales`, anything else → NULL (matches nothing). Pure `IMMUTABLE` SQL, deliberately not a definer function |
+| `assert_meeting_discussion_access()` | Authentication and Meetings module entry. Called FIRST by every callable discussion function (directly, or through `assert_meeting_discussion_editor()`), before any row is looked up — because a SECURITY DEFINER function is not reached by the tables' RESTRICTIVE entry gate, and `assert_meeting_editor()` / `can_edit_meeting()` do not check entry. Not callable by any client role |
 | `can_view_discussion_item()` | The issue ROW: whoever can read a meeting it has been on, its creator, or — only while it has no appearance anywhere (the Inbox) — an admin or a meeting editor/manager |
 | `can_view_discussion_event()` | One TRAIL ROW: a row recorded in a meeting → `can_view_meeting` on that meeting; `captured` → the issue's visibility; `reopened` → the meeting of the resolution it reopens; anything else with no meeting (a deleted draft's detached rows) → nobody |
 | `list_meeting_discussion_inbox()` | The Meeting Inbox: open issues with no appearance ANYWHERE, filtered by `can_view_discussion_item`, behind module entry. The browser cannot compute this, because it never sees appearances on meetings it cannot open |
@@ -569,7 +570,12 @@ deliberate check that the file is safe to run again — and runs
 transaction. The suite acts as real users through RLS, including an edit-only
 grant and a user whose Meetings access is removed by an
 `employee_permission_overrides` row, and each "cannot see" check first proves
-the hidden rows exist so it cannot pass on an empty table. Its bootstraps are test-only:
+the hidden rows exist so it cannot pass on an empty table. Section 30 enumerates
+every function of the workflow that `authenticated` can execute FROM THE
+CATALOGUE, requires the list to match its probes exactly, and proves each one
+refuses a lead and an edit holder whose Meetings `view` was removed — then that
+each works once `view` is restored. The migration's own assertion block makes the
+same enumeration on every apply. Its bootstraps are test-only:
 `006_meeting_discussion_default_privileges.sql` reproduces PRODUCTION's default
 privileges (a current CLI starts a stack that grants `authenticated` far less,
 which would make the suite fail where production succeeds);
@@ -584,7 +590,15 @@ No new module and no new action key; `src/lib/permissions/modules.ts` is
 unchanged. `meetings:view` is module entry, `edit`/`manage` is conducting a
 review, and the guide needs entry only — it reads no meeting, order or task.
 An `edit` or `manage` grant reveals an issue only while it is in the Inbox, and
-meeting notes only for meetings the holder can open.
+meeting notes only for meetings the holder can open. Every callable function
+requires module entry; the pure category mapping is not callable by clients at
+all. The three select policies read `(SELECT auth.uid())`, evaluated once per
+statement, and `meeting_discussion_events(meeting_id)` is indexed for the
+deletion guard and the foreign key's `ON DELETE SET NULL`.
+
+The Order-rail RPCs from `20260814000000` do NOT check module entry (their guard
+`assert_meeting_editor()` never did); that is a known gap tracked as a separate
+security task, not changed by the discussion workflow.
 
 ---
 

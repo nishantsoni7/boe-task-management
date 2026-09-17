@@ -116,6 +116,12 @@
 -- resolving meeting's visibility. A reopening reason follows the meeting whose
 -- resolution it reopens.
 --
+-- AND NOTHING WITHOUT MEETINGS ACCESS. The tables carry the RESTRICTIVE module
+-- entry gate; every function a signed-in user can call checks module entry too
+-- (assert_meeting_discussion_access), because a SECURITY DEFINER function is not
+-- reached by a table's policies. Being a meeting's lead, or holding Meetings
+-- 'edit', is not enough once Meetings 'view' has been taken away.
+--
 -- DATA IMPACT
 -- Additive only. Three new tables, one nullable column on an existing table, and
 -- two new triggers on public.meetings (carry-forward AFTER INSERT; a deletion
@@ -413,6 +419,11 @@ CREATE INDEX IF NOT EXISTS meeting_discussion_events_item_idx
   ON public.meeting_discussion_events (discussion_item_id, created_at DESC);
 
 -- Per-meeting grouping of an issue's history, and the linked-task list.
+-- Covers the meeting_id foreign key: deleting a draft sets these to NULL, and the
+-- deletion guard (§17b) searches a meeting's trail rows, both by meeting_id.
+CREATE INDEX IF NOT EXISTS meeting_discussion_events_meeting_idx
+  ON public.meeting_discussion_events (meeting_id);
+
 CREATE INDEX IF NOT EXISTS meeting_discussion_events_appearance_idx
   ON public.meeting_discussion_events (appearance_id, created_at)
   WHERE appearance_id IS NOT NULL;
@@ -471,7 +482,10 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 STABLE
 AS $$
-  SELECT p_user_id IS NOT NULL AND EXISTS (
+  -- The CALLER must have Meetings module entry (module_entry_open reads
+  -- auth.uid()); called directly as an RPC, this answers false rather than
+  -- describing visibility to someone outside the module.
+  SELECT p_user_id IS NOT NULL AND public.module_entry_open('meetings') AND EXISTS (
     SELECT 1
     FROM public.meeting_discussion_items i
     WHERE i.id = p_item_id
@@ -534,7 +548,8 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 STABLE
 AS $$
-  SELECT p_user_id IS NOT NULL AND CASE
+  -- The CALLER must have Meetings module entry, as for can_view_discussion_item.
+  SELECT p_user_id IS NOT NULL AND public.module_entry_open('meetings') AND CASE
     WHEN p_meeting_id IS NOT NULL THEN
       public.can_view_meeting(p_meeting_id, p_user_id)
     WHEN p_event_type = 'captured' THEN
@@ -572,17 +587,17 @@ ALTER TABLE public.meeting_discussion_events      ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "meeting_discussion_items_select" ON public.meeting_discussion_items;
 CREATE POLICY "meeting_discussion_items_select" ON public.meeting_discussion_items
   FOR SELECT TO authenticated
-  USING (public.can_view_discussion_item(id, auth.uid()));
+  USING (public.can_view_discussion_item(id, (SELECT auth.uid())));
 
 DROP POLICY IF EXISTS "meeting_discussion_appearances_select" ON public.meeting_discussion_appearances;
 CREATE POLICY "meeting_discussion_appearances_select" ON public.meeting_discussion_appearances
   FOR SELECT TO authenticated
-  USING (public.can_view_meeting(meeting_id, auth.uid()));
+  USING (public.can_view_meeting(meeting_id, (SELECT auth.uid())));
 
 DROP POLICY IF EXISTS "meeting_discussion_events_select" ON public.meeting_discussion_events;
 CREATE POLICY "meeting_discussion_events_select" ON public.meeting_discussion_events
   FOR SELECT TO authenticated
-  USING (public.can_view_discussion_event(discussion_item_id, meeting_id, event_type, created_at, auth.uid()));
+  USING (public.can_view_discussion_event(discussion_item_id, meeting_id, event_type, created_at, (SELECT auth.uid())));
 
 -- The parent module gate every meeting table carries (20260905000000).
 DROP POLICY IF EXISTS "meeting_discussion_items_module_entry_gate" ON public.meeting_discussion_items;
@@ -681,6 +696,42 @@ REVOKE EXECUTE ON FUNCTION public.record_meeting_discussion_event(
 --
 -- `assert_meeting_editor` is what refuses a completed meeting, a view-only user
 -- and a meeting the caller has nothing to do with.
+-- MEETINGS MODULE ENTRY, for every RPC.
+--
+-- The three tables carry the RESTRICTIVE module_entry_open('meetings') gate, but
+-- a SECURITY DEFINER function reads and writes with RLS bypassed, so a gate on
+-- the tables alone does not reach it. assert_meeting_editor() and
+-- can_edit_meeting() (20260814000000) do not check module entry: a meeting's lead
+-- or creator, or a holder of Meetings 'edit'/'manage', whose Meetings 'view' has
+-- been removed still passes them. So every discussion RPC calls this FIRST —
+-- before any row is looked up, so a refused caller cannot even learn whether an id
+-- exists — and the refusal is the same sentence the tables' users would get.
+CREATE OR REPLACE FUNCTION public.assert_meeting_discussion_access()
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+  v_uid uuid := auth.uid();
+BEGIN
+  IF v_uid IS NULL THEN
+    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
+  END IF;
+
+  IF NOT public.module_entry_open('meetings') THEN
+    RAISE EXCEPTION 'MEETING_FORBIDDEN: You do not have access to Meetings'
+      USING ERRCODE = '42501';
+  END IF;
+
+  RETURN v_uid;
+END;
+$$;
+
+REVOKE EXECUTE ON FUNCTION public.assert_meeting_discussion_access()
+  FROM public, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.assert_meeting_discussion_editor(p_appearance_id uuid)
 RETURNS uuid
 LANGUAGE plpgsql
@@ -690,6 +741,9 @@ AS $$
 DECLARE
   v_appearance public.meeting_discussion_appearances;
 BEGIN
+  -- Module entry before anything is looked up or locked.
+  PERFORM public.assert_meeting_discussion_access();
+
   SELECT * INTO v_appearance
   FROM public.meeting_discussion_appearances WHERE id = p_appearance_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -737,8 +791,10 @@ AS $$
          END;
 $$;
 
-REVOKE EXECUTE ON FUNCTION public.meeting_discussion_category_for_type(text) FROM public, anon;
-GRANT  EXECUTE ON FUNCTION public.meeting_discussion_category_for_type(text) TO authenticated;
+-- Called only from inside SECURITY DEFINER functions, which run as the owner, so no
+-- client role is granted it: every function a signed-in user can call is one that
+-- enforces Meetings module entry.
+REVOKE EXECUTE ON FUNCTION public.meeting_discussion_category_for_type(text) FROM public, anon, authenticated;
 
 -- ═══ 8. Capture ════════════════════════════════════════════════════════════
 --
@@ -784,14 +840,8 @@ DECLARE
   v_on_agenda  boolean := false;
   v_latest_meeting uuid;
 BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
-  END IF;
-
-  IF NOT public.module_entry_open('meetings') THEN
-    RAISE EXCEPTION 'MEETING_FORBIDDEN: You do not have access to Meetings'
-      USING ERRCODE = '42501';
-  END IF;
+  -- Authentication and Meetings module entry, before anything is looked up.
+  v_uid := public.assert_meeting_discussion_access();
 
   IF p_category IS NULL OR p_category NOT IN ('running_order', 'after_sales') THEN
     RAISE EXCEPTION 'MEETING_DISCUSSION_CATEGORY_INVALID: Choose either Running Order or After Sales'
@@ -963,6 +1013,8 @@ DECLARE
   v_meeting    public.meetings;
   v_appearance public.meeting_discussion_appearances;
 BEGIN
+  -- Module entry first; assert_meeting_editor() does not check it.
+  PERFORM public.assert_meeting_discussion_access();
   v_uid := public.assert_meeting_editor(p_meeting_id);
 
   SELECT * INTO v_meeting FROM public.meetings WHERE id = p_meeting_id;
@@ -1228,9 +1280,9 @@ DECLARE
   v_after  public.meeting_discussion_items;
   v_reason text;
 BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
-  END IF;
+  -- Module entry before anything is looked up. can_edit_meeting() below does not
+  -- check it.
+  v_uid := public.assert_meeting_discussion_access();
 
   SELECT * INTO v_item FROM public.meeting_discussion_items WHERE id = p_item_id FOR UPDATE;
   IF NOT FOUND THEN
@@ -1454,7 +1506,6 @@ AS $$
 DECLARE
   v_uid        uuid;
   v_appearance public.meeting_discussion_appearances;
-  v_item       public.meeting_discussion_items;
   v_meeting    public.meetings;
   v_order_id   uuid;
   v_order_no   text;
@@ -1468,8 +1519,6 @@ BEGIN
 
   SELECT * INTO v_appearance
   FROM public.meeting_discussion_appearances WHERE id = p_appearance_id;
-  SELECT * INTO v_item
-  FROM public.meeting_discussion_items WHERE id = v_appearance.discussion_item_id;
   SELECT * INTO v_meeting
   FROM public.meetings WHERE id = v_appearance.meeting_id;
 
@@ -1715,6 +1764,7 @@ AS $$
 DECLARE
   v_uid uuid;
 BEGIN
+  PERFORM public.assert_meeting_discussion_access();
   v_uid := public.assert_meeting_editor(p_meeting_id);
   RETURN public.apply_meeting_discussion_carry_forward(p_meeting_id, v_uid);
 END;
@@ -1826,14 +1876,8 @@ AS $$
 DECLARE
   v_uid uuid := auth.uid();
 BEGIN
-  IF v_uid IS NULL THEN
-    RAISE EXCEPTION 'Authentication required' USING ERRCODE = '28000';
-  END IF;
-
-  IF NOT public.module_entry_open('meetings') THEN
-    RAISE EXCEPTION 'MEETING_FORBIDDEN: You do not have access to Meetings'
-      USING ERRCODE = '42501';
-  END IF;
+  -- Authentication and Meetings module entry, before anything is looked up.
+  v_uid := public.assert_meeting_discussion_access();
 
   RETURN QUERY
   SELECT i.id, i.category, i.after_sales_tag, i.order_number, i.order_number_key,
@@ -2029,6 +2073,58 @@ BEGIN
     RAISE EXCEPTION 'meeting_discussion_category_for_type maps review types incorrectly';
   END IF;
 
+  -- MEETINGS MODULE ENTRY ON EVERY CALLABLE FUNCTION. Enumerated from the catalogue,
+  -- not from a list, so a discussion function added later without the check fails
+  -- here: every function of this workflow a signed-in user can execute must be a
+  -- SECURITY DEFINER function that calls the access guard (directly or through the
+  -- editor guard), or a visibility predicate that checks module entry itself.
+  SELECT string_agg(p.oid::regprocedure::text, ', ') INTO v_bad
+  FROM pg_proc p
+  JOIN pg_namespace n ON n.oid = p.pronamespace
+  WHERE n.nspname = 'public'
+    AND p.proname LIKE '%discussion%'
+    AND has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    AND NOT (
+      p.prosecdef
+      AND (
+        pg_get_functiondef(p.oid) LIKE '%assert_meeting_discussion_access()%'
+        OR pg_get_functiondef(p.oid) LIKE '%assert_meeting_discussion_editor(%'
+        OR pg_get_functiondef(p.oid) LIKE '%public.module_entry_open(''meetings'')%'
+      )
+    );
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'callable without a Meetings module-entry check: %', v_bad;
+  END IF;
+
+  IF pg_get_functiondef('public.assert_meeting_discussion_editor(uuid)'::regprocedure)
+     NOT LIKE '%assert_meeting_discussion_access()%'
+     OR pg_get_functiondef('public.assert_meeting_discussion_access()'::regprocedure)
+     NOT LIKE '%NOT public.module_entry_open(''meetings'')%' THEN
+    RAISE EXCEPTION 'the discussion access guard does not check Meetings module entry';
+  END IF;
+
+  -- RLS evaluates auth.uid() once per statement, not once per row.
+  SELECT string_agg(p.polname, ', ') INTO v_bad
+  FROM pg_policy p
+  WHERE p.polrelid IN ('public.meeting_discussion_items'::regclass,
+                       'public.meeting_discussion_appearances'::regclass,
+                       'public.meeting_discussion_events'::regclass)
+    AND p.polpermissive
+    AND pg_get_expr(p.polqual, p.polrelid) NOT LIKE '%SELECT auth.uid()%';
+  IF v_bad IS NOT NULL THEN
+    RAISE EXCEPTION 'a discussion policy re-evaluates auth.uid() per row: %', v_bad;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_index i
+    WHERE i.indrelid = 'public.meeting_discussion_events'::regclass
+      AND i.indkey[0] = (SELECT attnum FROM pg_attribute
+                         WHERE attrelid = 'public.meeting_discussion_events'::regclass
+                           AND attname = 'meeting_id')
+  ) THEN
+    RAISE EXCEPTION 'meeting_discussion_events.meeting_id has no covering index';
+  END IF;
+
   IF pg_get_functiondef('public.carry_forward_meeting_discussions(uuid)'::regprocedure)
      NOT LIKE '%assert_meeting_editor%' THEN
     RAISE EXCEPTION 'carry_forward_meeting_discussions does not authorize the caller';
@@ -2043,7 +2139,10 @@ BEGIN
   FOREACH v_table IN ARRAY ARRAY[
     'public.record_meeting_discussion_event(uuid,uuid,uuid,text,text,text,uuid,text,text,text,text,date,date,uuid,text)',
     'public.apply_meeting_discussion_carry_forward(uuid,uuid)',
-    'public.meetings_prevent_delete_with_discussion()'
+    'public.meetings_prevent_delete_with_discussion()',
+    'public.assert_meeting_discussion_access()',
+    'public.assert_meeting_discussion_editor(uuid)',
+    'public.meeting_discussion_category_for_type(text)'
   ] LOOP
     IF has_function_privilege('authenticated', v_table, 'EXECUTE')
        OR has_function_privilege('anon', v_table, 'EXECUTE') THEN

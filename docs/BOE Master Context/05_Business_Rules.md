@@ -324,6 +324,11 @@ it passes through (`20261213000000`).
   said about it unless they can open that meeting. Plain `meetings:view` grants
   nothing beyond the meetings that person already sees. Without Meetings access a
   person reads nothing, even as an attendee.
+* **Without Meetings access, nothing can be done either.** Every discussion action
+  — raising, attaching, updating, resolving, reopening, linking a task, attaching
+  evidence, carrying forward, reading the Inbox — first requires Meetings access.
+  A meeting's lead or creator, or a holder of Meetings `edit`, whose Meetings
+  `view` has been removed is refused like anyone else.
 * **A failure is never an empty state.** A screen that could not load its issues,
   its Inbox or its list of meetings says so and offers a retry; it never shows
   "nothing here", and Add to Meeting never falls back to the Inbox because the

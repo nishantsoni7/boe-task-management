@@ -50,6 +50,8 @@
 --  28  clearing a decision needs the explicit flag
 --  29  deleting a draft: every kind of substantive activity refuses; untouched
 --      automatic appearances do not
+--  30  no Meetings access: every callable function (enumerated from the
+--      catalogue) refuses a lead and an edit holder alike, and nothing is readable
 
 \set ON_ERROR_STOP on
 
@@ -1395,6 +1397,213 @@ begin
     raise exception 'ASSERT 29: expected detached carry-forward rows for M7, or the unreadability check proves nothing';
   end if;
   raise notice 'PASS 29 a draft with any recorded activity cannot be deleted; an untouched inherited draft can';
+end $$;
+
+-- ═══ 30. No Meetings access: every callable function refuses ════════════════
+-- The functions are ENUMERATED FROM THE CATALOGUE: every function of this
+-- workflow that `authenticated` can execute. The expected list below must match
+-- it exactly, so a function added later without a probe here fails this section.
+--
+-- Two users whose Meetings 'view' is taken away, each with the strongest remaining
+-- claim on meeting M30: L (b3) is a manager who LEADS and CREATED it; X2 (b4) is a
+-- member holding Meetings 'edit'.
+-- EXPECT, without access: every RPC raises MEETING_FORBIDDEN — so none returns a
+--         row — including for an id that does not exist (no existence probe); both
+--         visibility predicates answer false; direct reads of the three tables and
+--         of evidence return nothing.
+-- EXPECT, with 'view' restored and nothing else changed: no RPC is refused for
+--         lack of access, and both predicates answer true — so the refusals above
+--         came from the module-entry check and nothing else.
+create temp table rpc_expected (fn text primary key) on commit drop;
+insert into rpc_expected values
+  ('add_meeting_discussion_evidence'), ('attach_meeting_discussion_item'),
+  ('can_view_discussion_event'), ('can_view_discussion_item'),
+  ('capture_meeting_discussion_item'), ('carry_forward_meeting_discussions'),
+  ('ensure_meeting_discussion_order'), ('link_meeting_discussion_task'),
+  ('list_meeting_discussion_inbox'), ('reopen_meeting_discussion_item'),
+  ('resolve_meeting_discussion_item'), ('save_meeting_discussion_update');
+
+do $$
+declare v_missing text; v_extra text; v_overloaded text;
+begin
+  select string_agg(p.proname, ', ') into v_extra
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname like '%discussion%'
+    and has_function_privilege('authenticated', p.oid, 'EXECUTE')
+    and p.proname not in (select fn from rpc_expected);
+  select string_agg(e.fn, ', ') into v_missing
+  from rpc_expected e
+  where not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = e.fn
+      and has_function_privilege('authenticated', p.oid, 'EXECUTE'));
+  select string_agg(p.proname, ', ') into v_overloaded
+  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public' and p.proname in (select fn from rpc_expected)
+  group by p.proname having count(*) > 1;
+  if v_extra is not null then raise exception 'ASSERT 30: callable but not probed here: %', v_extra; end if;
+  if v_missing is not null then raise exception 'ASSERT 30: expected callable but not granted: %', v_missing; end if;
+  if v_overloaded is not null then raise exception 'ASSERT 30: overloaded, so a probe could hit the wrong one: %', v_overloaded; end if;
+  if has_function_privilege('authenticated', 'public.meeting_discussion_category_for_type(text)', 'EXECUTE') then
+    raise exception 'ASSERT 30: the category mapping is callable by a client';
+  end if;
+end $$;
+
+insert into public.users (id, full_name, role, team, is_active, created_at, updated_at) values
+  ('00000000-0000-4000-8000-0000000000b3', 'Lead without access',  'manager', 'management', true, now(), now()),
+  ('00000000-0000-4000-8000-0000000000b4', 'Edit without access',  'member',  'operations', true, now(), now());
+
+insert into public.employee_permission_overrides (user_id, module_id, action_id, allowed, granted_by)
+select u.id, pm.id, pa.id, u.allowed, '00000000-0000-4000-8000-0000000000a1'
+from (values
+  ('00000000-0000-4000-8000-0000000000b3'::uuid, 'view', false),
+  ('00000000-0000-4000-8000-0000000000b4'::uuid, 'view', false),
+  ('00000000-0000-4000-8000-0000000000b4'::uuid, 'edit', true)
+) as u(id, action_key, allowed)
+join public.permission_modules pm on pm.module_key = 'meetings'
+join public.permission_actions pa on pa.action_key = u.action_key;
+
+insert into public.tasks (id, title, team, created_by, assigned_to) values
+  ('00000000-0000-4000-8000-00000000a0b3', 'Task held by the lead', 'management',
+   '00000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000b3'),
+  ('00000000-0000-4000-8000-00000000a0b4', 'Task held by the edit holder', 'operations',
+   '00000000-0000-4000-8000-0000000000b4', '00000000-0000-4000-8000-0000000000b4');
+
+-- M30 is led and created by L — created while L still had access, in production.
+insert into public.meetings (id, meeting_type, meeting_date, title, lead_id, created_by)
+values ('00000000-0000-4000-8000-00000000c030', 'new_order', (now() at time zone 'Asia/Kolkata')::date + 7,
+        'M30 access probe', '00000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000b3');
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-4000-8000-0000000000e1","role":"authenticated"}', true);
+set local role authenticated;
+do $$
+declare r jsonb;
+begin
+  r := public.capture_meeting_discussion_item('running_order', '9301', 'Probe issue on M30', '00000000-0000-4000-8000-00000000c030', null, null, null, null);
+  insert into ctx values ('p30_item_a', (r->>'item_id')::uuid), ('p30_app_a', (r->>'appearance_id')::uuid);
+  r := public.capture_meeting_discussion_item('running_order', '9302', 'Probe issue resolved on M30', '00000000-0000-4000-8000-00000000c030', null, null, null, null);
+  insert into ctx values ('p30_item_b', (r->>'item_id')::uuid);
+  perform public.resolve_meeting_discussion_item((r->>'appearance_id')::uuid, 'Resolved so reopen can be probed');
+  r := public.capture_meeting_discussion_item('running_order', '9303', 'Probe issue in the Inbox', null, null, null, null, null);
+  insert into ctx values ('p30_inbox', (r->>'item_id')::uuid);
+end $$;
+reset role;
+
+-- Each probe runs in its own sub-transaction and is rolled back, so a probe that
+-- succeeds cannot change what the next one sees. 'ALLOWED' or the refusal's prefix.
+create or replace function pg_temp.p30_try(p_sql text) returns text language plpgsql as $f$
+declare v_msg text;
+begin
+  begin
+    execute p_sql;
+    raise exception 'P30_ALLOWED';
+  exception when others then
+    get stacked diagnostics v_msg = message_text;
+    if v_msg = 'P30_ALLOWED' then return 'ALLOWED'; end if;
+    return split_part(v_msg, ':', 1);
+  end;
+end $f$;
+grant execute on function pg_temp.p30_try(text) to authenticated;
+
+create temp table p30_result (phase text, who text, fn text, outcome text) on commit drop;
+grant all on p30_result to authenticated;
+
+create or replace function pg_temp.p30_probe(p_phase text) returns void language plpgsql as $f$
+declare
+  who uuid;
+  v_task uuid;
+  a uuid := (select v from ctx where k = 'p30_app_a');
+  b uuid := (select v from ctx where k = 'p30_item_b');
+  inbox uuid := (select v from ctx where k = 'p30_inbox');
+  m uuid := '00000000-0000-4000-8000-00000000c030';
+begin
+  foreach who in array array['00000000-0000-4000-8000-0000000000b3'::uuid, '00000000-0000-4000-8000-0000000000b4'::uuid] loop
+    v_task := case who when '00000000-0000-4000-8000-0000000000b3' then '00000000-0000-4000-8000-00000000a0b3'::uuid
+                       else '00000000-0000-4000-8000-00000000a0b4'::uuid end;
+    perform set_config('request.jwt.claims', json_build_object('sub', who, 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+    insert into p30_result values
+      (p_phase, who, 'capture_meeting_discussion_item',
+       pg_temp.p30_try($q$select public.capture_meeting_discussion_item('running_order', '9399', 'probe', null, null, null, null, null)$q$)),
+      (p_phase, who, 'attach_meeting_discussion_item',
+       pg_temp.p30_try(format('select public.attach_meeting_discussion_item(%L, %L)', m, inbox))),
+      (p_phase, who, 'save_meeting_discussion_update',
+       pg_temp.p30_try(format('select public.save_meeting_discussion_update(%L, %L, null, null, false, false)', a, 'probe update'))),
+      (p_phase, who, 'resolve_meeting_discussion_item',
+       pg_temp.p30_try(format('select public.resolve_meeting_discussion_item(%L, %L)', a, 'probe resolve'))),
+      (p_phase, who, 'resolve_meeting_discussion_item (unknown id)',
+       pg_temp.p30_try(format('select public.resolve_meeting_discussion_item(%L, %L)', gen_random_uuid(), 'probe resolve'))),
+      (p_phase, who, 'reopen_meeting_discussion_item',
+       pg_temp.p30_try(format('select public.reopen_meeting_discussion_item(%L, %L)', b, 'probe reopen'))),
+      (p_phase, who, 'link_meeting_discussion_task',
+       pg_temp.p30_try(format('select public.link_meeting_discussion_task(%L, %L)', a, v_task))),
+      (p_phase, who, 'ensure_meeting_discussion_order',
+       pg_temp.p30_try(format('select public.ensure_meeting_discussion_order(%L)', a))),
+      (p_phase, who, 'add_meeting_discussion_evidence',
+       pg_temp.p30_try(format('select public.add_meeting_discussion_evidence(%L, %L, %L)', a,
+         '00000000-0000-4000-8000-000000000000/33333333-3333-4333-8333-333333333333.jpg', 'probe.jpg'))),
+      (p_phase, who, 'carry_forward_meeting_discussions',
+       pg_temp.p30_try(format('select public.carry_forward_meeting_discussions(%L)', m))),
+      (p_phase, who, 'list_meeting_discussion_inbox',
+       pg_temp.p30_try('select * from public.list_meeting_discussion_inbox()')),
+      (p_phase, who, 'can_view_discussion_item',
+       public.can_view_discussion_item(inbox, who)::text),
+      (p_phase, who, 'can_view_discussion_event',
+       public.can_view_discussion_event(inbox, null, 'captured', now(), who)::text),
+      (p_phase, who, 'read meeting_discussion_items',
+       (select count(*) from public.meeting_discussion_items)::text),
+      (p_phase, who, 'read meeting_discussion_appearances',
+       (select count(*) from public.meeting_discussion_appearances)::text),
+      (p_phase, who, 'read meeting_discussion_events',
+       (select count(*) from public.meeting_discussion_events)::text),
+      (p_phase, who, 'read meeting_order_evidence',
+       (select count(*) from public.meeting_order_evidence)::text);
+    execute 'reset role';
+  end loop;
+end $f$;
+
+select pg_temp.p30_probe('no_access');
+
+delete from public.employee_permission_overrides
+where user_id in ('00000000-0000-4000-8000-0000000000b3', '00000000-0000-4000-8000-0000000000b4')
+  and allowed = false;
+
+select pg_temp.p30_probe('with_access');
+
+do $$
+declare v_bad text;
+begin
+  -- Not vacuous: there is data to hide, and every enumerated function was probed.
+  if (select count(*) from public.meeting_discussion_items) = 0
+     or (select count(*) from public.meeting_discussion_events) = 0
+     or (select count(*) from public.meeting_order_evidence) = 0 then
+    raise exception 'ASSERT 30: nothing to hide, so the empty reads prove nothing';
+  end if;
+  select string_agg(e.fn, ', ') into v_bad from rpc_expected e
+  where not exists (select 1 from p30_result r where r.fn = e.fn);
+  if v_bad is not null then raise exception 'ASSERT 30: not probed: %', v_bad; end if;
+
+  -- Without access: refused, false, nothing.
+  select string_agg(who || ' ' || fn || '=' || outcome, '; ') into v_bad from p30_result
+  where phase = 'no_access' and case
+    when fn like 'read %' then outcome <> '0'
+    when fn like 'can_view_%' then outcome <> 'false'
+    else outcome <> 'MEETING_FORBIDDEN'
+  end;
+  if v_bad is not null then raise exception 'ASSERT 30: without Meetings access: %', v_bad; end if;
+
+  -- With access restored: not refused for access, and the predicates see the Inbox issue.
+  select string_agg(who || ' ' || fn || '=' || outcome, '; ') into v_bad from p30_result
+  where phase = 'with_access' and case
+    when fn like 'read %' then false
+    when fn like 'can_view_%' then outcome <> 'true'
+    when fn like '%(unknown id)' then outcome <> 'MEETING_DISCUSSION_MISSING'
+    when fn = 'add_meeting_discussion_evidence' then outcome = 'MEETING_FORBIDDEN'
+    else outcome <> 'ALLOWED'
+  end;
+  if v_bad is not null then raise exception 'ASSERT 30: with Meetings access restored: %', v_bad; end if;
+
+  raise notice 'PASS 30 without Meetings access every callable function refuses (lead and edit holder alike) and nothing is readable; with access restored they work';
   raise notice 'ALL ASSERTIONS PASSED';
 end $$;
 
