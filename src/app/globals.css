@@ -234,6 +234,72 @@ body {
   .boe-task-actions--review { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* ── Compact action row (every active-task row except the review decision) ──
+   With Add to Meeting the row holds four actions — Approval (or Mark Complete),
+   Meeting, Copy & Assign, Cancel — and the content-width buttons wrapped their
+   labels and grew tall. It is now one row of EQUAL cells that never wraps: icon
+   above a one-line label, ~52px tall. However many actions are shown, they share
+   the row evenly (auto columns, not a fixed count).
+   Selectors carry both row classes so they beat the 600px grid rules above
+   (same row, lower specificity) without editing them.
+   The row is its own size container, so the short labels follow the width the
+   row actually has — a narrow card on a tablet as well as a phone — rather than
+   the viewport. It holds only buttons, so the layout containment this implies
+   captures nothing. */
+.boe-task-actions.boe-task-actions--compact {
+  display: grid;
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 8px;
+  container-type: inline-size;
+}
+.boe-task-actions.boe-task-actions--compact > button {
+  grid-column: auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 52px;          /* 48–56px target; a comfortable touch target too */
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 7px 4px;
+  font-size: 12.5px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+/* One line, always: a label that would not fit is clipped with an ellipsis
+   rather than wrapped (the full name is in the title and aria-label). */
+.boe-task-action-label {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.boe-task-action-label-short { display: none; }
+/* Narrow row: Copy & Assign -> Copy, Mark Complete -> Complete. */
+@container (max-width: 440px) {
+  .boe-task-action-label-full  { display: none; }
+  .boe-task-action-label-short { display: inline; }
+}
+/* Widths are measured, not guessed: the longest full label (Mark Complete,
+   ~92px at 12.5px) needs a row of ~432px; the longest short label (Complete,
+   ~59px) needs ~300px. Below that — a 320px phone leaves ~250px, and the
+   two-column desktop layout can leave ~290px — no side padding and 12px type
+   keep it whole. The gap belongs to the row itself, which its own container
+   query cannot style — hence the viewport query beside it. */
+@container (max-width: 300px) {
+  .boe-task-actions.boe-task-actions--compact > button { padding: 7px 0; font-size: 12px; }
+}
+@media (max-width: 360px) {
+  .boe-task-actions.boe-task-actions--compact { gap: 4px; }
+}
+
 /* Interaction states for a filled primary action whose colour is supplied
    inline from the shared blue token (Submit for Approval). Colour lives with
    the button; only the hover/active feedback is shared here, matching the
