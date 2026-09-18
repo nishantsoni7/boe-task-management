@@ -34,6 +34,8 @@ import {
   CUSTOMER_NAME_DISPLAY_LIMIT,
   DEFAULT_CONFIRMED_ALLOCATION_FILTER,
   PAYMENTS_TABLE_BREAKPOINT,
+  CONFIRMED_TABLE_MIN_CONTAINER_PX,
+  confirmedListMode,
   PAYMENTS_TO_VERIFY_PATH,
   PAYMENT_SURFACE_STATUSES,
   TO_VERIFY_PAYMENT_STATUSES,
@@ -253,12 +255,68 @@ describe('Confirmed Payments has exactly seven primary columns, in this order', 
     assert.ok(!table.includes('overflowX'))
   })
 
-  test('and the cards take over below the table breakpoint', () => {
+  test('Payments to Verify keeps its viewport breakpoint', () => {
     assert.equal(PAYMENTS_TABLE_BREAKPOINT, 1024)
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     assert.ok(view.includes('window.innerWidth < PAYMENTS_TABLE_BREAKPOINT'))
-    assert.ok(view.includes('isMobile ? ('), 'the cards are chosen, not a sideways table')
+    assert.ok(view.includes("isMobile && surface === 'to_verify' ? ("))
   })
+})
+
+// ── Confirmed Payments: table or cards by the MEASURED container ─────────────
+//
+// REPLACES a source-only assertion that the viewport was compared with 1024.
+// That rule drew the table in a ~720px card at a 1024px window (the 260px
+// sidebar and padding take the rest), where the table — measured at 875px
+// minimum with the widest permitted row — overflowed and was clipped. The
+// widths below are the ones measured in a browser (Finance doc §18).
+
+describe('Confirmed Payments chooses table or cards from the container it has', () => {
+  // Finance shell: fixed 260px sidebar (≥768px viewports) + 2 × 22px padding.
+  const cardAt = (viewport: number) => (viewport >= 768 ? viewport - 260 - 44 : viewport - 26)
+
+  test('the threshold sits above the measured table minimum, with headroom', () => {
+    const MEASURED_TABLE_MIN = 875
+    assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX >= MEASURED_TABLE_MIN + 25)
+  })
+
+  test('cards at 320, 375, 768 and 1024; the table at 1280 and 1440', () => {
+    for (const vw of [320, 375, 768, 1024]) {
+      assert.equal(confirmedListMode(cardAt(vw)), 'cards', `${vw}px viewport (card ${cardAt(vw)}px)`)
+    }
+    for (const vw of [1280, 1440]) {
+      assert.equal(confirmedListMode(cardAt(vw)), 'table', `${vw}px viewport (card ${cardAt(vw)}px)`)
+    }
+  })
+
+  test('the boundary is exact', () => {
+    assert.equal(confirmedListMode(CONFIRMED_TABLE_MIN_CONTAINER_PX - 1), 'cards')
+    assert.equal(confirmedListMode(CONFIRMED_TABLE_MIN_CONTAINER_PX), 'table')
+  })
+
+  test('before the first measurement it draws cards, which fit any width', () => {
+    assert.equal(confirmedListMode(null), 'cards')
+  })
+
+  test('a table seen to overflow is replaced by cards at that width and below', () => {
+    assert.equal(confirmedListMode(1000, 1000), 'cards')
+    assert.equal(confirmedListMode(990, 1000), 'cards')
+    assert.equal(confirmedListMode(1001, 1000), 'table')
+  })
+
+  test('the list measures its own container and checks the rendered table for overflow', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    const list = codeOf(view.slice(view.indexOf('export function ConfirmedPaymentsList'),
+                                   view.indexOf('function rowView(')))
+    assert.ok(list.includes('new ResizeObserver('), 'the container, not the window')
+    assert.ok(!list.includes('window.innerWidth'))
+    assert.ok(list.includes('el.scrollWidth > el.clientWidth + 1'), 'the overflow safety net')
+    assert.ok(list.includes('confirmedListMode(containerWidth, overflowedAt)'))
+    assert.ok(view.includes('<ConfirmedPaymentsList'), 'and the page renders it for Confirmed Payments')
+  })
+})
+
+describe('Confirmed Payments table, continued', () => {
 
   test('Actions is a row of direct icon buttons, not a menu', () => {
     // WAS a View button plus a "…" menu, so the common actions cost two clicks
@@ -400,7 +458,7 @@ describe('each page asks the database for its own half', () => {
 
   test('the allocation-status filter is applied only on Confirmed Payments (Requirement 1)', () => {
     assert.ok(view.includes("if (surface === 'confirmed' && filters.confirmedFilter !== 'all') {"))
-    assert.ok(view.includes(".eq('confirmed_allocation_status', filters.confirmedFilter)"))
+    assert.ok(view.includes(".eq('complete_allocation_status', filters.confirmedFilter)"))
   })
 
   test('the filter chips are not drawn on Payments to Verify', () => {

@@ -541,7 +541,7 @@ describe('the fifteen compatibility cases', () => {
     // but nothing in the list narrows by them any more.
     assert.ok(!view.includes('paymentViewFilterClauses'),
       'the retired four-view mechanism must not survive in the list')
-    assert.ok(view.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"),
+    assert.ok(view.includes("scoped.eq('complete_allocation_status', filters.confirmedFilter)"),
       'the list narrows Confirmed Payments by the pure allocation-ledger status instead')
     // AND THE SAME STATUS SCOPE, which is now the CONFIRMED half rather than
     // "everything except rejected". The four views classify money by where it

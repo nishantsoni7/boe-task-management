@@ -33,6 +33,7 @@ import {
   subtractExact,
   type ExactDecimal,
 } from './exactMoney'
+import type { ConfirmedAllocationStatus } from './paymentSurfaces'
 
 /** One row of received_payment_allocation_targets(). */
 export type AllocationTargetRow = {
@@ -67,9 +68,12 @@ export type AllocatedAgainstView =
   /** The complete read failed, or did not cover this payment. */
   | { kind: 'unavailable' }
   /** The complete read answered, and there is no active allocation. */
-  | { kind: 'none' }
+  | { kind: 'none'; status: ConfirmedAllocationStatus | null }
   | {
       kind: 'targets'
+      /** zero / partial / full / over from the SAME exact total as the lines.
+       *  Null only when the payment's own amount cannot be read. */
+      status: ConfirmedAllocationStatus | null
       lines: AllocatedAgainstLine[]
       /** Payment amount minus the active total, when positive. Otherwise null. */
       unallocated: string | null
@@ -139,7 +143,8 @@ export function buildAllocatedAgainst(
     }
   }
 
-  if (byTarget.size === 0) return { kind: 'none' }
+  const amount = parseExact(payment.amount)
+  if (byTarget.size === 0) return { kind: 'none', status: amount ? 'zero' : null }
 
   const lines: AllocatedAgainstLine[] = [...byTarget.entries()].map(([key, t]) => ({
     key,
@@ -150,14 +155,45 @@ export function buildAllocatedAgainst(
     allocationCount: t.n,
   }))
 
-  const amount = parseExact(payment.amount)
   const comparison = amount ? compareExact(allocated, amount) : 0
   return {
     kind: 'targets',
+    status: allocationStatusFromTotal(amount, allocated),
     lines,
     unallocated: amount && comparison < 0 ? exactToString(subtractExact(amount, allocated)) : null,
     over: amount !== null && comparison > 0,
   }
+}
+
+/**
+ * THE STATUS RULE, restated in exact decimals. The database's single
+ * definition is received_payment_allocation_status() (20261216000000 §2), which
+ * the list's server-side filter uses; this must agree with it case for case:
+ *   zero    total = 0          partial  0 < total < amount
+ *   full    total = amount     over     total > amount
+ * No floating point: both sides are ExactDecimal.
+ */
+export function allocationStatusFromTotal(
+  amount: ExactDecimal | null,
+  activeTotal: ExactDecimal,
+): ConfirmedAllocationStatus | null {
+  if (!amount) return null
+  if (compareExact(activeTotal, ZERO) <= 0) return 'zero'
+  const c = compareExact(activeTotal, amount)
+  return c > 0 ? 'over' : c === 0 ? 'full' : 'partial'
+}
+
+/**
+ * What the Allocation Status badge may say for this cell. Never a status while
+ * the complete read is in flight or after it failed: a confident Zero or Full
+ * drawn from nothing would be the defect this column exists to remove.
+ */
+export function allocationBadgeState(
+  view: AllocatedAgainstView,
+): ConfirmedAllocationStatus | 'loading' | 'unavailable' {
+  if (view.kind === 'loading') return 'loading'
+  if (view.kind === 'unavailable') return 'unavailable'
+  return view.status ?? 'unavailable'
 }
 
 /** Plain-text form of the cell, for accessible names and tooltips. */

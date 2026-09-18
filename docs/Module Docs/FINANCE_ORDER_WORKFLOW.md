@@ -2012,70 +2012,159 @@ cell edits or reverses an allocation. Long names truncate visually; the full tex
 is in the line's `title` and in the list's accessible name. Amounts never
 truncate.
 
-### 18.3 The read (`received_payment_allocation_targets(uuid[])`)
+### 18.3 Allocation Status and its filter use the same complete total
 
-**The business decision.** A signed-in user authorized to see a confirmed
-payment on the Finance list may see the active allocation targets and allocated
-amounts of that payment. It does not grant access to open the Order or PI Draft.
+The first version of this column was complete, but the **Allocation Status**
+badge beside it, the status filter tabs and the filter's count still read
+`confirmed_allocation_status` from the `security_invoker` projection. That view
+sums allocations under the reader's RLS. So for a reader with `finance.view`
+and no `finance.view_all`, a row could list every destination next to the wrong
+status. The disposable-database suite reproduces this: a fully allocated
+payment read **Partial**, an over-allocated one read **Partial**, and the
+**Full** filter found **0** rows.
 
-One call per list page — never per row — returning, for each **active**
-allocation: payment id, allocation id, target type (`order` / `pi_draft`),
-target id, safe reference (Order display number, or the PI workbook's file name
-with any path stripped), reserved Order number (PI Drafts only) and amount.
-Nothing else: no client, no other Order or PI field, and never
-`source_order_number`.
+Now:
 
-It is `SECURITY DEFINER` (it must see past per-row RLS), `STABLE`,
-`search_path = public, pg_temp`, EXECUTE revoked from PUBLIC, anon and
-service_role and granted to authenticated only, and it:
+- **Badge (desktop and mobile).** Derived in the browser from the **same**
+  complete rows as the Allocated Against cell, in exact decimals
+  (`allocationStatusFromTotal`): `zero` when the active total is 0, `partial`
+  when it is above 0 and below the amount, `full` when equal, `over` when
+  above. While that read is loading the badge shows `…`. If the read fails it
+  shows `Status unavailable`. It never shows a confident status in either case.
+- **Filter tabs, paging and the exact count.** They use a new PostgREST
+  computed field, `complete_allocation_status`, in the same single list query
+  (`.eq('complete_allocation_status', …)` with `count: 'exact'` and `range()`).
+  The database pages and counts the complete classification. Nothing is
+  filtered in the browser.
+- **The Allocate Funds offer** uses the complete status too.
 
-1. requires `auth.uid()` (`28000`);
-2. requires Finance module entry (`42501`);
-3. requires `finance.view` held by an active user, admin bypass (`42501`);
-4. accepts at most 50 ids (`22023`);
-5. returns rows only for **confirmed** payments
-   (`finance_payment_status_is_verified`) that the caller may already read under
-   the six permissive SELECT policies of `finance_payment_requests` — the same
-   mirror as §17.7, pinned by `allocatedAgainst.test.ts`. Any other id returns
-   nothing.
+Both sides use one rule. The SQL definition is
+`received_payment_allocation_status(amount, total)`. The TypeScript restatement
+is tested case for case, and the SQL suite checks that the computed field equals
+the rule applied to the targets read for every payment a restricted reader can
+see.
 
-No table, column, policy, grant on a table or permission action is created or
-changed; the migration snapshots both tables' policies, asserts its own result
-shape, and refuses itself on any difference.
+**Regression scenario:** payment ₹7,50,000.55. A restricted reader's own RLS
+read shows ₹4,00,000.25. The complete active ledger is ₹7,25,000.55, including
+a duplicate pair and one PI Draft, with one reversed row excluded. Allocated
+Against lists every destination, the badge and the filter both say **Partial**,
+and Unallocated is exactly **₹25,000.00**.
 
-| Caller | Result |
-| --- | --- |
-| Active admin, or `view` + `view_all` | every confirmed payment's active targets |
-| `view` only, participant in one of a payment's records | **complete** active targets of that payment |
-| `view` only, unrelated payment | nothing |
-| unconfirmed payment, any caller | nothing |
-| participant without Finance entry | refused (`42501`) |
-| inactive user | refused (`42501`) |
-| authenticated role, no user | refused (`28000`) |
-| `anon`, `service_role` | no EXECUTE |
+### 18.4 The database side (`20261216000000`, unapplied)
 
-### 18.4 Verifying it
+| Function | Role | EXECUTE |
+| --- | --- | --- |
+| `received_payment_visible_to_actor(uuid)` | the **one** copy of the six permissive SELECT policies of `finance_payment_requests` (same mirror as §17.7, pinned by `allocatedAgainst.test.ts`) | owner only |
+| `received_payment_allocation_status(numeric, numeric)` | the **one** status rule; IMMUTABLE | owner only |
+| `received_payment_allocation_targets(uuid[])` | active destinations of at most 50 confirmed, visible payments: payment id, allocation id, target type/id, safe reference, reserved Order number, amount | authenticated |
+| `complete_allocation_status(finance_received_payments)` | computed field: the complete status of a confirmed, visible payment, otherwise NULL. Reads amount and status from the base table **by id**, never from the row it is handed, so a forged row cannot change the answer | authenticated |
 
-`supabase/tests/run_received_payment_allocation_targets_suite.sh` builds the same
-shaped database as §17.7 (plus `reserved_order_number` and
-`finance_payment_status_is_verified`), reproduces the partial participant read
-BEFORE the migration (1 of 4 active allocations), applies it, and runs
-`received_payment_allocation_targets_assertions.sql`: complete targets for a
-`view`-only participant, reversed excluded, duplicates returned separately,
-PI names without `source_order_number`, admin / view_all, unrelated and
-unconfirmed payments, every refusal, the 50-id bound, and fingerprints proving
-no payment, allocation, Order, PI, permission or policy changed. Three mutations
-— dropping the `finance.view` check, making every payment visible, and including
-reversed rows — each fail it.
+All four pin `search_path`. The three definer functions are STABLE and the rule
+is IMMUTABLE. The two client-facing functions require `auth.uid()` (`28000`),
+Finance module entry, and `finance.view` held by an active user with admin
+bypass (`42501`). `anon` and `service_role` have no EXECUTE. No table, column,
+policy, table grant or permission is created or changed, and the view is not
+redefined. The migration snapshots both tables' policies and asserts its own
+grants, volatility, result shape and the status rule. If any of these checks
+fails, the migration aborts.
 
-`src/lib/finance/allocatedAgainst.test.ts` (every allocation case, the loading /
-failed / uncovered states, where the list reads from, and the migration's
-contract) and `src/app/finance/received/allocatedAgainst.render.test.tsx` (the
-desktop row, the mobile card, links only where openable, and Approved By still
-in the details) render the result.
+**A dependency to know.** The computed field takes the view's row type. A later
+`create or replace view` that appends columns still works; the suite proves it.
+A `drop view` would have to drop the function first. The rollback is listed in
+the migration header.
 
-**Known, unchanged.** The Allocation Status badge still reads
-`confirmed_allocation_status` from the `security_invoker` projection, so for a
-participant without `view_all` it can disagree with the complete Allocated
-Against cell beside it (§17.7). The cell is the complete figure; the badge is
-deferred to Phase 2 with `allocated_total`.
+**Deploy order.** Apply the migration **before** the code ships. The list now
+selects the computed field, so code without the migration fails the whole
+Confirmed Payments read with "Could not load payments". That failure is shown
+as an error, never as an empty list.
+
+| Caller | Targets read | Computed status |
+| --- | --- | --- |
+| Active admin, or `view` + `view_all` | every confirmed payment's active targets | complete |
+| `view` only, participant in one of a payment's records | **complete** active targets | **complete** (the RLS projection was wrong) |
+| `view` only, unrelated payment (or a forged row) | nothing | NULL |
+| unconfirmed payment | nothing | NULL |
+| participant without Finance entry / inactive user | refused (`42501`) | refused (`42501`) |
+| authenticated role, no user | refused (`28000`) | refused (`28000`) |
+| `anon`, `service_role` | no EXECUTE | no EXECUTE |
+
+### 18.5 Table or cards, measured by the card width
+
+The old switch compared the **viewport** with 1024px. The Finance sidebar is a
+fixed 260px down to 768px, and the page has 44px of padding. At a 1024px window
+the card is therefore about 720px wide. The table rendered there and was
+clipped by the card's `overflow: hidden`.
+
+Now:
+
+- **Column sizing.** Every fixed column is `width: 1%`, which shrinks it to its
+  own content; that content never wraps or clips. Actions keeps its computed
+  138px.
+- **Allocated Against** takes all the remaining width. Its cell uses
+  `contain: inline-size` with a 200px floor, so a long destination name cannot
+  widen the table. Names truncate, with the full text in `title` and in the
+  accessible name. Amounts never truncate.
+- **The switch.** `ConfirmedPaymentsList` measures its **own container** with a
+  `ResizeObserver` and draws the table only when the container is at least
+  `CONFIRMED_TABLE_MIN_CONTAINER_PX` = **920px**. The rendered minimum is
+  875px, measured with four action icons, the "Over-allocated — review" badge,
+  ₹1,23,45,678.90, three destinations and a long workbook name.
+- **Safety net.** If a rendered table ever overflows its container, the list
+  switches to cards at that width.
+- **Payments to Verify** keeps its own viewport rule, unchanged.
+
+Measured in Chromium on a local preview page. The page used the real
+`ConfirmedPaymentsList`, table and cards inside the real shell classes, with
+fixture rows only. Its Supabase URL pointed at a dead local port, so it could
+not reach production. The page was not committed.
+
+| Viewport | Mode | page client/scroll | card client/scroll | table columns (px) |
+| --- | --- | --- | --- | --- |
+| 320 | cards | 320 / 320 | 294 / 294 | — |
+| 375 | cards | 375 / 375 | 350 / 350 | — |
+| 768 | cards | 753 / 753 | 447 / 447 | — |
+| 1024 | cards | 1009 / 1009 | 703 / 703 | — |
+| 1226 | cards | 1211 / 1211 | 906 / 906 | — |
+| 1250 | table | 1250 / 1250 | 945 / 945 | 83,120,102,52,291,159,138 |
+| 1280 | table | 1280 / 1280 | 974 / 974 | 83,120,102,52,321,159,138 |
+| 1440 | table | 1440 / 1440 | 1134 / 1134 | 83,120,102,52,481,159,138 |
+
+At every width, no Payment ID, amount, status badge, action or allocation amount
+extended past the card, and no allocation amount was truncated. Every truncated
+destination name carried its full `title`. When an over-wide value was injected
+into the table, it switched to cards on the next resize. The "Not allocated"
+chip no longer stretches across the card.
+
+### 18.6 Verifying it
+
+**SQL suite.** `supabase/tests/run_received_payment_allocation_targets_suite.sh`
+builds the same shaped database as §17.7, plus `reserved_order_number`,
+`finance_payment_status_is_verified` and a reduced `security_invoker`
+`finance_received_payments`.
+
+- **Before the migration** it reproduces both defects: the partial participant
+  read, and the misclassified RLS status.
+- **After applying it**, 17 assertion sections run: complete targets and
+  complete status for a `view`-only participant; zero (reversed only), partial,
+  full and over; the filter counts and a database-served page; admin and
+  view_all; unrelated and unconfirmed payments; forged rows; every refusal for
+  both functions; owner-only helpers; the 50-id bound; a
+  `create or replace view` after the migration; and fingerprints proving no
+  payment, allocation, Order, PI, permission or policy changed.
+- **Seven mutations each fail it:** dropping the `finance.view` check, making
+  every payment visible, including reversed rows in the targets read, reading
+  the forged row's amount, skipping visibility in the status, counting
+  reversed rows in the status, and granting the visibility helper to
+  authenticated.
+
+**TypeScript.** `src/lib/finance/allocatedAgainst.test.ts` covers every case,
+the status rule, the regression scenario and the migration contract.
+`src/app/finance/received/allocatedAgainst.render.test.tsx` checks that the
+badge matches the destinations on desktop and mobile even when the RLS-limited
+field is deliberately wrong, and covers loading and failed states, column
+widths and the unmeasured list. `src/lib/finance/paymentSurfaces.test.ts`
+covers the table/cards decision at 320, 375, 768, 1024, 1280 and 1440 and the
+exact boundary.
+
+**Not checked.** No signed-in check on the live screen, which needs the
+migration applied.

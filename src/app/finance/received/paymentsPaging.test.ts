@@ -112,7 +112,7 @@ describe('every narrowing is the database\'s', () => {
     // narrowing now.
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
-      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
+      "scoped.eq('complete_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
     ]) {
@@ -125,7 +125,7 @@ describe('every narrowing is the database\'s', () => {
   test('and the page range is applied to the SAME query', () => {
     // So it is the narrowing that is paged, not the page that is narrowed.
     assert.ok(loader.includes('.range(range.from, range.to)'))
-    const filterAt = loader.indexOf("scoped.eq('confirmed_allocation_status'")
+    const filterAt = loader.indexOf("scoped.eq('complete_allocation_status'")
     const rangeAt = loader.indexOf('.range(range.from, range.to)')
     assert.ok(filterAt > 0 && rangeAt > filterAt,
       'the range must be applied after the filters, to the same builder')
@@ -368,10 +368,10 @@ describe('the list and the badge beside it are one predicate', () => {
     assert.ok(read(COUNTS).includes('paymentViewClauses(view)'))
   })
 
-  test('the list itself no longer applies the four-view classification — it uses confirmed_allocation_status', () => {
+  test('the list itself no longer applies the four-view classification — it uses complete_allocation_status', () => {
     assert.ok(!view.includes('paymentViewFilterClauses'),
       'the retired mechanism must not survive anywhere in the list query')
-    assert.ok(view.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"))
+    assert.ok(view.includes("scoped.eq('complete_allocation_status', filters.confirmedFilter)"))
   })
 
   test('and from the same status scope — the confirmed half, on both', () => {

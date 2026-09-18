@@ -419,7 +419,7 @@ describe('the duplicate allocation dropdown is gone', () => {
 
   test('the tabs are now the only allocation narrowing, and still a real predicate', () => {
     const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
-    assert.ok(loader.includes("scoped.eq('confirmed_allocation_status', filters.confirmedFilter)"),
+    assert.ok(loader.includes("scoped.eq('complete_allocation_status', filters.confirmedFilter)"),
       'narrowed by the database, never over the page in hand')
     assert.ok(view.includes('const applyConfirmedFilter = narrowBy(setConfirmedFilter)'),
       'and choosing a tab still returns the reader to page one')
@@ -429,7 +429,7 @@ describe('the duplicate allocation dropdown is gone', () => {
     const loader = view.slice(view.indexOf('const loadRequests'), view.indexOf('const loadAllocations'))
     for (const applied of [
       'if (filters.search) scoped = scoped.or(filters.search)',
-      "scoped.eq('confirmed_allocation_status', filters.confirmedFilter)",
+      "scoped.eq('complete_allocation_status', filters.confirmedFilter)",
       "scoped.gte('payment_date', filters.dateFrom)",
       "scoped.lte('payment_date', filters.dateTo)",
     ]) {

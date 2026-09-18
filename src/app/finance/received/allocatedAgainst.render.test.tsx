@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs'
 
 import {
   AllocatedAgainstCell,
+  ConfirmedPaymentsList,
   DetailsModal,
   ReceivedPaymentsCards,
   ReceivedPaymentsTable,
@@ -58,7 +59,11 @@ function payment(id: string, amount: number, status: 'zero' | 'partial' | 'full'
     submitted_by: 'u-1', submitted_by_name: 'Initiator Ishaan Kumar',
     approved_by_name: 'Approver Asha Verma',
     admin_note: null, created_at: '2026-09-10T05:00:00Z',
-    confirmed_allocation_status: status,
+    // THE RLS-LIMITED STATUS, deliberately WRONG on every row: the badge must
+    // come from the complete read, never from this field.
+    confirmed_allocation_status: status === 'zero' ? 'full' : 'zero',
+    // The complete computed status the filter and Allocate Funds use.
+    complete_allocation_status: status,
   }
 }
 
@@ -144,7 +149,14 @@ describe('desktop: the seven columns', () => {
 
   test('the Allocated Against cell may wrap; no cell forces a sideways scroll', () => {
     assert.ok(!/<table[^>]*min-width/.test(desktop), 'the table sets no minWidth')
-    assert.ok(desktop.includes('max-width:300px'), 'the cell caps its own width')
+    assert.ok(desktop.includes('contain:inline-size'), 'a long name cannot widen the table')
+    assert.ok(desktop.includes('min-width:200px'), 'and the column keeps room for every amount')
+    const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>([^<]*)<\/th>/g)]
+      .map(m => [m[2], /width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
+    assert.deepEqual(widths, [
+      ['Payment ID', '1%'], ['Amount', '1%'], ['Received Date', '1%'], ['Mode', '1%'],
+      ['Allocated Against', 'auto'], ['Allocation Status', '1%'], ['Actions', '138px'],
+    ], 'fixed columns shrink to content; Allocated Against takes the rest')
     assert.ok(/<td style="[^"]*white-space:normal/.test(desktop), 'stacked lines are allowed in that one cell')
   })
 })
@@ -241,6 +253,45 @@ describe('mobile cards', () => {
 })
 
 // ── The states that must never read as "Not allocated" ───────────────────────
+
+describe('the Allocation Status badge is the complete answer, desktop and mobile alike', () => {
+  const badgeOf = (html: string, id: string) => {
+    const r = rowOf(html, id)
+    return ['Zero Allocated', 'Partially Allocated', 'Fully Allocated', 'Over-allocated'].find(l => r.includes(l)) ?? null
+  }
+
+  test('each row’s badge matches its complete destinations, not the RLS-limited field', () => {
+    const expected: Record<string, string> = {
+      '0001': 'Zero Allocated', '0002': 'Fully Allocated', '0003': 'Fully Allocated',
+      '0004': 'Partially Allocated', '0005': 'Over-allocated',
+    }
+    for (const [id, label] of Object.entries(expected)) {
+      assert.equal(badgeOf(desktop, id), label, `desktop ${id}`)
+      assert.equal(badgeOf(mobile, id), label, `mobile ${id}`)
+    }
+  })
+
+  test('no confident status while the complete read is loading or failed', () => {
+    const loading = renderToStaticMarkup(createElement(ReceivedPaymentsTable, {
+      ...common, canManage: true, onEdit: noop,
+      allocatedAgainst: (() => ({ kind: 'loading' })) as never,
+    }))
+    const failed = renderToStaticMarkup(createElement(ReceivedPaymentsCards, {
+      ...common, allocatedAgainst: (() => ({ kind: 'unavailable' })) as never,
+    }))
+    for (const label of ['Zero Allocated', 'Partially Allocated', 'Fully Allocated', 'Over-allocated']) {
+      assert.ok(!loading.includes(label) && !failed.includes(label), label)
+    }
+    assert.ok(loading.includes('aria-label="Loading allocation status"'))
+    assert.ok(failed.includes('Status unavailable'))
+  })
+
+  test('before its container is measured, the list draws the cards, which fit any width', () => {
+    const html = renderToStaticMarkup(createElement(ConfirmedPaymentsList, { ...common, canManage: true, onEdit: noop }))
+    assert.ok(html.includes('data-confirmed-list="cards"'))
+    assert.ok(!html.includes('<table'))
+  })
+})
 
 describe('the cell states', () => {
   test('unavailable says so, and is not Not allocated', () => {

@@ -80,6 +80,7 @@ import {
   NOT_ALLOCATED_TEXT,
   UNALLOCATED_LINE_WORD,
   allocatedAgainstText,
+  allocationBadgeState,
   allocationCountLabel,
   buildAllocatedAgainst,
   type AllocatedAgainstView,
@@ -112,6 +113,7 @@ import {
   CONFIRMED_ALLOCATION_BADGE,
   DEFAULT_CONFIRMED_ALLOCATION_FILTER,
   PAYMENTS_TABLE_BREAKPOINT,
+  confirmedListMode,
   PAYMENT_SURFACE_STATUSES,
   conciseName,
   type ConfirmedAllocationFilter,
@@ -137,6 +139,11 @@ type PaymentRequest = {
   /** The pure allocation-ledger classification (20261011000000 §5): zero |
    *  partial | full | over. Null only when amount itself is null. */
   confirmed_allocation_status: ConfirmedAllocationStatus | null
+  /** The COMPLETE status — complete_allocation_status, a computed field over
+   *  the whole active ledger (20261216000000 §4). What the allocation filter,
+   *  its count and the Allocate Funds offer use. Null on Payments to Verify,
+   *  which does not select it. */
+  complete_allocation_status?: ConfirmedAllocationStatus | null
   /**
    * NULLABLE since 20261013000000 §1. Null means no customer could be derived
    * — the payment names no PI Draft and no Order. Rendered through
@@ -1264,7 +1271,10 @@ const TH_STYLE: React.CSSProperties = {
  * at. Delete Payment remains the offered action for an 'over' row.
  */
 function canOfferAllocateFunds(r: PaymentRequest): boolean {
-  return r.confirmed_allocation_status === 'zero' || r.confirmed_allocation_status === 'partial'
+  // The COMPLETE status (complete_allocation_status, 20261216000000 §4), not
+  // the projection's RLS-limited one: for a reader without finance.view_all the
+  // latter can read Partial for a payment that is fully allocated.
+  return r.complete_allocation_status === 'zero' || r.complete_allocation_status === 'partial'
 }
 
 const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'success' | 'danger', {
@@ -1283,13 +1293,28 @@ const CONFIRMED_ALLOCATION_TONE_STYLE: Record<'neutral' | 'warning' | 'success' 
  * reassuring green "Fully Allocated" look.
  */
 function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
-  status: ConfirmedAllocationStatus | null
+  /**
+   * From allocationBadgeState(): the status of the SAME complete read the
+   * Allocated Against cell is drawn from, or 'loading' / 'unavailable' — never
+   * a confident status while that read is in flight or after it failed.
+   */
+  status: ConfirmedAllocationStatus | 'loading' | 'unavailable' | null
   /** The human Payment ID, for the accessible name. Never the raw UUID. */
   paymentId?: string | null
   /** Opens the payment's detail record. Omit to render a plain, inert badge. */
   onOpen?: () => void
 }) {
-  if (!status) return <span style={{ fontSize: '11px', color: colors.muted }}>—</span>
+  if (status === 'loading') {
+    return <span aria-label="Loading allocation status" style={{ fontSize: '11px', color: colors.muted }}>…</span>
+  }
+  if (!status || status === 'unavailable') {
+    return (
+      <span title="The complete allocation status could not be loaded. Open the payment for details."
+            style={{ fontSize: '11px', color: colors.muted, fontStyle: 'italic', whiteSpace: 'nowrap' }}>
+        Status unavailable
+      </span>
+    )
+  }
   const meta = CONFIRMED_ALLOCATION_BADGE[status]
   const style = CONFIRMED_ALLOCATION_TONE_STYLE[meta.tone]
   const overTitle = status === 'over'
@@ -1380,7 +1405,8 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
       <span style={{
         ...small, display: 'inline-block', padding: '0 6px', borderRadius: '4px',
         background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 600,
-        whiteSpace: 'nowrap',
+        // A chip, not a bar: inside the card's column flex it would stretch.
+        whiteSpace: 'nowrap', alignSelf: 'flex-start',
       }}>
         {NOT_ALLOCATED_TEXT}
       </span>
@@ -1404,10 +1430,13 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
     <div
       role="list"
       aria-label={`${ALLOCATED_AGAINST_LABEL}: ${text}`}
-      style={{
-        display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0,
-        maxWidth: fill ? '100%' : '300px',
-      }}
+      style={fill
+        ? { display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0, maxWidth: '100%' }
+        // In the table: fill the column, and never let a long name widen it —
+        // `contain: inline-size` removes the content from the table's width
+        // calculation, the 200px floor keeps every amount readable. Measured:
+        // see CONFIRMED_TABLE_MIN_CONTAINER_PX.
+        : { display: 'flex', flexDirection: 'column', gap: '1px', width: '100%', minWidth: '200px', contain: 'inline-size' }}
     >
       {view.lines.length > 1 && (
         <div style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
@@ -1569,7 +1598,7 @@ export function ReceivedPaymentsTable({
         <thead>
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
-              <th key={column.key} style={{ ...TH, ...align(column.align) }}>
+              <th key={column.key} style={{ ...TH, ...align(column.align), ...('width' in column ? { width: column.width } : {}) }}>
                 {column.label}
               </th>
             ))}
@@ -1640,7 +1669,7 @@ export function ReceivedPaymentsTable({
                       them opens the record that shows them in full. */}
                   <td style={TD} onClick={e => e.stopPropagation()}>
                     <ConfirmedAllocationBadge
-                      status={r.confirmed_allocation_status}
+                      status={allocationBadgeState(allocatedAgainst(r))}
                       paymentId={r.human_payment_id}
                       onOpen={() => onView(r)}
                     />
@@ -2161,7 +2190,7 @@ export function ReceivedPaymentsCards({
                 which is where the exact figures the card no longer prints live. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <ConfirmedAllocationBadge
-                status={r.confirmed_allocation_status}
+                status={allocationBadgeState(allocatedAgainst(r))}
                 paymentId={r.human_payment_id}
                 onOpen={() => onView(r)}
               />
@@ -2192,6 +2221,67 @@ export function ReceivedPaymentsCards({
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Table or cards, by the room actually available ────────────────────────────
+//
+// The Confirmed Payments list decides by the width of ITS OWN CONTAINER, not
+// the viewport: the Finance sidebar is a fixed 260px down to 768px, so a 1024px
+// window leaves a ~720px card, which the seven-column table does not fit (see
+// CONFIRMED_TABLE_MIN_CONTAINER_PX). A ResizeObserver reports the container's
+// width on mount and on every change — window resize, sidebar, zoom — and the
+// cards are drawn whenever the table would not fit, so nothing is clipped and
+// nothing scrolls sideways. Until the first measurement it draws the cards,
+// which fit any width.
+//
+// EXPORTED FOR THE RESPONSIVE CHECK only — this page mounts it.
+type ConfirmedListProps =
+  Parameters<typeof ReceivedPaymentsTable>[0] & Parameters<typeof ReceivedPaymentsCards>[0]
+
+export function ConfirmedPaymentsList(props: ConfirmedListProps) {
+  const [containerWidth, setContainerWidth] = useState<number | null>(null)
+  const containerRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    // Fires once on observe, then on every size change: no synchronous
+    // setState in the effect body.
+    const observer = new ResizeObserver(entries => {
+      const width = entries[0]?.contentRect.width
+      if (typeof width === 'number') setContainerWidth(Math.floor(width))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [])
+
+  // THE SAFETY NET. If the rendered table ever overflows its container anyway
+  // (a value wider than any measured), remember that width and draw cards at
+  // it and below. Checked a frame after paint, so no synchronous setState.
+  const [overflowedAt, setOverflowedAt] = useState<number | null>(null)
+  const tableFits = confirmedListMode(containerWidth, overflowedAt) === 'table'
+
+  useEffect(() => {
+    if (!tableFits) return
+    const el = containerRef.current
+    if (!el) return
+    const frame = requestAnimationFrame(() => {
+      if (el.scrollWidth > el.clientWidth + 1) {
+        setOverflowedAt(prev => Math.max(prev ?? 0, el.clientWidth))
+      }
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [tableFits, containerWidth, props.rows])
+
+  return (
+    <div
+      ref={containerRef}
+      data-confirmed-list={tableFits ? 'table' : 'cards'}
+      style={{ width: '100%', minWidth: 0 }}
+    >
+      {tableFits ? <ReceivedPaymentsTable {...props} /> : <ReceivedPaymentsCards {...props} />}
     </div>
   )
 }
@@ -2465,7 +2555,7 @@ function ReceivedPaymentsViewInner(
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
         allocated_order_id, allocated_order_number, is_order_allocated,
-        confirmed_allocation_status,
+        confirmed_allocation_status,${surface === 'confirmed' ? ' complete_allocation_status,' : ''}
         ${RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS.join(', ')}
       `, { count: 'exact' })
       // ── THE SURFACE'S OWN STATUSES, AND NOTHING ELSE ──
@@ -2501,14 +2591,17 @@ function ReceivedPaymentsViewInner(
 
     // ── THE CONFIRMED ALLOCATION FILTER (Requirement 1) ──
     //
-    // Zero / Partially / Fully Allocated, read straight off
-    // confirmed_allocation_status (20261011000000 §5) — the PURE
-    // allocation-ledger classification, as a real database predicate so it
+    // Zero / Partially / Fully Allocated, read off complete_allocation_status
+    // (20261216000000 §4) — the pure allocation-ledger classification over
+    // the COMPLETE active ledger, as a real database predicate so it
     // composes correctly with search, dates and paging. "All" applies no
     // predicate. CONFIRMED PAYMENTS ONLY: a payment nobody has verified has
     // not been allocated to anything.
     if (surface === 'confirmed' && filters.confirmedFilter !== 'all') {
-      scoped = scoped.eq('confirmed_allocation_status', filters.confirmedFilter)
+      // THE COMPLETE STATUS, filtered, paged and counted by the database. The
+      // projection's own confirmed_allocation_status is summed under the
+      // reader's RLS and can misclassify for a reader without view_all.
+      scoped = scoped.eq('complete_allocation_status', filters.confirmedFilter)
     }
 
     if (filters.dateFrom) scoped = scoped.gte('payment_date', filters.dateFrom)
@@ -2797,7 +2890,7 @@ function ReceivedPaymentsViewInner(
         status, payment_against, submitted_by, admin_note, created_at,
         submitted_by_name, approved_by_name,
         allocated_order_id, allocated_order_number, is_order_allocated,
-        confirmed_allocation_status,
+        confirmed_allocation_status,${surface === 'confirmed' ? ' complete_allocation_status,' : ''}
         ${RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS.join(', ')}
       `)
       .eq('id', id)
@@ -3045,7 +3138,7 @@ function ReceivedPaymentsViewInner(
             status, payment_against, submitted_by, admin_note, created_at,
             submitted_by_name, approved_by_name,
             allocated_order_id, allocated_order_number, is_order_allocated,
-            confirmed_allocation_status
+            confirmed_allocation_status${surface === 'confirmed' ? ', complete_allocation_status' : ''}
           `)
           .eq('id', paymentId)
           .maybeSingle()
@@ -3364,19 +3457,6 @@ function ReceivedPaymentsViewInner(
               onView={r => setDetailRequest(r)}
               onEdit={r => setEditRequest(r)}
             />
-          ) : isMobile ? (
-            <ReceivedPaymentsCards
-              rows={visible}
-              canAllocate={caps.canAllocatePayment}
-              highlightId={highlightId}
-              onView={r => setDetailRequest(r)}
-              onAllocateFunds={r => setAllocateFundsTarget(r)}
-              canDeleteRow={canDeleteRow}
-              onDelete={r => setDeleteTarget(r)}
-              allocatedAgainst={allocatedAgainstFor}
-              targetHref={allocationTargetHref}
-              onOpenTarget={href => router.push(href)}
-            />
           ) : surface === 'to_verify' ? (
             <PaymentsToVerifyTable
               rows={visible}
@@ -3386,7 +3466,9 @@ function ReceivedPaymentsViewInner(
               onEdit={r => setEditRequest(r)}
             />
           ) : (
-            <ReceivedPaymentsTable
+            // Table or cards by the width of the card itself — see
+            // ConfirmedPaymentsList. isMobile (viewport) is Payments to Verify's.
+            <ConfirmedPaymentsList
               rows={visible}
               canManage={caps.canManageFinance}
               canAllocate={caps.canAllocatePayment}

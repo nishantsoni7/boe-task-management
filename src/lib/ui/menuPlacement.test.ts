@@ -497,7 +497,9 @@ describe('Allocate Funds is the only attachment workflow, and is unchanged', () 
   test('its permission and balance conditions are untouched', () => {
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
       'still permission-derived at the call site')
-    assert.ok(view.includes("return r.confirmed_allocation_status === 'zero' || r.confirmed_allocation_status === 'partial'"),
+    // REVISED (20261216000000): read off the COMPLETE status, not the
+    // projection's RLS-limited one, which can say Partial for a full payment.
+    assert.ok(view.includes("return r.complete_allocation_status === 'zero' || r.complete_allocation_status === 'partial'"),
       "and still offered only where there is balance to allocate — never on 'full' or 'over'")
     assert.ok(visibleRowActions({ offerAllocate: true, canManage: false, canDelete: false }).includes('allocate'),
       'allocation does not require finance.manage')
@@ -979,7 +981,13 @@ describe('every allocation status opens the payment record', () => {
   })
 
   test('a row with no status stays inert rather than opening nothing', () => {
-    assert.ok(body.includes("if (!status) return <span"), 'an unknown status is a dash, not a button')
+    // REVISED: the badge now reads the complete read, so "no status" is either
+    // still loading or unavailable — both inert text, never a button and never
+    // a confident Zero / Full.
+    assert.ok(body.includes("if (status === 'loading') {"), 'loading is inert')
+    assert.ok(body.includes("if (!status || status === 'unavailable') {"), 'an unknown status is inert text, not a button')
+    const inert = body.slice(body.indexOf("if (status === 'loading') {"), body.indexOf('const meta = CONFIRMED_ALLOCATION_BADGE[status]'))
+    assert.ok(!inert.includes('<button'), 'no control before a status is known')
   })
 })
 
