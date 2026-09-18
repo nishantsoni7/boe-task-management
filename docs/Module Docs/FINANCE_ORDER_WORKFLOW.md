@@ -1962,3 +1962,120 @@ users and was **not executed** in this pass.
 The two migration-list tests in `participantAndOrderTotalSecurity.test.ts` now
 read `supabase/migrations` with `readdirSync` instead of the Windows-only
 `dir /b`, so they run on Linux too; their assertions are unchanged.
+
+## 18. Confirmed Payments: Allocated Against (Phase 1.1 — `20261216000000`)
+
+### 18.1 What was missing
+
+The owner's review of the live Confirmed Payments list (2026-09-18): the table
+spent two columns on **Initiated By** and **Approved By** — audit facts already
+in the payment's details — and none on the question a reader actually brings to
+the list: *against which PI Drafts or confirmed Orders has this payment been
+allocated, and how much to each?*
+
+The list could not answer it truthfully. `allocated_order_number` names at most
+one Order; the legacy `order_id` is not an allocation; and the list's own read of
+`finance_payment_allocations` runs under the caller's RLS, whose participant
+policies are **per row** — a Finance user without `finance.view_all` who can see
+a split payment through one of its Orders sees only that Order's allocation
+(the gap recorded in §17.7).
+
+### 18.2 The table and the card
+
+Desktop columns, in order: **Payment ID · Amount · Received Date · Mode ·
+Allocated Against · Allocation Status · Actions**. Initiated By and Approved By
+left the table and the mobile card only: Approved By is in the payment's
+details, the submitter (with when) in its Activity, and both are still selected
+by the list query. The mobile card follows the same order, with Allocated
+Against as stacked lines at the card's full width.
+
+| Case | Allocated Against shows |
+| --- | --- |
+| No active allocation | `Not allocated` (amber) |
+| One Order | `Order 0425 · ₹5,00,000.00` |
+| One PI Draft, reserved number | `PI Draft · Reserved Order 0431 · …` |
+| One PI Draft, no reserved number | `PI Draft · Hotel ABC.xlsx · …` (workbook file name; never `source_order_number`) |
+| Several destinations (Orders, PI Drafts or both) | `3 allocations`, then one line per destination with its own amount |
+| Several active rows to one destination | one line, amounts summed exactly (the detail history keeps the separate rows) |
+| Partly allocated | the destinations, then a final amber `Unallocated · ₹…` line; the `Partially Allocated` badge stays |
+| Fully allocated | the destinations and no remainder line |
+| Over-allocated | every destination, unclipped; the red `Over-allocated` badge stays |
+| Reversed allocations | never shown here |
+| Complete read failed | `Allocation details unavailable` — never `Not allocated`, zero or a partial list |
+
+A destination name is a **link only when the reader may already open it**:
+Orders module entry *and* the record came back from the reader's own RLS read.
+Otherwise it is plain text. Seeing where money went is not permission to open
+the Order or PI. A link stops its click from reaching the row; clicking anywhere
+else in the cell still opens the payment's details, as before. Nothing in the
+cell edits or reverses an allocation. Long names truncate visually; the full text
+is in the line's `title` and in the list's accessible name. Amounts never
+truncate.
+
+### 18.3 The read (`received_payment_allocation_targets(uuid[])`)
+
+**The business decision.** A signed-in user authorized to see a confirmed
+payment on the Finance list may see the active allocation targets and allocated
+amounts of that payment. It does not grant access to open the Order or PI Draft.
+
+One call per list page — never per row — returning, for each **active**
+allocation: payment id, allocation id, target type (`order` / `pi_draft`),
+target id, safe reference (Order display number, or the PI workbook's file name
+with any path stripped), reserved Order number (PI Drafts only) and amount.
+Nothing else: no client, no other Order or PI field, and never
+`source_order_number`.
+
+It is `SECURITY DEFINER` (it must see past per-row RLS), `STABLE`,
+`search_path = public, pg_temp`, EXECUTE revoked from PUBLIC, anon and
+service_role and granted to authenticated only, and it:
+
+1. requires `auth.uid()` (`28000`);
+2. requires Finance module entry (`42501`);
+3. requires `finance.view` held by an active user, admin bypass (`42501`);
+4. accepts at most 50 ids (`22023`);
+5. returns rows only for **confirmed** payments
+   (`finance_payment_status_is_verified`) that the caller may already read under
+   the six permissive SELECT policies of `finance_payment_requests` — the same
+   mirror as §17.7, pinned by `allocatedAgainst.test.ts`. Any other id returns
+   nothing.
+
+No table, column, policy, grant on a table or permission action is created or
+changed; the migration snapshots both tables' policies, asserts its own result
+shape, and refuses itself on any difference.
+
+| Caller | Result |
+| --- | --- |
+| Active admin, or `view` + `view_all` | every confirmed payment's active targets |
+| `view` only, participant in one of a payment's records | **complete** active targets of that payment |
+| `view` only, unrelated payment | nothing |
+| unconfirmed payment, any caller | nothing |
+| participant without Finance entry | refused (`42501`) |
+| inactive user | refused (`42501`) |
+| authenticated role, no user | refused (`28000`) |
+| `anon`, `service_role` | no EXECUTE |
+
+### 18.4 Verifying it
+
+`supabase/tests/run_received_payment_allocation_targets_suite.sh` builds the same
+shaped database as §17.7 (plus `reserved_order_number` and
+`finance_payment_status_is_verified`), reproduces the partial participant read
+BEFORE the migration (1 of 4 active allocations), applies it, and runs
+`received_payment_allocation_targets_assertions.sql`: complete targets for a
+`view`-only participant, reversed excluded, duplicates returned separately,
+PI names without `source_order_number`, admin / view_all, unrelated and
+unconfirmed payments, every refusal, the 50-id bound, and fingerprints proving
+no payment, allocation, Order, PI, permission or policy changed. Three mutations
+— dropping the `finance.view` check, making every payment visible, and including
+reversed rows — each fail it.
+
+`src/lib/finance/allocatedAgainst.test.ts` (every allocation case, the loading /
+failed / uncovered states, where the list reads from, and the migration's
+contract) and `src/app/finance/received/allocatedAgainst.render.test.tsx` (the
+desktop row, the mobile card, links only where openable, and Approved By still
+in the details) render the result.
+
+**Known, unchanged.** The Allocation Status badge still reads
+`confirmed_allocation_status` from the `security_invoker` projection, so for a
+participant without `view_all` it can disagree with the complete Allocated
+Against cell beside it (§17.7). The cell is the complete figure; the badge is
+deferred to Phase 2 with `allocated_total`.

@@ -112,16 +112,21 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
 // ── The Confirmed Payments table ─────────────────────────────────────────────
 
 /**
- * EIGHT COLUMNS, IN THIS ORDER, AND NO OTHERS.
+ * SEVEN COLUMNS, IN THIS ORDER, AND NO OTHERS.
  *
  * The table carried eleven and was honestly wide: at 1024px it either scrolled
  * sideways inside its own box or squeezed every figure into an unreadable
  * column. What survives is what a Finance reader scans a LIST for — how much,
- * when, how, how much of it is spoken for, who raised it, who confirmed it —
- * with everything else one click away on the row itself.
+ * when, how, against which Orders and PI Drafts, and how much of it is spoken
+ * for — with everything else one click away on the row itself.
  *
  * WHAT WAS REMOVED AND WHERE IT WENT, so nothing is silently lost:
  *
+ *   Initiated By     }   → the detail modal: Approved By in Payment Details,
+ *   Approved By      }     the submitter (with when) in Activity. Audit facts,
+ *                          not something a list is scanned for; their place
+ *                          went to Allocated Against (owner review, 2026-09-18).
+ *                          Both are still selected by the list query.
  *   Payment (reference)  → the detail modal, and search still matches it
  *   Status               → the page IS the status now. Every row is confirmed.
  *   Goes To              → the detail modal's allocation breakdown
@@ -141,7 +146,7 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  * this is a change to what the TABLE draws, not to what the page knows.
  *
  * `width` is a hint for the header cell, not a hard size: the table lays out
- * `auto`, so these keep the eight columns from drifting apart on a wide screen
+ * `auto`, so these keep the seven columns from drifting apart on a wide screen
  * while still letting a long name take the room it needs.
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
@@ -156,11 +161,14 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   { key: 'amount',       label: 'Amount',            align: 'left', width: '130px' },
   { key: 'date',         label: 'Received Date',     align: 'left',  width: '120px' },
   { key: 'mode',         label: 'Mode',              align: 'left',  width: '110px' },
-  // The widest of the remaining columns because its content is a badge that is
+  // WHERE THE MONEY WENT: every active Order / PI Draft destination with its
+  // amount, stacked, plus any unallocated remainder. No width hint — it takes
+  // the slack Initiated By and Approved By used to, and its cell caps itself
+  // (each name truncates) so it cannot push the table into a sideways scroll.
+  { key: 'allocated_against', label: 'Allocated Against', align: 'left' },
+  // The widest of the fixed columns because its content is a badge that is
   // also a control, and because four different labels have to fit without wrap.
   { key: 'status',       label: 'Allocation Status', align: 'left',  width: '170px' },
-  { key: 'initiated_by', label: 'Initiated By',      align: 'left'  },
-  { key: 'approved_by',  label: 'Approved By',       align: 'left'  },
   // WIDTH IS COMPUTED, NOT CHOSEN. The Actions cell must hold the widest row
   // this table can draw, on one line: six icon targets and the five gaps
   // between them, plus the cell's own padding. See ACTIONS_COLUMN_WIDTH_PX in

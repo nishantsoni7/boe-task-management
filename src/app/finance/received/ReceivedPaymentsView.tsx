@@ -74,6 +74,18 @@ import {
 } from '@/lib/finance/paymentAllocations'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import {
+  ALLOCATED_AGAINST_LABEL,
+  ALLOCATION_DETAILS_UNAVAILABLE_TEXT,
+  ALLOCATION_TARGETS_MAX_IDS,
+  NOT_ALLOCATED_TEXT,
+  UNALLOCATED_LINE_WORD,
+  allocatedAgainstText,
+  allocationCountLabel,
+  buildAllocatedAgainst,
+  type AllocatedAgainstView,
+  type AllocationTargetRow,
+} from '@/lib/finance/allocatedAgainst'
+import {
   canOpenOrderRecord,
   orderDetailHref,
   piSubmissionHref,
@@ -1325,6 +1337,123 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
   )
 }
 
+// ── Allocated Against ─────────────────────────────────────────────────────────
+//
+// WHERE THE MONEY WENT, in the row itself: every active destination, each with
+// its own amount, and what is left. Built by buildAllocatedAgainst() from the
+// COMPLETE targets read (received_payment_allocation_targets, 20261216000000),
+// never from allocated_order_number, the legacy order_id or the caller's own
+// partial RLS read of the allocation table.
+//
+// A DESTINATION IS A LINK ONLY WHEN THIS READER MAY ALREADY OPEN IT. `hrefFor`
+// answers null otherwise and the name is plain text — seeing that money went to
+// an Order is not permission to open the Order. A link stops its click from
+// reaching the row, so it opens the target and not the payment; anywhere else
+// in the cell the row's own click opens the payment's details, as before. No
+// control in this cell edits or reverses an allocation.
+//
+// EXPORTED FOR ITS RENDER TEST only.
+export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
+  view: AllocatedAgainstView
+  /** The target's page, when this reader may open it; null otherwise. */
+  hrefFor: (targetType: 'order' | 'pi_draft', targetId: string) => string | null
+  onOpen: (href: string) => void
+  /** Mobile: take the card's width instead of the table column's cap. */
+  fill?: boolean
+}) {
+  const text = allocatedAgainstText(view, fmtAmount)
+  const small: React.CSSProperties = { fontSize: '12px', lineHeight: '17px' }
+
+  if (view.kind === 'loading') {
+    return <span aria-label={text} title={text} style={{ ...small, color: colors.muted }}>…</span>
+  }
+  if (view.kind === 'unavailable') {
+    return (
+      <span title="The complete allocation list could not be loaded. Open the payment for details."
+            style={{ ...small, color: colors.muted, fontStyle: 'italic' }}>
+        {ALLOCATION_DETAILS_UNAVAILABLE_TEXT}
+      </span>
+    )
+  }
+  if (view.kind === 'none') {
+    return (
+      <span style={{
+        ...small, display: 'inline-block', padding: '0 6px', borderRadius: '4px',
+        background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A', fontWeight: 600,
+        whiteSpace: 'nowrap',
+      }}>
+        {NOT_ALLOCATED_TEXT}
+      </span>
+    )
+  }
+
+  // One line per destination. The NAME truncates visually and keeps its full
+  // text in `title` and in the list's accessible name; the AMOUNT never
+  // truncates, because a clipped figure is a wrong figure.
+  const lineStyle: React.CSSProperties = {
+    ...small, display: 'flex', alignItems: 'baseline', gap: '6px', minWidth: 0,
+  }
+  const nameStyle: React.CSSProperties = {
+    minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+  }
+  const amountStyle: React.CSSProperties = {
+    flexShrink: 0, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: colors.secondary,
+  }
+
+  return (
+    <div
+      role="list"
+      aria-label={`${ALLOCATED_AGAINST_LABEL}: ${text}`}
+      style={{
+        display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0,
+        maxWidth: fill ? '100%' : '300px',
+      }}
+    >
+      {view.lines.length > 1 && (
+        <div style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+          {allocationCountLabel(view.lines.length)}
+        </div>
+      )}
+      {view.lines.map(line => {
+        const href = hrefFor(line.targetType, line.targetId)
+        return (
+          <div key={line.key} role="listitem" style={lineStyle}>
+            {href ? (
+              <a
+                href={href}
+                title={line.label}
+                onClick={event => {
+                  // Opens the TARGET. The row's own click must not also fire
+                  // and open the payment underneath it.
+                  event.preventDefault()
+                  event.stopPropagation()
+                  onOpen(href)
+                }}
+                style={{ ...nameStyle, color: colors.blue, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+              >
+                {line.label}
+              </a>
+            ) : (
+              <span title={line.label} style={{ ...nameStyle, color: colors.primary, fontWeight: 600 }}>
+                {line.label}
+              </span>
+            )}
+            <span aria-hidden="true" style={{ color: colors.muted, flexShrink: 0 }}>·</span>
+            <span style={amountStyle}>{fmtAmount(line.amount)}</span>
+          </div>
+        )
+      })}
+      {view.unallocated && (
+        <div role="listitem" style={{ ...lineStyle, color: '#92400E', fontWeight: 600 }}>
+          <span style={nameStyle}>{UNALLOCATED_LINE_WORD}</span>
+          <span aria-hidden="true" style={{ flexShrink: 0 }}>·</span>
+          <span style={{ ...amountStyle, color: '#92400E' }}>{fmtAmount(view.unallocated)}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // THE ROW FIGURES ARE GONE, and so is confirmedFigures() with them.
 //
 // It computed four numbers — Total Allocated, Remaining, To Orders, To PI
@@ -1345,7 +1474,8 @@ function ConfirmedAllocationBadge({ status, paymentId, onOpen }: {
 // COLUMNS, sized to fit 1024px with no horizontal scroll; the PI-Draft /
 // Order breakdown (CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS) lives behind a
 // per-row expand toggle instead of being crammed into the primary row.
-function ReceivedPaymentsTable({
+// EXPORTED FOR ITS RENDER TEST only — this page mounts it.
+export function ReceivedPaymentsTable({
   rows,
   canManage,
   canAllocate,
@@ -1355,8 +1485,15 @@ function ReceivedPaymentsTable({
   onAllocateFunds,
   canDeleteRow,
   onDelete,
+  allocatedAgainst,
+  targetHref,
+  onOpenTarget,
 }: {
   rows: PaymentRequest[]
+  /** The Allocated Against cell for one row — see AllocatedAgainstCell. */
+  allocatedAgainst: (r: PaymentRequest) => AllocatedAgainstView
+  targetHref: (targetType: 'order' | 'pi_draft', targetId: string) => string | null
+  onOpenTarget: (href: string) => void
   /**
    * May edit a recorded payment — a correction of an approved financial
    * record, the finance.manage authority.
@@ -1482,6 +1619,20 @@ function ReceivedPaymentsTable({
                     {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
+                  {/* ALLOCATED AGAINST — every active destination with its
+                      amount, and what is left. Lines stack, so this is the one
+                      cell allowed to wrap; each NAME still truncates on its own
+                      line. Initiated By and Approved By left the table for it:
+                      they are audit facts, shown in the payment's details and
+                      Activity. */}
+                  <td style={{ ...TD, whiteSpace: 'normal', paddingTop: '6px', paddingBottom: '6px' }}>
+                    <AllocatedAgainstCell
+                      view={allocatedAgainst(r)}
+                      hrefFor={targetHref}
+                      onOpen={onOpenTarget}
+                    />
+                  </td>
+
                   {/* THE BADGE IS THE DOOR TO THE FIGURES THE ROW NO LONGER
                       PRINTS. Total Allocated and Remaining left the table
                       together — they are two halves of one answer and neither
@@ -1493,16 +1644,6 @@ function ReceivedPaymentsTable({
                       paymentId={r.human_payment_id}
                       onOpen={() => onView(r)}
                     />
-                  </td>
-
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}
-                      title={r.submitted_by_name ?? undefined}>
-                    {conciseName(r.submitted_by_name)}
-                  </td>
-
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}
-                      title={r.approved_by_name ?? undefined}>
-                    {conciseName(r.approved_by_name)}
                   </td>
 
                   {/* EVERY PERMITTED ACTION, DIRECTLY. This column used to be
@@ -1941,11 +2082,15 @@ function PaymentsToVerifyCards({ rows, canManage, highlightId, onView, onEdit }:
 // the breakdown are all here — the breakdown sits inline rather than behind an
 // expand toggle, since a card already stacks vertically with room to spare.
 
-function ReceivedPaymentsCards({
+// EXPORTED FOR ITS RENDER TEST only — this page mounts it.
+export function ReceivedPaymentsCards({
   rows, canAllocate, highlightId, onView, onAllocateFunds,
-  canDeleteRow, onDelete,
+  canDeleteRow, onDelete, allocatedAgainst, targetHref, onOpenTarget,
 }: {
   rows: PaymentRequest[]
+  allocatedAgainst: (r: PaymentRequest) => AllocatedAgainstView
+  targetHref: (targetType: 'order' | 'pi_draft', targetId: string) => string | null
+  onOpenTarget: (href: string) => void
   canAllocate: boolean
   highlightId?: string | null
   onView: (r: PaymentRequest) => void
@@ -1976,8 +2121,8 @@ function ReceivedPaymentsCards({
           >
             {/* PAYMENT ID LEADS, AND THE CUSTOMER IS NOT A CARD FIELD.
                 The card follows the table's information priority exactly:
-                identifier, amount, when, how, how much is spoken for, and the
-                two people. The customer name is in the detail modal, whole —
+                identifier, amount, when, how, where the money went, and how
+                much is spoken for. The customer name is in the detail modal, whole —
                 on a phone it was the field most likely to be truncated, which
                 is the worst place to abbreviate a name somebody is trying to
                 match against a bank statement. */}
@@ -1996,6 +2141,22 @@ function ReceivedPaymentsCards({
               </span>
             </div>
 
+            {/* ALLOCATED AGAINST, stacked — the same cell as the desktop
+                column, at the card's full width, in the table's order (before
+                the status). Initiated by / Approved by are no longer on the
+                card; both are in the payment's details. */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', minWidth: 0 }}>
+              <span style={{ fontSize: '10.5px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                {ALLOCATED_AGAINST_LABEL}
+              </span>
+              <AllocatedAgainstCell
+                view={allocatedAgainst(r)}
+                hrefFor={targetHref}
+                onOpen={onOpenTarget}
+                fill
+              />
+            </div>
+
             {/* The same control as the desktop cell, opening the same record —
                 which is where the exact figures the card no longer prints live. */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -2004,15 +2165,6 @@ function ReceivedPaymentsCards({
                 paymentId={r.human_payment_id}
                 onOpen={() => onView(r)}
               />
-            </div>
-
-            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', fontSize: '11px', color: colors.muted }}>
-              <span title={r.submitted_by_name ?? undefined}>
-                Initiated by <span style={{ color: colors.secondary }}>{conciseName(r.submitted_by_name)}</span>
-              </span>
-              <span title={r.approved_by_name ?? undefined}>
-                Approved by <span style={{ color: colors.secondary }}>{conciseName(r.approved_by_name)}</span>
-              </span>
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -2180,6 +2332,16 @@ function ReceivedPaymentsViewInner(
   // read under the reader's OWN RLS. A target whose row did not come back is
   // named by its kind alone and offers no door — see paymentLinks.ts.
   const [targetLabels,   setTargetLabels]   = useState<Map<string, string>>(new Map())
+  // ALLOCATED AGAINST: the COMPLETE active targets of this page's payments, from
+  // received_payment_allocation_targets() — one call per page, never per row.
+  // `rows` null = not answered yet; `failed` = the cell says "Allocation details
+  // unavailable" rather than "Not allocated"; `ids` = which payments the answer
+  // covers, because silence means "no allocation" only for an id that was asked.
+  const [allocationTargets, setAllocationTargets] = useState<{
+    rows: AllocationTargetRow[] | null
+    failed: boolean
+    ids: ReadonlySet<string>
+  }>({ rows: null, failed: false, ids: new Set() })
   // The new multi-target allocation flow (Requirement 3) — replaces the old
   // single-target "Allocate" row action on Confirmed Payments with one that
   // can divide a payment across several targets in one atomic RPC call.
@@ -2413,6 +2575,74 @@ function ReceivedPaymentsViewInner(
     // ONE QUERY FOR THE PAGE, never one per row, and bounded twice over: the
     // page is at most 50 ids, and the read is anchored to exactly those.
     loadAllocations(mapped, token)
+    if (surface === 'confirmed') void loadAllocationTargets(mapped, token)
+  }
+
+  /**
+   * The Allocated Against column's data: every ACTIVE allocation of the
+   * payments on this page, complete, in ONE call.
+   *
+   * NOT the direct allocation read above. That one runs under the reader's RLS,
+   * which for a participant without finance.view_all returns only the
+   * allocations whose target they can open — so a split payment would show one
+   * destination of three. received_payment_allocation_targets (20261216000000)
+   * returns the complete set for every payment this reader may already see,
+   * with safe references only, and nothing for any other id.
+   *
+   * A FAILURE IS SHOWN AS A FAILURE. `failed` makes every cell read
+   * "Allocation details unavailable" — never "Not allocated", zero, or a
+   * partial list.
+   */
+  const loadAllocationTargets = async (rows: readonly PaymentRequest[], token: number) => {
+    const ids = rows.map(r => r.id).slice(0, ALLOCATION_TARGETS_MAX_IDS)
+    if (ids.length === 0) {
+      setAllocationTargets({ rows: [], failed: false, ids: new Set() })
+      return
+    }
+    setAllocationTargets({ rows: null, failed: false, ids: new Set() })
+    const { data, error } = await supabase.rpc('received_payment_allocation_targets', {
+      p_payment_request_ids: ids,
+    })
+    if (token !== loadToken.current) return
+    setAllocationTargets(error
+      ? { rows: null, failed: true, ids: new Set() }
+      : { rows: (data ?? []) as AllocationTargetRow[], failed: false, ids: new Set(ids) })
+  }
+
+  /** Re-read one payment's targets and splice them into the page's answer. */
+  const refreshAllocationTargetsFor = async (id: string) => {
+    const { data, error } = await supabase.rpc('received_payment_allocation_targets', {
+      p_payment_request_ids: [id],
+    })
+    setAllocationTargets(prev => {
+      const others = (prev.rows ?? []).filter(row => row.payment_request_id !== id)
+      const ids = new Set(prev.ids)
+      if (error) {
+        // This one payment is now unknown; the rest of the page is unaffected.
+        ids.delete(id)
+        return { rows: prev.rows === null ? null : others, failed: prev.failed, ids }
+      }
+      ids.add(id)
+      return { rows: [...others, ...((data ?? []) as AllocationTargetRow[])], failed: prev.failed, ids }
+    })
+  }
+
+  /** The Allocated Against cell for one row, decided once for table and cards. */
+  const allocatedAgainstFor = (r: PaymentRequest): AllocatedAgainstView =>
+    buildAllocatedAgainst(r, allocationTargets.rows, {
+      readFailed: allocationTargets.failed,
+      covered: allocationTargets.rows === null ? undefined : allocationTargets.ids.has(r.id),
+    })
+
+  /**
+   * A destination's page, ONLY when this reader may already open it: Orders
+   * module entry AND the record came back from their own RLS read
+   * (loadTargetLabels). Otherwise null, and the name is drawn as plain text.
+   */
+  const allocationTargetHref = (targetType: 'order' | 'pi_draft', targetId: string): string | null => {
+    if (!canOpenOrderRecord(ordersCaps.canAccessOrdersModule)) return null
+    if (!targetLabels.has(targetId)) return null
+    return targetType === 'order' ? orderDetailHref(targetId) : piSubmissionHref(targetId)
   }
 
   /**
@@ -2605,6 +2835,7 @@ function ReceivedPaymentsViewInner(
     )
     const newSummary = summaryMap.get(id)
     if (newSummary) setAllocations(prev => new Map(prev).set(id, newSummary))
+    if (surface === 'confirmed') void refreshAllocationTargetsFor(id)
 
     const orderIds = new Set<string>()
     const submissionIds = new Set<string>()
@@ -3142,6 +3373,9 @@ function ReceivedPaymentsViewInner(
               onAllocateFunds={r => setAllocateFundsTarget(r)}
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
+              allocatedAgainst={allocatedAgainstFor}
+              targetHref={allocationTargetHref}
+              onOpenTarget={href => router.push(href)}
             />
           ) : surface === 'to_verify' ? (
             <PaymentsToVerifyTable
@@ -3162,6 +3396,9 @@ function ReceivedPaymentsViewInner(
               onAllocateFunds={r => setAllocateFundsTarget(r)}
               canDeleteRow={canDeleteRow}
               onDelete={r => setDeleteTarget(r)}
+              allocatedAgainst={allocatedAgainstFor}
+              targetHref={allocationTargetHref}
+              onOpenTarget={href => router.push(href)}
             />
           )
         )}

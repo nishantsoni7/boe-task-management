@@ -211,6 +211,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // on a table or permission action, and edits no existing function, so it reaches
     // nothing asserted here.
     '20261215000000_payment_allocation_ledger_for_correction.sql',
+    // 20261216000000 — one read-only RPC, received_payment_allocation_targets(uuid[]),
+    // for the Confirmed Payments Allocated Against column. It creates no table,
+    // column, policy, grant on a table or permission action, and edits no existing
+    // function, so it reaches nothing asserted here.
+    '20261216000000_received_payment_allocation_targets.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

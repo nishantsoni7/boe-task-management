@@ -812,9 +812,13 @@ describe('a menu entry shows which action is about to run', () => {
   })
 })
 
-// ══ 5. The eight-column table, and where the removed columns went ════════════
+// ══ 5. The seven-column table, and where the removed columns went ════════════
+//
+// Owner review 2026-09-18: Initiated By and Approved By left the row (they are
+// in the payment's details and Activity) and Allocated Against took their
+// place, before Allocation Status.
 
-describe('the primary row shows eight columns and no money detail', () => {
+describe('the primary row shows seven columns and no money detail', () => {
   const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
                            view.indexOf('function RowActionsMenu'))
 
@@ -830,11 +834,10 @@ describe('the primary row shows eight columns and no money detail', () => {
       'Remaining is not a primary column')
   })
 
-  test('but the row still renders the eight that remain, in order', () => {
+  test('but the row still renders the seven that remain, in order', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
-                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
-                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)',
-                   '<IconAction']
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
+                   '<ConfirmedAllocationBadge', '<IconAction']
     let cursor = -1
     for (const marker of order) {
       const at = table.indexOf(marker, cursor + 1)
@@ -1224,8 +1227,8 @@ describe('the mobile card matches the table’s information order', () => {
 
   test('the fields appear in the required order', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
-                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
-                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)']
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
+                   '<ConfirmedAllocationBadge']
     let cursor = -1
     for (const marker of order) {
       const at = body.indexOf(marker, cursor + 1)
@@ -1286,7 +1289,7 @@ describe('this is a presentation change, and costs no extra request', () => {
 
   test('opening the badge triggers no query at all', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    const end = badge.indexOf('\n// ── Allocated Against')
     assert.ok(end > 0, 'the badge body could not be delimited')
     const body = badge.slice(0, end)
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
@@ -1313,7 +1316,7 @@ describe('nothing about who may do what has moved', () => {
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    const end = badge.indexOf('\n// ── Allocated Against')
     assert.ok(end > 0, 'the badge body could not be delimited')
     const body = badge.slice(0, end)
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===']) {
