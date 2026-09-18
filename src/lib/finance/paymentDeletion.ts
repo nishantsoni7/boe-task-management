@@ -77,10 +77,14 @@ export function isConfirmedPaymentStatus(status: string | null | undefined): boo
  * function says.
  */
 export function canDeletePayment(
-  payment: { status: string },
+  payment: { status: string; is_test_data?: boolean | null },
   actor: { isAdmin: boolean },
 ): boolean {
   if (!isPaymentDeletableStatus(payment.status)) return false
+  // A VERIFIED payment is permanent history unless it is test data
+  // (20261218000000, owner decision 2026-09-18). A wrong verified payment is
+  // corrected, never deleted. Unknown is treated as real: no Delete.
+  if (isConfirmedPaymentStatus(payment.status) && payment.is_test_data !== true) return false
   return actor.isAdmin
 }
 

@@ -141,9 +141,14 @@ describe('who the database lets delete a payment, and therefore who is offered i
     assert.equal(canDeletePayment({ status: 'pending_approval' }, { isAdmin: true }), true)
   })
 
-  test('an administrator may delete a Confirmed Payment too — the reversal from the previous rule', () => {
-    assert.equal(canDeletePayment({ status: 'approved_unlinked' }, { isAdmin: true }), true)
-    assert.equal(canDeletePayment({ status: 'approved_linked' }, { isAdmin: true }), true)
+  // REVISED AGAIN (20261218000000, owner decision 2026-09-18): a VERIFIED
+  // payment is permanent history. An admin may delete one only when it is
+  // TEST data; a real one is corrected, never deleted.
+  test('an administrator may delete a Confirmed Payment only when it is test data', () => {
+    assert.equal(canDeletePayment({ status: 'approved_unlinked' }, { isAdmin: true }), false)
+    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: false }, { isAdmin: true }), false)
+    assert.equal(canDeletePayment({ status: 'approved_unlinked', is_test_data: true }, { isAdmin: true }), true)
+    assert.equal(canDeletePayment({ status: 'approved_linked', is_test_data: true }, { isAdmin: true }), true)
   })
 
   /**
@@ -161,9 +166,9 @@ describe('who the database lets delete a payment, and therefore who is offered i
     }
   })
 
-  test('an admin may delete a payment of every status the database admits', () => {
+  test('an admin may delete a payment of every status the database admits (a verified one only as test data)', () => {
     for (const status of DELETABLE_PAYMENT_STATUSES) {
-      assert.equal(canDeletePayment({ status }, { isAdmin: true }), true, status)
+      assert.equal(canDeletePayment({ status, is_test_data: true }, { isAdmin: true }), true, status)
     }
   })
 
