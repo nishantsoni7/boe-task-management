@@ -1371,3 +1371,22 @@ category mapping to clients; changed the three select policies to
 removed an unused variable. Section 30 enumerates the callable functions from the
 catalogue, so a future one without a probe fails. The same gap in the already
 shipped Order-rail RPCs was deliberately left for its own migration.
+
+---
+
+# Task Details — compact action row (2026-09-18)
+
+Adding Add to Meeting left the Task Details action row with four content-width
+buttons (Submit for Approval, Add to Meeting, Copy & Assign, Cancel) whose labels
+wrapped and made the row tall and uneven. The row is now one non-wrapping line of
+equal cells, icon above a one-line label, about 52px tall: **Approval**, **Meeting**,
+**Copy & Assign** (**Copy** when the row is narrow) and **Cancel**; Mark Complete
+takes Approval's place on tasks that need no approval (**Complete** when narrow).
+The short labels follow the row's own width (a CSS container query), so they apply
+on phones and in the narrow two-column desktop layout alike; each button carries
+its full action name as its aria-label and tooltip. Hidden actions leave the rest
+sharing the row evenly. The creator's review grid and quotation tasks are
+unchanged.
+
+Presentation only: no workflow, permission, visibility rule, status, handler,
+database object or API changed.

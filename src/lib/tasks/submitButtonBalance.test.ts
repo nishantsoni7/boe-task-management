@@ -176,9 +176,12 @@ describe('7. nothing about how it behaves has moved', () => {
       'same wording, same busy label')
   })
 
-  test('7b. the icon and the label are preserved exactly', () => {
-    assert.ok(SUBMIT.includes('<SendHorizontal size={15} strokeWidth={2.4}'))
-    assert.ok(SUBMIT.includes('Submit for Approval'))
+  test('7b. the icon is preserved, and the full name is still its accessible name', () => {
+    // 2026-09-18: the compact action row sizes the icon at 17px and shows the
+    // short label "Approval"; the full action name is the aria-label and title.
+    assert.ok(SUBMIT.includes('<SendHorizontal size={17} strokeWidth={2.4}'))
+    assert.ok(SUBMIT.includes("<ActionLabel full={reviewBusy === 'submit' ? 'Submitting…' : 'Approval'} />"))
+    assert.ok(SUBMIT.includes('title="Submit for Approval"'))
     // Not renamed, and not moved out of the action row.
     const rowStart = PAGE.indexOf('className={`boe-task-actions$')
     const rowEnd = PAGE.indexOf('{/* Completed: Reopen option */}')
@@ -236,12 +239,14 @@ describe('9-10. the row is balanced, and the phone is unchanged', () => {
     assert.equal(/\.boe-task-action-submit\s*\{\s*flex:\s*0 0/.test(CSS), false)
   })
 
-  test('9b. comfortably wider than its label, and the same height as before', () => {
-    // 14px -> 18px horizontal: a content-width button needs more room around
-    // the text than a stretched one did. Vertical padding, border and font are
-    // all unchanged, so the height is too.
-    assert.ok(SUBMIT.includes("padding: '9px 18px'"), 'balanced horizontal padding')
-    assert.ok(SUBMIT.includes("fontSize: '13px'"))
+  test('9b. its geometry comes from the compact action row', () => {
+    // 2026-09-18: once Add to Meeting made the row four actions, padding and
+    // type size moved to .boe-task-actions--compact (equal cells, one line,
+    // ~52px). The button spreads the row's shared base rather than its own.
+    assert.ok(SUBMIT.includes('...actionBase,'), 'shares the row base')
+    assert.equal(SUBMIT.includes('padding:'), false, 'no private padding')
+    assert.equal(SUBMIT.includes('fontSize:'), false, 'no private type size')
+    assert.match(CSS, /\.boe-task-actions\.boe-task-actions--compact > button \{[^}]*min-height:\s*52px/)
     assert.match(SUBMIT_CSS, /border:\s*1\.5px/, 'same border width as the old solid one')
   })
 

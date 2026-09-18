@@ -426,24 +426,32 @@ export function AddToMeetingModal({
 }
 
 /** The compact Task Detail action. Nothing else on that screen changes. */
-export function AddToMeetingButton({ onClick }: { onClick: () => void }) {
+// `compact`: the Task Details active-task row, where .boe-task-actions--compact
+// sets the geometry and the visible label shortens to "Meeting".
+export function AddToMeetingButton({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
   return (
     <button
       className="boe-task-action-secondary"
       onClick={onClick}
+      aria-label="Add to Meeting"
+      title="Add to Meeting"
       style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-        padding: '9px 14px', borderRadius: '8px',
+        ...(compact ? {} : {
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+          padding: '9px 14px',
+          fontSize: '12.5px',
+        }),
+        borderRadius: '8px',
         border: `1.5px solid ${colors.amber}55`,
         background: '#ffffff', color: '#8A5A12',
-        fontSize: '12.5px', fontWeight: 600, cursor: 'pointer',
+        fontWeight: 600, cursor: 'pointer',
         fontFamily: 'inherit',
       }}
       onMouseEnter={e => { e.currentTarget.style.background = colors.amberTint }}
       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
     >
-      <CalendarPlus size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
-      Add to Meeting
+      <CalendarPlus size={compact ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
+      {compact ? <span className="boe-task-action-label">Meeting</span> : 'Add to Meeting'}
     </button>
   )
 }
