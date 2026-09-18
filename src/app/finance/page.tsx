@@ -66,6 +66,7 @@ import {
   type PaymentEntryTarget,
 } from './components/PaymentEntryFields'
 import { CustodyTrailFields } from './components/CustodyTrailFields'
+import { PaymentModeHint } from './components/PaymentModeHint'
 import {
   PaymentCustodyTrail,
   PaymentDestinationSummary,
@@ -1392,6 +1393,7 @@ function NewPaymentConfirmationModal({
                     <option key={m.value} value={m.value}>{m.label}</option>
                   ))}
                 </select>
+                <PaymentModeHint mode={form.paymentMode} />
               </Field>
             </div>
 
@@ -1783,6 +1785,7 @@ function EditPaymentModal({ request: r, isAdmin, supabase, onClose, onSaved }: E
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
+          <PaymentModeHint mode={paymentMode} />
         </Field>
       </div>
 
@@ -1879,11 +1882,13 @@ function FigureBand({ children }: { children: React.ReactNode }) {
 // the same quiet type as an ordinary field. It is deliberately NOT a badge —
 // HDFC is information about the money, not a state the payment is in, and
 // tinting it would make it read as a status beside the real one in the header.
-function FigureCell({ label, value, lead, strong }: {
+function FigureCell({ label, value, lead, strong, hint }: {
   label: string
   value: string
   lead?: boolean
   strong?: boolean
+  /** One muted line under the figure — the payment-mode helper, for a verifier. */
+  hint?: React.ReactNode
 }) {
   return (
     <div style={{ background: colors.raised, padding: '11px 14px', minWidth: 0 }}>
@@ -1901,6 +1906,7 @@ function FigureCell({ label, value, lead, strong }: {
       }}>
         {value}
       </div>
+      {hint}
     </div>
   )
 }
@@ -2126,7 +2132,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       {/* THE ACCOUNT, not a second copy of the mode. paymentDestinationLabel
           resolves a historical mode/received_in pair to the account it was
           recorded against, so a 2026 row still reads as an account name. */}
-      <FigureCell label="Payment Mode" value={paymentDestinationLabel(r.payment_mode, r.received_in)} strong />
+      <FigureCell label="Payment Mode" value={paymentDestinationLabel(r.payment_mode, r.received_in)} strong hint={<PaymentModeHint mode={r.payment_mode} />} />
       <FigureCell label="Payment Date" value={fmtDate(r.payment_date)} />
     </FigureBand>
   )

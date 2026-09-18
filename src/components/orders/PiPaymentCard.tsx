@@ -17,6 +17,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
+import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
 import {
   EMPTY_PI_PAYMENT_FORM,
@@ -250,6 +251,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
             <option value="">Select…</option>
             {PI_PAYMENT_MODES.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
+          <PaymentModeHint mode={form.paymentMode} />
           {touched && errors.paymentMode && <div style={ERR}>{errors.paymentMode}</div>}
         </div>
 

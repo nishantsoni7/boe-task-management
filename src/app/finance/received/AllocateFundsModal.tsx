@@ -29,7 +29,7 @@
 // own row bookkeeping for "several targets, one form, live totals" against a
 // different RPC. Both are reused here rather than restated a third time.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
@@ -60,6 +60,17 @@ import {
   type AllocationCandidate,
   type TargetPosition,
 } from './AllocatePaymentModal'
+import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
+import {
+  MIXED_CUSTOMER_BLOCKED_REASON,
+  customerGroups,
+  customerSignature,
+  customerTargetLabel,
+  isMixedCustomerSelection,
+  rowCustomerTargets,
+  type CustomerTarget,
+} from '@/lib/finance/mixedCustomers'
+import { loadAllocationLedger } from '@/lib/finance/allocationCorrection'
 
 export const ALLOCATE_FUNDS_MODAL_TITLE = 'Allocate Funds'
 /** The label on the control that opens this. Named once so tests read the product's word. */
@@ -152,6 +163,34 @@ export function AllocateFundsModal({
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The customer set the person confirmed, as customerSignature() writes it. */
+  const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
+
+  // THE CUSTOMERS THIS PAYMENT ALREADY PAYS FOR. A new row for a different
+  // customer makes the payment mixed just as surely as two new rows do, so the
+  // live allocations are read once on open. Until that read lands, the
+  // payment's own derived customer stands in for them.
+  const [existingCustomers, setExistingCustomers] = useState<CustomerTarget[]>(() =>
+    payment.client_name && !isZero(parseExact(payment.allocated_total) ?? ZERO)
+      ? [{ clientName: payment.client_name, label: 'existing allocations on this payment' }]
+      : [])
+  useEffect(() => {
+    let live = true
+    void loadAllocationLedger(supabase, payment.id).then(ledger => {
+      if (!live || !ledger.readable) return
+      setExistingCustomers(ledger.entries
+        .filter(e => e.status === 'active')
+        .map(e => ({ clientName: e.clientName, label: customerTargetLabel(e.kind, e.reference) })))
+    })
+    return () => { live = false }
+  }, [supabase, payment.id])
+
+  // Asked only once a record has been chosen here: the question is about THIS
+  // allocation, not a payment that was already mixed before the modal opened.
+  const chosenTargets = rowCustomerTargets(rows)
+  const customers = customerGroups([...existingCustomers, ...chosenTargets])
+  const mixedCustomers = chosenTargets.length > 0 && isMixedCustomerSelection(customers)
+  const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerSignature(customers)
 
   const existingAllocated = exactToString(parseExact(payment.allocated_total) ?? ZERO)
   const newTotal = exactToString(rowsTotal(rows))
@@ -159,6 +198,7 @@ export function AllocateFundsModal({
   const remainingParsed = parseExact(remaining) ?? ZERO
   const remainingIsNegative = isNegative(remainingParsed)
   const blocked = allocateFundsBlockedReason({ payment, rows })
+    ?? (mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null)
   const duplicates = duplicateTargetKeys(rows)
 
   const patchRow = (key: string, patch: Partial<SplitAllocationRow>) => {
@@ -280,6 +320,15 @@ export function AllocateFundsModal({
         ))}
       </div>
 
+      {mixedCustomers && (
+        <MixedCustomerWarning
+          groups={customers}
+          confirmed={mixedConfirmed}
+          onConfirmedChange={next => setMixedConfirmedFor(next ? customerSignature(customers) : null)}
+          disabled={saving}
+        />
+      )}
+
       {blocked && !error && (
         <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{blocked}</div>
       )}
@@ -355,6 +404,8 @@ function FundsAllocationRow({
       kind: candidate.kind,
       targetId: candidate.id,
       targetLabel: `${candidate.reference} · ${candidate.clientName}`,
+      clientName: candidate.clientName,
+      reference: candidate.reference,
     })
     setResults([])
     setQuery('')
@@ -383,7 +434,7 @@ function FundsAllocationRow({
             </span>
             <button
               type="button"
-              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null }); setPosition(null); onPick() }}
+              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null, clientName: null, reference: null }); setPosition(null); onPick() }}
               className="boe-btn boe-btn-ghost"
               style={{ padding: '3px 9px', fontSize: '11px' }}
             >

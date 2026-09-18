@@ -185,8 +185,13 @@ export function paymentActivityLabel(
       return `Payment allocated to ${namedTarget(kind, p.target_id, resolve)}`
     }
     case 'allocation_reversed': {
+      // The REASON is part of the event: a reversal is a correction somebody
+      // made on purpose, and the trail is where a reader checks why. It is the
+      // server-written reversal_reason from the payload, never a client value.
       const kind = targetKind(p.target_type)
-      return `Allocation to ${namedTarget(kind, p.target_id, resolve)} reversed`
+      const reason = str(p.reversal_reason).trim()
+      const base = `Allocation to ${namedTarget(kind, p.target_id, resolve)} reversed`
+      return reason ? `${base}. Reason: ${reason}` : base
     }
     case 'allocation_moved': {
       // The PI-to-Order conversion, and the only shape it has: the allocation

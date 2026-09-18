@@ -1,6 +1,6 @@
 # Finance, Quotation, Order Request & Confirmed Order — Workflow and Current State
 
-Last updated: 2 August 2026
+Last updated: 18 September 2026 (§17 added)
 
 This document is two things:
 
@@ -379,7 +379,7 @@ The prompt asks these be distinguished rather than collapsed into "refund":
 | Refund | Money returned to the customer | New signed record referencing the original payment |
 | Data-entry error | The payment never happened | **Void** the original, not a refund |
 | Bank reversal / bounce | Money arrived then left | Reversal record; original stays visible |
-| Wrong allocation | Right money, wrong order | **Relink**, which already exists |
+| Wrong allocation | Right money, wrong order | **Reverse the allocation and allocate again** — Correct Allocation, §17 (relinking was retired) |
 | Wrong amount or date | Right event, wrong facts | **Correction**, with before/after |
 
 **Recommended shape:** a `finance_payment_adjustments` table — one row per
@@ -1768,3 +1768,118 @@ document order; re-running the assigner was a no-op; a descriptive-only edit
 left an existing code untouched; a new line received `BE003`; reordering did
 not renumber; and a retired code was never reused by an unrelated new line at
 the same source row.
+
+## 17. Allocation correction and Finance entry clarity (Phase 1 of the Order & Finance improvement plan — no migration)
+
+### 17.1 What was missing
+
+`reverse_payment_allocation(uuid, text)` and the protected action
+`finance.allocate_correct` have existed since `20260918000000`, and the
+database side is proved by `supabase/tests/finance_payment_allocation_assertions.sql`.
+But **no screen called the RPC** and `FinanceCapabilities.canCorrectPaymentAllocation`
+was derived and never read. An advance put against the wrong Order could only be
+corrected by direct SQL.
+
+### 17.2 How a correction works
+
+1. Open the payment on **Finance → Received Payments**.
+2. **Correct Allocation** (under the Allocation list; drawn only for a holder of
+   `finance.allocate_correct` with Finance entry, or an admin, and only when the
+   payment has an active allocation the reader can see).
+3. The screen reads the payment's allocations **afresh** — Payment ID, payment
+   amount, allocated, unallocated, and every active allocation with its PI/Order
+   number, customer and amount — and lists earlier reversals with who, when and
+   why.
+4. Choose the wrong allocation, write the **mandatory reason** (≤ 500
+   characters), **Review reversal**.
+5. The confirmation states the allocation, the **whole** amount released, the
+   unallocated balance afterwards and the reason. **Reverse allocation**.
+6. On the server's answer only: *Allocation reversed*, with the new balance.
+   **Allocate Funds** (the existing workflow, offered to `finance.allocate`
+   holders) divides or reassigns the released money. Someone holding only
+   `finance.allocate_correct` is told to ask an allocator.
+
+**A reversal is whole.** An allocation cannot be partly moved; the screen says
+so before anything is sent. To move ₹20,000 of a ₹50,000 allocation, reverse it
+and allocate ₹20,000 + ₹30,000 again.
+
+**Nothing is deleted, copied or overwritten.** The reversed allocation keeps its
+row (`status = 'reversed'`, `reversed_by`, `reversed_at`, `reversal_reason`),
+stays listed under *Reversed allocations*, and the payment's activity trail now
+reads *Allocation to Order 0524 reversed. Reason: …*. The payment row — amount,
+date, mode, proof, verification status — is not written. The released amount is
+unallocated because the balance is derived (amount − active allocations); PI and
+Order totals (`pi_submission_payment_summary`, `order_linked_payment_total`)
+count active allocations only, so they drop by exactly the reversed amount.
+
+### 17.3 Permission and security
+
+| Check | Where |
+| --- | --- |
+| `finance.allocate_correct` (admin bypass) | `reverse_payment_allocation()` → `actor_has_module_permission()` — **the authority**; `finance.allocate` is not an alternative |
+| Non-blank reason | the RPC (`ALLOCATION_REASON_REQUIRED`) and the form |
+| Lock order payment → allocation | the RPC, unchanged |
+| SECURITY DEFINER, `search_path = public, pg_temp`, EXECUTE to `authenticated` only | unchanged since `20260918000000` |
+| The control is drawn | `caps.canCorrectPaymentAllocation` — a convenience, never the boundary |
+
+No new permission, no new RPC, no migration, no service-role path.
+
+### 17.4 Stale data and concurrent corrections
+
+Immediately before sending, the screen re-reads the allocation. If it has been
+reversed by someone else, has moved (its PI was approved and the allocation
+moved onto the new Order), has vanished, or its amount differs, **nothing is
+sent**, the person is told what changed and that nothing was changed, and the
+payment is refreshed. A race lost in the final milliseconds is caught by the
+RPC's idempotency (`already_reversed: true`), reported the same way — never as
+a success.
+
+### 17.5 Mixed-customer confirmation
+
+One payment may still be divided across records of **different customers**.
+In **Record Payment** and **Allocate Funds**, when the chosen records (plus, for
+Allocate Funds, the payment's existing active allocations) name more than one
+customer, a warning lists each customer with its PI/Order numbers and the entry
+waits for an explicit checkbox. The confirmation is tied to that exact set of
+customers — adding another asks again. Nothing is blocked because customers
+differ, no customer name is sent or overwritten (the server derives it), and
+such a payment keeps displaying as *Multiple customers*.
+
+### 17.6 Payment-mode helper text
+
+Stored values and labels are unchanged (`hdfc`/HDFC, `pnb`/PNB, `paytm`/Paytm,
+`canara`/Canara). One plain line under the mode is shown **only** on payment
+entry, editing and verification screens — never in lists:
+
+| Mode | Helper |
+| --- | --- |
+| HDFC | Company bank account — current account. |
+| Canara | Company bank account — savings account. |
+| Paytm | Internal cash collection — cash collected by BOE itself. |
+| PNB | External cash route — cash collected through an outside source and handed over to BOE. |
+
+The wording follows the existing account definitions (`BOE_ACCOUNTS`,
+`src/app/finance/paymentDestinations.ts`). Legacy modes show no helper.
+
+### 17.7 Deferred to later phases (unchanged here)
+
+Refunds, bank reversals, payment voids, confirmed-payment correction records,
+customer credit (§4.1), structured payment milestones, the dispatch payment gate
+(§4.2), fabric and finish approval (§4.3), quotation-to-PI conversion (D5), and
+any new payment permission.
+
+### 17.8 Verifying it
+
+`src/lib/finance/allocationCorrection.test.ts` (rules, stale cases, the send path
+against a recording fake client, capability gating, the RPC's contract read from
+its migration), `src/app/finance/received/correctAllocation.render.test.tsx`
+(every screen of the flow and the detail-modal gate, rendered),
+`src/lib/finance/mixedCustomers.test.ts`, and the helper-text block in
+`src/lib/finance/paymentEntry.test.ts`. The SQL suite gained one case — an
+allocate-only caller calling `reverse_payment_allocation()` is refused and the
+allocation stays active; it runs only against a migrated database with real
+users and was **not executed** in this pass.
+
+The two migration-list tests in `participantAndOrderTotalSecurity.test.ts` now
+read `supabase/migrations` with `readdirSync` instead of the Windows-only
+`dir /b`, so they run on Linux too; their assertions are unchanged.

@@ -1064,6 +1064,25 @@ not merged and not applied.*
   allocations are re-pointed onto the new Order in one UPDATE — same ids, same
   payments, same amounts, same provenance. A reversed allocation stays with the
   PI it was reversed against.
+* **A wrong allocation is corrected by reversing it, then allocating again.**
+  *Correct Allocation* on a Received Payment calls `reverse_payment_allocation()`
+  and needs the protected `finance.allocate_correct` (admins bypass) —
+  `finance.allocate` alone cannot reverse. A reason is mandatory. The **whole**
+  allocation is released to the payment's unallocated balance; part of an
+  allocation is never moved on its own. The allocation is kept as reversed
+  history (who, when, why), the payment row is not touched, and the released
+  money is reassigned with **Allocate Funds** (`finance.allocate`). See
+  FINANCE_ORDER_WORKFLOW.md §17.
+* **One payment may cover several customers, but only on purpose.** Record
+  Payment and Allocate Funds warn when the chosen records (and, for Allocate
+  Funds, the payment's existing allocations) name more than one customer, list
+  them, and require an explicit confirmation for that exact set. The split is
+  never blocked for that reason, no customer name is typed or overwritten, and
+  the payment displays as *Multiple customers*.
+* **Payment modes keep their account names; entry screens explain them.** HDFC
+  and Canara are company bank accounts (current / savings), Paytm is internal
+  cash collection, PNB is the external cash route. The one-line explanation is
+  shown only where a mode is entered, edited or verified — never in lists.
 
 ## The reduced-payment exception
 

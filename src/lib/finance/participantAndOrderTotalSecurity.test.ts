@@ -54,6 +54,21 @@ function grepLines(dirs: string[], needle: string): Array<{ file: string; line: 
   return hits
 }
 
+/**
+ * Every file name in supabase/migrations, read from the filesystem.
+ *
+ * Both migration-list tests below used `execSync('dir /b supabase\\migrations')`,
+ * which only cmd.exe understands: on Linux the command does not exist, so the
+ * tests failed there for a reason that had nothing to do with migrations. Same
+ * fix as grepLines above. The assertions that read this list are unchanged —
+ * only how the list is obtained moved.
+ */
+function migrationFileNames(): string[] {
+  return readdirSync(join('supabase', 'migrations'), { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => entry.name)
+}
+
 /** Distinct files (not `.test.` files) containing at least one match. */
 function grepFiles(dirs: string[], needle: string): string[] {
   return [...new Set(grepLines(dirs, needle).map(h => h.file))].filter(f => !/\.test\./.test(f))
@@ -666,8 +681,7 @@ describe('the applied migrations are frozen', () => {
     // This says nothing about whether any of them is applied — 106, 107 and 108
     // all are, and a future 109 may be by the time it is read. What it protects
     // is that a new file cannot appear unnoticed beside four frozen ones.
-    const later = execSync('dir /b supabase\\migrations', { encoding: 'utf8' })
-      .split('\n').map(s => s.trim()).filter(Boolean)
+    const later = migrationFileNames()
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261005000000')
       .sort()
     assert.deepEqual(later, [
@@ -937,8 +951,7 @@ describe('the applied migrations are frozen', () => {
     // PR #50: unapplied migrations in one tree apply in filename order
     // whatever sequence the branches merge in.
     const frozenFiles = new Set(FROZEN.map(([file]) => file.split('/').pop()))
-    const pending = execSync('dir /b supabase\\migrations', { encoding: 'utf8' })
-      .split('\n').map(s => s.trim()).filter(Boolean)
+    const pending = migrationFileNames()
       .filter(f => /^\d{14}_/.test(f) && f.slice(0, 14) > '20261008000000')
       .filter(f => !frozenFiles.has(f))
       .sort()
