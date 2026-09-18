@@ -240,7 +240,17 @@ describe('the import preview and the parser are untouched', () => {
   test('the workbook parser is byte-for-byte what it was', () => {
     const base = atBase(PARSER)
     if (base === null) return
-    assert.equal(now(PARSER), base,
+    // ONE LATER, DELIBERATE CHANGE is set aside, and only that one: the PI
+    // header requirements (Sales Person G21, the two dates A113/E113 — owner
+    // decision 2026-09-18). Everything else must still equal the starting
+    // commit, so any other drift in the parser still fails here.
+    const withoutHeaderRequirements = (src: string) => src
+      .replace(/\n\/\*\*\n \* The three header cells a PI must fill[\s\S]*?\n {2}return issues\n\}\n/, '')
+      .replace('  blockingIssues.push(...headerRequirementIssues(header))\n', '')
+      .replace("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'\n", '')
+    assert.ok(now(PARSER).includes('export function headerRequirementIssues('),
+      'the set-aside block is the header-requirement rule')
+    assert.equal(withoutHeaderRequirements(now(PARSER)), base,
       'no cell, no header rule and no diagnostic changed')
   })
 })
