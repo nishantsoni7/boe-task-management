@@ -5128,3 +5128,272 @@ button.pi-detail-paystatus-metric:hover .pi-detail-paystatus-metric-chevron {
   white-space: nowrap;
   border: 0;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   ORDERS & FINANCE — shell controls, loading skeleton, list toolbar
+   Additive only — nothing above is modified.
+   ══════════════════════════════════════════════════════════════════════════════
+
+   The shell's Home door and Refresh button (ModuleShellControls.tsx). Same
+   sizes and colours the two layouts drew inline; moved here because :hover and
+   :focus-visible cannot be written inline, and a keyboard user deserves the
+   same feedback as a pointer. */
+
+.boe-shell-home {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 7px; flex-shrink: 0;
+  background: rgba(220,31,46,0.08);
+  border: 1px solid rgba(220,31,46,0.20);
+  color: #DC1F2E;
+  transition: background 0.15s;
+}
+.boe-shell-home:hover,
+.boe-shell-home:focus-visible { background: rgba(220,31,46,0.14); }
+
+.boe-shell-refresh {
+  display: flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0;
+  background: rgba(0,0,0,0.05);
+  border: 1px solid rgba(0,0,0,0.10);
+  color: #6B7384; cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.boe-shell-refresh:hover:not(:disabled),
+.boe-shell-refresh:focus-visible,
+.boe-shell-refresh.is-refreshing {
+  background: rgba(220,31,46,0.08);
+  color: #DC1F2E;
+}
+.boe-shell-refresh.is-refreshing { cursor: default; }
+
+/* Destinations that became real links keep the look of the buttons they
+   replaced: the Back control on a record, the module switch, a row's "View". */
+a.boe-btn,
+a.order-back,
+a.boe-nav-item { text-decoration: none; }
+
+/* The page title became an <h1> in these two shells, so a screen reader can
+   jump to it and say where the reader is. The class already sets its size;
+   this only removes the heading's own margin. */
+h1.boe-page-title { margin-top: 0; }
+
+/* Confirmed Orders: the Order number is the row's real link (Tab, new tab,
+   address on hover); the row stays clickable for a pointer. */
+.orders-row-link { color: inherit; text-decoration: none; }
+.orders-row-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+.orders-row-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+
+/* A related record named inside a Finance row — the Order or PI Draft a
+   payment is for. Drawn as a link ONLY when the reader may open it. */
+.boe-record-link { color: #5585E8; text-decoration: underline; text-underline-offset: 2px; }
+.boe-record-link:hover { color: #2F5FC4; }
+.boe-record-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+
+/* The Orders dashboard's cards are links now; the hover lift they had inline,
+   and a visible keyboard ring they never had. */
+.orders-stat-card { transition: box-shadow 0.15s; }
+.orders-stat-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.orders-stat-card:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; }
+
+/* Table on a desktop, one card per Order on a phone. Pure CSS, so nothing is
+   measured and nothing swaps after the first paint. */
+.orders-list-cards { display: none; list-style: none; margin: 0; padding: 0; }
+@media (max-width: 767px) {
+  .orders-list-table { display: none; }
+  .orders-list-cards { display: block; }
+}
+.orders-list-card {
+  padding: 12px 14px;
+  border-bottom: 1px solid #E8EBF0;
+  display: flex; flex-direction: column; gap: 4px;
+  min-width: 0;
+}
+.orders-list-card:last-child { border-bottom: none; }
+.orders-list-card.has-update { background: rgba(85,133,232,0.07); box-shadow: inset 3px 0 0 #5585E8; }
+.orders-list-card-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.orders-list-card-link {
+  font-size: 13.5px; font-weight: 700; color: #111318; text-decoration: none;
+  /* A comfortable touch target without changing the line's height. */
+  padding: 6px 0; margin: -6px 0;
+}
+.orders-list-card-link:focus-visible { outline: 2px solid #5585E8; outline-offset: 2px; border-radius: 3px; }
+.orders-list-card-client {
+  font-size: 12.5px; color: #111318;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.orders-list-card-meta {
+  display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: #4A5261;
+}
+.orders-list-card-value { font-weight: 600; color: #111318; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* The loading skeleton (ModulePageSkeleton.tsx). Static blocks, no shimmer —
+   the same choice ControlCenterSkeleton made. */
+.boe-skel {
+  display: block;
+  background: #E8EBF0;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+/* ── The list toolbar (Confirmed Payments, Payments to Verify) ──────────────
+   ONE ROW OF NARROWING: search, the date range, the way out. It wraps as whole
+   groups rather than overlapping, and the search box takes the slack up to a
+   readable maximum instead of stretching across a wide screen. */
+.boe-list-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 8px 10px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.boe-list-search {
+  display: flex; align-items: center; gap: 6px;
+  background: #FFFFFF; border: 1px solid rgba(0,0,0,0.10);
+  border-radius: 8px; padding: 0 10px; height: 32px;
+  flex: 1 1 220px; min-width: 0; max-width: 340px;
+  cursor: text;
+}
+.boe-list-search:focus-within { border-color: rgba(85,133,232,0.55); box-shadow: 0 0 0 3px rgba(85,133,232,0.12); }
+.boe-list-search input {
+  flex: 1; min-width: 0; height: 100%;
+  background: transparent; border: none; outline: none;
+  font-size: 12px; color: #111318;
+}
+.boe-list-search input::-webkit-search-cancel-button { display: none; }
+.boe-list-search-clear {
+  background: none; border: none; cursor: pointer; color: #6B7384;
+  width: 24px; height: 24px; margin-right: -6px; border-radius: 6px;
+  font-size: 12px; line-height: 1;
+}
+.boe-list-search-clear:hover,
+.boe-list-search-clear:focus-visible { background: #E8EBF0; color: #111318; }
+
+/* The date range is ONE group with each bound carrying its own words, so at
+   320px the pair wraps onto two full-width lines instead of clipping the
+   second input past the card edge. */
+.boe-list-daterange {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 6px 8px; min-width: 0; max-width: 100%;
+}
+.boe-list-date {
+  display: flex; align-items: center; gap: 6px;
+  min-width: 0; max-width: 100%;
+  font-size: 11px; color: #6B7384; white-space: nowrap;
+}
+.boe-list-date input {
+  width: 138px; min-width: 0; max-width: 100%;
+  height: 32px; padding: 0 8px; font-size: 12px;
+}
+.boe-list-clear { height: 32px; padding: 0 10px; font-size: 11.5px; flex-shrink: 0; }
+.boe-list-count {
+  font-size: 11.5px; color: #6B7384; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 480px) {
+  .boe-list-search { max-width: none; flex-basis: 100%; }
+  .boe-list-date { flex: 1 1 100%; }
+  /* Both labels one width, so the two date inputs line up. */
+  .boe-list-date span { min-width: 56px; }
+  .boe-list-date input { flex: 1; width: auto; }
+}
+
+/* The Orders ↔ Finance switch names the module alone on a phone. */
+.boe-module-switch-short { display: none; }
+@media (max-width: 480px) {
+  .boe-module-switch-long { display: none; }
+  .boe-module-switch-short { display: inline; }
+}
+
+/* The status tabs HEAD the list they narrow — the same arrangement as the
+   Confirmed Orders status strip: underline tabs on the card's top edge, the
+   count of the whole narrowed set at the right. The strip scrolls sideways on
+   its own if a phone cannot hold every tab; the page never does. */
+.boe-list-tabbar {
+  display: flex; align-items: stretch; gap: 12px;
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+  padding: 0 14px 0 6px; min-width: 0;
+}
+.boe-list-tabs {
+  display: flex; align-items: stretch; gap: 4px;
+  flex: 1; min-width: 0; overflow-x: auto;
+  scrollbar-width: none;
+}
+.boe-list-tabs::-webkit-scrollbar { display: none; }
+.boe-list-tab {
+  padding: 9px 10px 8px; border: none; background: transparent;
+  border-bottom: 2px solid transparent; border-radius: 6px 6px 0 0;
+  font-size: 12px; font-weight: 500; color: #111318;
+  white-space: nowrap; flex-shrink: 0; cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.boe-list-tab:hover { background: rgba(0,0,0,0.035); }
+.boe-list-tab[aria-selected="true"] {
+  color: #DC1F2E; font-weight: 700;
+  background: rgba(220,31,46,0.055);
+  border-bottom-color: #DC1F2E;
+}
+.boe-list-tab:focus-visible { outline: 2px solid #5585E8; outline-offset: -2px; }
+.boe-list-tabbar .boe-list-count { display: flex; align-items: center; flex-shrink: 0; }
+@media (max-width: 480px) {
+  .boe-list-tabbar { flex-wrap: wrap; padding: 0 10px 0 4px; gap: 0 8px; }
+  .boe-list-tabs { flex-basis: 100%; }
+  .boe-list-tabbar .boe-list-count { padding: 6px 6px 8px; }
+}
+
+/* ── Row actions: routine ones in words, the rest behind "More actions" ─────
+   Every width here is a FIXED number that lib/finance/rowActions.ts adds up to
+   the Actions column width — change one, change the other. */
+.boe-row-actions {
+  display: inline-flex; align-items: center; justify-content: flex-end;
+  flex-wrap: nowrap; vertical-align: middle;
+}
+/* Table rows: fixed slots — View at the cell's left edge, Allocate beside it,
+   More pinned right — so every control sits at the same x down the column. */
+.boe-row-actions--slots { width: 100%; justify-content: flex-start; }
+.boe-row-actions--slots > .boe-row-actions-menu { margin-left: auto; }
+.boe-row-actions-menu { display: inline-flex; }
+.boe-row-action {
+  height: 28px; padding: 0; flex-shrink: 0;
+  border-radius: 6px; cursor: pointer;
+  font-size: 12px; font-weight: 600; line-height: 1;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.boe-row-action--view {
+  width: 50px;
+  background: #FFFFFF; color: #111318;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+.boe-row-action--view:hover,
+.boe-row-action--view:focus-visible { background: #F4F5F7; border-color: rgba(0,0,0,0.2); }
+.boe-row-action--allocate {
+  width: 70px;
+  background: rgba(85,133,232,0.08); color: #2F5FC4;
+  border: 1px solid rgba(85,133,232,0.35);
+}
+.boe-row-action--allocate:hover,
+.boe-row-action--allocate:focus-visible { background: rgba(85,133,232,0.16); }
+.boe-row-action:focus-visible { outline: 2px solid rgba(232,160,48,0.45); outline-offset: 1px; }
+.boe-row-more {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; flex-shrink: 0;
+  background: transparent; border: none; border-radius: 6px;
+  color: #4A5261; cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+.boe-row-more:hover,
+.boe-row-more:focus-visible,
+.boe-row-more[aria-expanded="true"] { background: #E8EBF0; color: #111318; }
+.boe-row-more:focus-visible { outline: 2px solid rgba(232,160,48,0.45); outline-offset: -1px; }
+
+/* The rule above a destructive menu entry: Delete sits apart from the
+   ordinary entries as well as below them. */
+.boe-menu-separator { height: 1px; margin: 4px 2px; background: rgba(0,0,0,0.08); }
+
+/* A PI's quiet refresh that did not land: the record stays, this says so. */
+.pi-refresh-failed {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px; border-radius: 8px;
+  background: #FFFBEB; border: 1px solid #FDE68A;
+  font-size: 12px; color: #92400E; line-height: 1.5;
+}

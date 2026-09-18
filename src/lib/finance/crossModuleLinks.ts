@@ -89,3 +89,41 @@ export function canOpenFinanceRecord(canAccessFinanceModule: boolean | null | un
 export function canOpenOrderRecord(canAccessOrdersModule: boolean | null | undefined): boolean {
   return Boolean(canAccessOrdersModule)
 }
+
+// ── What a Payment Request is FOR, as a door ─────────────────────────────────
+
+/** The fields of a payment destination this needs — see paymentDestination.ts. */
+export type LinkableDestination = {
+  kind: 'confirmed_order' | 'pi_draft' | 'mixed' | 'suspense'
+  orderId: string | null
+  submissionId: string | null
+  /**
+   * The record's own reference, or null. The destinations projection is
+   * security_invoker, so a single destination whose record the reader may NOT
+   * open comes back with no reference ("Not visible to you"). That null is the
+   * evidence this link needs.
+   */
+  reference: string | null
+}
+
+/**
+ * The page of the ONE Order or PI Draft a payment is for — or null.
+ *
+ * All three must hold, or the cell stays plain text:
+ *   1. the reader has Orders module entry (canOpenOrderRecord);
+ *   2. the destination names exactly one record (a mixed or suspense payment
+ *      names none, so it links to none);
+ *   3. that record came back under the reader's OWN RLS (a reference was read).
+ *
+ * A visible name is not permission to open the record, and this adds none: the
+ * destination page re-reads its row under the same session.
+ */
+export function destinationRecordHref(
+  destination: LinkableDestination | null | undefined,
+  canAccessOrdersModule: boolean,
+): string | null {
+  if (!canOpenOrderRecord(canAccessOrdersModule) || !destination || !destination.reference) return null
+  if (destination.kind === 'confirmed_order' && destination.orderId) return orderDetailHref(destination.orderId)
+  if (destination.kind === 'pi_draft' && destination.submissionId) return piSubmissionHref(destination.submissionId)
+  return null
+}

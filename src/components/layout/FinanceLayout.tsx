@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Home, RefreshCw, Bell } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -15,6 +15,9 @@ import {
   RECEIVED_PAYMENTS_COUNTS_KEY,
 } from '@/hooks/queries/useReceivedPaymentsCounts'
 import { useQueryClient } from '@tanstack/react-query'
+import { activeFinanceNav, type FinanceNavKey } from '@/lib/navigation/moduleNav'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellControls'
 
 /**
  * The one Received Payments list — now ONE nav entry, no `?view=` sub-items.
@@ -29,6 +32,9 @@ import { useQueryClient } from '@tanstack/react-query'
  * anyone who lands on it directly — only the sidebar entries are gone.
  */
 export const RECEIVED_PAYMENTS_PATH = '/finance/received'
+
+/** The one count the sidebar draws. Module-level, so its identity is stable. */
+const SIDEBAR_COUNTED_VIEWS = ['all'] as const
 
 type FinanceLayoutProps = {
   profile: UserProfile | null
@@ -53,6 +59,11 @@ export function FinanceLayout({
   const [refreshing,  setRefreshing]  = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
+  // While a page is still loading it has no profile of its own yet; the
+  // session-scoped context already holds the same row (it is the one the module
+  // switch reads), so the account block at the foot of the sidebar is drawn
+  // from the first frame instead of appearing when the page lands. Display only.
+  const { profile: sessionProfile } = usePermissionContext()
   const { triggerRefresh } = useRefresh()
   const queryClient = useQueryClient()
 
@@ -63,7 +74,8 @@ export function FinanceLayout({
 
   // Neutral volume count for the Confirmed Payments entry. Not an unread
   // count: opening the page never changes it.
-  const receivedCounts = useReceivedPaymentsCounts()
+  // Only "all" is drawn, so only "all" is counted — one head query, not four.
+  const receivedCounts = useReceivedPaymentsCounts(SIDEBAR_COUNTED_VIEWS)
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -136,10 +148,15 @@ export function FinanceLayout({
   // rendered as no badge at all (see the `> 0` guard below), matching the
   // Confirmed Payments page's own empty state rather than showing a "0" next
   // to a page that has nothing on it.
-  const navItems: { label: string; path: string; icon: React.ReactNode; badge?: number }[] = [
-    { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} /> },
-    { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, badge: receivedCounts.all },
+  //
+  // WHICH ONE IS LIT is activeFinanceNav's decision (src/lib/navigation/
+  // moduleNav.ts). It used to be an exact path match, so no sub-route of
+  // Confirmed Payments, and not the retired Payments to Verify page, lit anything.
+  const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number }[] = [
+    { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} />, key: 'requests' },
+    { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, key: 'confirmed', badge: receivedCounts.all },
   ]
+  const activeKey = activeFinanceNav(pathname)
 
   return (
     <div className="boe-app-shell">
@@ -162,44 +179,27 @@ export function FinanceLayout({
               <div className="boe-sidebar-brand-sub">Finance</div>
             </div>
           </div>
-          <button
-            onClick={() => router.push('/modules')}
-            title="BOE OS Home"
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 28, height: 28, borderRadius: '7px',
-              background: 'rgba(220,31,46,0.08)',
-              border: '1px solid rgba(220,31,46,0.20)',
-              color: '#DC1F2E', cursor: 'pointer', flexShrink: 0,
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.10)' }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(220,31,46,0.08)' }}
-          >
-            <Home size={14} strokeWidth={2} />
-          </button>
+          <ShellHomeLink />
         </div>
 
-        {/* Nav */}
-        <div className="boe-sidebar-section">
-          {navItems.map(item => {
-            const active = pathname === item.path
-            return (
-              <button
-                key={item.path}
-                className={`boe-nav-item${active ? ' active' : ''}`}
-                onClick={() => navTo(item.path)}
-                style={{ fontWeight: active ? 600 : 400, marginBottom: '2px' }}
-              >
-                <span style={{ color: active ? '#DC1F2E' : '#A0A9BE', display: 'flex', alignItems: 'center' }}>
-                  {item.icon}
-                </span>
-                {item.label}
-                {/* Neutral volume badge — grey on grey, never the red
-                    unread-alert styling. Hidden at a real zero: a badge
-                    reading "0" beside a page with nothing on it describes
-                    the same fact twice, once as a number and once as the
-                    page's own empty state. */}
-                {typeof item.badge === 'number' && item.badge > 0 && (
+        {/* Nav — real links (see ModuleShellControls): new tab, aria-current,
+            and Next prefetches each destination's code while it is on screen. */}
+        <nav className="boe-sidebar-section" aria-label="Finance">
+          {navItems.map(item => (
+            <ShellNavLink
+              key={item.path}
+              href={item.path}
+              label={item.label}
+              icon={item.icon}
+              active={item.key === activeKey}
+              onNavigate={() => setSidebarOpen(false)}
+              trailing={
+                /* Neutral volume badge — grey on grey, never the red
+                   unread-alert styling. Hidden at a real zero: a badge
+                   reading "0" beside a page with nothing on it describes
+                   the same fact twice, once as a number and once as the
+                   page's own empty state. */
+                typeof item.badge === 'number' && item.badge > 0 ? (
                   <span style={{
                     marginLeft: 'auto', flexShrink: 0,
                     fontSize: '10px', fontWeight: 700, color: '#3D4455',
@@ -208,10 +208,10 @@ export function FinanceLayout({
                   }}>
                     {item.badge > 999 ? '999+' : item.badge}
                   </span>
-                )}
-              </button>
-            )
-          })}
+                ) : undefined
+              }
+            />
+          ))}
 
           {/* Permanent Notifications entry — always visible, badge only when
               unread. Scoped to Finance's own notification types, and routes to
@@ -221,7 +221,7 @@ export function FinanceLayout({
             count={unreadFinance}
             href="/finance/notifications"
           />
-        </div>
+        </nav>
 
         {/* ── Notification alert block — same pulsing indicator as Task Management,
             shown only when Finance has unread notifications. ── */}
@@ -254,7 +254,7 @@ export function FinanceLayout({
 
         {/* Bottom profile section */}
         <ViewModeSidebarSection
-          profile={profile}
+          profile={profile ?? sessionProfile}
           onSignOut={onSignOut}
           accountSettingsHref="/account?returnTo=/finance"
         />
@@ -274,37 +274,16 @@ export function FinanceLayout({
             ☰
           </button>
           <div className="boe-page-title-group">
-            <div className="boe-page-title">{title}</div>
+            <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
           </div>
           {/* flexWrap + flexShrink let the wider action row (switch + primary +
               refresh) wrap cleanly on narrow screens instead of being clipped
               by .boe-main-content's overflow-x: hidden. Desktop is unaffected. */}
           <div className="boe-header-actions" style={{ flexWrap: 'wrap', flexShrink: 1 }}>
-            <ModuleSwitchButton target="orders" profile={profile} />
+            <ModuleSwitchButton target="orders" />
             {actions}
-            <button
-              onClick={handleRefresh}
-              disabled={refreshing}
-              title="Refresh"
-              style={{
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                width: 32, height: 32, borderRadius: '8px',
-                background: refreshing ? 'rgba(220,31,46,0.08)' : 'rgba(0,0,0,0.05)',
-                border: '1px solid rgba(0,0,0,0.10)',
-                color: refreshing ? '#DC1F2E' : '#6B7384',
-                cursor: refreshing ? 'default' : 'pointer',
-                flexShrink: 0, transition: 'background 0.15s, color 0.15s',
-              }}
-              onMouseEnter={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(220,31,46,0.08)'; e.currentTarget.style.color = '#DC1F2E' } }}
-              onMouseLeave={e => { if (!refreshing) { e.currentTarget.style.background = 'rgba(0,0,0,0.05)'; e.currentTarget.style.color = '#6B7384' } }}
-            >
-              <RefreshCw
-                size={14}
-                strokeWidth={2}
-                style={refreshing ? { animation: 'boe-spin 0.7s linear infinite' } : undefined}
-              />
-            </button>
+            <ShellRefreshButton refreshing={refreshing} onRefresh={handleRefresh} />
           </div>
         </div>
 
