@@ -99,6 +99,21 @@ export type PiBlockingIssueCode =
    * to be said out loud. The message names the format and the replacement.
    */
   | 'PRODUCT_IMAGE_UNSUPPORTED_FORMAT'
+  /**
+   * HEADER REQUIREMENTS (owner decision 2026-09-18). A PI is not taken unless
+   * the workbook itself says who sold it and the two dates the Order runs on:
+   *
+   *   G21   Sales Person — not blank, not a dash.
+   *   A113  Date of Order Confirmation from Client — a real date.
+   *   E113  Dispatch Date Finalized — a real date.
+   *
+   * A real date means an Excel date: order_confirmation_date is stored only
+   * from one, so "TBC", "45 days" or a blank would reach the Order as nothing.
+   * Lead source is not in the workbook and is asked on screen instead.
+   */
+  | 'PI_SALESPERSON_MISSING'
+  | 'PI_CONFIRMATION_DATE_MISSING'
+  | 'PI_DISPATCH_DATE_MISSING'
 
 /** Things a reviewer should see. None of these stops a submission. */
 export type PiWarningCode =
@@ -181,7 +196,8 @@ export type PiWarning = {
 export type PiBlockingIssue = {
   code: PiBlockingIssueCode
   message: string
-  /** Always present: every blocking issue belongs to one genuine product row. */
+  /** Always present: the sheet row to fix — a product row, or for the three
+   *  PI_* header requirements, row 21 (Sales Person) or row 113 (the dates). */
   row: number
   /** The A1 address a reviewer should go and fix. */
   cell?: string

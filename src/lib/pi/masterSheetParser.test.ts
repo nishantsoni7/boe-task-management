@@ -34,6 +34,8 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { zipSync } from 'fflate'
 import {
   parseBoePiWorkbook,
@@ -178,7 +180,10 @@ const DEFAULT_HEADER_BLOCK: Record<string, CellSpec> = {
   G28: text('2 Fictional Lane\nSample City'),
   A113: num(45010),
   E112: text('Dispatch Date Finalized:'),
-  E113: text('6 weeks from date of confirmation'),
+  // A REAL dispatch date after the confirmation date: since the PI header
+  // requirements (2026-09-18) a lead time in E113 is refused. The lead-time
+  // wording is still exercised by the header tests below, as a refusal.
+  E113: num(45050),
 }
 
 const DEFAULT_COMMERCIAL: Record<string, CellSpec> = {
@@ -622,9 +627,8 @@ describe('header block', () => {
     assert.equal(header.shipToGst, '22CCCCC2222C2Z2')
     assert.equal(header.shippingAddress, '2 Fictional Lane\nSample City')
     assert.equal(header.orderConfirmationDate?.iso, '2023-03-25')
-    assert.equal(header.dispatchCommitment?.text, '6 weeks from date of confirmation')
-    assert.equal(header.dispatchCommitment?.source, 'text')
-    assert.equal(header.dispatchCommitment?.iso, null)
+    assert.equal(header.dispatchCommitment?.iso, '2023-05-04')
+    assert.equal(header.dispatchCommitment?.source, 'serial')
   })
 
   test('B20 is reported as SOURCE data and no official number is allocated', async () => {
@@ -2352,5 +2356,88 @@ describe('unsupported image formats', () => {
     assert.equal(issues.length, 1)
     assert.equal(issues[0].row, FIRST_PRODUCT_ROW + 1, 'only the middle product is named')
     assert.equal(result.data.representativeImages.length, 2, 'the other two are kept')
+  })
+})
+
+// ══ PI header requirements (owner decision 2026-09-18) ═══════════════════════
+//
+// A PI is not taken unless the workbook says who sold it (G21) and the two
+// dates the Order runs on: Date of Order Confirmation (A113) and Dispatch Date
+// Finalized (E113). Blocking, so the browser preview says so before upload and
+// process-draft refuses to save the PI.
+
+describe('the PI header requirements', () => {
+  const headerCodes = async (extraCells: Record<string, CellSpec | null>) => {
+    const wb = buildPiWorkbook({ products: inventProducts(1), anchors: anchorsFor(1), extraCells })
+    const result = expectOk(await parseBoePiWorkbook(wb))
+    return result.blockingIssues.filter(i => i.code.startsWith('PI_'))
+  }
+
+  test('a complete header raises nothing', async () => {
+    assert.deepEqual(await headerCodes({}), [])
+  })
+
+  test('an empty, blank or dashed Sales Person is refused at G21, row 21', async () => {
+    for (const g21 of [null, text('   '), text('-'), text('—')]) {
+      const issues = await headerCodes({ G21: g21 })
+      assert.equal(issues.length, 1, JSON.stringify(g21))
+      assert.equal(issues[0].code, 'PI_SALESPERSON_MISSING')
+      assert.equal(issues[0].cell, 'G21')
+      assert.equal(issues[0].row, 21)
+      assert.match(issues[0].message, /Sales Person \(cell G21\) is empty/)
+    }
+  })
+
+  test('a missing or non-date confirmation date is refused at A113', async () => {
+    const empty = await headerCodes({ A113: null })
+    assert.ok(empty.some(i => i.code === 'PI_CONFIRMATION_DATE_MISSING' && i.cell === 'A113' && /is empty/.test(i.message)))
+    const words = await headerCodes({ A113: text('on receipt of advance') })
+    const issue = words.find(i => i.code === 'PI_CONFIRMATION_DATE_MISSING')
+    assert.ok(issue)
+    assert.match(issue.message, /reads "on receipt of advance", which is not a date/)
+  })
+
+  test('a lead time in E113 is refused — words, or a bare number Excel turned into 1900', async () => {
+    for (const e113 of [text('6 weeks from date of confirmation'), text('45 days'), num(90)]) {
+      const issues = await headerCodes({ E113: e113 })
+      const issue = issues.find(i => i.code === 'PI_DISPATCH_DATE_MISSING')
+      assert.ok(issue, JSON.stringify(e113))
+      assert.equal(issue.cell, 'E113')
+      assert.match(issue.message, /not a date|not a lead time/)
+    }
+  })
+
+  test('an empty dispatch date is refused', async () => {
+    const issues = await headerCodes({ E113: null })
+    assert.ok(issues.some(i => i.code === 'PI_DISPATCH_DATE_MISSING' && /is empty/.test(i.message)))
+  })
+
+  test('a dispatch date before the confirmation date is refused and says why', async () => {
+    const issues = await headerCodes({ E113: num(45000) })
+    const issue = issues.find(i => i.code === 'PI_DISPATCH_DATE_MISSING')
+    assert.ok(issue)
+    assert.match(issue.message, /before the order confirmation date/)
+  })
+
+  test('a dispatch date on the confirmation date itself is accepted', async () => {
+    assert.deepEqual(await headerCodes({ E113: num(45010) }), [])
+  })
+
+  test('all three missing: three issues, one per cell', async () => {
+    const issues = await headerCodes({ G21: null, A113: null, E113: null })
+    assert.deepEqual(issues.map(i => i.cell).sort(), ['A113', 'E113', 'G21'])
+  })
+
+  test('the upload route refuses a PI with any blocking issue, header ones included', () => {
+    const route = readFileSync(join(process.cwd(), 'src/app/api/orders/import/process-draft/route.ts'), 'utf8')
+    assert.ok(route.includes("if (parsed.blockingIssues.length > 0) {"))
+    assert.ok(route.includes("'BLOCKING_ISSUES'"))
+  })
+
+  test('the dispatch rule is the save path’s own due-date rule, not a second copy', () => {
+    const parser = readFileSync(join(process.cwd(), 'src/lib/pi/masterSheetParser.ts'), 'utf8')
+    assert.ok(parser.includes("import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'"))
+    const fn = parser.slice(parser.indexOf('export function headerRequirementIssues('))
+    assert.ok(fn.includes('plausibleDueDate({'))
   })
 })

@@ -55,6 +55,7 @@ import {
 } from './workbookReader'
 import { harvestProductImages, resolveDrawingPart, type PiImageHarvest } from './drawingAnchors'
 import { describeImageFormat, isStorableImageFormat, PI_ACCEPTED_IMAGE_LABEL } from './imageFormats'
+import { DUE_DATE_FLOOR, isCalendarDate, plausibleDueDate } from '@/lib/orders/dueDate'
 import type {
   PiAmountOrText,
   PiBlockingIssue,
@@ -369,6 +370,7 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
   }
 
   const header = readHeader(sheet, warnings)
+  blockingIssues.push(...headerRequirementIssues(header))
   const commercial = readCommercial(sheet, products, warnings)
 
   return {
@@ -510,6 +512,67 @@ function readHeader(sheet: PiSheet, warnings: PiWarning[]): PiHeader {
     orderConfirmationDate: date(HEADER_CELLS.orderConfirmationDate, 'Order confirmation date'),
     dispatchCommitment:    date(HEADER_CELLS.dispatchCommitment, 'Dispatch commitment'),
   }
+}
+
+/**
+ * The three header cells a PI must fill before it is taken (owner decision
+ * 2026-09-18). Blocking, so the browser preview says so before upload and the
+ * upload route refuses to save the PI (process-draft step 13).
+ *
+ * Sales Person: any real text — blank or a bare dash is not a name.
+ * Confirmation date: a real calendar date (an Excel date, 2020 or later) —
+ *   the Order stores order_confirmation_date only from one.
+ * Dispatch date: exactly what the save path will keep as the due date —
+ *   plausibleDueDate() (lib/orders/dueDate.ts), the SAME rule, so the upload
+ *   check and the saved record can never disagree. A lead time ("6 weeks from
+ *   date of confirmation", or a bare "90" that Excel turned into a 1900 date)
+ *   is not a due date and is refused.
+ */
+export function headerRequirementIssues(header: Pick<PiHeader,
+  'createdBy' | 'creationDate' | 'orderConfirmationDate' | 'dispatchCommitment'>): PiBlockingIssue[] {
+  const issues: PiBlockingIssue[] = []
+  if (isNotApplicableMarker(header.createdBy)) {
+    issues.push({
+      code: 'PI_SALESPERSON_MISSING',
+      message: 'Sales Person (cell G21) is empty. Enter the salesperson’s name and upload the PI again.',
+      row: 21,
+      cell: HEADER_CELLS.createdBy,
+    })
+  }
+
+  const confirmed = header.orderConfirmationDate?.iso ?? null
+  const confirmedOk = isCalendarDate(confirmed) && confirmed >= DUE_DATE_FLOOR
+  if (!confirmedOk) {
+    const read = header.orderConfirmationDate
+    issues.push({
+      code: 'PI_CONFIRMATION_DATE_MISSING',
+      message: read
+        ? `Date of Order Confirmation (cell A113) reads "${read.text}", which is not a date. Enter it as a date (for example 25/10/2026) and upload the PI again.`
+        : 'Date of Order Confirmation (cell A113) is empty. Enter the date and upload the PI again.',
+      row: 113,
+      cell: HEADER_CELLS.orderConfirmationDate,
+    })
+  }
+
+  const dispatch = header.dispatchCommitment
+  const due = plausibleDueDate({
+    candidate: dispatch?.iso ?? dispatch?.text ?? null,
+    orderConfirmationDate: confirmed,
+    creationDate: header.creationDate?.iso ?? null,
+  })
+  if (due === null) {
+    issues.push({
+      code: 'PI_DISPATCH_DATE_MISSING',
+      message: !dispatch
+        ? 'Dispatch Date Finalized (cell E113) is empty. Enter the dispatch date and upload the PI again.'
+        : confirmedOk && isCalendarDate(dispatch.iso) && dispatch.iso >= DUE_DATE_FLOOR
+          ? `Dispatch Date Finalized (cell E113) is ${dispatch.text}, which is before the order confirmation date. Enter the correct dispatch date and upload the PI again.`
+          : `Dispatch Date Finalized (cell E113) reads "${dispatch.text}", which is not a date. Enter the actual dispatch date (for example 25/12/2026), not a lead time, and upload the PI again.`,
+      row: 113,
+      cell: HEADER_CELLS.dispatchCommitment,
+    })
+  }
+  return issues
 }
 
 // ── Products ──────────────────────────────────────────────────────────────────
