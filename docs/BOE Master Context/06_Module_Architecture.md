@@ -1033,7 +1033,10 @@ public and no page embeds a URL.
 | `can_be_order_assignee` | eligibility other people's forms read | per-employee |
 
 Finance carries two that Order Management depends on: `finance.allocate`
-(record a payment against a PI) and `finance.approve` (verify one).
+(record a payment against a PI) and `finance.approve` (verify one). A third,
+`finance.allocate_correct`, reverses a wrong allocation from the Received
+Payment's *Correct Allocation* screen (`reverse_payment_allocation()`); the
+released money is reassigned with `finance.allocate`.
 
 ## The visibility predicates
 

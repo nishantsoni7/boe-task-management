@@ -48,7 +48,10 @@ import {
   isPaymentMode,
   paymentEntryErrorMessage,
   paymentModeLabel,
+  PAYMENT_MODE_HELPER,
+  paymentModeHelper,
 } from './paymentEntry'
+import { BOE_ACCOUNTS } from '@/app/finance/paymentDestinations'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r\n/g, '\n')
@@ -1007,5 +1010,71 @@ describe('the intent table is closed by name, not by omission', () => {
       'it must look at what was actually recorded')
     assert.ok(check.includes('role_table_grants'),
       'and at the privileges, which is where the push failed')
+  })
+})
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PAYMENT MODE HELPER TEXT — plain words for a new employee
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('what each payment mode is, in plain words', () => {
+  test('every current mode has one short line, and no legacy mode has one', () => {
+    for (const m of PAYMENT_MODE_VALUES) {
+      const text = PAYMENT_MODE_HELPER[m]
+      assert.ok(text && text.length <= 100, `${m} needs a short helper line`)
+    }
+    for (const legacy of LEGACY_PAYMENT_MODE_VALUES) {
+      assert.equal(paymentModeHelper(legacy), null, `${legacy} is history and has nothing to explain`)
+    }
+    assert.equal(paymentModeHelper(null), null)
+  })
+
+  test('the lines name the three kinds of route', () => {
+    assert.match(PAYMENT_MODE_HELPER.hdfc, /^Company bank account/)
+    assert.match(PAYMENT_MODE_HELPER.canara, /^Company bank account/)
+    assert.match(PAYMENT_MODE_HELPER.paytm, /^Internal cash collection/)
+    assert.match(PAYMENT_MODE_HELPER.pnb, /^External cash route/)
+  })
+
+  test('they agree with the definitions BOE already uses for these accounts', () => {
+    const by = new Map(BOE_ACCOUNTS.map(a => [a.key, a]))
+    assert.match(PAYMENT_MODE_HELPER.hdfc, /current account/)
+    assert.equal(by.get('hdfc')?.helper, 'Company current account')
+    assert.match(PAYMENT_MODE_HELPER.canara, /savings account/)
+    assert.equal(by.get('canara')?.helper, 'Savings account')
+    assert.equal(by.get('paytm')?.capture, 'collection')
+    assert.equal(by.get('pnb')?.capture, 'handover')
+    assert.match(PAYMENT_MODE_HELPER.pnb, /handed over/)
+  })
+
+  test('stored values and labels are unchanged', () => {
+    assert.deepEqual(PAYMENT_MODES.map(m => [m.value, m.label]),
+      [['hdfc', 'HDFC'], ['pnb', 'PNB'], ['paytm', 'Paytm'], ['canara', 'Canara']])
+  })
+
+  test('no internal term appears in the helper text', () => {
+    for (const text of Object.values(PAYMENT_MODE_HELPER)) {
+      assert.equal(/hawala/i.test(text), false)
+    }
+  })
+
+  test('shown on entry, editing and verification screens', () => {
+    const request = read(REQUEST_FORM)
+    assert.equal((request.match(/<PaymentModeHint /g) ?? []).length, 3,
+      'Payment Request entry, its edit modal, and the verification modal')
+    assert.ok(read(RECORD_FORM).includes('<PaymentModeHint mode={paymentMode}'))
+    assert.ok(read('src/app/finance/received/ReceivedPaymentsView.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
+    assert.ok(read('src/components/orders/PiPaymentCard.tsx').includes('<PaymentModeHint mode={form.paymentMode} />'))
+  })
+
+  test('never on a payment list', () => {
+    const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
+    const table = view.slice(view.indexOf('function ReceivedPaymentsTable('), view.indexOf('function IconAction('))
+    assert.ok(table.length > 0 && !table.includes('PaymentModeHint'))
+    const cards = view.slice(view.indexOf('function ReceivedPaymentsCards('), view.indexOf('function rowView('))
+    assert.ok(cards.length > 0 && !cards.includes('PaymentModeHint'))
+    const request = read(REQUEST_FORM)
+    const list = request.slice(request.indexOf('export function PaymentsTable('), request.indexOf('export default function FinancePage('))
+    assert.ok(list.length > 0 && !list.includes('PaymentModeHint'))
   })
 })

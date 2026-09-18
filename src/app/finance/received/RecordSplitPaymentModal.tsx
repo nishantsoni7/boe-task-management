@@ -93,6 +93,15 @@ import {
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
 import { validateProofFile } from '@/lib/paymentProof'
 import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
+import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
+import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
+import {
+  MIXED_CUSTOMER_BLOCKED_REASON,
+  customerGroups,
+  customerSignature,
+  isMixedCustomerSelection,
+  rowCustomerTargets,
+} from '@/lib/finance/mixedCustomers'
 import {
   ProofReferenceField,
   ProofReferenceSection,
@@ -154,6 +163,8 @@ export function RecordSplitPaymentModal({
   // ── The destinations ──
   const [rows, setRows] = useState<SplitAllocationRow[]>([EMPTY_ALLOCATION_ROW(nextRowKey())])
   const [pickerFor, setPickerFor] = useState<string | null>(null)
+  /** The customer set the person confirmed, as customerSignature() writes it. */
+  const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
 
   const [saving, setSaving] = useState(false)
   const [error,  setError]  = useState<string | null>(null)
@@ -174,8 +185,17 @@ export function RecordSplitPaymentModal({
   // half-entered allocation does: the server refuses it and takes the whole
   // entry with it, so the person is told here instead of after a round trip.
   const custodyError = custodyDraftsError(custody)
+
+  // SEVERAL CUSTOMERS IN ONE PAYMENT is allowed and never silent: the warning
+  // lists them and the entry waits for an explicit tick, which is tied to this
+  // exact set of customers. See src/lib/finance/mixedCustomers.ts.
+  const customers = targetKind ? customerGroups(rowCustomerTargets(rows)) : []
+  const mixedCustomers = isMixedCustomerSelection(customers)
+  const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerSignature(customers)
+
   const blocked    = splitPaymentBlockedReason({ destination, amount, paymentDate, paymentMode, rows })
     ?? custodyError ?? attachError
+    ?? (mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null)
 
   // ── Not losing what was typed ──
   //
@@ -343,18 +363,20 @@ export function RecordSplitPaymentModal({
           />
         </Field>
         {/* THE FOUR ACCOUNTS, from the one shared list — the same four the
-            Payment Request form offers. What each means internally is not
-            printed here or anywhere. */}
+            Payment Request form offers — with one plain line under the choice
+            saying what kind of route it is. */}
         <Field label="Payment mode" htmlFor="rsp-mode">
           <select
             id="rsp-mode" className="boe-input" value={paymentMode}
             onChange={e => { setPaymentMode(e.target.value); setError(null) }}
+            aria-describedby="rsp-mode-hint"
             style={{ width: '100%' }}
           >
             {paymentModeOptionsFor(null).map(m => (
               <option key={m.value} value={m.value}>{m.label}</option>
             ))}
           </select>
+          <PaymentModeHint mode={paymentMode} id="rsp-mode-hint" />
         </Field>
       </div>
 
@@ -493,6 +515,15 @@ export function RecordSplitPaymentModal({
         </>
       )}
 
+      {mixedCustomers && (
+        <MixedCustomerWarning
+          groups={customers}
+          confirmed={mixedConfirmed}
+          onConfirmedChange={next => setMixedConfirmedFor(next ? customerSignature(customers) : null)}
+          disabled={saving}
+        />
+      )}
+
       {/* The reason the control is disabled, always stated. A greyed-out button
           with no explanation is what has somebody clicking it repeatedly. */}
       {blocked && !error && (
@@ -604,6 +635,8 @@ function AllocationRow({
       kind: candidate.kind,
       targetId: candidate.id,
       targetLabel: `${candidate.reference} · ${candidate.clientName}`,
+      clientName: candidate.clientName,
+      reference: candidate.reference,
     })
     setResults([])
     setQuery('')
@@ -632,7 +665,7 @@ function AllocationRow({
             </span>
             <button
               type="button"
-              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null }); setPosition(null); onPick() }}
+              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null, clientName: null, reference: null }); setPosition(null); onPick() }}
               className="boe-btn boe-btn-ghost"
               style={{ padding: '3px 9px', fontSize: '11px' }}
             >

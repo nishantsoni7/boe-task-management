@@ -57,6 +57,14 @@ export type SplitAllocationRow = {
   targetId: string | null
   /** What the picker showed: an Order number, a PI reference, a client name. */
   targetLabel: string | null
+  /**
+   * The chosen record's customer, as the picker read it. Display only — it
+   * feeds the mixed-customer warning and is never sent to the server, which
+   * derives the payment's customer for itself.
+   */
+  clientName?: string | null
+  /** The chosen record's own number or PI reference, for the same warning. */
+  reference?: string | null
   amount: string
 }
 

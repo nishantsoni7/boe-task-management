@@ -303,6 +303,11 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // public.meetings. It edits no existing table, policy, grant or function,
       // so it reaches nothing asserted here.
       '20261213000000_meeting_order_discussion_workflow.sql',
+      // 20261215000000 — one read-only RPC, payment_allocation_ledger_for_correction(uuid),
+      // for the Correct Allocation screen. It creates no table, column, policy, grant
+      // on a table or permission action, and edits no existing function, so it reaches
+      // nothing asserted here.
+      '20261215000000_payment_allocation_ledger_for_correction.sql',
     ])
   })
 

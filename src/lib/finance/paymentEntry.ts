@@ -89,8 +89,10 @@ export const SUSPENSE_NOTICE =
 // These are the four BOE accounts money actually arrives into. What each one
 // MEANS internally is recorded in the database's own column comment
 // (finance_payment_requests.payment_mode, 20261014000000 §1) and is deliberately
-// absent from this file, because it is absent from the product: a screen shows
-// the account name and never a gloss on it.
+// absent from this file: a LABEL is the account name and never a gloss on it.
+// Since the allocation-correction phase, forms that choose or check a mode add
+// one short plain-language line under it — PAYMENT_MODE_HELPER below — so a new
+// employee can tell a bank account from a cash route without internal terms.
 //
 // THE FIVE LEGACY VALUES ARE STILL READABLE. bank_transfer, cash, upi, cheque
 // and other are what every payment recorded before the change carries. They stay
@@ -118,6 +120,32 @@ export const PAYMENT_MODES = [
 ] as const
 
 export type PaymentMode = typeof PAYMENT_MODES[number]['value']
+
+/**
+ * One short line saying what KIND of route each account is, for a person who
+ * has not learned the account names yet.
+ *
+ * SHOWN ONLY WHERE A MODE IS CHOSEN OR CHECKED — payment entry, editing and
+ * verification — beside the bare account name, never in a list, a table or a
+ * label. The label stays the account name (the test for that is unchanged).
+ *
+ * THE WORDS ARE THE ONES BOE ALREADY USES for these accounts (BOE_ACCOUNTS in
+ * src/app/finance/paymentDestinations.ts), grouped into the three kinds of
+ * route: company bank account, internal cash collection, external cash route.
+ * The database column comment's internal terms are not repeated here.
+ */
+export const PAYMENT_MODE_HELPER: Record<PaymentMode, string> = {
+  hdfc:   'Company bank account — current account.',
+  canara: 'Company bank account — savings account.',
+  paytm:  'Internal cash collection — cash collected by BOE itself.',
+  pnb:    'External cash route — cash collected through an outside source and handed over to BOE.',
+}
+
+/** The helper line for a stored mode, or null for a legacy or unknown one. */
+export function paymentModeHelper(value: string | null | undefined): string | null {
+  const key = (value ?? '').trim()
+  return isPaymentMode(key) ? PAYMENT_MODE_HELPER[key] : null
+}
 
 export const PAYMENT_MODE_VALUES: readonly PaymentMode[] = PAYMENT_MODES.map(m => m.value)
 

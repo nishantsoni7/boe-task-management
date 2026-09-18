@@ -29,7 +29,7 @@
 // own row bookkeeping for "several targets, one form, live totals" against a
 // different RPC. Both are reused here rather than restated a third time.
 
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
@@ -60,6 +60,16 @@ import {
   type AllocationCandidate,
   type TargetPosition,
 } from './AllocatePaymentModal'
+import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
+import {
+  MIXED_CUSTOMER_BLOCKED_REASON,
+  MIXED_CUSTOMER_INCOMPLETE_BLOCKED_REASON,
+  customerTargetLabel,
+  mixedCustomerCheck,
+  rowCustomerTargets,
+  type ExistingCustomers,
+} from '@/lib/finance/mixedCustomers'
+import { loadAllocationLedger } from '@/lib/finance/allocationCorrection'
 
 export const ALLOCATE_FUNDS_MODAL_TITLE = 'Allocate Funds'
 /** The label on the control that opens this. Named once so tests read the product's word. */
@@ -152,6 +162,39 @@ export function AllocateFundsModal({
   const [pickerFor, setPickerFor] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  /** The customer set the person confirmed, as customerSignature() writes it. */
+  const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
+
+  // THE CUSTOMERS THIS PAYMENT ALREADY PAYS FOR, from the COMPLETE ledger
+  // only (payment_allocation_ledger_for_correction). A direct allocation read
+  // can be cut down by RLS, and the payment's stored client_name does not follow
+  // later allocations, so neither is used. The complete ledger is refused to a
+  // caller without finance.allocate_correct; then the existing customers are
+  // UNKNOWN and the warning says so — see mixedCustomerCheck.
+  const [existing, setExisting] = useState<ExistingCustomers>({ state: 'loading' })
+  useEffect(() => {
+    let live = true
+    void loadAllocationLedger(supabase, payment.id).then(ledger => {
+      if (!live) return
+      setExisting(ledger.readable
+        ? {
+            state: 'complete',
+            targets: ledger.entries
+              .filter(e => e.status === 'active')
+              .map(e => ({ clientName: e.clientName, label: customerTargetLabel(e.kind, e.reference) })),
+          }
+        : { state: 'unavailable' })
+    })
+    return () => { live = false }
+  }, [supabase, payment.id])
+
+  const customerCheck = mixedCustomerCheck({
+    existing,
+    chosen: rowCustomerTargets(rows),
+    paymentHasAllocations: !isZero(parseExact(payment.allocated_total) ?? ZERO),
+  })
+  const mixedCustomers = customerCheck.warn
+  const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerCheck.signature
 
   const existingAllocated = exactToString(parseExact(payment.allocated_total) ?? ZERO)
   const newTotal = exactToString(rowsTotal(rows))
@@ -159,6 +202,9 @@ export function AllocateFundsModal({
   const remainingParsed = parseExact(remaining) ?? ZERO
   const remainingIsNegative = isNegative(remainingParsed)
   const blocked = allocateFundsBlockedReason({ payment, rows })
+    ?? (mixedCustomers && !mixedConfirmed
+      ? (customerCheck.incomplete ? MIXED_CUSTOMER_INCOMPLETE_BLOCKED_REASON : MIXED_CUSTOMER_BLOCKED_REASON)
+      : null)
   const duplicates = duplicateTargetKeys(rows)
 
   const patchRow = (key: string, patch: Partial<SplitAllocationRow>) => {
@@ -280,6 +326,16 @@ export function AllocateFundsModal({
         ))}
       </div>
 
+      {mixedCustomers && (
+        <MixedCustomerWarning
+          groups={customerCheck.groups}
+          incomplete={customerCheck.incomplete}
+          confirmed={mixedConfirmed}
+          onConfirmedChange={next => setMixedConfirmedFor(next ? customerCheck.signature : null)}
+          disabled={saving}
+        />
+      )}
+
       {blocked && !error && (
         <div style={{ fontSize: '12px', color: colors.muted, lineHeight: 1.5 }}>{blocked}</div>
       )}
@@ -355,6 +411,8 @@ function FundsAllocationRow({
       kind: candidate.kind,
       targetId: candidate.id,
       targetLabel: `${candidate.reference} · ${candidate.clientName}`,
+      clientName: candidate.clientName,
+      reference: candidate.reference,
     })
     setResults([])
     setQuery('')
@@ -383,7 +441,7 @@ function FundsAllocationRow({
             </span>
             <button
               type="button"
-              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null }); setPosition(null); onPick() }}
+              onClick={() => { onChange({ kind: null, targetId: null, targetLabel: null, clientName: null, reference: null }); setPosition(null); onPick() }}
               className="boe-btn boe-btn-ghost"
               style={{ padding: '3px 9px', fontSize: '11px' }}
             >

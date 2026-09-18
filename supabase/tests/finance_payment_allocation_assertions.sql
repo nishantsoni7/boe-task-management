@@ -661,6 +661,19 @@ begin
     assert sqlerrm like '%ALLOCATION_REASON_REQUIRED%', 'a blank reason must raise ALLOCATION_REASON_REQUIRED';
   end;
 
+  -- Holding finance.allocate is not holding finance.allocate_correct: the
+  -- allocator may create this allocation but may not reverse it. This is the
+  -- server-side half of the Correct Allocation screen's permission gate.
+  perform set_config('request.jwt.claim.sub', current_setting('test.allocator_id'), true);
+  begin
+    v_r := public.reverse_payment_allocation(v_alloc, 'allocator trying to correct');
+    assert false, 'finance.allocate alone must not be able to reverse an allocation';
+  exception when insufficient_privilege then null;
+  end;
+  assert (select status from public.finance_payment_allocations where id = v_alloc) = 'active',
+    'a refused reversal must leave the allocation active';
+  perform set_config('request.jwt.claim.sub', current_setting('test.corrector_id'), true);
+
   v_r := public.reverse_payment_allocation(v_alloc, '  Allocated to the wrong PI  ');
 
   assert (select count(*) from public.finance_payment_allocations) = v_before,

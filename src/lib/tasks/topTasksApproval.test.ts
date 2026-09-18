@@ -206,6 +206,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // trigger on public.meetings. It touches neither user_top_tasks nor the
     // completion trigger.
     '20261213000000_meeting_order_discussion_workflow.sql',
+    // 20261215000000 — one read-only RPC, payment_allocation_ledger_for_correction(uuid),
+    // for the Correct Allocation screen. It creates no table, column, policy, grant
+    // on a table or permission action, and edits no existing function, so it reaches
+    // nothing asserted here.
+    '20261215000000_payment_allocation_ledger_for_correction.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

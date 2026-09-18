@@ -107,6 +107,14 @@ describe('the two events that used to print their own column value', () => {
           target_type: 'confirmed_order', target_id: OTHER_ORDER, reversal_reason: 'wrong order',
         }),
         resolve),
+      'Allocation to Order 0529 reversed. Reason: wrong order')
+  })
+
+  test('a reversal with no reason in its payload still reads as a sentence', () => {
+    assert.equal(
+      paymentActivityLabel(
+        row('allocation_reversed', { target_type: 'confirmed_order', target_id: OTHER_ORDER }),
+        resolve),
       'Allocation to Order 0529 reversed')
   })
 })

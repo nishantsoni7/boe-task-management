@@ -86,6 +86,9 @@ import {
   ALLOCATE_FUNDS_ACTION_LABEL,
   AllocateFundsModal,
 } from './AllocateFundsModal'
+import { CorrectAllocationModal } from './CorrectAllocationModal'
+import { CORRECT_ALLOCATION_ACTION_LABEL } from '@/lib/finance/allocationCorrection'
+import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
 import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
@@ -758,7 +761,9 @@ export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }
 //   Not attached / Not provided / No notes provided → an absent optional field
 //                             is now absent from the layout.
 
-function DetailsModal({
+// EXPORTED FOR ITS RENDER TEST only — this page mounts it. The test pins that
+// Correct Allocation is drawn for a holder of the capability and for nobody else.
+export function DetailsModal({
   request: r,
   onClose,
   mayCorrectPayments,
@@ -767,9 +772,15 @@ function DetailsModal({
   allocation,
   canOpenLinkedRecord,
   onOpenLinked,
+  onCorrectAllocation,
 }: {
   request: PaymentRequest
   onClose: () => void
+  /**
+   * Opens Correct Allocation for this payment. Passed only to a reader holding
+   * finance.allocate_correct; reverse_payment_allocation() asks again.
+   */
+  onCorrectAllocation?: () => void
   /** May correct or reverse a recorded payment — the finance.manage authority. */
   mayCorrectPayments?: boolean
   supabase?: ReturnType<typeof createClient>
@@ -909,6 +920,21 @@ function DetailsModal({
         canOpenLinkedRecord={canOpenLinkedRecord}
         onOpen={onOpenLinked}
       />
+      {/* CORRECT ALLOCATION — for an allocation that names the wrong record.
+          Offered only when there is an active allocation this reader can see;
+          the correction screen reads the allocations again for itself. */}
+      {onCorrectAllocation && allocation.targets.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            type="button"
+            onClick={onCorrectAllocation}
+            className="boe-btn boe-btn-ghost"
+            style={{ padding: '6px 12px', fontSize: '12.5px' }}
+          >
+            {CORRECT_ALLOCATION_ACTION_LABEL}
+          </button>
+        </div>
+      )}
     </div>
   )
 
@@ -1157,6 +1183,7 @@ function EditPaymentModal({
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+          <PaymentModeHint mode={form.paymentMode} />
         </Field>
         <Field label="Received In" required>
           <select className="boe-input" value={form.receivedIn} onChange={set('receivedIn')} style={{ width: '100%' }}>
@@ -2157,6 +2184,9 @@ function ReceivedPaymentsViewInner(
   // single-target "Allocate" row action on Confirmed Payments with one that
   // can divide a payment across several targets in one atomic RPC call.
   const [allocateFundsTarget, setAllocateFundsTarget] = useState<PaymentRequest | null>(null)
+  // Correct Allocation (finance.allocate_correct). One Finance modal at a time:
+  // opening it closes the payment detail it was opened from.
+  const [correctAllocationTarget, setCorrectAllocationTarget] = useState<PaymentRequest | null>(null)
   // Recording a payment and dividing it in one flow. Held here rather than in
   // the modal so the list can refresh itself and say what landed.
   const [recording, setRecording] = useState(false)
@@ -2526,7 +2556,7 @@ function ReceivedPaymentsViewInner(
    * search, scroll position and every other open modal are left exactly as
    * they were — nothing here calls loadRequests() or router.refresh().
    */
-  const refreshOneRow = async (id: string) => {
+  const refreshOneRow = async (id: string): Promise<PaymentRequest | null> => {
     const { data } = await supabase
       .from(RECEIVED_PAYMENTS_SOURCE)
       .select(`
@@ -2542,7 +2572,7 @@ function ReceivedPaymentsViewInner(
       `)
       .eq('id', id)
       .maybeSingle()
-    if (!data) return
+    if (!data) return null
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const row = data as any
     const custody = (await fetchLegacyCustodyFields(supabase, [id])).get(id) ?? NO_LEGACY_CUSTODY
@@ -2608,6 +2638,7 @@ function ReceivedPaymentsViewInner(
     // set, not the page in hand — allocating this one payment can move it
     // between allocation-status buckets, so those numbers are invalidated too.
     queryClient.invalidateQueries({ queryKey: RECEIVED_PAYMENTS_COUNTS_KEY })
+    return mapped
   }
 
   // Every mutation on this page — allocate, edit, status correction — can
@@ -3183,6 +3214,36 @@ function ReceivedPaymentsViewInner(
           allocation={allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id)}
           canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
           onOpenLinked={href => router.push(href)}
+          onCorrectAllocation={caps.canCorrectPaymentAllocation
+            ? () => { setCorrectAllocationTarget(detailRequest); setDetailRequest(null) }
+            : undefined}
+        />
+      )}
+
+      {/* ── Correct Allocation ──
+          Reverses one wrong allocation through reverse_payment_allocation(),
+          then offers Allocate Funds — the existing workflow — for the released
+          money. Each change refreshes only this payment's own row. */}
+      {correctAllocationTarget && (
+        <CorrectAllocationModal
+          payment={{
+            id: correctAllocationTarget.id,
+            human_payment_id: correctAllocationTarget.human_payment_id,
+            amount: correctAllocationTarget.amount,
+          }}
+          supabase={supabase}
+          canAllocate={caps.canAllocatePayment}
+          onClose={() => setCorrectAllocationTarget(null)}
+          onChanged={() => { void refreshOneRow(correctAllocationTarget.id) }}
+          onAllocateFunds={async () => {
+            const id = correctAllocationTarget.id
+            const fresh = await refreshOneRow(id)
+            setCorrectAllocationTarget(null)
+            // The same rule the row action uses. A payment with nothing left to
+            // give (or an over-allocated one) opens its record instead.
+            if (fresh && canOfferAllocateFunds(fresh)) setAllocateFundsTarget(fresh)
+            else if (fresh) setDetailRequest(fresh)
+          }}
         />
       )}
 

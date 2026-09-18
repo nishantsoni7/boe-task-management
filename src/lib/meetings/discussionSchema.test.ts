@@ -98,8 +98,13 @@ describe('the migration is additive and forward-only', () => {
       .map(f => f.slice(0, 14))
       .filter(v => /^\d{14}$/.test(v))
       .sort()
-    assert.equal(file.slice(0, 14), versions[versions.length - 1],
-      'a new migration must be the last version, so nothing already applied is re-ordered')
+    // Pinned to its predecessor rather than to "the last file", so a LATER
+    // migration (20261215000000 onwards) does not break it, while a file slipped
+    // in BEFORE it — which would re-order what is already applied — still does.
+    const version = file.slice(0, 14)
+    assert.equal(versions.filter(v => v === version).length, 1, 'its version is unique')
+    assert.equal(versions[versions.indexOf(version) - 1], '20261212000000',
+      'a new migration must follow the last one that existed when it was written, so nothing already applied is re-ordered')
   })
 
   test('it drops no table, column or existing policy', () => {
