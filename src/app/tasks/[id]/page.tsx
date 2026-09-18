@@ -99,6 +99,29 @@ const ACTION_BUTTON_BASE: React.CSSProperties = {
   transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s, opacity 0.15s, filter 0.15s, transform 0.1s',
 }
 
+// The ordinary active-task row (Approval / Meeting / Copy & Assign / Cancel, or
+// Mark Complete in place of Approval) is one row of equal cells, icon above a
+// one-line label. Its geometry — height, padding, type size, the short labels on
+// a narrow row — lives in .boe-task-actions--compact, because it follows the
+// row's width; inline keeps only what that class does not set.
+const COMPACT_ACTION_BUTTON_BASE: React.CSSProperties = {
+  borderRadius: '8px',
+  fontWeight: 600,
+  fontFamily: font.body,
+  transition: ACTION_BUTTON_BASE.transition,
+}
+
+/** A compact action's visible label: `short` replaces `full` when the row is narrow. */
+function ActionLabel({ full, short = full }: { full: string; short?: string }) {
+  if (short === full) return <span className="boe-task-action-label">{full}</span>
+  return (
+    <span className="boe-task-action-label">
+      <span className="boe-task-action-label-full">{full}</span>
+      <span className="boe-task-action-label-short">{short}</span>
+    </span>
+  )
+}
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 export default function TaskDetailPage() {
@@ -1237,6 +1260,10 @@ export default function TaskDetailPage() {
     hasMeetingAccess: canAddToMeeting, isCreator, isAssignee, isAdmin, isQuotation,
   })
   const canCopyAssign = isAdmin && !isQuotation   // admin-only; the API enforces this too
+  // Every active-task action row except the creator's review decision (its own
+  // 2x2 grid) and a quotation (one centred button) is the compact single row.
+  const compactActions = !isReviewDecision && !isQuotation
+  const actionBase     = compactActions ? COMPACT_ACTION_BUTTON_BASE : ACTION_BUTTON_BASE
 
   // The legacy single attachment, as an object path. De-duplication compares
   // PATHS now: `url` and `attachment_url` no longer hold the same shape once
@@ -1724,7 +1751,7 @@ export default function TaskDetailPage() {
                   2x2 grid (see .boe-task-actions--review) — four peer actions, not one lead. */}
               {isActiveTask && (isAssignee || showCancelButton || canCopyAssign) && (
                 <div
-                  className={`boe-task-actions${isReviewDecision ? ' boe-task-actions--review' : ''}`}
+                  className={`boe-task-actions${isReviewDecision ? ' boe-task-actions--review' : ''}${compactActions ? ' boe-task-actions--compact' : ''}`}
                   style={{
                     marginTop: '14px', paddingTop: '12px',
                     borderTop: `1px solid ${colors.border}`,
@@ -1746,22 +1773,29 @@ export default function TaskDetailPage() {
                         setMarkingComplete(false)
                       }}
                       disabled={saving || markingComplete || statusUpdating}
+                      aria-label={compactActions ? (markingComplete ? 'Marking…' : 'Mark Complete') : undefined}
+                      title={compactActions ? 'Mark Complete' : undefined}
                       style={{
-                        ...(isQuotation ? { width: '240px' } : {}),
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                        padding: '9px 14px', borderRadius: '8px',
+                        ...(compactActions ? COMPACT_ACTION_BUTTON_BASE : {
+                          ...(isQuotation ? { width: '240px' } : {}),
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                          padding: '9px 14px', borderRadius: '8px',
+                          fontSize: '13px',
+                          fontFamily: font.body,
+                        }),
                         border: `1.5px solid ${colors.green}`,
                         background: colors.green, color: '#ffffff',
-                        fontSize: '13px', fontWeight: 700,
+                        fontWeight: 700,
                         cursor: saving || markingComplete || statusUpdating ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
                         opacity: saving || markingComplete || statusUpdating ? 0.6 : 1,
                         transition: 'all 0.15s',
                         boxShadow: `0 2px 6px ${colors.green}38`,
                       }}
                     >
-                      <CircleCheckBig size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                      {markingComplete ? 'Marking…' : (isQuotation ? 'Mark Quotation Complete' : 'Mark Complete')}
+                      <CircleCheckBig size={compactActions ? 17 : 15} strokeWidth={2.4} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      {compactActions
+                        ? <ActionLabel full={markingComplete ? 'Marking…' : 'Mark Complete'} short={markingComplete ? 'Marking…' : 'Complete'} />
+                        : (markingComplete ? 'Marking…' : (isQuotation ? 'Mark Quotation Complete' : 'Mark Complete'))}
                     </button>
                   )}
 
@@ -1787,22 +1821,19 @@ export default function TaskDetailPage() {
                       className="boe-task-action-primary boe-task-action-submit"
                       onClick={submitForApproval}
                       disabled={saving || reviewBusyAny || statusUpdating}
+                      // Visible label "Approval" in the compact row; the full
+                      // action name is the accessible name and the tooltip.
+                      aria-label={reviewBusy === 'submit' ? 'Submitting…' : 'Submit for Approval'}
+                      title="Submit for Approval"
                       style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
-                        // Same 9px vertical padding, so the height is unchanged;
-                        // 18px horizontal, because a content-width button needs
-                        // more breathing room around the label than a stretched
-                        // one did. Comfortably wider than the text, never tight.
-                        padding: '9px 18px', borderRadius: '8px',
-                        fontSize: '13px', fontWeight: 700,
+                        ...actionBase,
+                        fontWeight: 700,
                         cursor: saving || reviewBusyAny || statusUpdating ? 'not-allowed' : 'pointer',
-                        fontFamily: font.body,
                         opacity: saving || reviewBusyAny || statusUpdating ? 0.6 : 1,
-                        transition: 'all 0.15s',
                       }}
                     >
-                      <SendHorizontal size={15} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-                      {reviewBusy === 'submit' ? 'Submitting…' : 'Submit for Approval'}
+                      <SendHorizontal size={17} strokeWidth={2.4} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      <ActionLabel full={reviewBusy === 'submit' ? 'Submitting…' : 'Approval'} />
                     </button>
                   )}
 
@@ -1851,7 +1882,7 @@ export default function TaskDetailPage() {
                       not destructive and it changes nothing about the task, so it
                       reads before Copy & Assign and Cancel. */}
                   {offerAddToMeeting && (
-                    <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} />
+                    <AddToMeetingButton onClick={() => setAddToMeetingOpen(true)} compact={compactActions} />
                   )}
                   {/* Copy & Assign is placed before Cancel so the destructive action
                       reads last — and, in the review grid, sits bottom-right. */}
@@ -1859,8 +1890,10 @@ export default function TaskDetailPage() {
                     <button
                       className="boe-task-action-secondary"
                       onClick={openCopyModal}
+                      aria-label="Copy & Assign"
+                      title="Copy & Assign"
                       style={{
-                        ...ACTION_BUTTON_BASE,
+                        ...actionBase,
                         border: `1.5px solid ${colors.blue}55`,
                         background: '#ffffff', color: colors.blue,
                         cursor: 'pointer',
@@ -1868,16 +1901,18 @@ export default function TaskDetailPage() {
                       onMouseEnter={e => { e.currentTarget.style.background = colors.blueTint }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
-                      <UserCheck size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                      Copy &amp; Assign
+                      <UserCheck size={compactActions ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      {compactActions ? <ActionLabel full="Copy & Assign" short="Copy" /> : <>Copy &amp; Assign</>}
                     </button>
                   )}
                   {showCancelButton && !isQuotation && !isUnacknowledged && (
                     <button
                       className="boe-task-action-secondary"
                       onClick={() => { setCancelReason(''); setCancelOtherText(''); setCancelModalOpen(true) }}
+                      aria-label="Cancel task"
+                      title="Cancel task"
                       style={{
-                        ...ACTION_BUTTON_BASE,
+                        ...actionBase,
                         border: '1.5px solid #78716C33',
                         background: '#ffffff', color: '#78716C',
                         cursor: 'pointer',
@@ -1885,8 +1920,8 @@ export default function TaskDetailPage() {
                       onMouseEnter={e => { e.currentTarget.style.background = '#F5F5F4' }}
                       onMouseLeave={e => { e.currentTarget.style.background = '#ffffff' }}
                     >
-                      <Ban size={15} strokeWidth={2.2} style={{ flexShrink: 0 }} />
-                      Cancel
+                      <Ban size={compactActions ? 17 : 15} strokeWidth={2.2} style={{ flexShrink: 0 }} aria-hidden="true" />
+                      {compactActions ? <ActionLabel full="Cancel" /> : 'Cancel'}
                     </button>
                   )}
                 </div>
