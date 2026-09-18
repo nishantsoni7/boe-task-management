@@ -186,12 +186,21 @@ export type MeetingOrderEvidence = {
   size_bytes: number
   uploaded_by: string
   created_at: string
+  /**
+   * Set when the image was attached while discussing a specific ISSUE
+   * (20261213000000). NULL means it belongs to the Order's general discussion in
+   * that meeting, which is every row written before that migration. The object
+   * still lives under its meeting_order_id folder either way, so no storage
+   * policy changes.
+   */
+  discussion_appearance_id?: string | null
   uploader_name?: string | null
 }
 
 export const MEETING_EVIDENCE_COLUMNS = [
   'id', 'meeting_id', 'meeting_order_id', 'order_number', 'storage_path',
   'file_name', 'mime_type', 'size_bytes', 'uploaded_by', 'created_at',
+  'discussion_appearance_id',
 ].join(', ')
 
 export const MEETING_HISTORY_COLUMNS = [

@@ -756,6 +756,12 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // 20261212000000 re-creates transition_task_review() with the approval
       // notification skipped. It names no health-check object.
       '20261212000000_task_review_approval_stops_notifying.sql',
+      // 20261213000000 adds the Meetings order-discussion workflow: three new
+      // tables (meeting_discussion_items / _appearances / _events), one nullable
+      // column on meeting_order_evidence and one AFTER INSERT trigger on
+      // public.meetings. It edits no existing table, policy, grant or function,
+      // so it reaches nothing asserted here.
+      '20261213000000_meeting_order_discussion_workflow.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

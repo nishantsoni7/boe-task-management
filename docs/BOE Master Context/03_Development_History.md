@@ -1199,3 +1199,175 @@ RETURNING FROM A TASK. Pressing Back after opening a task showed the list
 (the API answers `Cache-Control: public, max-age=0, must-revalidate`), so a
 returning reader can briefly see a pre-deletion list. Pre-existing, not changed
 here.
+
+---
+
+## Meetings — the order-discussion workflow, and How Meetings Work
+
+`20261213000000_meeting_order_discussion_workflow.sql` — written, rehearsed,
+**not applied**.
+
+**The problem.** Sales assigns a task to management: "Order 2041 — customer says
+the finish is wrong". Management needs that on the next review's agenda in a few
+taps, and then needs it to STAY there, with its own continuing history, until
+somebody actually resolves it. Some issues finish in one meeting; others run
+through five or six.
+
+**Why the Order rail could not do it.** `meeting_orders` is the Order as
+discussed in ONE meeting, matched across meetings on `order_number_key`. That
+is right for "what is happening with 2041" and wrong for "this particular repair
+complaint": one Order can carry two unrelated running-order concerns and an
+after-sales replacement at the same time, and each needs its own thread. The
+missing unit was the issue itself.
+
+**What was added.** Three tables — the persistent issue
+(`meeting_discussion_items`), the issue on one meeting's agenda
+(`meeting_discussion_appearances`) and the issue's append-only trail
+(`meeting_discussion_events`) — plus one nullable column on
+`meeting_order_evidence` so an image attached while discussing an issue is known
+to belong to it, and two new triggers on `public.meetings`. No existing policy,
+grant, function or trigger was edited.
+
+**Four decisions worth remembering.**
+
+1. **Carry-forward is a trigger, not a step in the browser.** An AFTER INSERT
+   trigger on `public.meetings` runs the engine in the transaction that creates
+   the meeting, so a review cannot exist without its inherited agenda. It is
+   idempotent through `UNIQUE (meeting_id, discussion_item_id)` +
+   `ON CONFLICT DO NOTHING`, so a retry adds nothing twice.
+2. **The Order row is created LAZILY, not during carry-forward.**
+   `meetings_prevent_delete_with_content` refuses to delete a meeting that has
+   ANY order row. Creating one per inherited issue up front would have made every
+   new draft undeletable — a shipped behaviour this must not change. The row is
+   created the first time evidence needs a folder.
+3. **The Inbox is not a table.** An open issue that no meeting has claimed IS the
+   Inbox. Nothing is moved out of it, so nothing can be lost from it and the
+   source task link cannot be dropped.
+4. **A reopen clears `resolved_at`/`_by`/`_note`** — the CHECK constraint
+   requires an open issue to claim none of them — exactly as a reopen clears
+   `meetings.completed_at`. The ORIGINAL resolution therefore survives only in
+   the events table, and the reopen event carries the old note forward so the two
+   read together.
+
+**The rehearsal earned its keep.** Executed against the linked database inside
+`BEGIN … ROLLBACK` with `lock_timeout = '3s'`, it failed twice before it
+passed, on two things no repository test could see:
+
+* `SELECT o_uid, o_appearance, o_item, o_meeting INTO …` — plpgsql's
+  multi-target `SELECT … INTO` accepts only SCALAR targets, so a convenience
+  guard handing back four composite rows did not compile at any call site. The
+  guard now returns the caller's id and locks the rows; each writer reads its own.
+* `pg_get_function_identity_arguments()` returns parameter NAMES on this stack
+  (`p_order_id uuid, p_storage_path text, p_file_name text`), not bare types —
+  so the assertion pinning `add_meeting_order_evidence()`'s untouched signature
+  was wrong in a way that only an apply could reveal.
+
+Afterwards: no table, column, function or trigger left behind, and
+`migration list --linked` still shows `20261213000000` local-only. That rehearsal
+was of an EARLIER version of the file; after the PR review changes below it no
+longer counts, and must be repeated on the frozen file before the migration is
+applied.
+
+**How Meetings Work** (`/meetings/guide`) ships with it — an in-app visual
+guide inside the Meetings module, offered from the module header on every
+Meetings screen. Its diagrams are CSS grids rather than SVG, so a mind map
+becomes a stack of cards and a horizontal flow becomes a vertical timeline
+instead of overflowing a phone. Every sentence lives in `guideContent.ts` and
+is asserted against the constant or the migration that actually implements it:
+a guide that describes a rule the system does not apply is worse than no guide.
+
+**One change outside Meetings:** an "Add to Meeting" action and its quick sheet
+on Task Detail. It writes no task field, no activity row and no notification.
+
+**What review then found, and fixed.** A second pass — the migration applied on a
+disposable local stack, the real components rendered at desktop and phone widths
+— found defects that neither the text tests nor the production rehearsal could:
+
+* **An issue could be placed on the wrong review.** Carry-forward matched on the
+  review type, but manual attach and capture-with-target did not. A shared
+  mapping function now decides the pairing on every path.
+* **An Inbox item would enter a back-dated meeting.** It now only enters a
+  meeting dated on or after the day it was raised.
+* **A completed meeting showed today's state.** An issue resolved in a meeting and
+  reopened a month later made that meeting read "Open". Meetings now replay the
+  trail up to their completion, and show later changes beside the record.
+* **A repeat capture said "in the Inbox" for an issue already on an agenda.**
+* **A `$$` became `$`** in a function inserted by a Node script:
+  `String.replace` treats `$$` in a replacement string as a literal `$`.
+  Script edits to SQL now use split/join.
+* Rendered-only defects: a follow-up task's owner line ran past a phone's edge;
+  Add to Meeting could be submitted while the meeting list was still loading
+  (silently choosing the Inbox); a completed meeting said "resolved today"; the
+  earlier-meetings count included the non-meeting group; the Inbox's waiting chip
+  wore the After Sales amber.
+
+**Undo was removed** from the capture result. No operation removes an agenda
+entry, and using Resolve to stand in for one would record that the business issue
+was finished.
+
+**A CSS placement choice avoided a change outside scope.** Appending the Meetings
+block at the end of `globals.css` made `piDetail.render.test.tsx` — whose
+`pageCss()` slices from its own heading to the end of the file — judge the
+Meetings rules as PI rules. The block now sits before the PI block, and that test
+is untouched.
+
+**PR #164 review — the second round (2026-09-16).** Reading the complete diff
+against the database the migration builds on found seven defects, four of them in
+the migration itself. They were fixed in a follow-up commit rather than an
+amended one, so the review trail stays readable:
+
+1. **A draft holding a discussion could be deleted.** The existing delete guard
+   only looks for Order rows, and appearances cascade with their meeting — so a
+   draft in which issues had been updated or resolved could be deleted, taking
+   that meeting's record with it and leaving a resolution attached to no meeting.
+   A second BEFORE DELETE trigger now refuses any substantive activity; only
+   untouched automatic appearances (the new `placement` column) may go.
+2. **Meeting notes were readable outside the meeting.** Trail rows followed the
+   ISSUE's visibility, so an attendee of one meeting could read another meeting's
+   updates and decisions, and a Meetings `edit` grant could read every issue in
+   the company. Trail rows now follow the meeting they were recorded in
+   (`can_view_discussion_event`), `resolution_note` is not granted to any client
+   role, and `edit`/`manage` reveal an issue only while it is in the Inbox.
+   This is the same rule `meeting_update_history` already follows.
+3. **The Inbox was computed in the browser** as "open issues minus the agendas I
+   can see", which lists an issue on somebody else's meeting as waiting. It is now
+   `list_meeting_discussion_inbox()`.
+4. **Clearing a decision silently did nothing**, because NULL meant "leave alone".
+   Clearing is now an explicit flag.
+5. **"Earlier meetings" included later meetings** on a completed meeting's view.
+6. **Add to Meeting was drawn for people the database always refuses** — any
+   Meetings user on a closed task, and task delegators. It is now drawn only for
+   the creator, the current assignee or an admin.
+7. **Retrying a failed follow-up link created a second task.** The created task
+   is now kept and only "Retry link" is offered.
+
+Smaller: the Inbox save showed "Added to the meeting agenda"; a failed meeting
+list in Add to Meeting read as "no live meeting" and sent the issue to the Inbox;
+the guide promised a Task Detail indicator that does not exist; "resolved today"
+counted an issue reopened later; and a failed load could render as an empty board
+or an empty Inbox.
+
+**Proving the new checks can fail.** The local suite grew to 29 sections, with
+fixtures for an edit-only grant and a user whose Meetings access is removed, and
+every "cannot see" check first proves the hidden rows exist. Three checks that
+could never fail were rewritten. Then three deliberate breakages of the migration
+were run against it — notes readable through issue visibility, a deletion guard that
+only checks manual placement, and an Inbox read that trusts visible appearances — and
+each was caught by the section written for it before the file was restored
+byte-for-byte.
+
+**PR #164 security review — the third round (2026-09-17).** A review of the
+follow-up against a local stack proved that seven discussion RPCs (attach, update,
+resolve, reopen, task link, Order folder, carry-forward) still accepted a caller
+whose Meetings `view` had been removed, provided they led or created the meeting
+or held Meetings `edit`: the tables' RESTRICTIVE entry gate does not reach a
+SECURITY DEFINER function, and the shared guards `assert_meeting_editor()` and
+`can_edit_meeting()` never checked module entry. A second commit added
+`assert_meeting_discussion_access()`, called first by every callable discussion
+function (the evidence functions through the editor guard); made the two
+visibility predicates answer false outside the module; stopped granting the pure
+category mapping to clients; changed the three select policies to
+`(SELECT auth.uid())`; indexed `meeting_discussion_events(meeting_id)`; and
+removed an unused variable. Section 30 enumerates the callable functions from the
+catalogue, so a future one without a probe fails. The same gap in the already
+shipped Order-rail RPCs was deliberately left for its own migration.

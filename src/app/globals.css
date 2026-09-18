@@ -3138,6 +3138,247 @@ body {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+   MEETINGS — "How Meetings Work" guide, and the discussion board
+   Additive only. Nothing above is modified.
+
+   The guide's diagrams are CSS grids, not SVG. An SVG mind map either overflows
+   a 360px screen or shrinks its labels below readability; a grid simply becomes
+   a stack of cards, which is the mobile form the design asks for. Every arrow is
+   a glyph in a decorative element, so a vertical timeline on mobile and a
+   horizontal flow on desktop are the same markup with a different rotation.
+
+   Breakpoints match the module's existing ones: 768px is where the app switches
+   to its mobile shell, and the wider steps below are content-driven.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Available to screen readers, invisible on screen. Scoped rather than added as
+   a global utility, for the same reason .payroll-guide-sr-only is. */
+.meeting-guide-sr-only,
+.meeting-discussion-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── Section jump links ── */
+.meeting-guide-jump {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: #FFFFFF;
+  color: #4A5261;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.meeting-guide-jump:hover {
+  background: #EEF0F4;
+  color: #111318;
+  border-color: rgba(0, 0, 0, 0.13);
+}
+
+.meeting-guide-jump:focus-visible,
+.meeting-guide-link:focus-visible {
+  outline: 2px solid #5585E8;
+  outline-offset: 2px;
+  border-radius: 7px;
+}
+
+/* ── 1. The purpose map ──
+   Mobile: the hub, then the seven uses, as a single stacked column.
+   Desktop: three columns with the hub in the middle row, which reads as a mind
+   map without a single absolutely positioned element. */
+.meeting-guide-map {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.meeting-guide-map-hub {
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: rgba(220, 31, 46, 0.055);
+  border: 1px solid rgba(220, 31, 46, 0.22);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.meeting-guide-map-node {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+/* Placement is by nth-child on the container, not nth-of-type on the class:
+   nth-of-type counts element types among siblings, so a hub <div> would shift
+   every node's index by one. The hub is child 1 in the DOM — which is also the
+   right reading order when this stacks on a phone. */
+@media (min-width: 900px) {
+  .meeting-guide-map {
+    grid-template-columns: minmax(0, 1fr) minmax(190px, 0.85fr) minmax(0, 1fr);
+    grid-template-rows: repeat(4, auto);
+    gap: 10px;
+  }
+  .meeting-guide-map > *:nth-child(1) { grid-column: 2; grid-row: 1 / span 4; }
+  .meeting-guide-map > *:nth-child(2) { grid-column: 1; grid-row: 1; }
+  .meeting-guide-map > *:nth-child(3) { grid-column: 1; grid-row: 2; }
+  .meeting-guide-map > *:nth-child(4) { grid-column: 1; grid-row: 3; }
+  .meeting-guide-map > *:nth-child(5) { grid-column: 1; grid-row: 4; }
+  .meeting-guide-map > *:nth-child(6) { grid-column: 3; grid-row: 1; }
+  .meeting-guide-map > *:nth-child(7) { grid-column: 3; grid-row: 2; }
+  .meeting-guide-map > *:nth-child(8) { grid-column: 3; grid-row: 3 / span 2; }
+}
+
+/* ── 2. Before / during / after ── */
+.meeting-guide-phases {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 900px) {
+  .meeting-guide-phases { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ── 3. The two categories, and other two-up card pairs ── */
+.meeting-guide-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 760px) {
+  .meeting-guide-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+.meeting-guide-grid-3 {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 760px) {
+  .meeting-guide-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (min-width: 1100px) {
+  .meeting-guide-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* ── 4. A step flow ──
+   Mobile: a vertical timeline, arrows pointing down.
+   Desktop: a horizontal row, arrows pointing right. One markup, two directions;
+   no diagram becomes unreadable and nothing ever scrolls sideways. */
+.meeting-guide-flow {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.meeting-guide-flow-step {
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: #FFFFFF;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  min-width: 0;
+}
+
+.meeting-guide-flow-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #A8B0BF;
+  transform: rotate(90deg);
+  padding: 2px 0;
+}
+
+@media (min-width: 1000px) {
+  /* Flex rather than grid here: the arrows must stay narrow while the steps
+     share the rest evenly, which auto-placed grid columns cannot express. */
+  .meeting-guide-flow {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .meeting-guide-flow-step {
+    flex: 1 1 0;
+  }
+  .meeting-guide-flow-arrow {
+    transform: none;
+    flex: 0 0 auto;
+    padding: 0 2px;
+  }
+}
+
+/* ── 5. The multi-meeting timeline. Vertical at every width: four meetings side
+   by side would compress each update to two words. ── */
+.meeting-guide-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.meeting-guide-timeline-row {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 12px;
+}
+
+.meeting-guide-timeline-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.meeting-guide-timeline-line {
+  flex: 1;
+  width: 2px;
+  background: rgba(0, 0, 0, 0.09);
+  min-height: 12px;
+}
+
+/* ── 6. Tables that become stacked cards. The comparison is a grid of cards at
+   every width, so there is no table to reflow and no min-width to scroll. ── */
+.meeting-guide-compare {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+@media (min-width: 760px) {
+  .meeting-guide-compare { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ── Tap targets on a phone, matching .boe-btn's own mobile minimum ── */
+@media (max-width: 767px) {
+  .meeting-guide-jump { min-height: 44px; }
+}
+
+/* ── Reduced motion: the guide has no animation of its own, and the hover
+   transitions it inherits are removed here as well, so a reader who asked for
+   stillness gets it. ── */
+@media (prefers-reduced-motion: reduce) {
+  .meeting-guide-jump,
+  .meeting-guide-map-node,
+  .meeting-guide-flow-step {
+    transition: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
    PI DETAIL — /orders/drafts/[submissionId]
 
    Scoped by the `pi-detail-` prefix and used by exactly one screen. Nothing

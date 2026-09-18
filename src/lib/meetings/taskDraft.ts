@@ -9,6 +9,10 @@
 // are decisions, and a task that arrives pre-assigned to a default person with
 // a default date is a task nobody owns.
 
+import {
+  AFTER_SALES_TAG_LABEL, DISCUSSION_CATEGORY_META,
+  type MeetingDiscussionAppearance, type MeetingDiscussionItem,
+} from './discussion'
 import { formatMeetingDate, type Meeting, type MeetingOrder, type MeetingOrderItem } from './types'
 
 /** Title length that stays readable in the task list without being truncated. */
@@ -93,4 +97,57 @@ export function buildMeetingTaskDraft(
  */
 export function meetingTaskTeam(item: MeetingOrderItem, creatorTeam: string): string {
   return item.responsible_department?.trim() || creatorTeam
+}
+
+// ─── A follow-up task from an order-discussion item (20261213000000) ──────────
+//
+// Same three rules as above, for the other kind of discussion: the order
+// reference and the meeting travel with the task, the discussion is a SNAPSHOT
+// rather than a live mirror, and assignee, due date and priority stay unfilled
+// because each is a decision.
+//
+// One extra rule of its own: the SOURCE TASK is never quoted. An issue captured
+// from a task carries only the issue line somebody chose to write, so a task
+// created from a meeting cannot leak the contents of a task its reader may not be
+// entitled to open.
+
+export function discussionTaskTitle(item: MeetingDiscussionItem): string {
+  const lead = `${item.order_number} · ${DISCUSSION_CATEGORY_META[item.category].label}`
+  return clamp(`${lead} — ${item.title}`, TITLE_MAX)
+}
+
+export function discussionTaskDescription(
+  meeting: Meeting,
+  item: MeetingDiscussionItem,
+  appearance: Pick<MeetingDiscussionAppearance, 'latest_update' | 'decision' | 'next_review_date'>,
+): string {
+  const lines: string[] = [
+    `Order: ${item.order_number}`,
+    `Category: ${DISCUSSION_CATEGORY_META[item.category].label}`,
+  ]
+
+  if (item.after_sales_tag) lines.push(`Type: ${AFTER_SALES_TAG_LABEL[item.after_sales_tag]}`)
+  if (item.customer_name)   lines.push(`Customer: ${item.customer_name}`)
+
+  lines.push('', `Issue: ${item.title}`)
+  if (item.details) lines.push('', item.details)
+
+  lines.push('', `From meeting: ${meeting.title} (${formatMeetingDate(meeting.meeting_date)})`)
+
+  if (appearance.latest_update)    lines.push('', `Latest position: ${appearance.latest_update}`)
+  if (appearance.decision)         lines.push('', `Decision: ${appearance.decision}`)
+  if (appearance.next_review_date) lines.push('', `Next review: ${formatMeetingDate(appearance.next_review_date)}`)
+
+  return lines.join('\n')
+}
+
+export function buildDiscussionTaskDraft(
+  meeting: Meeting,
+  item: MeetingDiscussionItem,
+  appearance: Pick<MeetingDiscussionAppearance, 'latest_update' | 'decision' | 'next_review_date'>,
+): MeetingTaskDraft {
+  return {
+    title: discussionTaskTitle(item),
+    description: discussionTaskDescription(meeting, item, appearance),
+  }
 }

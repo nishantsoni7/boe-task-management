@@ -461,6 +461,12 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // 20261212000000 re-creates transition_task_review() with the approval
       // notification skipped. It touches no Order or finance object.
       '20261212000000_task_review_approval_stops_notifying.sql',
+      // 20261213000000 adds the Meetings order-discussion workflow: three new
+      // tables (meeting_discussion_items / _appearances / _events), one nullable
+      // column on meeting_order_evidence and one AFTER INSERT trigger on
+      // public.meetings. It edits no existing table, policy, grant or function,
+      // so it reaches nothing asserted here.
+      '20261213000000_meeting_order_discussion_workflow.sql',
     ])
   })
 

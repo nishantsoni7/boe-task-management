@@ -201,6 +201,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // notification skipped. It touches neither user_top_tasks nor the
     // completion trigger.
     '20261212000000_task_review_approval_stops_notifying.sql',
+    // 20261213000000 adds the Meetings order-discussion workflow: three new
+    // tables, one nullable column on meeting_order_evidence and one AFTER INSERT
+    // trigger on public.meetings. It touches neither user_top_tasks nor the
+    // completion trigger.
+    '20261213000000_meeting_order_discussion_workflow.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

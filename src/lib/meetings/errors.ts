@@ -55,6 +55,14 @@ export type MeetingAction =
   | 'import'
   | 'attendees'
   | 'add-evidence'
+  // The order-discussion workflow (20261213000000).
+  | 'capture-discussion'
+  | 'attach-discussion'
+  | 'update-discussion'
+  | 'resolve-discussion'
+  | 'reopen-discussion'
+  | 'link-discussion-task'
+  | 'carry-forward'
 
 const PERMISSION_MESSAGE: Record<MeetingAction, string> = {
   'create-meeting': 'You do not have permission to schedule meetings.',
@@ -70,6 +78,13 @@ const PERMISSION_MESSAGE: Record<MeetingAction, string> = {
   'import':         'You do not have permission to import into this meeting.',
   'attendees':      'You do not have permission to change who attended this meeting.',
   'add-evidence':   'You do not have permission to attach evidence to this meeting.',
+  'capture-discussion':   'You do not have permission to add discussion items to meetings.',
+  'attach-discussion':    'You do not have permission to change this meeting’s agenda.',
+  'update-discussion':    'You do not have permission to record updates in this meeting.',
+  'resolve-discussion':   'You do not have permission to resolve discussion items in this meeting.',
+  'reopen-discussion':    'You do not have permission to reopen this discussion item.',
+  'link-discussion-task': 'You do not have permission to link tasks to this meeting.',
+  'carry-forward':        'You do not have permission to change this meeting’s agenda.',
 }
 
 const NETWORK_MESSAGE  = 'Could not reach the server. Check your connection and try again.'
@@ -108,6 +123,18 @@ const GUARD_PREFIXES = [
   'MEETING_IMPORT_INVALID:',
   'MEETING_IMPORT_ROW_INVALID:',
   'MEETING_IMPORT_TYPE_INVALID:',
+  // 20261213000000 — the order-discussion workflow.
+  'MEETING_DISCUSSION_MISSING:',
+  'MEETING_DISCUSSION_RESOLVED:',
+  'MEETING_DISCUSSION_CATEGORY_INVALID:',
+  'MEETING_DISCUSSION_TAG_INVALID:',
+  'MEETING_DISCUSSION_ORDER_REQUIRED:',
+  'MEETING_DISCUSSION_TITLE_REQUIRED:',
+  'MEETING_DISCUSSION_NOTE_REQUIRED:',
+  'MEETING_DISCUSSION_REASON_REQUIRED:',
+  'MEETING_DISCUSSION_ORDER_MISMATCH:',
+  'MEETING_DISCUSSION_CATEGORY_MISMATCH:',
+  'MEETING_HAS_DISCUSSION:',
 ]
 
 function guardMessage(err: MeetingErrorLike): string | null {

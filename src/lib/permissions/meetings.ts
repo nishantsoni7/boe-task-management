@@ -138,3 +138,27 @@ export function canSetThisMeetingStatus(
   if (caps.canConductMeeting) return true
   return meeting.lead_id === userId || meeting.created_by === userId
 }
+
+/**
+ * Whether this person may REOPEN a resolved discussion item (20261213000000).
+ *
+ * Keyed on a meeting the item has been on, and — unlike every ordinary edit —
+ * that meeting may be completed. The meeting which resolved an issue is usually
+ * closed by the time anyone discovers the repair did not hold, and nothing in
+ * that completed meeting changes: the reopen writes to the ISSUE, not to the
+ * record of the review.
+ *
+ * The browser-side mirror of the EXISTS clause in
+ * reopen_meeting_discussion_item(), which calls
+ * `can_edit_meeting(..., p_allow_completed := true)` — so this deliberately does
+ * NOT refuse on `status = 'completed'` the way canEditThisMeeting does.
+ */
+export function canReopenDiscussionItem(
+  meeting: Pick<Meeting, 'lead_id' | 'created_by'>,
+  userId: string | null | undefined,
+  caps: MeetingsCapabilities,
+): boolean {
+  if (!userId) return false
+  if (caps.canConductMeeting) return true
+  return meeting.lead_id === userId || meeting.created_by === userId
+}

@@ -22,11 +22,26 @@ import {
   AddItemModal, AddOrderModal, CarryForwardOrdersModal, OrderUpdateModal, RemoveOrderModal,
 } from '@/components/meetings/MeetingOrderModals'
 import { MeetingBoard } from '@/components/meetings/MeetingBoard'
+import { DiscussionBoard } from '@/components/meetings/DiscussionBoard'
+import { DiscussionWorkspace } from '@/components/meetings/DiscussionWorkspace'
+import { DiscussionTaskModal } from '@/components/meetings/DiscussionTaskModal'
+import {
+  NewDiscussionItemModal, ReopenDiscussionModal, ResolveDiscussionModal,
+} from '@/components/meetings/DiscussionModals'
 import {
   OrderDiscussion, fetchEvidenceRows, resetEarlierDiscussionCache,
 } from '@/components/meetings/OrderDiscussion'
 import { useMeetings } from '@/hooks/useMeetings'
-import { canEditThisMeeting, canSetThisMeetingStatus } from '@/lib/permissions/meetings'
+import {
+  canEditThisMeeting, canReopenDiscussionItem, canSetThisMeetingStatus,
+} from '@/lib/permissions/meetings'
+import {
+  buildDiscussionRows, groupDiscussionHistory, latestResolutionNote,
+  type DiscussionFilter, type DiscussionRow,
+} from '@/lib/meetings/discussion'
+import {
+  fetchMeetingDiscussion, fetchMeetingInbox, type MeetingDiscussionData,
+} from '@/lib/meetings/discussionReads'
 import { historyForItem, historyForOrder, previousUpdateByItem } from '@/lib/meetings/history'
 import {
   discussionStateByOrder, earlierPresenceByKey, orderNumberKey, type EarlierPresence,
@@ -74,6 +89,11 @@ type ModalState =
   | { kind: 'import' }
   | { kind: 'complete' }
   | { kind: 'reopen' }
+  // The order-discussion workflow (20261213000000).
+  | { kind: 'new-issue' }
+  | { kind: 'resolve-issue'; row: DiscussionRow }
+  | { kind: 'reopen-issue'; row: DiscussionRow }
+  | { kind: 'discussion-task'; row: DiscussionRow }
 
 export function MeetingWorkScreen() {
   const routeParams = useParams<{ id: string }>()
@@ -115,15 +135,23 @@ export function MeetingWorkScreen() {
   // Per Order key: the earlier meetings that discussed it. null = the lookup
   // failed, which the board shows as unknown rather than as "first review".
   const [earlierPresence, setEarlierPresence] = useState<Map<string, EarlierPresence> | null>(null)
+  // The order-discussion agenda. null = the read failed, which is reported rather
+  // than shown as an empty agenda.
+  const [discussion, setDiscussion] = useState<MeetingDiscussionData | null>(null)
+  // Open issues waiting for a meeting. undefined while unknown.
+  const [inboxCount, setInboxCount] = useState<number | undefined>(undefined)
 
   const [loading, setLoading]     = useState(true)
   const [notFound, setNotFound]   = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [orderSearch, setOrderSearch] = useState('')
+  const [issueFilter, setIssueFilter] = useState<DiscussionFilter>('all')
+  const [issueSearch, setIssueSearch] = useState('')
   const [modal, setModal]         = useState<ModalState>({ kind: 'none' })
   const [isMobile, setIsMobile]   = useState(false)
   const searchParams = useSearchParams()
   const openOrderId = searchParams.get('order')
+  const openItemId  = searchParams.get('item')
   // The two actions that fire an RPC straight from a button rather than from a
   // modal (which disables its own submit while saving). Both are idempotent in
   // the database, so a double click cannot corrupt anything — but it would fire
@@ -229,6 +257,18 @@ export function MeetingWorkScreen() {
             .range(from, to),
         )
       : null
+    // The discussion agenda and the Inbox count, started here so they run
+    // alongside the SKU read rather than after it.
+    const discussionPromise = fetchMeetingDiscussion(supabase, meetingId)
+    const inboxPromise = fetchMeetingInbox(supabase)
+
+    // Every task id this screen might link to, from BOTH kinds of discussion: a
+    // SKU line's task, an issue's follow-up tasks, and an issue's source task.
+    // Read ONCE, in one query, under the VIEWER'S OWN permissions — which is what
+    // keeps a meeting viewer from reaching a task they cannot otherwise see. A
+    // task that does not come back is never rendered as a link.
+    const taskIds = new Set<string>()
+
     if (orderIds.length > 0) {
       const itemsResult = await fetchAllRows<MeetingOrderItem>((from, to) =>
         supabase
@@ -245,27 +285,44 @@ export function MeetingWorkScreen() {
       }
       const loadedItems = itemsResult.rows
       setItems(loadedItems)
-
-      const taskIds = [...new Set(loadedItems.map(i => i.linked_task_id).filter((id): id is string => !!id))]
-      if (taskIds.length > 0) {
-        // Read live from Task Management rather than mirroring status here.
-        const { data: taskRows } = await supabase
-          .from('tasks')
-          .select('id, title, status, priority, due_date, assigned_to, assignee:users!assigned_to(full_name)')
-          .in('id', taskIds)
-
-        const map: Record<string, LinkedTask> = {}
-        for (const t of ((taskRows ?? []) as unknown as (LinkedTask & { assignee?: { full_name: string } | null })[])) {
-          map[t.id] = { ...t, assignee_name: t.assignee?.full_name ?? null }
-        }
-        setTasks(map)
-      } else {
-        setTasks({})
+      for (const item of loadedItems) {
+        if (item.linked_task_id) taskIds.add(item.linked_task_id)
       }
     } else {
       setItems([])
+    }
+
+    const discussionData = await discussionPromise
+    setDiscussion(discussionData)
+    if (!discussionData) {
+      setLoadError('Could not load the discussion items for this meeting. Please retry.')
+    } else {
+      for (const issue of discussionData.items) {
+        if (issue.source_task_id) taskIds.add(issue.source_task_id)
+      }
+      for (const event of discussionData.events) {
+        if (event.event_type === 'task_linked' && event.task_id) taskIds.add(event.task_id)
+      }
+    }
+
+    if (taskIds.size > 0) {
+      // Read live from Task Management rather than mirroring status here.
+      const { data: taskRows } = await supabase
+        .from('tasks')
+        .select('id, title, status, priority, due_date, assigned_to, assignee:users!assigned_to(full_name)')
+        .in('id', [...taskIds])
+
+      const map: Record<string, LinkedTask> = {}
+      for (const t of ((taskRows ?? []) as unknown as (LinkedTask & { assignee?: { full_name: string } | null })[])) {
+        map[t.id] = { ...t, assignee_name: t.assignee?.full_name ?? null }
+      }
+      setTasks(map)
+    } else {
       setTasks({})
     }
+
+    const inbox = await inboxPromise
+    setInboxCount(inbox ? inbox.length : undefined)
 
     // Lifecycle trail. Small and bounded — a handful of rows per meeting, one
     // per status change — so it is read whole rather than paged.
@@ -348,12 +405,54 @@ export function MeetingWorkScreen() {
   // per SKU row per render.
   const previousUpdates = useMemo(() => previousUpdateByItem(history), [history])
 
-  // What has been recorded against each Order in this meeting, for the board.
-  const discussion = useMemo(() => discussionStateByOrder(history, evidence), [history, evidence])
+  // What has been recorded against each ORDER in this meeting, for the Order rail.
+  // Named apart from the issue agenda below, which is a different thing entirely.
+  const orderDiscussionState = useMemo(
+    () => discussionStateByOrder(history, evidence),
+    [history, evidence],
+  )
   const orderKeysInMeeting = useMemo(() => new Set(orders.map(orderNumberKey)), [orders])
+
+  // ── The order-discussion agenda ──
+  //
+  // Composed from the reads above rather than fetched again: the board's counts,
+  // the "earlier meetings" number and each issue's whole thread all come out of
+  // the same five rows. buildDiscussionRows() decides what counts as an EARLIER
+  // meeting (held before this one, by date then creation time), so opening last
+  // month's review never shows what happened after it.
+  const discussionMeetingsById = useMemo(() => {
+    const map = new Map<string, { id: string; title: string; meeting_date: string; created_at: string }>()
+    for (const row of discussion?.meetings ?? []) map.set(row.id, row)
+    return map
+  }, [discussion])
+
+  const discussionItemsById = useMemo(() => {
+    const map = new Map(( discussion?.items ?? []).map(issue => [issue.id, issue] as const))
+    return map
+  }, [discussion])
+
+  const discussionRows = useMemo<DiscussionRow[]>(() => {
+    if (!discussion || !meeting) return []
+    return buildDiscussionRows({
+      appearances: discussion.appearances,
+      itemsById: discussionItemsById,
+      events: discussion.events,
+      evidence: discussion.evidence,
+      earlierAppearances: discussion.allAppearances.map(appearance => ({
+        discussion_item_id: appearance.discussion_item_id,
+        meeting_id: appearance.meeting_id,
+        meeting: discussionMeetingsById.get(appearance.meeting_id) ?? null,
+      })),
+      currentMeeting: meeting,
+    })
+  }, [discussion, discussionItemsById, discussionMeetingsById, meeting])
 
   // Derived from the URL during render: an `order` that is not (or is no longer)
   // part of this meeting simply shows the board.
+  // An `item` that is not (or is no longer) on this agenda simply shows the board.
+  const selectedRowIndex = openItemId ? discussionRows.findIndex(r => r.appearance.id === openItemId) : -1
+  const selectedRow = selectedRowIndex >= 0 ? discussionRows[selectedRowIndex] : null
+
   const selectedOrder = openOrderId ? (orders.find(o => o.id === openOrderId) ?? null) : null
   const selectedIndex = selectedOrder ? orders.findIndex(o => o.id === selectedOrder.id) : -1
   const selectedItems = selectedOrder ? (itemsByOrder.get(selectedOrder.id) ?? []) : []
@@ -382,6 +481,11 @@ export function MeetingWorkScreen() {
   const openOrder   = (orderId: string) => router.push(`/meetings/${meetingId}?order=${orderId}`)
   const stepToOrder = (orderId: string) => router.replace(`/meetings/${meetingId}?order=${orderId}`)
   const backToBoard = () => router.push(`/meetings/${meetingId}`)
+  // The issue workspace lives in the query string for the same reason the Order
+  // one does: browser Back returns to the board, and a link opens straight into
+  // one issue.
+  const openIssue   = (appearanceId: string) => router.push(`/meetings/${meetingId}?item=${appearanceId}`)
+  const stepToIssue = (appearanceId: string) => router.replace(`/meetings/${meetingId}?item=${appearanceId}`)
 
   // Draft → In Progress. Explicit rather than inferred from the first update:
   // a lead opening the screen to read last week's notes has not started this
@@ -626,13 +730,47 @@ export function MeetingWorkScreen() {
         </div>
       )}
 
-      {orders.length === 0 ? (
-        <EmptyReview
+      {selectedRow ? (
+        <DiscussionWorkspace
+          key={selectedRow.appearance.id}
+          supabase={supabase}
+          meeting={meeting}
+          row={selectedRow}
+          events={(discussion?.events ?? []).filter(e => e.appearance_id === selectedRow.appearance.id)}
+          history={groupDiscussionHistory({
+            appearances: (discussion?.allAppearances ?? [])
+              .filter(a => a.discussion_item_id === selectedRow.item.id),
+            meetingsById: discussionMeetingsById,
+            events: (discussion?.events ?? []).filter(e => e.discussion_item_id === selectedRow.item.id),
+            evidence: discussion?.evidence ?? [],
+            currentMeetingId: meeting.id,
+          })}
+          readableTasks={tasks}
           editable={editable}
-          canImport={caps.canImport}
-          onAdd={() => setModal({ kind: 'add-order' })}
-          onCarryForward={() => setModal({ kind: 'carry-forward' })}
-          onImport={() => setModal({ kind: 'import' })}
+          canReopen={canReopenDiscussionItem(meeting, profile?.id, caps)}
+          isMobile={isMobile}
+          index={selectedRowIndex + 1}
+          total={discussionRows.length}
+          onBoard={backToBoard}
+          onPrev={selectedRowIndex > 0
+            ? () => stepToIssue(discussionRows[selectedRowIndex - 1].appearance.id)
+            : undefined}
+          onNext={selectedRowIndex < discussionRows.length - 1
+            ? () => stepToIssue(discussionRows[selectedRowIndex + 1].appearance.id)
+            : undefined}
+          onSaved={afterDiscussionSave}
+          onResolve={() => setModal({ kind: 'resolve-issue', row: selectedRow })}
+          onReopen={() => setModal({ kind: 'reopen-issue', row: selectedRow })}
+          onCreateTask={editable && canCreateTasks && selectedRow.item.state === 'open'
+            ? () => setModal({ kind: 'discussion-task', row: selectedRow })
+            : undefined}
+          onOpenTask={taskId => router.push(`/tasks/${taskId}`)}
+          onOpenOrder={selectedRow.appearance.meeting_order_id
+            ? () => openOrder(selectedRow.appearance.meeting_order_id!)
+            : undefined}
+          sourceTask={selectedRow.item.source_task_id
+            ? (tasks[selectedRow.item.source_task_id] ?? null)
+            : null}
         />
       ) : selectedOrder ? (
         <div>
@@ -692,16 +830,54 @@ export function MeetingWorkScreen() {
           </div>
         </div>
       ) : (
-        <MeetingBoard
-          orders={orders}
-          itemsByOrder={itemsByOrder}
-          discussion={discussion}
-          earlier={earlierPresence}
-          search={orderSearch}
-          onSearch={setOrderSearch}
-          isMobile={isMobile}
-          onOpen={openOrder}
-        />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* The ISSUES come first: they are what the meeting walks through, and
+              an unresolved one that nobody notices is the failure this workflow
+              exists to prevent. The Order rail below it is unchanged. */}
+          <DiscussionBoard
+            rows={discussionRows}
+            filter={issueFilter}
+            onFilter={setIssueFilter}
+            search={issueSearch}
+            onSearch={setIssueSearch}
+            isMobile={isMobile}
+            onOpen={openIssue}
+            onNewIssue={editable ? () => setModal({ kind: 'new-issue' }) : undefined}
+            inboxCount={inboxCount}
+            onOpenInbox={() => router.push('/meetings/inbox')}
+            meetingCompleted={meeting.status === 'completed'}
+            loadFailed={discussion === null}
+            onRetry={refresh}
+          />
+
+          <div>
+            <h2 style={{
+              margin: '0 0 8px', fontSize: '13.5px', fontWeight: 700, color: colors.primary,
+            }}>
+              Orders under review
+            </h2>
+            {orders.length === 0 ? (
+              <EmptyReview
+                editable={editable}
+                canImport={caps.canImport}
+                onAdd={() => setModal({ kind: 'add-order' })}
+                onCarryForward={() => setModal({ kind: 'carry-forward' })}
+                onImport={() => setModal({ kind: 'import' })}
+              />
+            ) : (
+              <MeetingBoard
+                orders={orders}
+                itemsByOrder={itemsByOrder}
+                discussion={orderDiscussionState}
+                earlier={earlierPresence}
+                search={orderSearch}
+                onSearch={setOrderSearch}
+                isMobile={isMobile}
+                onOpen={openOrder}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Modals ── */}
@@ -831,6 +1007,42 @@ export function MeetingWorkScreen() {
           meetingId={meeting.id}
           onClose={() => setModal({ kind: 'none' })}
           onReopened={() => afterWrite('Meeting reopened')}
+        />
+      )}
+      {modal.kind === 'new-issue' && (
+        <NewDiscussionItemModal
+          supabase={supabase}
+          meeting={meeting}
+          onClose={() => setModal({ kind: 'none' })}
+          onSaved={message => afterWrite(message)}
+        />
+      )}
+      {modal.kind === 'resolve-issue' && (
+        <ResolveDiscussionModal
+          supabase={supabase}
+          appearanceId={modal.row.appearance.id}
+          item={modal.row.item}
+          onClose={() => setModal({ kind: 'none' })}
+          onResolved={message => afterWrite(message)}
+        />
+      )}
+      {modal.kind === 'reopen-issue' && (
+        <ReopenDiscussionModal
+          supabase={supabase}
+          item={modal.row.item}
+          resolutionNote={latestResolutionNote(discussion?.events ?? [], modal.row.item.id)}
+          onClose={() => setModal({ kind: 'none' })}
+          onReopened={message => afterWrite(message)}
+        />
+      )}
+      {modal.kind === 'discussion-task' && profile && canCreateTasks && (
+        <DiscussionTaskModal
+          supabase={supabase}
+          profile={profile}
+          meeting={meeting}
+          row={modal.row}
+          onClose={() => setModal({ kind: 'none' })}
+          onCreated={() => afterWrite('Task created and linked to this issue')}
         />
       )}
 
