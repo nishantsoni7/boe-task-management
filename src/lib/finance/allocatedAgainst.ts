@@ -99,6 +99,61 @@ export function allocationTargetLabel(row: Pick<AllocationTargetRow,
   return ref ? `PI Draft · ${ref}` : 'PI Draft'
 }
 
+/**
+ * A destination's name WITHOUT its kind word, for surfaces that print the kind
+ * separately ("Order 0425", "PI Draft · Reserved Order 0431"). Null when there
+ * is no safe reference. Never source_order_number.
+ */
+export function allocationTargetName(row: Pick<AllocationTargetRow,
+  'target_type' | 'target_reference' | 'reserved_order_number'>): string | null {
+  const ref = row.target_reference?.trim() || null
+  if (row.target_type === 'order') return ref
+  const reserved = row.reserved_order_number?.trim() || null
+  return reserved ? `Reserved Order ${reserved}` : ref
+}
+
+/** Safe names for every destination in the complete read, keyed by target id. */
+export function allocationTargetNames(rows: readonly AllocationTargetRow[] | null): Map<string, string> {
+  const names = new Map<string, string>()
+  for (const row of rows ?? []) {
+    const name = allocationTargetName(row)
+    if (name && row.target_id) names.set(row.target_id, name)
+  }
+  return names
+}
+
+/**
+ * The same name, for a PI Draft row read directly from order_submissions
+ * (the reader's own RLS read). The reserved Order number when there is one,
+ * otherwise the workbook's file name. NEVER source_order_number: that is
+ * normally the number of an older PI the workbook was copied from.
+ */
+export function piDraftSafeName(row: {
+  reserved_order_number?: string | null
+  source_workbook_name?: string | null
+}): string {
+  const reserved = row.reserved_order_number?.trim() || null
+  if (reserved) return `Reserved Order ${reserved}`
+  const file = (row.source_workbook_name ?? '').replace(/^.*[\\/]/, '').trim()
+  return file || 'Draft'
+}
+
+/**
+ * Give a detail-panel allocation summary the safe names the complete read
+ * knows. A target that already has a name keeps it; a target the reader's own
+ * RLS could not name gets the complete read's name instead of "A PI Draft".
+ */
+export function nameSummaryTargets<T extends { targets: { targetId: string; label: string | null }[] }>(
+  summary: T,
+  names: ReadonlyMap<string, string>,
+): T {
+  if (names.size === 0) return summary
+  return {
+    ...summary,
+    targets: summary.targets.map(t => (t.label ? t : { ...t, label: names.get(t.targetId) ?? null })),
+  }
+}
+
 /** "3 allocations" — the count of distinct destinations, shown when several. */
 export function allocationCountLabel(count: number): string {
   return `${count} ${count === 1 ? 'allocation' : 'allocations'}`

@@ -1008,6 +1008,9 @@ failure **keeps the payment** and says so.
 
 ## 11. Payment Phase 3 — the verified-payment approval gate (`20260921000000`)
 
+> **Status 2026-09-18: APPLIED and merged** — the production migration ledger
+> lists `20260921000000`. The note below is the original, historical banner.
+
 *Not applied. PR open on `claude/boe-verified-payment-approval-phase3-hgevan`.*
 
 ### The rule
@@ -1218,6 +1221,9 @@ missing model.
 
 ## 12. Split payment entry, and the Order number a PI must carry (`20261009000000`)
 
+> **Status 2026-09-18: APPLIED** — the production migration ledger lists
+> `20261009000000`. The banner below is historical.
+>
 > **NOT APPLIED.** `20261009000000_split_payment_entry_and_order_submission_number_reservation.sql`
 > exists in the repository and has **not** been run against the linked database.
 > It is deliberately absent from the frozen-hash list in
@@ -1450,6 +1456,9 @@ itself and rolling back completely — so nothing after it can be vacuous.
 
 ## 13. The PI decision, the Confirmed-Order gate, PI versions and production alignment (`20261119000000`)
 
+> **Status 2026-09-18: APPLIED** — the production migration ledger lists
+> `20261119000000`. The banner below is historical.
+>
 > **NOT APPLIED.** `20261119000000_order_submission_pi_review_gate_versions_and_production.sql`
 > exists in the repository and has **not** been run against the linked database.
 > **The migration goes first, then the code**: the PI detail read spreads the
@@ -1504,6 +1513,10 @@ all six sections pass against a database carrying the full migration chain.
 
 ## 14. Two post-approval PI edits, through the amendment door (`20261120000000`)
 
+> **Status 2026-09-18: APPLIED** — the production migration ledger lists
+> `20261120000000`, and the live bodies of both functions open the amendment
+> context. The third path it missed is fixed by `20261217000000` (§19).
+>
 > **VERIFIED, NOT YET APPLIED TO PRODUCTION.**
 > `20261120000000_order_submission_post_approval_edits_use_the_amendment_context.sql`
 
@@ -2050,7 +2063,7 @@ a duplicate pair and one PI Draft, with one reversed row excluded. Allocated
 Against lists every destination, the badge and the filter both say **Partial**,
 and Unallocated is exactly **₹25,000.00**.
 
-### 18.4 The database side (`20261216000000`, unapplied)
+### 18.4 The database side (`20261216000000`, applied 2026-09-18)
 
 | Function | Role | EXECUTE |
 | --- | --- | --- |
@@ -2166,5 +2179,113 @@ widths and the unmeasured list. `src/lib/finance/paymentSurfaces.test.ts`
 covers the table/cards decision at 320, 375, 768, 1024, 1280 and 1440 and the
 exact boundary.
 
-**Not checked.** No signed-in check on the live screen, which needs the
-migration applied.
+The signed-in admin check was done on 2026-09-18 after `20261216000000` was
+applied (§19.1). The `finance.view`-only participant check is still owed.
+
+## 19. Orders & Finance go-live readiness (2026-09-18)
+
+This section covers what was checked before Orders and Finance go live, what was
+fixed, and the ordered steps that remain. All production reads below were
+read-only.
+
+### 19.1 Production state
+
+| Record | Count | Notes |
+| --- | --- | --- |
+| Confirmed Orders | 0 | |
+| PI Drafts | 1 | Reserved Order **0526**, `submitted`, 12 items |
+| Payments | 1 | P-AA-0013, ₹5,00,000, confirmed, test data |
+| Active allocations | 1 | P-AA-0013 → the 0526 PI Draft, fully allocated |
+| Retired Order Requests | 5 | All `submitted`, all test data, none converted |
+| Order number cycle | next **527** | |
+| Test Data Cleanup | **enabled** | Not permanently disabled |
+| Migration ledger | aligned | Every file in `supabase/migrations` is applied |
+
+Confirmed Payments was checked signed in as an admin at 320, 375, 768, 1024,
+1280 and 1440 px:
+
+- Allocated Against and the status badge are correct, and the filters count
+  1 Full and 0 Zero, Partial and Over.
+- The details still show Approved By and Activity.
+- Nothing overflows.
+
+### 19.2 Found and fixed
+
+1. **The PI date editor fails on a confirmed Order** (fixed by
+   `20261217000000`).
+   - `update_order_submission_schedule_terms()` writes `orders.confirm_date`
+     and `orders.due_date` outside `in_order_amendment()`. The guard therefore
+     refuses the first Due Date or Confirmation Date change on any approved PI
+     that has an Order.
+   - `20261120000000` fixed the two sibling paths and missed this one.
+   - The live body was compared line by line with `20260929000000`; it is
+     identical apart from CRLF line endings.
+   - The fix opens the existing amendment context around that one UPDATE.
+     Nothing else changes.
+   - `run_schedule_terms_amendment_suite.sh` reproduces the refusal first, then
+     passes 8 sections. Three mutations (never opened, never closed, opened
+     too late) each fail it.
+2. **The payment details said "A PI Draft".**
+   - The allocation panel is now named from the complete targets read, for
+     example "PI Draft · Reserved Order 0526".
+   - The per-page RLS name lookup (used in the Delete confirmation) now uses the
+     reserved number or the workbook name. It no longer uses
+     `source_order_number`, the older PI's number.
+3. **At 320 px, the Paid date filter clipped its second date.** The row now
+   wraps, and "to" stays with its date.
+4. **Stale "NOT APPLIED" banners** for `20260921`, `20261009`, `20261119`,
+   `20261120` and `20261216` now carry a dated "APPLIED" line. The production
+   ledger lists every one of them.
+
+### 19.3 Go-live checklist, in order
+
+1. **Apply `20261217000000` before this PR merges.** Merging deploys, and the
+   fix is a function body only. Follow it with a signed-in check of Confirmed
+   Payments (the name and the 320 px filter) and of one PI date edit once an
+   Order exists.
+2. **Owner decisions on who can do what.** The production census (active,
+   non-fixture users) shows:
+   - **Nitish** holds every Orders and Finance action. That includes
+     `finance.delete`, `finance.manage`, `finance.allocate_correct`,
+     `orders.approve_order` and `orders.approve_advance_exception`. Confirm
+     this is intended.
+   - **"Test"** is a real, active login with `orders.create/edit/view` and
+     `finance.create/edit/view`. Deactivate it, or remove those grants, before
+     real customers' data arrives.
+   - **Only 1 active admin.** Consider a second admin so approvals and the
+     amendment door are not a single point of failure.
+   - `finance.approve` is held by Dhruv and Nitish. A person can never decide
+     their own payment (20261211).
+3. **Remove the test data.** Use Control Center → Test Data Cleanup, as an
+   admin, typing `DELETE TEST DATA`. Remove PI Draft 0526 with payment
+   P-AA-0013 and its allocation, and the 5 retired Order Requests. Then check
+   that `orders`, `order_submissions`, `finance_payment_requests`,
+   `finance_payment_allocations` and `order_requests` are empty.
+4. **Decide where Order numbers start.** Numbers are never reused, so after
+   cleanup the next Order is 0527 unless it is set otherwise. Set it in
+   Control Center (`set_next_confirmed_order_number`). A full cycle reset
+   refuses while any Order exists (`ORDER_NUMBER_RESET_ORDERS_EXIST`), so do it
+   while the register is empty.
+5. **Permanently disable Test Data Cleanup** (type `DISABLE TEST CLEANUP`).
+   - While it is enabled, every new Order and Order Request is stamped as test
+     data and can be deleted by the cleanup tool.
+   - Disabling is irreversible by design.
+   - Do it after step 3 and before the first real record.
+6. **First real run.** Create one real PI, submit it, record and verify its
+   advance, allocate, approve it into an Order, and check Confirmed Payments
+   shows "Order 05xx".
+
+### 19.4 After go-live (known, not blockers)
+
+These are ordered by business impact. See §4, §6 and `PAYMENT_PHASE_PROGRESS.md`.
+
+- **Order status changes are logged client-side (D6).** A failed log write is
+  silent. Move the status change and its log into one RPC.
+- **Zero-advance or credit Orders cannot be converted.** Conversion needs a
+  verified payment or an approved advance exception, which is a business rule
+  to confirm.
+- **Overpayment** is refused by capacity, but never shown as a figure (R5).
+- **Orders cannot be reassigned** to another salesperson (R3).
+- **Not built yet:** refunds and reversals, the dispatch readiness gate,
+  fabric/finish, and payment-correction requests (§4.1–§4.5).
+- **Broad table grants remain (D8).** RLS is the only control on most tables.

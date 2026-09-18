@@ -26,6 +26,10 @@ import {
   allocatedAgainstText,
   allocationCountLabel,
   allocationTargetLabel,
+  allocationTargetName,
+  allocationTargetNames,
+  nameSummaryTargets,
+  piDraftSafeName,
   allocationBadgeState,
   allocationStatusFromTotal,
   buildAllocatedAgainst,
@@ -502,5 +506,63 @@ describe('20261216000000 — the complete targets read and the complete status',
       '17. no payment, allocation, Order, PI, permission or policy changed']) {
       assert.ok(suite.includes(needle), needle)
     }
+  })
+})
+
+// ── Safe names on every surface (go-live readiness, 2026-09-18) ──────────────
+//
+// The live review found the payment detail panel saying "A PI Draft" beside a
+// list row that said "PI Draft · Reserved Order 0526", and the per-page RLS
+// name lookup (Delete confirmation) still naming a PI by source_order_number —
+// the older PI's number the list was forbidden to show.
+
+describe('one safe name for a destination, wherever it is printed', () => {
+  test('without the kind word: Order display number, reserved number, workbook — never B20', () => {
+    assert.equal(allocationTargetName({ target_type: 'order', target_reference: '0526', reserved_order_number: null }), '0526')
+    assert.equal(allocationTargetName({ target_type: 'pi_draft', target_reference: 'x.xlsx', reserved_order_number: '0526' }), 'Reserved Order 0526')
+    assert.equal(allocationTargetName({ target_type: 'pi_draft', target_reference: 'x.xlsx', reserved_order_number: null }), 'x.xlsx')
+    assert.equal(allocationTargetName({ target_type: 'pi_draft', target_reference: null, reserved_order_number: null }), null)
+  })
+
+  test('the RLS read of a PI Draft uses the same rule and never source_order_number', () => {
+    assert.equal(piDraftSafeName({ reserved_order_number: '0526', source_workbook_name: 'a.xlsx' }), 'Reserved Order 0526')
+    assert.equal(piDraftSafeName({ reserved_order_number: null, source_workbook_name: 'C:/fakepath/Hotel ABC.xlsx' }), 'Hotel ABC.xlsx')
+    assert.equal(piDraftSafeName({ reserved_order_number: '  ', source_workbook_name: '' }), 'Draft')
+    const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
+    const code = view.split('\n').filter(l => !l.trim().startsWith('//') && !l.trim().startsWith('*')).join('\n')
+    assert.ok(!code.includes('source_order_number'), 'the list page never reads the workbook B20 number')
+    assert.equal(code.split("select('id, reserved_order_number, source_workbook_name')").length - 1, 2)
+  })
+
+  test('the detail panel is named from the complete read, keeping any name it already has', () => {
+    const names = allocationTargetNames([
+      row({ target_type: 'pi_draft', target_id: PI_HOTEL, target_reference: 'Hotel ABC.xlsx', reserved_order_number: '0526', allocated_amount: '1' }),
+      row({ target_type: 'order', target_id: ORDER_425, target_reference: '0425', allocated_amount: '1' }),
+    ])
+    const summary = {
+      paymentId: PAY, state: 'full' as const, allocated: '2', unallocated: '0',
+      targets: [
+        { allocationId: 'a', kind: 'submission' as const, targetId: PI_HOTEL, label: null, amount: '1' },
+        { allocationId: 'b', kind: 'order' as const, targetId: ORDER_425, label: 'kept', amount: '1' },
+        { allocationId: 'c', kind: 'order' as const, targetId: 'unknown', label: null, amount: '0' },
+      ],
+    }
+    const named = nameSummaryTargets(summary, names)
+    assert.deepEqual(named.targets.map(t => t.label), ['Reserved Order 0526', 'kept', null])
+    assert.equal(nameSummaryTargets(summary, new Map()), summary, 'no names: the summary is returned untouched')
+    const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
+    assert.ok(/allocation=\{nameSummaryTargets\([\s\S]{0,200}?allocationTargetNames\(allocationTargets\.rows\)\)\}/.test(view))
+  })
+})
+
+describe('the Paid date range fits a 320px phone', () => {
+  test('the row wraps instead of refusing to shrink, and "to" travels with its date', () => {
+    const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
+    const at = view.indexOf('htmlFor="payment-date-from"')
+    const container = view.slice(view.lastIndexOf('<div style={{', at), at)
+    assert.ok(container.includes("flexWrap: 'wrap'") && container.includes("maxWidth: '100%'"))
+    assert.ok(!container.includes('flexShrink: 0'))
+    const pair = view.slice(at, view.indexOf('id="payment-date-to"'))
+    assert.ok(pair.includes("<span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>"))
   })
 })
