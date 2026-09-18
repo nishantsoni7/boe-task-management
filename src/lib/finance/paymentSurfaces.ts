@@ -112,16 +112,21 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
 // ── The Confirmed Payments table ─────────────────────────────────────────────
 
 /**
- * EIGHT COLUMNS, IN THIS ORDER, AND NO OTHERS.
+ * SEVEN COLUMNS, IN THIS ORDER, AND NO OTHERS.
  *
  * The table carried eleven and was honestly wide: at 1024px it either scrolled
  * sideways inside its own box or squeezed every figure into an unreadable
  * column. What survives is what a Finance reader scans a LIST for — how much,
- * when, how, how much of it is spoken for, who raised it, who confirmed it —
- * with everything else one click away on the row itself.
+ * when, how, against which Orders and PI Drafts, and how much of it is spoken
+ * for — with everything else one click away on the row itself.
  *
  * WHAT WAS REMOVED AND WHERE IT WENT, so nothing is silently lost:
  *
+ *   Initiated By     }   → the detail modal: Approved By in Payment Details,
+ *   Approved By      }     the submitter (with when) in Activity. Audit facts,
+ *                          not something a list is scanned for; their place
+ *                          went to Allocated Against (owner review, 2026-09-18).
+ *                          Both are still selected by the list query.
  *   Payment (reference)  → the detail modal, and search still matches it
  *   Status               → the page IS the status now. Every row is confirmed.
  *   Goes To              → the detail modal's allocation breakdown
@@ -140,12 +145,16 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  * field are still selected by the one bounded read and still reach the modal —
  * this is a change to what the TABLE draws, not to what the page knows.
  *
- * `width` is a hint for the header cell, not a hard size: the table lays out
- * `auto`, so these keep the eight columns from drifting apart on a wide screen
- * while still letting a long name take the room it needs.
+ * WIDTHS, AS RENDERED. The table lays out `auto`. Every fixed column is
+ * `1%` — shrink to its own content, which never wraps or clips — and Actions
+ * holds its computed pixel width; Allocated Against has no width and takes ALL
+ * the remaining room. Its cell does not let long destination names widen the
+ * table (`contain: inline-size`, 200px floor): names truncate, amounts never.
+ * Measured in a browser: the whole table fits a 875px container with the widest
+ * permitted row; see CONFIRMED_TABLE_MIN_CONTAINER_PX.
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
-  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '120px' },
+  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '1%' },
   // LEFT-ALIGNED, and deliberately so. The app's other money columns are
   // right-aligned to line digits up by place value, but this table has ONE money
   // column: there is no second figure beside it to compare against, and a lone
@@ -153,14 +162,16 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   // to, leaving a gap the eye has to cross on every row. `tabular-nums` still
   // does the place-value work within the column, and the Indian grouping is
   // untouched — only the edge the digits start from moved.
-  { key: 'amount',       label: 'Amount',            align: 'left', width: '130px' },
-  { key: 'date',         label: 'Received Date',     align: 'left',  width: '120px' },
-  { key: 'mode',         label: 'Mode',              align: 'left',  width: '110px' },
-  // The widest of the remaining columns because its content is a badge that is
-  // also a control, and because four different labels have to fit without wrap.
-  { key: 'status',       label: 'Allocation Status', align: 'left',  width: '170px' },
-  { key: 'initiated_by', label: 'Initiated By',      align: 'left'  },
-  { key: 'approved_by',  label: 'Approved By',       align: 'left'  },
+  { key: 'amount',       label: 'Amount',            align: 'left', width: '1%' },
+  { key: 'date',         label: 'Received Date',     align: 'left',  width: '1%' },
+  { key: 'mode',         label: 'Mode',              align: 'left',  width: '1%' },
+  // WHERE THE MONEY WENT: every active Order / PI Draft destination with its
+  // amount, stacked, plus any unallocated remainder. No width — it takes every
+  // pixel the shrink-to-fit columns leave, and its cell never widens the table
+  // (names truncate with their full text in title / aria-label).
+  { key: 'allocated_against', label: 'Allocated Against', align: 'left' },
+  // A badge that is also a control; four labels that must never wrap.
+  { key: 'status',       label: 'Allocation Status', align: 'left',  width: '1%' },
   // WIDTH IS COMPUTED, NOT CHOSEN. The Actions cell must hold the widest row
   // this table can draw, on one line: six icon targets and the five gaps
   // between them, plus the cell's own padding. See ACTIONS_COLUMN_WIDTH_PX in
@@ -281,6 +292,43 @@ export function formatCustomerName(
  * that anything narrower gets cards instead of a table turned sideways.
  */
 export const PAYMENTS_TABLE_BREAKPOINT = 1024
+
+/**
+ * CONFIRMED PAYMENTS: the narrowest CONTAINER the seven-column table fits in.
+ *
+ * Measured, not assumed. PAYMENTS_TABLE_BREAKPOINT compares the VIEWPORT, but
+ * the fixed 260px Finance sidebar and the page padding take ~304px of it, so a
+ * 1024px viewport leaves a ~720px card — and the table, whose fixed columns,
+ * badge and six-icon Actions cell cannot wrap, overflowed it and was clipped by
+ * the card's `overflow: hidden`. The Confirmed Payments list therefore measures
+ * its own container (ResizeObserver) and draws cards below this width.
+ *
+ * THE FIGURE, MEASURED (Chromium, 2026-09-18): the table's rendered minimum
+ * with the widest permitted row — four action icons, "Over-allocated —
+ * review", ₹1,23,45,678.90, three destinations and a long PI workbook name —
+ * is 875px. 920 leaves headroom for a larger amount. A 1280px viewport gives
+ * a ~976px card (table); 1024px gives ~720px (cards). ConfirmedPaymentsList
+ * ALSO falls back to cards if the rendered table ever overflows its container,
+ * so an unforeseen wide value cannot be clipped. See the Finance workflow doc
+ * §18 for every width tested.
+ */
+export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 920
+
+/**
+ * Table or cards, from the MEASURED container width. `null` (not measured yet)
+ * is cards, which fit any width. `overflowedAt` is the widest container at
+ * which the rendered table was seen to overflow; the table is drawn only above
+ * it, so a clipped table can never persist.
+ */
+export function confirmedListMode(
+  containerWidth: number | null,
+  overflowedAt: number | null = null,
+): 'table' | 'cards' {
+  if (containerWidth === null) return 'cards'
+  if (containerWidth < CONFIRMED_TABLE_MIN_CONTAINER_PX) return 'cards'
+  if (overflowedAt !== null && containerWidth <= overflowedAt) return 'cards'
+  return 'table'
+}
 
 /**
  * A person's name, short enough for a column.

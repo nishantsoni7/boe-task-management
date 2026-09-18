@@ -497,7 +497,9 @@ describe('Allocate Funds is the only attachment workflow, and is unchanged', () 
   test('its permission and balance conditions are untouched', () => {
     assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
       'still permission-derived at the call site')
-    assert.ok(view.includes("return r.confirmed_allocation_status === 'zero' || r.confirmed_allocation_status === 'partial'"),
+    // REVISED (20261216000000): read off the COMPLETE status, not the
+    // projection's RLS-limited one, which can say Partial for a full payment.
+    assert.ok(view.includes("return r.complete_allocation_status === 'zero' || r.complete_allocation_status === 'partial'"),
       "and still offered only where there is balance to allocate — never on 'full' or 'over'")
     assert.ok(visibleRowActions({ offerAllocate: true, canManage: false, canDelete: false }).includes('allocate'),
       'allocation does not require finance.manage')
@@ -812,9 +814,13 @@ describe('a menu entry shows which action is about to run', () => {
   })
 })
 
-// ══ 5. The eight-column table, and where the removed columns went ════════════
+// ══ 5. The seven-column table, and where the removed columns went ════════════
+//
+// Owner review 2026-09-18: Initiated By and Approved By left the row (they are
+// in the payment's details and Activity) and Allocated Against took their
+// place, before Allocation Status.
 
-describe('the primary row shows eight columns and no money detail', () => {
+describe('the primary row shows seven columns and no money detail', () => {
   const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
                            view.indexOf('function RowActionsMenu'))
 
@@ -830,11 +836,10 @@ describe('the primary row shows eight columns and no money detail', () => {
       'Remaining is not a primary column')
   })
 
-  test('but the row still renders the eight that remain, in order', () => {
+  test('but the row still renders the seven that remain, in order', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
-                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
-                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)',
-                   '<IconAction']
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
+                   '<ConfirmedAllocationBadge', '<IconAction']
     let cursor = -1
     for (const marker of order) {
       const at = table.indexOf(marker, cursor + 1)
@@ -976,7 +981,13 @@ describe('every allocation status opens the payment record', () => {
   })
 
   test('a row with no status stays inert rather than opening nothing', () => {
-    assert.ok(body.includes("if (!status) return <span"), 'an unknown status is a dash, not a button')
+    // REVISED: the badge now reads the complete read, so "no status" is either
+    // still loading or unavailable — both inert text, never a button and never
+    // a confident Zero / Full.
+    assert.ok(body.includes("if (status === 'loading') {"), 'loading is inert')
+    assert.ok(body.includes("if (!status || status === 'unavailable') {"), 'an unknown status is inert text, not a button')
+    const inert = body.slice(body.indexOf("if (status === 'loading') {"), body.indexOf('const meta = CONFIRMED_ALLOCATION_BADGE[status]'))
+    assert.ok(!inert.includes('<button'), 'no control before a status is known')
   })
 })
 
@@ -1224,8 +1235,8 @@ describe('the mobile card matches the table’s information order', () => {
 
   test('the fields appear in the required order', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
-                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<ConfirmedAllocationBadge',
-                   'conciseName(r.submitted_by_name)', 'conciseName(r.approved_by_name)']
+                   'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
+                   '<ConfirmedAllocationBadge']
     let cursor = -1
     for (const marker of order) {
       const at = body.indexOf(marker, cursor + 1)
@@ -1286,7 +1297,7 @@ describe('this is a presentation change, and costs no extra request', () => {
 
   test('opening the badge triggers no query at all', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    const end = badge.indexOf('\n// ── Allocated Against')
     assert.ok(end > 0, 'the badge body could not be delimited')
     const body = badge.slice(0, end)
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
@@ -1313,7 +1324,7 @@ describe('nothing about who may do what has moved', () => {
 
   test('the badge confers nothing — it opens a record, it does not act on one', () => {
     const badge = view.slice(view.indexOf('function ConfirmedAllocationBadge'))
-    const end = badge.indexOf('\nfunction ReceivedPaymentsTable')
+    const end = badge.indexOf('\n// ── Allocated Against')
     assert.ok(end > 0, 'the badge body could not be delimited')
     const body = badge.slice(0, end)
     for (const gate of ['canManage', 'canAllocate', 'canDeleteRow', 'isAdmin', 'role ===']) {
