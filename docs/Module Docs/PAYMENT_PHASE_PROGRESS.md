@@ -186,7 +186,7 @@ declared-advance rule are untouched.
 
 | | |
 |---|---|
-| Status | **PR open, not merged. Migration NOT applied.** |
+| Status | **APPLIED and merged** (production ledger, 2026-09-18). Originally: PR open, not merged. Migration NOT applied. |
 | Branch | `claude/boe-verified-payment-approval-phase3-hgevan` |
 | Migration | `20260921000000_order_submission_verified_payment_gate.sql` |
 | Built on | `f5613dea8adabe7b5065ddd00651dcb59a18dc16` (production `main`) |
@@ -489,7 +489,7 @@ already on an Order).
 
 | | |
 |---|---|
-| Status | **Implemented in the repository. Migration NOT applied. Not merged.** |
+| Status | **APPLIED and merged** (production ledger, 2026-09-18). Originally: implemented in the repository, migration not applied, not merged. |
 | Migration | `20261119000000_order_submission_pi_review_gate_versions_and_production.sql` |
 
 **What it delivers.** Submission judged on **attached** payment (verified +

@@ -44,7 +44,9 @@ const AMOUNT = 750000
 const LABELS = new Map<string, string>([
   [ORDER_A,      '0524'],
   [ORDER_B,      '0529'],
-  [SUBMISSION_C, '019'],
+  // A PI Draft is named by its RESERVED Order number (or workbook), never by a
+  // number of its own — see piDraftSafeName.
+  [SUBMISSION_C, 'Reserved Order 0531'],
 ])
 
 function allocation(
@@ -138,7 +140,7 @@ describe('a payment split across Orders and a PI Draft', () => {
     for (const [target, amount] of [
       ['Order 0524',    '₹4,00,000'],
       ['Order 0529',    '₹2,00,000'],
-      ['PI Draft 019',  '₹1,50,000'],
+      ['PI Draft · Reserved Order 0531',  '₹1,50,000'],
     ]) {
       assert.ok(words.includes(target), `${target} must be listed`)
       assert.ok(words.includes(amount), `${amount} must be shown against it`)
@@ -146,8 +148,9 @@ describe('a payment split across Orders and a PI Draft', () => {
   })
 
   test('a PI is called a PI Draft — the words the rest of Finance uses', () => {
-    assert.ok(words.includes('PI Draft 019'))
-    assert.ok(!/\bPI 019\b/.test(words))
+    assert.ok(words.includes('PI Draft · Reserved Order 0531'),
+      'the same wording, and separator, as the Allocated Against column')
+    assert.ok(!/\bPI Reserved\b/.test(words))
   })
 
   test('the three rows add up to Allocated, and Remaining is zero', () => {

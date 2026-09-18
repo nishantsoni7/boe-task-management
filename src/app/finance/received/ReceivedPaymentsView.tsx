@@ -81,6 +81,9 @@ import {
   UNALLOCATED_LINE_WORD,
   allocatedAgainstText,
   allocationBadgeState,
+  allocationTargetNames,
+  nameSummaryTargets,
+  piDraftSafeName,
   allocationCountLabel,
   buildAllocatedAgainst,
   type AllocatedAgainstView,
@@ -686,7 +689,9 @@ export function AllocationPanel({ summary, amount, canOpenLinkedRecord, onOpen }
                 display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px',
               }}>
                 <div style={{ minWidth: 0, fontSize: '13.5px' }}>
-                  <span style={{ color: colors.secondary }}>{kindWord}{' '}</span>
+                  {/* "Order 0425", but "PI Draft · Reserved Order 0431": the
+                      same separator the Allocated Against column uses. */}
+                  <span style={{ color: colors.secondary }}>{kindWord}{target.kind === 'submission' && target.label ? ' · ' : ' '}</span>
                   {/* Linked only when this reader holds Orders module entry AND
                       the target could be named. A link labelled "A Confirmed
                       Order" would be a door with no sign on it. */}
@@ -2851,7 +2856,7 @@ function ReceivedPaymentsViewInner(
         : Promise.resolve({ data: [] }),
       submissionIds.size > 0
         ? supabase.from('order_submissions')
-            .select('id, source_order_number, source_workbook_name')
+            .select('id, reserved_order_number, source_workbook_name')
             .in('id', [...submissionIds])
         : Promise.resolve({ data: [] }),
     ])
@@ -2865,7 +2870,10 @@ function ReceivedPaymentsViewInner(
     }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     for (const row of ((submissionsRes.data ?? []) as any[])) {
-      labels.set(row.id, row.source_order_number || row.source_workbook_name || 'Draft')
+      // The reserved Order number or the workbook's name — never the
+      // workbook's own B20 (source_order_number), which is normally the number
+      // of an older PI the file was copied from.
+      labels.set(row.id, piDraftSafeName(row))
     }
     setTargetLabels(labels)
   }
@@ -2944,7 +2952,7 @@ function ReceivedPaymentsViewInner(
           : Promise.resolve({ data: [] }),
         submissionIds.size > 0
           ? supabase.from('order_submissions')
-              .select('id, source_order_number, source_workbook_name')
+              .select('id, reserved_order_number, source_workbook_name')
               .in('id', [...submissionIds])
           : Promise.resolve({ data: [] }),
       ])
@@ -2953,7 +2961,7 @@ function ReceivedPaymentsViewInner(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         for (const o of ((ordersRes.data ?? []) as any[])) if (o.display_number) next.set(o.id, o.display_number)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        for (const s of ((submissionsRes.data ?? []) as any[])) next.set(s.id, s.source_order_number || s.source_workbook_name || 'Draft')
+        for (const s of ((submissionsRes.data ?? []) as any[])) next.set(s.id, piDraftSafeName(s))
         return next
       })
     }
@@ -3317,7 +3325,11 @@ function ReceivedPaymentsViewInner(
             in. Either bound alone is a valid open-ended range, and a pair typed
             the wrong way round is read as the range between them rather than
             answered with an empty table. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+        {/* WRAPS on a narrow phone. Label + two date inputs need ~324px, a
+            320px screen leaves a ~294px column, and this row used to refuse to
+            shrink, so the second date was clipped past the edge. "to" travels
+            with its input so the pair moves to the next line together. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', maxWidth: '100%', minWidth: 0 }}>
           <label htmlFor="payment-date-from" style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
             Paid
           </label>
@@ -3331,17 +3343,19 @@ function ReceivedPaymentsViewInner(
             onChange={e => applyDateFrom(e.target.value)}
             style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
           />
-          <span style={{ fontSize: '11px', color: colors.muted }}>to</span>
-          <input
-            id="payment-date-to"
-            type="date"
-            className="boe-input"
-            aria-label="Payments on or before"
-            value={dateTo}
-            min={dateFrom || undefined}
-            onChange={e => applyDateTo(e.target.value)}
-            style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
-          />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontSize: '11px', color: colors.muted }}>to</span>
+            <input
+              id="payment-date-to"
+              type="date"
+              className="boe-input"
+              aria-label="Payments on or before"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={e => applyDateTo(e.target.value)}
+              style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
+            />
+          </span>
         </div>
 
         {narrowed && (
@@ -3530,7 +3544,12 @@ function ReceivedPaymentsViewInner(
           mayCorrectPayments={caps.canCorrectOrReversePayment}
           supabase={supabase}
           onCorrected={() => { setDetailRequest(null); refreshAfterMutation() }}
-          allocation={allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id)}
+          // Named from the complete targets read, so a destination the
+          // reader's own RLS could not name still reads "PI Draft · Reserved
+          // Order 0526" rather than "A PI Draft".
+          allocation={nameSummaryTargets(
+            allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id),
+            allocationTargetNames(allocationTargets.rows))}
           canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
           onOpenLinked={href => router.push(href)}
           onCorrectAllocation={caps.canCorrectPaymentAllocation

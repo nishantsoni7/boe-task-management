@@ -477,6 +477,11 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // column, policy, grant on a table or permission action, and edits no existing
       // function, so it reaches nothing asserted here.
       '20261216000000_received_payment_allocation_targets.sql',
+      // 20261217000000 — re-emits update_order_submission_schedule_terms() with the
+      // amendment context around its one Order UPDATE. It creates no table,
+      // column, policy, grant or permission action; only that one PI function body
+      // changes, and nothing asserted here reads it.
+      '20261217000000_order_submission_schedule_terms_use_the_amendment_context.sql',
     ])
   })
 
