@@ -18,6 +18,13 @@
 // payment, listed under "Reversed" with who reversed it, when and why, and the
 // payment's activity trail records the same event.
 //
+// THE LEDGER IS COMPLETE OR ABSENT. Every figure here comes from
+// payment_allocation_ledger_for_correction() (20261215000000), which returns
+// the WHOLE ledger of this one payment to an authorized corrector. A direct
+// read of finance_payment_allocations would be filtered row by row by RLS and
+// could show a participant part of the ledger — and a wrong balance. If the
+// complete read fails, no figure is drawn and no correction is offered.
+//
 // THE DATABASE DECIDES. This screen is drawn for finance.allocate_correct, and
 // the RPC asks for that permission again, with its own reason check and its own
 // locks. Success is shown only after the server has answered. The pure rules
@@ -73,6 +80,7 @@ export function CorrectAllocationModal({
 }) {
   const [entries, setEntries] = useState<AllocationLedgerEntry[] | null>(null)
   const [readable, setReadable] = useState(true)
+  const [readError, setReadError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [reason, setReason] = useState('')
   const [step, setStep] = useState<CorrectionStep>('choose')
@@ -88,6 +96,7 @@ export function CorrectAllocationModal({
     if (token !== loadToken.current) return
     setEntries(ledger.entries)
     setReadable(ledger.readable)
+    setReadError(ledger.readable ? null : ledger.message)
     // A selection that is no longer active is dropped rather than kept pointing
     // at an allocation that cannot be reversed.
     setSelectedId(prev => (prev && ledger.entries.some(e => e.allocationId === prev && e.status === 'active') ? prev : null))
@@ -106,7 +115,7 @@ export function CorrectAllocationModal({
     sending.current = true
     setSaving(true)
     setNotice(null)
-    const outcome = await performAllocationReversal(supabase, { allocation: selected, reason })
+    const outcome = await performAllocationReversal(supabase, { paymentId: payment.id, allocation: selected, reason })
     setSaving(false)
     sending.current = false
 
@@ -140,6 +149,7 @@ export function CorrectAllocationModal({
         payment={payment}
         entries={entries}
         readable={readable}
+        readError={readError}
         selectedId={selectedId}
         reason={reason}
         step={step}
@@ -170,6 +180,8 @@ export function CorrectAllocationBody(props: {
   payment: CorrectAllocationPayment
   entries: AllocationLedgerEntry[] | null
   readable: boolean
+  /** Why the complete ledger could not be read. Shown instead of any figure. */
+  readError?: string | null
   selectedId: string | null
   reason: string
   step: CorrectionStep
@@ -194,7 +206,7 @@ export function CorrectAllocationBody(props: {
   if (!readable) {
     return (
       <>
-        <NoticeBox notice={{ tone: 'error', text: 'This payment’s allocations could not be read, so nothing can be corrected from here. Nothing was changed. Close this and try again.' }} />
+        <NoticeBox notice={{ tone: 'error', text: props.readError ?? 'The full allocation list for this payment could not be loaded, so no figures are shown and nothing can be corrected. Nothing was changed — close this and try again.' }} />
         <Footer><button type="button" onClick={props.onClose} className="boe-btn boe-btn-ghost" style={BTN}>Close</button></Footer>
       </>
     )

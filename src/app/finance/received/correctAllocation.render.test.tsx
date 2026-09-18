@@ -25,14 +25,17 @@ const ORDER_524 = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
 const PI_019    = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 const PAYMENT   = { id: 'pppppppp-pppp-4ppp-8ppp-pppppppppppp', human_payment_id: 'PAY-0042', amount: 750000.55 }
 
+// Rows exactly as payment_allocation_ledger_for_correction() returns them.
 const LEDGER: AllocationLedgerEntry[] = buildAllocationLedger([
-  { id: 'alloc-1', allocated_amount: '600000.45', status: 'active', order_id: ORDER_524, order_submission_id: null, created_at: '2026-09-10T05:00:00Z' },
-  { id: 'alloc-2', allocated_amount: '150000.10', status: 'active', order_id: null, order_submission_id: PI_019, created_at: '2026-09-10T06:00:00Z' },
-  { id: 'alloc-0', allocated_amount: '50000.00', status: 'reversed', order_id: ORDER_524, order_submission_id: null,
-    reversed_at: '2026-09-11T09:30:00Z', reversal_reason: 'Duplicate entry', reverser: { full_name: 'Asha Finance' } },
-], [
-  { id: ORDER_524, reference: '0524', clientName: 'Hotel Aurum' },
-  { id: PI_019, reference: '019', clientName: 'Cafe Verde' },
+  { allocation_id: 'alloc-1', status: 'active', allocated_amount: '600000.45', order_id: ORDER_524, order_submission_id: null,
+    target_reference: '0524', client_name: 'Hotel Aurum', created_at: '2026-09-10T05:00:00Z',
+    reversed_at: null, reversal_reason: null, reversed_by_name: null },
+  { allocation_id: 'alloc-2', status: 'active', allocated_amount: '150000.10', order_id: null, order_submission_id: PI_019,
+    target_reference: '019', client_name: 'Cafe Verde', created_at: '2026-09-10T06:00:00Z',
+    reversed_at: null, reversal_reason: null, reversed_by_name: null },
+  { allocation_id: 'alloc-0', status: 'reversed', allocated_amount: '50000.00', order_id: ORDER_524, order_submission_id: null,
+    target_reference: '0524', client_name: 'Hotel Aurum', created_at: '2026-09-09T05:00:00Z',
+    reversed_at: '2026-09-11T09:30:00Z', reversal_reason: 'Duplicate entry', reversed_by_name: 'Asha Finance' },
 ])
 
 const noop = () => {}
@@ -170,10 +173,19 @@ describe('refusals and stale data', () => {
     assert.ok(html.includes('Nothing was changed by you'))
   })
 
-  test('an unreadable ledger offers nothing to correct and says nothing changed', () => {
+  test('an incomplete or refused ledger shows NO figures and offers no correction', () => {
+    const message = 'You do not have permission to correct payment allocations, so the full allocation list cannot be shown. Nothing was changed.'
+    const html = body({ readable: false, entries: [], readError: message })
+    assert.ok(html.includes(message), 'the reason is stated')
+    assert.ok(!html.includes('type="radio"'), 'nothing can be chosen')
+    assert.ok(!html.includes('Unallocated') && !html.includes('Payment amount') && !html.includes('₹'),
+      'no calculated total is drawn from a ledger that could not be read whole')
+    assert.ok(!html.includes('Review reversal'))
+  })
+
+  test('without a specific reason, the unreadable state still says nothing changed', () => {
     const html = body({ readable: false, entries: [] })
     assert.ok(html.includes('Nothing was changed'))
-    assert.ok(!html.includes('type="radio"'))
   })
 
   test('a payment with no active allocation offers nothing to reverse', () => {

@@ -949,12 +949,15 @@ be allocated — verification is the parent payment's status, read through
 All three foreign keys are NO ACTION, so no deletion path reaches an allocation
 implicitly; only deleting an unverified payment releases its own.
 
-**Allocation correction has a screen (September 2026, no migration).** Received
+**Allocation correction has a screen (September 2026, `20261215000000`).** Received
 Payments → payment → **Correct Allocation**, for `finance.allocate_correct`
 holders: choose the wrong allocation, give a reason, confirm; the whole amount
 returns to the unallocated balance through the existing
 `reverse_payment_allocation()`, the allocation stays as reversed history, and
-Allocate Funds reassigns the money. Record Payment and Allocate Funds now warn
+Allocate Funds reassigns the money. The screen's figures come from the
+read-only RPC `payment_allocation_ledger_for_correction()`, which returns a
+payment's complete ledger to an authorized corrector who can read that payment
+— never from a per-row RLS read that could be partial. Record Payment and Allocate Funds now warn
 and require confirmation when one payment would cover several customers, and
 payment entry / edit / verification screens show a one-line explanation of each
 payment mode. See FINANCE_ORDER_WORKFLOW.md §17.

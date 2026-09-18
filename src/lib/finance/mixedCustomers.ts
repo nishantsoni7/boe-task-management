@@ -91,6 +91,62 @@ export function isMixedCustomerSelection(groups: readonly CustomerGroup[]): bool
   return groups.length > 1
 }
 
+// ── The customers a payment ALREADY pays for ────────────────────────────────
+//
+// Allocate Funds adds to a payment that may already be divided. Which
+// customers those existing allocations belong to is read ONLY from the
+// complete ledger (payment_allocation_ledger_for_correction, 20261215000000) —
+// never from a direct allocation read, which RLS can cut down to part of the
+// ledger, and never from the payment's stored client_name, which is written
+// when the payment is entered and does not follow later allocations.
+//
+// The complete ledger is given to finance.allocate_correct holders only. For
+// anybody else the existing customers are UNKNOWN, and the warning says so
+// instead of guessing — see mixedCustomerCheck.
+
+export type ExistingCustomers =
+  | { state: 'loading' }
+  | { state: 'complete'; targets: CustomerTarget[] }
+  | { state: 'unavailable' }
+
+export type MixedCustomerCheck = {
+  /** Show the warning and require the confirmation. */
+  warn: boolean
+  /** The existing allocations' customers could not be read in full. */
+  incomplete: boolean
+  groups: CustomerGroup[]
+  /** What a confirmation is tied to; changes whenever the answer changes. */
+  signature: string
+}
+
+export function mixedCustomerCheck(input: {
+  existing: ExistingCustomers
+  /** Records chosen in this form. Nothing chosen, nothing to ask. */
+  chosen: readonly CustomerTarget[]
+  /** Whether the payment already carries active allocations. */
+  paymentHasAllocations: boolean
+}): MixedCustomerCheck {
+  const knownExisting = input.existing.state === 'complete'
+  const incomplete = !knownExisting && input.paymentHasAllocations
+  const groups = customerGroups([
+    ...(input.existing.state === 'complete' ? input.existing.targets : []),
+    ...input.chosen,
+  ])
+  const warn = input.chosen.length > 0 && (incomplete || isMixedCustomerSelection(groups))
+  return {
+    warn,
+    incomplete,
+    groups,
+    signature: customerSignature(groups) + (incomplete ? '|existing-unknown' : ''),
+  }
+}
+
+export const MIXED_CUSTOMER_INCOMPLETE_TITLE = 'Check the customers on this payment'
+export const MIXED_CUSTOMER_INCOMPLETE_BLOCKED_REASON =
+  'Confirm the customers on this payment to continue.'
+export const MIXED_CUSTOMER_INCOMPLETE_NOTE =
+  'This payment already has allocations whose customers cannot all be checked from your account. Confirm the records below belong on this payment.'
+
 /** Identifies one set of customers, so a confirmation cannot outlive it. */
 export function customerSignature(groups: readonly CustomerGroup[]): string {
   return groups.map(g => customerKey(g.customer)).join('|')

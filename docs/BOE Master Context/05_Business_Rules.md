@@ -1073,6 +1073,13 @@ not merged and not applied.*
   history (who, when, why), the payment row is not touched, and the released
   money is reassigned with **Allocate Funds** (`finance.allocate`). See
   FINANCE_ORDER_WORKFLOW.md §17.
+* **Correction figures come from the complete ledger, never a partial one.**
+  The correction screen reads a payment's allocations only through
+  `payment_allocation_ledger_for_correction()`, which returns every allocation of
+  that one payment to an authenticated `finance.allocate_correct` holder with
+  Finance entry who may already read the payment. Allocation RLS is per row, so
+  a direct read could show a participant part of the ledger. If the complete
+  ledger cannot be read, no figure is shown and no correction is possible.
 * **One payment may cover several customers, but only on purpose.** Record
   Payment and Allocate Funds warn when the chosen records (and, for Allocate
   Funds, the payment's existing allocations) name more than one customer, list

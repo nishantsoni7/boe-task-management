@@ -63,12 +63,11 @@ import {
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
 import {
   MIXED_CUSTOMER_BLOCKED_REASON,
-  customerGroups,
-  customerSignature,
+  MIXED_CUSTOMER_INCOMPLETE_BLOCKED_REASON,
   customerTargetLabel,
-  isMixedCustomerSelection,
+  mixedCustomerCheck,
   rowCustomerTargets,
-  type CustomerTarget,
+  type ExistingCustomers,
 } from '@/lib/finance/mixedCustomers'
 import { loadAllocationLedger } from '@/lib/finance/allocationCorrection'
 
@@ -166,31 +165,36 @@ export function AllocateFundsModal({
   /** The customer set the person confirmed, as customerSignature() writes it. */
   const [mixedConfirmedFor, setMixedConfirmedFor] = useState<string | null>(null)
 
-  // THE CUSTOMERS THIS PAYMENT ALREADY PAYS FOR. A new row for a different
-  // customer makes the payment mixed just as surely as two new rows do, so the
-  // live allocations are read once on open. Until that read lands, the
-  // payment's own derived customer stands in for them.
-  const [existingCustomers, setExistingCustomers] = useState<CustomerTarget[]>(() =>
-    payment.client_name && !isZero(parseExact(payment.allocated_total) ?? ZERO)
-      ? [{ clientName: payment.client_name, label: 'existing allocations on this payment' }]
-      : [])
+  // THE CUSTOMERS THIS PAYMENT ALREADY PAYS FOR, from the COMPLETE ledger
+  // only (payment_allocation_ledger_for_correction). A direct allocation read
+  // can be cut down by RLS, and the payment's stored client_name does not follow
+  // later allocations, so neither is used. The complete ledger is refused to a
+  // caller without finance.allocate_correct; then the existing customers are
+  // UNKNOWN and the warning says so — see mixedCustomerCheck.
+  const [existing, setExisting] = useState<ExistingCustomers>({ state: 'loading' })
   useEffect(() => {
     let live = true
     void loadAllocationLedger(supabase, payment.id).then(ledger => {
-      if (!live || !ledger.readable) return
-      setExistingCustomers(ledger.entries
-        .filter(e => e.status === 'active')
-        .map(e => ({ clientName: e.clientName, label: customerTargetLabel(e.kind, e.reference) })))
+      if (!live) return
+      setExisting(ledger.readable
+        ? {
+            state: 'complete',
+            targets: ledger.entries
+              .filter(e => e.status === 'active')
+              .map(e => ({ clientName: e.clientName, label: customerTargetLabel(e.kind, e.reference) })),
+          }
+        : { state: 'unavailable' })
     })
     return () => { live = false }
   }, [supabase, payment.id])
 
-  // Asked only once a record has been chosen here: the question is about THIS
-  // allocation, not a payment that was already mixed before the modal opened.
-  const chosenTargets = rowCustomerTargets(rows)
-  const customers = customerGroups([...existingCustomers, ...chosenTargets])
-  const mixedCustomers = chosenTargets.length > 0 && isMixedCustomerSelection(customers)
-  const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerSignature(customers)
+  const customerCheck = mixedCustomerCheck({
+    existing,
+    chosen: rowCustomerTargets(rows),
+    paymentHasAllocations: !isZero(parseExact(payment.allocated_total) ?? ZERO),
+  })
+  const mixedCustomers = customerCheck.warn
+  const mixedConfirmed = mixedCustomers && mixedConfirmedFor === customerCheck.signature
 
   const existingAllocated = exactToString(parseExact(payment.allocated_total) ?? ZERO)
   const newTotal = exactToString(rowsTotal(rows))
@@ -198,7 +202,9 @@ export function AllocateFundsModal({
   const remainingParsed = parseExact(remaining) ?? ZERO
   const remainingIsNegative = isNegative(remainingParsed)
   const blocked = allocateFundsBlockedReason({ payment, rows })
-    ?? (mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null)
+    ?? (mixedCustomers && !mixedConfirmed
+      ? (customerCheck.incomplete ? MIXED_CUSTOMER_INCOMPLETE_BLOCKED_REASON : MIXED_CUSTOMER_BLOCKED_REASON)
+      : null)
   const duplicates = duplicateTargetKeys(rows)
 
   const patchRow = (key: string, patch: Partial<SplitAllocationRow>) => {
@@ -322,9 +328,10 @@ export function AllocateFundsModal({
 
       {mixedCustomers && (
         <MixedCustomerWarning
-          groups={customers}
+          groups={customerCheck.groups}
+          incomplete={customerCheck.incomplete}
           confirmed={mixedConfirmed}
-          onConfirmedChange={next => setMixedConfirmedFor(next ? customerSignature(customers) : null)}
+          onConfirmedChange={next => setMixedConfirmedFor(next ? customerCheck.signature : null)}
           disabled={saving}
         />
       )}

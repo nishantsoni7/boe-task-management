@@ -1769,7 +1769,7 @@ left an existing code untouched; a new line received `BE003`; reordering did
 not renumber; and a retired code was never reused by an unrelated new line at
 the same source row.
 
-## 17. Allocation correction and Finance entry clarity (Phase 1 of the Order & Finance improvement plan — no migration)
+## 17. Allocation correction and Finance entry clarity (Phase 1 of the Order & Finance improvement plan — `20261215000000`)
 
 ### 17.1 What was missing
 
@@ -1786,10 +1786,12 @@ corrected by direct SQL.
 2. **Correct Allocation** (under the Allocation list; drawn only for a holder of
    `finance.allocate_correct` with Finance entry, or an admin, and only when the
    payment has an active allocation the reader can see).
-3. The screen reads the payment's allocations **afresh** — Payment ID, payment
+3. The screen reads the payment's **complete** allocation ledger through
+   `payment_allocation_ledger_for_correction()` (§17.7) — Payment ID, payment
    amount, allocated, unallocated, and every active allocation with its PI/Order
    number, customer and amount — and lists earlier reversals with who, when and
-   why.
+   why. If the complete ledger cannot be read, no figure is shown and no
+   correction is offered.
 4. Choose the wrong allocation, write the **mandatory reason** (≤ 500
    characters), **Review reversal**.
 5. The confirmation states the allocation, the **whole** amount released, the
@@ -1820,13 +1822,17 @@ count active allocations only, so they drop by exactly the reversed amount.
 | Non-blank reason | the RPC (`ALLOCATION_REASON_REQUIRED`) and the form |
 | Lock order payment → allocation | the RPC, unchanged |
 | SECURITY DEFINER, `search_path = public, pg_temp`, EXECUTE to `authenticated` only | unchanged since `20260918000000` |
+| The complete ledger is read | `payment_allocation_ledger_for_correction()` — authenticated, Finance entry, `finance.allocate_correct`, and able to read the payment (§17.7) |
 | The control is drawn | `caps.canCorrectPaymentAllocation` — a convenience, never the boundary |
 
-No new permission, no new RPC, no migration, no service-role path.
+No new permission, no service-role path, no RLS change. One new read-only RPC
+(§17.7).
 
 ### 17.4 Stale data and concurrent corrections
 
-Immediately before sending, the screen re-reads the allocation. If it has been
+Immediately before sending, the screen re-reads the **complete** ledger (never a
+direct table read — an allocation on a record the corrector cannot open must be
+judged, not reported missing). If it has been
 reversed by someone else, has moved (its PI was approved and the allocation
 moved onto the new Order), has vanished, or its amount differs, **nothing is
 sent**, the person is told what changed and that nothing was changed, and the
@@ -1845,6 +1851,14 @@ customers — adding another asks again. Nothing is blocked because customers
 differ, no customer name is sent or overwritten (the server derives it), and
 such a payment keeps displaying as *Multiple customers*.
 
+Allocate Funds reads the existing allocations' customers from the **complete
+ledger** only. A caller without `finance.allocate_correct` is refused that read,
+so for them the existing customers are *unknown*: when the payment already has
+allocations, the warning says so ("Check the customers on this payment") and
+asks for the same explicit confirmation rather than guessing from a partial RLS
+read or from the payment's stored `client_name` (which is written at entry and
+does not follow later allocations).
+
 ### 17.6 Payment-mode helper text
 
 Stored values and labels are unchanged (`hdfc`/HDFC, `pnb`/PNB, `paytm`/Paytm,
@@ -1861,21 +1875,86 @@ entry, editing and verification screens — never in lists:
 The wording follows the existing account definitions (`BOE_ACCOUNTS`,
 `src/app/finance/paymentDestinations.ts`). Legacy modes show no helper.
 
-### 17.7 Deferred to later phases (unchanged here)
+### 17.7 The complete-ledger read (`20261215000000`)
+
+**The defect it fixes.** The first version of Correct Allocation read
+`finance_payment_allocations` directly. Its participant SELECT policies are
+**per row** — a PI or Order participant sees only the allocations whose target
+they can open — and `finance.allocate_correct` does not imply
+`finance.view_all`. A corrector who could read a split payment through one of
+its records therefore received part of its ledger, and the screen computed the
+allocated total, the unallocated balance, the reversal history and the customer
+list from that part, while `reverse_payment_allocation()` acts on any
+allocation. Reproduced on a disposable database: the participant corrector's
+RLS read returned 1 of 4 allocations (₹4,00,000.25 of ₹7,00,000.55 active).
+
+**The read boundary.** `payment_allocation_ledger_for_correction(uuid)` returns
+every allocation of **one** payment — allocation id, status, amount, Order or PI
+id, target reference, client name, created, reversed-at, reversal reason and
+the reverser's name — and nothing else. It is `SECURITY DEFINER` (it must see
+past per-row RLS), `STABLE` (PostgreSQL refuses any write inside it),
+`search_path = public, pg_temp`, EXECUTE revoked from PUBLIC, anon and
+service_role and granted to authenticated only. It refuses unless the caller:
+
+1. is authenticated (`28000`);
+2. has Finance module entry (`42501`);
+3. holds `finance.allocate_correct` — active admin bypass, as
+   `reverse_payment_allocation()` (`42501`);
+4. may already read the payment under the six permissive SELECT policies on
+   `finance_payment_requests` — mirrored one by one in the function and pinned
+   by `allocationCorrection.test.ts`, which replays every migration's policies
+   and fails if the live set changes. A missing and an invisible payment are
+   refused identically (`P0002`).
+
+No table, column, policy, grant on a table or permission action is created or
+changed; the migration snapshots both tables' policies and refuses itself if
+they differ afterwards.
+
+| Caller | Ledger read |
+| --- | --- |
+| Active admin | full ledger |
+| `view` + `view_all` + `allocate_correct` | full ledger |
+| `view` + `allocate_correct`, participant in one of the payment's records | **full** ledger of that payment |
+| same person, a payment they cannot read | refused (`P0002`) |
+| `view` + `allocate` (no `allocate_correct`) | refused (`42501`) |
+| `view` only | refused (`42501`) |
+| `allocate_correct` without Finance entry | refused (`42501`) |
+| inactive user with every grant | refused (`42501`) |
+| authenticated role, no user | refused (`28000`) |
+| `anon`, `service_role` | no EXECUTE |
+
+**Executed, not only read.** `supabase/tests/run_payment_allocation_ledger_suite.sh`
+builds a disposable database from `_payment_allocation_ledger_shaped_schema.sql`
+(the live SELECT policies of both tables, and the deployed bodies of
+`module_entry_open`, `actor_has_permission`, `actor_has_module_permission` and
+`can_read_payment_as_participant` extracted from their migrations), proves the
+defect BEFORE the migration, applies it (running its own assertions), then runs
+`payment_allocation_ledger_assertions.sql`. Two mutations — dropping the
+permission check, and making every payment visible — each fail the suite.
+
+**Known, pre-existing and out of scope.** The Received Payments list reads the
+`security_invoker` projection `finance_received_payments`, whose
+`allocated_total` is summed under the reader's RLS and can therefore be low for
+a participant without `view_all`. The capacity trigger still enforces the true
+limit on every write, so money cannot be over-allocated; only a displayed figure
+can be understated. Not changed here.
+
+### 17.8 Deferred to later phases (unchanged here)
 
 Refunds, bank reversals, payment voids, confirmed-payment correction records,
 customer credit (§4.1), structured payment milestones, the dispatch payment gate
 (§4.2), fabric and finish approval (§4.3), quotation-to-PI conversion (D5), and
 any new payment permission.
 
-### 17.8 Verifying it
+### 17.9 Verifying it
 
 `src/lib/finance/allocationCorrection.test.ts` (rules, stale cases, the send path
 against a recording fake client, capability gating, the RPC's contract read from
 its migration), `src/app/finance/received/correctAllocation.render.test.tsx`
 (every screen of the flow and the detail-modal gate, rendered),
 `src/lib/finance/mixedCustomers.test.ts`, and the helper-text block in
-`src/lib/finance/paymentEntry.test.ts`. The SQL suite gained one case — an
+`src/lib/finance/paymentEntry.test.ts`. The complete-ledger read is executed by
+`supabase/tests/run_payment_allocation_ledger_suite.sh` (§17.7). The SQL suite gained one case — an
 allocate-only caller calling `reverse_payment_allocation()` is refused and the
 allocation stays active; it runs only against a migrated database with real
 users and was **not executed** in this pass.

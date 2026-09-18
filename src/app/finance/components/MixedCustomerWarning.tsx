@@ -4,6 +4,8 @@ import { useId } from 'react'
 import { colors } from '@/lib/tokens'
 import {
   MIXED_CUSTOMER_CONFIRM_LABEL,
+  MIXED_CUSTOMER_INCOMPLETE_NOTE,
+  MIXED_CUSTOMER_INCOMPLETE_TITLE,
   MIXED_CUSTOMER_TITLE,
   type CustomerGroup,
 } from '@/lib/finance/mixedCustomers'
@@ -20,11 +22,14 @@ export function MixedCustomerWarning({
   confirmed,
   onConfirmedChange,
   disabled,
+  incomplete,
 }: {
   groups: readonly CustomerGroup[]
   confirmed: boolean
   onConfirmedChange: (next: boolean) => void
   disabled?: boolean
+  /** The payment's existing customers could not all be read — say so, never guess. */
+  incomplete?: boolean
 }) {
   const checkboxId = useId()
   return (
@@ -36,10 +41,12 @@ export function MixedCustomerWarning({
       }}
     >
       <div style={{ fontSize: '13px', fontWeight: 700, color: '#92400E' }}>
-        {MIXED_CUSTOMER_TITLE}
+        {incomplete ? MIXED_CUSTOMER_INCOMPLETE_TITLE : MIXED_CUSTOMER_TITLE}
       </div>
       <div style={{ fontSize: '12px', color: '#92400E', lineHeight: 1.5 }}>
-        Check this is intended. The payment will be shown as “Multiple customers”.
+        {incomplete
+          ? MIXED_CUSTOMER_INCOMPLETE_NOTE
+          : 'Check this is intended. The payment will be shown as “Multiple customers”.'}
       </div>
       <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
         {groups.map(g => (

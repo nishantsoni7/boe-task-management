@@ -20,7 +20,10 @@ import {
   customerSignature,
   customerTargetLabel,
   isMixedCustomerSelection,
+  mixedCustomerCheck,
   rowCustomerTargets,
+  MIXED_CUSTOMER_INCOMPLETE_NOTE,
+  MIXED_CUSTOMER_INCOMPLETE_TITLE,
 } from './mixedCustomers'
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
 import { allocateFundsBlockedReason } from '@/app/finance/received/AllocateFundsModal'
@@ -121,9 +124,9 @@ describe('both doors that divide a payment use it', () => {
     test(`${file} shows the warning and waits for the tick`, () => {
       const src = read('src', 'app', 'finance', 'received', file)
       assert.ok(src.includes('<MixedCustomerWarning'), 'the warning is drawn')
-      assert.ok(src.includes('mixedCustomers && !mixedConfirmed ? MIXED_CUSTOMER_BLOCKED_REASON : null'),
+      assert.ok(/mixedCustomers && !mixedConfirmed\s*\?/.test(src) && src.includes('MIXED_CUSTOMER_BLOCKED_REASON'),
         'submission waits for the explicit confirmation')
-      assert.ok(src.includes('customerSignature(customers)'), 'the confirmation is tied to the customer set')
+      assert.ok(/customerSignature\(customers\)|customerCheck\.signature/.test(src), 'the confirmation is tied to the customer set')
     })
   }
 
@@ -132,10 +135,12 @@ describe('both doors that divide a payment use it', () => {
     assert.match(MIXED_CUSTOMER_BLOCKED_REASON, /Tick the confirmation/)
   })
 
-  test('Allocate Funds counts the customers the payment already pays for', () => {
+  test('Allocate Funds reads existing customers from the COMPLETE ledger only', () => {
     const src = read('src', 'app', 'finance', 'received', 'AllocateFundsModal.tsx')
-    assert.ok(src.includes('customerGroups([...existingCustomers, ...chosenTargets])'))
     assert.ok(src.includes('loadAllocationLedger(supabase, payment.id)'))
+    assert.ok(src.includes("{ state: 'unavailable' }"), 'a refused read is unknown, not empty')
+    assert.ok(!src.includes("label: 'existing allocations on this payment'"), 'no guess from the stored client_name')
+    assert.ok(src.includes('incomplete={customerCheck.incomplete}'))
   })
 
   test('neither door sends a customer — the server derives it', () => {
@@ -155,5 +160,55 @@ describe('both doors that divide a payment use it', () => {
       { ...EMPTY_ALLOCATION_ROW('b'), kind: 'order' as const, targetId: 'o2', clientName: 'B', reference: '2', amount: '600' },
     ]
     assert.equal(allocateFundsBlockedReason({ payment, rows }), null)
+  })
+})
+
+describe('existing customers: complete ledger, or honestly unknown', () => {
+  const existing = [
+    { clientName: 'Hotel Aurum', label: 'Order 0524' },
+    { clientName: 'Cafe Verde', label: 'Order 0529' },   // on a record the user cannot open
+  ]
+  const chosen = [{ clientName: 'Hotel Aurum', label: 'Order 0530' }]
+
+  test('from the complete ledger, a customer the user cannot see still counts', () => {
+    const check = mixedCustomerCheck({ existing: { state: 'complete', targets: existing }, chosen, paymentHasAllocations: true })
+    assert.equal(check.warn, true)
+    assert.equal(check.incomplete, false)
+    assert.deepEqual(check.groups.map(g => g.customer), ['Cafe Verde', 'Hotel Aurum'])
+  })
+
+  test('the same customer throughout does not warn', () => {
+    const check = mixedCustomerCheck({
+      existing: { state: 'complete', targets: [existing[0]] }, chosen, paymentHasAllocations: true })
+    assert.equal(check.warn, false)
+  })
+
+  test('when the complete ledger is refused, existing customers are UNKNOWN — warned, never guessed', () => {
+    for (const state of ['unavailable', 'loading'] as const) {
+      const check = mixedCustomerCheck({ existing: { state }, chosen, paymentHasAllocations: true })
+      assert.equal(check.warn, true, state)
+      assert.equal(check.incomplete, true, state)
+      assert.deepEqual(check.groups.map(g => g.customer), ['Hotel Aurum'], 'only what is actually known is listed')
+      assert.ok(check.signature.endsWith('|existing-unknown'), 'a confirmation given while unknown does not carry over')
+    }
+  })
+
+  test('a payment with no allocations has no unknown customers', () => {
+    const check = mixedCustomerCheck({ existing: { state: 'unavailable' }, chosen, paymentHasAllocations: false })
+    assert.deepEqual([check.warn, check.incomplete], [false, false])
+  })
+
+  test('nothing chosen, nothing asked', () => {
+    const check = mixedCustomerCheck({ existing: { state: 'unavailable' }, chosen: [], paymentHasAllocations: true })
+    assert.equal(check.warn, false)
+  })
+
+  test('the incomplete warning says so in words', () => {
+    const html = renderToStaticMarkup(createElement(MixedCustomerWarning, {
+      groups: [{ customer: 'Hotel Aurum', targets: ['Order 0530'] }], confirmed: false, onConfirmedChange: () => {}, incomplete: true,
+    }))
+    assert.ok(html.includes(MIXED_CUSTOMER_INCOMPLETE_TITLE))
+    assert.ok(html.includes(MIXED_CUSTOMER_INCOMPLETE_NOTE))
+    assert.ok(!html.includes('will be shown as'), 'no claim about how the payment will display')
   })
 })
