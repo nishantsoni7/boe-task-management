@@ -169,6 +169,10 @@ type PaymentRequest = {
   handed_over_to_user_id: string | null
   handed_over_at: string | null
   collection_handover_note: string | null
+  /** Stamped at INSERT while Test Data Cleanup was enabled; immutable. Read
+   *  from the base table with the custody columns. A VERIFIED payment may be
+   *  deleted only when this is true (20261218000000). */
+  is_test_data?: boolean
   proof_note: string | null
   order_number: string | null
   order_id: string | null
@@ -238,7 +242,8 @@ type LegacyCustodyFields = Pick<PaymentRequest,
   | 'collected_from_text'
   | 'handed_over_to_user_id'
   | 'handed_over_at'
-  | 'collection_handover_note'>
+  | 'collection_handover_note'
+  | 'is_test_data'>
 
 const NO_LEGACY_CUSTODY: LegacyCustodyFields = {
   collected_by_user_id: null,
@@ -246,6 +251,8 @@ const NO_LEGACY_CUSTODY: LegacyCustodyFields = {
   handed_over_to_user_id: null,
   handed_over_at: null,
   collection_handover_note: null,
+  // Unknown is treated as REAL: a verified payment then offers no Delete.
+  is_test_data: false,
 }
 
 /** The five legacy custody columns for a bounded set of payment ids, keyed by id. */
@@ -257,7 +264,9 @@ async function fetchLegacyCustodyFields(
   if (ids.length === 0) return map
   const { data } = await supabase
     .from('finance_payment_requests')
-    .select(`id, ${LEGACY_CUSTODY_COLUMNS.join(', ')}`)
+    // is_test_data rides the same base-table read: whether a VERIFIED payment
+    // may be deleted at all (20261218000000). Not on the projection.
+    .select(`id, ${LEGACY_CUSTODY_COLUMNS.join(', ')}, is_test_data`)
     .in('id', [...ids])
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const row of ((data ?? []) as any[])) {
@@ -267,6 +276,7 @@ async function fetchLegacyCustodyFields(
       handed_over_to_user_id:   row.handed_over_to_user_id ?? null,
       handed_over_at:           row.handed_over_at ?? null,
       collection_handover_note: row.collection_handover_note ?? null,
+      is_test_data:             row.is_test_data === true,
     })
   }
   return map

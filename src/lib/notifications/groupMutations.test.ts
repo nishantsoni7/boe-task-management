@@ -452,6 +452,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // column, policy, grant or permission action; only that one PI function body
       // changes, and nothing asserted here reads it.
       '20261217000000_order_submission_schedule_terms_use_the_amendment_context.sql',
+      // 20261218000000 — re-emits finance_payment_deletable_by() and the payment
+      // delete guard so a verified payment is permanent unless test data. No table,
+      // column, policy, grant or permission action changes; only those two bodies
+      // change, and nothing asserted here reads them.
+      '20261218000000_finance_verified_payments_are_permanent.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

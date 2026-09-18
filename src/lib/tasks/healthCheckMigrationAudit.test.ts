@@ -658,6 +658,11 @@ describe('the migration is placed correctly', () => {
       // column, policy, grant or permission action; only that one PI function body
       // changes, and nothing asserted here reads it.
       '20261217000000_order_submission_schedule_terms_use_the_amendment_context.sql',
+      // 20261218000000 — re-emits finance_payment_deletable_by() and the payment
+      // delete guard so a verified payment is permanent unless test data. No table,
+      // column, policy, grant or permission action changes; only those two bodies
+      // change, and nothing asserted here reads them.
+      '20261218000000_finance_verified_payments_are_permanent.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on
