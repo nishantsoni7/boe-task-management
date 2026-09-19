@@ -36,13 +36,17 @@ import {
   CONFIRMED_ALLOCATION_FILTERS,
   CONFIRMED_ALLOCATION_STATUSES,
   CONFIRMED_PAYMENT_COLUMNS,
+  CONFIRMED_TABLE_MIN_CONTAINER_PX,
+  ALLOCATED_AGAINST_MIN_PX,
 } from '@/lib/finance/paymentSurfaces'
 import {
   ROW_ACTION_KEYS,
   visibleRowActions,
   actionGroupWidthPx,
   actionsColumnWidthPx,
-  maxSimultaneousRowActions,
+  widestRowActions,
+  rowActionLayout,
+  ROW_ACTION_WIDTH_PX,
   ACTIONS_COLUMN_WIDTH_PX,
   ROW_ACTION_TARGET_PX,
   ROW_ACTION_GAP_PX,
@@ -283,19 +287,21 @@ describe('the action lists are untouched', () => {
   test('the menu renders every action it is handed, in order', () => {
     const menu = view.slice(view.indexOf('function RowActionsMenu'))
     const body = menu.slice(0, menu.indexOf('\nfunction PaymentsToVerifyTable'))
-    assert.ok(body.includes('actions.map(action => ('),
+    assert.ok(body.includes('actions.map((action, index) => ('),
       'one menuitem per action, no slicing and no reordering')
+    assert.ok(body.includes('{action.danger && index > 0 && <div role="separator" className="boe-menu-separator" />}'),
+      'and a destructive entry is set apart by a rule, never reordered')
     assert.ok(body.includes('if (actions.length === 0) return null'),
       'and a row with no permitted actions still shows no control at all')
   })
 
   test('Allocate Funds is still offered from its own permission rule', () => {
-    // Confirmed Payments draws its actions as DIRECT icon buttons now, so the
-    // gate moved from a menu-entry spread to a JSX guard — the CONDITION is
-    // unchanged, which is what this asserts.
-    assert.ok(view.includes('{offerAllocate && ('))
-    assert.ok(view.includes('const offerAllocate = canAllocate && canOfferAllocateFunds(r)'),
-      'still permission-derived at the call site')
+    // Both shapes hand the SAME condition to visibleRowActions(), which is the
+    // only thing that puts Allocate on a row (usability pass).
+    const guards = view.match(/const offerAllocate = canAllocate && canOfferAllocateFunds\(r\)/g) ?? []
+    assert.equal(guards.length, 2, 'still permission-derived at the call site — the table row and the card')
+    assert.ok(!visibleRowActions({ offerAllocate: false, canManage: true, canDelete: true }).includes('allocate'))
+    assert.ok(visibleRowActions({ offerAllocate: true, canManage: false, canDelete: false }).includes('allocate'))
   })
 
   test('the manage-only action is still gated on canManage', () => {
@@ -328,27 +334,29 @@ describe('the action lists are untouched', () => {
     }
   })
 
-  test('Payments to Verify KEEPS the shared menu; Confirmed Payments no longer uses it', () => {
-    // The portalled, collision-aware menu is not deleted — it is still the right
-    // control for a table whose only action is Edit, and every assertion about
-    // its placement above still applies to it there.
-    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 1,
-      'exactly one caller left: the Payments to Verify table')
+  test('the ONE shared menu serves Payments to Verify and Confirmed Payments\' "More actions"', () => {
+    // The portalled, collision-aware menu is the only dropdown in the file:
+    // Payments to Verify's Edit, and — since the usability pass — Edit and
+    // Delete behind "More actions" on every Confirmed Payments row and card.
+    // Every assertion about its placement above applies to both.
+    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 2,
+      'two callers: Payments to Verify and the shared Confirmed action row')
     const toVerify = view.slice(view.indexOf('function PaymentsToVerifyTable'))
     assert.ok(toVerify.slice(0, toVerify.indexOf('\n}\n')).includes('<RowActionsMenu'),
-      'and that caller is Payments to Verify')
-    assert.ok(view.includes('function RowActionsMenu'), 'the component itself survives')
+      'one caller is Payments to Verify')
+    const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
+    assert.ok(row.includes('<RowActionsMenu'), 'the other is the shared Confirmed action row')
   })
 
-  test('the mobile cards keep their inline buttons and are unaffected', () => {
-    // Cards render actions side by side rather than behind a dropdown, so they
-    // never had anything to clip. Pinned so a later "unify the menus" change
-    // has to consider this file.
+  test('the mobile cards offer exactly what the table row offers', () => {
+    // UNIFIED in the usability pass: the card used to offer Allocate and a
+    // full-width red Delete, and no Edit at all. It now draws the same
+    // PaymentRowActions from the same visibleRowActions() answer.
     const cards = view.slice(view.indexOf('function ReceivedPaymentsCards'))
     const body = cards.slice(0, cards.indexOf('\n}\n'))
-    assert.ok(!body.includes('RowActionsMenu'), 'cards do not use the dropdown')
-    assert.ok(body.includes('onAllocateFunds(r)') && body.includes('onDelete(r)'),
-      'and still offer the same actions inline')
+    assert.ok(body.includes('<PaymentRowActions'), 'the same component')
+    assert.ok(body.includes('actions={visibleRowActions({ offerAllocate, canManage, canDelete: canDeleteRow(r) })}'),
+      'from the same rules and the same guards')
   })
 })
 
@@ -534,68 +542,73 @@ describe('Allocate Funds is the only attachment workflow, and is unchanged', () 
 })
 
 describe('the widest possible action group fits the declared Actions width', () => {
-  test('the maximum is derived from the rules, not from a literal', () => {
-    const max = maxSimultaneousRowActions()
-    const byHand = Math.max(...allInputs().map(i => visibleRowActions(i).length))
-    assert.equal(max, byHand,
-      'the exhaustive search agrees with an independent sweep of the same rules')
-    assert.equal(max, 4, 'four actions, which is the whole set')
-    assert.equal(max, ROW_ACTION_KEYS.length,
-      'every action is independently reachable, so the maximum IS the action count')
+  // REVISED 2026-09-18 (Orders & Finance usability pass). The column used to be
+  // four equal 28px icon squares — View, Allocate, Edit, Delete. View and
+  // Allocate are now WORDS and Edit and Delete sit behind "More actions", so the
+  // arithmetic is fixed-width labelled buttons, one menu trigger and the gaps
+  // between them. The discipline is unchanged: nothing is restated by eye.
+
+  test('the widest row is found from the rules, not from a literal', () => {
+    const widest = widestRowActions()
+    const byHand = allInputs()
+      .map(i => visibleRowActions(i))
+      .reduce((a, b) => (actionGroupWidthPx(b) > actionGroupWidthPx(a) ? b : a), [] as RowActionKey[])
+    assert.equal(actionGroupWidthPx(widest), actionGroupWidthPx(byHand),
+      'the search in rowActions.ts agrees with an independent sweep of the same rules')
+    assert.equal(actionGroupWidthPx(widest), actionGroupWidthPx(['view', 'allocate', 'edit', 'delete']),
+      'the widest row is as wide as the Admin row with every action eligible')
+    assert.ok(widest.includes('view') && widest.includes('allocate'),
+      'it carries both labelled buttons, and at least one entry behind the menu')
   })
 
-  test('an Admin row with every action eligible fits the column on one line', () => {
-    const adminRow = { offerAllocate: true, canManage: true, canDelete: true }
-    const actions = visibleRowActions(adminRow)
-    assert.deepEqual(actions, ['view', 'allocate', 'edit', 'delete'],
-      'View, Allocate Funds, Edit, Delete — in the order they are drawn')
-    const needed = actionsColumnWidthPx(actions.length)
-    assert.ok(needed <= ACTIONS_COLUMN_WIDTH_PX,
-      `the widest Admin row needs ${needed}px and the column declares ${ACTIONS_COLUMN_WIDTH_PX}px`)
+  test('routine actions are words, the rest are behind the menu', () => {
+    const { inline, menu } = rowActionLayout(['view', 'allocate', 'edit', 'delete'])
+    assert.deepEqual(inline, ['view', 'allocate'], 'View and Allocate are one click, as words')
+    assert.deepEqual(menu, ['edit', 'delete'], 'Edit and Delete are behind "More actions"')
+    assert.equal(menu[menu.length - 1], 'delete', 'and Delete is the last entry in it')
+    assert.deepEqual(rowActionLayout(['view']), { inline: ['view'], menu: [] },
+      'a read-only row shows View and no menu at all')
   })
 
   test('NO reachable row can need more width than the column declares', () => {
     for (const input of allInputs()) {
-      const needed = actionsColumnWidthPx(visibleRowActions(input).length)
+      const needed = actionsColumnWidthPx(visibleRowActions(input))
       assert.ok(needed <= ACTIONS_COLUMN_WIDTH_PX,
         `${JSON.stringify(input)} needs ${needed}px > ${ACTIONS_COLUMN_WIDTH_PX}px`)
     }
-    assert.equal(ACTIONS_COLUMN_WIDTH_PX,
-      actionsColumnWidthPx(maxSimultaneousRowActions()),
+    assert.equal(ACTIONS_COLUMN_WIDTH_PX, actionsColumnWidthPx(widestRowActions()),
       'the declared width IS the computed width — it is not a hand-picked number')
   })
 
-  test('the arithmetic is targets, gaps and cell padding — nothing rounded away', () => {
-    assert.equal(actionGroupWidthPx(0), 0, 'no icons, no group')
-    assert.equal(actionGroupWidthPx(1), ROW_ACTION_TARGET_PX, 'one icon, no gaps')
-    assert.equal(actionGroupWidthPx(4),
-      4 * ROW_ACTION_TARGET_PX + 3 * ROW_ACTION_GAP_PX,
-      'four targets and the three gaps between them')
-    assert.equal(actionsColumnWidthPx(4),
-      actionGroupWidthPx(4) + 2 * TABLE_CELL_PADDING_X_PX,
-      'plus the cell padding on BOTH sides — the padding is what the first count dropped')
-    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 4 * 28 + 3 * 2 + 2 * 10,
-      'which is 138px')
+  test('the arithmetic is buttons, the trigger, gaps and cell padding — nothing rounded away', () => {
+    assert.equal(actionGroupWidthPx([]), 0, 'no actions, no group')
+    assert.equal(actionGroupWidthPx(['view']), ROW_ACTION_WIDTH_PX.view, 'one button, no gaps')
+    assert.equal(actionGroupWidthPx(['view', 'edit']),
+      ROW_ACTION_WIDTH_PX.view + ROW_ACTION_TARGET_PX + ROW_ACTION_GAP_PX,
+      'View, the menu trigger, one gap')
+    assert.equal(actionGroupWidthPx(['view', 'allocate', 'edit', 'delete']),
+      ROW_ACTION_WIDTH_PX.view + ROW_ACTION_WIDTH_PX.allocate + ROW_ACTION_TARGET_PX + 2 * ROW_ACTION_GAP_PX,
+      'two menu entries still cost ONE trigger')
+    assert.equal(actionsColumnWidthPx(['view']),
+      actionGroupWidthPx(['view']) + 2 * TABLE_CELL_PADDING_X_PX,
+      'plus the cell padding on BOTH sides')
+    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 50 + 70 + 28 + 2 * 4 + 2 * 8, 'which is 172px')
   })
 
-  test('the column is no longer sized for the six obsolete actions', () => {
-    // 198px was the six-action width. Carrying it forward would leave a wide
-    // empty gutter beside four icons — the table has to take the room back.
-    assert.ok(ACTIONS_COLUMN_WIDTH_PX < 198,
-      'the six-action width must not survive the actions it was sized for')
-    assert.equal(ACTIONS_COLUMN_WIDTH_PX, 138)
-    assert.ok(actionsColumnWidthPx(6) > ACTIONS_COLUMN_WIDTH_PX,
-      'and six icons would no longer fit, which is correct — there are only four')
-  })
-
-  test('the target is big enough to click and the CSS agrees', () => {
+  test('every width the arithmetic assumes is the width the CSS draws', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
+    const rule = (selector: string) => {
+      const at = css.indexOf(`${selector} {`)
+      assert.ok(at > -1, `${selector} is styled`)
+      return css.slice(at, css.indexOf('}', at))
+    }
+    assert.ok(rule('.boe-row-action--view').includes(`width: ${ROW_ACTION_WIDTH_PX.view}px`))
+    assert.ok(rule('.boe-row-action--allocate').includes(`width: ${ROW_ACTION_WIDTH_PX.allocate}px`))
+    assert.ok(rule('.boe-row-more').includes(`width: ${ROW_ACTION_TARGET_PX}px`))
     assert.ok(ROW_ACTION_TARGET_PX >= 28 && ROW_ACTION_TARGET_PX <= 30,
-      'a 28-30px square: comfortable to hit, still a table row and not a toolbar')
-    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-    const rule = css.slice(css.indexOf('.boe-icon-action'))
-    const body = rule.slice(0, rule.indexOf('}'))
-    assert.ok(body.includes(`${ROW_ACTION_TARGET_PX}px`),
-      'the rendered square matches the square the arithmetic assumed')
+      'a 28-30px trigger: comfortable to hit, still a table row and not a toolbar')
+    assert.ok(view.includes('padding: `7px ${TABLE_CELL_PADDING_X_PX}px`'),
+      'and the table cells use the padding the arithmetic assumed')
   })
 
   test('the column definition carries the computed width, not a copy of it', () => {
@@ -611,20 +624,16 @@ describe('the widest possible action group fits the declared Actions width', () 
       'the Actions row must carry no literal pixel width of its own')
   })
 
-  test('the icon row cannot wrap, scroll or overflow its cell', () => {
+  test('the action row cannot wrap, scroll or overflow its cell', () => {
+    const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
+    const at = css.indexOf('.boe-row-actions {')
+    const rule = css.slice(at, css.indexOf('}', at))
+    assert.ok(rule.includes('flex-wrap: nowrap'), 'pinned to one line — it never wraps to a second')
+    assert.ok(rule.includes('display: inline-flex'), 'a single flex row, not a grid that could reflow')
+    assert.ok(!rule.includes('overflow'), 'not made to scroll either — the column is wide enough')
     const table = stripComments(view.slice(view.indexOf('function ReceivedPaymentsTable')))
     const body = table.slice(0, table.indexOf('\n}\n'))
-    const group = body.slice(body.indexOf('visibleRowActions({'))
-    const container = body.slice(0, body.indexOf('visibleRowActions({'))
-    const wrapper = container.slice(container.lastIndexOf('<div'))
-    assert.ok(wrapper.includes("flexWrap: 'nowrap'"),
-      'the icon row is pinned to one line — it never wraps to a second')
-    assert.ok(wrapper.includes("display: 'inline-flex'"),
-      'and it is a single flex row, not a grid that could reflow')
-    assert.ok(!wrapper.includes('overflow'),
-      'not made to scroll either — the column is declared wide enough instead')
-    assert.ok(group.startsWith('visibleRowActions({'),
-      'and the icons it holds come from the shared rule set the width was computed from')
+    assert.ok(body.includes('<PaymentRowActions'), 'the table draws the shared action row')
   })
 
   test('the call site passes capabilities only — no linkage fields survive it', () => {
@@ -654,10 +663,22 @@ describe('the widest possible action group fits the declared Actions width', () 
     assert.deepEqual(visibleRowActions(fullyAllocatedAdmin), ['view', 'edit', 'delete'],
       'a fully allocated row offers no Allocate, even to an Admin')
 
-    for (const input of [readOnly, financeNoDelete, fullyAllocatedAdmin]) {
-      assert.ok(actionsColumnWidthPx(visibleRowActions(input).length) < ACTIONS_COLUMN_WIDTH_PX,
+    for (const input of [readOnly, fullyAllocatedAdmin]) {
+      assert.ok(actionsColumnWidthPx(visibleRowActions(input)) < ACTIONS_COLUMN_WIDTH_PX,
         'a restricted row needs strictly less width than the Admin worst case')
     }
+  })
+
+  test('the table fits its minimum container with Allocated Against at its floor', () => {
+    const fixed = CONFIRMED_PAYMENT_COLUMNS
+      .filter(c => c.key !== 'allocated_against')
+      .map(c => Number.parseInt(String((c as { width?: string }).width), 10))
+    assert.ok(fixed.every(Number.isFinite), 'every column but Allocated Against has a pixel width')
+    const sum = fixed.reduce((a, b) => a + b, 0)
+    assert.ok(sum + ALLOCATED_AGAINST_MIN_PX <= CONFIRMED_TABLE_MIN_CONTAINER_PX,
+      `${sum}px of fixed columns + ${ALLOCATED_AGAINST_MIN_PX}px must fit ${CONFIRMED_TABLE_MIN_CONTAINER_PX}px`)
+    assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX - (sum + ALLOCATED_AGAINST_MIN_PX) < 10,
+      'and the threshold is derived from them, not padded by guesswork')
   })
 })
 
@@ -802,8 +823,8 @@ describe('a menu entry shows which action is about to run', () => {
   })
 
   test('the menu styling still serves its one remaining caller', () => {
-    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 1,
-      'Payments to Verify')
+    assert.equal((view.match(/<RowActionsMenu/g) ?? []).length, 2,
+      'Payments to Verify, and the Confirmed rows\' "More actions"')
   })
 
   test('the mobile inline actions were not touched', () => {
@@ -839,7 +860,7 @@ describe('the primary row shows seven columns and no money detail', () => {
   test('but the row still renders the seven that remain, in order', () => {
     const order = ['r.human_payment_id', 'fmtAmount(r.amount)', 'fmtDate(r.payment_date)',
                    'PAYMENT_MODE_LABEL[r.payment_mode]', '<AllocatedAgainstCell',
-                   '<ConfirmedAllocationBadge', '<IconAction']
+                   '<ConfirmedAllocationBadge', '<PaymentRowActions']
     let cursor = -1
     for (const marker of order) {
       const at = table.indexOf(marker, cursor + 1)
@@ -952,8 +973,8 @@ describe('every allocation status opens the payment record', () => {
     // The row itself opens the record, and the expand toggle is in the same
     // row. A click on the badge must reach neither.
     assert.ok(body.includes('event.stopPropagation()'))
-    assert.ok(view.includes('<td style={TD} onClick={e => e.stopPropagation()}>'),
-      'the cell stops the row handler too')
+    assert.ok(view.includes("<td style={{ ...TD, overflow: 'visible' }} onClick={e => e.stopPropagation()}>"),
+      'the cell stops the row handler too (and lets the focus ring show)')
   })
 
   test('the status colours are the badge’s own, in both shapes', () => {
@@ -1141,8 +1162,8 @@ describe('every action carries an icon and keeps its words', () => {
   test('each Confirmed Payments action is a direct button with the right icon', () => {
     // ROW_ACTION_META is one entry per action: its icon, its label, what it
     // runs. visibleRowActions() decides which are drawn.
-    const meta = view.slice(view.indexOf('const ROW_ACTION_META'))
-    const block = meta.slice(0, meta.indexOf('\n  }\n'))
+    const meta = view.slice(view.indexOf('function rowActionMeta('))
+    const block = meta.slice(0, meta.indexOf('\n  }\n}\n'))
     const pairs: [RowActionKey, string, string][] = [
       ['view',     'Eye',    'View details for'],
       ['allocate', 'Split',  'ALLOCATE_FUNDS_ACTION_LABEL'],
@@ -1186,18 +1207,20 @@ describe('every action carries an icon and keeps its words', () => {
     assert.ok(menuBody.includes('flexShrink: 0'))
   })
 
-  test('EVERY icon-only control is named twice over', () => {
-    // The glyph is the whole control, so nothing else names it: aria-label for a
-    // screen reader, title for a pointer. IconAction applies both from one prop,
-    // so no call site can forget one.
-    const icon = view.slice(view.indexOf('function IconAction'))
-    const body = icon.slice(0, icon.indexOf('\nfunction RowActionsMenu'))
-    assert.ok(body.includes('aria-label={label}'))
-    assert.ok(body.includes('title={label}'))
-    assert.ok(body.includes('aria-hidden="true"'), 'and the glyph itself is not announced')
+  test('EVERY row control is named for its payment, and the one icon-only control twice over', () => {
+    // REVISED (usability pass): View and Allocate carry their words, and their
+    // accessible names add the payment. The one icon-only control left is the
+    // "More actions" trigger, named by aria-label AND title.
+    const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
+    assert.ok(row.includes('aria-label={meta[key].label(row)}'))
+    assert.ok(row.includes('label={`More actions for ${row.human_payment_id ?? \'this payment\'}`}'))
+    const menu = view.slice(view.indexOf('function RowActionsMenu'), view.indexOf('function PaymentsToVerifyTable'))
+    assert.ok(menu.includes('aria-label={label}') && menu.includes('title={label}'))
+    assert.ok(menu.includes('<MoreHorizontal size={15} strokeWidth={2} aria-hidden="true" />'),
+      'and the glyph itself is not announced')
     // Every label names the PAYMENT, not just the verb.
-    const meta = view.slice(view.indexOf('const ROW_ACTION_META'))
-    const block = meta.slice(0, meta.indexOf('\n  }\n'))
+    const meta = view.slice(view.indexOf('function rowActionMeta('))
+    const block = meta.slice(0, meta.indexOf('\n  }\n}\n'))
     const labels = [...block.matchAll(/label: r => `([^`]+)`/g)].map(m => m[1])
     assert.equal(labels.length, ROW_ACTION_KEYS.length, 'one label per action')
     for (const label of labels) {
@@ -1215,7 +1238,7 @@ describe('every action carries an icon and keeps its words', () => {
     const rule = css.slice(css.indexOf('.boe-icon-action--danger:hover:not(:disabled),'))
     assert.ok(rule.slice(0, rule.indexOf('}')).includes('rgba(217,79,79,0.14)'),
       'the same red .boe-btn-danger:hover uses')
-    const meta = view.slice(view.indexOf('const ROW_ACTION_META'))
+    const meta = view.slice(view.indexOf('function rowActionMeta('))
     assert.ok(/delete: \{[\s\S]{0,320}?Icon: Trash2[\s\S]{0,320}?danger: true/.test(meta),
       'Delete keeps both its icon and its danger marker')
   })
@@ -1250,10 +1273,11 @@ describe('the mobile card matches the table’s information order', () => {
     assert.ok(/<ConfirmedAllocationBadge[\s\S]{0,200}?paymentId=\{r\.human_payment_id\}/.test(body))
   })
 
-  test('the inline actions survive, with matching icons and their labels', () => {
-    assert.ok(body.includes('{ALLOCATE_FUNDS_ACTION_LABEL}') && body.includes('<Split size={13}'))
-    assert.ok(body.includes('{PAYMENT_DELETE_CONFIRM_LABEL}') && body.includes('<Trash2 size={13}'))
-    assert.ok(!body.includes('RowActionsMenu'), 'cards keep inline buttons, not a dropdown')
+  test('the actions follow the fields, from the shared action row', () => {
+    assert.ok(body.indexOf('<PaymentRowActions') > body.indexOf('<ConfirmedAllocationBadge'),
+      'the actions close the card, after the status')
+    assert.ok(body.includes('const meta = rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete })'),
+      'with the same words, icons and names as the table row')
   })
 
   test('the card no longer computes figures it does not draw', () => {
@@ -1393,47 +1417,60 @@ describe('the allocation status reads as a status, not a button', () => {
 
 // ══ 13. The toolbar ══════════════════════════════════════════════════════════
 
-describe('the toolbar puts narrowing left and the creating action far right', () => {
-  const toolbar = view.slice(view.indexOf('{/* ── Toolbar ──'),
+describe('the page has one hierarchy: header action, one row of narrowing, then the list', () => {
+  // REVISED 2026-09-18 (Orders & Finance usability pass). The toolbar used to
+  // carry two groups — narrowing on the left, the count and Record Payment on
+  // the right — under a separate strip of status chips, three rows for one
+  // workflow. Now, as on Confirmed Orders:
+  //   * Record Payment, the one CREATING action, is in the page header, where
+  //     every Orders and Finance page puts its primary action;
+  //   * the toolbar holds only what NARROWS the list, in one wrapping row;
+  //   * the status tabs and the exact result count head the list card.
+  const toolbar = view.slice(view.indexOf('{/* ── Toolbar: everything that NARROWS the list'),
                              view.indexOf('{recordNotice &&'))
+  const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8').replace(/\r\n/g, '\n')
+  const rule = (selector: string) => {
+    const at = css.indexOf(`${selector} {`)
+    assert.ok(at > -1, `${selector} is styled`)
+    return css.slice(at, css.indexOf('}', at))
+  }
 
-  test('search and both date bounds share the left group, in that order', () => {
-    const left = toolbar.slice(0, toolbar.indexOf("marginLeft: 'auto'"))
-    const search = left.indexOf('meta.searchPlaceholder')
-    const from = left.indexOf('payment-date-from')
-    const to = left.indexOf('payment-date-to')
-    assert.ok(search > -1 && from > search && to > from,
-      'Search, then Paid From, then Paid To')
-    assert.ok(left.includes("flex: '1 1 auto'"), 'the narrowing group takes the slack')
+  test('search and both date bounds, in that order, and nothing that creates', () => {
+    const search = toolbar.indexOf('meta.searchPlaceholder')
+    const from = toolbar.indexOf('payment-date-from')
+    const to = toolbar.indexOf('payment-date-to')
+    assert.ok(search > -1 && from > search && to > from, 'Search, then Paid From, then Paid To')
+    assert.ok(!toolbar.includes('RECORD_PAYMENT_ACTION_LABEL'), 'Record Payment is not a filter')
+    assert.ok(toolbar.includes('role="search"'), 'and the row is announced as the search region')
   })
 
-  test('Record Payment is pushed right by layout, not by a hardcoded gap', () => {
-    assert.ok(toolbar.includes("marginLeft: 'auto'"),
-      'the right group is separated by auto margin')
-    assert.ok(!/marginLeft: '\d{2,}px'/.test(toolbar), 'no hardcoded empty margin')
-    assert.ok(!toolbar.includes("position: 'absolute'"), 'and nothing is positioned absolutely')
-    const rightGroup = toolbar.slice(toolbar.indexOf("marginLeft: 'auto'"))
-    assert.ok(rightGroup.includes('RECORD_PAYMENT_ACTION_LABEL'),
-      'Record Payment lives in the right group')
+  test('Record Payment is the page header\'s action, gated on the capability that records one', () => {
+    const header = view.slice(view.indexOf('    <FinanceLayout'), view.indexOf('{/* ── Toolbar: everything that NARROWS'))
+    assert.ok(header.includes('actions={caps.canAllocatePayment && ('),
+      'unchanged: Finance module entry plus finance.allocate')
+    assert.ok(header.includes('{RECORD_PAYMENT_ACTION_LABEL}'))
+    assert.ok(header.includes('className="boe-btn boe-btn-primary"'), 'drawn as the page\'s primary action')
   })
 
-  test('the count sits near it but does not compete with it', () => {
-    const rightGroup = toolbar.slice(toolbar.indexOf("marginLeft: 'auto'"))
-    const count = rightGroup.indexOf('resultSummary(')
-    const button = rightGroup.indexOf('RECORD_PAYMENT_ACTION_LABEL')
-    assert.ok(count > -1 && button > count, 'the count reads before the button')
-    const countBlock = rightGroup.slice(count - 260, count)
-    assert.ok(countBlock.includes("fontSize: '11px'") && countBlock.includes('colors.muted'),
-      'muted 11px — an answer about the list, not an action')
+  test('the count heads the list it describes, muted, beside the tabs', () => {
+    const card = view.slice(view.indexOf('{/* ── The allocation-status tabs, heading the list they narrow ──'))
+    const bar = card.slice(0, card.indexOf('{/* Table.'))
+    assert.ok(bar.indexOf('role="tablist"') > -1 && bar.indexOf('resultSummary(') > bar.indexOf('role="tablist"'),
+      'the tabs, then the size of the whole narrowed set')
+    assert.ok(bar.includes('aria-live="polite"'), 'announced when it changes')
+    assert.ok(rule('.boe-list-count').includes('color: #6B7384'), 'muted — an answer about the list, not an action')
   })
 
   test('it wraps rather than overlapping when there is no room', () => {
-    assert.ok(toolbar.includes("flexWrap: 'wrap'"))
+    assert.ok(rule('.boe-list-toolbar').includes('flex-wrap: wrap'))
+    assert.ok(!/position: absolute/.test(rule('.boe-list-toolbar')), 'nothing is positioned absolutely')
+    assert.ok(rule('.boe-list-search').includes('max-width: 340px'),
+      'the search box takes the slack up to a readable width, not the whole row')
   })
 
-  test('Record Payment is still gated on the capability that records one', () => {
-    assert.ok(toolbar.includes('{caps.canAllocatePayment && ('),
-      'unchanged: Finance module entry plus finance.allocate')
+  test('Payments to Verify, which has no tabs, closes the toolbar row with its count', () => {
+    assert.ok(toolbar.includes("surface !== 'confirmed' && ("))
+    assert.ok(toolbar.slice(toolbar.indexOf("surface !== 'confirmed' && (")).includes('resultSummary('))
   })
 })
 
@@ -1461,7 +1498,7 @@ describe('the allocation tabs', () => {
 
 describe('the earlier corrections still hold', () => {
   const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
-                           view.indexOf('function IconAction'))
+                           view.indexOf('function RowActionsMenu'))
 
   test('Payment ID is still the first column and the first cell', () => {
     assert.equal(CONFIRMED_PAYMENT_COLUMNS[0].key, 'payment_id')
@@ -1505,10 +1542,9 @@ describe('the earlier corrections still hold', () => {
     const perRow = /rows\.map\([\s\S]{0,400}?\.from\('finance_payment_allocations'\)/
     assert.ok(!perRow.test(view), 'no allocation read inside a row loop')
     assert.ok(!view.includes('const allocationProbe'), 'the dropdown’s probe query is gone')
-    const icon = view.slice(view.indexOf('function IconAction'))
-    const body = icon.slice(0, icon.indexOf('\nfunction RowActionsMenu'))
+    const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
     for (const call of ['.from(', '.rpc(', 'fetch(']) {
-      assert.ok(!body.includes(call), `an icon button must not ${call}`)
+      assert.ok(!row.includes(call), `a row action must not ${call}`)
     }
   })
 })

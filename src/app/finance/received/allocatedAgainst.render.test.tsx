@@ -113,7 +113,7 @@ const common = {
 }
 
 const desktop = renderToStaticMarkup(createElement(ReceivedPaymentsTable, { ...common, canManage: true, onEdit: noop }))
-const mobile = renderToStaticMarkup(createElement(ReceivedPaymentsCards, common))
+const mobile = renderToStaticMarkup(createElement(ReceivedPaymentsCards, { ...common, canManage: true, onEdit: noop }))
 const cell = (view: AllocatedAgainstView, fill = false) =>
   renderToStaticMarkup(createElement(AllocatedAgainstCell, { view, hrefFor, onOpen: noop, fill }))
 
@@ -141,10 +141,14 @@ describe('desktop: the seven columns', () => {
 
   test('every row keeps its Payment ID, amount, date, mode, status badge and actions', () => {
     const r = rowOf(desktop, '0002')
-    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Fully Allocated', 'aria-label="Edit P-AA-0002"',
-      'aria-label="View details for P-AA-0002"', 'aria-label="Delete Payment P-AA-0002"']) {
+    // REVISED (usability pass): View is a labelled button on the row; Edit and
+    // Delete live behind "More actions", whose panel only renders when opened,
+    // so the row carries the trigger — named for this payment — not the entries.
+    for (const text of ['P-AA-0002', '₹5,00,000.00', 'Fully Allocated',
+      'aria-label="View details for P-AA-0002"', 'aria-label="More actions for P-AA-0002"']) {
       assert.ok(r.includes(text), text)
     }
+    assert.ok(!r.includes('boe-icon-action'), 'no unexplained icon squares are left in the row')
   })
 
   test('the Allocated Against cell may wrap; no cell forces a sideways scroll', () => {
@@ -153,10 +157,14 @@ describe('desktop: the seven columns', () => {
     assert.ok(desktop.includes('min-width:200px'), 'and the column keeps room for every amount')
     const widths = [...desktop.matchAll(/<th style="([^"]*)"[^>]*>([^<]*)<\/th>/g)]
       .map(m => [m[2], /width:([^;"]+)/.exec(m[1])?.[1] ?? 'auto'])
+    // REVISED (usability pass): compact MEASURED pixel widths for the fixed
+    // columns — the old 1% shrink-to-fit crowded them together on the left —
+    // and Allocated Against still takes the rest.
     assert.deepEqual(widths, [
-      ['Payment ID', '1%'], ['Amount', '1%'], ['Received Date', '1%'], ['Mode', '1%'],
-      ['Allocated Against', 'auto'], ['Allocation Status', '1%'], ['Actions', '138px'],
-    ], 'fixed columns shrink to content; Allocated Against takes the rest')
+      ['Payment ID', '80px'], ['Amount', '128px'], ['Received Date', '100px'], ['Mode', '92px'],
+      ['Allocated Against', 'auto'], ['Allocation Status', '156px'], ['Actions', '172px'],
+    ], 'fixed columns have measured widths; Allocated Against takes the rest')
+    assert.ok(desktop.includes('table-layout:fixed'), 'and the table lays out by them')
     assert.ok(/<td style="[^"]*white-space:normal/.test(desktop), 'stacked lines are allowed in that one cell')
   })
 })
@@ -237,7 +245,10 @@ describe('mobile cards', () => {
 
   test('Payment ID, amount, date, mode, status and permitted actions remain', () => {
     const c = rowOf(mobile, '0004')
-    for (const text of ['P-AA-0004', '₹7,50,000.00', 'Partially Allocated', 'Allocate Funds', 'Delete Payment']) {
+    // The card offers the SAME actions as the table row, from the same
+    // component: Allocate as a word, Edit and Delete behind "More actions".
+    for (const text of ['P-AA-0004', '₹7,50,000.00', 'Partially Allocated',
+      'aria-label="Allocate Funds for P-AA-0004"', 'aria-label="More actions for P-AA-0004"']) {
       assert.ok(c.includes(text), text)
     }
   })
@@ -277,7 +288,7 @@ describe('the Allocation Status badge is the complete answer, desktop and mobile
       allocatedAgainst: (() => ({ kind: 'loading' })) as never,
     }))
     const failed = renderToStaticMarkup(createElement(ReceivedPaymentsCards, {
-      ...common, allocatedAgainst: (() => ({ kind: 'unavailable' })) as never,
+      ...common, canManage: true, onEdit: noop, allocatedAgainst: (() => ({ kind: 'unavailable' })) as never,
     }))
     for (const label of ['Zero Allocated', 'Partially Allocated', 'Fully Allocated', 'Over-allocated']) {
       assert.ok(!loading.includes(label) && !failed.includes(label), label)
@@ -309,7 +320,9 @@ describe('the cell states', () => {
     // Asserted on source: a static render carries no handlers.
     const src = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8')
     const body = src.slice(src.indexOf('export function AllocatedAgainstCell'), src.indexOf('// THE ROW FIGURES ARE GONE'))
-    assert.ok(/onClick=\{event => \{[\s\S]{0,200}?event\.preventDefault\(\)[\s\S]{0,40}?event\.stopPropagation\(\)[\s\S]{0,40}?onOpen\(href\)/.test(body))
+    assert.ok(/onClick=\{event => \{[\s\S]{0,200}?event\.stopPropagation\(\)[\s\S]{0,400}?event\.preventDefault\(\)[\s\S]{0,40}?onOpen\(href\)/.test(body))
+    // A modified click (new tab / window) is left to the browser: it is a real link.
+    assert.ok(/if \(event\.metaKey \|\| event\.ctrlKey \|\| event\.shiftKey \|\| event\.altKey \|\| event\.button !== 0\) return/.test(body))
     for (const call of ['.from(', '.rpc(', 'fetch(']) assert.ok(!body.includes(call), `the cell issues no ${call}`)
   })
 })

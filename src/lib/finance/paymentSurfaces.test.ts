@@ -177,21 +177,25 @@ describe('Confirmed Payments has exactly seven primary columns, in this order', 
     assert.equal(CONFIRMED_PAYMENT_BREAKDOWN_COLUMNS.length, 2)
   })
 
-  test('AMOUNT IS LEFT-ALIGNED; only Actions trails', () => {
+  test('AMOUNT IS LEFT-ALIGNED, and so is every column', () => {
     // Deliberate, and a departure from the app's other money columns. This table
     // has ONE money column: there is no second figure beside it to compare
     // against, and a lone right-aligned column pushes its values away from the
     // identifier they belong to. tabular-nums still lines the digits up.
     const amount = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'amount')
     assert.equal(amount?.align, 'left')
-    const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => c.align === 'right').map(c => c.key)
-    assert.deepEqual(right, ['actions'], 'Actions is the only trailing column')
+    const right = CONFIRMED_PAYMENT_COLUMNS.filter(c => (c.align as string) === 'right').map(c => c.key)
+    // REVISED (usability pass): Actions is left-aligned too. Its controls sit
+    // in FIXED SLOTS from the cell's left edge (View, then Allocate, More pinned
+    // right), so each lines up down the column; right-aligning the group made
+    // View jump sideways wherever Allocate was absent.
+    assert.deepEqual(right, [], 'no trailing column')
   })
 
   test('the Amount CELL is left-aligned too, and keeps tabular figures', () => {
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(view.indexOf('function ReceivedPaymentsTable'),
-                             view.indexOf('function IconAction'))
+                             view.indexOf('function RowActionsMenu'))
     const cell = table.slice(table.indexOf('{fmtAmount(r.amount)}') - 400,
                              table.indexOf('{fmtAmount(r.amount)}'))
     assert.ok(!cell.includes("textAlign: 'right'"),
@@ -318,20 +322,24 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
 
 describe('Confirmed Payments table, continued', () => {
 
-  test('Actions is a row of direct icon buttons, not a menu', () => {
-    // WAS a View button plus a "…" menu, so the common actions cost two clicks
-    // and one of them was hidden. Every permitted action is now one click.
+  test('Actions: the routine ones as words, the rest behind "More actions"', () => {
+    // REVISED (usability pass). The column was four equal icon squares — View,
+    // Allocate, Edit, Delete — so viewing and deleting a payment looked like
+    // the same kind of act. View and Allocate are now labelled buttons (one
+    // click, as before); Edit and Delete sit behind "More actions", Delete last
+    // and red. The set is still decided by the shared predicate.
     const view = read('src/app/finance/received/ReceivedPaymentsView.tsx')
     const table = view.slice(
       view.indexOf('function ReceivedPaymentsTable'),
-      view.indexOf('function IconAction'))
-    assert.ok(!table.includes('<RowActionsMenu'),
-      'Confirmed Payments has no ellipsis menu')
+      view.indexOf('function RowActionsMenu'))
     assert.ok(table.includes('visibleRowActions({'),
-      'the set is decided by the shared predicate, not by six guards written out here')
-    assert.ok(table.includes('<IconAction'), 'and each one is drawn as a direct icon button')
-    assert.equal((table.match(/className="boe-btn boe-btn-ghost"/g) ?? []).length, 0,
-      'and no bare text button is left in the Actions cell')
+      'the set is decided by the shared predicate, not by guards written out here')
+    assert.ok(table.includes('<PaymentRowActions'), 'drawn by the one shared action row')
+    assert.ok(!table.includes('<IconAction'), 'no unexplained icon squares remain')
+    const row = view.slice(view.indexOf('function PaymentRowActions'), view.indexOf('function RowActionsMenu'))
+    assert.ok(row.includes('rowActionLayout(actions)'), 'the inline/menu split is the shared rule')
+    assert.ok(row.includes('<RowActionsMenu'), 'Edit and Delete are behind the menu')
+    assert.ok(row.includes('{meta[key].text}'), 'and the inline actions are words')
   })
 
   test('the overflow menu is keyboard reachable and named', () => {

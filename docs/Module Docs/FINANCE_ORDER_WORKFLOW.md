@@ -2148,6 +2148,19 @@ destination name carried its full `title`. When an over-wide value was injected
 into the table, it switched to cards on the next resize. The "Not allocated"
 chip no longer stretches across the card.
 
+**Revised 2026-09-18 (Orders & Finance usability pass).**
+- **Layout.** The table is `table-layout: fixed`. Every column except
+  Allocated Against has a measured pixel width: 80, 128, 100, 92, 156, and
+  Actions at 172.
+- **Actions.** The row's actions are the words View and Allocate, in fixed
+  slots. Edit and Delete sit behind "More actions".
+- **Threshold.** The switch threshold is derived from those widths plus the
+  200px floor, which gives 930px. A 1280px window still gets the table, and
+  1024px still gets cards.
+- **Unchanged.** The container measurement and the overflow safety net above.
+
+See `ORDERS_FINANCE_USABILITY_PASS.md` §3.
+
 ### 18.6 Verifying it
 
 **SQL suite.** `supabase/tests/run_received_payment_allocation_targets_suite.sh`

@@ -134,19 +134,18 @@ describe('the control appears where a deletable payment is, and nowhere else', (
    */
   test('both the table and the cards offer it on Received Payments, and neither offers it unguarded', () => {
     const src = code(read(RECEIVED))
-    // TWO SHAPES, ONE GUARD. The table row's Delete is now drawn from
-    // ROW_ACTION_META's `delete` entry, chosen by visibleRowActions() — which
-    // is handed `canDelete: canDeleteRow(r)`. The card keeps its labelled
-    // inline button with the guard written out. Both are asserted.
-    assert.ok(src.includes('canDelete: canDeleteRow(r)'),
-      'the table row\'s Delete is gated by the shared predicate')
-    const cardWirings = [...src.matchAll(/onDelete\(r\) \}/g)].map(m => m.index ?? -1)
-    assert.ok(cardWirings.length >= 1, 'the card wires Delete too')
-    for (const at of cardWirings) {
-      const preceding = src.slice(Math.max(0, at - 260), at)
-      assert.match(preceding, /canDeleteRow\(r\)/,
-        'every Delete wiring must be guarded by the shared predicate')
-    }
+    // ONE SHAPE, ONE GUARD (usability pass). The table row AND the card both
+    // draw their actions through PaymentRowActions, from visibleRowActions() —
+    // which each hands `canDelete: canDeleteRow(r)`. Delete lives behind "More
+    // actions" in both, and its ONLY wiring to onDelete is rowActionMeta's
+    // `delete` entry, which visibleRowActions() includes only on that guard.
+    const guarded = [...src.matchAll(/canDelete: canDeleteRow\(r\)/g)]
+    assert.equal(guarded.length, 2, 'the table row and the card are each gated by the shared predicate')
+    const wirings = [...src.matchAll(/onDelete\(r\)/g)]
+    assert.equal(wirings.length, 1, 'onDelete is reached from exactly one place')
+    const at = wirings[0].index ?? -1
+    assert.match(src.slice(Math.max(0, at - 300), at), /delete: \{/,
+      'and that place is the delete entry of the shared action model')
     // And nothing else may reach onDelete unguarded.
     assert.ok(!/onSelect=\{\(\) => onDelete\(r\)\}/.test(src),
       'no ungated direct wiring remains')

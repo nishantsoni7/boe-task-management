@@ -161,7 +161,9 @@ describe('the route gate, not just the button', () => {
 
   test('checking still renders nothing, so no frame of the importer leaks', () => {
     const source = read(IMPORT_PAGE)
-    assert.ok(source.includes("if (access === 'checking') return <LoadingScreen />"),
+    // REVISED (usability pass): the Orders shell with a skeleton — no importer,
+    // no file control and no action — rather than the full-screen spinner.
+    assert.ok(source.includes("if (access === 'checking') return <OrdersRouteFallback />"),
       'children must not render while the permission is still being resolved')
   })
 
@@ -421,7 +423,9 @@ describe('the Save Draft action', () => {
     // not be found: the success card said "Draft saved" and offered a way back
     // to the Orders dashboard, and the only pointer to the new record lived in
     // the memory of the tab that made it.
-    assert.ok(source.includes('router.push(draftSavedHref(success.submissionId))'),
+    // REPLACE since the usability pass, so Back from the new draft does not
+    // land on an empty upload form.
+    assert.ok(source.includes('router.replace(draftSavedHref(success.submissionId))'),
       'the save must navigate to the saved draft')
     assert.ok(source.includes('const success = summariseSaveResult(body, draft.submissionId)'),
       'and the id it navigates to is the SERVER’S, read off the response')

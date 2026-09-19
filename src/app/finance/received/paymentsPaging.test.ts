@@ -86,8 +86,17 @@ describe('exact counts', () => {
     // from the others would produce a number that describes nothing.
     const counts = read(COUNTS)
     assert.ok(counts.includes("{ count: 'exact', head: true }"))
-    assert.ok(counts.includes('PAYMENT_VIEWS.map(view => scopedFor(view))'),
-      'one query per view, all four issued together')
+    assert.ok(counts.includes('views.map(view => scopedFor(view))'),
+      'one query per view asked for, all issued together')
+    assert.ok(counts.includes('views: readonly PaymentView[] = PAYMENT_VIEWS'),
+      'and all four by default')
+    // The sidebar draws only "all", so it asks for only "all" — one head query
+    // on every Finance page instead of four, three of which nothing rendered.
+    assert.ok(read('src/components/layout/FinanceLayout.tsx').includes('useReceivedPaymentsCounts(SIDEBAR_COUNTED_VIEWS)'))
+    assert.ok(read('src/components/layout/FinanceLayout.tsx').includes("const SIDEBAR_COUNTED_VIEWS = ['all'] as const"))
+    // Each set of views has its own key UNDER the shared prefix, so the one
+    // invalidation of RECEIVED_PAYMENTS_COUNTS_KEY still refreshes every one.
+    assert.ok(counts.includes('queryKey: [...RECEIVED_PAYMENTS_COUNTS_KEY, ...views]'))
     assert.ok(counts.includes('paymentViewClauses(view)'),
       'and each narrowed by the SAME predicate the list uses')
     assert.match(counts, /THE FOUR ARE NOT A PARTITION/)
@@ -334,7 +343,11 @@ describe('deep links', () => {
 
   test('the deep-link parameters are dropped once handled', () => {
     // So a refresh or a back-navigation cannot reopen a modal the reader closed.
-    assert.ok(view.includes('router.replace(viewHref(view))'))
+    // REVISED (usability pass): ONLY those two parameters go, on this page's own
+    // path. The replace used to rebuild /finance/received?view=… from scratch,
+    // which dropped the reader's filters and, on Payments to Verify, left the
+    // page altogether.
+    assert.ok(view.includes('router.replace(pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })), { scroll: false })'))
   })
 
   test('the resolution runs exactly once', () => {

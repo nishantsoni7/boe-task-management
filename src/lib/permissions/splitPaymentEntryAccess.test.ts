@@ -141,7 +141,9 @@ describe('the same two questions, whoever is asking', () => {
 describe('the control and the RPC ask the same question', () => {
   test('the button is drawn from canAllocatePayment, and from nothing else', () => {
     const source = readFileSync('src/app/finance/received/ReceivedPaymentsView.tsx', 'utf8').replace(/\r\n/g, '\n')
-    const at = source.indexOf('RECORD_PAYMENT_ACTION_LABEL}\n          </button>')
+    // In the page HEADER since the usability pass (where every page puts its
+    // primary action); still drawn from the one capability.
+    const at = source.indexOf('{RECORD_PAYMENT_ACTION_LABEL}\n        </button>')
     assert.ok(at > 0, 'the Record Payment control must be on this page')
     const block = source.slice(Math.max(0, at - 900), at)
     assert.match(block, /caps\.canAllocatePayment &&/)

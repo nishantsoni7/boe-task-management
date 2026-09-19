@@ -774,7 +774,9 @@ describe('the billing declaration, as the third figure', () => {
       .split('\n').filter(l => !l.trim().startsWith('//')).join('\n')
     assert.ok(!/users\.role|role === ['"]admin['"]/.test(code),
       'and no role is read on this page to decide an authority')
-    const inParallel = page.slice(page.indexOf('await Promise.all(['), page.indexOf('itemsResult.error'))
+    // The id-only group now starts together with the record itself
+    // (usability pass), so it is named rather than found by its await.
+    const inParallel = page.slice(page.indexOf('const detailReads = Promise.all(['), page.indexOf('itemsResult.error'))
     assert.ok(inParallel.includes("supabase.rpc('can_edit_order_submission'"),
       'resolved in the existing parallel load')
     assert.ok(page.includes('editableResult.error ? false : editableResult.data === true'),

@@ -556,13 +556,21 @@ describe('one safe name for a destination, wherever it is printed', () => {
 })
 
 describe('the Paid date range fits a 320px phone', () => {
-  test('the row wraps instead of refusing to shrink, and "to" travels with its date', () => {
+  test('the range wraps as whole labelled bounds instead of refusing to shrink', () => {
+    // REVISED (usability pass): the date range is one group of two LABELLED
+    // bounds (.boe-list-daterange / .boe-list-date), styled in globals.css. Each
+    // bound carries its own words, so at 320px the pair drops onto two full
+    // lines together rather than clipping the second input past the card.
     const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
-    const at = view.indexOf('htmlFor="payment-date-from"')
-    const container = view.slice(view.lastIndexOf('<div style={{', at), at)
-    assert.ok(container.includes("flexWrap: 'wrap'") && container.includes("maxWidth: '100%'"))
-    assert.ok(!container.includes('flexShrink: 0'))
-    const pair = view.slice(at, view.indexOf('id="payment-date-to"'))
-    assert.ok(pair.includes("<span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>"))
+    const at = view.indexOf('id="payment-date-from"')
+    const group = view.slice(view.lastIndexOf('<div className="boe-list-daterange"', at), view.indexOf('id="payment-date-to"'))
+    assert.ok(group.includes('<label className="boe-list-date">'), 'each bound is its own labelled unit')
+    const css = readFileSync(join('src', 'app', 'globals.css'), 'utf8').replace(/\r\n/g, '\n')
+    const rule = (sel: string) => css.slice(css.indexOf(`${sel} {`), css.indexOf('}', css.indexOf(`${sel} {`)))
+    assert.ok(rule('.boe-list-daterange').includes('flex-wrap: wrap') && rule('.boe-list-daterange').includes('max-width: 100%'))
+    assert.ok(rule('.boe-list-date input').includes('min-width: 0'), 'an input may shrink below its intrinsic width')
+    const phone = css.slice(css.indexOf('@media (max-width: 480px) {\n  .boe-list-search'))
+    assert.ok(phone.slice(0, phone.indexOf('\n}\n')).includes('.boe-list-date { flex: 1 1 100%; }'),
+      'and on a phone each bound takes its own full line')
   })
 })
