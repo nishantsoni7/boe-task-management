@@ -19,7 +19,7 @@ import {
   type RowActionKey,
 } from '@/lib/finance/rowActions'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
@@ -2402,7 +2402,7 @@ export function ReceivedPaymentsView(
   { view, surface = 'confirmed' }: { view: PaymentView; surface?: PaymentSurface },
 ) {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<FinanceRouteFallback />}>
       <ReceivedPaymentsViewInner view={view} surface={surface} />
     </Suspense>
   )
@@ -3321,7 +3321,7 @@ function ReceivedPaymentsViewInner(
     setPage(1)
   }
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <FinanceRouteFallback />
 
   return (
     <FinanceLayout

@@ -37,7 +37,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FileText, Inbox, Trash2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { PiCard } from '@/components/orders/piPreview'
 import { PiDeleteConfirmModal } from '@/components/orders/piReviewModals'
@@ -411,7 +411,7 @@ export default function PiDraftsPage() {
    *  drift apart or grow a second hand-built path. */
   const goToImport = () => router.push('/orders/import')
 
-  if (entries === null && !failed) return <LoadingScreen />
+  if (entries === null && !failed) return <OrdersRouteFallback />
 
   const emptyState = (
     <PiCard>

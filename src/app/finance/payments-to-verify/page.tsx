@@ -37,12 +37,12 @@
 // filtering a shared list in the browser.
 
 import { Suspense } from 'react'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { ReceivedPaymentsView } from '../received/ReceivedPaymentsView'
 
 export default function PaymentsToVerifyPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<FinanceRouteFallback />}>
       {/*
         NO `view` FROM THE QUERY STRING. The four classification views belong to
         Confirmed Payments; passing one here would let a bookmark narrow this

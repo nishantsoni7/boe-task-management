@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
@@ -312,7 +312,7 @@ export default function OrdersDashboardPage() {
     router.replace('/login')
   }
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <OrdersRouteFallback />
 
   const fmtRunningValue = stats.runningValue >= 100000
     ? '₹' + (stats.runningValue / 100000).toFixed(1) + 'L'

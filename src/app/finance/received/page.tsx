@@ -24,13 +24,13 @@
 
 import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { readPaymentView } from '@/lib/finance/paymentClassification'
 import { ReceivedPaymentsView } from './ReceivedPaymentsView'
 
 export default function ReceivedPaymentsPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<FinanceRouteFallback />}>
       <ReceivedPayments />
     </Suspense>
   )

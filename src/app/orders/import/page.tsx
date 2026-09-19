@@ -43,7 +43,7 @@ import {
   ImageOff, Images, Lock, ArrowLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 // The preview furniture is shared with /orders/drafts/[submissionId], which
@@ -191,7 +191,7 @@ type ReplaceTarget =
 
 export default function NewOrderPiImportPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<OrdersRouteFallback />}>
       <NewOrderPiImportPageInner />
     </Suspense>
   )
@@ -639,7 +639,7 @@ function NewOrderPiImportPageInner() {
     acceptFile(e.dataTransfer.files?.[0])
   }
 
-  if (access === 'checking') return <LoadingScreen />
+  if (access === 'checking') return <OrdersRouteFallback />
 
   // ── The Orders access-denied screen ──
   //

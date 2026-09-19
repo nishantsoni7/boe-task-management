@@ -11,7 +11,7 @@ import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { destinationRecordHref } from '@/lib/finance/crossModuleLinks'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import type { UserProfile } from '@/lib/types'
@@ -2698,7 +2698,7 @@ export function PaymentsTable({
 
 export default function FinancePage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<FinanceRouteFallback />}>
       <FinancePageInner />
     </Suspense>
   )
@@ -2939,13 +2939,19 @@ function FinancePageInner() {
     // list draws immediately and the Against column fills in — a per-row read
     // would be fifty round trips for one table.
     //
+    // NOT AWAITED. The first load used to wait for this read before the page
+    // was allowed to draw at all, so every visit paid a third round trip for a
+    // column that already says "Reading…" while it fills. It still runs at
+    // once, and the cells fill when it lands.
+    //
     // The map is CLEARED FIRST so a stale page's destinations cannot be shown
     // beside a new page's rows, and the same token guard that protects the rows
     // protects this: a slow answer for page one never repaints page two.
     setDestinations(null)
-    const found = await loadPaymentDestinations(supabase, mapped.map(m => m.id))
-    if (token !== loadToken.current) return
-    setDestinations(found)
+    void loadPaymentDestinations(supabase, mapped.map(m => m.id)).then(found => {
+      if (token !== loadToken.current) return
+      setDestinations(found)
+    })
 
     // A PAGE BEYOND THE END, corrected here rather than in an effect watching
     // the total. Switching to a tab with fewer records would otherwise leave the
@@ -3248,7 +3254,7 @@ function FinancePageInner() {
     }
   }
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <FinanceRouteFallback />
 
   return (
     <FinanceLayout

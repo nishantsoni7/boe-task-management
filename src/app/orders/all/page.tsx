@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
@@ -441,7 +441,7 @@ export default function AllOrdersPage() {
     })
   }, [baseFiltered, statusTab, sortKey])
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <OrdersRouteFallback />
 
   return (
     <OrdersLayout
