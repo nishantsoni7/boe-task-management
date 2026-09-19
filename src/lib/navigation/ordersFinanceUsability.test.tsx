@@ -193,9 +193,14 @@ describe('a list keeps its working context across opening a record and coming Ba
 
     const received = code(RECEIVED)
     assert.ok(received.includes('parseListState(RECEIVED_LIST_PARAMS, initialSearchParams)'))
-    const mirror = received.slice(received.indexOf('useMirrorToUrl({')).slice(0, 500)
-    for (const key of ['status:', 'q:', 'from:', 'to:', 'page:']) assert.ok(mirror.includes(key), key)
-    assert.ok(mirror.includes('}, !pageLoading)'), 'held back until a deep link has been read')
+    // The keys come from the shared patch builder (receivedPaymentsQuery.ts),
+    // which the correction-pass test drives directly.
+    const mirror = received.slice(received.indexOf('useMirrorToUrl(')).slice(0, 300)
+    assert.ok(mirror.includes('confirmedListUrlPatch({ confirmedFilter, search, dateFrom, dateTo, page }, surface)'))
+    const patch = code('src/app/finance/receivedPaymentsQuery.ts')
+    const builder = patch.slice(patch.indexOf('export function confirmedListUrlPatch('))
+    for (const key of ['status:', 'q:', 'from:', 'to:', 'page:']) assert.ok(builder.slice(0, 600).includes(key), key)
+    assert.ok(mirror.includes('!pageLoading,'), 'held back until a deep link has been read')
     assert.ok(received.includes('useListScrollRestore()'))
   })
 
@@ -267,7 +272,10 @@ describe('related-record links follow the reader\'s own access', () => {
 describe('a re-read never throws away what the reader has', () => {
   test('the lists keep their rows while a refresh is in flight', () => {
     assert.ok(code(REQUESTS).includes('{listLoading && visible.length === 0 ? ('))
-    assert.ok(code(RECEIVED).includes('{listLoading && visible.length === 0 ? ('))
+    // Confirmed Payments: the empty state (loading included) is drawn only when
+    // there are NO rows; rows in hand stay while a re-read runs.
+    assert.ok(code(RECEIVED).includes('{visible.length === 0 ? ('))
+    assert.ok(code(RECEIVED).includes('<ConfirmedListEmptyState'))
     assert.ok(code(ALL_ORDERS).includes('{listLoading && orders.length === 0 ? ('))
   })
 

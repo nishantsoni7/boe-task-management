@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
@@ -20,8 +20,7 @@ import {
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
-import { useCurrentReturnPath } from '@/hooks/useCurrentReturnPath'
-import { withReturnTo } from '@/lib/navigation/recordReturn'
+import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -240,7 +239,9 @@ export default function AllOrdersPage() {
   const sortKey    = listState.sort
   // The URL holds the committed search; the box shows what is being typed and
   // commits after a short pause, so each keystroke is not a history entry.
-  const [searchInput, setSearchInput] = useUrlSearchInput(listState.q, next => setListState({ q: next }))
+  // flushSearch commits a pending term at once — wired to the box's blur, as
+  // on the Task lists, so leaving the box never drops what was typed.
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(listState.q, next => setListState({ q: next }))
   const search = listState.q
   const setStatusTab  = (next: StatusFilter) => setListState({ status: next })
   const setAssignee   = (next: string) => setListState({ assignee: next === 'all' ? '' : next })
@@ -250,7 +251,10 @@ export default function AllOrdersPage() {
   // Back from an Order lands where the reader was, not at the top.
   useListScrollRestore()
   // Handed to each Order so its Back control returns to this exact view.
-  const returnPath = useCurrentReturnPath()
+  // Built from the search AS TYPED (see listReturnPathWithSearch): typing and
+  // clicking a row at once must not lose the term the reader just entered.
+  const pathname = usePathname()
+  const returnPath = listReturnPathWithSearch(pathname, useSearchParams().toString(), searchInput)
   const orderHref = (id: string) => withReturnTo(`/orders/${id}`, returnPath)
   const [deletedBanner, setDeletedBanner] = useState(false)
   /**
@@ -487,6 +491,7 @@ export default function AllOrdersPage() {
           placeholder="Search order no., request no., client or person…"
           value={searchInput}
           onChange={e => setSearchInput(e.target.value)}
+          onBlur={flushSearch}
           style={{ flex: 1, minWidth: '180px', maxWidth: '320px', padding: '6px 10px', fontSize: '12px' }}
         />
         <select

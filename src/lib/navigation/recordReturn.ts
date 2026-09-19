@@ -64,3 +64,29 @@ export function returnLabelFor(path: string): string {
   if (/^\/orders\/[0-9a-f-]{36}$/i.test(bare)) return 'Back to Order'
   return 'Back'
 }
+
+/**
+ * A list's own address with the search AS TYPED, trimmed — for the `returnTo`
+ * a record is opened with.
+ *
+ * WHY NOT THE COMMITTED URL. The search box commits to the URL after a 250ms
+ * pause, or on blur. Typing a term and clicking a row at once runs: mousedown,
+ * blur (flush, which only SCHEDULES a replace), click — and the click reads the
+ * address from before the flush. The record would then send its reader back to
+ * the list without the term they had just typed. Building `returnTo` from the
+ * pending term closes that gap whatever the timing; the flush still brings the
+ * list's own URL into line for the browser's Back.
+ */
+export function listReturnPathWithSearch(
+  pathname: string,
+  currentSearch: string,
+  pendingSearch: string,
+  key = 'q',
+): string {
+  const params = new URLSearchParams(currentSearch.startsWith('?') ? currentSearch.slice(1) : currentSearch)
+  const typed = pendingSearch.trim()
+  if (typed) params.set(key, typed)
+  else params.delete(key)
+  const query = params.toString()
+  return query ? `${pathname}?${query}` : pathname
+}

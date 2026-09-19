@@ -171,17 +171,59 @@ Two routes need caveats:
 | Orders → Finance (module switch) | 357 | 415 | 176 ms → **0** |
 | Finance → Orders (module switch) | 1041 | 827 | 560 ms → 168 ms (the Orders guard re-checks access, by design) |
 
-Differences of ±60 ms between runs are within the network's noise on this
-connection. The structural results are these:
-- The shell is never lost inside a module.
-- One network wave less on every PI open.
-- Three fewer count queries on every Finance page.
-- One fewer permission read per shell mount (the module switch).
+### What these numbers do and do not show (corrected 2026-09-19)
 
-Not measured: a throttled mobile profile. The pane offers no network or CPU
-throttling, and reproducing the signed-in session in another browser would
-have meant copying session tokens. Phone layouts were checked at 320 and 375
-in the pane for layout, not timing.
+**Shown:**
+- **Continuity.** The shell (sidebar, header, page title) is never lost inside
+  a module, and it appears at about 330–400 ms on a cold load instead of only
+  when all the data has landed. This is a real improvement in perceived
+  navigation, and the largest effect of the pass.
+- **Structural reductions:**
+  - One network wave less on every PI open. This is the one clear content-time
+    gain: warm 1,482 → 963 ms.
+  - Three fewer count queries on every Finance page.
+  - One fewer permission read per shell mount.
+
+**Not shown:**
+- **Faster business data.** The LCP drop comes from the skeleton-and-header
+  shell becoming the largest early paint. It does not show that the data a
+  reader needs arrives sooner.
+- **Faster content on most routes.** "Content" (the page's data on screen) was
+  statistically unchanged on most routes, and slower in several of these
+  3-run medians:
+  - `/orders/drafts` 827 → 916
+  - `/orders/all` 551 → 664
+  - `/finance/payments-to-verify` 976 → 1,068
+  - `/orders/notifications` 1,097 → 1,456
+  - Dashboard → PI Drafts 561 → 594
+  - Confirmed Payments → Payment Requests 382 → 431
+  - Orders → Finance 357 → 415
+
+  With three runs on a network that varied by ±60 ms and more, most of these
+  are within noise. A plausible real cost is that production `<Link>`s
+  prefetch visible destinations while the first page is still loading. The
+  script bytes counted per route rose for that reason. This has not been
+  isolated.
+
+**Limits of the evidence:**
+- **Nearly empty data.** Production held 1 PI Draft, 0 Orders and 1 payment,
+  so list rendering, paging and large-table behaviour were not exercised.
+- **No throttled-mobile timings.** The Browser pane has no network or CPU
+  throttling, and reproducing the signed-in session in another browser would
+  have meant copying session tokens. Phone widths were checked for layout
+  only.
+- **No large-list timings.** Representative Confirmed Orders, Payment Requests
+  and Confirmed Payments volumes were not measured.
+
+**Follow-up performance work (not done here):**
+- A representative-data profile of all lists on a disposable database.
+- A throttled-mobile profile.
+- Measuring whether viewport prefetch should be reduced to hover or focus on
+  data-heavy pages.
+- Server-side paging for Confirmed Orders.
+- Lazy PI thumbnails.
+
+These are open performance questions, not a verified performance result.
 
 ## 5. Security review
 
@@ -201,4 +243,32 @@ in the pane for layout, not timing.
 - **The PI record still signs every thumbnail before first paint.** Deferring images below the fold would take another round trip off; it touches the pinned `piPreview.tsx`.
 - **The Order record's status menu** still lets Dispatched be chosen without a confirmation. That is a business-process decision.
 - **Payments to Verify** keeps its own viewport rule and table, as before.
-- **A throttled-mobile timing profile**, as noted in §4.
+- **A throttled-mobile timing profile and a representative-data profile**, as noted in §4.
+
+## 7. Correction pass (2026-09-19)
+
+Three defects found in review were fixed on the same PR:
+
+1. **Confirmed Payments empty state.**
+   - **The defect.** An empty allocation-status tab (Zero, Partial, Full or
+     Over) said "No payments received yet" while payments existed in other
+     tabs.
+   - **The fix.** `confirmedListEmptyKind` now separates four cases: loading;
+     read failure (which takes precedence over every empty statement); no
+     payments at all (only when nothing constrains the list); and no match
+     for the search, dates or status tab.
+   - **The recovery action.** A filtered empty list offers one action,
+     "Show all payments". It clears search, dates and status and returns to
+     page 1; the URL mirror then drops those parameters.
+   - **Unchanged.** The toolbar's "Clear filters" still covers search and
+     dates only. The database filter, paging, counts and the
+     complete-allocation source are unchanged.
+2. **Confirmed Orders search.** A pending search term is flushed on blur, as
+   on the Task lists. An Order opened straight after typing gets its
+   `returnTo` from the term as typed (trimmed), because the blur flush only
+   schedules the URL change before the click reads it. The 250 ms debounce
+   and replace-history behaviour are unchanged.
+3. **Notifications sidebar entry.** It is a real `<Link>`, like every other
+   destination. The active styling, `aria-current`, unread badge and label,
+   `onNavigate` and per-module `href` are kept. The manual `router.push` and
+   `router.prefetch` are gone.

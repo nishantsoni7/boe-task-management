@@ -56,6 +56,10 @@ import {
   RECEIVED_PAYMENTS_CLASSIFICATION_COLUMNS,
   dateRange,
   isNarrowed,
+  confirmedListEmptyKind,
+  confirmedListUrlPatch,
+  SHOW_ALL_PAYMENTS_STATE,
+  type ConfirmedListEmptyKind,
   pageCount,
   pageRange,
   resultSummary,
@@ -505,6 +509,65 @@ function ErrorBanner({ message }: { message: string }) {
       {message}
     </div>
   )
+}
+
+/**
+ * The list's empty state, for each of confirmedListEmptyKind's answers.
+ * EXPORTED FOR ITS RENDER TEST only — this page mounts it.
+ */
+export function ConfirmedListEmptyState({
+  kind, noneText, errorMessage, statusLabel, searchOrDateNarrowed, onRetry, onShowAll,
+}: {
+  kind: ConfirmedListEmptyKind
+  /** The business statement for a list nothing constrained: "No payments received yet." */
+  noneText: string
+  errorMessage: string | null
+  /** The selected allocation-status tab's name, when it is not All. */
+  statusLabel: string | null
+  searchOrDateNarrowed: boolean
+  onRetry: () => void
+  onShowAll: () => void
+}) {
+  const box: React.CSSProperties = {
+    padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6,
+  }
+  if (kind === 'loading') {
+    return <div role="status" style={box}>Loading…</div>
+  }
+  if (kind === 'error') {
+    return (
+      <div style={box}>
+        <div style={{ maxWidth: '420px', margin: '0 auto', textAlign: 'left' }}>
+          <ErrorBanner message={`Could not load payments: ${errorMessage ?? 'unknown error'}`} />
+          <div style={{ marginTop: '10px', textAlign: 'center' }}>
+            <button type="button" onClick={onRetry} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (kind === 'no-match') {
+    // Names exactly what constrained the list, so the reader knows it is a
+    // statement about their view, not about the business.
+    const message = statusLabel && searchOrDateNarrowed
+      ? `No ${statusLabel} payments match the current search or dates.`
+      : statusLabel
+        ? `No payments are ${statusLabel} right now.`
+        : 'No payments match the current search or dates.'
+    return (
+      <div role="status" style={box}>
+        {message}
+        <div style={{ marginTop: '10px' }}>
+          <button type="button" onClick={onShowAll} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
+            Show all payments
+          </button>
+        </div>
+      </div>
+    )
+  }
+  return <div role="status" style={box}>{noneText}</div>
 }
 
 // Compact uppercase section label used inside RequestModalShell cards —
@@ -2594,13 +2657,10 @@ function ReceivedPaymentsViewInner(
   // Every narrowing a reader applied, in the address bar — see
   // RECEIVED_LIST_PARAMS. Held back until the first load so a deep link's own
   // parameters are read before anything rewrites the query.
-  useMirrorToUrl({
-    status: surface === 'confirmed' && confirmedFilter !== DEFAULT_CONFIRMED_ALLOCATION_FILTER ? confirmedFilter : null,
-    q:      search.trim() || null,
-    from:   dateFrom || null,
-    to:     dateTo || null,
-    page:   page > 1 ? String(page) : null,
-  }, !pageLoading)
+  useMirrorToUrl(
+    confirmedListUrlPatch({ confirmedFilter, search, dateFrom, dateTo, page }, surface),
+    !pageLoading,
+  )
   // Back from an Order or a PI lands where the reader was, not at the top.
   useListScrollRestore()
 
@@ -3311,7 +3371,13 @@ function ReceivedPaymentsViewInner(
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
+  // Search and dates — what the toolbar's "Clear filters" undoes. The status
+  // tab is navigation, so it is not in here (see isNarrowed)…
   const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
+  // …but it IS a constraint on what the list can hold, so the count's wording
+  // and the empty state take it into account.
+  const statusNarrowed = surface === 'confirmed' && confirmedFilter !== DEFAULT_CONFIRMED_ALLOCATION_FILTER
+  const constrained = narrowed || statusNarrowed
   const pages = pageCount(total)
 
   const clearFilters = () => {
@@ -3320,6 +3386,24 @@ function ReceivedPaymentsViewInner(
     setDateTo('')
     setPage(1)
   }
+
+  // The one way out of a filtered EMPTY list: every constraint at once —
+  // search, dates, the status tab — and page one. The URL mirror then drops
+  // their parameters. See SHOW_ALL_PAYMENTS_STATE.
+  const showAllPayments = () => {
+    setSearch(SHOW_ALL_PAYMENTS_STATE.search)
+    setDateFrom(SHOW_ALL_PAYMENTS_STATE.dateFrom)
+    setDateTo(SHOW_ALL_PAYMENTS_STATE.dateTo)
+    setConfirmedFilter(SHOW_ALL_PAYMENTS_STATE.confirmedFilter as ConfirmedAllocationFilter)
+    setPage(SHOW_ALL_PAYMENTS_STATE.page)
+  }
+
+  const emptyKind: ConfirmedListEmptyKind = confirmedListEmptyKind({
+    loading: listLoading,
+    error: listError !== null,
+    searchOrDateNarrowed: narrowed,
+    statusNarrowed,
+  })
 
   if (pageLoading) return <FinanceRouteFallback />
 
@@ -3417,7 +3501,7 @@ function ReceivedPaymentsViewInner(
             Confirmed Payments carries it on the tab bar below instead. */}
         {surface !== 'confirmed' && (
           <div aria-live="polite" className="boe-list-count" style={{ marginLeft: 'auto' }}>
-            {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+            {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed: constrained, page, pages })}
           </div>
         )}
       </div>
@@ -3469,7 +3553,7 @@ function ReceivedPaymentsViewInner(
               })}
             </div>
             <div aria-live="polite" className="boe-list-count">
-              {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+              {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed: constrained, page, pages })}
             </div>
           </div>
         )}
@@ -3477,40 +3561,23 @@ function ReceivedPaymentsViewInner(
             "Loading…" on every refresh and after every edit, which threw the
             reader back to the top of a page they were working down. The count
             above says a read is in flight. */}
-        {listLoading && visible.length === 0 ? (
-          <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
-        ) : visible.length === 0 ? (
-          /* THREE DIFFERENT EMPTIES, said differently. A failed read is not a
-             business fact and must never be spoken as one — "No payments
-             received yet" on a read that never happened is exactly the
-             mismatch this block exists to prevent (the sidebar count, a
-             separate and simpler query, is unaffected by whatever failed
-             here and keeps reading correctly). "No payments" is a statement
-             about the business; "nothing matches" is a statement about the
-             filter, and it offers the way out. Confusing any of the three
-             sends somebody hunting for a payment that is merely filtered, or
-             trusting a count of zero nobody actually read. */
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: colors.muted, fontSize: '13px', lineHeight: 1.6 }}>
-            {listError ? (
-              <div style={{ maxWidth: '420px', margin: '0 auto', textAlign: 'left' }}>
-                <ErrorBanner message={`Could not load payments: ${listError}`} />
-                <div style={{ marginTop: '10px', textAlign: 'center' }}>
-                  <button onClick={() => loadRequests()} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
-                    Retry
-                  </button>
-                </div>
-              </div>
-            ) : narrowed ? (
-              <>
-                No payments match the current filters.
-                <div style={{ marginTop: '10px' }}>
-                  <button onClick={clearFilters} className="boe-btn boe-btn-ghost" style={{ padding: '5px 12px', fontSize: '12px' }}>
-                    Clear filters
-                  </button>
-                </div>
-              </>
-            ) : meta.empty}
-          </div>
+        {visible.length === 0 ? (
+          /* FOUR DIFFERENT EMPTIES, said differently — see
+             confirmedListEmptyKind. A read in flight or a failed read is not
+             a business fact and must never be spoken as one; "No payments
+             received yet" is a statement about the business and is made only
+             when NOTHING — no search, no date, no status tab — constrained the
+             list; anything else is a statement about the constraints, and
+             offers the one way out of all of them at once. */
+          <ConfirmedListEmptyState
+            kind={emptyKind}
+            noneText={meta.empty}
+            errorMessage={listError}
+            statusLabel={statusNarrowed ? CONFIRMED_ALLOCATION_FILTER_LABEL[confirmedFilter] : null}
+            searchOrDateNarrowed={narrowed}
+            onRetry={() => loadRequests()}
+            onShowAll={showAllPayments}
+          />
         ) : (
           isMobile && surface === 'to_verify' ? (
             <PaymentsToVerifyCards

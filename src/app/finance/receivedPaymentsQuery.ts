@@ -156,6 +156,74 @@ export function isNarrowed(state: {
     || dateBound(state.dateTo) !== null
 }
 
+/**
+ * What an EMPTY Confirmed Payments list is saying — four different statements,
+ * decided in one place so the page cannot confuse them.
+ *
+ *   loading   the read is in flight; nothing is claimed
+ *   error     the read failed; nothing about the business is claimed either
+ *   no-match  the reader's constraints matched nothing — a search, a date bound
+ *             OR an allocation-status tab other than All
+ *   none      no constraint at all, and still nothing: no confirmed payments
+ *
+ * THE STATUS TAB IS A CONSTRAINT HERE, though isNarrowed() rightly leaves it
+ * out (a tab is not something "Clear filters" should undo). An empty Zero
+ * Allocated tab used to fall through to "No payments received yet" while
+ * payments sat in the other tabs — a false statement about the business. It
+ * is a statement about the tab, and says so.
+ */
+export type ConfirmedListEmptyKind = 'loading' | 'error' | 'no-match' | 'none'
+
+export function confirmedListEmptyKind(input: {
+  loading: boolean
+  error: boolean
+  /** isNarrowed(): search or a date bound. */
+  searchOrDateNarrowed: boolean
+  /** An allocation-status tab other than All is selected. */
+  statusNarrowed: boolean
+}): ConfirmedListEmptyKind {
+  if (input.loading) return 'loading'
+  if (input.error) return 'error'
+  if (input.searchOrDateNarrowed || input.statusNarrowed) return 'no-match'
+  return 'none'
+}
+
+/** The list's working context, as the page holds it. */
+export type ConfirmedListState = {
+  confirmedFilter: string
+  search: string
+  dateFrom: string
+  dateTo: string
+  page: number
+}
+
+/**
+ * "Show all payments" — the one way out of a filtered empty list: no search, no
+ * dates, the All tab, page one. Every constraint the empty state could have
+ * been caused by is cleared together, so the reader never has to guess which.
+ */
+export const SHOW_ALL_PAYMENTS_STATE: ConfirmedListState = {
+  confirmedFilter: 'all', search: '', dateFrom: '', dateTo: '', page: 1,
+}
+
+/**
+ * The query-string patch that state mirrors to (useMirrorToUrl). A default is
+ * `null` — the key is removed — so SHOW_ALL_PAYMENTS_STATE leaves a clean
+ * address with any unrelated parameter untouched.
+ */
+export function confirmedListUrlPatch(
+  state: ConfirmedListState,
+  surface: 'confirmed' | 'to_verify',
+): Record<string, string | null> {
+  return {
+    status: surface === 'confirmed' && state.confirmedFilter !== 'all' ? state.confirmedFilter : null,
+    q:      state.search.trim() || null,
+    from:   state.dateFrom || null,
+    to:     state.dateTo || null,
+    page:   state.page > 1 ? String(state.page) : null,
+  }
+}
+
 // ── The allocation narrowing, and why it is not here any more ────────────────
 //
 // A `<select>` used to offer Any allocation / Unallocated / Partly / Fully /
