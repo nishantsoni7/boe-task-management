@@ -663,6 +663,11 @@ describe('the migration is placed correctly', () => {
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261220000000 — adds request_finance_payment_clarification(uuid, text), the
+      // Finance review modal's Needs Clarification door (the twin of
+      // reject_finance_payment_request). One new SECURITY DEFINER function and its
+      // grant; no table, column, policy, trigger or permission action changes.
+      '20261220000000_finance_payment_request_clarification_door.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

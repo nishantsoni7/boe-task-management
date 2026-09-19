@@ -181,9 +181,12 @@ describe('the decision keeps its prominence, and its wiring', () => {
     assert.ok(code.includes("const noteRequired = action === 'needs_clarification' || action === 'reject'"))
   })
 
-  test('APPROVAL LOGIC IS UNTOUCHED — the RPC, the status write and both notifications', () => {
+  test('APPROVAL LOGIC IS UNTOUCHED — the RPC, the two decision RPCs and the notifications', () => {
     assert.ok(code.includes("supabase.rpc('approve_finance_payment_request'"))
-    assert.ok(code.includes("status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected'"))
+    // 20261220000000: Needs Clarification and Reject are RPCs, not a direct
+    // status write — production refuses every direct client write here.
+    assert.ok(code.includes("supabase.rpc('request_finance_payment_clarification'"))
+    assert.ok(code.includes("supabase.rpc('reject_finance_payment_request'"))
     for (const event of [
       'finance_approved_suspense', 'finance_approved_linked',
       'finance_clarification', 'finance_rejected',
@@ -195,7 +198,7 @@ describe('the decision keeps its prominence, and its wiring', () => {
   test('and this pass added no read and no write of its own', () => {
     // One destination read, which the modal already had. No new query.
     assert.equal((code.match(/usePaymentDestination\(/g) ?? []).length, 1)
-    assert.equal((code.match(/\.from\(/g) ?? []).length, 1, 'the single status update, unchanged')
-    assert.equal((code.match(/\.rpc\(/g) ?? []).length, 1, 'the single approval RPC, unchanged')
+    assert.equal((code.match(/\.from\(/g) ?? []).length, 0, 'no direct table access at all')
+    assert.equal((code.match(/\.rpc\(/g) ?? []).length, 3, 'approval, clarification and rejection RPCs')
   })
 })
