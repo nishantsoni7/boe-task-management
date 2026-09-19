@@ -91,9 +91,9 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
+import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import {
@@ -336,7 +336,7 @@ const diagnosticEntries = (value: unknown): PiDiagnosticEntry[] =>
 
 export default function PiDraftDetailPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<OrdersRouteFallback />}>
       <PiDraftDetailPageInner />
     </Suspense>
   )
@@ -360,6 +360,16 @@ function PiDraftDetailPageInner() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
+  /**
+   * A QUIET re-read (after a save, or the header's Refresh) that failed.
+   *
+   * It used to set the whole page to 'failed', so a network blip straight after
+   * a successful save replaced the record somebody was reading with an error
+   * card. The record now stays; a one-line notice says the refresh did not
+   * land, and offers it again. The FIRST load still fails loudly — there is
+   * nothing on screen to keep.
+   */
+  const [refreshFailed, setRefreshFailed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
   // ── Payments against this PI ──
@@ -548,17 +558,13 @@ function PiDraftDetailPageInner() {
    */
   const loadDraft = useCallback(async ({ quiet = false }: { quiet?: boolean } = {}) => {
     if (!quiet) setLoad({ kind: 'loading' })
+    setRefreshFailed(false)
 
-    const { data: submission, error } = await supabase
+    const submissionRead = supabase
       .from('order_submissions')
       .select(PI_DRAFT_DETAIL_COLUMNS)
       .eq('id', submissionId)
       .maybeSingle()
-
-    if (error) { setLoad({ kind: 'failed' }); return }
-    // No row means either "no such submission" or "not yours". The page must
-    // not distinguish them, and neither does this branch.
-    if (!submission) { setLoad({ kind: 'unavailable' }); return }
 
     // ── EVERY READ THAT NEEDS ONLY THE SUBMISSION ID, IN ONE TRIP ──
     //
@@ -568,7 +574,15 @@ function PiDraftDetailPageInner() {
     // before it reads anything at all — so it joins the group rather than
     // queueing behind it, and every name that follows from it resolves a whole
     // round trip sooner.
-    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await Promise.all([
+    //
+    // AND THE GROUP STARTS WITH THE RECORD ITSELF, not after it (usability
+    // pass, measured: one ~250-350ms round trip off every open of a PI). None
+    // of these reads uses the submission row — only its id, which is in the
+    // URL — and each is the same query under the same RLS as before. If the
+    // record turns out to be missing or not the reader's, their answers are
+    // simply not used: RLS returns them nothing for a submission the reader
+    // cannot see, and the page says "not available" exactly as it did.
+    const detailReads = Promise.all([
       supabase
         .from('order_submission_items')
         .select(PI_DRAFT_ITEM_COLUMNS)
@@ -621,8 +635,26 @@ function PiDraftDetailPageInner() {
           .order('id', { ascending: true })
           .range(from, to)),
     ])
+    // Handled here too, so a group whose answer is discarded (the record is
+    // missing) can never surface as an unhandled rejection.
+    detailReads.catch(() => {})
 
-    if (itemsResult.error || imagesResult.error) { setLoad({ kind: 'failed' }); return }
+    const { data: submission, error } = await submissionRead
+
+    if (error) {
+      if (quiet) { setRefreshFailed(true); return }
+      setLoad({ kind: 'failed' }); return
+    }
+    // No row means either "no such submission" or "not yours". The page must
+    // not distinguish them, and neither does this branch.
+    if (!submission) { setLoad({ kind: 'unavailable' }); return }
+
+    const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await detailReads
+
+    if (itemsResult.error || imagesResult.error) {
+      if (quiet) { setRefreshFailed(true); return }
+      setLoad({ kind: 'failed' }); return
+    }
 
     // FAIL CLOSED. A capability that could not be resolved is not a capability.
     setCanEditSubmission(editableResult.error ? false : editableResult.data === true)
@@ -1502,14 +1534,11 @@ function PiDraftDetailPageInner() {
       return { key, props: thumbnailFor(key, url) }
     })
 
-  if (load.kind === 'loading') return <LoadingScreen />
+  if (load.kind === 'loading') return <OrdersRouteFallback />
 
-  const backButton = (
-    <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
-      <ArrowLeft size={13} strokeWidth={2} />
-      PI Drafts
-    </button>
-  )
+  // Back to wherever this PI was opened from — PI Drafts, Confirmed Payments,
+  // the dashboard — named, and never out of the app. See RecordBackLink.
+  const backButton = <RecordBackLink fallbackHref="/orders/drafts" className="boe-btn boe-btn-ghost" />
 
   if (load.kind !== 'ready' || !draft) {
     const unavailable = load.kind === 'unavailable'
@@ -2015,6 +2044,15 @@ function PiDraftDetailPageInner() {
 
         {justSaved && <PiSavedStrip />}
 
+        {refreshFailed && (
+          <div role="status" className="pi-refresh-failed">
+            <span>This PI could not be refreshed just now, so what you see may be out of date.</span>
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => void loadDraft({ quiet: true })}>
+              Try again
+            </button>
+          </div>
+        )}
+
         {/* ── 1. The context row ──
             The Order number this PI will carry, beside where it stands with
             management and Finance: two equal columns on a desktop, stacked on
@@ -2158,6 +2196,7 @@ function PiDraftDetailPageInner() {
                 )
               }}
               onOpenOrder={() => { if (approvedOrder) router.push(orderHref(approvedOrder.orderId)) }}
+              openOrderHref={approvedOrder ? orderHref(approvedOrder.orderId) : null}
               advanceBand={advanceBand}
               /* The context row above already says who submitted it, when, and
                  where Finance stands; the panel keeps its controls and notes. */

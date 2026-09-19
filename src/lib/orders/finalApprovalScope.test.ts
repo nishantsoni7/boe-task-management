@@ -195,6 +195,53 @@ describe('the PI product table is byte-for-byte what it was', () => {
 
 const READY_CARD_START = '{/* Ready state, and the one action this phase performs.'
 
+/**
+ * THE ORDERS & FINANCE USABILITY PASS (2026-09-18), set aside and only that:
+ * the shell-and-skeleton loading state instead of the full-screen spinner, the
+ * title that matches the "Upload PI" control, a way back to PI Drafts before a
+ * PI is read, and `replace` after a save so Back does not land on an empty
+ * upload form. Each is undone exactly; any OTHER drift on this screen still
+ * fails the comparison below.
+ */
+function withoutUsabilityPass(src: string): string {
+  const undo: [string, string][] = [
+    ["import Link from 'next/link'\n", ''],
+    ["import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'", "import { LoadingScreen } from '@/components/ui/atoms'"],
+    ['<Suspense fallback={<OrdersRouteFallback />}>', '<Suspense fallback={<LoadingScreen />}>'],
+    ["if (access === 'checking') return <OrdersRouteFallback />", "if (access === 'checking') return <LoadingScreen />"],
+    [`      //
+      // REPLACE, not push. The upload screen has done its job, and it holds
+      // nothing once the draft is saved; left in history, Back from the new
+      // draft landed on an empty upload form instead of where the reader
+      // started. The draft's own Back control names PI Drafts.
+      router.replace(draftSavedHref(success.submissionId))`, '      router.push(draftSavedHref(success.submissionId))'],
+    [`      // The same words as the control that leads here ("Upload PI"). An Order
+      // comes into existence at approval; this screen saves a PI Draft.
+      title="Upload PI"
+      subtitle="Upload the approved PI workbook to save it as a PI Draft for review."`, `      title="New Order"
+      subtitle="Upload the approved PI to start a new order."`],
+    [`      //
+      // Before a PI is read there is nothing to lose, so the header offers the
+      // way back to PI Drafts — the page used to have no exit but the sidebar.
+      // Once a preview is on screen that link is withheld: leaving discards the
+      // preview, and the one action here is replacing it.
+      actions={`, '      actions={'],
+    [`        ) : (
+          <Link href="/orders/drafts" className="boe-btn boe-btn-ghost">
+            <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> PI Drafts
+          </Link>
+        )
+      }`, `        ) : undefined
+      }`],
+  ]
+  let out = src
+  for (const [is, was] of undo) {
+    assert.ok(out.includes(is), `the usability-pass edit is where it was left: ${is.slice(0, 60)}`)
+    out = out.replace(is, was)
+  }
+  return out
+}
+
 /** The ready-to-submit card, and the screen with that card lifted out of it. */
 function readyCard(source: string, label: string): { card: string; rest: string } {
   const start = source.indexOf(READY_CARD_START)
@@ -214,7 +261,7 @@ describe('the import preview and the parser are untouched', () => {
     const base = atBase(IMPORT_PAGE)
     if (base === null) return
     const was = readyCard(base, 'base')
-    const is = readyCard(now(IMPORT_PAGE), 'current')
+    const is = readyCard(withoutUsabilityPass(now(IMPORT_PAGE)), 'current')
     assert.equal(is.card, was.card,
       'the verdict, the Save Draft button, the saving and failure states are unchanged')
     assert.equal(is.rest, was.rest,

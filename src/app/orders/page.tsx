@@ -1,10 +1,11 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
@@ -29,6 +30,7 @@ import {
 } from '@/lib/orders/orderDashboard'
 import { PI_DRAFT_LIST_STATUSES } from '@/lib/orders/draftsView'
 import { RECEIVED_PAYMENTS_SOURCE } from '@/app/finance/paymentRouting'
+import { withReturnTo } from '@/lib/navigation/recordReturn'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -105,30 +107,21 @@ function StatusBadge({ status }: { status: string }) {
  * there is nothing waiting when it simply has not asked yet.
  */
 function StatCard({
-  label, value, sub, accent, onClick,
+  label, value, sub, accent, href,
 }: {
   label: string
   value: string | number | null
   sub?: string
   accent?: string
-  onClick?: () => void
+  /**
+   * Where the card leads. A card with a destination IS a link — reachable by
+   * Tab, opens in a new tab, and Next prefetches it while it is on screen. It
+   * used to be a clickable <div>, which a keyboard could not reach at all.
+   */
+  href?: string
 }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        background: colors.base,
-        border: `1px solid ${colors.border}`,
-        borderRadius: '10px',
-        padding: '16px 20px',
-        display: 'flex', flexDirection: 'column', gap: '4px',
-        cursor: onClick ? 'pointer' : 'default',
-        transition: 'box-shadow 0.15s',
-        minWidth: 0,
-      }}
-      onMouseEnter={e => { if (onClick) (e.currentTarget as HTMLDivElement).style.boxShadow = '0 2px 8px rgba(0,0,0,0.08)' }}
-      onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.boxShadow = 'none' }}
-    >
+  const body = (
+    <>
       <div style={{ fontSize: '11px', fontWeight: 600, color: colors.muted, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
         {label}
       </div>
@@ -136,8 +129,20 @@ function StatCard({
         {value === null ? '—' : value}
       </div>
       {sub && <div style={{ fontSize: '11px', color: colors.muted }}>{sub}</div>}
-    </div>
+    </>
   )
+  const style: React.CSSProperties = {
+    background: colors.base,
+    border: `1px solid ${colors.border}`,
+    borderRadius: '10px',
+    padding: '16px 20px',
+    display: 'flex', flexDirection: 'column', gap: '4px',
+    minWidth: 0,
+    textDecoration: 'none',
+  }
+  return href
+    ? <Link href={href} className="orders-stat-card" style={style}>{body}</Link>
+    : <div style={style}>{body}</div>
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -307,7 +312,7 @@ export default function OrdersDashboardPage() {
     router.replace('/login')
   }
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <OrdersRouteFallback />
 
   const fmtRunningValue = stats.runningValue >= 100000
     ? '₹' + (stats.runningValue / 100000).toFixed(1) + 'L'
@@ -368,7 +373,7 @@ export default function OrdersDashboardPage() {
             value={card.value}
             sub={card.sub}
             accent={card.tone === 'attention' ? colors.amber : card.tone === 'money' ? colors.blue : undefined}
-            onClick={() => router.push(card.href)}
+            href={card.href}
           />
         ))}
         <StatCard
@@ -428,7 +433,7 @@ export default function OrdersDashboardPage() {
                   return (
                     <tr
                       key={o.id}
-                      onClick={() => router.push(`/orders/${o.id}`)}
+                      onClick={() => router.push(withReturnTo(`/orders/${o.id}`, '/orders'))}
                       style={{
                         borderBottom: `1px solid ${colors.border}`,
                         cursor: 'pointer',
@@ -450,7 +455,16 @@ export default function OrdersDashboardPage() {
                       onMouseLeave={e => { (e.currentTarget as HTMLTableRowElement).style.background = 'transparent' }}
                     >
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                        {o.display_number}
+                        {/* The real link for keyboard and new-tab use; the
+                            row stays clickable for a pointer. */}
+                        <Link
+                          href={withReturnTo(`/orders/${o.id}`, '/orders')}
+                          prefetch={false}
+                          className="orders-row-link"
+                          onClick={e => e.stopPropagation()}
+                        >
+                          {o.display_number}
+                        </Link>
                       </td>
                       <td style={{ padding: '12px 16px', color: colors.primary, maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {o.client_name}

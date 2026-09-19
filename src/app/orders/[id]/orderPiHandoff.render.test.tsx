@@ -441,7 +441,10 @@ describe('/orders/[id] itself', () => {
    */
   test('an Order with no source PI is TOLD it has none, not left silent', () => {
     assert.ok(page.includes("piHandoff.kind === 'ready'"))
-    assert.ok(page.includes("piHandoff.kind === 'none' && <OrderPiNoSource />"))
+    // Gated on the hand-off having answered (or there being no source to wait
+    // for): piHandoff STARTS as 'none', so an Order that does have a PI used to
+    // claim for a moment that it had none, and then jump.
+    assert.ok(page.includes("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />"))
     assert.ok(page.includes('OrderPiNoSource,'), 'the component must be imported')
     // AND A PI THAT COULD NOT BE READ still says so. The big Approved PI card
     // that used to carry that sentence is gone — the Order's own facts are
@@ -457,7 +460,7 @@ describe('/orders/[id] itself', () => {
     // The documents card stays behind `kind !== 'none'`. Explaining the absence
     // must not become an invitation to generate a document that cannot exist.
     assert.match(page, /piHandoff\.kind !== 'none' && \(/)
-    const noSourceAt = page.indexOf("piHandoff.kind === 'none' && <OrderPiNoSource />")
+    const noSourceAt = page.indexOf("piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />")
     const cardAt = page.indexOf("piHandoff.kind !== 'none' && (")
     assert.ok(noSourceAt > cardAt, 'the explanation follows the card gate, it does not widen it')
   })

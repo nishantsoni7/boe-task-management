@@ -145,16 +145,26 @@ export function surfaceHasClassificationViews(surface: PaymentSurface): boolean 
  * field are still selected by the one bounded read and still reach the modal —
  * this is a change to what the TABLE draws, not to what the page knows.
  *
- * WIDTHS, AS RENDERED. The table lays out `auto`. Every fixed column is
- * `1%` — shrink to its own content, which never wraps or clips — and Actions
- * holds its computed pixel width; Allocated Against has no width and takes ALL
- * the remaining room. Its cell does not let long destination names widen the
- * table (`contain: inline-size`, 200px floor): names truncate, amounts never.
- * Measured in a browser: the whole table fits a 875px container with the widest
- * permitted row; see CONFIRMED_TABLE_MIN_CONTAINER_PX.
+ * WIDTHS, AS RENDERED. The table lays out `fixed`, and every column except
+ * Allocated Against carries a compact PIXEL width, measured in a browser from
+ * its widest value (12px DM Sans unless noted, plus 8px cell padding a side):
+ *
+ *   Payment ID          80   "P-ZZ-99999" in 11px monospace, and its header
+ *   Amount             128   "₹12,34,56,789.00" in 13.5px bold
+ *   Received Date      100   the "RECEIVED DATE" header is the widest thing
+ *   Mode                92   "Bank Transfer"
+ *   Allocation Status  156   the "Over-allocated — review" badge
+ *   Actions            172   computed — see ACTIONS_COLUMN_WIDTH_PX
+ *
+ * Allocated Against has no width and takes ALL the remaining room, so it is the
+ * one column that grows with the screen. That replaces the old `1%`
+ * shrink-to-fit columns, which crowded Payment ID, Amount, Date and Mode against
+ * each other on the left and left one vast gap in the middle of every row. Its
+ * cell still cannot widen the table (`contain: inline-size`, 200px floor):
+ * names truncate, amounts never.
  */
 export const CONFIRMED_PAYMENT_COLUMNS = [
-  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '1%' },
+  { key: 'payment_id',   label: 'Payment ID',        align: 'left',  width: '80px' },
   // LEFT-ALIGNED, and deliberately so. The app's other money columns are
   // right-aligned to line digits up by place value, but this table has ONE money
   // column: there is no second figure beside it to compare against, and a lone
@@ -162,26 +172,26 @@ export const CONFIRMED_PAYMENT_COLUMNS = [
   // to, leaving a gap the eye has to cross on every row. `tabular-nums` still
   // does the place-value work within the column, and the Indian grouping is
   // untouched — only the edge the digits start from moved.
-  { key: 'amount',       label: 'Amount',            align: 'left', width: '1%' },
-  { key: 'date',         label: 'Received Date',     align: 'left',  width: '1%' },
-  { key: 'mode',         label: 'Mode',              align: 'left',  width: '1%' },
+  { key: 'amount',       label: 'Amount',            align: 'left', width: '128px' },
+  { key: 'date',         label: 'Received Date',     align: 'left',  width: '100px' },
+  { key: 'mode',         label: 'Mode',              align: 'left',  width: '92px' },
   // WHERE THE MONEY WENT: every active Order / PI Draft destination with its
   // amount, stacked, plus any unallocated remainder. No width — it takes every
   // pixel the shrink-to-fit columns leave, and its cell never widens the table
   // (names truncate with their full text in title / aria-label).
   { key: 'allocated_against', label: 'Allocated Against', align: 'left' },
   // A badge that is also a control; four labels that must never wrap.
-  { key: 'status',       label: 'Allocation Status', align: 'left',  width: '1%' },
+  { key: 'status',       label: 'Allocation Status', align: 'left',  width: '156px' },
   // WIDTH IS COMPUTED, NOT CHOSEN. The Actions cell must hold the widest row
-  // this table can draw, on one line: six icon targets and the five gaps
-  // between them, plus the cell's own padding. See ACTIONS_COLUMN_WIDTH_PX in
-  // lib/finance/rowActions.ts, which derives the six by enumerating the
-  // visibility rules rather than trusting a count made by eye — the count was
-  // made by eye twice and was wrong both times.
+  // this table can draw, on one line: View and Allocate as words, the "More
+  // actions" trigger, the gaps between them and the cell's own padding. See
+  // ACTIONS_COLUMN_WIDTH_PX in lib/finance/rowActions.ts, which finds the widest
+  // row by enumerating the visibility rules rather than trusting a count made
+  // by eye — the count was made by eye twice and was wrong both times.
   //
   // The room comes from the three columns that left this table (Customer, Total
   // Allocated, Remaining); no remaining column was squeezed to pay for it.
-  { key: 'actions',      label: 'Actions',           align: 'right', width: `${ACTIONS_COLUMN_WIDTH_PX}px` },
+  { key: 'actions',      label: 'Actions',           align: 'left',  width: `${ACTIONS_COLUMN_WIDTH_PX}px` },
 ] as const
 
 /**
@@ -312,7 +322,18 @@ export const PAYMENTS_TABLE_BREAKPOINT = 1024
  * so an unforeseen wide value cannot be clipped. See the Finance workflow doc
  * §18 for every width tested.
  */
-export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 920
+export const CONFIRMED_TABLE_MIN_CONTAINER_PX = 930
+
+/**
+ * The floor Allocated Against keeps when the table is at its narrowest. Every
+ * other column is a fixed width (CONFIRMED_PAYMENT_COLUMNS), so the narrowest
+ * container the table fits is their sum plus this floor — 728 + 200 = 928px —
+ * which CONFIRMED_TABLE_MIN_CONTAINER_PX rounds up to 930. REVISED 2026-09-18
+ * from 920, when the compact columns gained real widths and the actions became
+ * words; a 1280px viewport (~976px card) still gets the table, a 1024px one
+ * (~720px) still gets cards.
+ */
+export const ALLOCATED_AGAINST_MIN_PX = 200
 
 /**
  * Table or cards, from the MEASURED container width. `null` (not measured yet)

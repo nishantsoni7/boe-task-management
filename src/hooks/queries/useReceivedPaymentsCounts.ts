@@ -54,6 +54,13 @@ import {
 //
 // One query key holds all four: they are read together, invalidated together,
 // and can never be one refresh apart.
+//
+// ONLY THE VIEWS SOMEBODY DRAWS ARE ASKED FOR. The sidebar now carries a single
+// Confirmed Payments badge (the four sub-entries are retired), yet this hook
+// kept issuing all four counts on every Finance page — three head queries whose
+// answers nothing rendered. A caller names the views it shows; the default is
+// still all four. Each set of views has its own key UNDER the shared prefix, so
+// invalidating RECEIVED_PAYMENTS_COUNTS_KEY still refreshes every one of them.
 export const RECEIVED_PAYMENTS_COUNTS_KEY = ['finance', 'received-payments', 'counts'] as const
 
 /** `undefined` only while the first fetch is in flight — see the note below. */
@@ -63,9 +70,11 @@ const PENDING: ReceivedPaymentsCounts = {
   all: undefined, orders: undefined, pi_drafts: undefined, available: undefined,
 }
 
-export function useReceivedPaymentsCounts(): ReceivedPaymentsCounts {
+export function useReceivedPaymentsCounts(
+  views: readonly PaymentView[] = PAYMENT_VIEWS,
+): ReceivedPaymentsCounts {
   const { data } = useQuery({
-    queryKey: RECEIVED_PAYMENTS_COUNTS_KEY,
+    queryKey: [...RECEIVED_PAYMENTS_COUNTS_KEY, ...views],
     queryFn: async () => {
       const supabase = createClient()
 
@@ -86,10 +95,10 @@ export function useReceivedPaymentsCounts(): ReceivedPaymentsCounts {
         return query
       }
 
-      const results = await Promise.all(PAYMENT_VIEWS.map(view => scopedFor(view)))
+      const results = await Promise.all(views.map(view => scopedFor(view)))
 
       const counts = { ...PENDING } as Record<PaymentView, number | undefined>
-      PAYMENT_VIEWS.forEach((view, index) => {
+      views.forEach((view, index) => {
         const result = results[index]
         // A REFUSAL IS NOT A ZERO. The classification columns arrive with
         // 20261008000000; against a database without them PostgREST refuses the

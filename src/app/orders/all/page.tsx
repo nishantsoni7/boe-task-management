@@ -1,9 +1,10 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
@@ -16,6 +17,10 @@ import {
   unreadUpdateLabel,
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
+import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
+import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -129,6 +134,24 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// ── The list's working context lives in the URL ──
+//
+// Status tab, search, assignee, source, date window and sort are all query
+// parameters (the shared codecs in src/lib/listState.ts, the same ones the Task
+// lists use). Opening an Order and pressing Back — the browser's or the
+// record's own — therefore returns to exactly this view, and a filtered list can
+// be bookmarked or shared. A value the page does not recognise reads as the
+// default rather than breaking the page; a default is never written, so the
+// unfiltered list is a clean /orders/all.
+const ORDERS_LIST_PARAMS = {
+  status:   enumParam<StatusFilter>(['all', 'running', 'on_hold', 'ready_for_dispatch', 'dispatched', 'cancelled'], 'all'),
+  q:        textParam(),
+  assignee: idParam(),
+  source:   optionParam(Object.keys(LEAD_SOURCE_LABEL)),
+  date:     enumParam<DateFilter>(['all', '7d', '30d', 'this_month', '3m', 'this_year'], 'all'),
+  sort:     enumParam<SortKey>(['newest', 'oldest', 'number_desc', 'number_asc', 'value_desc', 'value_asc'], 'newest'),
+}
+
 function fmtAmount(n: number | null) {
   if (n == null) return '—'
   return '₹' + n.toLocaleString('en-IN')
@@ -204,12 +227,35 @@ export default function AllOrdersPage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [orders,       setOrders]       = useState<Order[]>([])
   const [listLoading,  setListLoading]  = useState(false)
-  const [search,       setSearch]       = useState('')
-  const [statusTab,    setStatusTab]    = useState<StatusFilter>('all')
-  const [assignee,     setAssignee]     = useState('all')
-  const [source,       setSource]       = useState('all')
-  const [dateFilter,   setDateFilter]   = useState<DateFilter>('all')
-  const [sortKey,      setSortKey]      = useState<SortKey>('newest')
+  // Every control reads and writes the URL (see ORDERS_LIST_PARAMS). The
+  // names below are the ones the rest of this page always used, so the
+  // filtering and sorting logic is untouched.
+  const { state: listState, setState: setListState, resetState: resetListState } =
+    useListUrlState(ORDERS_LIST_PARAMS)
+  const statusTab  = listState.status
+  const assignee   = listState.assignee || 'all'
+  const source     = listState.source || 'all'
+  const dateFilter = listState.date
+  const sortKey    = listState.sort
+  // The URL holds the committed search; the box shows what is being typed and
+  // commits after a short pause, so each keystroke is not a history entry.
+  // flushSearch commits a pending term at once — wired to the box's blur, as
+  // on the Task lists, so leaving the box never drops what was typed.
+  const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(listState.q, next => setListState({ q: next }))
+  const search = listState.q
+  const setStatusTab  = (next: StatusFilter) => setListState({ status: next })
+  const setAssignee   = (next: string) => setListState({ assignee: next === 'all' ? '' : next })
+  const setSource     = (next: string) => setListState({ source: next === 'all' ? '' : next })
+  const setDateFilter = (next: DateFilter) => setListState({ date: next })
+  const setSortKey    = (next: SortKey) => setListState({ sort: next })
+  // Back from an Order lands where the reader was, not at the top.
+  useListScrollRestore()
+  // Handed to each Order so its Back control returns to this exact view.
+  // Built from the search AS TYPED (see listReturnPathWithSearch): typing and
+  // clicking a row at once must not lose the term the reader just entered.
+  const pathname = usePathname()
+  const returnPath = listReturnPathWithSearch(pathname, useSearchParams().toString(), searchInput)
+  const orderHref = (id: string) => withReturnTo(`/orders/${id}`, returnPath)
   const [deletedBanner, setDeletedBanner] = useState(false)
   /**
    * HOW MANY UNREAD UPDATES THIS READER HAS, PER ORDER.
@@ -300,10 +346,8 @@ export default function AllOrdersPage() {
 
       setProfile(me as UserProfile)
 
-      const paramStatus = searchParams.get('status') as StatusFilter | null
-      if (paramStatus && STATUS_TABS.some(t => t.key === paramStatus)) {
-        setStatusTab(paramStatus)
-      }
+      // ?status= is read by useListUrlState now, together with every other
+      // filter, so a deep link and the page's own tabs are one mechanism.
 
       if (searchParams.get('deleted') === '1') {
         setDeletedBanner(true)
@@ -344,11 +388,8 @@ export default function AllOrdersPage() {
     source !== 'all' || dateFilter !== 'all' || search.trim() !== ''
 
   const clearFilters = () => {
-    setStatusTab('all')
-    setAssignee('all')
-    setSource('all')
-    setDateFilter('all')
-    setSearch('')
+    setSearchInput('')
+    resetListState()
   }
 
   // Everything except the status tab. Splitting it out lets each tab show the
@@ -404,7 +445,7 @@ export default function AllOrdersPage() {
     })
   }, [baseFiltered, statusTab, sortKey])
 
-  if (pageLoading) return <LoadingScreen />
+  if (pageLoading) return <OrdersRouteFallback />
 
   return (
     <OrdersLayout
@@ -426,6 +467,7 @@ export default function AllOrdersPage() {
           <span>Request deleted successfully.</span>
           <button
             onClick={() => setDeletedBanner(false)}
+            aria-label="Dismiss"
             style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#166534', padding: 0, lineHeight: 1, fontSize: '13px' }}
           >
             ✕
@@ -436,17 +478,20 @@ export default function AllOrdersPage() {
       {/* ── Toolbar: search + filters + sort ──
           Form controls only. Status navigation lives on the table card below so
           the two never read as the same kind of control. Confirmed Orders is a
-          review surface: no creation action belongs here — Order Requests are
-          raised from /orders/requests. */}
+          review surface: no creation action belongs here — an Order begins as
+          an uploaded PI and is confirmed at approval. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
         marginBottom: '10px',
       }}>
         <input
           className="boe-input"
+          type="search"
+          aria-label="Search Confirmed Orders"
           placeholder="Search order no., request no., client or person…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={e => setSearchInput(e.target.value)}
+          onBlur={flushSearch}
           style={{ flex: 1, minWidth: '180px', maxWidth: '320px', padding: '6px 10px', fontSize: '12px' }}
         />
         <select
@@ -530,6 +575,7 @@ export default function AllOrdersPage() {
               return (
                 <button
                   key={key}
+                  type="button"
                   onClick={() => setStatusTab(key)}
                   aria-pressed={active}
                   style={{
@@ -562,7 +608,7 @@ export default function AllOrdersPage() {
               )
             })}
           </div>
-          <div style={{
+          <div aria-live="polite" style={{
             display: 'flex', alignItems: 'center', flexShrink: 0,
             fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap',
           }}>
@@ -574,7 +620,10 @@ export default function AllOrdersPage() {
           </div>
         </div>
 
-        {listLoading ? (
+        {/* A REFRESH KEEPS THE ROWS. The table used to be swapped for
+            "Loading…" on every re-read, which threw the reader back to the
+            top; the count above says a read is in flight. */}
+        {listLoading && orders.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
@@ -595,7 +644,47 @@ export default function AllOrdersPage() {
             ) : 'No orders found.'}
           </div>
         ) : (
-          <div style={{ overflowX: 'auto' }}>
+          <>
+          {/* PHONE: one card per Order instead of an eight-column table that
+              scrolled sideways inside its card. The switch is CSS
+              (.orders-list-table / .orders-list-cards), so there is no
+              measure-then-swap flash. */}
+          <ul className="orders-list-cards" aria-label="Confirmed Orders">
+            {visible.map(o => {
+              const overdue = isOverdue(o.due_date, o.status)
+              const updateLabel = unreadUpdateLabel(unread.get(o.id) ?? 0)
+              const number = formatOrderOperationalNumber(o.display_number) ?? o.display_number
+              return (
+                <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
+                  <div className="orders-list-card-top">
+                    <Link href={orderHref(o.id)} prefetch={false} className="orders-list-card-link">
+                      Order {number}
+                    </Link>
+                    <StatusBadge status={o.status} />
+                  </div>
+                  <div className="orders-list-card-client">{o.client_name}</div>
+                  <div className="orders-list-card-meta">
+                    <span style={{ color: overdue ? colors.red : undefined, fontWeight: overdue ? 600 : undefined }}>
+                      Due {fmtDate(o.due_date)}{overdue ? ' · overdue' : ''}
+                    </span>
+                    <span className="orders-list-card-value">{fmtAmount(o.total_value)}</span>
+                  </div>
+                  {(o.assigned_to_name || updateLabel) && (
+                    <div className="orders-list-card-meta">
+                      <span>{o.assigned_to_name ? `Assigned to ${o.assigned_to_name}` : ''}</span>
+                      {updateLabel && (
+                        <span className="order-update-badge">
+                          <span className="order-update-dot" aria-hidden="true" />
+                          {updateLabel}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
+          </ul>
+          <div className="orders-list-table" style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
@@ -620,7 +709,7 @@ export default function AllOrdersPage() {
                   return (
                     <tr
                       key={o.id}
-                      onClick={() => router.push(`/orders/${o.id}`)}
+                      onClick={() => router.push(orderHref(o.id))}
                       style={{
                         borderBottom: `1px solid ${colors.border}`,
                         cursor: 'pointer', transition: 'background 0.1s',
@@ -654,7 +743,20 @@ export default function AllOrdersPage() {
                       }}
                     >
                       <td style={{ padding: '11px 16px', fontWeight: updateLabel ? 800 : 600, color: colors.primary, whiteSpace: 'nowrap' }}>
-                        {formatOrderOperationalNumber(o.display_number) ?? o.display_number}
+                        {/* The row is clickable for a pointer; THIS is the
+                            real link — reachable by Tab, opens in a new tab,
+                            shows its address. prefetch={false}: the row's
+                            hover already prefetches the route, and forty
+                            visible links must not mean forty prefetches. */}
+                        <Link
+                          href={orderHref(o.id)}
+                          prefetch={false}
+                          className="orders-row-link"
+                          onClick={e => e.stopPropagation()}
+                          onFocus={() => router.prefetch(`/orders/${o.id}`)}
+                        >
+                          {formatOrderOperationalNumber(o.display_number) ?? o.display_number}
+                        </Link>
                         {updateLabel && (
                           <span className="order-update-badge">
                             <span className="order-update-dot" aria-hidden="true" />
@@ -690,6 +792,7 @@ export default function AllOrdersPage() {
               </tbody>
             </table>
           </div>
+          </>
         )}
       </div>
     </OrdersLayout>

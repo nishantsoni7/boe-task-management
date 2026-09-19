@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import type { PaymentView } from '@/lib/finance/paymentClassification'
 
 export function RetiredReceivedRoute({ view }: { view: PaymentView }) {
@@ -33,5 +33,5 @@ export function RetiredReceivedRoute({ view }: { view: PaymentView }) {
     router.replace(href)
   }, [href, router])
 
-  return <LoadingScreen />
+  return <FinanceRouteFallback />
 }

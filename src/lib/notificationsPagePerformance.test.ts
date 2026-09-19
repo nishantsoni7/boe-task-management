@@ -346,12 +346,18 @@ describe('no duplicate auth / profile / permission requests', () => {
 // ── 6. The route is warmed ──────────────────────────────────────────────────
 
 describe('route prefetch', () => {
-  test('the sidebar entry warms its destination on mount', () => {
-    assert.ok(NAV_ITEM.includes('router.prefetch(href)'))
+  // REVISED (Orders & Finance usability pass): the entry is a real Next <Link>,
+  // like every other sidebar destination. Link prefetches the route's code while
+  // it is on screen, which is what the manual router.prefetch(href) did by hand,
+  // and navigates without a router.push of its own.
+  test('the sidebar entry is a link to its destination, which Next prefetches', () => {
+    assert.ok(NAV_CODE.includes('<Link'))
+    assert.ok(NAV_CODE.includes('href={href}'))
+    assert.ok(!NAV_CODE.includes('router.push('), 'no second, programmatic navigation')
+    assert.ok(!NAV_CODE.includes('router.prefetch('), 'no hand-rolled prefetch beside the link')
   })
 
-  test('it prefetches the route it navigates to', () => {
-    assert.ok(NAV_ITEM.includes('router.push(href)'))
+  test('it still goes to the module\'s own notifications page, /notifications by default', () => {
     assert.ok(NAV_ITEM.includes("href = '/notifications'"))
   })
 

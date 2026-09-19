@@ -36,13 +36,14 @@
 // was kept.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,
   ImageOff, Images, Lock, ArrowLeft,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 // The preview furniture is shared with /orders/drafts/[submissionId], which
@@ -190,7 +191,7 @@ type ReplaceTarget =
 
 export default function NewOrderPiImportPage() {
   return (
-    <Suspense fallback={<LoadingScreen />}>
+    <Suspense fallback={<OrdersRouteFallback />}>
       <NewOrderPiImportPageInner />
     </Suspense>
   )
@@ -600,7 +601,12 @@ function NewOrderPiImportPageInner() {
       // detail page then loads the persisted rows for itself. Nothing about the
       // preview travels with it: the route carries an id, and the id is only
       // useful to somebody the database already lets read that submission.
-      router.push(draftSavedHref(success.submissionId))
+      //
+      // REPLACE, not push. The upload screen has done its job, and it holds
+      // nothing once the draft is saved; left in history, Back from the new
+      // draft landed on an empty upload form instead of where the reader
+      // started. The draft's own Back control names PI Drafts.
+      router.replace(draftSavedHref(success.submissionId))
     } finally {
       savingRef.current = false
       setSaveStage(null)
@@ -633,7 +639,7 @@ function NewOrderPiImportPageInner() {
     acceptFile(e.dataTransfer.files?.[0])
   }
 
-  if (access === 'checking') return <LoadingScreen />
+  if (access === 'checking') return <OrdersRouteFallback />
 
   // ── The Orders access-denied screen ──
   //
@@ -1245,8 +1251,10 @@ function NewOrderPiImportPageInner() {
   return (
     <OrdersLayout
       profile={profile}
-      title="New Order"
-      subtitle="Upload the approved PI to start a new order."
+      // The same words as the control that leads here ("Upload PI"). An Order
+      // comes into existence at approval; this screen saves a PI Draft.
+      title="Upload PI"
+      subtitle="Upload the approved PI workbook to save it as a PI Draft for review."
       onSignOut={handleSignOut}
       // Nothing on this screen comes from the server, so the layout's refresh
       // control would re-fetch nothing and clear nothing. Hidden here only; the
@@ -1255,12 +1263,21 @@ function NewOrderPiImportPageInner() {
       // THE ONE replace control on the page. There is no copy of it inside the
       // preview and no "Select another PI" anywhere: the same action in three
       // places was three things to read and one to trust.
+      //
+      // Before a PI is read there is nothing to lose, so the header offers the
+      // way back to PI Drafts — the page used to have no exit but the sidebar.
+      // Once a preview is on screen that link is withheld: leaving discards the
+      // preview, and the one action here is replacing it.
       actions={
         stage.kind === 'ready' ? (
           <button className="boe-btn boe-btn-ghost" onClick={openPicker}>
             Change PI
           </button>
-        ) : undefined
+        ) : (
+          <Link href="/orders/drafts" className="boe-btn boe-btn-ghost">
+            <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> PI Drafts
+          </Link>
+        )
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>

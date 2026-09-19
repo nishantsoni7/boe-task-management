@@ -27,7 +27,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, Archive } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
@@ -116,7 +116,7 @@ export function RetiredWorkflowNotice({ requestId }: { requestId?: string }) {
     router.replace('/login')
   }
 
-  if (loading) return <LoadingScreen />
+  if (loading) return <OrdersRouteFallback />
 
   return (
     <OrdersLayout

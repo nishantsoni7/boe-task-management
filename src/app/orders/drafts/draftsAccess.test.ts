@@ -833,7 +833,10 @@ describe('the drafts list', () => {
     const source = read(LIST_PAGE)
     assert.ok(source.includes('(isMobile ? listCards : listTable)('),
       'both sections choose the same way, so the queue is as usable as the list')
-    assert.ok(source.includes('MOBILE_BREAKPOINT = 768'))
+    // REVISED (usability pass): 1100, measured. With the reviewer columns the
+    // table was wider than its card at every desktop width (87px at 1440, 247px
+    // at 1280) and scrolled sideways; below 1100 the cards are drawn instead.
+    assert.ok(source.includes('MOBILE_BREAKPOINT = 1100'))
   })
 })
 
@@ -1472,7 +1475,10 @@ describe('coming back to the tab does not reload anything', () => {
   })
 
   test('only the first load shows the full-screen loading state', () => {
-    assert.ok(source.includes("if (load.kind === 'loading') return <LoadingScreen />"))
+    // REVISED (usability pass): the Orders shell with a skeleton, not the
+    // full-screen spinner — the sidebar and header stay while the PI loads.
+    // Still nothing of the record, and no action, before it has landed.
+    assert.ok(source.includes("if (load.kind === 'loading') return <OrdersRouteFallback />"))
     // A quiet re-read never enters that state, so nothing can flash, no scroll
     // position is lost, and an open viewer is not unmounted underneath somebody.
     assert.ok(source.includes('quiet = false'))
@@ -1728,7 +1734,9 @@ describe('the draft route', () => {
   })
 
   test('is where Save Draft goes', () => {
-    assert.ok(read(IMPORT_PAGE).includes('router.push(draftSavedHref(success.submissionId))'))
+    // REPLACE since the usability pass: Back from the new draft must not land
+    // on an empty upload form.
+    assert.ok(read(IMPORT_PAGE).includes('router.replace(draftSavedHref(success.submissionId))'))
   })
 
   test('the detail page lives at the matching file path', () => {
@@ -2099,7 +2107,7 @@ describe('the submit dialog states the payment position and asks only what is un
 // trip back on the critical path without changing a single visible behaviour,
 // which is exactly the kind of regression no rendering test would catch.
 
-describe('the draft loads in three waves, not six', () => {
+describe('the draft loads in two waves, not six', () => {
   const source = read(DETAIL_PAGE)
   // The loader alone: from its opening to the line that closes the useCallback.
   // Slicing to some later declaration would swallow the auth effect, whose own
@@ -2111,28 +2119,34 @@ describe('the draft loads in three waves, not six', () => {
     assert.ok(body.length > 500, 'the slice must actually contain the loader')
   })
 
-  test('exactly one read is awaited on its own: the submission itself', () => {
-    // Everything else belongs to a group. This count is the whole guarantee:
-    // one lone await is the record this page cannot start without, and a second
-    // one would mean some read is queueing behind an answer it does not use.
-    assert.equal((body.match(/await supabase/g) ?? []).length, 1,
-      'only the submission row may be awaited alone')
-    assert.ok(body.includes(".from('order_submissions')"),
-      'and that one read is the submission')
+  // REVISED (usability pass, measured): the submission row and every read that
+  // needs only its id now START TOGETHER — none of them uses the row, and the
+  // row used to cost a whole round trip on its own before any of them began.
+  test('no read is awaited on its own: the record and its id-only reads start together', () => {
+    assert.equal((body.match(/await supabase/g) ?? []).length, 0,
+      'no lone round trip is left on the critical path')
+    const submission = body.indexOf(".from('order_submissions')")
+    const group = body.indexOf('const detailReads = Promise.all([')
+    const awaited = body.indexOf('await submissionRead')
+    assert.ok(submission > -1 && group > submission && awaited > group,
+      'the record is issued, the id-only group is issued, and only then is either awaited')
+    assert.ok(body.indexOf('await detailReads') > body.indexOf("if (!submission) { setLoad({ kind: 'unavailable' }); return }"),
+      'a missing or invisible record is still answered before any of the group is used')
+    assert.ok(body.includes('detailReads.catch(() => {})'), 'and a discarded group can never reject unhandled')
   })
 
-  test('two waves follow it, and only two', () => {
-    assert.equal((body.match(/await Promise\.all\(\[/g) ?? []).length, 2,
-      'the reads travel in exactly two groups')
+  test('one more wave follows, and only one', () => {
+    assert.equal((body.match(/await Promise\.all\(\[/g) ?? []).length, 1,
+      'the reads that depend on the first wave travel in exactly one group')
   })
 
   test('the history rides in the first wave, with the reads that share its key', () => {
     assert.ok(body.includes(
-      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await Promise.all(['),
+      'const [itemsResult, imagesResult, editableResult, adminEditResult, activityRows] = await detailReads'),
       'the history needs only the submission id, so it must not wait for the items')
-    const first = body.indexOf('await Promise.all([')
-    const second = body.indexOf('await Promise.all([', first + 1)
-    assert.ok(body.indexOf('fetchAllRows<PersistedActivity>') < second,
+    const group = body.indexOf('const detailReads = Promise.all([')
+    const second = body.indexOf('await Promise.all([')
+    assert.ok(body.indexOf('fetchAllRows<PersistedActivity>') > group && body.indexOf('fetchAllRows<PersistedActivity>') < second,
       'the paged history read belongs to the first group')
   })
 

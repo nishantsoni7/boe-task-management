@@ -260,8 +260,18 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
     runDeleteSelected(ids)
   }
 
+  // CONFIRMED, like the per-task delete below and for the same reason: the
+  // scope is larger than what is on screen (every notification in this
+  // category, server-side), and it sits right beside the harmless "Mark all
+  // read". A destructive control one mis-aimed click from a routine one must
+  // ask first.
   const handleDeleteAll = () => {
     if (deletingAll || rows.length === 0) return
+    const ok = window.confirm(
+      'Delete all of these notifications?\n\n' +
+      'This removes the notification entries only. The records they point to are not changed.',
+    )
+    if (!ok) return
     setSelected(new Set())
     deleteAll()
   }

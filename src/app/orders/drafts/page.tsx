@@ -33,10 +33,11 @@
 // where each row is printed.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { FileText, Inbox, Trash2, Upload } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { PiCard } from '@/components/orders/piPreview'
 import { PiDeleteConfirmModal } from '@/components/orders/piReviewModals'
@@ -74,7 +75,13 @@ import {
   type SubmissionDeletionFailure,
 } from '@/lib/orders/submissionDeletion'
 
-const MOBILE_BREAKPOINT = 768
+// THE TABLE NEEDS A DESKTOP. Measured 2026-09-18: with the reviewer columns it
+// was 87px wider than its card at 1440, 247px at 1280 and 503px at 1024 — a
+// sideways scroll inside the card on every screen. The submission columns are
+// one stacked cell now and names may wrap, so the table fits a ~976px card
+// (1280 viewport); below 1100 — where the 260px sidebar leaves ~800px — the
+// cards are drawn instead, which fit any width.
+const MOBILE_BREAKPOINT = 1100
 
 /** Newest first, and capped: a drafts list is a working set, not an archive. */
 const LIST_LIMIT = 200
@@ -298,7 +305,6 @@ export default function PiDraftsPage() {
     router.replace('/login')
   }
 
-  const openDraft = (entry: PiDraftListEntry) => router.push(entry.href)
   /**
    * HOVER IS THE EARLIEST HONEST SIGNAL that this draft is about to be opened,
    * so the code for the PI detail route is already in hand when the click
@@ -405,7 +411,7 @@ export default function PiDraftsPage() {
    *  drift apart or grow a second hand-built path. */
   const goToImport = () => router.push('/orders/import')
 
-  if (entries === null && !failed) return <LoadingScreen />
+  if (entries === null && !failed) return <OrdersRouteFallback />
 
   const emptyState = (
     <PiCard>
@@ -487,7 +493,7 @@ export default function PiDraftsPage() {
           <thead>
             <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
               {['Client', 'Created by', 'Uploaded by', 'Product value', 'Grand total', 'Status',
-                ...(showSubmission ? ['Submitted', 'Submitted by'] : []), ''].map((h, i) => (
+                ...(showSubmission ? ['Submitted'] : []), ''].map((h, i) => (
                 <th key={h || 'action'} style={{
                   padding: '8px 14px',
                   // The two money columns, and only those, are right-aligned so
@@ -508,16 +514,16 @@ export default function PiDraftsPage() {
                 </td>
                 {/* The workbook's own author, with the date the document
                     carries. Two facts about the PI, not about this system. */}
-                <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
                   <div>{entry.authoredBy}</div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
                     {entry.authoredOn}
                   </div>
                 </td>
                 {/* The app user who put it here, and when. */}
-                <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap' }}>
+                <td style={{ padding: '10px 14px', color: colors.secondary, minWidth: '110px' }}>
                   <div>{entry.uploader}</div>
-                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px' }}>
+                  <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
                     {entry.uploadedAt}
                   </div>
                 </td>
@@ -536,11 +542,14 @@ export default function PiDraftsPage() {
                 </td>
                 {showSubmission && (
                   <>
-                    <td style={{ padding: '10px 14px', color: colors.muted, whiteSpace: 'nowrap', fontSize: '12px' }}>
-                      {entry.submittedAt}
-                    </td>
-                    <td style={{ padding: '10px 14px', color: colors.secondary, whiteSpace: 'nowrap', fontSize: '12px' }}>
-                      {entry.submitter}
+                    {/* WHO SUBMITTED IT, AND WHEN — one stacked cell, the same
+                        shape as Created by and Uploaded by beside it. As two
+                        columns they were what pushed the table past its card. */}
+                    <td style={{ padding: '10px 14px', color: colors.secondary, fontSize: '12px', minWidth: '110px' }}>
+                      <div>{entry.submitter}</div>
+                      <div style={{ fontSize: '11px', color: colors.muted, marginTop: '1px', whiteSpace: 'nowrap' }}>
+                        {entry.submittedAt}
+                      </div>
                     </td>
                   </>
                 )}
@@ -549,9 +558,9 @@ export default function PiDraftsPage() {
                       Delete sits beside it, compact and last, so the destructive
                       control is never the one a hurried click lands on. */}
                   <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                    <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)} onMouseEnter={() => prefetchDraft(entry)}>
+                    <Link href={entry.href} prefetch={false} className="boe-btn boe-btn-ghost" onMouseEnter={() => prefetchDraft(entry)} onFocus={() => prefetchDraft(entry)}>
                       {actionLabel}
-                    </button>
+                    </Link>
                     {deleteAction(entry)}
                   </div>
                 </td>
@@ -623,9 +632,9 @@ export default function PiDraftsPage() {
                   : entry.uploadedAt}
               </span>
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-                <button className="boe-btn boe-btn-ghost" onClick={() => openDraft(entry)} onMouseEnter={() => prefetchDraft(entry)}>
+                <Link href={entry.href} prefetch={false} className="boe-btn boe-btn-ghost" onMouseEnter={() => prefetchDraft(entry)} onFocus={() => prefetchDraft(entry)}>
                   {actionLabel}
-                </button>
+                </Link>
                 {deleteAction(entry)}
               </div>
             </div>
