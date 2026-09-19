@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/StatusTabs'
 import { Archive, CircleCheck, CircleX, Clock, Layers, MessageCircleQuestion, type LucideIcon } from 'lucide-react'
 import { REQUEST_STAGE_STATUSES, canVerifyPayment, isOwnPaymentDecision } from './paymentRouting'
+import { PAYMENT_DECISION_MESSAGE } from '@/lib/finance/paymentDecision'
 import {
   COUNTED_TABS,
   archiveCutoffIso,
@@ -319,6 +320,26 @@ function friendlyDbErrorMessage(dbError: { code?: string; message: string } | nu
     return 'Select a valid order before marking this payment as linked.'
   }
   return dbError.message
+}
+
+/**
+ * A refused Needs Clarification / Reject from the review modal, as a sentence.
+ * Both RPCs raise fixed markers; anything unrecognised falls back to the
+ * general mapping above.
+ */
+function reviewDecisionErrorMessage(dbError: { code?: string; message: string }): string {
+  const message = dbError.message ?? ''
+  if (message.includes('PAYMENT_SELF_DECISION_FORBIDDEN')) return PAYMENT_DECISION_MESSAGE.selfDecision
+  if (message.includes('PAYMENT_CLARIFICATION_NOTE_REQUIRED')) return 'Explain what clarification is needed before sending this request back.'
+  if (message.includes('PAYMENT_REJECTION_REASON_REQUIRED')) return PAYMENT_DECISION_MESSAGE.reasonRequired
+  if (/Only a pending payment request/i.test(message)) {
+    return 'This request is no longer awaiting a decision — someone may have acted on it already. Refresh to see where it stands.'
+  }
+  if (message.includes('ORDER_FINANCE_RESET_IN_PROGRESS')) {
+    return 'An administrator is clearing Order and Finance test data. Please try again in a few minutes.'
+  }
+  if (dbError.code === '42501') return PAYMENT_DECISION_MESSAGE.notPermitted
+  return friendlyDbErrorMessage(dbError)
 }
 
 // ── Approval lock ─────────────────────────────────────────────────────────────
@@ -2058,16 +2079,23 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       return
     }
 
-    const { error: dbError } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        admin_note: adminNote.trim() || null,
-        status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', r.id)
+    // TWO SERVER-GATED DOORS, AND NO DIRECT STATUS WRITE. This used to be a
+    // direct UPDATE of finance_payment_requests, which production refuses for
+    // every client: the reset write guard (20261010000000) runs as the caller
+    // and calls functions authenticated may not execute. Each RPC re-checks
+    // finance.approve, refuses the person who recorded the payment, locks the
+    // row, refuses anything no longer pending, and requires the note.
+    const { error: rpcError } = action === 'needs_clarification'
+      ? await supabase.rpc('request_finance_payment_clarification', {
+          p_request_id: r.id,
+          p_note:       adminNote.trim(),
+        })
+      : await supabase.rpc('reject_finance_payment_request', {
+          p_request_id: r.id,
+          p_reason:     adminNote.trim(),
+        })
     setSaving(false)
-    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
+    if (rpcError) { setError(reviewDecisionErrorMessage(rpcError)); return }
 
     // Notify the creator of the outcome (non-blocking).
     void notifyFinance({

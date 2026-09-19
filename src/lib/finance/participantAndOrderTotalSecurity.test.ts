@@ -963,6 +963,11 @@ describe('the applied migrations are frozen', () => {
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261220000000 — adds request_finance_payment_clarification(uuid, text), the
+      // Finance review modal's Needs Clarification door (the twin of
+      // reject_finance_payment_request). One new SECURITY DEFINER function and its
+      // grant; no table, column, policy, trigger or permission action changes.
+      '20261220000000_finance_payment_request_clarification_door.sql',
     ])
   })
 
@@ -1177,6 +1182,11 @@ describe('the applied migrations are frozen', () => {
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261220000000 — adds request_finance_payment_clarification(uuid, text), the
+      // Finance review modal's Needs Clarification door (the twin of
+      // reject_finance_payment_request). One new SECURITY DEFINER function and its
+      // grant; no table, column, policy, trigger or permission action changes.
+      '20261220000000_finance_payment_request_clarification_door.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

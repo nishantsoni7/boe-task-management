@@ -782,6 +782,11 @@ describe('18. migration 115 is untouched by this hotfix', () => {
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261220000000 — adds request_finance_payment_clarification(uuid, text), the
+      // Finance review modal's Needs Clarification door (the twin of
+      // reject_finance_payment_request). One new SECURITY DEFINER function and its
+      // grant; no table, column, policy, trigger or permission action changes.
+      '20261220000000_finance_payment_request_clarification_door.sql',
     ])
     // 118's statements reach user_top_tasks and read tasks.status. It replaces
     // cleanup_top_tasks_on_completion() and names no health-check object.

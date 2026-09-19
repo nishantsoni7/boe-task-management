@@ -351,6 +351,11 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261220000000 — adds request_finance_payment_clarification(uuid, text), the
+      // Finance review modal's Needs Clarification door (the twin of
+      // reject_finance_payment_request). One new SECURITY DEFINER function and its
+      // grant; no table, column, policy, trigger or permission action changes.
+      '20261220000000_finance_payment_request_clarification_door.sql',
     ],'every migration at or after this one is accounted for')
   })
 })
