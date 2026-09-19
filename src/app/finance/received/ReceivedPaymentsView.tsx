@@ -98,6 +98,8 @@ import {
   piDraftSafeName,
   allocationCountLabel,
   buildAllocatedAgainst,
+  completeAllocatedTotal,
+  completeAllocationSummary,
   type AllocatedAgainstView,
   type AllocationTargetRow,
 } from '@/lib/finance/allocatedAgainst'
@@ -3663,8 +3665,18 @@ function ReceivedPaymentsViewInner(
           // Named from the complete targets read, so a destination the
           // reader's own RLS could not name still reads "PI Draft · Reserved
           // Order 0526" rather than "A PI Draft".
+          //
+          // THE FIGURES ARE THE COMPLETE READ'S for a reader without
+          // finance.view_all (launch audit 2026-09-19): their own RLS returns
+          // only the allocations whose target they may open, and the panel
+          // used to print that part as "Allocated / Remaining". Admins and
+          // view_all readers see every row directly, and keep that path.
           allocation={nameSummaryTargets(
-            allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id),
+            (!caps.canViewAllFinance && completeAllocationSummary(detailRequest, allocationTargets.rows, {
+              covered: allocationTargets.ids.has(detailRequest.id),
+              readFailed: allocationTargets.failed,
+            }))
+              || (allocations.get(detailRequest.id) ?? PENDING_ALLOCATION_SUMMARY(detailRequest.id)),
             allocationTargetNames(allocationTargets.rows))}
           canOpenLinkedRecord={canOpenOrderRecord(ordersCaps.canAccessOrdersModule)}
           onOpenLinked={href => router.push(href)}
@@ -3745,7 +3757,15 @@ function ReceivedPaymentsViewInner(
             human_payment_id: allocateFundsTarget.human_payment_id,
             client_name: allocateFundsTarget.client_name,
             amount: allocateFundsTarget.amount,
-            allocated_total: allocateFundsTarget.allocated_total,
+            // The EXISTING total from the complete read when it covers this
+            // payment: the projection's allocated_total is security_invoker,
+            // so for a reader without view_all it counted only the allocations
+            // they may open — and "Remaining" / "Allocate Full Remaining"
+            // offered money the server then refused as already spent.
+            allocated_total: completeAllocatedTotal(allocateFundsTarget.id, allocationTargets.rows, {
+              covered: allocationTargets.ids.has(allocateFundsTarget.id),
+              readFailed: allocationTargets.failed,
+            }) ?? allocateFundsTarget.allocated_total,
           }}
           supabase={supabase}
           onClose={() => setAllocateFundsTarget(null)}

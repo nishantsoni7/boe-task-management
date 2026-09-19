@@ -157,6 +157,7 @@ import {
   formatMoney,
   formatPercent,
   loadPiPaymentSummary,
+  localTodayIso,
   recordPiPayment,
   type PiPaymentFilter,
   type PiPaymentFormState,
@@ -2597,7 +2598,7 @@ function PiDraftDetailPageInner() {
       {/* The unchanged entry form, on the unchanged gate and the unchanged RPC. */}
       {paymentDialog === 'add' && canAddPayment && (
         <AddPiPaymentModal
-          todayIso={new Date().toISOString().slice(0, 10)}
+          todayIso={localTodayIso()}
           saving={paymentSaving}
           onClose={() => setPaymentDialog(null)}
           onSubmit={async (form, proof) => {

@@ -158,6 +158,19 @@ export function RecordSplitPaymentModal({
   const [attachFile,  setAttachFile]  = useState<File | null>(null)
   const [attachError, setAttachError] = useState<string | null>(null)
   const [proofNotice, setProofNotice] = useState<string | null>(null)
+  /**
+   * The payment that WAS recorded when its proof then failed to upload.
+   *
+   * LAUNCH AUDIT (2026-09-19): this path used to reset the in-flight guard and
+   * leave "Record Payment" enabled over a still-filled form — so the next click
+   * recorded the same money a second time. Once the payment exists the form is
+   * finished: the guard stays set, the only action is Close, and Close reports
+   * the payment so the list refreshes. The proof can be attached from the
+   * payment's own screen.
+   */
+  const [recordedWithoutProof, setRecordedWithoutProof] = useState<{
+    requestNumber: string; allocationCount: number
+  } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
@@ -212,7 +225,13 @@ export function RecordSplitPaymentModal({
     attachFile !== null ||
     rows.some(r => r.kind || r.targetId || r.amount.trim())
 
-  const guard = useDiscardGuard({ isDirty, onClose, disabled: saving })
+  // Once the payment is recorded (even without its proof) there is nothing left
+  // to discard: X and Escape close at once and refresh the list, like Close.
+  const guard = useDiscardGuard({
+    isDirty: () => isDirty() && recordedWithoutProof === null,
+    onClose: recordedWithoutProof ? () => onRecorded(recordedWithoutProof) : onClose,
+    disabled: saving,
+  })
 
   const changeDestination = (next: PaymentDestination) => {
     if (next === destination) return
@@ -304,8 +323,13 @@ export function RecordSplitPaymentModal({
         userId: userId ?? null,
       })
       if (proofError) {
-        submitting.current = false
-        setProofNotice(`${proofError} The payment itself was recorded.`)
+        // NOT reset: the payment exists, and a second click must not record it
+        // again. See recordedWithoutProof.
+        setProofNotice(`${proofError} The payment itself was recorded — attach the proof from the payment's own screen.`)
+        setRecordedWithoutProof({
+          requestNumber:   result.request_number ?? '',
+          allocationCount: result.allocation_count ?? 0,
+        })
         return
       }
     }
@@ -551,6 +575,17 @@ export function RecordSplitPaymentModal({
         </div>
       )}
 
+      {recordedWithoutProof ? (
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+        <button
+          onClick={() => onRecorded(recordedWithoutProof)}
+          className="boe-btn boe-btn-primary"
+          style={{ padding: '8px 18px', fontSize: '13px' }}
+        >
+          Close
+        </button>
+      </div>
+      ) : (
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
         <button onClick={guard.requestClose} disabled={saving}
                 className="boe-btn boe-btn-ghost" style={{ padding: '8px 18px', fontSize: '13px' }}>
@@ -569,6 +604,7 @@ export function RecordSplitPaymentModal({
           {saving ? 'Recording…' : RECORD_PAYMENT_ACTION_LABEL}
         </button>
       </div>
+      )}
 
       <DiscardConfirmation
         open={guard.asking}

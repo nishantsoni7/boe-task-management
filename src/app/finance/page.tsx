@@ -2058,7 +2058,7 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       return
     }
 
-    const { error: dbError } = await supabase
+    const { data: changed, error: dbError } = await supabase
       .from('finance_payment_requests')
       .update({
         admin_note: adminNote.trim() || null,
@@ -2066,8 +2066,19 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
         updated_at: new Date().toISOString(),
       })
       .eq('id', r.id)
+      // Only a request that is STILL pending is decided here, and the row that
+      // changed comes back. LAUNCH AUDIT (2026-09-19): an update that matched no
+      // row — the request was decided or withdrawn while this modal was open —
+      // returned no error, so the screen said it had worked and the creator was
+      // sent a clarification or rejection that never happened.
+      .eq('status', 'pending_approval')
+      .select('id')
     setSaving(false)
     if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
+    if (!changed || changed.length === 0) {
+      setError('This request is no longer awaiting a decision — someone may have acted on it already. Refresh to see where it stands.')
+      return
+    }
 
     // Notify the creator of the outcome (non-blocking).
     void notifyFinance({

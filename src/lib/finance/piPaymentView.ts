@@ -673,3 +673,18 @@ export async function loadPiPaymentSummary(
   if (error) return null
   return (data as PiPaymentSummary | null) ?? null
 }
+
+/**
+ * Today's date as YYYY-MM-DD in the reader's OWN time zone.
+ *
+ * LAUNCH AUDIT (2026-09-19). The PI payment form took "today" from
+ * `toISOString()`, which is UTC: between 00:00 and 05:30 IST it was still
+ * yesterday in UTC, so the date picker's maximum and the "not in the future"
+ * check refused TODAY's receipts for five and a half hours every morning. The
+ * server already allows the UTC date + 1 (20261014000000), so the local date is
+ * always accepted there.
+ */
+export function localTodayIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+}
