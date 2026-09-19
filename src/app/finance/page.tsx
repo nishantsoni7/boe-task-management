@@ -1,7 +1,15 @@
 'use client'
 
 import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import Link from 'next/link'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { pageParam } from '@/lib/listState'
+import { useMirrorToUrl } from '@/hooks/useMirrorToUrl'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { pathWithSearch } from '@/lib/tasks/taskReturnPath'
+import { withReturnTo } from '@/lib/navigation/recordReturn'
+import { destinationRecordHref } from '@/lib/finance/crossModuleLinks'
+import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { createClient } from '@/lib/supabase/client'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
@@ -2420,7 +2428,15 @@ export function PaymentsTable({
   onView,
   onEdit,
   onDelete,
+  againstHref = () => null,
 }: {
+  /**
+   * The page of the single Order or PI Draft a payment is for — ONLY when this
+   * reader may open it (Orders module entry AND the destination named a record
+   * their own RLS returned). Otherwise null, and the cell stays plain text: a
+   * visible reference is not permission to open the record.
+   */
+  againstHref?: (destination: PaymentDestination | null | undefined) => string | null
   rows: PaymentRequest[]
   /**
    * What each payment is FOR, by payment id — read for the whole page in ONE
@@ -2524,6 +2540,7 @@ export function PaymentsTable({
             const destination = destinations ? destinations.get(r.id) ?? null : undefined
             const against = paymentAgainstDisplay(destination)
             const hasDestination = !!destination && destination.kind !== 'suspense'
+            const againstLink = againstHref(destination)
 
             return (
               <tr
@@ -2601,7 +2618,18 @@ export function PaymentsTable({
                     title={against}
                     style={{ maxWidth: '190px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', color: hasDestination ? colors.secondary : colors.muted, fontStyle: hasDestination ? 'normal' : 'italic' }}
                   >
-                    {against}
+                    {againstLink ? (
+                      // The record this payment is for, one click away. The
+                      // row's own click must not also open the payment.
+                      <Link
+                        href={againstLink}
+                        prefetch={false}
+                        className="boe-record-link"
+                        onClick={e => e.stopPropagation()}
+                      >
+                        {against}
+                      </Link>
+                    ) : against}
                   </div>
                 </td>
                 <td style={TD}>
@@ -2701,7 +2729,11 @@ function FinancePageInner() {
   const [detailRequest, setDetailRequest] = useState<PaymentRequest | null>(null)
   const [editRequest,   setEditRequest]   = useState<PaymentRequest | null>(null)
   const [deleteRequest, setDeleteRequest] = useState<PaymentRequest | null>(null)
-  const [search, setSearch]             = useState('')
+  // Seeded from the address — ?q= and ?page= — and mirrored back to it below
+  // (useMirrorToUrl), so Back from an Order or PI returns to the same tab,
+  // search and page. ?tab= already arrived this way.
+  const initialSearchParams = useSearchParams()
+  const [search, setSearch]             = useState(() => initialSearchParams.get('q') ?? '')
   const [highlightId, setHighlightId]   = useState<string | null>(null)
   // ── Paging ──
   // The list carried no range and no limit, and PostgREST truncates at 1000 rows
@@ -2710,7 +2742,7 @@ function FinancePageInner() {
   // but `rejected` accumulates forever: the Archive tab exists precisely because
   // it does, and Archive — the tab whose whole purpose is the OLDEST rejected
   // requests — is the first one that would empty while its badge kept counting.
-  const [page,        setPage]        = useState(1)
+  const [page,        setPage]        = useState(() => pageParam().parse(initialSearchParams.get('page')))
   const [total,       setTotal]       = useState<number | null>(null)
   // The four counted tabs. 'all' is derived from three of them — see tabCounts.
   const [counts,      setCounts]      = useState<Record<string, number | null>>({})
@@ -2724,6 +2756,27 @@ function FinancePageInner() {
   // ?tab= from the Admin Action Queue selects the initial tab; manual tab
   // clicks below still just call setActiveTab and are otherwise untouched.
   const [activeTab, setActiveTab] = useState<FilterTab>(() => parseFilterTab(searchParams.get('tab')))
+
+  // Orders module entry — decides ONE thing: whether the Against cell offers a
+  // door into the Order or PI Draft it names. It grants nothing; the destination
+  // re-reads its own record under this reader's RLS. Starts closed.
+  const [canOpenOrders, setCanOpenOrders] = useState(false)
+
+  // The working context in the address bar (see the note on `search` above).
+  useMirrorToUrl({
+    tab:  activeTab === parseFilterTab(null) ? null : activeTab,
+    q:    search.trim() || null,
+    page: page > 1 ? String(page) : null,
+  }, !pageLoading)
+  // Back from a record lands where the reader was, not at the top.
+  useListScrollRestore()
+  const returnPath = pathWithSearch(usePathname(), searchParams.toString())
+  // The rule is destinationRecordHref's (crossModuleLinks.ts): Orders module
+  // entry, ONE named record, and a reference the reader's own RLS returned.
+  const againstHref = (destination: PaymentDestination | null | undefined): string | null => {
+    const href = destinationRecordHref(destination, canOpenOrders)
+    return href ? withReturnTo(href, returnPath) : null
+  }
 
   // Guards the one-time ?request= deep-link resolution below so it can never
   // re-fire (StrictMode double-invoke, unrelated rerenders) and reopen a
@@ -2990,13 +3043,16 @@ function FinancePageInner() {
       // clicked: pageLoading is not cleared until all three have landed, and a
       // failed resolve still falls back to NO capabilities rather than to the
       // role.
-      const [{ data: me }, financePerms] = await Promise.all([
+      const [{ data: me }, financePerms, ordersPerms] = await Promise.all([
         supabase
           .from('users')
           .select(USER_PROFILE_COLUMNS)
           .eq('id', uid)
           .single(),
         getEffectivePermissions(supabase, uid, 'finance').catch(() => []),
+        // Orders module entry, for the Against cell's link only. In the same
+        // group, so it costs no additional wait; a failed read offers no link.
+        getEffectivePermissions(supabase, uid, 'orders').catch(() => []),
         // The rows AND the four badge counts, in the same group. The counts are
         // head-only — `count: 'exact', head: true` transfers no rows — so they
         // cost four counts and no payload, and being in this group they cost no
@@ -3007,6 +3063,7 @@ function FinancePageInner() {
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')
       setCaps(deriveFinanceCapabilities(me?.role, financePerms))
+      setCanOpenOrders(deriveOrdersCapabilities(me?.role, ordersPerms).canAccessOrdersModule)
 
       setPageLoading(false)
     }
@@ -3277,8 +3334,11 @@ function FinancePageInner() {
           </div>
         )}
 
-        {/* ── Table ── */}
-        {listLoading ? (
+        {/* ── Table ──
+            A RE-READ KEEPS THE ROWS. The table used to be swapped for
+            "Loading…" after every edit, approval and page step, which threw the
+            reader back to the top; now it only shows before there is anything. */}
+        {listLoading && visible.length === 0 ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
           /* TWO DIFFERENT EMPTIES. "No pending payment requests" is a statement
@@ -3308,6 +3368,7 @@ function FinancePageInner() {
             onRowClick={handleRowClick}
             onView={r => setDetailRequest(r)}
             onEdit={r => setEditRequest(r)}
+            againstHref={againstHref}
             onDelete={r => setDeleteRequest(r)}
           />
         )}

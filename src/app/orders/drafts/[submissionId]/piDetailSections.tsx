@@ -16,8 +16,9 @@
 // by ./piDetailView; what a figure means is decided by the shared PI helpers.
 // These draw the answers.
 
+import Link from 'next/link'
 import {
-  AlertTriangle, Ban, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Copy, ExternalLink,
+  AlertTriangle, ArrowRight, Ban, CalendarDays, Check, CheckCircle2, ChevronRight, Clock, Copy,
   FileSpreadsheet, Hash, History, Info, Pencil, Percent, Send, ShieldCheck, ThumbsUp, Undo2, Upload,
   User,
 } from 'lucide-react'
@@ -824,6 +825,7 @@ export function PiWorkflowPanel({
   onVerifyFinance,
   onApprove,
   onOpenOrder,
+  openOrderHref = null,
   advanceBand,
   statusShownAbove = false,
 }: {
@@ -888,6 +890,9 @@ export function PiWorkflowPanel({
   onVerifyFinance: () => void
   onApprove: () => void
   onOpenOrder: () => void
+  /** The approved Order's page, when this reader can see it. Drawn as a real
+   *  link; `onOpenOrder` remains for callers that have no href. */
+  openOrderHref?: string | null
   /** The pending advance decision, or null. */
   advanceBand: React.ReactNode
   /**
@@ -1088,7 +1093,7 @@ export function PiWorkflowPanel({
           {/* The created Order, first, because on an approved record it is the
               answer to the only question anybody opens the page with. */}
           {approvedOrder && (
-            <PiApprovedOrderStrip order={approvedOrder} onOpen={onOpenOrder} acting={acting} />
+            <PiApprovedOrderStrip order={approvedOrder} onOpen={onOpenOrder} href={openOrderHref} acting={acting} />
           )}
           {/* Where finance stands: one compact line, never a card of its own.
               A second full-size panel for a single boolean would outweigh the
@@ -1228,9 +1233,13 @@ export function PiFinanceLine({ finance, acting, onVerify }: {
  * viewer who cannot read the Order gets no number and no link rather than a
  * placeholder and a dead end.
  */
-export function PiApprovedOrderStrip({ order, onOpen, acting }: {
+export function PiApprovedOrderStrip({ order, onOpen, href = null, acting }: {
   order: ApprovedOrderView
   onOpen: () => void
+  /** When given, the control is a link — it opens in this tab, or a new one on
+   *  request. It used to be a button wearing an "external link" icon while
+   *  navigating in the same tab: the icon promised a new tab that never came. */
+  href?: string | null
   acting: boolean
 }) {
   const tone = TONE_STYLE.green
@@ -1260,15 +1269,22 @@ export function PiApprovedOrderStrip({ order, onOpen, acting }: {
           </span>
         </span>
       </div>
-      <button
-        className="boe-btn boe-btn-ghost"
-        onClick={onOpen}
-        disabled={acting}
-        style={{ marginLeft: 'auto' }}
-      >
-        <ExternalLink size={13} strokeWidth={2} />
-        {OPEN_ORDER_BUTTON_LABEL}
-      </button>
+      {href && !acting ? (
+        <Link href={href} className="boe-btn boe-btn-ghost" style={{ marginLeft: 'auto' }}>
+          {OPEN_ORDER_BUTTON_LABEL}
+          <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
+        </Link>
+      ) : (
+        <button
+          className="boe-btn boe-btn-ghost"
+          onClick={onOpen}
+          disabled={acting}
+          style={{ marginLeft: 'auto' }}
+        >
+          {OPEN_ORDER_BUTTON_LABEL}
+          <ArrowRight size={13} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
     </div>
   )
 }

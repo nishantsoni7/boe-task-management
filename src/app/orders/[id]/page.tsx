@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -38,6 +39,7 @@ import {
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
+import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import {
   mergeOrderPayments,
   type OrderAllocationRow,
@@ -59,7 +61,7 @@ import {
 import { financePaymentHref } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
-import { ArrowLeft, ChevronDown } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
@@ -1907,9 +1909,10 @@ export default function OrderDetailPage() {
     >
       <div className="order-detail-page">
 
-        <button type="button" onClick={() => router.back()} className="order-back">
-          <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back
-        </button>
+        {/* Back to the list this Order was opened from, with its filters —
+            or to Confirmed Orders. Named, and never out of the app, which
+            router.back() was whenever this was the tab's first page. */}
+        <RecordBackLink fallbackHref="/orders/all" className="order-back" />
 
         {/* ══ 1. THE COMMAND HEADER ══
             ORDER NUMBER AND STATUS, ON ONE LINE, FIRST — "ORDER BOE-147  IN
@@ -2140,15 +2143,18 @@ export default function OrderDetailPage() {
                                   own RLS and refuses anything they may not open. */}
                               <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                                 {financeCaps.canAccessFinanceModule && (
-                                  <button
-                                    type="button"
-                                    onClick={() => router.push(financePaymentHref(p.id))}
+                                  // A LINK, so the payment can be opened beside
+                                  // the Order in a new tab — the usual way to
+                                  // check one against the other.
+                                  <Link
+                                    href={financePaymentHref(p.id)}
+                                    prefetch={false}
                                     className="boe-btn boe-btn-ghost"
                                     style={{ padding: '3px 9px', fontSize: '11px', fontWeight: 500 }}
                                     title={`Open this payment's full record in Finance`}
                                   >
                                     Finance record
-                                  </button>
+                                  </Link>
                                 )}
                               </td>
                             </tr>
@@ -2257,7 +2263,10 @@ export default function OrderDetailPage() {
         {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI" and
             "the feature is not deployed" are indistinguishable from the
             outside, so the absence is stated rather than left silent. */}
-        {piHandoff.kind === 'none' && <OrderPiNoSource />}
+        {/* Not before the hand-off has answered: piHandoff starts as 'none', so an
+            Order that DOES have a PI briefly claimed it had none, then the claim
+            was replaced — a false statement and a layout jump on every visit. */}
+        {piHandoff.kind === 'none' && (handoffReady || !order.source_order_submission_id) && <OrderPiNoSource />}
 
         {/* ── Change requests ──
             Rendered only when there is something to show. An admin sees every

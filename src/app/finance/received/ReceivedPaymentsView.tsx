@@ -1,12 +1,20 @@
 'use client'
 
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Eye, Pencil, Split, Trash2, type LucideIcon } from 'lucide-react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { Eye, MoreHorizontal, Pencil, Split, Trash2, type LucideIcon } from 'lucide-react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { dateParam, enumParam, pageParam, parseListState, textParam } from '@/lib/listState'
+import { useMirrorToUrl } from '@/hooks/useMirrorToUrl'
+import { useListScrollRestore } from '@/hooks/useListScrollRestore'
+import { mergeSearchParams } from '@/lib/navigation/urlMirror'
+import { pathWithSearch } from '@/lib/tasks/taskReturnPath'
+import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { placeMenu, type MenuPlacement } from '@/lib/ui/menuPlacement'
 import {
   ROW_ACTION_GAP_PX,
+  TABLE_CELL_PADDING_X_PX,
+  rowActionLayout,
   visibleRowActions,
   type RowActionKey,
 } from '@/lib/finance/rowActions'
@@ -363,44 +371,42 @@ const TO_VERIFY_META = {
   searchPlaceholder: 'Payment, client or order…',
 }
 
-const VIEW_META: Record<PaymentView, {
+const VIEW_META: Record<'all', {
   title: string
   subtitle: string
   empty: string
   searchPlaceholder: string
 }> = {
   all: {
-    title:    'Received Payments',
-    subtitle: 'Every payment received, and what each one is attached to.',
+    // THE SIDEBAR'S NAME. The entry that leads here says "Confirmed Payments";
+    // a page that answers to a different name makes a reader wonder whether
+    // they landed where they meant to.
+    title:    'Confirmed Payments',
+    subtitle: 'Confirmed money, and exactly where each payment is allocated.',
     empty:    'No payments received yet.',
     searchPlaceholder: 'Payment, client or order…',
   },
-  orders: {
-    title:    'Payments · Orders',
-    subtitle: 'Money attributed to one or more Confirmed Orders.',
-    empty:    'No payment is attributed to a Confirmed Order yet.',
-    searchPlaceholder: 'Payment, client or order…',
-  },
-  pi_drafts: {
-    title:    'Payments · PI Drafts',
-    subtitle: 'Money attributed to one or more PI Drafts awaiting approval.',
-    empty:    'No payment is attributed to a PI Draft yet.',
-    searchPlaceholder: 'Payment or client…',
-  },
-  available: {
-    title:    'Payments · Available',
-    subtitle: 'Money with an unallocated balance, waiting to be given a home.',
-    empty:    'Nothing is waiting to be allocated. Every payment has a home.',
-    searchPlaceholder: 'Payment or client…',
-  },
+  // THE THREE NARROWED VIEWS HAVE NO WORDS OF THEIR OWN ANY MORE. The list
+  // stopped narrowing by ?view= when the allocation-status tabs replaced the
+  // four sub-views, but their titles survived — so /finance/received/unlinked
+  // (forwarded as ?view=available) announced "Payments · Available" above every
+  // payment there is. A retired address now lands on the real page under its
+  // real name; the tabs are how a reader narrows it.
 }
 
-/** The one list route. Its view is a `?view=`. */
-const RECEIVED_PATH = '/finance/received'
-
-function viewHref(view: PaymentView): string {
-  return `${RECEIVED_PATH}?view=${view}`
+/**
+ * The list's working context in the query string — the same shared codecs the
+ * Task and Confirmed Orders lists use. A value that is not recognised reads as
+ * the default; a default is never written.
+ */
+const RECEIVED_LIST_PARAMS = {
+  status: enumParam<ConfirmedAllocationFilter>(CONFIRMED_ALLOCATION_FILTERS, DEFAULT_CONFIRMED_ALLOCATION_FILTER),
+  q:      textParam(),
+  from:   dateParam(),
+  to:     dateParam(),
+  page:   pageParam(),
 }
+
 
 
 const RECEIVED_IN_OPTIONS = [
@@ -1469,11 +1475,16 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
                 onClick={event => {
                   // Opens the TARGET. The row's own click must not also fire
                   // and open the payment underneath it.
-                  event.preventDefault()
                   event.stopPropagation()
+                  // A modified click (new tab, new window) is the browser's to
+                  // handle: it is a real link, and a reader cross-checking a
+                  // payment against its Order wants both on screen.
+                  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return
+                  event.preventDefault()
                   onOpen(href)
                 }}
-                style={{ ...nameStyle, color: colors.blue, fontWeight: 600, textDecoration: 'underline', textUnderlineOffset: '2px' }}
+                className="boe-record-link"
+                style={{ ...nameStyle, fontWeight: 600 }}
               >
                 {line.label}
               </a>
@@ -1570,46 +1581,27 @@ export function ReceivedPaymentsTable({
   // drawn; this decides what each one IS. Every label names the PAYMENT and not
   // just the verb, because the glyph is the whole control and forty identical
   // pencils are otherwise indistinguishable to a screen reader.
-  const ROW_ACTION_META: Record<RowActionKey, {
-    Icon: LucideIcon
-    label: (r: PaymentRequest) => string
-    run: (r: PaymentRequest) => void
-    danger?: boolean
-  }> = {
-    view: {
-      Icon: Eye,
-      label: r => `View details for ${r.human_payment_id ?? 'this payment'}`,
-      run: r => onView(r),
-    },
-    allocate: {
-      Icon: Split,
-      label: r => `${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`,
-      run: r => onAllocateFunds(r),
-    },
-    edit: {
-      Icon: Pencil,
-      label: r => `Edit ${r.human_payment_id ?? 'this payment'}`,
-      run: r => onEdit(r),
-    },
-    // Drawn last, and the only destructive one.
-    delete: {
-      Icon: Trash2,
-      label: r => `${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`,
-      run: r => onDelete(r),
-      danger: true,
-    },
+  const ROW_ACTION_META: RowActionMeta = {
+    ...rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete }),
   }
 
+  // 8px a side — TABLE_CELL_PADDING_X_PX, which the column widths and the
+  // Actions arithmetic both assume. Clipped text never happens silently: every
+  // compact cell's widest value was measured into its width.
   const TD: React.CSSProperties = {
-    padding: '7px 10px', borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+    padding: `7px ${TABLE_CELL_PADDING_X_PX}px`, borderBottom: `1px solid ${colors.border}`, whiteSpace: 'nowrap',
+    overflow: 'hidden', textOverflow: 'ellipsis',
   }
-  const TH: React.CSSProperties = { ...TH_STYLE, padding: '7px 10px' }
+  const TH: React.CSSProperties = { ...TH_STYLE, padding: `7px ${TABLE_CELL_PADDING_X_PX}px` }
   const align = (a: 'left' | 'right'): React.CSSProperties =>
     a === 'right' ? { textAlign: 'right' } : {}
 
   return (
     <div style={{ width: '100%' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'auto' }}>
+      {/* FIXED LAYOUT: every compact column has a measured pixel width and
+          Allocated Against takes the rest, so the columns sit where the header
+          says they are whatever the rows contain. */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead>
           <tr>
             {CONFIRMED_PAYMENT_COLUMNS.map(column => (
@@ -1659,7 +1651,10 @@ export function ReceivedPaymentsTable({
                     {fmtDate(r.payment_date)}
                   </td>
 
-                  <td style={{ ...TD, fontSize: '12px', color: colors.secondary }}>
+                  <td
+                    style={{ ...TD, fontSize: '12px', color: colors.secondary }}
+                    title={PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
+                  >
                     {PAYMENT_MODE_LABEL[r.payment_mode] ?? r.payment_mode}
                   </td>
 
@@ -1682,7 +1677,7 @@ export function ReceivedPaymentsTable({
                       together — they are two halves of one answer and neither
                       can be acted on from a row — so the status that summarises
                       them opens the record that shows them in full. */}
-                  <td style={TD} onClick={e => e.stopPropagation()}>
+                  <td style={{ ...TD, overflow: 'visible' }} onClick={e => e.stopPropagation()}>
                     <ConfirmedAllocationBadge
                       status={allocationBadgeState(allocatedAgainst(r))}
                       paymentId={r.human_payment_id}
@@ -1706,35 +1701,17 @@ export function ReceivedPaymentsTable({
 
                       An action a reader may not take is absent, not greyed: a
                       disabled control invites a click that will never work. */}
-                  <td style={{ ...TD, textAlign: 'right' }}>
-                    <div
-                      style={{
-                        display: 'inline-flex', gap: `${ROW_ACTION_GAP_PX}px`,
-                        alignItems: 'center', justifyContent: 'flex-end',
-                        // One line, always. The column is declared wide enough
-                        // for the widest row (ACTIONS_COLUMN_WIDTH_PX), so this
-                        // is belt and braces rather than a fallback.
-                        flexWrap: 'nowrap',
-                      }}
-                      onClick={e => e.stopPropagation()}
-                    >
-                      {visibleRowActions({
+                  <td style={{ ...TD, textAlign: 'right', overflow: 'visible' }}>
+                    <PaymentRowActions
+                      row={r}
+                      actions={visibleRowActions({
                         offerAllocate,
                         canManage,
                         canDelete: canDeleteRow(r),
-                      }).map(key => {
-                        const action = ROW_ACTION_META[key]
-                        return (
-                          <IconAction
-                            key={key}
-                            Icon={action.Icon}
-                            label={action.label(r)}
-                            onSelect={() => action.run(r)}
-                            danger={action.danger}
-                          />
-                        )
                       })}
-                    </div>
+                      meta={ROW_ACTION_META}
+                      slots
+                    />
                   </td>
                 </tr>
             )
@@ -1782,37 +1759,119 @@ export function ReceivedPaymentsTable({
  * remains permission-derived.
  */
 /**
- * One row action, as an icon.
+ * ONE PLACE PER ACTION: its icon, the words it shows, how it names itself to a
+ * screen reader, what it runs, and whether it is destructive. visibleRowActions()
+ * decides WHICH of these a row offers and rowActionLayout() decides WHERE each is
+ * drawn; this decides what each one IS. Shared by the table and the cards, so a
+ * phone offers exactly what a desktop offers.
  *
- * ICON-ONLY, SO IT IS NAMED TWICE OVER: `aria-label` for a screen reader and
- * `title` for a pointer, because the glyph carries no text of its own and a
- * reader who does not recognise it has nothing else to go on. Both name the
- * PAYMENT as well as the verb — "Edit P-AA-0002", not "Edit" — so forty
- * identical pencils are distinguishable.
- *
- * It decides NO permission. Whether an action exists is the row's decision, and
- * an action the reader may not take is not rendered at all rather than greyed:
- * a disabled control invites a click that will never work.
+ * Every accessible name carries the PAYMENT as well as the verb — "Edit
+ * P-AA-0002", not "Edit" — so forty rows of identical controls stay
+ * distinguishable to a screen reader.
  */
-function IconAction({ Icon, label, onSelect, danger, disabled }: {
+type RowActionMeta = Record<RowActionKey, {
   Icon: LucideIcon
-  label: string
-  onSelect: () => void
+  /** The visible words. */
+  text: string
+  /** The accessible name, naming the payment. */
+  label: (r: PaymentRequest) => string
+  run: (r: PaymentRequest) => void
   danger?: boolean
-  disabled?: boolean
+}>
+
+function rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete }: {
+  onView: (r: PaymentRequest) => void
+  onAllocateFunds: (r: PaymentRequest) => void
+  onEdit: (r: PaymentRequest) => void
+  onDelete: (r: PaymentRequest) => void
+}): RowActionMeta {
+  return {
+    view: {
+      Icon: Eye,
+      text: 'View',
+      label: r => `View details for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onView(r),
+    },
+    allocate: {
+      Icon: Split,
+      text: 'Allocate',
+      label: r => `${ALLOCATE_FUNDS_ACTION_LABEL} for ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onAllocateFunds(r),
+    },
+    edit: {
+      Icon: Pencil,
+      text: 'Edit payment',
+      label: r => `Edit ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onEdit(r),
+    },
+    // Drawn last, in red, behind its own confirmation — and never beside View.
+    delete: {
+      Icon: Trash2,
+      text: PAYMENT_DELETE_CONFIRM_LABEL,
+      label: r => `${PAYMENT_DELETE_CONFIRM_LABEL} ${r.human_payment_id ?? 'this payment'}`,
+      run: r => onDelete(r),
+      danger: true,
+    },
+  }
+}
+
+/**
+ * A row's actions: the routine ones as WORDS, the rest behind "More actions".
+ *
+ * View is always a labelled button; Allocate is one whenever the payment has
+ * money left to place. Edit and Delete live in the menu, Delete last and in
+ * red, so destroying a payment is never the same kind of control as viewing
+ * one, never beside it, and never one mis-aimed click away. See
+ * lib/finance/rowActions.ts for the split and for the width it adds up to.
+ *
+ * It decides NO permission. `actions` is the row's own visibleRowActions()
+ * answer; an action the reader may not take is not rendered at all.
+ */
+function PaymentRowActions({ row, actions, meta, slots = false }: {
+  row: PaymentRequest
+  actions: readonly RowActionKey[]
+  meta: RowActionMeta
+  /**
+   * TABLE ROWS: every control in a fixed slot — View at the left edge of the
+   * cell, Allocate beside it, More pinned to the right edge — so each one sits
+   * at the same x on every row and the column reads as a column. Right-aligning
+   * the whole group made View jump sideways wherever Allocate was absent.
+   */
+  slots?: boolean
 }) {
+  const { inline, menu } = rowActionLayout(actions)
   return (
-    <button
-      type="button"
-      className={`boe-icon-action${danger ? ' boe-icon-action--danger' : ''}`}
-      aria-label={label}
-      title={label}
-      disabled={disabled}
+    <div
+      className={`boe-row-actions${slots ? ' boe-row-actions--slots' : ''}`}
+      style={{ gap: `${ROW_ACTION_GAP_PX}px` }}
       // The row opens the record on click; an action must not also do that.
-      onClick={event => { event.stopPropagation(); onSelect() }}
+      onClick={e => e.stopPropagation()}
     >
-      <Icon size={14} strokeWidth={2} aria-hidden="true" />
-    </button>
+      {inline.map(key => (
+        <button
+          key={key}
+          type="button"
+          className={`boe-row-action boe-row-action--${key}`}
+          aria-label={meta[key].label(row)}
+          onClick={event => { event.stopPropagation(); meta[key].run(row) }}
+        >
+          {meta[key].text}
+        </button>
+      ))}
+      {menu.length > 0 && (
+        <span className="boe-row-actions-menu">
+          <RowActionsMenu
+            label={`More actions for ${row.human_payment_id ?? 'this payment'}`}
+            actions={menu.map(key => ({
+              label: meta[key].text,
+              onSelect: () => meta[key].run(row),
+              danger: meta[key].danger,
+              Icon: meta[key].Icon,
+            }))}
+          />
+        </span>
+      )}
+    </div>
   )
 }
 
@@ -1894,9 +1953,12 @@ function RowActionsMenu({ label, actions }: {
         boxShadow: '0 6px 20px rgba(17,19,24,0.12)', minWidth: 150, padding: 4,
       }}
     >
-      {actions.map(action => (
+      {actions.map((action, index) => (
+        <Fragment key={action.label}>
+        {/* A rule above the destructive entry: it sits apart from the
+            ordinary ones as well as below them. */}
+        {action.danger && index > 0 && <div role="separator" className="boe-menu-separator" />}
         <button
-          key={action.label}
           role="menuitem"
           // Hover and focus-visible live in globals.css (.boe-menu-item), because
           // neither can be written as an inline style — and a keyboard user must
@@ -1916,6 +1978,7 @@ function RowActionsMenu({ label, actions }: {
             : <span aria-hidden="true" style={{ width: 14, flexShrink: 0 }} />}
           <span>{action.label}</span>
         </button>
+        </Fragment>
       ))}
     </div>
   )
@@ -1929,15 +1992,12 @@ function RowActionsMenu({ label, actions }: {
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen(o => !o)}
-        style={{
-          cursor: 'pointer', padding: '3px 8px',
-          fontSize: '13px', lineHeight: '15px', color: colors.secondary,
-          borderRadius: 6, userSelect: 'none',
-          background: 'transparent', border: 'none',
-        }}
+        onClick={event => { event.stopPropagation(); setOpen(o => !o) }}
+        // A fixed 28px square (.boe-row-more), which the Actions column width
+        // counts on; hover and focus rings live in globals.css.
+        className="boe-row-more"
       >
-        ⋯
+        <MoreHorizontal size={15} strokeWidth={2} aria-hidden="true" />
       </button>
       {/* Rendered into <body>, so no ancestor's overflow can clip it. Guarded
           on `open` AND on the document existing, because this component is
@@ -2128,7 +2188,7 @@ function PaymentsToVerifyCards({ rows, canManage, highlightId, onView, onEdit }:
 
 // EXPORTED FOR ITS RENDER TEST only — this page mounts it.
 export function ReceivedPaymentsCards({
-  rows, canAllocate, highlightId, onView, onAllocateFunds,
+  rows, canAllocate, canManage, highlightId, onView, onEdit, onAllocateFunds,
   canDeleteRow, onDelete, allocatedAgainst, targetHref, onOpenTarget,
 }: {
   rows: PaymentRequest[]
@@ -2136,12 +2196,16 @@ export function ReceivedPaymentsCards({
   targetHref: (targetType: 'order' | 'pi_draft', targetId: string) => string | null
   onOpenTarget: (href: string) => void
   canAllocate: boolean
+  /** finance.manage — Edit, which the cards used to leave out entirely. */
+  canManage: boolean
   highlightId?: string | null
   onView: (r: PaymentRequest) => void
+  onEdit: (r: PaymentRequest) => void
   onAllocateFunds: (r: PaymentRequest) => void
   canDeleteRow: (r: PaymentRequest) => boolean
   onDelete: (r: PaymentRequest) => void
 }) {
+  const meta = rowActionMeta({ onView, onAllocateFunds, onEdit, onDelete })
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(r => {
@@ -2211,27 +2275,16 @@ export function ReceivedPaymentsCards({
               />
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-              {offerAllocate && (
-                <button
-                  onClick={e => { e.stopPropagation(); onAllocateFunds(r) }}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '3px 10px', fontSize: '11px', fontWeight: 600, color: colors.blue, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                >
-                  <Split size={13} strokeWidth={2} aria-hidden="true" />
-                  {ALLOCATE_FUNDS_ACTION_LABEL}
-                </button>
-              )}
-              {canDeleteRow(r) && (
-                <button
-                  onClick={e => { e.stopPropagation(); onDelete(r) }}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ marginLeft: offerAllocate ? undefined : 'auto', padding: '3px 10px', fontSize: '11px', fontWeight: 500, color: colors.red, display: 'inline-flex', alignItems: 'center', gap: '5px' }}
-                >
-                  <Trash2 size={13} strokeWidth={2} aria-hidden="true" />
-                  {PAYMENT_DELETE_CONFIRM_LABEL}
-                </button>
-              )}
+            {/* THE SAME ACTIONS AS THE TABLE ROW, from the same rules and the
+                same component: View and Allocate as words, Edit and Delete
+                behind "More actions". The card used to offer Allocate and a
+                full-width red Delete, and no Edit at all. */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <PaymentRowActions
+                row={r}
+                actions={visibleRowActions({ offerAllocate, canManage, canDelete: canDeleteRow(r) })}
+                meta={meta}
+              />
             </div>
           </div>
         )
@@ -2379,9 +2432,16 @@ function ReceivedPaymentsViewInner(
   const [detailRequest,  setDetailRequest]  = useState<PaymentRequest | null>(null)
   const [editRequest,    setEditRequest]    = useState<PaymentRequest | null>(null)
   const [deleteTarget,   setDeleteTarget]   = useState<PaymentRequest | null>(null)
-  const [search,         setSearch]         = useState('')
-  const [dateFrom,       setDateFrom]       = useState('')
-  const [dateTo,         setDateTo]         = useState('')
+  // ── The list's working context, seeded from the URL ──
+  // Tab, search, date bounds and page arrive in the query string and are
+  // mirrored back to it (useMirrorToUrl, below), so opening a payment's Order
+  // and pressing Back returns to exactly this view. Read ONCE, at mount; after
+  // that React state is the source of truth, exactly as it always was.
+  const initialSearchParams = useSearchParams()
+  const [initialList] = useState(() => parseListState(RECEIVED_LIST_PARAMS, initialSearchParams))
+  const [search,         setSearch]         = useState(initialList.q)
+  const [dateFrom,       setDateFrom]       = useState(initialList.from)
+  const [dateTo,         setDateTo]         = useState(initialList.to)
   // ── The allocation narrowing ──
   // REMOVED, AND NOT REPLACED — it was already here twice. A `<select>` offered
   // Any allocation / Unallocated / Partly / Fully / Over-allocated, and the tab
@@ -2400,7 +2460,7 @@ function ReceivedPaymentsViewInner(
   // confirmed_allocation_status, never a client-side filter over the page in
   // hand — this list is paged. Meaningless for 'to_verify', which has not been
   // allocated to anything yet.
-  const [confirmedFilter, setConfirmedFilter] = useState<ConfirmedAllocationFilter>(DEFAULT_CONFIRMED_ALLOCATION_FILTER)
+  const [confirmedFilter, setConfirmedFilter] = useState<ConfirmedAllocationFilter>(initialList.status)
   const [highlightId,    setHighlightId]    = useState<string | null>(null)
   // ── Paging ──
   // The list was UNBOUNDED, and PostgREST truncates silently at 1000 rows: no
@@ -2418,7 +2478,7 @@ function ReceivedPaymentsViewInner(
   // state during a render it also caused, which is the cascading-render pattern
   // react-hooks/set-state-in-effect exists to catch. Deriving it instead costs
   // nothing and cannot render twice.
-  const [pageState, setPageState] = useState<{ view: PaymentView; page: number }>({ view, page: 1 })
+  const [pageState, setPageState] = useState<{ view: PaymentView; page: number }>({ view, page: initialList.page })
   const page = pageState.view === view ? pageState.page : 1
   const setPage = (next: number | ((current: number) => number)) =>
     setPageState({ view, page: typeof next === 'function' ? next(page) : next })
@@ -2465,8 +2525,9 @@ function ReceivedPaymentsViewInner(
   // list and no classification views, so it names itself rather than borrowing
   // "Received Payments" — a page whose title says one thing and whose rows are
   // another is the confusion this split exists to end.
-  const meta         = surface === 'to_verify' ? TO_VERIFY_META : VIEW_META[view]
+  const meta         = surface === 'to_verify' ? TO_VERIFY_META : VIEW_META.all
   const router       = useRouter()
+  const pathname     = usePathname()
   const supabase     = useMemo(() => createClient(), [])
   const searchParams = useSearchParams()
   const queryClient  = useQueryClient()
@@ -2529,6 +2590,19 @@ function ReceivedPaymentsViewInner(
       confirmedFilter: surface === 'confirmed' ? confirmedFilter : DEFAULT_CONFIRMED_ALLOCATION_FILTER,
     }
   }, [search, view, dateFrom, dateTo, surface, confirmedFilter])
+
+  // Every narrowing a reader applied, in the address bar — see
+  // RECEIVED_LIST_PARAMS. Held back until the first load so a deep link's own
+  // parameters are read before anything rewrites the query.
+  useMirrorToUrl({
+    status: surface === 'confirmed' && confirmedFilter !== DEFAULT_CONFIRMED_ALLOCATION_FILTER ? confirmedFilter : null,
+    q:      search.trim() || null,
+    from:   dateFrom || null,
+    to:     dateTo || null,
+    page:   page > 1 ? String(page) : null,
+  }, !pageLoading)
+  // Back from an Order or a PI lands where the reader was, not at the top.
+  useListScrollRestore()
 
   // Guards against an out-of-order response. Each load claims a number; only the
   // newest one is allowed to write to state. Without this, a slow query for
@@ -2750,7 +2824,12 @@ function ReceivedPaymentsViewInner(
   const allocationTargetHref = (targetType: 'order' | 'pi_draft', targetId: string): string | null => {
     if (!canOpenOrderRecord(ordersCaps.canAccessOrdersModule)) return null
     if (!targetLabels.has(targetId)) return null
-    return targetType === 'order' ? orderDetailHref(targetId) : piSubmissionHref(targetId)
+    // Carries this list's own address, so the record's Back control returns to
+    // the same tab, filters and page.
+    return withReturnTo(
+      targetType === 'order' ? orderDetailHref(targetId) : piSubmissionHref(targetId),
+      pathWithSearch(pathname, searchParams.toString()),
+    )
   }
 
   /**
@@ -3204,8 +3283,13 @@ function ReceivedPaymentsViewInner(
       }
 
       // Drop the deep-link params so a refresh or back-navigation can't
-      // reopen the modal.
-      router.replace(viewHref(view))
+      // reopen the modal. ONLY those two: a filter the reader arrived with
+      // stays in the address.
+      //
+      // THIS PAGE'S OWN PATH. It used to replace with /finance/received?view=…
+      // whatever the surface, which also took a reader who followed a deep link
+      // into Payments to Verify over to Confirmed Payments.
+      router.replace(pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })), { scroll: false })
     }
     resolveDeepLink()
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3246,88 +3330,49 @@ function ReceivedPaymentsViewInner(
       subtitle={meta.subtitle}
       onSignOut={handleSignOut}
       onRefresh={loadRequests}
-    >
-      {/* ── The Confirmed Payments allocation-status filter bar (Requirement 1) ──
-          Replaces the old four-view `?view=` tab strip: All (default), Zero
-          Allocated, Partially Allocated, Fully Allocated — read off
-          confirmed_allocation_status as a real database predicate, never a
-          client-side filter over the page in hand. Confirmed Payments only;
-          Payments to Verify has nothing to allocate yet. An 'over' row has no
-          chip of its own — it is flagged wherever it appears (the badge) and
-          is still reachable through "All". */}
-      {surface === 'confirmed' && (
-        <div
-          role="tablist"
-          aria-label="Allocation status"
-          style={{
-            display: 'flex', gap: '4px', flexWrap: 'wrap',
-            marginBottom: '12px', overflowX: 'auto', WebkitOverflowScrolling: 'touch',
-          }}
+      // ── Record Payment: THE PAGE'S ONE CREATING ACTION, IN THE HEADER ──
+      // Where every Orders and Finance page puts its primary action (Upload PI,
+      // + New), instead of at the far end of the filter row, where it read as
+      // one more filter.
+      //
+      // ONE real payment, entered once and divided across every Order and PI
+      // Draft it actually paid for. Offered to a holder of finance.allocate,
+      // which is what record_payment_with_allocations() requires alongside
+      // Finance module entry; the RPC re-derives both, so this is a drawing
+      // rule only.
+      actions={caps.canAllocatePayment && (
+        <button
+          onClick={() => { setRecordNotice(null); setRecording(true) }}
+          className="boe-btn boe-btn-primary"
         >
-          {CONFIRMED_ALLOCATION_FILTERS.map(f => {
-            const active = f === confirmedFilter
-            return (
-              <button
-                key={f}
-                role="tab"
-                aria-selected={active}
-                onClick={() => applyConfirmedFilter(f)}
-                style={{
-                  padding: '6px 12px', borderRadius: '8px', flexShrink: 0,
-                  fontSize: '12px', fontWeight: active ? 700 : 500,
-                  cursor: 'pointer', whiteSpace: 'nowrap',
-                  border: active ? '1.5px solid #DC1F2E' : `1px solid ${colors.border}`,
-                  background: active ? 'rgba(220,31,46,0.04)' : colors.raised,
-                  color: active ? '#DC1F2E' : colors.secondary,
-                }}
-              >
-                {CONFIRMED_ALLOCATION_FILTER_LABEL[f]}
-              </button>
-            )
-          })}
-        </div>
+          {RECORD_PAYMENT_ACTION_LABEL}
+        </button>
       )}
-      {/* ── Toolbar ──
-          TWO GROUPS, NOT A ROW OF EQUALS. Everything that NARROWS the list —
-          search, and the two date bounds — sits on the left in the order a
-          reader reaches for it. Record Payment is the one thing here that
-          CREATES rather than filters, so it is pushed to the far right by a
-          `margin-left: auto` on its group rather than by a hardcoded margin or
-          absolute placement, which keeps the two groups apart at any width and
-          lets them wrap onto separate lines when there is no room.
-
-          The count travels with the right-hand group but stays muted 11px text:
-          it is an answer about the list, not an action, and must not compete
-          with the primary button beside it. */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-        marginBottom: '10px',
-      }}>
-        {/* ── Narrowing: search, then the date range ── */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap',
-          flex: '1 1 auto', minWidth: 0,
-        }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '6px',
-          background: colors.raised, border: `1px solid ${colors.border}`,
-          borderRadius: '8px', padding: '6px 10px',
-          flex: 1, minWidth: '180px', maxWidth: '320px',
-        }}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    >
+      {/* ── Toolbar: everything that NARROWS the list, and nothing else ──
+          One row, in the order a reader reaches for it: search, then when the
+          money arrived, then the way out of a narrowed view. The status tabs
+          and the result count head the list they describe (below), and the one
+          creating action is in the page header — the same arrangement as
+          Confirmed Orders, so both "confirmed" lists read the same way. It
+          wraps rather than overlapping when there is no room, and at 320px each
+          date keeps its own label on its own line. */}
+      <div className="boe-list-toolbar" role="search" aria-label="Filter payments">
+        <label className="boe-list-search">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
             <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
           </svg>
           <input
-            type="text"
+            type="search"
+            aria-label="Search payments"
             placeholder={meta.searchPlaceholder}
             value={search}
             onChange={e => applySearch(e.target.value)}
-            style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: '12px', color: colors.primary, minWidth: 0 }}
           />
           {search && (
-            <button onClick={() => applySearch('')} aria-label="Clear search" style={{ background: 'none', border: 'none', cursor: 'pointer', color: colors.muted, padding: 0, lineHeight: 1, fontSize: '13px' }}>✕</button>
+            <button type="button" onClick={() => applySearch('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
           )}
-        </div>
+        </label>
 
         {/* ── When the money arrived ──
             Bounds the list by payment_date, which is the date Finance
@@ -3335,26 +3380,21 @@ function ReceivedPaymentsViewInner(
             in. Either bound alone is a valid open-ended range, and a pair typed
             the wrong way round is read as the range between them rather than
             answered with an empty table. */}
-        {/* WRAPS on a narrow phone. Label + two date inputs need ~324px, a
-            320px screen leaves a ~294px column, and this row used to refuse to
-            shrink, so the second date was clipped past the edge. "to" travels
-            with its input so the pair moves to the next line together. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', maxWidth: '100%', minWidth: 0 }}>
-          <label htmlFor="payment-date-from" style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}>
-            Paid
+        <div className="boe-list-daterange" role="group" aria-label="Payment date">
+          <label className="boe-list-date">
+            <span>Paid from</span>
+            <input
+              id="payment-date-from"
+              type="date"
+              className="boe-input"
+              aria-label="Payments on or after"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={e => applyDateFrom(e.target.value)}
+            />
           </label>
-          <input
-            id="payment-date-from"
-            type="date"
-            className="boe-input"
-            aria-label="Payments on or after"
-            value={dateFrom}
-            max={dateTo || undefined}
-            onChange={e => applyDateFrom(e.target.value)}
-            style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
-          />
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{ fontSize: '11px', color: colors.muted }}>to</span>
+          <label className="boe-list-date">
+            <span>to</span>
             <input
               id="payment-date-to"
               type="date"
@@ -3363,58 +3403,24 @@ function ReceivedPaymentsViewInner(
               value={dateTo}
               min={dateFrom || undefined}
               onChange={e => applyDateTo(e.target.value)}
-              style={{ fontSize: '12px', padding: '5px 8px', width: 'auto' }}
             />
-          </span>
+          </label>
         </div>
 
         {narrowed && (
-          <button
-            onClick={clearFilters}
-            className="boe-btn boe-btn-ghost"
-            style={{ padding: '5px 10px', fontSize: '11px', flexShrink: 0 }}
-          >
+          <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
             Clear filters
           </button>
         )}
-        </div>
 
-        {/* ── The far right: the count, then the one creating action ──
-            `marginLeft: 'auto'` is what separates the groups; nothing here is
-            positioned absolutely and no empty margin is hardcoded. */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          marginLeft: 'auto', flexShrink: 0,
-        }}>
-        {/* The size of the WHOLE narrowed set, from the database's exact count —
-            not the length of the page in hand, which would understate it the
-            moment there is more than one page. */}
-        <div
-          aria-live="polite"
-          style={{ fontSize: '11px', color: colors.muted, whiteSpace: 'nowrap' }}
-        >
-          {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
-        </div>
-
-        {/* ── Record Payment ──
-            ONE real payment, entered once and divided across every Order and PI
-            Draft it actually paid for — the flow that did not exist while money
-            had to go in against a single destination and be re-allocated
-            afterwards. Offered to a holder of finance.allocate, which is what
-            record_payment_with_allocations() requires alongside Finance module
-            entry; the RPC re-derives both, so this is a drawing rule only. */}
-        {caps.canAllocatePayment && (
-          <button
-            onClick={() => { setRecordNotice(null); setRecording(true) }}
-            className="boe-btn boe-btn-primary"
-            style={{ padding: '5px 12px', fontSize: '12px', flexShrink: 0 }}
-          >
-            {RECORD_PAYMENT_ACTION_LABEL}
-          </button>
+        {/* Payments to Verify has no status tabs, so its count closes this row;
+            Confirmed Payments carries it on the tab bar below instead. */}
+        {surface !== 'confirmed' && (
+          <div aria-live="polite" className="boe-list-count" style={{ marginLeft: 'auto' }}>
+            {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+          </div>
         )}
-        </div>
       </div>
-
       {recordNotice && (
         <div
           role="status"
@@ -3437,8 +3443,41 @@ function ReceivedPaymentsViewInner(
       )}
 
       <div className="boe-card" style={{ overflow: 'hidden' }}>
-        {/* Table */}
-        {listLoading ? (
+        {/* ── The allocation-status tabs, heading the list they narrow ──
+            All (default), Zero, Partially, Fully and Over-allocated — read off
+            complete_allocation_status as a real database predicate, never a
+            client-side filter over the page in hand. The size of the WHOLE
+            narrowed set sits at the right of the same bar, from the database's
+            exact count rather than the length of the page in hand. */}
+        {surface === 'confirmed' && (
+          <div className="boe-list-tabbar">
+            <div role="tablist" aria-label="Allocation status" className="boe-list-tabs">
+              {CONFIRMED_ALLOCATION_FILTERS.map(f => {
+                const active = f === confirmedFilter
+                return (
+                  <button
+                    key={f}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    className="boe-list-tab"
+                    onClick={() => applyConfirmedFilter(f)}
+                  >
+                    {CONFIRMED_ALLOCATION_FILTER_LABEL[f]}
+                  </button>
+                )
+              })}
+            </div>
+            <div aria-live="polite" className="boe-list-count">
+              {resultSummary({ loading: listLoading, shown: visible.length, total, narrowed, page, pages })}
+            </div>
+          </div>
+        )}
+        {/* Table. A RE-READ KEEPS THE ROWS: the list used to be swapped for
+            "Loading…" on every refresh and after every edit, which threw the
+            reader back to the top of a page they were working down. The count
+            above says a read is in flight. */}
+        {listLoading && visible.length === 0 ? (
           <div style={{ padding: '40px 0', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
         ) : visible.length === 0 ? (
           /* THREE DIFFERENT EMPTIES, said differently. A failed read is not a
