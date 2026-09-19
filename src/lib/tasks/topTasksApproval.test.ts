@@ -201,6 +201,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // notification skipped. It touches neither user_top_tasks nor the
     // completion trigger.
     '20261212000000_task_review_approval_stops_notifying.sql',
+    // 20261214000000 re-emits the Meetings guards can_edit_meeting() and
+    // assert_meeting_editor() so they require Meetings module entry. It touches
+    // neither user_top_tasks nor the completion trigger.
+    '20261214000000_meetings_rpcs_require_module_entry.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

@@ -249,6 +249,10 @@ describe('the migration is one file, correctly sequenced', () => {
       // notification skipped. It changes no table, column, policy or grant, so
       // it reaches nothing asserted here.
       '20261212000000_task_review_approval_stops_notifying.sql',
+      // 20261214000000 re-emits the Meetings guards can_edit_meeting() and
+      // assert_meeting_editor() so they require Meetings module entry. It changes
+      // no table, column, policy or grant, so it reaches nothing asserted here.
+      '20261214000000_meetings_rpcs_require_module_entry.sql',
     ])
   })
 
