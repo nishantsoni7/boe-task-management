@@ -77,6 +77,15 @@ registerModule({
     // Tracking's dispatch/receive.
     { actionKey: 'manage', displayName: 'Manage' },
     { actionKey: 'assign', displayName: 'Assign Assets' },
+    // The Access Register — read, add and edit the login/access records of
+    // every employee. Its own key, and deliberately NOT folded into 'manage'
+    // or 'assign': those are asset custody and asset assignment, and the
+    // reason 'assign' was split out of 'manage' in the first place
+    // (20260725000000) was that one key had come to mean unrelated decisions.
+    // Employee credentials are the least appropriate thing to add to that
+    // pile. Custom action (is_system = false), PROTECTED (see levels.ts), and
+    // denied by default. Registered by 20261028000000.
+    { actionKey: 'manage_access_records', displayName: 'Manage Access Records' },
   ],
 })
 

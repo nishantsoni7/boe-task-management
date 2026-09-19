@@ -130,6 +130,11 @@ const GUARD_PREFIXES = [
   'ASSET_ACCEPT_DENIED:',
   'ASSET_ACCEPT_INVALID:',
   'ASSET_ACCEPT_CONFLICT:',
+  // Handover acknowledgement (20261029000000). Both write a sentence the
+  // reader can act on, and the first is what an out-of-date client sees when
+  // it calls accept_employee_asset without the acknowledgement flag.
+  'ASSET_ACCEPT_TERMS_REQUIRED:',
+  'ASSET_ACCEPT_TERMS_MISSING:',
   'ASSET_REQUEST_FORBIDDEN:',
   'ASSET_REQUEST_REVIEWED:',
   'ASSET_REQUEST_MISSING:',

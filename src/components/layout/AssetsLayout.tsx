@@ -50,7 +50,11 @@ type AssetsLayoutProps = {
    * holds. See src/lib/permissions/assetsAccess.ts.
    */
   canViewInventory: boolean
-  /** Access Register nav — admin only while secret_value is plaintext. */
+  /**
+   * Access Register nav — admin, or an explicit `manage_access_records` grant
+   * (20261028000000). Never any combination of the asset actions: administering
+   * employee credentials is its own decision and has its own key.
+   */
   canManageAccess: boolean
   /** Asset Requests nav — a reviewer, or a requester tracking their own. */
   canSeeAssetRequests: boolean

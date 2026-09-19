@@ -83,6 +83,11 @@ describe('the migration is one file, correctly sequenced', () => {
       // Provider-call idempotency: a request key is CLAIMED before the model
       // is called, so two simultaneous requests cannot both be billed for.
       '20261027000000_review_workflow_generation_claims.sql',
+      // Assets & Access, from a separate branch. Neither touches anything this
+      // module creates: one delegates the Access Register by a new permission
+      // key, the other adds the asset handover acknowledgement.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
   })
 

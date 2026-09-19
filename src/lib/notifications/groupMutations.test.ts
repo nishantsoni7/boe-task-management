@@ -282,6 +282,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // Provider-call idempotency: a request key is CLAIMED before the model
       // is called, so two simultaneous requests cannot both be billed for.
       '20261027000000_review_workflow_generation_claims.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // notifications, tasks or their schema.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ], 'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

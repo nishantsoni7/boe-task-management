@@ -218,3 +218,66 @@ describe('truncateOneLine', () => {
     assert.ok(out.endsWith('…'))
   })
 })
+
+// ── An update that carried files says so ─────────────────────────────────────
+//
+// "Send Update" writes ONE row whether the person typed a sentence, attached a
+// PDF, or both. A row with no text is therefore not an empty comment — it is
+// usually an attachment, and "Comment added" was the wrong answer to it.
+
+describe('attachments are named, not swallowed by "Comment added"', () => {
+  const comment = row('Dhruv added a comment')
+
+  test('a file with no text is reported as an attachment', () => {
+    const e = describeNotificationEvent(comment, {
+      attachments: [{ fileType: 'PDF', name: 'po.pdf' }],
+    })
+    assert.equal(e.action, 'Attached a document')
+    assert.equal(e.detail, null)
+  })
+
+  test('an image is called an image', () => {
+    const e = describeNotificationEvent(comment, {
+      attachments: [{ fileType: 'Image', name: 'site.jpg' }],
+    })
+    assert.equal(e.action, 'Attached an image')
+  })
+
+  test('several files are counted', () => {
+    const e = describeNotificationEvent(comment, {
+      attachments: [{ fileType: 'PDF' }, { fileType: 'Word' }, { fileType: 'Excel' }],
+    })
+    assert.equal(e.action, 'Attached 3 documents')
+  })
+
+  test('text AND a file reports both, and still quotes the comment', () => {
+    const e = describeNotificationEvent(comment, {
+      commentPreview: 'See the revised drawing',
+      attachments: [{ fileType: 'PDF', name: 'drawing.pdf' }],
+    })
+    assert.equal(e.action, 'Commented and attached a document')
+    assert.deepEqual(e.detail, { kind: 'comment', text: 'See the revised drawing' })
+  })
+
+  test('the actor still travels with it', () => {
+    const e = describeNotificationEvent(comment, {
+      actorName: 'Dhruv',
+      attachments: [{ fileType: 'PDF', name: 'po.pdf' }],
+    })
+    assert.equal(e.actorName, 'Dhruv')
+  })
+
+  test('no attachment list at all is unchanged behaviour', () => {
+    // Every historical row, and any row whose attachment lookup failed.
+    assert.equal(describeNotificationEvent(comment).action, COMMENT_WITHOUT_PREVIEW)
+    assert.equal(describeNotificationEvent(comment, { attachments: [] }).action, COMMENT_WITHOUT_PREVIEW)
+    assert.equal(describeNotificationEvent(comment, { attachments: null }).action, COMMENT_WITHOUT_PREVIEW)
+  })
+
+  test('attachments on a status event change nothing — only comments carry files', () => {
+    const e = describeNotificationEvent(row('Dhruv moved task to Waiting'), {
+      attachments: [{ fileType: 'PDF', name: 'po.pdf' }],
+    })
+    assert.equal(e.action, 'Status changed to Waiting')
+  })
+})

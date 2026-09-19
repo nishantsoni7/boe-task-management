@@ -429,6 +429,7 @@ function EventRow({
     fromStatus:     detail?.fromStatus ?? null,
     toStatus:       detail?.toStatus ?? null,
     actorName:      detail?.actorName ?? null,
+    attachments:    detail?.attachments ?? null,
   })
   const meta = actorMetaFor(event.actorName, assigneeName, timeAgo(n.created_at))
 

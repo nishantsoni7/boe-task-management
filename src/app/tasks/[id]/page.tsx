@@ -15,6 +15,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AttachmentPreviewModal } from '@/components/ui/AttachmentPreviewModal'
 import { MultilineText } from '@/components/ui/MultilineText'
+import { ExpandableText } from '@/components/ui/ExpandableText'
 import { CopyAssignModal } from '@/components/tasks/CopyAssignModal'
 import { useToast, Toast } from '@/components/ui/toast'
 import { getFileTypeLabel, compressImageFile, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES, ATTACHMENT_UPLOAD_CONCURRENCY } from '@/lib/attachment-utils'
@@ -31,6 +32,7 @@ import {
 import { Ban, CircleCheckBig, ClipboardCheck, SendHorizontal, Undo2, UserCheck, UserRound } from 'lucide-react'
 import { perfTrack } from '@/lib/perf'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
+import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -2316,14 +2318,43 @@ export default function TaskDetailPage() {
 
                   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
+                  // Every file this entry carries, in both shapes the feed holds: the
+                  // task_attachments rows, plus the ONE legacy attachment_url column an
+                  // older build wrote a single file into. Deduplicated on path, the same
+                  // way the attachment chips below are, so a legacy row that was later
+                  // backfilled into task_attachments is not counted twice.
+                  const filesOf = (entry: LogEntry): ActivityAttachmentInfo[] => {
+                    const rows = entry.attachments ?? []
+                    const files: ActivityAttachmentInfo[] = rows.map(a => ({
+                      fileType: a.file_type,
+                      name:     a.file_name ?? resolveAttachmentPath(a),
+                    }))
+                    const legacy = resolveAttachmentPath(entry)
+                    if (legacy && !rows.some(a => resolveAttachmentPath(a) === legacy)) {
+                      files.push({ fileType: getFileTypeLabel(legacy), name: legacy })
+                    }
+                    return files
+                  }
+
                   // Complete-sentence heading for each activity entry, split into the actor
                   // name (styled slightly stronger) and the action text that follows it.
                   const getHeadingRest = (entry: LogEntry): string => {
                     const { action, from_status: f, to_status: t } = entry
 
+                    // A "Send Update" writes ONE note_added row whether the person typed
+                    // text, attached files, or both — so the sentence is read off what the
+                    // row holds, not off the action name. Without this an entry carrying
+                    // only a PDF still read "commented", which described nothing.
+                    if (action === 'note_added') {
+                      const rest = commentHeadingRest(entry.note, filesOf(entry))
+                      if (rest) return rest
+                      // Neither text nor a file: keep the historical wording rather than
+                      // inventing one for a row that says nothing.
+                      return 'commented'
+                    }
+
                     if (isQuotation) {
                       if (action === 'created')        return 'submitted the quotation request'
-                      if (action === 'note_added')      return 'commented'
                       if (action === 'status_changed') {
                         if (t === 'completed')          return 'marked the quotation completed'
                         if (f === 'completed')          return 'reopened the quotation'
@@ -2337,7 +2368,6 @@ export default function TaskDetailPage() {
                     }
 
                     switch (action) {
-                      case 'note_added':      return 'commented'
                       case 'status_changed':  return f && t && f === t
                         ? 'posted a progress update'
                         : 'changed the status'
@@ -2498,9 +2528,15 @@ export default function TaskDetailPage() {
                               )}
 
                               {/* Note text — comments read conversationally, system notes stay compact.
-                                  task_copied carries its text in the heading, so skip it here. */}
+                                  task_copied carries its text in the heading, so skip it here.
+
+                                  CAPPED, NOT CUT. A long update used to take the whole feed and
+                                  push every other event off screen. ExpandableText clamps it to
+                                  ACTIVITY_TEXT_CLAMP_LINES and offers "Read more…" only when the
+                                  rendered box actually overflowed — nothing is removed from the
+                                  DOM, so expanding is instant and find-in-page still works. */}
                               {entry.note && entry.action !== 'task_copied' && (
-                                <MultilineText style={{
+                                <ExpandableText style={{
                                   margin: isComment ? '6px 0 0' : '8px 0 0',
                                   color: isComment ? '#596273' : '#667085',
                                   fontSize: isComment ? '12.5px' : '11.5px',
@@ -2508,7 +2544,7 @@ export default function TaskDetailPage() {
                                   lineHeight: isComment ? 1.55 : 1.5,
                                 }}>
                                   {entry.note}
-                                </MultilineText>
+                                </ExpandableText>
                               )}
                             </>
                           )}

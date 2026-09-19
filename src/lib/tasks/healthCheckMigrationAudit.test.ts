@@ -495,6 +495,11 @@ describe('the migration is placed correctly', () => {
       // Provider-call idempotency: a request key is CLAIMED before the model
       // is called, so two simultaneous requests cannot both be billed for.
       '20261027000000_review_workflow_generation_claims.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // notifications, tasks or their schema.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

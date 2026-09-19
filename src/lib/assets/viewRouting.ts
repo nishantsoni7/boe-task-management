@@ -58,5 +58,55 @@ export function resolveInitialView(
 ): AssetsView {
   if (isAssetsView(requested) && canOpenView(requested, caps)) return requested
   if (inViewMode) return 'my-assets'
-  return caps.canViewAssetInventory ? 'asset-inventory' : 'my-assets'
+  if (caps.canViewAssetInventory) return 'asset-inventory'
+  // Someone whose only grant is the Access Register would otherwise land on an
+  // asset screen they hold nothing on. Deliberately checked AFTER the
+  // inventory: a person holding both is here to manage assets.
+  if (caps.canManageAccess) return 'access-register'
+  return 'my-assets'
+}
+
+// ─── The two top-level areas ──────────────────────────────────────────────────
+//
+// The five views are two subjects wearing one navigation. `Assets` answers
+// "what equipment exists and who holds it"; `Access Records` answers "which
+// logins does each person have". They share nothing but the module.
+//
+// The area switch is the primary navigation and the sidebar is the detail
+// within an area, so both have to agree on which area a view belongs to. That
+// mapping is stated once, here, rather than inferred from a view name in the
+// component — a screen highlighting the wrong tab is a small bug that reads as
+// a broken app.
+
+export type AssetsArea = 'assets' | 'access-records'
+
+export const ASSETS_AREA_LABEL: Record<AssetsArea, string> = {
+  'assets':         'Assets',
+  'access-records': 'Access Records',
+}
+
+/** Which area a view lives in. Total: every view belongs to exactly one. */
+export function areaForView(view: AssetsView): AssetsArea {
+  return view === 'my-access' || view === 'access-register' ? 'access-records' : 'assets'
+}
+
+/**
+ * The view to show when someone switches to an area.
+ *
+ * The strongest screen they may open in that area, falling back to their own
+ * records — which everybody may always see, so this can never return a view
+ * canOpenView() would refuse.
+ */
+export function defaultViewForArea(
+  area: AssetsArea,
+  caps: AssetsAccessCapabilities,
+  inViewMode = false,
+): AssetsView {
+  if (area === 'access-records') {
+    // While impersonating, the point is the other person's own records — a
+    // management screen would show the signed-in user's authority over
+    // everybody, which is not what View As is for.
+    return !inViewMode && caps.canManageAccess ? 'access-register' : 'my-access'
+  }
+  return !inViewMode && caps.canViewAssetInventory ? 'asset-inventory' : 'my-assets'
 }

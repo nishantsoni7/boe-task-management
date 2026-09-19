@@ -47,6 +47,12 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // the launcher gated on app_modules ('live'). "Active" therefore overstated
   // coverage by exactly the parent gate. src/app/assets-access/layout.tsx now
   // supplies it, which is what makes this entry true rather than aspirational.
+  //
+  // `manage_access_records` (20261028000000) joins the list already enforced:
+  // the three administrative policies on access_records read
+  // can_manage_access_records(), the RESTRICTIVE module entry gate still stands
+  // in front of them, and the screen reads the same answer through
+  // deriveAssetsAccessCapabilities().canManageAccess.
   assets_access: {
     state: 'enforced',
     detail: 'Every action is enforced — in the database and in the screen.',

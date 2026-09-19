@@ -95,41 +95,99 @@ function ConditionSelect({ value, onChange }: { value: string; onChange: (v: str
 
 // ─── Assign ───────────────────────────────────────────────────────────────────
 
+// The handover record, captured BEFORE the employee is asked to accept.
+//
+// Condition, accessories and existing issues are the three facts the Asset
+// Handover Terms are written against — clause 1 speaks of "the stated
+// condition" and "the listed accessories", clause 2 of an issue "recorded at
+// handover". If they are not recorded here, the employee acknowledges a
+// document with three blanks in it and the acknowledgement is worth much less.
+//
+// They are optional rather than mandatory on purpose. A required field invites
+// a placeholder, and "n/a" typed to get past a form is worse evidence than an
+// honest "Not recorded" on the printed sheet.
+//
+// TWO WAYS IN, ONE FORM. `asset` is the asset to hand over when the reader
+// arrived from a row or from the asset's own page. When it is null, they came
+// from the Assets area's primary action and choose the asset here —
+// `assetOptions` is that list, and it is the caller's job to pass only assets
+// that are actually assignable.
 export function AssignAssetModal({
-  asset, supabase, employees, onClose, onDone,
-}: CommonProps & { employees: AssetEmployee[] }) {
+  asset, assetOptions, supabase, employees, onClose, onDone,
+}: Omit<CommonProps, 'asset'> & {
+  asset: Asset | null
+  assetOptions?: Asset[]
+  employees: AssetEmployee[]
+}) {
+  const options = asset ? [] : (assetOptions ?? [])
+  const [assetId, setAssetId] = useState(asset?.id ?? options[0]?.id ?? '')
   const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '')
   const [effectiveDate, setEffectiveDate] = useState('')
-  const [condition, setCondition] = useState(asset.condition ?? '')
+  const chosen = asset ?? options.find(a => a.id === assetId) ?? null
+  const [condition, setCondition] = useState(asset?.condition ?? '')
+  const [accessories, setAccessories] = useState('')
+  const [existingIssues, setExistingIssues] = useState('')
   const [remarks, setRemarks] = useState('')
   const { saving, error, setError, run } = useSubmit('assign')
 
   const submit = async () => {
-    const invalid = validateAssignment({ assetStatus: asset.status, employeeId: employeeId || null })
+    const invalid = validateAssignment({
+      assetStatus: chosen?.status ?? null,
+      employeeId: employeeId || null,
+    })
     if (invalid) { setError(invalid); return }
+    if (!chosen) return
 
     const ok = await run(() => supabase.rpc('assign_asset', {
-      p_asset_id: asset.id,
+      p_asset_id: chosen.id,
       p_employee_id: employeeId,
       p_effective_date: effectiveDate || null,
       p_condition: condition || null,
       p_remarks: remarks.trim() || null,
+      p_accessories: accessories.trim() || null,
+      p_existing_issues: existingIssues.trim() || null,
     }))
     if (!ok) return
 
     notifyAssetEvent({
       event: 'asset_assigned',
-      assetId: asset.id,
-      assetName: asset.asset_name,
-      assetCode: asset.asset_code,
+      assetId: chosen.id,
+      assetName: chosen.asset_name,
+      assetCode: chosen.asset_code,
       toEmployeeId: employeeId,
       toName: employees.find(e => e.id === employeeId)?.full_name ?? null,
     })
-    onDone('Asset assigned. The employee has been asked to accept it.')
+    onDone('Asset assigned. The employee has been asked to read the handover terms and accept it.')
   }
 
   return (
     <AssetModal title="Assign Asset" onClose={onClose}>
+      {!asset && (
+        <AssetField label="Asset" hint="Only assets currently available can be handed over.">
+          {options.length === 0 ? (
+            <div style={{ fontSize: '12px', color: colors.muted }}>
+              No available assets to assign right now.
+            </div>
+          ) : (
+            <select className="boe-input" value={assetId} onChange={e => setAssetId(e.target.value)} style={inputStyle}>
+              {options.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.asset_name} — {a.asset_code}{a.serial_no ? ` (${a.serial_no})` : ''}
+                </option>
+              ))}
+            </select>
+          )}
+        </AssetField>
+      )}
+      {/* The serial the employee is about to be shown. Read-only: it is the
+          asset's identity, not something this handover gets to restate. */}
+      {chosen && (
+        <AssetField label="Asset ID / Serial Number">
+          <div style={{ fontSize: '12.5px', color: colors.secondary, fontFamily: 'monospace' }}>
+            {chosen.asset_code}{chosen.serial_no ? ` · ${chosen.serial_no}` : ' · no serial recorded'}
+          </div>
+        </AssetField>
+      )}
       <AssetField label="Employee">
         <select className="boe-input" value={employeeId} onChange={e => setEmployeeId(e.target.value)} style={inputStyle}>
           {employees.map(e => <option key={e.id} value={e.id}>{e.full_name} — {e.role}</option>)}
@@ -138,8 +196,23 @@ export function AssignAssetModal({
       <AssetField label="Handover Date" hint="When the asset physically changed hands, if not today.">
         <input type="date" className="boe-input" value={effectiveDate} onChange={e => setEffectiveDate(e.target.value)} style={inputStyle} />
       </AssetField>
-      <AssetField label="Condition at Handover">
+      <AssetField label="Issued Condition">
         <ConditionSelect value={condition} onChange={setCondition} />
+      </AssetField>
+      <AssetField label="Accessories Issued" hint="Charger, bag, mouse, cables — whatever went with it.">
+        <textarea
+          className="boe-input" value={accessories} onChange={e => setAccessories(e.target.value)}
+          rows={2} style={{ ...inputStyle, resize: 'vertical' }}
+        />
+      </AssetField>
+      <AssetField
+        label="Existing Issues"
+        hint="Anything already wrong with it. Leave blank if there is nothing — the terms treat an unrecorded issue as not reported at handover."
+      >
+        <textarea
+          className="boe-input" value={existingIssues} onChange={e => setExistingIssues(e.target.value)}
+          rows={2} style={{ ...inputStyle, resize: 'vertical' }}
+        />
       </AssetField>
       <AssetField label="Remarks">
         <textarea className="boe-input" value={remarks} onChange={e => setRemarks(e.target.value)} rows={2} style={{ ...inputStyle, resize: 'vertical' }} />

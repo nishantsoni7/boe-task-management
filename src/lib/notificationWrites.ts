@@ -11,6 +11,19 @@
 // enforced on the write side, so a future "the system noticed X" feature
 // cannot quietly reintroduce the noise by inserting directly.
 //
+// AND A ROW ADDRESSED TO THE PERSON WHO CAUSED IT. Telling someone what they
+// just did themselves is noise of exactly the same kind: a comment, a status
+// change or a submit-for-approval is already on their screen, in the feed they
+// are looking at, when they perform it. Every task write path ALREADY refuses
+// this individually — `notifyUserId === user.id` in /api/notify-status-update,
+// `recipient !== currentUserId` at each browser call site, `v_recipient <>
+// v_uid` inside transition_task_review(). Those checks are the reason the
+// defect is not live today; they are ALSO seven separate copies of one rule,
+// and the eighth path to be written is the one that forgets. So the rule is
+// stated once more HERE, at the single funnel every Task Management
+// notification passes through, where it cannot be forgotten by a new caller.
+// Pass `actorId` and a row addressed to that person is dropped.
+//
 // SUPPRESSION IS NOT FAILURE. The business action that produced the row has
 // already committed by the time any of this runs; a suppressed notification is
 // reported as `suppressed`, never as an error, and never rolls anything back.
@@ -61,8 +74,26 @@ export type NotificationInsertResult = {
   inserted: number
   /** Rows the system-activity rule dropped. Never an error. */
   suppressed: number
+  /**
+   * Rows dropped because the recipient IS the person who acted. Counted apart
+   * from `suppressed` so the two rules stay legible in logs and tests: one is
+   * "the system talking to itself", the other is "you telling yourself".
+   */
+  selfSuppressed: number
   /** The insert's own error, unchanged, or null. */
   error: { message: string } | null
+}
+
+/** Everything the guard needs beyond the rows themselves. */
+export type NotificationInsertOptions = {
+  /**
+   * The signed-in person whose action produced these rows.
+   *
+   * Supply it whenever one is known. Omitting it is not an error — a scheduled
+   * or system-initiated write genuinely has no actor — but every Task
+   * Management route has one and passes it.
+   */
+  actorId?: string | null
 }
 
 /**
@@ -79,18 +110,24 @@ export type NotificationInsertResult = {
 export async function insertUserNotifications(
   client: NotificationInsertClient,
   rows: NotificationInsert | readonly NotificationInsert[],
+  options: NotificationInsertOptions = {},
 ): Promise<NotificationInsertResult> {
   const all = Array.isArray(rows) ? rows : [rows as NotificationInsert]
   const { deliverable, suppressed } = partitionSystemNotifications(all)
 
-  if (deliverable.length === 0) {
-    return { inserted: 0, suppressed: suppressed.length, error: null }
+  const actorId = typeof options.actorId === 'string' && options.actorId ? options.actorId : null
+  const addressed = actorId ? deliverable.filter(r => r.user_id !== actorId) : deliverable
+  const selfSuppressed = deliverable.length - addressed.length
+
+  if (addressed.length === 0) {
+    return { inserted: 0, suppressed: suppressed.length, selfSuppressed, error: null }
   }
 
-  const { error } = await client.from('notifications').insert(deliverable)
+  const { error } = await client.from('notifications').insert(addressed)
   return {
-    inserted: error ? 0 : deliverable.length,
+    inserted: error ? 0 : addressed.length,
     suppressed: suppressed.length,
+    selfSuppressed,
     error: error ?? null,
   }
 }

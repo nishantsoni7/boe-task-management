@@ -149,6 +149,14 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   // outreach must not be able to sign off their own outreach by default.
   // Registered by 20261017000000.
   'verify',
+  // Reading, adding and editing the ACCESS REGISTER — every employee's login
+  // and credential records. Protected for the plainest reason on this list:
+  // access_records still stores secret_value in plain text (20260640), and the
+  // table was admin-only for exactly that reason until it was delegated. It is
+  // an authority an administrator must hand to a named person on purpose, one
+  // person at a time, and never something acquired by picking "Manager" from a
+  // dropdown. Registered by 20261028000000.
+  'manage_access_records',
 ])
 
 export function isProtectedAction(actionKey: string): boolean {
@@ -184,6 +192,14 @@ export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   // the module cannot verify anything, so ticking Verify in Custom brings Use
   // with it. The chain stops there: `use` depends on nothing.
   verify: 'use',
+  // The Access Register lives inside Assets & Access, and the RESTRICTIVE
+  // `access_records_module_entry_gate` (20260905000000) requires effective
+  // assets_access:view before ANY policy on that table is reached. Without this
+  // dependency an administrator could tick Manage Access Records alone and
+  // store a grant that the database would never honour — a permission with
+  // nowhere to act, which is the exact failure needsViewNormalization exists
+  // to prevent.
+  manage_access_records: 'view',
 }
 
 /** Every action `actionKey` depends on, nearest first. Cycle-safe. */

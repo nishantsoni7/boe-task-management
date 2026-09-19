@@ -729,6 +729,11 @@ describe('the applied migrations are frozen', () => {
       // Provider-call idempotency: a request key is CLAIMED before the model
       // is called, so two simultaneous requests cannot both be billed for.
       '20261027000000_review_workflow_generation_claims.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // this work's tables, policies or functions.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
   })
 
@@ -769,6 +774,11 @@ describe('the applied migrations are frozen', () => {
       // Provider-call idempotency: a request key is CLAIMED before the model
       // is called, so two simultaneous requests cannot both be billed for.
       '20261027000000_review_workflow_generation_claims.sql',
+      // Assets & Access, from a separate branch: the delegated Access Register
+      // permission and the asset handover acknowledgement. Neither touches
+      // this work's tables, policies or functions.
+      '20261028000000_assets_access_manage_access_records.sql',
+      '20261029000000_asset_handover_acknowledgement.sql',
     ])
     // 115 and 116 are deliberately absent: both have been pushed, so they
     // belong in FROZEN and not here. 2026101500 and 2026101600 are therefore

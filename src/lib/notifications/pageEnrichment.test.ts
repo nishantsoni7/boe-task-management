@@ -23,12 +23,12 @@ const U1 = 'cccccccc-3333-4333-8333-cccccccccccc'
 
 /** Records every query so the test can count round trips. */
 function stubClient(
-  rows: { tasks?: unknown[]; users?: unknown[]; task_activity_log?: unknown[] },
-  errors: { tasks?: string; users?: string; task_activity_log?: string } = {},
+  rows: { tasks?: unknown[]; users?: unknown[]; task_activity_log?: unknown[]; task_attachments?: unknown[] },
+  errors: { tasks?: string; users?: string; task_activity_log?: string; task_attachments?: string } = {},
 ) {
   const calls: { table: string; ids: readonly string[] }[] = []
   const client = {
-    from(table: 'tasks' | 'users' | 'task_activity_log') {
+    from(table: 'tasks' | 'users' | 'task_activity_log' | 'task_attachments') {
       return {
         select() {
           return {
@@ -140,13 +140,28 @@ describe('2. the header people come from the task, never from an event', () => {
     // person beyond the display name the reader already sees on the task.
     assert.ok(src.includes("select('id, title, assigned_to, created_by')"))
     assert.ok(src.includes("select('id, full_name')"))
-    assert.ok(src.includes("select('id, actor_id, action, note, from_status, to_status')"))
+    // attachment_url is the LEGACY single-file column. It is read so a
+    // historical update can be described as an attachment rather than a bare
+    // comment — a column on a table already being read, NOT a fifth query — and
+    // it is consumed server-side; the behavioural test below proves the value
+    // never reaches the client.
+    assert.ok(src.includes("select('id, actor_id, action, note, from_status, to_status, attachment_url')"))
+    // The attachment lookup names the LINK and the two display columns, and
+    // deliberately not `url` or `storage_path`: it decides one word in a
+    // sentence ("attached a document"), and a reference that locates the object
+    // in storage has no reason to reach a notification card.
+    assert.ok(src.includes("select('activity_log_id, file_name, file_type')"))
     const selects = [...src.matchAll(/select\('([^']*)'\)/g)].map(m => m[1])
     assert.deepEqual(selects, [
       'id, title, assigned_to, created_by',
-      'id, actor_id, action, note, from_status, to_status',
+      'id, actor_id, action, note, from_status, to_status, attachment_url',
+      'activity_log_id, file_name, file_type',
       'id, full_name',
-    ], 'exactly three selects, exactly these columns')
+    ], 'exactly four selects, exactly these columns')
+    for (const column of ['url', 'storage_path', 'attachment_storage_path']) {
+      assert.equal(selects.some(sel => sel.split(/,\s*/).includes(column)), false,
+        `the lookup must not select ${column}`)
+    }
     for (const column of ['email', 'phone', 'salary', 'role', 'employee_code', '*']) {
       assert.equal(selects.some(sel => sel.includes(column)), false,
         `the lookup must not select ${column}`)
@@ -282,14 +297,120 @@ describe('13-18. linked activity detail', () => {
     }))
     const { client, calls } = stubClient({ tasks: [], task_activity_log: [], users: [] })
     await enrichNotificationPage(client, many)
-    // tasks + activity; no people resolved, so no users query at all.
-    assert.equal(calls.length, 2)
-    assert.deepEqual(calls.map(c => c.table).sort(), ['task_activity_log', 'tasks'])
+    // tasks + activity + attachments; no people resolved, so no users query.
+    assert.equal(calls.length, 3)
+    assert.deepEqual(calls.map(c => c.table).sort(),
+      ['task_activity_log', 'task_attachments', 'tasks'])
   })
 
-  test('a page with no links asks nothing of the activity table', async () => {
+  test('a page with no links asks nothing of the activity or attachment tables', async () => {
     const { client, calls } = stubClient({ tasks: [{ id: T1, title: 'a', assigned_to: null }] })
     await enrichNotificationPage(client, [{ task_id: T1, activity_log_id: null }])
     assert.equal(calls.some(c => c.table === 'task_activity_log'), false)
+    assert.equal(calls.some(c => c.table === 'task_attachments'), false)
+  })
+
+  test('the attachment lookup is scoped by the SAME activity ids, never widened', async () => {
+    const { client, calls } = stubClient({ tasks: [], task_activity_log: [], users: [] })
+    await enrichNotificationPage(client, [{ task_id: T1, activity_log_id: ACT1 }])
+    const activity = calls.find(c => c.table === 'task_activity_log')
+    const attachments = calls.find(c => c.table === 'task_attachments')
+    assert.deepEqual(attachments?.ids, activity?.ids,
+      'it can only describe files on an update this reader was notified about')
+  })
+
+  test('a failed attachment lookup leaves the rest of the page intact', async () => {
+    const { client } = stubClient(
+      {
+        tasks: [{ id: T1, title: 'test task', assigned_to: U1 }],
+        task_activity_log: [{ id: ACT1, actor_id: U1, action: 'note_added', note: 'See attached' }],
+        users: [{ id: U1, full_name: 'Nishant' }],
+      },
+      { task_attachments: 'connection reset' })
+    const out = await enrichNotificationPage(client, [{ task_id: T1, activity_log_id: ACT1 }])
+    assert.deepEqual(out.activityDetails[ACT1].attachments, [], 'no files known')
+    assert.equal(out.activityDetails[ACT1].note, 'See attached', 'the comment still resolved')
+    assert.equal(out.taskHeaders[T1].assigneeName, 'Nishant', 'and so did the header')
+  })
+
+  test('files are grouped onto the update that carried them', async () => {
+    const { client } = stubClient({
+      tasks: [],
+      task_activity_log: [{ id: ACT1, actor_id: null, action: 'note_added', note: null }],
+      task_attachments: [
+        { activity_log_id: ACT1, file_name: 'po.pdf', file_type: 'PDF' },
+        { activity_log_id: ACT1, file_name: 'site.jpg', file_type: 'Image' },
+      ],
+    })
+    const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+    assert.deepEqual(out.activityDetails[ACT1].attachments, [
+      { fileType: 'PDF', name: 'po.pdf' },
+      { fileType: 'Image', name: 'site.jpg' },
+    ])
+  })
+})
+
+// ── The LEGACY single-file column ────────────────────────────────────────────
+//
+// Before `task_attachments`, an update's one file lived in
+// `task_activity_log.attachment_url`. Task Detail has always counted it, so it
+// said "ABC attached a document" for those rows while the notification card
+// said "Comment added" for the very same event. These pin the parity, and pin
+// that closing it did NOT put a storage reference into the payload.
+
+describe('a historical single-file update is described, not shipped', () => {
+  const LEGACY_PDF = 'https://xyz.supabase.co/storage/v1/object/public/task-attachments/tasks/9/po.pdf'
+  const legacyRow = (url: string) => ({
+    tasks: [],
+    task_activity_log: [{ id: ACT1, actor_id: null, action: 'note_added', note: null, attachment_url: url }],
+  })
+
+  test('a legacy attachment is classified, so the card no longer says "Comment added"', async () => {
+    const { client } = stubClient(legacyRow(LEGACY_PDF))
+    const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+    assert.deepEqual(out.activityDetails[ACT1].attachments, [{ fileType: 'PDF', name: null }])
+  })
+
+  test('THE URL NEVER REACHES THE CLIENT — only the word it classified to', async () => {
+    const { client } = stubClient(legacyRow(LEGACY_PDF))
+    const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+    // The whole payload, the way the route serialises it to the browser.
+    const wire = JSON.stringify(out)
+    assert.equal(wire.includes(LEGACY_PDF), false, 'no attachment URL')
+    assert.equal(wire.includes('task-attachments'), false, 'no bucket name')
+    assert.equal(wire.includes('tasks/9'), false, 'no storage path')
+    assert.equal(wire.includes('attachment_url'), false, 'not even the column')
+  })
+
+  test('an image is still an image, and a canonical storage:// ref classifies too', async () => {
+    for (const [url, expected] of [
+      ['https://x.co/storage/v1/object/public/task-attachments/tasks/9/site.JPG', 'Image'],
+      ['storage://tasks/9/scan.pdf', 'PDF'],
+      ['https://x.co/a/b/sheet.xlsx?token=abc', 'Excel'],
+    ] as const) {
+      const { client } = stubClient(legacyRow(url))
+      const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+      assert.equal(out.activityDetails[ACT1].attachments?.[0]?.fileType, expected, url)
+    }
+  })
+
+  test('a modern multi-file update is untouched by the fallback', async () => {
+    // Presence of ANY linked row wins outright: this cannot de-duplicate by
+    // path without selecting storage_path, which it deliberately does not.
+    const { client } = stubClient({
+      ...legacyRow(LEGACY_PDF),
+      task_attachments: [{ activity_log_id: ACT1, file_name: 'new.png', file_type: 'Image' }],
+    })
+    const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+    assert.deepEqual(out.activityDetails[ACT1].attachments, [{ fileType: 'Image', name: 'new.png' }])
+  })
+
+  test('a row with neither source still reports no files', async () => {
+    const { client } = stubClient({
+      tasks: [],
+      task_activity_log: [{ id: ACT1, actor_id: null, action: 'note_added', note: 'Just text', attachment_url: null }],
+    })
+    const out = await enrichNotificationPage(client, [{ task_id: null, activity_log_id: ACT1 }])
+    assert.deepEqual(out.activityDetails[ACT1].attachments, [])
   })
 })

@@ -152,12 +152,22 @@ export function validateTransfer(input: TransferInput): string | null {
 }
 
 export type AssignInput = {
-  assetStatus: string
+  /**
+   * The chosen asset's status, or NULL when no asset has been chosen yet.
+   *
+   * Null is reachable because Assign Asset is also offered as the Assets area's
+   * primary action, where the reader picks the asset inside the dialog rather
+   * than arriving from a row. It is a distinct state from "an asset that cannot
+   * be assigned", and it gets its own sentence — telling someone their asset is
+   * unavailable when they have not chosen one is a dead end.
+   */
+  assetStatus: string | null
   employeeId: string | null
 }
 
 /** Why this assignment cannot be submitted. Mirrors assign_asset(). */
 export function validateAssignment(input: AssignInput): string | null {
+  if (!input.assetStatus) return 'Choose an asset to assign.'
   if (input.assetStatus !== 'available') {
     return 'Only an available asset can be assigned. Take it back or recover it first.'
   }

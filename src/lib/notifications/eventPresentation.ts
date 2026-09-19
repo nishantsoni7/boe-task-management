@@ -44,6 +44,7 @@
 
 import type { Notification } from '@/lib/types'
 import { taskStatusLabel } from '@/lib/ui'
+import { attachmentPhrase, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 
 /** One line of comment preview. Longer than a phone shows, shorter than a paragraph. */
 export const COMMENT_PREVIEW_MAX = 120
@@ -92,6 +93,14 @@ export type NotificationEventExtras = {
   actorName?: string | null
   /** True when a linked activity row was found — see `actorNameFor`. */
   linked?: boolean
+  /**
+   * The files the linked update carried.
+   *
+   * An update with files and no text is the case COMMENT_WITHOUT_PREVIEW was
+   * written for, and "Comment added" is the wrong answer to it: nobody added a
+   * comment, somebody attached a document. Supplied by the page enrichment.
+   */
+  attachments?: readonly ActivityAttachmentInfo[] | null
 }
 
 /** Collapse whitespace and cut on a word boundary, with a real ellipsis. */
@@ -215,9 +224,17 @@ export function describeNotificationEvent(
   // ── Comment ──
   if (action === 'Added a comment') {
     const preview = safeCommentPreview(extras.commentPreview)
+    // One "Send Update" carries text, files, or both. Naming the files is what
+    // makes the empty-text case honest — it is an attachment, not an empty
+    // comment. See NotificationEventExtras.attachments.
+    const phrase = attachmentPhrase(extras.attachments ?? [])
+    if (phrase && preview) {
+      return { action: `Commented and attached ${phrase}`, detail: { kind: 'comment', text: preview }, actorName }
+    }
+    if (phrase) return { action: `Attached ${phrase}`, detail: null, actorName }
     if (preview) return { action, detail: { kind: 'comment', text: preview }, actorName }
-    // No preview stored. Say what happened and stop — an empty quote or the
-    // task title standing in for the comment would both be lies.
+    // No preview and no file. Say what happened and stop — an empty quote or
+    // the task title standing in for the comment would both be lies.
     return { action: COMMENT_WITHOUT_PREVIEW, detail: null, actorName }
   }
 

@@ -1,4 +1,4 @@
-// EVERYTHING THE FEED NEEDS BEYOND THE NOTIFICATION ROWS, IN THREE QUERIES.
+// EVERYTHING THE FEED NEEDS BEYOND THE NOTIFICATION ROWS, IN FOUR QUERIES.
 //
 // A page of notifications answers "what happened", but the card also shows the
 // task's title and owner, and each event shows its detail and its actor. None
@@ -6,11 +6,20 @@
 //
 //   1. tasks             id, title, assigned_to      — one in()
 //   2. task_activity_log id, actor_id, action, note,
-//                        from_status, to_status      — one in()
-//   3. users             id, full_name               — ONE in(), covering
+//                        from_status, to_status,
+//                        attachment_url              — one in(). The last is
+//                                                      the LEGACY single-file
+//                                                      column, consumed server
+//                                                      -side; see
+//                                                      legacyAttachment
+//   3. task_attachments  activity_log_id, file_name,
+//                        file_type                   — one in(), so an update
+//                                                      that carried a file can
+//                                                      say so
+//   4. users             id, full_name               — ONE in(), covering
 //                                                      assignees AND actors
 //
-// Four queries per page including the notification list itself, whatever the
+// Five queries per page including the notification list itself, whatever the
 // number of cards. Never one per card, and never one per event.
 //
 // ── WHY THE USER QUERY IS SHARED ────────────────────────────────────────────
@@ -38,6 +47,8 @@
 // enrichment than absent.
 
 import type { Notification } from '@/lib/types'
+import type { ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
+import { getFileTypeLabel } from '@/lib/attachment-utils'
 
 /**
  * What the header needs about one task.
@@ -70,6 +81,25 @@ export type ActivityDetail = {
   toStatus: string | null
   /** Resolved display name, or null when there is no readable actor. */
   actorName: string | null
+  /**
+   * The files this update carried, if any.
+   *
+   * WHY THE CARD NEEDS THEM. "Send Update" writes ONE `note_added` row whether
+   * the person typed a sentence, attached a PDF, or both — so a row with no
+   * text is not an empty comment, it is usually an ATTACHMENT. Without this the
+   * card fell back to the bare "Comment added" for exactly the updates that had
+   * something in them.
+   *
+   * TYPE AND NAME ONLY, never a URL or a storage path: this list decides one
+   * word in a sentence, and a link to a file whose permissions the card has not
+   * checked has no business travelling to the browser. See safeCommentPreview,
+   * which strips storage URLs out of comment text for the same reason.
+   *
+   * OPTIONAL, because a detail can predate this field: a payload cached by an
+   * older build carries none, and absent must mean "not known" rather than
+   * "none attached" — the card then says exactly what it said before.
+   */
+  attachments?: ActivityAttachmentInfo[]
 }
 export type ActivityDetailMap = Record<string, ActivityDetail>
 
@@ -175,11 +205,43 @@ export function taskTitleFor(info: TaskHeaderInfo | undefined, fallback: string)
 /** Just the reads this makes. `any` on the builder — see the note in the route. */
 type PageClient = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  from: (table: 'tasks' | 'users' | 'task_activity_log') => any
+  from: (table: 'tasks' | 'users' | 'task_activity_log' | 'task_attachments') => any
 }
 type Res = { data: Record<string, unknown>[] | null; error: { message: string } | null }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null)
+
+/**
+ * The ONE file a historical update carried, as an attachment-shaped item.
+ *
+ * WHY IT EXISTS. Before `task_attachments`, an update's single file lived in
+ * `task_activity_log.attachment_url`. Task Detail has always counted that
+ * column, so it says "ABC attached a document" for those rows — while the
+ * notification card, which knew only about `task_attachments`, said "Comment
+ * added" for the very same event. Two descriptions of one thing is the defect
+ * the shared heading logic exists to remove.
+ *
+ * THE URL DOES NOT TRAVEL. `attachment_url` is read on the server and consumed
+ * HERE: what goes into the item is the classification word `getFileTypeLabel`
+ * derives from it ("PDF", "Image", …), never the value itself. `name` is left
+ * null deliberately — `attachmentPhrase` only consults a name when the type is
+ * unknown, and `getFileTypeLabel` always answers with a known label, so the
+ * wording is identical to Task Detail's without shipping a storage reference to
+ * a browser. A notification card must never carry a link to a file whose
+ * permissions it has not checked; see safeCommentPreview, which strips storage
+ * URLs out of comment text for exactly the same reason.
+ *
+ * ONLY WHEN THERE ARE NO `task_attachments` ROWS. Task Detail de-duplicates the
+ * two sources by comparing storage PATHS; this cannot, because it deliberately
+ * does not select `storage_path`. Presence of any linked row therefore wins
+ * outright — which is correct for every row that exists: the legacy column and
+ * the table were never written together by any build.
+ */
+function legacyAttachment(value: unknown): ActivityAttachmentInfo[] {
+  const url = str(value)
+  if (!url) return []
+  return [{ fileType: getFileTypeLabel(url), name: null }]
+}
 
 export async function enrichNotificationPage(
   client: PageClient,
@@ -192,19 +254,36 @@ export async function enrichNotificationPage(
 
   // The two independent lookups run together: neither needs the other's result,
   // so waiting for them in sequence would double the latency for nothing.
-  const [taskRes, actRes]: [Res, Res] = await Promise.all([
+  const [taskRes, actRes, attRes]: [Res, Res, Res] = await Promise.all([
     taskIds.length
       ? client.from('tasks').select('id, title, assigned_to, created_by').in('id', taskIds)
       : Promise.resolve({ data: [], error: null }),
+    // `attachment_url` is the LEGACY single-file column, read here so a
+    // historical update that carried a file is not described as a bare comment.
+    // It is a column on a table this query already reads — NOT a fifth query —
+    // and it never leaves this function: only the word it classifies to does.
+    // See `legacyAttachment` below.
     activityIds.length
       ? client.from('task_activity_log')
-          .select('id, actor_id, action, note, from_status, to_status')
+          .select('id, actor_id, action, note, from_status, to_status, attachment_url')
           .in('id', activityIds)
+      : Promise.resolve({ data: [], error: null }),
+    // Scoped by the SAME activity ids as the query above, which came from the
+    // caller's own notification rows — so this can only describe files attached
+    // to an update this person was already being notified about. Two columns,
+    // neither of which locates the object in storage.
+    activityIds.length
+      ? client.from('task_attachments')
+          .select('activity_log_id, file_name, file_type')
+          .in('activity_log_id', activityIds)
       : Promise.resolve({ data: [], error: null }),
   ])
 
   if (taskRes.error) console.error('[notifications] task lookup failed:', taskRes.error.message)
   if (actRes.error) console.error('[notifications] activity lookup failed:', actRes.error.message)
+  // Independently optional like the rest: no attachment list means the card
+  // says "Comment added" exactly as it did before, never that it failed.
+  if (attRes.error) console.error('[notifications] attachment lookup failed:', attRes.error.message)
 
   const taskHeaders: TaskHeaderMap = {}
   const assigneeOf = new Map<string, string>()
@@ -229,6 +308,17 @@ export async function enrichNotificationPage(
     if (creator) { creatorOf.set(id, creator); peopleIds.add(creator) }
   }
 
+  // Grouped before the details are built so each one is handed a complete list
+  // rather than being mutated afterwards.
+  const filesOf = new Map<string, ActivityAttachmentInfo[]>()
+  for (const f of attRes.data ?? []) {
+    const activityId = str(f.activity_log_id)
+    if (!activityId) continue
+    const list = filesOf.get(activityId) ?? []
+    list.push({ fileType: str(f.file_type), name: str(f.file_name) })
+    filesOf.set(activityId, list)
+  }
+
   const activityDetails: ActivityDetailMap = {}
   const actorOf = new Map<string, string>()
   for (const a of actRes.data ?? []) {
@@ -240,6 +330,7 @@ export async function enrichNotificationPage(
       fromStatus: str(a.from_status),
       toStatus: str(a.to_status),
       actorName: null,
+      attachments: filesOf.get(id) ?? legacyAttachment(a.attachment_url),
     }
     const actor = str(a.actor_id)
     if (actor) { actorOf.set(id, actor); peopleIds.add(actor) }

@@ -216,11 +216,19 @@ describe('Manager never receives a protected action', () => {
     // must not be able to sign off their own outreach, so this must never
     // arrive with a preset. `use` is that module's ENTRY action and is
     // deliberately not protected, exactly as `view` is not.
+    //
+    // And by one more in 20261028000000: `manage_access_records`, registered by
+    // Assets & Access. It reads, adds and edits the login records of EVERY
+    // employee, on a table that still stores secret_value in plain text — the
+    // reason that table was admin-only until it was delegated. Protected for
+    // the plainest reason on this list: it must be handed to a named person on
+    // purpose, one person at a time, and never acquired by picking "Manager"
+    // from a dropdown.
     assert.deepEqual([...PROTECTED_ACTIONS].sort(), [
       'admin', 'allocate', 'allocate_correct', 'approve_advance_exception',
       'approve_order', 'assign', 'close', 'delete',
-      'dispatch', 'manage', 'manage_quotations', 'mark_lost', 'receive',
-      'verify', 'view_all', 'view_quotations',
+      'dispatch', 'manage', 'manage_access_records', 'manage_quotations',
+      'mark_lost', 'receive', 'verify', 'view_all', 'view_quotations',
     ])
   })
 
