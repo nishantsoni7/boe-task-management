@@ -9,7 +9,8 @@
 #      deployed create_order_submission and the deployed delete guards;
 #   2. REPRODUCE every gap on the deployed bodies (payment_idempotency_before.sql);
 #   3. apply the migration in one transaction — it runs its own assertions;
-#   4. run payment_idempotency_assertions.sql (one transaction, rolled back);
+#   4. run payment_idempotency_assertions.sql (one transaction, rolled back) —
+#      including §7, every door authorized alike with and without a key;
 #   5. RACE: two real sessions with the same key, committed, per door; a lost
 #      response; and a no-key control that shows what the key prevents.
 #
@@ -156,7 +157,7 @@ echo "== assertions"
 AFTER="$("${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_idempotency_assertions.sql" 2>&1)" \
   || { echo "$AFTER"; fail "assertions"; }
 printf '%s\n' "$AFTER" | grep 'PASS' | sed 's/^.*NOTICE:  /   /'
-[ "$(printf '%s\n' "$AFTER" | grep -c "PASS:")" -eq 25 ] || { echo "$AFTER"; fail "expected 25 PASS lines"; }
+[ "$(printf '%s\n' "$AFTER" | grep -c "PASS:")" -eq 30 ] || { echo "$AFTER"; fail "expected 30 PASS lines"; }
 
 # ── After the migration, in a FRESH session: no table write was widened ──────
 # A verifier's direct UPDATE is still refused exactly as in production (B9), and

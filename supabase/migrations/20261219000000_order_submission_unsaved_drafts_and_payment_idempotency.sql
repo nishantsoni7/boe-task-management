@@ -29,8 +29,11 @@
 --           custody event or activity);
 --         * the same key with a different payload is refused by name
 --           (PAYMENT_IDEMPOTENCY_KEY_REUSED) — never silently "matched";
---         * a NULL key behaves exactly as today, so the frontend that is
---           deployed while this migration lands keeps working unchanged.
+--         * a NULL key is still accepted, so the frontend that is deployed
+--           while this migration lands keeps working: an active, authorized
+--           caller's unkeyed call records exactly as it does today. It is
+--           authorized exactly as a keyed call is (§2b) — the key decides
+--           only whether a retry is recognised, never who may pay.
 --
 --       HOW, WITHOUT RESTATING 700 LINES OF DEPLOYED BODIES. Each deployed
 --       function is RENAMED to <name>_core, its EXECUTE is revoked from every
@@ -63,14 +66,18 @@
 --           discarded=false) for anything else, so the screen may call it after
 --           any failure without being trusted to judge which failures count.
 --
---   §2b A REPLAY IS STILL AN AUTHORIZED CALL. Before a keyed call looks its
---       key up, assert_finance_payment_door() re-asks the questions the door's
---       own body asks — signed in, active, Finance entry, and the door's
---       permission (finance.allocate for Record Payment; for a PI payment,
---       finance.allocate or the PI's uploader / creator / assigned reviewer) —
---       with the same helpers and the same messages. A deactivated employee, or
---       one who lost the permission, is refused exactly as a first call would
---       be, and is told nothing about whether the key exists.
+--   §2b EVERY CALL IS AN AUTHORIZED CALL, KEYED OR NOT. The first line of each
+--       payment wrapper is assert_finance_payment_door(), before the NULL-key
+--       branch and before any key is looked up. It asks the questions the
+--       door's own body asks — signed in, active and not deleted, Finance
+--       entry, and the door's permission (finance.allocate for Record Payment;
+--       for a PI payment, finance.allocate or the PI's uploader / creator /
+--       assigned reviewer) — with the same helpers and the same messages. A
+--       deactivated or deleted employee (an admin included: production's
+--       module entry admits an admin on role alone, and the deployed Payment
+--       Request body asks nothing more), or one who lost the permission, is
+--       refused on an unkeyed call, on a first keyed call and on a replay
+--       alike, and is told nothing about whether a key exists.
 --
 --   §5  SEND BACK FOR CLARIFICATION, THROUGH A DOOR. The Payment Requests review
 --       sent "Needs clarification" as a direct table UPDATE, which production
@@ -280,12 +287,14 @@ revoke execute on function public.finance_payment_submission_key_claim(text, uui
 revoke execute on function public.finance_payment_submission_key_record(text, uuid, text, jsonb)
   from public, anon, authenticated;
 
--- ── §2b. A replay is still an authorized call ──
+-- ── §2b. Every call is an authorized call, keyed or not ──
 --
 -- The questions each door's deployed body asks before it writes, asked again
--- with the SAME helpers and the SAME messages — not a second, looser rule. Run
--- before the key is looked up, so a caller who may not use the door learns
--- nothing about whether a key exists. It reads; it never writes.
+-- with the SAME helpers and the SAME messages — not a second, looser rule. Each
+-- wrapper runs it FIRST: before its NULL-key branch, so an unkeyed call from
+-- the deployed frontend or a direct RPC meets the same active-account check a
+-- keyed one does; and before the key is looked up, so a caller who may not use
+-- the door learns nothing about whether a key exists. It reads; it never writes.
 create or replace function public.assert_finance_payment_door(p_door text, p_submission_id uuid default null)
 returns void
 language plpgsql
@@ -373,8 +382,12 @@ declare
   v_fp     text;
   v_result jsonb;
 begin
+  -- AUTHORIZATION FIRST, ON EVERY CALL, KEYED OR NOT (§2b). Nothing else runs,
+  -- and no key is looked up, until the caller has passed the door's questions.
+  perform public.assert_finance_payment_door('submit_payment_request');
+
   -- The core refuses a missing or non-positive amount itself; this adds the
-  -- paise rule to the same friendly code before anything else happens.
+  -- paise rule to the same friendly code.
   if p_amount is not null and not public.payment_amount_is_rupees_and_paise(p_amount) then
     raise exception 'PAYMENT_AMOUNT_INVALID: enter a positive amount in rupees and paise, with no more than two decimal places.'
       using errcode = 'P0001';
@@ -392,7 +405,6 @@ begin
     coalesce(p_custody_events, '[]'::jsonb)
   )::text);
 
-  perform public.assert_finance_payment_door('submit_payment_request');
   v_result := public.finance_payment_submission_key_claim('submit_payment_request', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -427,6 +439,9 @@ declare
   v_fp     text;
   v_result jsonb;
 begin
+  -- AUTHORIZATION FIRST, ON EVERY CALL, KEYED OR NOT (§2b).
+  perform public.assert_finance_payment_door('record_payment_with_allocations');
+
   if p_idempotency_key is null then
     return public.record_payment_with_allocations_core(p_amount, p_payment_date, p_payment_mode,
       p_client_name, p_received_in, p_reference, p_remarks, p_allocations, p_custody_events);
@@ -440,7 +455,6 @@ begin
     coalesce(p_allocations, '[]'::jsonb), coalesce(p_custody_events, '[]'::jsonb)
   )::text);
 
-  perform public.assert_finance_payment_door('record_payment_with_allocations');
   v_result := public.finance_payment_submission_key_claim('record_payment_with_allocations', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -472,6 +486,11 @@ declare
   v_fp     text;
   v_result jsonb;
 begin
+  -- AUTHORIZATION FIRST, ON EVERY CALL, KEYED OR NOT (§2b). The core asks the
+  -- same questions again under its row lock; asking here too keeps all three
+  -- doors deny-by-default in the same place.
+  perform public.assert_finance_payment_door('record_pi_submission_payment', p_submission_id);
+
   if p_idempotency_key is null then
     return public.record_pi_submission_payment_core(p_submission_id, p_amount, p_payment_date,
       p_payment_mode, p_reference, p_remarks);
@@ -483,7 +502,6 @@ begin
     nullif(btrim(p_reference), ''), nullif(btrim(p_remarks), '')
   )::text);
 
-  perform public.assert_finance_payment_door('record_pi_submission_payment', p_submission_id);
   v_result := public.finance_payment_submission_key_claim('record_pi_submission_payment', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -796,6 +814,30 @@ begin
        or has_function_privilege('anon', v_fn, 'EXECUTE') then
       raise exception 'ASSERTION FAILED: % is executable by a client role', v_fn;
     end if;
+  end loop;
+
+  -- Authorization before the NULL-key branch and before any key lookup, in
+  -- every payment wrapper (§2b): the door check is the first statement, and
+  -- it precedes both `p_idempotency_key is null` and the key claim.
+  foreach v_fn in array array[
+      'public.submit_payment_request(text, uuid, numeric, date, text, text, text, jsonb, uuid)'::regprocedure,
+      'public.record_payment_with_allocations(numeric, date, text, text, text, text, text, jsonb, jsonb, uuid)'::regprocedure,
+      'public.record_pi_submission_payment(uuid, numeric, date, text, text, text, uuid)'::regprocedure]
+  loop
+    declare
+      -- The body without comments, from its first `begin` on.
+      v_src   text := regexp_replace((select prosrc from pg_proc where oid = v_fn), '--[^\n]*', '', 'g');
+      v_body  text := btrim(substr(v_src, strpos(v_src, 'begin') + length('begin')), E' \t\r\n');
+      v_door  int  := strpos(v_src, 'perform public.assert_finance_payment_door(');
+      v_null  int  := strpos(v_src, 'if p_idempotency_key is null then');
+      v_claim int  := strpos(v_src, 'finance_payment_submission_key_claim(');
+    begin
+      if v_door = 0 or v_null = 0 or v_claim = 0 or v_door > v_null or v_door > v_claim
+         or strpos(v_src, 'begin') = 0
+         or v_body not like 'perform public.assert_finance_payment_door(%' then
+        raise exception 'ASSERTION FAILED: % does not authorize every call before its NULL-key branch and key lookup', v_fn;
+      end if;
+    end;
   end loop;
 
   -- The key tables are closed to clients.

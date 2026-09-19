@@ -708,4 +708,212 @@ begin
 end $$;
 reset role;
 
+-- ═══ 7. Unkeyed calls are authorized exactly as keyed ones ═══════════════════
+-- The deployed frontend sends no key, and a direct RPC need not. The door check
+-- runs before the NULL-key branch, so the key decides only whether a retry is
+-- recognised — never who may record money.
+
+-- Everything a payment could leave behind, the PI timeline included.
+create or replace function pg_temp.footprint_all()
+returns text language sql as $$
+  select pg_temp.footprint() || format(' pi_activity=%s',
+    (select count(*) from public.order_submission_activity))
+$$;
+
+-- Runs p_sql and requires it to be refused with p_expect, writing nothing.
+create or replace function pg_temp.refused_clean(p_sql text, p_expect text, p_label text)
+returns void language plpgsql as $$
+declare
+  v_fp  text := pg_temp.footprint_all();
+  v_out text := pg_temp.outcome(p_sql);
+begin
+  if v_out = 'OK' or position(p_expect in v_out) = 0 then
+    raise exception '%: expected %, got %', p_label, p_expect, v_out;
+  end if;
+  if pg_temp.footprint_all() <> v_fp then
+    raise exception '%: a refused call wrote rows (% -> %)', p_label, v_fp, pg_temp.footprint_all();
+  end if;
+end $$;
+
+-- 7a. The payloads the DEPLOYED frontend sends (origin/main: finance/page.tsx,
+-- RecordSplitPaymentModal.tsx, piPaymentView.buildPiPaymentPayload) — no
+-- p_idempotency_key — still record for active, authorized callers, as
+-- authenticated; and the keyed form records too.
+create temp table seven_a (door text, id uuid) on commit drop;
+grant insert, select on seven_a to authenticated;
+select pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+set local role authenticated;
+do $$
+begin
+  insert into seven_a select 'request', (public.submit_payment_request(
+    p_destination => 'confirmed_order', p_target_id => 'a0000000-0000-4000-8000-00000000000a',
+    p_amount => 7001, p_payment_date => current_date, p_payment_mode => 'hdfc',
+    p_proof_note => null, p_sales_note => null, p_custody_events => '[]'::jsonb)->>'payment_request_id')::uuid;
+  insert into seven_a select 'record', (public.record_payment_with_allocations(
+    p_amount => 7002, p_payment_date => current_date, p_payment_mode => 'hdfc',
+    p_client_name => null, p_received_in => null, p_reference => null, p_remarks => null,
+    p_allocations => '[]'::jsonb, p_custody_events => '[]'::jsonb)->>'payment_request_id')::uuid;
+  insert into seven_a select 'pi-creator', (public.record_pi_submission_payment(
+    p_submission_id => 'd0000000-0000-4000-8000-00000000000d', p_amount => 7003,
+    p_payment_date => current_date, p_payment_mode => 'hdfc', p_reference => null, p_remarks => null)->>'payment_request_id')::uuid;
+  insert into seven_a select 'request-keyed', (public.submit_payment_request(
+    p_destination => 'suspense', p_amount => 7004, p_payment_date => current_date, p_payment_mode => 'hdfc',
+    p_idempotency_key => 'c7000000-0000-4000-8000-000000000001')->>'payment_request_id')::uuid;
+  insert into seven_a select 'record-keyed', (public.record_payment_with_allocations(
+    p_amount => 7005, p_payment_date => current_date, p_payment_mode => 'hdfc', p_client_name => null,
+    p_idempotency_key => 'c7000000-0000-4000-8000-000000000002')->>'payment_request_id')::uuid;
+  insert into seven_a select 'pi-keyed', (public.record_pi_submission_payment(
+    p_submission_id => 'd0000000-0000-4000-8000-00000000000d', p_amount => 7006,
+    p_payment_date => current_date, p_payment_mode => 'hdfc',
+    p_idempotency_key => 'c7000000-0000-4000-8000-000000000003')->>'payment_request_id')::uuid;
+end $$;
+reset role;
+select pg_temp.act_as('77777777-7777-4777-8777-777777777777');   -- an allocator, not the PI's people
+set local role authenticated;
+do $$
+begin
+  insert into seven_a select 'pi-allocator', (public.record_pi_submission_payment(
+    p_submission_id => 'd0000000-0000-4000-8000-00000000000d', p_amount => 7007,
+    p_payment_date => current_date, p_payment_mode => 'hdfc', p_reference => null, p_remarks => null)->>'payment_request_id')::uuid;
+end $$;
+reset role;
+do $$
+begin
+  if (select count(*) from seven_a where id is not null) <> 7
+     or (select count(*) from public.finance_payment_requests where amount between 7001 and 7007) <> 7 then
+    raise exception '7a: an active, authorized caller was refused: %', (select string_agg(door || '=' || coalesce(id::text, 'null'), ', ') from seven_a);
+  end if;
+  if exists (select 1 from public.finance_payment_submission_keys k
+              join public.finance_payment_requests f on f.id = k.payment_request_id
+             where f.amount in (7001, 7002, 7003, 7007)) then
+    raise exception '7a: an unkeyed call left a key row';
+  end if;
+  if (select count(*) from public.finance_payment_submission_keys k
+        join public.finance_payment_requests f on f.id = k.payment_request_id
+       where f.amount in (7004, 7005, 7006)) <> 3 then
+    raise exception '7a: a keyed call did not store its key';
+  end if;
+  raise notice 'PASS: 7a as authenticated, the deployed frontend''s unkeyed payloads (Payment Request, Record Payment, PI payment by its creator and by an allocator) record for active authorized callers and leave no key; the keyed form records and stores its key';
+end $$;
+
+-- 7b. A DEACTIVATED ADMIN, on every door: unkeyed, a key they already used, and
+-- a fresh key are all refused alike and write nothing. Production's module
+-- entry admits an admin on role alone and the deployed Payment Request body
+-- asks nothing more — the unkeyed Payment Request is the call this closes.
+select pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+do $$
+declare
+  admin constant uuid := '11111111-1111-4111-8111-111111111111';
+  req constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 7101,
+    p_payment_date => current_date, p_payment_mode => 'hdfc'%s)$q$;
+  rec constant text := $q$select public.record_payment_with_allocations(p_amount => 7102, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_client_name => null%s)$q$;
+  pi  constant text := $q$select public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => 7103, p_payment_date => current_date, p_payment_mode => 'hdfc'%s)$q$;
+  kq constant text := ', p_idempotency_key => %L';
+  k1 constant uuid := 'c7100000-0000-4000-8000-000000000001';
+  k2 constant uuid := 'c7100000-0000-4000-8000-000000000002';
+  k3 constant uuid := 'c7100000-0000-4000-8000-000000000003';
+begin
+  -- Active: each door records, keyed.
+  execute format(req, format(kq, k1));
+  execute format(rec, format(kq, k2));
+  execute format(pi,  format(kq, k3));
+
+  update public.users set is_active = false where id = admin;
+  if not public.module_entry_open('finance') then
+    raise exception '7b: the stand-in should admit an inactive admin, as production does';
+  end if;
+  perform pg_temp.refused_clean(format(req, ''), 'This account is not active', '7b request unkeyed');
+  perform pg_temp.refused_clean(format(rec, ''), 'This account is not active', '7b record unkeyed');
+  perform pg_temp.refused_clean(format(pi,  ''), 'This account is not active', '7b pi unkeyed');
+  perform pg_temp.refused_alike(format(req, format(kq, k1)), format(req, format(kq, gen_random_uuid())), 'This account is not active', '7b request known key');
+  perform pg_temp.refused_alike(format(rec, format(kq, k2)), format(rec, format(kq, gen_random_uuid())), 'This account is not active', '7b record known key');
+  perform pg_temp.refused_alike(format(pi,  format(kq, k3)), format(pi,  format(kq, gen_random_uuid())), 'This account is not active', '7b pi known key');
+  -- The unkeyed refusal reads exactly as the keyed one.
+  if pg_temp.outcome(format(req, '')) <> pg_temp.outcome(format(req, format(kq, k1))) then
+    raise exception '7b: an unkeyed refusal reads differently from a keyed one';
+  end if;
+  update public.users set is_active = true where id = admin;
+
+  -- Reactivated, the same unkeyed call records again: the refusal was the account.
+  execute format(req, '');
+  raise notice 'PASS: 7b a deactivated admin is refused on every door — unkeyed, with a key they used, and with a fresh key, identically — and nothing is written; reactivated, the unkeyed call records again';
+end $$;
+
+-- 7c. A DELETED employee (is_active still true), on every door, unkeyed and keyed.
+do $$
+declare
+  req constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 7201,
+    p_payment_date => current_date, p_payment_mode => 'hdfc'%s)$q$;
+  rec constant text := $q$select public.record_payment_with_allocations(p_amount => 7202, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_client_name => null%s)$q$;
+  pi  constant text := $q$select public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => 7203, p_payment_date => current_date, p_payment_mode => 'hdfc'%s)$q$;
+  kq constant text := ', p_idempotency_key => %L';
+  who uuid;
+begin
+  -- A deleted admin (module entry admits on role) and a deleted PI creator.
+  foreach who in array array['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222']::uuid[]
+  loop
+    perform pg_temp.act_as(who);
+    update public.users set is_deleted = true where id = who;
+    perform pg_temp.refused_clean(format(req, ''), 'This account is not active', '7c request unkeyed ' || who);
+    perform pg_temp.refused_clean(format(rec, ''), 'This account is not active', '7c record unkeyed ' || who);
+    perform pg_temp.refused_clean(format(pi,  ''), 'This account is not active', '7c pi unkeyed ' || who);
+    perform pg_temp.refused_clean(format(req, format(kq, gen_random_uuid())), 'This account is not active', '7c request keyed ' || who);
+    perform pg_temp.refused_clean(format(rec, format(kq, gen_random_uuid())), 'This account is not active', '7c record keyed ' || who);
+    perform pg_temp.refused_clean(format(pi,  format(kq, gen_random_uuid())), 'This account is not active', '7c pi keyed ' || who);
+    update public.users set is_deleted = false where id = who;
+  end loop;
+  raise notice 'PASS: 7c a deleted employee (an admin, and a PI''s own creator) is refused on every door, unkeyed and keyed, and nothing is written';
+end $$;
+
+-- 7d. Finance permission revoked: the unkeyed call is refused by the door's own rule.
+do $$
+declare
+  sales2 constant uuid := '44444444-4444-4444-8444-444444444444';
+  sales  constant uuid := '22222222-2222-4222-8222-222222222222';
+  req constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 7301,
+    p_payment_date => current_date, p_payment_mode => 'hdfc')$q$;
+  rec constant text := $q$select public.record_payment_with_allocations(p_amount => 7302, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_client_name => null)$q$;
+begin
+  -- Payment Request: Finance entry.
+  perform pg_temp.act_as(sales2);
+  delete from public.finance_permission_grants where user_id = sales2 and action like 'finance.%';
+  perform pg_temp.refused_clean(req, 'FINANCE_MODULE_CLOSED', '7d request unkeyed');
+  insert into public.finance_permission_grants (user_id, action) values (sales2, 'finance.create');
+  if pg_temp.outcome(req) <> 'OK' then raise exception '7d: restored Finance entry, the unkeyed request should record'; end if;
+
+  -- Record Payment: finance.allocate.
+  perform pg_temp.act_as(sales);
+  delete from public.finance_permission_grants where user_id = sales and action = 'finance.allocate';
+  perform pg_temp.refused_clean(rec, 'PAYMENT_ENTRY_ALLOCATION_NOT_PERMITTED', '7d record unkeyed');
+  insert into public.finance_permission_grants (user_id, action) values (sales, 'finance.allocate');
+  if pg_temp.outcome(rec) <> 'OK' then raise exception '7d: restored finance.allocate, the unkeyed record should succeed'; end if;
+  raise notice 'PASS: 7d with Finance entry revoked the unkeyed Payment Request is refused (FINANCE_MODULE_CLOSED); without finance.allocate the unkeyed Record Payment is refused; nothing is written; restored, both record';
+end $$;
+
+-- 7e. PI payment rule revoked: finance.allocate, or the PI's own people.
+do $$
+declare
+  alloc  constant uuid := '77777777-7777-4777-8777-777777777777';
+  sales2 constant uuid := '44444444-4444-4444-8444-444444444444';
+  pi constant text := $q$select public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => 7401, p_payment_date => current_date, p_payment_mode => 'hdfc')$q$;
+begin
+  -- An allocator who loses finance.allocate.
+  perform pg_temp.act_as(alloc);
+  delete from public.finance_permission_grants where user_id = alloc and action = 'finance.allocate';
+  perform pg_temp.refused_clean(pi, 'PI_PAYMENT_NOT_PERMITTED', '7e allocator revoked, unkeyed');
+  insert into public.finance_permission_grants (user_id, action) values (alloc, 'finance.allocate');
+  if pg_temp.outcome(pi) <> 'OK' then raise exception '7e: restored finance.allocate, the unkeyed PI payment should record'; end if;
+
+  -- An Orders user who is not one of this PI's people, with no finance.allocate.
+  perform pg_temp.act_as(sales2);
+  perform pg_temp.refused_clean(pi, 'PI_PAYMENT_NOT_PERMITTED', '7e outsider, unkeyed');
+  raise notice 'PASS: 7e an allocator who loses finance.allocate, and an Orders user who is not the PI''s uploader/creator/reviewer, are refused an unkeyed PI payment; nothing is written; restored, the allocator records';
+end $$;
+
 rollback;

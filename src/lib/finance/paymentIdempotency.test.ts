@@ -234,3 +234,24 @@ describe('every payment form sends a key', () => {
     assert.ok(piFailed.includes('return PI_PAYMENT_PROOF_RETRY') && !piFailed.includes('attempt.settle()'))
   })
 })
+
+// The database suite (supabase/tests/payment_idempotency_assertions.sql §7)
+// proves the behaviour; this keeps the ORDER from drifting in the file itself.
+describe('every payment wrapper authorizes before its NULL-key branch', () => {
+  const sql = readFileSync(
+    'supabase/migrations/20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql', 'utf8',
+  ).replace(/\r\n/g, '\n')
+  for (const door of ['submit_payment_request', 'record_payment_with_allocations', 'record_pi_submission_payment']) {
+    test(door, () => {
+      const start = sql.indexOf(`create function public.${door}(`)
+      const body = sql.slice(start, sql.indexOf('\n$$;', start))
+      const firstStatement = body.slice(body.indexOf('\nbegin\n') + '\nbegin\n'.length)
+        .split('\n').map((l) => l.trim()).find((l) => l !== '' && !l.startsWith('--'))
+      assert.ok(start >= 0 && firstStatement?.startsWith('perform public.assert_finance_payment_door('), `${door}: first statement is ${firstStatement}`)
+      const door_ = body.indexOf('perform public.assert_finance_payment_door(')
+      assert.ok(door_ < body.indexOf('if p_idempotency_key is null then'))
+      assert.ok(door_ < body.indexOf('finance_payment_submission_key_claim('))
+      assert.equal(body.split('assert_finance_payment_door(').length - 1, 1, `${door}: exactly one door check`)
+    })
+  }
+})
