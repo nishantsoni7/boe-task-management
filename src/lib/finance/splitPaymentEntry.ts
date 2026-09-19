@@ -38,6 +38,7 @@ import {
   type ExactDecimal,
 } from './exactMoney'
 import { isValidAmount } from '@/lib/currency'
+import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
 import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
 
 /** The two kinds of destination the business has. There is no third. */
@@ -287,6 +288,7 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
     return 'This page is out of step with the server. Reload it and try again. Nothing was saved.'
   }
   if (m.includes('PAYMENT_AMOUNT_INVALID'))  return 'Enter a positive amount in rupees and paise.'
+  if (m.includes('PAYMENT_IDEMPOTENCY_KEY_REUSED')) return SUBMISSION_KEY_REUSED_MESSAGE
   if (m.includes('PAYMENT_DATE_FUTURE'))     return 'A payment date cannot be in the future.'
   if (m.includes('PAYMENT_DATE_REQUIRED'))   return 'A payment date is required.'
   if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {

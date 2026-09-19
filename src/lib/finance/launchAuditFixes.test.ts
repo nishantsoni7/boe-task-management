@@ -112,14 +112,19 @@ describe('2. Record Payment cannot record the same money twice', () => {
   const src = code('src/app/finance/received/RecordSplitPaymentModal.tsx')
 
   test('a failed proof upload keeps the in-flight guard set and ends the form', () => {
-    const branch = src.slice(src.indexOf('if (proofError) {'), src.indexOf('if (proofError) {') + 400)
+    const save = src.slice(src.indexOf('const handleSave = async'))
+    const branch = save.slice(save.indexOf('if (proofError) {'), save.indexOf('if (proofError) {') + 400)
     assert.ok(!branch.includes('submitting.current = false'), 'the guard is NOT reset once the payment exists')
     assert.ok(branch.includes('setRecordedWithoutProof({'))
   })
 
-  test('the only action left is Close, which refreshes the list', () => {
+  test('what is left is Close, which refreshes the list, or a proof retry on the SAME payment', () => {
     assert.ok(src.includes('{recordedWithoutProof ? ('))
     assert.ok(src.includes('onClick={() => onRecorded(recordedWithoutProof)}'))
+    const retry = src.slice(src.indexOf('const retryProof = async'), src.indexOf('const changeDestination'))
+    assert.ok(retry.includes('paymentRequestId: recordedWithoutProof.paymentRequestId'),
+      'the retry attaches the file to the payment already recorded')
+    assert.ok(!retry.includes('.rpc('), 'and calls no payment door')
     assert.ok(src.includes('onClose: recordedWithoutProof ? () => onRecorded(recordedWithoutProof) : onClose,'),
       'X and Escape close at once too, with nothing left to discard')
     assert.ok(src.includes('if (blocked || saving || submitting.current) return'), 'the save still refuses re-entry')

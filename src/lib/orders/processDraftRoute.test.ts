@@ -389,8 +389,11 @@ describe('a retry converges instead of duplicating', () => {
     const page = read(PAGE)
     assert.ok(page.includes('draftRef.current.workbookPath = null'),
       'only the key is cleared; the submission id survives')
-    assert.ok(!page.includes('draftRef.current = null'),
+    // Let go only inside discardDraft, once the server has discarded a draft
+    // whose save FAILED (20261219000000) — never because the file changed.
+    assert.equal((page.match(/draftRef\.current = null/g) ?? []).length, 1,
       'a changed file must not discard the draft')
+    assert.ok(page.indexOf('draftRef.current = null') > page.indexOf('const discardDraft = useCallback'))
   })
 
   test('a replay is recognised by a payload fingerprint', () => {

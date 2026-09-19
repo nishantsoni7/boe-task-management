@@ -91,6 +91,11 @@ import {
   type CustodyDraft,
 } from '@/lib/finance/custodyTrail'
 import { attachPaymentProof } from '@/lib/finance/paymentProof'
+import {
+  SubmissionAttempt,
+  SUBMISSION_OUTCOME_UNKNOWN,
+  isAmbiguousFailure,
+} from '@/lib/finance/submissionAttempt'
 import { validateProofFile } from '@/lib/paymentProof'
 import { CustodyTrailFields } from '@/app/finance/components/CustodyTrailFields'
 import { MixedCustomerWarning } from '@/app/finance/components/MixedCustomerWarning'
@@ -164,13 +169,14 @@ export function RecordSplitPaymentModal({
    * LAUNCH AUDIT (2026-09-19): this path used to reset the in-flight guard and
    * leave "Record Payment" enabled over a still-filled form — so the next click
    * recorded the same money a second time. Once the payment exists the form is
-   * finished: the guard stays set, the only action is Close, and Close reports
-   * the payment so the list refreshes. The proof can be attached from the
-   * payment's own screen.
+   * finished: the guard stays set, and Close reports the payment so the list
+   * refreshes. "Retry proof upload" attaches the file to THIS payment — it never
+   * records the money again (payment idempotency, 20261219000000).
    */
   const [recordedWithoutProof, setRecordedWithoutProof] = useState<{
-    requestNumber: string; allocationCount: number
+    requestNumber: string; allocationCount: number; paymentRequestId: string
   } | null>(null)
+  const [retryingProof, setRetryingProof] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── The destinations ──
@@ -186,6 +192,13 @@ export function RecordSplitPaymentModal({
   // land inside the same tick; a ref is read and written synchronously, so it is
   // the thing that actually closes the window.
   const submitting = useRef(false)
+
+  // ONE SUBMISSION, ONE PAYMENT — ON THE SERVER. The ref above stops a double
+  // click; this key stops everything a ref cannot see: a lost response, a
+  // timeout, a refresh. It is reused until the database gives an answer, so a
+  // retry returns the payment already recorded instead of recording another.
+  const attemptRef = useRef<SubmissionAttempt | null>(null)
+  if (attemptRef.current === null) attemptRef.current = new SubmissionAttempt('record-payment')
 
   const targetKind = destinationTargetKind(destination)
 
@@ -233,6 +246,26 @@ export function RecordSplitPaymentModal({
     disabled: saving,
   })
 
+  // THE PROOF AGAIN, ON THE PAYMENT THAT EXISTS. No payment door is called here.
+  const retryProof = async () => {
+    if (!recordedWithoutProof || !attachFile || retryingProof) return
+    setRetryingProof(true)
+    const proofError = await attachPaymentProof(supabase, {
+      paymentRequestId: recordedWithoutProof.paymentRequestId,
+      file: attachFile,
+      userId: userId ?? null,
+    })
+    setRetryingProof(false)
+    if (proofError) {
+      setProofNotice(`${proofError} The payment itself was recorded — retry the proof, or close and attach it later.`)
+      return
+    }
+    onRecorded({
+      requestNumber:   recordedWithoutProof.requestNumber,
+      allocationCount: recordedWithoutProof.allocationCount,
+    })
+  }
+
   const changeDestination = (next: PaymentDestination) => {
     if (next === destination) return
     setError(null)
@@ -266,7 +299,7 @@ export function RecordSplitPaymentModal({
     setSaving(true)
     setError(null)
 
-    const { data, error: rpcError } = await supabase.rpc('record_payment_with_allocations', {
+    const args = {
       p_amount:       Number(amount),
       p_payment_date: paymentDate,
       p_payment_mode: paymentMode,
@@ -288,6 +321,11 @@ export function RecordSplitPaymentModal({
       // that again for itself, so a section left on screen after the mode changed
       // has its rows refused rather than stored.
       p_custody_events: modeRequiresCustodyTrail(paymentMode) ? toRpcCustodyEvents(custody) : [],
+    }
+    const attempt = attemptRef.current!
+    const { data, error: rpcError } = await supabase.rpc('record_payment_with_allocations', {
+      ...args,
+      p_idempotency_key: attempt.begin(args),
     })
 
     setSaving(false)
@@ -298,9 +336,12 @@ export function RecordSplitPaymentModal({
     // so a refusal costs a correction and not a re-entry.
     if (rpcError || !data) {
       submitting.current = false
-      setError(splitPaymentErrorMessage(rpcError?.message))
+      // Unknown outcome: the key is KEPT, so pressing again cannot record twice.
+      attempt.settleUnlessAmbiguous(rpcError)
+      setError(isAmbiguousFailure(rpcError) ? SUBMISSION_OUTCOME_UNKNOWN : splitPaymentErrorMessage(rpcError?.message))
       return
     }
+    attempt.settle()
 
     const result = data as {
       request_number?: string
@@ -325,10 +366,11 @@ export function RecordSplitPaymentModal({
       if (proofError) {
         // NOT reset: the payment exists, and a second click must not record it
         // again. See recordedWithoutProof.
-        setProofNotice(`${proofError} The payment itself was recorded — attach the proof from the payment's own screen.`)
+        setProofNotice(`${proofError} The payment itself was recorded — retry the proof below; the payment will not be recorded again.`)
         setRecordedWithoutProof({
-          requestNumber:   result.request_number ?? '',
-          allocationCount: result.allocation_count ?? 0,
+          requestNumber:    result.request_number ?? '',
+          allocationCount:  result.allocation_count ?? 0,
+          paymentRequestId: result.payment_request_id,
         })
         return
       }
@@ -576,14 +618,25 @@ export function RecordSplitPaymentModal({
       )}
 
       {recordedWithoutProof ? (
-      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>
+      <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px', flexWrap: 'wrap' }}>
         <button
           onClick={() => onRecorded(recordedWithoutProof)}
-          className="boe-btn boe-btn-primary"
+          disabled={retryingProof}
+          className="boe-btn boe-btn-ghost"
           style={{ padding: '8px 18px', fontSize: '13px' }}
         >
           Close
         </button>
+        {attachFile && (
+          <button
+            onClick={retryProof}
+            disabled={retryingProof}
+            className="boe-btn boe-btn-primary"
+            style={{ padding: '8px 18px', fontSize: '13px', opacity: retryingProof ? 0.6 : 1 }}
+          >
+            {retryingProof ? 'Uploading…' : 'Retry proof upload'}
+          </button>
+        )}
       </div>
       ) : (
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', paddingTop: '4px' }}>

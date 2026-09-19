@@ -308,7 +308,12 @@ describe('no Order screen waits more than it must', () => {
       // Promise.all, beside the profile and the two permission resolves, so the
       // count grew and the number of times the page waits did NOT: the wait
       // test above still requires exactly three.
-      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 5,
+      // IMPORT 5 -> 8 (20261219000000, launch audit): a failed save discards
+      // the unsaved draft it created — one read of the row's stored workbook
+      // key, one removal of the object this attempt uploaded, and
+      // discard_unsaved_order_submission. All three run only AFTER a failure or
+      // on leaving the screen; none is on the startup path.
+      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

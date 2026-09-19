@@ -351,6 +351,14 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261219000000 — the launch audit's three gaps (PR #172): renames the three
+      // payment-creation doors and create_order_submission to *_core and wraps each
+      // with an idempotency key; adds the two key tables (client-closed), the
+      // rupees-and-paise CHECK and trigger on finance_payment_requests.amount, and
+      // discard_unsaved_order_submission; revokes the direct INSERT on
+      // finance_payment_requests and drops its own-insert policy. No read path, no
+      // participant rule and no order total changes.
+      '20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql',
     ],'every migration at or after this one is accounted for')
   })
 })
