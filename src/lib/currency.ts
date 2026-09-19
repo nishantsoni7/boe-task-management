@@ -13,26 +13,46 @@ export function formatINR(amount: number): string {
 // this is presentation only.
 export function groupIndianDigits(raw: string): string {
   if (!raw) return ''
+  // Anything that is not already a valid rupees-and-paise figure is shown
+  // EXACTLY as typed: formatting 1000.005 would display "1,000.01" — a
+  // rounded figure the person never entered.
+  if (!/^\d*(\.\d{0,2})?$/.test(raw) || !/\d/.test(raw)) return raw
   const num = Number(raw)
   if (!Number.isFinite(num)) return raw
   const grouped = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 }).format(num)
   return raw.endsWith('.') ? grouped + '.' : grouped
 }
 
-// Strips an amount input down to digits and at most one decimal point, so the
-// canonical form.amount value never contains commas or invalid characters.
+// Removes ONLY what cannot change the figure: spaces, Indian grouping commas
+// and the rupee sign, so a pasted "₹10,00,000" is the number 1000000.
 //
-// AND AT MOST TWO DIGITS AFTER IT (launch audit, 2026-09-19). Money is rupees
-// and paise. The input used to accept "1000.005", and the Payment Requests "+
-// New" and edit paths stored it as typed — a payment no allocation (always whole
-// paise) could ever fully account for.
+// NOTHING ELSE IS TOUCHED (launch audit, 2026-09-19). This used to drop every
+// other character and cut the fraction to two digits, so a pasted "1000.005"
+// silently became "1000.00", "1.2.3" became "1.23", "-500" became "500" and
+// "1e5" became "15" — each a DIFFERENT amount than the one entered, with nothing
+// on screen to say so. Now the text stays exactly as entered, isValidAmount
+// refuses it, and amountInputProblem() says why. Money is never rounded,
+// truncated or re-read on the person's behalf.
 export function sanitizeAmountInput(value: string): string {
-  let v = value.replace(/[^0-9.]/g, '')
-  const firstDot = v.indexOf('.')
-  if (firstDot !== -1) {
-    v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '').slice(0, 2)
-  }
-  return v
+  return value.replace(/[\s,₹]/g, '')
+}
+
+export const AMOUNT_TOO_MANY_DECIMALS =
+  'Use at most two decimal places (paise). Nothing has been rounded — correct the amount.'
+export const AMOUNT_NOT_A_NUMBER =
+  'Use digits and one decimal point only — no signs, letters or second decimal point.'
+
+/**
+ * Why a typed amount cannot be accepted, in words — or null when it is fine
+ * or merely incomplete ("", ".", "12."). A figure is never corrected here:
+ * the person is told, and corrects it.
+ */
+export function amountInputProblem(raw: string | null | undefined): string | null {
+  const v = (raw ?? '').trim()
+  if (v === '' || v === '.') return null
+  if (/^\d*\.\d{3,}$/.test(v)) return AMOUNT_TOO_MANY_DECIMALS
+  if (!/^\d*(\.\d{0,2})?$/.test(v)) return AMOUNT_NOT_A_NUMBER
+  return null
 }
 
 // Business rule: amount must be a real, finite, positive number of rupees with

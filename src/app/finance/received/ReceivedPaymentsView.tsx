@@ -26,7 +26,7 @@ import type { UserProfile } from '@/lib/types'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
 import type { ActivityTargetResolver } from '@/lib/finance/paymentActivityLabels'
-import { isValidAmount } from '@/lib/currency'
+import { amountInputProblem, isValidAmount } from '@/lib/currency'
 // ONE payment-mode source for Order and Finance (20261013000000). This file
 // used to keep its own label map AND its own options array; both are gone.
 import {
@@ -1270,7 +1270,13 @@ function EditPaymentModal({
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <Field label="Amount (₹)" required>
           <input className="boe-input" type="number" min="0" value={form.amount}
-            onChange={set('amount')} placeholder="0" style={{ width: '100%' }} />
+            onChange={set('amount')} placeholder="0" style={{ width: '100%' }}
+            aria-invalid={amountInputProblem(form.amount) !== null} />
+          {amountInputProblem(form.amount) && (
+            <div role="alert" style={{ fontSize: '12px', color: '#C13030', lineHeight: 1.4, marginTop: '4px' }}>
+              {amountInputProblem(form.amount)}
+            </div>
+          )}
         </Field>
         <Field label="Payment Date" required>
           <input className="boe-input" type="date" value={form.paymentDate}

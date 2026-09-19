@@ -140,28 +140,31 @@ describe('3. money is rupees and paise — never more than two decimals', () => 
     }
   })
 
-  test('the input cannot take a third decimal', () => {
-    assert.equal(sanitizeAmountInput('1000.0059'), '1000.00')
+  test('the input never truncates: a third decimal stays visible and is refused', () => {
+    // CORRECTED (PR #172 review): cutting 1000.0059 to 1000.00 was itself a
+    // silent change of amount. See src/app/finance/amountEntry.render.test.tsx.
+    assert.equal(sanitizeAmountInput('1000.0059'), '1000.0059')
+    assert.equal(isValidAmount(sanitizeAmountInput('1000.0059')), false)
     assert.equal(sanitizeAmountInput('₹10,00,000.5'), '1000000.5')
-    assert.equal(sanitizeAmountInput('1.2.3'), '1.23')
+    assert.equal(sanitizeAmountInput('1.2.3'), '1.2.3')
   })
 })
 
 describe('4. a clarification or rejection that changed nothing does not report success', () => {
+  // REVISED (PR #172 review): the modal no longer writes the table at all — a
+  // direct UPDATE is refused in production by the reset guard. It decides through
+  // request_finance_payment_clarification / reject_finance_payment_request, which
+  // lock the row and act only while it is pending. The behaviour is proved in
+  // src/lib/finance/reviewDecision.test.ts and the database suite; this keeps the
+  // original promise pinned: a stale decision is an error and notifies nobody.
   const page = code('src/app/finance/page.tsx')
-  const at = page.indexOf("status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected',")
-  const block = page.slice(at, at + 900)
+  const at = page.indexOf('await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })')
 
-  test('it decides only a request that is still pending, and reads back what changed', () => {
-    assert.ok(block.includes(".eq('status', 'pending_approval')"))
-    assert.ok(block.includes(".select('id')"))
-  })
-
-  test('no row changed → an error, and no notification', () => {
-    const guard = block.indexOf('if (!changed || changed.length === 0) {')
-    assert.ok(guard > -1)
+  test('a stale decision is an error, and the creator is notified only after a real change', () => {
+    assert.ok(at > -1)
+    const stale = page.indexOf("if (outcome.kind === 'stale') { setError(REVIEW_STALE_MESSAGE); return }", at)
     const notify = page.indexOf('void notifyFinance({', at)
-    assert.ok(notify > at + guard, 'the creator is notified only after a real change')
+    assert.ok(stale > at && notify > stale)
   })
 })
 

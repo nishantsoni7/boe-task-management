@@ -37,7 +37,7 @@ import {
   subtractExact,
   type ExactDecimal,
 } from './exactMoney'
-import { isValidAmount } from '@/lib/currency'
+import { amountInputProblem, isValidAmount } from '@/lib/currency'
 import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
 import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
 
@@ -171,7 +171,9 @@ export function splitPaymentBlockedReason(input: {
   // from the targets, or the payment has none because it has no targets
   // (20261013000000). A form that refused to submit without one would be
   // demanding something it can no longer ask for.
-  if (!isValidAmount(input.amount)) return 'Enter the amount received, in rupees and paise.'
+  if (!isValidAmount(input.amount)) {
+    return amountInputProblem(input.amount) ?? 'Enter the amount received, in rupees and paise.'
+  }
   if (!input.paymentDate) return 'Choose the date the payment was received.'
   if (!input.paymentMode) return 'Choose how the payment was made.'
 
@@ -214,7 +216,8 @@ export function splitPaymentBlockedReason(input: {
       return `Choose ${noun === 'Order' ? 'an' : 'a'} ${noun} for allocation ${i + 1}, or remove it.`
     }
     if (!isValidAmount(row.amount)) {
-      return `Enter an amount for allocation ${i + 1}, in rupees and paise.`
+      const problem = amountInputProblem(row.amount)
+      return problem ? `Allocation ${i + 1}: ${problem}` : `Enter an amount for allocation ${i + 1}, in rupees and paise.`
     }
     const parsed = parseExact(row.amount)
     if (!parsed || isZero(parsed) || isNegative(parsed)) {

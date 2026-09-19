@@ -63,6 +63,24 @@
 --           discarded=false) for anything else, so the screen may call it after
 --           any failure without being trusted to judge which failures count.
 --
+--   §2b A REPLAY IS STILL AN AUTHORIZED CALL. Before a keyed call looks its
+--       key up, assert_finance_payment_door() re-asks the questions the door's
+--       own body asks — signed in, active, Finance entry, and the door's
+--       permission (finance.allocate for Record Payment; for a PI payment,
+--       finance.allocate or the PI's uploader / creator / assigned reviewer) —
+--       with the same helpers and the same messages. A deactivated employee, or
+--       one who lost the permission, is refused exactly as a first call would
+--       be, and is told nothing about whether the key exists.
+--
+--   §5  SEND BACK FOR CLARIFICATION, THROUGH A DOOR. The Payment Requests review
+--       sent "Needs clarification" as a direct table UPDATE, which production
+--       refuses (the 20261010000000 reset guard is not SECURITY DEFINER and
+--       calls functions authenticated may not execute). The rejection already
+--       has its door, reject_finance_payment_request (20261211000000);
+--       request_finance_payment_clarification is its sibling, with the same
+--       authority, the same self-decision rule and the same lock, and it says
+--       whether the row changed.
+--
 -- WHAT IS UNCHANGED. Every deployed payment body, every allocation rule, RLS on
 -- every table, payment immutability, the deletion claim protocol, the PI
 -- processing lease and every existing grant except the direct INSERT above.
@@ -262,6 +280,63 @@ revoke execute on function public.finance_payment_submission_key_claim(text, uui
 revoke execute on function public.finance_payment_submission_key_record(text, uuid, text, jsonb)
   from public, anon, authenticated;
 
+-- ── §2b. A replay is still an authorized call ──
+--
+-- The questions each door's deployed body asks before it writes, asked again
+-- with the SAME helpers and the SAME messages — not a second, looser rule. Run
+-- before the key is looked up, so a caller who may not use the door learns
+-- nothing about whether a key exists. It reads; it never writes.
+create or replace function public.assert_finance_payment_door(p_door text, p_submission_id uuid default null)
+returns void
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  -- Signed in, active and not deleted — the PI door's own first line
+  -- (28000 'Authentication required', 42501 'This account is not active').
+  v_actor uuid := public.assert_order_submission_actor();
+  v_sub   record;
+begin
+  if p_door = 'submit_payment_request' then
+    if not public.module_entry_open('finance') then
+      raise exception 'FINANCE_MODULE_CLOSED: the Finance module is not open to you.'
+        using errcode = '42501';
+    end if;
+
+  elsif p_door = 'record_payment_with_allocations' then
+    if not public.module_entry_open('finance') then
+      raise exception 'PAYMENT_ENTRY_NOT_PERMITTED: you do not have access to Finance.'
+        using errcode = '42501';
+    end if;
+    if not public.actor_has_module_permission('finance', 'allocate') then
+      raise exception
+        'PAYMENT_ENTRY_ALLOCATION_NOT_PERMITTED: you do not have permission to allocate payments.'
+        using errcode = '42501';
+    end if;
+
+  elsif p_door = 'record_pi_submission_payment' then
+    select s.submitted_by, s.created_by, s.assigned_to into v_sub
+      from public.order_submissions s where s.id = p_submission_id;
+    if not coalesce(
+      public.actor_has_module_permission('finance', 'allocate')
+      or v_sub.submitted_by = v_actor
+      or v_sub.created_by   = v_actor
+      or v_sub.assigned_to  = v_actor
+    , false) then
+      raise exception
+        'PI_PAYMENT_NOT_PERMITTED: you do not have permission to record a payment against this PI.'
+        using errcode = '42501';
+    end if;
+
+  else
+    raise exception 'unknown payment door %', p_door using errcode = '22023';
+  end if;
+end;
+$$;
+
+revoke execute on function public.assert_finance_payment_door(text, uuid) from public, anon, authenticated;
+
 -- ── The deployed bodies, renamed and closed to clients ──
 alter function public.submit_payment_request(text, uuid, numeric, date, text, text, text, jsonb)
   rename to submit_payment_request_core;
@@ -317,6 +392,7 @@ begin
     coalesce(p_custody_events, '[]'::jsonb)
   )::text);
 
+  perform public.assert_finance_payment_door('submit_payment_request');
   v_result := public.finance_payment_submission_key_claim('submit_payment_request', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -364,6 +440,7 @@ begin
     coalesce(p_allocations, '[]'::jsonb), coalesce(p_custody_events, '[]'::jsonb)
   )::text);
 
+  perform public.assert_finance_payment_door('record_payment_with_allocations');
   v_result := public.finance_payment_submission_key_claim('record_payment_with_allocations', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -406,6 +483,7 @@ begin
     nullif(btrim(p_reference), ''), nullif(btrim(p_remarks), '')
   )::text);
 
+  perform public.assert_finance_payment_door('record_pi_submission_payment', p_submission_id);
   v_result := public.finance_payment_submission_key_claim('record_pi_submission_payment', p_idempotency_key, v_fp);
   if v_result is not null then
     return v_result;
@@ -583,6 +661,86 @@ comment on function public.discard_unsaved_order_submission(uuid) is
 
 
 -- ═══════════════════════════════════════════════════════════════════════════
+-- §5. Send back for clarification — the sibling of reject_finance_payment_request
+-- ═══════════════════════════════════════════════════════════════════════════
+
+create or replace function public.request_finance_payment_clarification(
+  p_request_id uuid,
+  p_note       text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_actor uuid := auth.uid();
+  v_note  text := nullif(btrim(coalesce(p_note, '')), '');
+  v_req   public.finance_payment_requests%rowtype;
+  v_now   timestamptz := now();
+begin
+  if v_actor is null then
+    raise exception 'Authentication required to send a payment back for clarification'
+      using errcode = '28000';
+  end if;
+
+  -- The SAME authority as approving and rejecting (active, finance.approve),
+  -- and nothing wider.
+  if not public.actor_has_module_permission('finance', 'approve') then
+    raise exception 'Only a payment verifier may send a payment back for clarification'
+      using errcode = '42501';
+  end if;
+
+  if v_note is null then
+    raise exception 'PAYMENT_CLARIFICATION_NOTE_REQUIRED: say what needs clarifying before sending the payment back.'
+      using errcode = '22023';
+  end if;
+
+  select * into v_req
+  from public.finance_payment_requests
+  where id = p_request_id
+  for update;
+
+  if not found then
+    raise exception 'Payment request % not found', p_request_id
+      using errcode = 'P0002';
+  end if;
+
+  -- Separation of entry and decision, as reject_finance_payment_request.
+  if v_req.submitted_by = v_actor
+     and not exists (select 1 from public.users u where u.id = v_actor and u.role = 'admin') then
+    raise exception 'PAYMENT_SELF_DECISION_FORBIDDEN: payment % was recorded by you; another payment verifier must decide it',
+      v_req.request_number
+      using errcode = '42501';
+  end if;
+
+  -- STALE IS AN ANSWER. Decided (or sent back) by someone else since the
+  -- reviewer opened it: nothing changes, and the caller is told so.
+  if v_req.status <> 'pending_approval' then
+    return jsonb_build_object('changed', false, 'request_id', v_req.id,
+                              'request_number', v_req.request_number, 'status', v_req.status);
+  end if;
+
+  -- One statement, so the activity and timeline triggers record this verifier.
+  update public.finance_payment_requests
+     set status     = 'needs_clarification',
+         admin_note = v_note,
+         updated_at = v_now
+   where id = p_request_id;
+
+  return jsonb_build_object('changed', true, 'request_id', v_req.id,
+                            'request_number', v_req.request_number, 'status', 'needs_clarification');
+end;
+$$;
+
+comment on function public.request_finance_payment_clarification(uuid, text) is
+  'Sends a pending payment back for clarification, for a caller holding finance.approve who did not record it (admins excepted). Requires a note, locks the row, and returns changed=false — writing nothing — when the payment is no longer pending. The sibling of reject_finance_payment_request. 20261219000000.';
+
+revoke execute on function public.request_finance_payment_clarification(uuid, text) from public, anon;
+grant  execute on function public.request_finance_payment_clarification(uuid, text) to authenticated;
+
+
+-- ═══════════════════════════════════════════════════════════════════════════
 -- §4. Apply-time assertions — the migration refuses itself otherwise
 -- ═══════════════════════════════════════════════════════════════════════════
 
@@ -594,7 +752,7 @@ begin
   -- Exactly one function per public name: no overload for PostgREST to resolve.
   foreach v_name in array array['submit_payment_request', 'record_payment_with_allocations',
                                 'record_pi_submission_payment', 'create_order_submission',
-                                'discard_unsaved_order_submission']
+                                'discard_unsaved_order_submission', 'request_finance_payment_clarification']
   loop
     if (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
          where n.nspname = 'public' and p.proname = v_name) <> 1 then
@@ -609,7 +767,8 @@ begin
       'public.record_payment_with_allocations(numeric, date, text, text, text, text, text, jsonb, jsonb, uuid)'::regprocedure,
       'public.record_pi_submission_payment(uuid, numeric, date, text, text, text, uuid)'::regprocedure,
       'public.create_order_submission(text, uuid)'::regprocedure,
-      'public.discard_unsaved_order_submission(uuid)'::regprocedure]
+      'public.discard_unsaved_order_submission(uuid)'::regprocedure,
+      'public.request_finance_payment_clarification(uuid, text)'::regprocedure]
   loop
     if not (select prosecdef from pg_proc where oid = v_fn)
        or not exists (select 1 from pg_proc where oid = v_fn
@@ -630,6 +789,7 @@ begin
       'public.create_order_submission_core(text)'::regprocedure,
       'public.finance_payment_submission_key_claim(text, uuid, text)'::regprocedure,
       'public.finance_payment_submission_key_record(text, uuid, text, jsonb)'::regprocedure,
+      'public.assert_finance_payment_door(text, uuid)'::regprocedure,
       'public.finance_payment_requests_amount_is_rupees_and_paise()'::regprocedure]
   loop
     if has_function_privilege('authenticated', v_fn, 'EXECUTE')

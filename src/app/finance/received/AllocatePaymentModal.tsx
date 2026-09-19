@@ -48,7 +48,7 @@ import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { isValidAmount } from '@/lib/currency'
+import { amountInputProblem, isValidAmount } from '@/lib/currency'
 
 export const ALLOCATE_MODAL_TITLE = 'Allocate Payment'
 
@@ -130,7 +130,7 @@ export function allocationBlockedReason(input: {
     return 'This payment has no balance left to allocate.'
   }
   if (!input.selected) return 'Choose an Order or a PI Draft.'
-  if (!isValidAmount(input.amount)) return 'Enter an amount in rupees and paise.'
+  if (!isValidAmount(input.amount)) return amountInputProblem(input.amount) ?? 'Enter an amount in rupees and paise.'
   if (Number(input.amount) > input.ceiling) {
     return `That is more than the ${formatMoney(input.ceiling)} still available on this payment.`
   }

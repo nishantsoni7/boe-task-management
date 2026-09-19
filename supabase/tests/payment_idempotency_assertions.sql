@@ -417,4 +417,295 @@ begin
 end $$;
 reset role;
 
+
+-- ═══ 5. A replay is still an authorized call ══════════════════════════════════
+-- For every door: create with a key, replay it (same result); then take the
+-- access away and replay again. The refusal must be the door's own, must write
+-- nothing, and must read EXACTLY as it does for a key that was never used — a
+-- caller who may not use the door learns nothing about whether a key exists.
+
+-- Runs p_sql; returns 'OK' or '<sqlstate>:<message>'.
+create or replace function pg_temp.outcome(p_sql text)
+returns text language plpgsql as $$
+begin
+  execute p_sql;
+  return 'OK';
+exception when others then
+  return sqlstate || ':' || sqlerrm;
+end $$;
+
+-- Replays p_sql_known (a key that exists) and p_sql_fresh (a key that never
+-- did); both must be refused identically with p_expect, and write nothing.
+create or replace function pg_temp.refused_alike(p_known text, p_fresh text, p_expect text, p_label text)
+returns void language plpgsql as $$
+declare
+  v_fp text := pg_temp.footprint();
+  v_known text := pg_temp.outcome(p_known);
+  v_fresh text := pg_temp.outcome(p_fresh);
+begin
+  if v_known = 'OK' or position(p_expect in v_known) = 0 then
+    raise exception '%: expected %, got %', p_label, p_expect, v_known;
+  end if;
+  if v_known <> v_fresh then
+    raise exception '%: a used key reads differently from an unused one (% vs %)', p_label, v_known, v_fresh;
+  end if;
+  if pg_temp.footprint() <> v_fp then
+    raise exception '%: a refused replay wrote rows', p_label;
+  end if;
+end $$;
+
+-- 5a. Payment Request (submit_payment_request): Finance entry.
+select pg_temp.act_as('44444444-4444-4444-8444-444444444444');
+do $$
+declare
+  k  constant uuid := 'b1000000-0000-4000-8000-000000000001';
+  call constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 1111,
+    p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => '%s')$q$;
+  v1 jsonb; v2 jsonb;
+begin
+  v1 := public.submit_payment_request(p_destination => 'suspense', p_amount => 1111, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_idempotency_key => k);
+  v2 := public.submit_payment_request(p_destination => 'suspense', p_amount => 1111, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_idempotency_key => k);
+  if v1 <> v2 then raise exception '5a: authorized replay did not return the original'; end if;
+
+  delete from public.finance_permission_grants where user_id = '44444444-4444-4444-8444-444444444444' and action like 'finance.%';
+  perform pg_temp.refused_alike(format(call, k), format(call, gen_random_uuid()), 'FINANCE_MODULE_CLOSED', '5a revoked');
+  insert into public.finance_permission_grants (user_id, action) values ('44444444-4444-4444-8444-444444444444', 'finance.create');
+
+  update public.users set is_active = false where id = '44444444-4444-4444-8444-444444444444';
+  perform pg_temp.refused_alike(format(call, k), format(call, gen_random_uuid()), 'This account is not active', '5a deactivated');
+  update public.users set is_active = true where id = '44444444-4444-4444-8444-444444444444';
+
+  if public.submit_payment_request(p_destination => 'suspense', p_amount => 1111, p_payment_date => current_date,
+       p_payment_mode => 'hdfc', p_idempotency_key => k) <> v1 then
+    raise exception '5a: access restored, the replay should return the original again';
+  end if;
+  raise notice 'PASS: 5a Payment Request — authorized replay returns the original; after losing Finance entry, or being deactivated, the replay is refused exactly as an unused key is, and writes nothing';
+end $$;
+
+-- 5b. Record Payment (record_payment_with_allocations): Finance entry + finance.allocate.
+select pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+do $$
+declare
+  k  constant uuid := 'b2000000-0000-4000-8000-000000000001';
+  call constant text := $q$select public.record_payment_with_allocations(p_amount => 2222, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_client_name => null, p_idempotency_key => '%s')$q$;
+  v1 jsonb;
+begin
+  v1 := public.record_payment_with_allocations(p_amount => 2222, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_client_name => null, p_idempotency_key => k);
+  if public.record_payment_with_allocations(p_amount => 2222, p_payment_date => current_date,
+       p_payment_mode => 'hdfc', p_client_name => null, p_idempotency_key => k) <> v1 then
+    raise exception '5b: authorized replay';
+  end if;
+  delete from public.finance_permission_grants where user_id = '22222222-2222-4222-8222-222222222222' and action = 'finance.allocate';
+  perform pg_temp.refused_alike(format(call, k), format(call, gen_random_uuid()), 'PAYMENT_ENTRY_ALLOCATION_NOT_PERMITTED', '5b revoked');
+  insert into public.finance_permission_grants (user_id, action) values ('22222222-2222-4222-8222-222222222222', 'finance.allocate');
+  update public.users set is_active = false where id = '22222222-2222-4222-8222-222222222222';
+  perform pg_temp.refused_alike(format(call, k), format(call, gen_random_uuid()), 'This account is not active', '5b deactivated');
+  update public.users set is_active = true where id = '22222222-2222-4222-8222-222222222222';
+  raise notice 'PASS: 5b Record Payment — authorized replay returns the original; without finance.allocate, or deactivated, the replay is refused as an unused key is, and writes nothing';
+end $$;
+
+-- 5c. PI payment (record_pi_submission_payment): finance.allocate, or the PI's own people.
+do $$
+declare
+  k_alloc   constant uuid := 'b3000000-0000-4000-8000-000000000001';
+  k_creator constant uuid := 'b3000000-0000-4000-8000-000000000002';
+  call constant text := $q$select public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => %s, p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => '%s')$q$;
+  v1 jsonb;
+begin
+  -- An allocator who is NOT one of the PI's people.
+  perform pg_temp.act_as('77777777-7777-4777-8777-777777777777');
+  v1 := public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => 3333, p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => k_alloc);
+  if public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+       p_amount => 3333, p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => k_alloc) <> v1 then
+    raise exception '5c: authorized replay';
+  end if;
+  delete from public.finance_permission_grants where user_id = '77777777-7777-4777-8777-777777777777' and action = 'finance.allocate';
+  perform pg_temp.refused_alike(format(call, 3333, k_alloc), format(call, 3333, gen_random_uuid()), 'PI_PAYMENT_NOT_PERMITTED', '5c revoked');
+  insert into public.finance_permission_grants (user_id, action) values ('77777777-7777-4777-8777-777777777777', 'finance.allocate');
+
+  -- The PI's creator, deactivated.
+  perform pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+  perform public.record_pi_submission_payment(p_submission_id => 'd0000000-0000-4000-8000-00000000000d',
+    p_amount => 3434, p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => k_creator);
+  update public.users set is_active = false where id = '22222222-2222-4222-8222-222222222222';
+  perform pg_temp.refused_alike(format(call, 3434, k_creator), format(call, 3434, gen_random_uuid()), 'This account is not active', '5c deactivated');
+  update public.users set is_active = true where id = '22222222-2222-4222-8222-222222222222';
+  raise notice 'PASS: 5c PI payment — an allocator who loses finance.allocate, and a PI creator who is deactivated, are refused on replay as on an unused key, and nothing is written';
+end $$;
+
+-- 5d. A DEACTIVATED ADMIN. Production's module_entry_open lets any admin in on
+-- role alone, so without the replay's own active test this would pass.
+select pg_temp.act_as('11111111-1111-4111-8111-111111111111');
+do $$
+declare
+  k constant uuid := 'b4000000-0000-4000-8000-000000000001';
+  call constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 4444,
+    p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => '%s')$q$;
+begin
+  perform public.submit_payment_request(p_destination => 'suspense', p_amount => 4444, p_payment_date => current_date,
+    p_payment_mode => 'hdfc', p_idempotency_key => k);
+  update public.users set is_active = false where id = '11111111-1111-4111-8111-111111111111';
+  if not public.module_entry_open('finance') then
+    raise exception '5d: the stand-in should admit an inactive admin, as production does';
+  end if;
+  perform pg_temp.refused_alike(format(call, k), format(call, gen_random_uuid()), 'This account is not active', '5d');
+  update public.users set is_active = true where id = '11111111-1111-4111-8111-111111111111';
+  raise notice 'PASS: 5d a deactivated admin — admitted by module entry on role alone — is refused on replay by the active check';
+end $$;
+
+-- 5e. Signed out: a known key and an unknown one read the same.
+do $$
+declare
+  call constant text := $q$select public.submit_payment_request(p_destination => 'suspense', p_amount => 1111,
+    p_payment_date => current_date, p_payment_mode => 'hdfc', p_idempotency_key => '%s')$q$;
+begin
+  perform pg_temp.act_as(null);
+  perform pg_temp.refused_alike(format(call, 'b1000000-0000-4000-8000-000000000001'), format(call, gen_random_uuid()),
+    'Authentication required', '5e');
+  raise notice 'PASS: 5e signed out — a replay of a real key is refused exactly as an unknown key, and writes nothing (anon has no EXECUTE at all: 3b)';
+end $$;
+
+-- 5f. Keyed PI Draft creation: orders.create, active.
+select pg_temp.act_as('44444444-4444-4444-8444-444444444444');
+do $$
+declare
+  k constant uuid := 'b5000000-0000-4000-8000-000000000001';
+  v1 jsonb;
+begin
+  v1 := public.create_order_submission(null, k);
+  if public.create_order_submission(null, k) <> v1 then raise exception '5f: authorized replay'; end if;
+  delete from public.finance_permission_grants where user_id = '44444444-4444-4444-8444-444444444444' and action = 'orders.create';
+  perform pg_temp.refused_alike(format('select public.create_order_submission(null, %L)', k),
+    format('select public.create_order_submission(null, %L)', gen_random_uuid()),
+    'You do not have permission to create an order submission', '5f revoked');
+  insert into public.finance_permission_grants (user_id, action) values ('44444444-4444-4444-8444-444444444444', 'orders.create');
+  update public.users set is_active = false where id = '44444444-4444-4444-8444-444444444444';
+  perform pg_temp.refused_alike(format('select public.create_order_submission(null, %L)', k),
+    format('select public.create_order_submission(null, %L)', gen_random_uuid()),
+    'This account is not active', '5f deactivated');
+  update public.users set is_active = true where id = '44444444-4444-4444-8444-444444444444';
+  raise notice 'PASS: 5f keyed PI Draft creation — replay returns the same draft; without orders.create, or deactivated, it is refused as an unused key is';
+end $$;
+
+-- ═══ 6. Send back for clarification, and reject — through the doors ══════════
+create or replace function pg_temp.trail(p uuid)
+returns bigint language sql as $$
+  select count(*) from public.finance_payment_request_activity_log
+   -- The deployed trail (20260716000000) records a decision as status_changed.
+   where payment_request_id = p and event_type = 'status_changed'
+     and payload->>'to_status' in ('needs_clarification', 'rejected')
+$$;
+
+select pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+create temp table pay6 on commit drop as
+  select n, (public.submit_payment_request(p_destination => 'suspense', p_amount => 600 + n,
+    p_payment_date => current_date, p_payment_mode => 'hdfc')->>'payment_request_id')::uuid as id
+  from generate_series(1, 4) n;
+grant select on pay6 to authenticated;
+
+-- 6a. A verifier sends back; a second send-back is stale and writes nothing.
+select pg_temp.act_as('55555555-5555-4555-8555-555555555555');
+do $$
+declare p uuid := (select id from pay6 where n = 1); r jsonb;
+begin
+  r := public.request_finance_payment_clarification(p, 'Which account did this arrive in?');
+  if r->>'changed' <> 'true'
+     or (select status from public.finance_payment_requests where id = p) <> 'needs_clarification'
+     or (select admin_note from public.finance_payment_requests where id = p) <> 'Which account did this arrive in?'
+     or pg_temp.trail(p) <> 1
+     or (select actor_id from public.finance_payment_request_activity_log where payment_request_id = p
+          and event_type = 'status_changed' and payload->>'to_status' = 'needs_clarification') <> '55555555-5555-4555-8555-555555555555' then
+    raise exception '6a: the send-back did not land as one decision by this verifier: % | trail=%', r,
+      (select string_agg(event_type || '/' || coalesce(actor_id::text, 'null'), ', ') from public.finance_payment_request_activity_log where payment_request_id = p);
+  end if;
+  r := public.request_finance_payment_clarification(p, 'Again');
+  if r->>'changed' <> 'false' or pg_temp.trail(p) <> 1
+     or (select admin_note from public.finance_payment_requests where id = p) <> 'Which account did this arrive in?' then
+    raise exception '6a: a stale send-back changed something: %', r;
+  end if;
+  raise notice 'PASS: 6a a verifier sends back a pending payment (status, note and one trail entry naming the verifier); a second, stale send-back answers changed=false and writes nothing';
+end $$;
+
+-- 6b. Rejection uses the existing door; a stale rejection is refused.
+do $$
+declare p uuid := (select id from pay6 where n = 2);
+begin
+  perform public.reject_finance_payment_request(p, 'Duplicate of PR-0001');
+  if (select status from public.finance_payment_requests where id = p) <> 'rejected' or pg_temp.trail(p) <> 1 then
+    raise exception '6b: rejection';
+  end if;
+  perform pg_temp.refused(format('select public.reject_finance_payment_request(%L, %L)', p, 'Again'),
+    'Only a pending payment request can be rejected');
+  if pg_temp.trail(p) <> 1 then raise exception '6b: stale rejection wrote'; end if;
+  perform pg_temp.refused(format('select public.request_finance_payment_clarification(%L, %L)', (select id from pay6 where n = 3), '  '),
+    'PAYMENT_CLARIFICATION_NOTE_REQUIRED');
+  raise notice 'PASS: 6b rejection through reject_finance_payment_request; a stale one is refused and writes nothing; a blank clarification note is refused';
+end $$;
+
+-- 6c. Nobody else decides: no permission, their own payment, a verified one.
+do $$
+declare p uuid := (select id from pay6 where n = 3); own uuid; ver uuid;
+begin
+  perform pg_temp.act_as('44444444-4444-4444-8444-444444444444');   -- Finance entry, no finance.approve
+  perform pg_temp.refused(format('select public.request_finance_payment_clarification(%L, %L)', p, 'x'), 'Only a payment verifier');
+  perform pg_temp.refused(format('select public.reject_finance_payment_request(%L, %L)', p, 'x'), 'Only a payment verifier');
+
+  perform pg_temp.act_as('55555555-5555-4555-8555-555555555555');   -- a verifier who recorded it
+  own := (public.submit_payment_request(p_destination => 'suspense', p_amount => 777, p_payment_date => current_date,
+    p_payment_mode => 'hdfc')->>'payment_request_id')::uuid;
+  perform pg_temp.refused(format('select public.request_finance_payment_clarification(%L, %L)', own, 'x'), 'PAYMENT_SELF_DECISION_FORBIDDEN');
+  perform pg_temp.refused(format('select public.reject_finance_payment_request(%L, %L)', own, 'x'), 'PAYMENT_SELF_DECISION_FORBIDDEN');
+
+  update public.users set is_active = false where id = '66666666-6666-4666-8666-666666666666';
+  perform pg_temp.act_as('66666666-6666-4666-8666-666666666666');   -- a deactivated verifier
+  perform pg_temp.refused(format('select public.request_finance_payment_clarification(%L, %L)', p, 'x'), 'Only a payment verifier');
+  update public.users set is_active = true where id = '66666666-6666-4666-8666-666666666666';
+
+  -- A VERIFIED payment is not sent back: verified-payment permanence holds.
+  ver := (select id from pay6 where n = 4);
+  perform set_config('request.jwt.claims', '', true);
+  update public.finance_payment_requests set status = 'approved_unlinked' where id = ver;
+  perform pg_temp.act_as('55555555-5555-4555-8555-555555555555');
+  if public.request_finance_payment_clarification(ver, 'x')->>'changed' <> 'false'
+     or (select status from public.finance_payment_requests where id = ver) <> 'approved_unlinked' then
+    raise exception '6c: a verified payment was sent back';
+  end if;
+  if (select status from public.finance_payment_requests where id = p) <> 'pending_approval' or pg_temp.trail(p) <> 0
+     or pg_temp.trail(own) <> 0 then
+    raise exception '6c: a refused decision wrote something';
+  end if;
+  raise notice 'PASS: 6c refused, writing nothing: no finance.approve, a verifier deciding their own payment, a deactivated verifier; a verified payment answers changed=false and stays verified';
+end $$;
+
+-- 6d. Straight at the API: a verifier's direct UPDATE is still refused (no table
+-- write is widened), anon cannot reach the door, and the door works.
+select pg_temp.act_as('66666666-6666-4666-8666-666666666666');
+set local role authenticated;
+do $$
+declare p uuid := (select id from pay6 where n = 3);
+begin
+  -- (The direct UPDATE's refusal is proved in a FRESH session by the runner:
+  -- inside this one transaction PL/pgSQL has already cached the reset guard's
+  -- call as the superuser, so its EXECUTE check would not run again.)
+  if (public.request_finance_payment_clarification(p, 'Please attach the UTR.'))->>'changed' <> 'true' then
+    raise exception '6d: the door refused an authorized verifier';
+  end if;
+  raise notice 'PASS: 6d as authenticated, request_finance_payment_clarification works for a verifier';
+end $$;
+reset role;
+set local role anon;
+do $$
+begin
+  perform pg_temp.refused($q$select public.request_finance_payment_clarification(gen_random_uuid(), 'x')$q$, '42501');
+  perform pg_temp.refused($q$select public.reject_finance_payment_request(gen_random_uuid(), 'x')$q$, '42501');
+  raise notice 'PASS: 6e anon cannot execute either decision door';
+end $$;
+reset role;
+
 rollback;

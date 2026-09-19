@@ -69,3 +69,47 @@ alter table public.finance_payment_request_activity_log
 -- is refused there with "permission denied for function".
 revoke execute on function public.in_test_data_cleanup() from public, anon, authenticated;
 revoke execute on function public.open_order_finance_reset_scope() from public, anon, authenticated;
+
+-- MODULE ENTRY IN PRODUCTION'S SHAPE (20260905000000): an admin passes on role
+-- alone — production does not ask whether that admin is still active — and
+-- anyone else passes on a Finance/Orders grant (the stand-in for
+-- resolve_permission). So a deactivated ADMIN is refused by the replay check's
+-- own active test, not by this function.
+create or replace function public.module_entry_open(p_module text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public, pg_temp
+as $$
+  select exists (select 1 from public.users u where u.id = auth.uid() and u.role = 'admin')
+      or exists (select 1 from public.users u
+                   join public.finance_permission_grants g on g.user_id = u.id
+                  where u.id = auth.uid() and u.is_active and coalesce(u.is_deleted, false) = false
+                    and g.action like p_module || '.%')
+$$;
+
+-- Columns the deployed decision guard and reject door read (20261211000000).
+alter table public.finance_payment_requests
+  add column if not exists admin_note  text;
+
+-- As on every Supabase project: signed-in roles may call auth.uid().
+grant usage on schema auth to authenticated, anon;
+grant execute on function auth.uid() to authenticated, anon;
+
+-- Production's permission helper is SECURITY DEFINER with a fixed search_path
+-- (20260901000000); the shaped stand-in is made the same.
+alter function public.actor_has_module_permission(text, text) security definer set search_path = public, pg_temp;
+
+-- A VERIFIER SEES AND MAY UPDATE the payments they decide, as production's
+-- verifier policies allow — so a verifier's direct UPDATE reaches the row and
+-- its triggers (the defect 20261219000000 §5 routes around), instead of
+-- silently matching nothing.
+drop policy if exists "finance_payment_requests_verifier_select" on public.finance_payment_requests;
+create policy "finance_payment_requests_verifier_select"
+  on public.finance_payment_requests for select to authenticated
+  using (public.actor_has_module_permission('finance', 'approve'));
+drop policy if exists "finance_payment_requests_verifier_update" on public.finance_payment_requests;
+create policy "finance_payment_requests_verifier_update"
+  on public.finance_payment_requests for update to authenticated
+  using (public.actor_has_module_permission('finance', 'approve'));

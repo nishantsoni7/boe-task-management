@@ -108,4 +108,29 @@ begin
 end $$;
 reset role;
 
+-- B9. "Needs clarification" / "Reject" from the Payment Requests review is a
+-- direct UPDATE — and a verifier's direct UPDATE is refused by the reset guard's
+-- accidental permission error, so both actions fail in production.
+select pg_temp.act_as('22222222-2222-4222-8222-222222222222');
+create temp table b9_payment on commit drop as
+  select (public.submit_payment_request(p_destination => 'suspense', p_amount => 900,
+    p_payment_date => current_date, p_payment_mode => 'hdfc')->>'payment_request_id')::uuid as id;
+grant select on b9_payment to authenticated;
+select pg_temp.act_as('55555555-5555-4555-8555-555555555555');
+set local role authenticated;
+do $$
+begin
+  update public.finance_payment_requests
+     set status = 'needs_clarification', admin_note = 'Which account?'
+   where id = (select id from b9_payment) and status = 'pending_approval';
+  raise notice 'NOT REPRODUCED: the direct update worked';
+exception when insufficient_privilege then
+  if sqlerrm like 'permission denied for function%' then
+    raise notice 'REPRODUCED: a verifier''s direct clarification UPDATE fails with "%"', sqlerrm;
+  else
+    raise;
+  end if;
+end $$;
+reset role;
+
 rollback;

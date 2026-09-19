@@ -62,6 +62,7 @@ echo "== deployed bodies: create_order_submission and the PI delete guards"
 {
   # The shaped schema carries a stand-in with other parameter names.
   echo 'drop function if exists public.log_order_submission_activity(uuid, uuid, text, text, text, text, jsonb);'
+  echo 'drop function if exists public.reject_finance_payment_request(uuid, text);'
   extract "$MIG/20260908000000_order_pi_submissions.sql"                 assert_order_submission_actor
   extract "$MIG/20260908000000_order_pi_submissions.sql"                 log_order_submission_activity
   extract "$MIG/20260908000000_order_pi_submissions.sql"                 create_order_submission
@@ -69,7 +70,17 @@ echo "== deployed bodies: create_order_submission and the PI delete guards"
   extract "$MIG/20260916000000_order_submission_test_cleanup.sql"        order_submissions_guard_delete
   extract "$MIG/20260916000000_order_submission_test_cleanup.sql"        order_submission_activity_guard_delete
   extract "$MIG/20260716000000_finance_payment_collection_handover.sql"  log_finance_payment_request_activity
+  # The deployed decision rules the review modal's doors run under.
+  extract "$MIG/20260920000000_finance_approver_can_verify_payment.sql"   in_finance_payment_verification
+  extract "$MIG/20261211000000_finance_payment_decisions_belong_to_verifiers.sql" finance_payment_requests_guard_decision_status
+  extract "$MIG/20261211000000_finance_payment_decisions_belong_to_verifiers.sql" reject_finance_payment_request
   cat <<'SQL'
+drop trigger if exists finance_payment_requests_guard_decision_status on public.finance_payment_requests;
+create trigger finance_payment_requests_guard_decision_status
+  before insert or update on public.finance_payment_requests
+  for each row execute function public.finance_payment_requests_guard_decision_status();
+revoke execute on function public.reject_finance_payment_request(uuid, text) from public, anon;
+grant  execute on function public.reject_finance_payment_request(uuid, text) to authenticated;
 revoke execute on function public.log_finance_payment_request_activity() from public, anon, authenticated;
 drop trigger if exists finance_payment_requests_log_activity on public.finance_payment_requests;
 create trigger finance_payment_requests_log_activity
@@ -87,7 +98,8 @@ create trigger order_submission_activity_guard_delete before delete on public.or
 SQL
 } > "$TMP/deployed.sql"
 for fn in assert_order_submission_actor log_order_submission_activity create_order_submission \
-          order_submission_purge_in_progress order_submissions_guard_delete order_submission_activity_guard_delete           log_finance_payment_request_activity; do
+          order_submission_purge_in_progress order_submissions_guard_delete order_submission_activity_guard_delete           log_finance_payment_request_activity in_finance_payment_verification \
+          finance_payment_requests_guard_decision_status reject_finance_payment_request; do
   grep -qi "function public.$fn(" "$TMP/deployed.sql" || fail "could not extract $fn"
 done
 "${Q[@]}" -d "$DB" -f "$TMP/deployed.sql" >/dev/null 2>"$TMP/err" || { cat "$TMP/err"; fail "installing deployed bodies"; }
@@ -106,14 +118,22 @@ insert into public.users (id, email, role, full_name, is_active, is_deleted) val
   ('11111111-1111-4111-8111-111111111111', 'admin@boe.test',   'admin',       'Admin',   true, false),
   ('22222222-2222-4222-8222-222222222222', 'sales@boe.test',   'salesperson', 'Sales',   true, false),
   ('33333333-3333-4333-8333-333333333333', 'nobody@boe.test',  'viewer',      'Nobody',  true, false),
-  ('44444444-4444-4444-8444-444444444444', 'sales2@boe.test',  'salesperson', 'Sales 2', true, false);
+  ('44444444-4444-4444-8444-444444444444', 'sales2@boe.test',  'salesperson', 'Sales 2', true, false),
+  ('55555555-5555-4555-8555-555555555555', 'verify1@boe.test', 'finance',     'Verifier 1', true, false),
+  ('66666666-6666-4666-8666-666666666666', 'verify2@boe.test', 'finance',     'Verifier 2', true, false),
+  ('77777777-7777-4777-8777-777777777777', 'alloc@boe.test',   'finance',     'Allocator',  true, false);
 insert into public.finance_permission_grants (user_id, action) values
   ('22222222-2222-4222-8222-222222222222', 'finance.create'),
   ('22222222-2222-4222-8222-222222222222', 'finance.allocate'),
   ('22222222-2222-4222-8222-222222222222', 'orders.create'),
   ('22222222-2222-4222-8222-222222222222', 'orders.view_all'),
   ('44444444-4444-4444-8444-444444444444', 'finance.create'),
-  ('44444444-4444-4444-8444-444444444444', 'orders.create');
+  ('44444444-4444-4444-8444-444444444444', 'orders.create'),
+  ('55555555-5555-4555-8555-555555555555', 'finance.approve'),
+  ('55555555-5555-4555-8555-555555555555', 'finance.create'),
+  ('66666666-6666-4666-8666-666666666666', 'finance.approve'),
+  ('77777777-7777-4777-8777-777777777777', 'finance.allocate'),
+  ('77777777-7777-4777-8777-777777777777', 'finance.view_all');
 insert into public.orders (id, display_number, status, client_name, created_by) values
   ('a0000000-0000-4000-8000-00000000000a', '0601', 'running', 'Kalyan Interiors', '11111111-1111-4111-8111-111111111111');
 insert into public.order_submissions (id, client_name, status, created_by, submitted_by, source_workbook_path) values
@@ -126,7 +146,7 @@ echo "== BEFORE the migration: every gap must reproduce on the deployed bodies"
 BEFORE="$("${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_idempotency_before.sql" 2>&1)" \
   || { echo "$BEFORE"; fail "the reproduction file errored"; }
 printf '%s\n' "$BEFORE" | grep 'REPRODUCED' | sed 's/^.*NOTICE:  /   /'
-[ "$(printf '%s\n' "$BEFORE" | grep -c 'REPRODUCED')" -eq 8 ] || fail "expected 8 reproduced gaps"
+[ "$(printf '%s\n' "$BEFORE" | grep -c 'REPRODUCED')" -eq 9 ] || fail "expected 9 reproduced gaps"
 
 echo "== apply $(basename "$PENDING") (one transaction)"
 "${Q[@]}" -d "$DB" -1 -f "$PENDING" >"$TMP/apply" 2>&1 || { cat "$TMP/apply"; fail "the migration did not apply"; }
@@ -136,7 +156,36 @@ echo "== assertions"
 AFTER="$("${Q[@]}" -d "$DB" -f "$REPO/supabase/tests/payment_idempotency_assertions.sql" 2>&1)" \
   || { echo "$AFTER"; fail "assertions"; }
 printf '%s\n' "$AFTER" | grep 'PASS' | sed 's/^.*NOTICE:  /   /'
-[ "$(printf '%s\n' "$AFTER" | grep -c "PASS:")" -eq 14 ] || { echo "$AFTER"; fail "expected 14 PASS lines"; }
+[ "$(printf '%s\n' "$AFTER" | grep -c "PASS:")" -eq 25 ] || { echo "$AFTER"; fail "expected 25 PASS lines"; }
+
+# ── After the migration, in a FRESH session: no table write was widened ──────
+# A verifier's direct UPDATE is still refused exactly as in production (B9), and
+# the new door makes the same decision. A fresh session matters: within one
+# transaction PL/pgSQL caches a trigger's function call after its first run,
+# so the EXECUTE check it hits would not run again.
+DIRECT_PAY="$("${Q[@]}" -d "$DB" -t -A <<SQL | grep -E '^[0-9a-f-]{36}$' | tail -1
+select set_config('request.jwt.claims', json_build_object('sub','22222222-2222-4222-8222-222222222222','role','authenticated')::text, false);
+select public.submit_payment_request(p_destination => 'suspense', p_amount => 808, p_payment_date => current_date, p_payment_mode => 'hdfc')->>'payment_request_id';
+SQL
+)"
+set +e
+DIRECT_OUT="$("${Q[@]}" -d "$DB" 2>&1 <<SQL
+select set_config('request.jwt.claims', json_build_object('sub','55555555-5555-4555-8555-555555555555','role','authenticated')::text, false);
+set role authenticated;
+update public.finance_payment_requests set status = 'needs_clarification', admin_note = 'x' where id = '$DIRECT_PAY';
+SQL
+)"
+set -e
+printf '%s' "$DIRECT_OUT" | grep -q 'permission denied for function' || fail "a verifier's direct UPDATE is no longer refused: $DIRECT_OUT"
+DOOR_OUT="$("${Q[@]}" -d "$DB" -t -A <<SQL | tail -1
+select set_config('request.jwt.claims', json_build_object('sub','55555555-5555-4555-8555-555555555555','role','authenticated')::text, false);
+set role authenticated;
+select public.request_finance_payment_clarification('$DIRECT_PAY', 'Which account?')->>'changed';
+SQL
+)"
+[ "$DOOR_OUT" = true ] || fail "the clarification door did not decide in a fresh session: $DOOR_OUT"
+[ "$("${Q[@]}" -d "$DB" -t -A -c "select status from finance_payment_requests where id = '$DIRECT_PAY'")" = needs_clarification ] || fail "the door did not land"
+echo "== fresh session: a verifier's direct UPDATE is still refused (nothing widened); request_finance_payment_clarification decides it"
 
 # ── The race: two real sessions, committed rows ──────────────────────────────
 as_sales="select set_config('request.jwt.claims', json_build_object('sub','22222222-2222-4222-8222-222222222222','role','authenticated')::text, false);"
@@ -252,5 +301,55 @@ SQL
 wait $PID
 [ "$(count "select count(*) from finance_payment_requests where amount = 999.99")" = 2 ] || fail "control: expected the unkeyed pair to be two payments"
 echo "   2 payments without a key — the deployed frontend's behaviour, unchanged until it sends one"
+
+# ── Two verifiers decide the same payment at once ───────────────────────────
+as_v1="select set_config('request.jwt.claims', json_build_object('sub','55555555-5555-4555-8555-555555555555','role','authenticated')::text, false);"
+as_v2="select set_config('request.jwt.claims', json_build_object('sub','66666666-6666-4666-8666-666666666666','role','authenticated')::text, false);"
+decision_race() { # <label> <first call, holds its lock 2 s> <second call>
+  local label="$1" first="$2" second="$3" pay
+  pay="$("${Q[@]}" -d "$DB" -t -A <<SQL | grep -E '^[0-9a-f-]{36}$' | tail -1
+$as_sales
+select public.submit_payment_request(p_destination => 'suspense', p_amount => 4242.42, p_payment_date => current_date, p_payment_mode => 'hdfc')->>'payment_request_id';
+SQL
+)"
+  "${Q[@]}" -d "$DB" -t -A >"$TMP/d1" 2>&1 <<SQL &
+$as_v1
+begin;
+select 1 from public.finance_payment_requests where id = '$pay' for update;
+select pg_sleep(2);
+select ${first//PAY/$pay};
+commit;
+SQL
+  local pid=$!
+  sleep 0.7
+  set +e
+  "${Q[@]}" -d "$DB" -t -A >"$TMP/d2" 2>&1 <<SQL
+$as_v2
+select ${second//PAY/$pay};
+SQL
+  set -e
+  wait $pid
+  DECIDED_PAY="$pay"
+}
+
+echo "== race: verifier 1 sends back while verifier 2 rejects"
+decision_race clarify-first \
+  "public.request_finance_payment_clarification('PAY', 'Which account?')->>'changed'" \
+  "public.reject_finance_payment_request('PAY', 'Duplicate')"
+grep -q '^true$' "$TMP/d1" || { cat "$TMP/d1"; fail "the first decision did not land"; }
+grep -q 'Only a pending payment request can be rejected' "$TMP/d2" || { cat "$TMP/d2"; fail "the late rejection was not refused as stale"; }
+[ "$(count "select status from finance_payment_requests where id = '$DECIDED_PAY'")" = needs_clarification ] || fail "wrong final status"
+[ "$(count "select count(*) from finance_payment_request_activity_log where payment_request_id = '$DECIDED_PAY' and event_type = 'status_changed' and payload->>'to_status' in ('needs_clarification','rejected')")" = 1 ] || fail "not exactly one decision in the trail"
+echo "   one decision (needs_clarification), one trail entry; the late rejection was refused as stale"
+
+echo "== race: verifier 1 rejects while verifier 2 sends back"
+decision_race reject-first \
+  "public.reject_finance_payment_request('PAY', 'Duplicate')->>'status'" \
+  "public.request_finance_payment_clarification('PAY', 'Which account?')->>'changed'"
+grep -q '^rejected$' "$TMP/d1" || { cat "$TMP/d1"; fail "the rejection did not land"; }
+grep -q '^false$' "$TMP/d2" || { cat "$TMP/d2"; fail "the late send-back did not answer changed=false"; }
+[ "$(count "select status from finance_payment_requests where id = '$DECIDED_PAY'")" = rejected ] || fail "wrong final status"
+[ "$(count "select count(*) from finance_payment_request_activity_log where payment_request_id = '$DECIDED_PAY' and event_type = 'status_changed' and payload->>'to_status' in ('needs_clarification','rejected')")" = 1 ] || fail "not exactly one decision in the trail"
+echo "   one decision (rejected), one trail entry; the late send-back answered changed=false and wrote nothing"
 
 echo "== suite complete; database dropped"

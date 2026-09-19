@@ -21,7 +21,9 @@ import { canDeletePayment } from '@/lib/finance/paymentDeletion'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { isValidAmount } from '@/lib/currency'
+import { AmountInput } from './components/AmountInput'
+import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -416,27 +418,6 @@ function ErrorBanner({ message }: { message: string }) {
     <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
       {message}
     </div>
-  )
-}
-
-// Indian-grouped amount input. While focused it shows the raw, comma-free
-// value for easy editing; on blur it displays Indian digit grouping. The
-// canonical value passed to onChange is always comma-free numeric text.
-function AmountInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [focused, setFocused] = useState(false)
-  const display = focused ? value : (value ? groupIndianDigits(value) : '')
-  return (
-    <input
-      className="boe-input"
-      type="text"
-      inputMode="decimal"
-      value={display}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onChange={e => onChange(sanitizeAmountInput(e.target.value))}
-      placeholder="0"
-      style={{ width: '100%' }}
-    />
   )
 }
 
@@ -2081,27 +2062,16 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       return
     }
 
-    const { data: changed, error: dbError } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        admin_note: adminNote.trim() || null,
-        status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', r.id)
-      // Only a request that is STILL pending is decided here, and the row that
-      // changed comes back. LAUNCH AUDIT (2026-09-19): an update that matched no
-      // row — the request was decided or withdrawn while this modal was open —
-      // returned no error, so the screen said it had worked and the creator was
-      // sent a clarification or rejection that never happened.
-      .eq('status', 'pending_approval')
-      .select('id')
+    // THROUGH THE DOORS, NOT A TABLE WRITE (PR #172). A direct UPDATE of the
+    // payment is refused in production by the Order/Finance reset guard, so
+    // both decisions failed. request_finance_payment_clarification and
+    // reject_finance_payment_request lock the row, re-check the verifier, act
+    // only while it is pending, and say when somebody else decided first.
+    const outcome = await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })
     setSaving(false)
-    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
-    if (!changed || changed.length === 0) {
-      setError('This request is no longer awaiting a decision — someone may have acted on it already. Refresh to see where it stands.')
-      return
-    }
+    if (outcome.kind === 'refused') { setError(outcome.message); return }
+    // STALE IS NOT SUCCESS: nothing changed, so nobody is told it did.
+    if (outcome.kind === 'stale') { setError(REVIEW_STALE_MESSAGE); return }
 
     // Notify the creator of the outcome (non-blocking).
     void notifyFinance({
