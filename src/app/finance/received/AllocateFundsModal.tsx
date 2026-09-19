@@ -34,7 +34,7 @@ import type { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { formatMoney } from '@/lib/finance/piPaymentView'
-import { sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { amountInputProblem, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
 import {
   ZERO,
   addExact,
@@ -123,7 +123,8 @@ export function allocateFundsBlockedReason(input: {
       return `Choose an Order or a PI Draft for allocation ${i + 1}, or remove it.`
     }
     if (!isValidAmount(row.amount)) {
-      return `Enter an amount for allocation ${i + 1}, in rupees and paise.`
+      const problem = amountInputProblem(row.amount)
+      return problem ? `Allocation ${i + 1}: ${problem}` : `Enter an amount for allocation ${i + 1}, in rupees and paise.`
     }
     const parsed = parseExact(row.amount)
     if (!parsed || isZero(parsed) || isNegative(parsed)) {

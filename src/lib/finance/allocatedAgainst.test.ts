@@ -551,7 +551,7 @@ describe('one safe name for a destination, wherever it is printed', () => {
     assert.deepEqual(named.targets.map(t => t.label), ['Reserved Order 0526', 'kept', null])
     assert.equal(nameSummaryTargets(summary, new Map()), summary, 'no names: the summary is returned untouched')
     const view = readFileSync(join('src', 'app', 'finance', 'received', 'ReceivedPaymentsView.tsx'), 'utf8')
-    assert.ok(/allocation=\{nameSummaryTargets\([\s\S]{0,200}?allocationTargetNames\(allocationTargets\.rows\)\)\}/.test(view))
+    assert.ok(/allocation=\{nameSummaryTargets\([\s\S]{0,600}?allocationTargetNames\(allocationTargets\.rows\)\)\}/.test(view))
   })
 })
 

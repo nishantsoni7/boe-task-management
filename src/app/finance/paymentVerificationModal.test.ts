@@ -183,7 +183,9 @@ describe('the decision keeps its prominence, and its wiring', () => {
 
   test('APPROVAL LOGIC IS UNTOUCHED — the RPC, the status write and both notifications', () => {
     assert.ok(code.includes("supabase.rpc('approve_finance_payment_request'"))
-    assert.ok(code.includes("status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected'"))
+    // REVISED (PR #172): the send-back and the rejection go through their doors
+    // (a direct status write is refused in production by the reset guard).
+    assert.ok(code.includes('await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })'))
     for (const event of [
       'finance_approved_suspense', 'finance_approved_linked',
       'finance_clarification', 'finance_rejected',
@@ -195,7 +197,9 @@ describe('the decision keeps its prominence, and its wiring', () => {
   test('and this pass added no read and no write of its own', () => {
     // One destination read, which the modal already had. No new query.
     assert.equal((code.match(/usePaymentDestination\(/g) ?? []).length, 1)
-    assert.equal((code.match(/\.from\(/g) ?? []).length, 1, 'the single status update, unchanged')
+    // PR #172: the one table write (the status update) is gone — the decision
+    // goes through request_finance_payment_clarification / reject_finance_payment_request.
+    assert.equal((code.match(/\.from\(/g) ?? []).length, 0, 'no table is written from the review')
     assert.equal((code.match(/\.rpc\(/g) ?? []).length, 1, 'the single approval RPC, unchanged')
   })
 })

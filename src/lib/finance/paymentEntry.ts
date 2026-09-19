@@ -22,6 +22,8 @@
 // target, which the database expresses as a null client_name and no allocation
 // row at all.
 
+import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
+
 export const PAYMENT_DESTINATIONS = ['pi_draft', 'confirmed_order', 'suspense'] as const
 export type PaymentDestination = typeof PAYMENT_DESTINATIONS[number]
 
@@ -302,6 +304,9 @@ export function paymentEntryErrorMessage(message: string | null | undefined): st
   }
   if (m.includes('PAYMENT_AMOUNT_INVALID')) {
     return 'Enter a positive amount in rupees and paise.'
+  }
+  if (m.includes('PAYMENT_IDEMPOTENCY_KEY_REUSED')) {
+    return SUBMISSION_KEY_REUSED_MESSAGE
   }
   if (m.includes('PAYMENT_DATE_REQUIRED')) {
     return 'Enter the date the payment was received.'

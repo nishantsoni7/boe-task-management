@@ -30,6 +30,11 @@ import {
 } from './paymentEntry'
 import { canVerifyPayment } from '@/app/finance/paymentRouting'
 import { formatInr } from '@/lib/pi/previewView'
+import {
+  SUBMISSION_KEY_REUSED_MESSAGE,
+  SUBMISSION_OUTCOME_UNKNOWN,
+  isAmbiguousFailure,
+} from '@/lib/finance/submissionAttempt'
 
 export const PI_PAYMENT_STATUS_LABEL: Record<string, string> = {
   pending_approval:    'Awaiting Verification',
@@ -605,6 +610,13 @@ export const PI_PAYMENT_RECORDED_BODY =
 export const PI_PAYMENT_PROOF_FAILED =
   'The payment was recorded, but the proof file could not be uploaded. You can add it from Finance later.'
 
+/**
+ * Proof upload failed, the form stays open, and pressing Record again replays
+ * the SAME payment (its idempotency key is kept) and retries only the proof.
+ */
+export const PI_PAYMENT_PROOF_RETRY =
+  'The payment was recorded, but the proof file did not upload. Press Record payment again to retry the proof — the payment will not be recorded twice.'
+
 export function piPaymentErrorMessage(raw: string | null | undefined): string {
   const message = (raw ?? '').trim()
   if (message === '') return 'Could not record the payment. Please try again.'
@@ -621,6 +633,7 @@ export function piPaymentErrorMessage(raw: string | null | undefined): string {
     ['ORDER_SUBMISSION_DELETION_CLAIMED', 'This PI is reserved for deletion and cannot receive a payment.'],
     ['ORDER_SUBMISSION_NO_CLIENT',        'This PI has no client name on file, so a payment cannot be attributed.'],
     ['ALLOCATION_EXCEEDS_PAYMENT',        'That amount is more than the payment has left to allocate.'],
+    ['PAYMENT_IDEMPOTENCY_KEY_REUSED',    SUBMISSION_KEY_REUSED_MESSAGE],
   ]
   for (const [code, friendly] of CODES) {
     if (message.includes(code)) return friendly
@@ -637,22 +650,36 @@ export function piPaymentErrorMessage(raw: string | null | undefined): string {
 // mapped to one of the sentences above and nothing else can escape.
 
 type PaymentRpcClient = {
-  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message?: string } | null }>
+  rpc(fn: string, args: Record<string, unknown>): Promise<{ data: unknown; error: { message?: string; code?: string } | null }>
 }
 
 export type RecordPiPaymentResult =
   | { ok: true; paymentRequestId: string | null }
-  | { ok: false; message: string }
+  /** `ambiguous`: no answer was read, so the payment may exist — keep the key. */
+  | { ok: false; message: string; ambiguous: boolean }
 
+/**
+ * Records the payment. With `idempotencyKey` (20261219000000) a retry of the
+ * same submission returns the payment already recorded instead of a second one.
+ */
 export async function recordPiPayment(
   client: PaymentRpcClient,
   submissionId: string,
   form: PiPaymentFormState,
+  idempotencyKey?: string,
 ): Promise<RecordPiPaymentResult> {
-  const { data, error } = await client.rpc(
-    'record_pi_submission_payment', buildPiPaymentPayload(submissionId, form))
+  const payload = buildPiPaymentPayload(submissionId, form)
+  const { data, error } = await client.rpc('record_pi_submission_payment',
+    idempotencyKey ? { ...payload, p_idempotency_key: idempotencyKey } : payload)
 
-  if (error) return { ok: false, message: piPaymentErrorMessage(error.message ?? null) }
+  if (error) {
+    const ambiguous = isAmbiguousFailure(error as { code?: unknown })
+    return {
+      ok: false,
+      ambiguous,
+      message: ambiguous ? SUBMISSION_OUTCOME_UNKNOWN : piPaymentErrorMessage(error.message ?? null),
+    }
+  }
 
   const paymentRequestId =
     (data as { payment_request_id?: string } | null)?.payment_request_id ?? null
@@ -672,4 +699,19 @@ export async function loadPiPaymentSummary(
     'pi_submission_payment_summary', { p_submission_id: submissionId })
   if (error) return null
   return (data as PiPaymentSummary | null) ?? null
+}
+
+/**
+ * Today's date as YYYY-MM-DD in the reader's OWN time zone.
+ *
+ * LAUNCH AUDIT (2026-09-19). The PI payment form took "today" from
+ * `toISOString()`, which is UTC: between 00:00 and 05:30 IST it was still
+ * yesterday in UTC, so the date picker's maximum and the "not in the future"
+ * check refused TODAY's receipts for five and a half hours every morning. The
+ * server already allows the UTC date + 1 (20261014000000), so the local date is
+ * always accepted there.
+ */
+export function localTodayIso(now: Date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }

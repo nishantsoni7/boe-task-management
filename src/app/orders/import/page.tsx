@@ -99,8 +99,10 @@ import type { PiWorkbook } from '@/lib/pi/types'
 import {
   SAVE_STAGES,
   SAVE_BUTTON_LABEL,
+  afterSaveFailure,
   canSaveDraft,
   describeSaveFailure,
+  discardUnsavedDraft,
   summariseSaveResult,
   saveStageLabel,
   saveStageIndex,
@@ -230,6 +232,15 @@ function NewOrderPiImportPageInner() {
    * before any save leaves an empty draft row behind.
    */
   const draftRef = useRef<{ submissionId: string; workbookPath: string | null } | null>(null)
+  /**
+   * ONE KEY PER UPLOAD ATTEMPT (20261219000000), sent with the create so a
+   * retry after a lost response returns the SAME draft instead of a second.
+   * In memory only; cleared when the draft it made is discarded.
+   */
+  const creationKeyRef = useRef<string | null>(null)
+  /** True only for a row THIS screen created — a replacement's record is never
+   *  discarded. */
+  const createdHereRef = useRef(false)
   /** Belt and braces against a double click: state updates are async, this is
    *  not, so two clicks in the same tick cannot both start a save. */
   const savingRef = useRef(false)
@@ -298,6 +309,52 @@ function NewOrderPiImportPageInner() {
       releaseImages()
     }
   }, [releaseImages])
+
+  // ── A failed save leaves nothing behind (saveDraftFlow, 20261219000000) ──
+  //
+  // The workbook THIS attempt uploaded goes first — only when the row holds no
+  // saved workbook — and then the server discards the row if, and only if, it
+  // was never saved. A refusal is an answer: the row is kept for Retry.
+  const discardDraft = useCallback(async (strayPaths: readonly string[]) => {
+    const draft = draftRef.current
+    if (!draft || !createdHereRef.current) return
+    const gone = await discardUnsavedDraft(draft.submissionId, [draft.workbookPath, ...strayPaths], {
+      readSavedWorkbookPath: async id => {
+        const { data, error } = await supabase
+          .from('order_submissions')
+          .select('source_workbook_path')
+          .eq('id', id)
+          .maybeSingle()
+        if (error) return undefined
+        return (data as { source_workbook_path?: string | null } | null)?.source_workbook_path ?? null
+      },
+      removeWorkbook: async path => !(await supabase.storage.from('order-files').remove([path])).error,
+      discard: async id => {
+        const { data, error } = await supabase.rpc('discard_unsaved_order_submission', { p_submission_id: id })
+        if (error) return 'failed'
+        const outcome = data as { discarded?: boolean; reason?: string } | null
+        return outcome?.discarded ? 'discarded' : outcome?.reason === 'absent' ? 'absent' : 'kept'
+      },
+    })
+    if (gone && draftRef.current === draft) {
+      draftRef.current = null
+      creationKeyRef.current = null
+      createdHereRef.current = false
+    }
+  }, [supabase])
+
+  // LEAVING WITH AN UNSAVED DRAFT. The server discards it only if nothing was
+  // ever saved to it; the workbook is not touched here, because a save may
+  // still be finishing on the server.
+  const discardOnLeave = useRef(discardDraft)
+  useEffect(() => { discardOnLeave.current = discardDraft }, [discardDraft])
+  useEffect(() => {
+    const leave = discardOnLeave
+    const saving = savingRef
+    return () => {
+      if (!saving.current) void leave.current([])
+    }
+  }, [])
 
   // ── Access ──
   //
@@ -526,12 +583,19 @@ function NewOrderPiImportPageInner() {
       // ── 1. The draft row, so the storage key can name it ──
       setSaveStage('creating')
       if (!draftRef.current) {
-        const { data, error } = await supabase.rpc('create_order_submission', { p_client_name: null })
+        // The key is KEPT on failure: if the draft was made and the answer was
+        // lost, Retry returns that same draft.
+        if (!creationKeyRef.current) creationKeyRef.current = crypto.randomUUID()
+        const { data, error } = await supabase.rpc('create_order_submission', {
+          p_client_name: null,
+          p_idempotency_key: creationKeyRef.current,
+        })
         if (error || !data || typeof (data as { id?: unknown }).id !== 'string') {
           setSaveFailure(describeSaveFailure('CREATE_FAILED'))
           return
         }
         draftRef.current = { submissionId: (data as { id: string }).id, workbookPath: null }
+        createdHereRef.current = true
       }
       const draft = draftRef.current
 
@@ -552,6 +616,11 @@ function NewOrderPiImportPageInner() {
           // pointing the server at a key that may hold nothing. The preview
           // stays on screen — the parse is still valid.
           setSaveFailure(describeSaveFailure('UPLOAD_FAILED'))
+          // The draft this attempt created is discarded, and the object too in
+          // case it landed before its answer was lost. Retry starts clean.
+          if (afterSaveFailure({ createdHere: createdHereRef.current, ambiguous: false }) === 'discard') {
+            await discardDraft([path])
+          }
           return
         }
         // Recorded only on success. Every later retry — network failure, server
@@ -574,6 +643,8 @@ function NewOrderPiImportPageInner() {
           }),
         })
       } catch {
+        // NO ANSWER: the server may have saved it. Everything is kept, so Retry
+        // resumes the same draft and the same stored workbook.
         setSaveFailure(describeSaveFailure('NETWORK'))
         return
       }
@@ -587,11 +658,20 @@ function NewOrderPiImportPageInner() {
         // shown — describeSaveFailure marks those codes so the screen can say
         // so plainly.
         setSaveFailure(describeSaveFailure(typeof body?.error === 'string' ? body.error : null))
+        // A coded answer from the route is a decision: nothing was saved, so
+        // this attempt's draft and workbook are discarded. An uncoded one (a
+        // gateway timeout) is not — the save may still finish — so it is kept.
+        const ambiguous = typeof body?.error !== 'string'
+        if (afterSaveFailure({ createdHere: createdHereRef.current, ambiguous }) === 'discard') {
+          await discardDraft([])
+        }
         return
       }
 
       const success = summariseSaveResult(body, draft.submissionId)
       setSaveSuccess(success)
+      // Saved: nothing about this draft is ever discarded from here now.
+      createdHereRef.current = false
 
       // ── 4. Take the employee to the record that now exists ──
       //
@@ -611,7 +691,7 @@ function NewOrderPiImportPageInner() {
       savingRef.current = false
       setSaveStage(null)
     }
-  }, [stage, supabase, router, replaceTarget])
+  }, [stage, supabase, router, replaceTarget, discardDraft])
 
   const acceptFile = useCallback((file: File | null | undefined) => {
     if (!file || parsing) return

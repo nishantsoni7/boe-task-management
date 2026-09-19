@@ -209,3 +209,60 @@ export const WORKBOOK_UPLOAD_MIME =
 export function workbookObjectPath(submissionId: string, objectId: string): string {
   return `submissions/${submissionId}/original/${objectId}.xlsx`
 }
+
+// ── A failed save leaves nothing behind (20261219000000) ─────────────────────
+//
+// The draft row has to exist before the workbook can be stored — the storage
+// policy authorises a path by its submission — so a save that fails after that
+// point used to leave an empty "draft" in PI Drafts, and a retry after a lost
+// create response made a second one.
+//
+//   * The create carries ONE KEY PER UPLOAD ATTEMPT: a retry returns the same
+//     draft (create_order_submission, 20261219000000).
+//   * A DEFINITIVE failure — the upload was refused, or the server answered
+//     that it did not save — discards the draft this screen created: the
+//     workbook object first, while the row still authorises its removal, then
+//     the row through discard_unsaved_order_submission, which refuses anything
+//     that was ever saved. The server decides; this code only asks.
+//   * An AMBIGUOUS failure — no answer from the server — keeps everything, so
+//     Retry resumes the same draft and the same stored workbook.
+//   * A replacement's record is never discarded: it was not created here.
+
+export type AfterSaveFailure = 'keep' | 'discard'
+
+export function afterSaveFailure(input: { createdHere: boolean; ambiguous: boolean }): AfterSaveFailure {
+  if (!input.createdHere) return 'keep'
+  return input.ambiguous ? 'keep' : 'discard'
+}
+
+export type UnsavedDraftDeps = {
+  /** The row's stored workbook key: null when never saved, undefined when unreadable. */
+  readSavedWorkbookPath(submissionId: string): Promise<string | null | undefined>
+  /** True when the object is gone (or was never there). */
+  removeWorkbook(path: string): Promise<boolean>
+  discard(submissionId: string): Promise<'discarded' | 'absent' | 'kept' | 'failed'>
+}
+
+/**
+ * Removes an unsaved draft and any workbook this attempt uploaded for it.
+ * Resolves true only when nothing is left behind.
+ *
+ * `paths` are objects THIS attempt uploaded. They are removed only when the row
+ * provably holds no saved workbook — a saved draft's file is never touched.
+ */
+export async function discardUnsavedDraft(
+  submissionId: string,
+  paths: readonly (string | null | undefined)[],
+  deps: UnsavedDraftDeps,
+): Promise<boolean> {
+  const uploaded = paths.filter((p): p is string => typeof p === 'string' && p !== '')
+  if (uploaded.length > 0) {
+    const saved = await deps.readSavedWorkbookPath(submissionId)
+    if (saved !== null) return false
+    for (const path of uploaded) {
+      if (!(await deps.removeWorkbook(path))) return false
+    }
+  }
+  const outcome = await deps.discard(submissionId)
+  return outcome === 'discarded' || outcome === 'absent'
+}

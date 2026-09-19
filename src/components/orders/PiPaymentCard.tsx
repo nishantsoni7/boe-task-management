@@ -16,6 +16,7 @@
 
 import { useCallback, useRef, useState } from 'react'
 import { colors } from '@/lib/tokens'
+import { amountInputProblem } from '@/lib/currency'
 import { FinanceModal } from '@/app/finance/components/FinanceModalShell'
 import { PaymentModeHint } from '@/app/finance/components/PaymentModeHint'
 import type { PaymentDecision } from '@/lib/finance/paymentDecision'
@@ -207,6 +208,10 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
 
   const errors = validatePiPaymentForm(form, todayIso)
   const allowed = canSubmitPiPayment({ form, todayIso, saving, submitted })
+  // An amount that cannot be accepted says why AT ONCE, like every other payment
+  // form: the button is disabled while it is wrong, so waiting for a press to
+  // reveal the reason would never reveal it (PR #172 review).
+  const amountMessage = amountInputProblem(form.amount) ?? (touched ? errors.amount ?? null : null)
 
   const set = (k: keyof PiPaymentFormState) => (v: string) => setForm(f => ({ ...f, [k]: v }))
 
@@ -233,7 +238,7 @@ export function AddPiPaymentModal({ todayIso, saving, onClose, onSubmit }: {
             style={INPUT} inputMode="decimal" autoFocus placeholder="0.00"
             value={form.amount} onChange={e => set('amount')(e.target.value)}
           />
-          {touched && errors.amount && <div style={ERR}>{errors.amount}</div>}
+          {amountMessage && <div role="alert" style={ERR}>{amountMessage}</div>}
         </div>
 
         <div>

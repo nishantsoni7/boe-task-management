@@ -34,6 +34,7 @@ import {
   type ExactDecimal,
 } from './exactMoney'
 import type { ConfirmedAllocationStatus } from './paymentSurfaces'
+import type { PaymentAllocationSummary } from './paymentAllocations'
 
 /** One row of received_payment_allocation_targets(). */
 export type AllocationTargetRow = {
@@ -263,5 +264,82 @@ export function allocatedAgainstText(view: AllocatedAgainstView, formatMoney: (v
       const head = view.lines.length > 1 ? `${allocationCountLabel(view.lines.length)}: ` : ''
       return head + parts.join('; ')
     }
+  }
+}
+
+// ── The COMPLETE figures, for readers whose own RLS sees only part ───────────
+//
+// LAUNCH AUDIT (2026-09-19). A Finance reader without finance.view_all reads a
+// payment's allocations through RLS, which returns only the allocations whose
+// target they may open. Two screens used that partial read as if it were the
+// whole ledger:
+//
+//   * the payment's detail panel printed "Allocated ₹50,000 / Remaining
+//     ₹50,000" for a ₹1,00,000 payment that also had ₹40,000 on an Order the
+//     reader cannot open — while the list row, from the complete read, said
+//     "Unallocated ₹10,000";
+//   * Allocate Funds offered ₹50,000 as the remaining balance, which the server
+//     then refused (only ₹10,000 was free).
+//
+// The complete answer is already on the page: received_payment_allocation_
+// targets() (20261216000000) returns every ACTIVE allocation of each payment the
+// reader may read, with safe labels only. These two functions derive the panel
+// summary and the existing total from it, with the same exact decimals as the
+// list. They return null when that read did not cover the payment — the caller
+// then keeps its previous, conservative behaviour.
+
+/** The ACTIVE total of one payment from the complete read, or null if uncovered. */
+export function completeAllocatedTotal(
+  paymentId: string,
+  rows: readonly AllocationTargetRow[] | null,
+  options: { covered: boolean; readFailed?: boolean },
+): string | null {
+  if (options.readFailed || rows === null || !options.covered) return null
+  let total: ExactDecimal = ZERO
+  for (const row of rows) {
+    if (row.payment_request_id !== paymentId) continue
+    const share = parseExact(row.allocated_amount)
+    if (!share) return null
+    total = addExact(total, share)
+  }
+  return exactToString(total)
+}
+
+/**
+ * One payment's allocation summary from the complete read — one entry per
+ * ACTIVE ledger row (the history stays separate here; only the list combines
+ * duplicates), state and remainder in exact decimals. Null if uncovered.
+ */
+export function completeAllocationSummary(
+  payment: { id: string; amount: string | number | null },
+  rows: readonly AllocationTargetRow[] | null,
+  options: { covered: boolean; readFailed?: boolean },
+): PaymentAllocationSummary | null {
+  const total = completeAllocatedTotal(payment.id, rows, options)
+  if (total === null || rows === null) return null
+  const allocated = parseExact(total) ?? ZERO
+  const targets = rows
+    .filter(r => r.payment_request_id === payment.id)
+    .map(r => ({
+      allocationId: r.allocation_id,
+      kind: r.target_type === 'order' ? 'order' as const : 'submission' as const,
+      targetId: r.target_id,
+      label: null,
+      amount: exactToString(parseExact(r.allocated_amount) ?? ZERO),
+    }))
+  const amount = parseExact(payment.amount)
+  if (!amount) {
+    return { paymentId: payment.id, state: 'unknown', allocated: total, unallocated: null, targets }
+  }
+  const comparison = compareExact(allocated, amount)
+  return {
+    paymentId: payment.id,
+    state: compareExact(allocated, ZERO) <= 0 ? 'unallocated'
+      : comparison > 0 ? 'over'
+      : comparison === 0 ? 'full'
+      : 'partial',
+    allocated: total,
+    unallocated: comparison >= 0 ? exactToString(ZERO) : exactToString(subtractExact(amount, allocated)),
+    targets,
   }
 }

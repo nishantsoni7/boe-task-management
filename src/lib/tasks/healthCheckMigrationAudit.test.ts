@@ -663,6 +663,13 @@ describe('the migration is placed correctly', () => {
       // column, policy, grant or permission action changes; only those two bodies
       // change, and nothing asserted here reads them.
       '20261218000000_finance_verified_payments_are_permanent.sql',
+      // 20261219000000 — the launch audit's three gaps (PR #172): wraps the three
+      // payment-creation doors and create_order_submission with an idempotency
+      // key, adds two client-closed key tables, the rupees-and-paise CHECK on
+      // finance_payment_requests.amount and discard_unsaved_order_submission, and
+      // closes the direct INSERT on finance_payment_requests. Nothing this file
+      // asserts reads any of it.
+      '20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

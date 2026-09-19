@@ -21,7 +21,9 @@ import { canDeletePayment } from '@/lib/finance/paymentDeletion'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
 import { PaymentProofView } from '@/components/PaymentProofView'
 import { PaymentRequestActivity } from '@/components/PaymentRequestActivity'
-import { groupIndianDigits, sanitizeAmountInput, isValidAmount } from '@/lib/currency'
+import { isValidAmount } from '@/lib/currency'
+import { AmountInput } from './components/AmountInput'
+import { REVIEW_STALE_MESSAGE, sendBackOrReject } from '@/lib/finance/reviewDecision'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { notifyFinance, notifyOrderUpdate } from '@/lib/notify'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
@@ -91,6 +93,11 @@ import {
   paymentModeOptionsFor,
   type PaymentDestination as PaymentEntryDestination,
 } from '@/lib/finance/paymentEntry'
+import {
+  SubmissionAttempt,
+  SUBMISSION_OUTCOME_UNKNOWN,
+  isAmbiguousFailure,
+} from '@/lib/finance/submissionAttempt'
 import {
   custodyDraftsError,
   modeRequiresCustodyTrail,
@@ -411,27 +418,6 @@ function ErrorBanner({ message }: { message: string }) {
     <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(217,79,79,0.1)', color: '#C13030', fontSize: '12px' }}>
       {message}
     </div>
-  )
-}
-
-// Indian-grouped amount input. While focused it shows the raw, comma-free
-// value for easy editing; on blur it displays Indian digit grouping. The
-// canonical value passed to onChange is always comma-free numeric text.
-function AmountInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [focused, setFocused] = useState(false)
-  const display = focused ? value : (value ? groupIndianDigits(value) : '')
-  return (
-    <input
-      className="boe-input"
-      type="text"
-      inputMode="decimal"
-      value={display}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onChange={e => onChange(sanitizeAmountInput(e.target.value))}
-      placeholder="0"
-      style={{ width: '100%' }}
-    />
   )
 }
 
@@ -1135,6 +1121,13 @@ function NewPaymentConfirmationModal({
   // it is what actually closes the window.
   const submitting = useRef(false)
 
+  // ONE SUBMISSION, ONE PAYMENT — ON THE SERVER (20261219000000). The key is
+  // reused until the outcome is known AND the proof is attached, so a lost
+  // response, a refresh or a proof retry replays the payment already recorded
+  // instead of recording it again.
+  const attemptRef = useRef<SubmissionAttempt | null>(null)
+  if (attemptRef.current === null) attemptRef.current = new SubmissionAttempt('payment-request')
+
   // Optional payment-proof attachment (uploaded to the private payment-proofs bucket)
   const [attachFile,  setAttachFile]  = useState<File | null>(null)
   const [attachError, setAttachError] = useState<string | null>(null)
@@ -1250,7 +1243,7 @@ function NewPaymentConfirmationModal({
     // ONE CALL, ONE TRANSACTION. The payment, its allocation intent and its
     // custody activities are written together or not at all. No client name is
     // sent: there is no parameter for one, deliberately.
-    const { data, error: rpcError } = await supabase.rpc('submit_payment_request', {
+    const args = {
       p_destination:     entry.destination,
       p_target_id:       entry.target?.id ?? null,
       p_amount:          Number(form.amount),
@@ -1259,11 +1252,18 @@ function NewPaymentConfirmationModal({
       p_proof_note:      form.proofNote.trim() || null,
       p_sales_note:      form.salesNote.trim() || null,
       p_custody_events:  custodyEvents,
+    }
+    const attempt = attemptRef.current!
+    const { data, error: rpcError } = await supabase.rpc('submit_payment_request', {
+      ...args,
+      p_idempotency_key: attempt.begin(args),
     })
 
     if (rpcError || !data) {
       submitting.current = false
-      setError(paymentEntryErrorMessage(rpcError?.message))
+      // Unknown outcome: the key is KEPT, so pressing again cannot record twice.
+      attempt.settleUnlessAmbiguous(rpcError)
+      setError(isAmbiguousFailure(rpcError) ? SUBMISSION_OUTCOME_UNKNOWN : paymentEntryErrorMessage(rpcError?.message))
       setSaving(false)
       return
     }
@@ -1286,12 +1286,16 @@ function NewPaymentConfirmationModal({
         .eq('id', created.payment_request_id)
       const cleaned = !delErr && count !== 0
       submitting.current = false
+      // THE KEY IS NOT SETTLED. If the request was removed, its key went with
+      // it and Send records it once more; if it could not be removed, Send
+      // replays THAT request and retries only the proof. Either way one payment.
       setError(cleaned
         ? proofErr
-        : `${proofErr} The draft request could not be cleaned up automatically — please ask an admin to remove the duplicate.`)
+        : `${proofErr} The request itself was recorded. Press Send again to retry the proof — the payment will not be recorded twice.`)
       setSaving(false)
       return
     }
+    attempt.settle()
     setSaving(false)
 
     // Notify approvers that a new request is waiting (non-blocking). The
@@ -2058,16 +2062,16 @@ function AdminReviewModal({ request: r, supabase, onClose, onActioned }: AdminRe
       return
     }
 
-    const { error: dbError } = await supabase
-      .from('finance_payment_requests')
-      .update({
-        admin_note: adminNote.trim() || null,
-        status:     action === 'needs_clarification' ? 'needs_clarification' : 'rejected',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', r.id)
+    // THROUGH THE DOORS, NOT A TABLE WRITE (PR #172). A direct UPDATE of the
+    // payment is refused in production by the Order/Finance reset guard, so
+    // both decisions failed. request_finance_payment_clarification and
+    // reject_finance_payment_request lock the row, re-check the verifier, act
+    // only while it is pending, and say when somebody else decided first.
+    const outcome = await sendBackOrReject(supabase, { requestId: r.id, action, note: adminNote })
     setSaving(false)
-    if (dbError) { setError(friendlyDbErrorMessage(dbError)); return }
+    if (outcome.kind === 'refused') { setError(outcome.message); return }
+    // STALE IS NOT SUCCESS: nothing changed, so nobody is told it did.
+    if (outcome.kind === 'stale') { setError(REVIEW_STALE_MESSAGE); return }
 
     // Notify the creator of the outcome (non-blocking).
     void notifyFinance({
