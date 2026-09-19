@@ -48,17 +48,27 @@ const CREATOR   = '22222222-2222-4222-8222-222222222222'
 // ── 1. The two independent server-side reads run together ──────────────────
 
 describe('createAssignmentNotification runs its independent reads concurrently', () => {
-  /** A store whose two independent reads record WHEN they started and finished. */
-  function timingStore(delayMs: number): AssignmentNotificationStore & { calls: { name: string; start: number; end: number }[] } {
-    const calls: { name: string; start: number; end: number }[] = []
-    const timed = async <T>(name: string, value: T): Promise<T> => {
-      const start = Date.now()
-      await new Promise(r => setTimeout(r, delayMs))
-      calls.push({ name, start, end: Date.now() })
-      return value
+  /**
+   * A store whose two independent reads are HELD until the test releases them.
+   * Sequential awaits leave the second read unstarted while the first is held,
+   * so "both started before either returned" is proved by order, not by a
+   * clock: a loaded machine cannot make it flake.
+   */
+  function gatedStore(): AssignmentNotificationStore & { started: string[]; releaseAll: () => void } {
+    const started: string[] = []
+    const held: (() => void)[] = []
+    let released = false
+    const gated = <T>(name: string, value: T): Promise<T> => {
+      started.push(name)
+      if (released) return Promise.resolve(value)
+      return new Promise<T>(resolve => { held.push(() => resolve(value)) })
     }
     return {
-      calls,
+      started,
+      releaseAll() {
+        released = true
+        for (const release of held.splice(0)) release()
+      },
       async fetchTask() {
         return {
           task: { id: TASK, title: 't', assigned_to: ASSIGNEE, created_by: CREATOR } as AssignmentTaskRow,
@@ -67,33 +77,33 @@ describe('createAssignmentNotification runs its independent reads concurrently',
       },
       async isAdmin() { return false },
       async hasAssignmentNotification() {
-        return timed('dup', { exists: false, readable: true })
+        return gated('dup', { exists: false, readable: true })
       },
       async findCreationActivityId() {
-        return timed('activity', 'activity-log-id')
+        return gated('activity', 'activity-log-id')
       },
       async insert(rows: NotificationInsert[]) { void rows; return { error: null } },
     }
   }
 
   test('the duplicate check and the activity lookup overlap, rather than one waiting on the other', async () => {
-    const store = timingStore(40)
-    const startedAt = Date.now()
-    const outcome = await createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
-    const totalMs = Date.now() - startedAt
+    const store = gatedStore()
+    const run = createAssignmentNotification(store, { taskId: TASK, callerId: CREATOR })
 
+    // No timers are involved, so once pending callbacks have run, every read the
+    // operation issues without waiting on another read has started.
+    await new Promise(resolve => setImmediate(resolve))
+    const startedWhileHeld = [...store.started].sort()
+
+    // Release before asserting: a regression to sequential awaits then finishes
+    // (its second read starts un-held) instead of leaving the operation pending.
+    store.releaseAll()
+    const outcome = await run
+
+    assert.deepEqual(startedWhileHeld, ['activity', 'dup'],
+      'both reads must be issued before either one has returned')
     assert.equal(outcome.status, 'created')
-    assert.equal(store.calls.length, 2)
-
-    // Two sequential 40ms reads would take ~80ms+; run together they take
-    // ~40ms. A generous ceiling avoids flaking on a loaded CI box while still
-    // catching a regression back to sequential awaits (which would be ~80ms+).
-    assert.ok(totalMs < 70, `expected the two reads to overlap (~40ms), took ${totalMs}ms`)
-
-    // Direct proof of overlap: the second call to start began before the
-    // first had finished.
-    const [first, second] = [...store.calls].sort((a, b) => a.start - b.start)
-    assert.ok(second.start < first.end, 'the second read must start before the first one ends')
+    assert.deepEqual([...store.started].sort(), ['activity', 'dup'], 'each read runs exactly once')
   })
 
   test('the source runs them through one Promise.all, not two sequential awaits', () => {
