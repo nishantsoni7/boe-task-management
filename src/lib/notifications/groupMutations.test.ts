@@ -470,6 +470,10 @@ describe('34/35. no regression into suppressed territory', () => {
       // nothing, registers no permission module or action, and runs no DML against
       // any business table. It reaches nothing here.
       '20261220000000_finance_expenses.sql',
+      // 20261221000000 — drops the declared scale from expenses.amount so an
+      // over-precise figure is REFUSED by the CHECK rather than silently rounded.
+      // One ALTER COLUMN TYPE on an empty table of its own. It reaches nothing here.
+      '20261221000000_expense_amounts_are_never_rounded.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

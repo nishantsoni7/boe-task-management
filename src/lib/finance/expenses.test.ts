@@ -42,6 +42,8 @@ import {
 const TODAY = '2026-09-20'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const MIGRATION = read('supabase/migrations/20261220000000_finance_expenses.sql')
+/** The follow-up that makes an over-precise amount a refusal rather than a rounding. */
+const AMOUNT_FIX = read('supabase/migrations/20261221000000_expense_amounts_are_never_rounded.sql')
 
 const form = (over: Partial<ExpenseFormState> = {}): ExpenseFormState => ({
   ...emptyExpenseForm(TODAY),
@@ -133,12 +135,57 @@ describe('the amount, with the same rules as every other Finance amount', () => 
   })
 
   test('THE DATABASE REFUSES THE SAME AMOUNTS', () => {
-    assert.ok(MIGRATION.includes('amount numeric(14,2) not null'), 'fixed precision, never float')
     assert.ok(MIGRATION.includes("amount <> 'NaN'::numeric"))
     assert.ok(MIGRATION.includes('and amount > 0'))
     assert.ok(MIGRATION.includes('and amount = round(amount, 2)'))
     assert.ok(!/amount\s+(real|double precision|float)/.test(MIGRATION),
       'no floating-point money anywhere in the schema')
+  })
+
+  test('THE AMOUNT COLUMN DECLARES NO SCALE, so a third decimal is refused not rounded', () => {
+    // 20261220000000 declared numeric(14,2), which ROUNDS on assignment — 10.005
+    // became 10.01 and the round() CHECK above could never fail. Verified against
+    // the database and corrected by 20261221000000, which drops the scale so the
+    // CHECK does the work. `numeric` with no precision is exact decimal, not
+    // floating point, so nothing about "never float" is weakened.
+    assert.ok(AMOUNT_FIX.includes('alter column amount type numeric;'))
+    assert.equal(/alter column amount type numeric\(/.test(AMOUNT_FIX), false,
+      'no declared scale may come back — it would silently round again')
+    assert.ok(AMOUNT_FIX.includes('numeric_scale'), 'and the migration asserts that for itself')
+  })
+
+  test('the same declaration the rest of Finance uses', () => {
+    // finance_payment_requests.amount and finance_payment_allocations.allocated_amount
+    // are both plain `numeric` with this CHECK. All three money columns now agree.
+    const payments = read('supabase/migrations/20260628000200_create_finance_payment_requests.sql')
+    assert.ok(/amount\s+numeric\s+not null/.test(payments),
+      'the payment ledger declares no scale either')
+  })
+
+  test('the amount fix guards the property that matters, not a proxy for it', () => {
+    // It checks that every stored amount is ALREADY exactly two decimal places —
+    // so widening the column cannot change a figure — rather than demanding an
+    // empty table, which stops being true the moment somebody uses the feature
+    // while the thing it stood for stays true.
+    assert.ok(AMOUNT_FIX.includes('where amount is distinct from round(amount, 2)'))
+    assert.ok(AMOUNT_FIX.includes('must be looked at first'),
+      'and it names the offending rows rather than just refusing')
+    assert.equal(AMOUNT_FIX.includes('expected an empty table'), false)
+  })
+
+  test('the amount fix writes no rows', () => {
+    const statements = AMOUNT_FIX
+      .split('\n').filter(l => !l.trimStart().startsWith('--')).join('\n')
+    // The one INSERT is the assertion probe, which is required to RAISE — so it
+    // inserts nothing when the fix works, and aborts the migration if it does not.
+    assert.ok(statements.includes("values (current_date, 10.005, 'cash', '__amount probe__'"))
+    assert.ok(AMOUNT_FIX.includes('exception when check_violation then'))
+    assert.ok(AMOUNT_FIX.includes('was still accepted'))
+    assert.equal(/insert into public\.expense_categories/.test(statements), false,
+      'the probe borrows an existing category rather than creating one')
+    assert.equal(/^\s*delete\s+from/mi.test(statements), false)
+    assert.equal(/^\s*update\s+public\./mi.test(statements), false)
+    assert.equal(/drop (table|column|constraint|policy|index)/i.test(AMOUNT_FIX), false)
   })
 })
 
