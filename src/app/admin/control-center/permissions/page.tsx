@@ -33,6 +33,11 @@ import {
   type OverrideChoice,
   type PermissionSource,
 } from '@/lib/permissions/accessControlChanges'
+import {
+  adminEditableActions,
+  isAdminEditableAction,
+  moduleHasAdminEditableActions,
+} from '@/lib/permissions/orderApproval'
 import styles from './permissions.module.css'
 import { useAdminMembers, useDepartments, NO_MEMBERS, NO_DEPARTMENTS } from '@/hooks/queries/useControlCenterData'
 
@@ -284,7 +289,7 @@ function OverrideControl({
 // ── Change Access dialog ─────────────────────────────────────────────────────
 
 function ChangeAccessModal({
-  mod, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose,
+  mod, currentLevel, getChoice, onChangeAction, onApplyLevel, onClose, adminOnlyActions,
 }: {
   mod: ModuleState
   currentLevel: AccessLevel
@@ -292,6 +297,16 @@ function ChangeAccessModal({
   onChangeAction: (actionKey: string, choice: OverrideChoice) => void
   onApplyLevel: (level: PresetLevel) => void
   onClose: () => void
+  /**
+   * Non-null when the employee is a system Administrator: the ONLY actions
+   * this dialog may offer, because every other one on this module is decided
+   * by their role and a control for it would decide nothing.
+   *
+   * The levels are hidden entirely in that case. A level is a statement about
+   * a whole module — "this person is a Manager here" — and on an
+   * administrator it would be a statement the engine does not get to make.
+   */
+  adminOnlyActions: readonly string[] | null
 }) {
   const [mode, setMode] = useState<AccessLevel>(currentLevel)
   // A standard level the administrator has chosen but not yet confirmed,
@@ -385,39 +400,52 @@ function ChangeAccessModal({
         </div>
       )}
 
-      <div className={styles.levelGrid} role="radiogroup" aria-label="Access level">
-        {LEVELS.map(l => {
-          const active = mode === l.key
-          return (
-            <button
-              key={l.key}
-              type="button"
-              role="radio"
-              aria-checked={active}
-              onClick={() => pick(l.key)}
-              className={`${styles.levelOption}${active ? ` ${styles.levelOptionActive}` : ''}`}
-            >
-              <div className={styles.levelOptionLabel}>{l.label}</div>
-              <div className={styles.levelOptionDesc}>{l.description}</div>
-            </button>
-          )
-        })}
-      </div>
-
-      {mode === 'custom' && (
-        <div style={{ marginTop: 16 }}>
-          {mod.actions.map(action => {
-            const choice = getChoice(action.actionKey)
+      {adminOnlyActions === null && (
+        <div className={styles.levelGrid} role="radiogroup" aria-label="Access level">
+          {LEVELS.map(l => {
+            const active = mode === l.key
             return (
-              <div key={action.actionKey} className={styles.actionRow}>
-                <div style={{ minWidth: 160 }}>
-                  <div className={styles.actionName}>{action.displayName}</div>
-                  <EffectiveBadge choice={choice} action={action} />
-                </div>
-                <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
-              </div>
+              <button
+                key={l.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => pick(l.key)}
+                className={`${styles.levelOption}${active ? ` ${styles.levelOptionActive}` : ''}`}
+              >
+                <div className={styles.levelOptionLabel}>{l.label}</div>
+                <div className={styles.levelOptionDesc}>{l.description}</div>
+              </button>
             )
           })}
+        </div>
+      )}
+
+      {adminOnlyActions !== null && (
+        <div className={cc.note} style={{ marginBottom: 4 }}>
+          This person is a system Administrator, so their level here is not the
+          engine&apos;s to set. These are the permissions on this module that are
+          granted per person regardless of the system role — and so are the only
+          ones that change anything for them.
+        </div>
+      )}
+
+      {(mode === 'custom' || adminOnlyActions !== null) && (
+        <div style={{ marginTop: 16 }}>
+          {mod.actions
+            .filter(a => adminOnlyActions === null || adminOnlyActions.includes(a.actionKey))
+            .map(action => {
+              const choice = getChoice(action.actionKey)
+              return (
+                <div key={action.actionKey} className={styles.actionRow}>
+                  <div style={{ minWidth: 160 }}>
+                    <div className={styles.actionName}>{action.displayName}</div>
+                    <EffectiveBadge choice={choice} action={action} />
+                  </div>
+                  <OverrideControl value={choice} onChange={v => onChangeAction(action.actionKey, v)} />
+                </div>
+              )
+            })}
         </div>
       )}
     </CcDialog>
@@ -525,14 +553,23 @@ function WorkspaceHeader({ tree, overrides }: { tree: EmployeePermissionTree; ov
 // ── Module row ───────────────────────────────────────────────────────────────
 
 function ModuleRow({
-  mod, level, accessible, unsaved, locked, source, onToggle, open, onOpen,
+  mod, level, accessible, unsaved, locked, changeLocked, source, onToggle, open, onOpen,
 }: {
   mod: ModuleState
   level: AccessLevel
   accessible: boolean
   unsaved: boolean
-  /** True for a system Administrator — the row is read-only. */
+  /**
+   * True for a system Administrator — module ACCESS comes from their role, so
+   * the switch is read-only for them on every module without exception.
+   */
   locked: boolean
+  /**
+   * Whether the Change level dialog is closed too. Separate from `locked`
+   * because a module may hold an action that IS editable on an administrator
+   * even though their module access is not — see adminEditableActions.
+   */
+  changeLocked: boolean
   source: SourceSummary
   onToggle: (on: boolean) => void
   open: boolean
@@ -569,7 +606,7 @@ function ModuleRow({
           type="button"
           className={cc.linkBtn}
           onClick={onOpen}
-          disabled={locked}
+          disabled={changeLocked}
           aria-haspopup="dialog"
           aria-label={`Change access level for ${mod.displayName}`}
         >
@@ -901,14 +938,17 @@ function PermissionsPageInner() {
   // ── Save ─────────────────────────────────────────────────────────────────
   async function save() {
     if (!selectedEmployeeId || !tree) return
-    // A system Administrator's authority comes from users.role. The grid is
-    // disabled for them, and this is the second gate: no request is built, so
-    // there is nothing to send even if the UI were bypassed.
-    if (isSystemAdmin(tree)) return
+    const admin = isSystemAdmin(tree)
 
     const changes: { moduleKey: string; actionKey: string; allowed: boolean | null }[] = []
     for (const mod of tree.modules) {
       for (const action of mod.actions) {
+        // A system Administrator's authority comes from users.role for every
+        // action EXCEPT the ones with a permission-only door in the database
+        // (today: orders.approve_order). The grid is disabled for the rest,
+        // and this is the second gate: nothing else is even put in the
+        // request, so a bypassed UI still sends only what can take effect.
+        if (admin && !isAdminEditableAction(mod.moduleKey, action.actionKey)) continue
         const key = overrideKey(mod.moduleKey, action.actionKey)
         const choice = overrides.get(key)
         if (!choice || choice === initialOverrides.get(key)) continue
@@ -986,7 +1026,11 @@ function PermissionsPageInner() {
                   <AlertBanner variant="amber">
                     <strong>System Administrator.</strong> Module access is controlled by
                     this person&apos;s system role, not by the settings below. An override
-                    saved here could neither add to their authority nor reduce it.
+                    saved here could neither add to their authority nor reduce it —
+                    with one exception. <strong>Order Approval</strong> (under Order
+                    Management → Change level → Custom) is granted per person and
+                    never by the system role, so it can be given to, and taken back
+                    from, an administrator like anybody else.
                   </AlertBanner>
                 </div>
               )}
@@ -1016,10 +1060,14 @@ function PermissionsPageInner() {
                         accessible={accessible}
                         unsaved={unsaved}
                         locked={adminLocked}
+                        changeLocked={adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)}
                         source={source}
                         onToggle={on => toggleModuleAccess(mod, on)}
                         open={changeModalModuleKey === mod.moduleKey}
-                        onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}
+                        onOpen={() => {
+                          if (adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)) return
+                          setChangeModalModuleKey(mod.moduleKey)
+                        }}
                       />
                     )
                   })}
@@ -1067,6 +1115,7 @@ function PermissionsPageInner() {
           onChangeAction={(actionKey, choice) => changeOverride(changeModalModule.moduleKey, actionKey, choice)}
           onApplyLevel={level => applyAccessLevel(changeModalModule, level)}
           onClose={() => setChangeModalModuleKey(null)}
+          adminOnlyActions={adminLocked ? adminEditableActions(changeModalModule.moduleKey) : null}
         />
       )}
     </>

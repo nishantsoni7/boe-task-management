@@ -1435,8 +1435,14 @@ describe('orders.approve_order', () => {
     assert.equal(withoutEntry.canApproveOrderSubmission, false)
   })
 
-  test('an admin has it without holding the grant', () => {
-    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, true)
+  test('an admin does NOT have it without holding the grant', () => {
+    // 20261224000000 §4. The door is actor_can_approve_order(), the resolver
+    // with no role branch, so PI approval can be withdrawn from an
+    // administrator — which is the whole reason it was separated out.
+    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, false)
+    assert.equal(deriveOrdersCapabilities('admin', [
+      { actionKey: 'approve_order', allowed: true, source: 'employee_override' as const },
+    ]).canApproveOrderSubmission, true)
   })
 
   test('no permissions at all means no submission authority', () => {

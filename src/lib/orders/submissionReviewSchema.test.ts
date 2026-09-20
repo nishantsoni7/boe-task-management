@@ -130,11 +130,34 @@ describe('Phase A is one additive migration', () => {
     for (const file of files.filter(f => f > PHASE_A_FILE)) {
       const later = lf(readFileSync(join(MIGRATIONS_DIR, file), 'utf8'))
       for (const owned of [
-        'create or replace function public.reject_order_submission',
         'create or replace function public.order_submissions_guard_frozen_columns',
         'add column submitted_at',
       ]) {
         assert.ok(!later.includes(owned), `${file} must not redefine: ${owned}`)
+      }
+
+      // REJECTION IS THE SECOND DELIBERATE EXCEPTION, for the same reason the
+      // transition trigger is the first: a later phase that changes WHO may
+      // reject has to change it here, in the open, rather than reaching around
+      // it. 20261224000000 §4 does exactly that — it swaps one authorization
+      // expression so the admin role stops implying PI approval — and what is
+      // asserted instead is that Phase A's rejection rules survive the
+      // restatement intact, which is the property this test defends.
+      if (later.includes('create or replace function public.reject_order_submission')) {
+        for (const preserved of [
+          "ORDER_SUBMISSION_REASON_REQUIRED",
+          "ORDER_SUBMISSION_NOT_UNDER_REVIEW",
+          "set status      = 'rejected'",
+          'rejected_by = v_actor',
+          "'rejected', 'submitted', 'rejected', v_reason",
+        ]) {
+          assert.ok(later.includes(preserved),
+            `${file} restates the rejection door but drops Phase A's rule: ${preserved}`)
+        }
+        // And it may only have moved the authorization onto the permission-only
+        // door. Nothing else about who may reject is allowed to appear.
+        assert.ok(later.includes('if not public.actor_can_approve_order() then'),
+          `${file} restates the rejection door with an authorization Phase A does not recognise`)
       }
 
       if (!later.includes('create or replace function public.order_submissions_enforce_status_transition')) continue
@@ -245,8 +268,14 @@ describe('this phase still cannot approve anything', () => {
   test('the browser has no approval to call either', () => {
     // canApproveOrderSubmission is the REVIEW capability — send back, reject —
     // and stays what it was. Nothing in this phase turns it into an approval.
-    const admin = deriveOrdersCapabilities('admin', [])
-    assert.equal(admin.canApproveOrderSubmission, true)
+    //
+    // WHO HOLDS IT moved later, and not here: since 20261224000000 §4 it is
+    // resolved from the grant for everybody, the admin role included, so that
+    // it can be withdrawn from an administrator. The shape this phase cares
+    // about is unchanged — a grant means review, and no grant means none.
+    const granted = deriveOrdersCapabilities(
+      'admin', [{ actionKey: 'approve_order', allowed: true, source: 'employee_override' }])
+    assert.equal(granted.canApproveOrderSubmission, true)
     const member = deriveOrdersCapabilities('member', [{ actionKey: 'view', allowed: true, source: 'role' }])
     assert.equal(member.canApproveOrderSubmission, false)
   })

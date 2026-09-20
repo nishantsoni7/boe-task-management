@@ -13,7 +13,13 @@ import type { EffectivePermission } from './types'
 //   edit                        → change an order or a PI Draft (alongside the
 //                                 existing ownership rules, which are ownership,
 //                                 not permission)
-//   approve_order               → review and approve an imported PI submission
+//   approve_order               → review and approve an imported PI submission.
+//                                 THE ONE ACTION THE ADMIN ROLE DOES NOT CARRY
+//                                 (20261224000000 §4): it is granted per
+//                                 employee or not at all, so that the owner can
+//                                 withdraw it from anybody — an administrator
+//                                 included. Every other action below keeps the
+//                                 admin branch it has always had.
 //   approve_advance_exception   → decide an advance exception on a submitted PI
 //   export                      → download the order registers
 //   delete                      → remove a record
@@ -125,7 +131,20 @@ export function deriveOrdersCapabilities(
       canViewAllOrders: true,
       canCreateOrder: true,
       canEditOrder: true,
-      canApproveOrderSubmission: true,
+      // NOT true for an admin, and this is the ONE capability on this screen
+      // that the admin role does not carry.
+      //
+      // 20261224000000 §4 gave orders.approve_order a permission-only door in
+      // the database — actor_can_approve_order(), with no role branch — so
+      // that the owner can withdraw PI approval from a colleague who happens
+      // to hold the admin role. Reporting true here would put an Approve
+      // button in front of an administrator that the database then refuses,
+      // which is the exact failure MODULE_ENFORCEMENT exists to prevent.
+      //
+      // Resolved from the grant, admin or not. The owner holds it through the
+      // unrevokable override the same migration seeds, so he reads true here
+      // for the same reason everybody else does.
+      canApproveOrderSubmission: allowed('approve_order'),
       // An active admin decides advance exceptions without an explicit grant,
       // exactly as actor_has_module_permission's admin branch does in the
       // database. Reported true so the screen matches the RPC.

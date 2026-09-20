@@ -16,7 +16,16 @@
 //
 //   submit_order_submission           owner, orders.create, draft/needs_changes,
 //                                     and a workbook plus images that actually
-//                                     exist in storage
+//                                     exist in storage. Since 20261224000000 a
+//                                     submitter who ALSO holds
+//                                     orders.approve_order has the PI decision
+//                                     stamped in the same transaction, once
+//                                     every one of those checks has passed —
+//                                     never an Order, never an advance
+//                                     exception. Nothing in this file decides
+//                                     that and nothing here needs to: the
+//                                     record comes back carrying the decision,
+//                                     and the status line reads it.
 //   request_order_submission_changes  orders.approve_order, submitted only
 //   reject_order_submission           orders.approve_order, submitted only
 //   approve_pi_advance_exception      orders.approve_advance_exception, a

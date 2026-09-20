@@ -352,6 +352,14 @@ describe('1-6. the migration is additive and links nothing by guesswork', () => 
       // pseudo-role public only). One revoke and one grant on one function.
       // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
       '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
+      // 20261224000000 — Order Approval: an explicit, unrevokable
+      // orders.approve_order override for the seeded owner account, a guard trigger
+      // on employee_permission_overrides scoped to that one row, and the PI decision
+      // stamped inside submit_pi_for_review_internal for a submitter who already
+      // holds that action. It creates no table, alters no table, registers no new
+      // permission module or action, and writes one override row. It reaches nothing
+      // here.
+      '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
     ])
   })
 

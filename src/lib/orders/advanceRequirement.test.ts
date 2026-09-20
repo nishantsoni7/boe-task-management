@@ -802,9 +802,15 @@ describe('the four kinds of viewer, by capability', () => {
   })
 
   test('an active admin holds both without an explicit grant', () => {
+    // WHO holds it moved in 20261224000000 §4: approve_order is now resolved
+    // from the grant for everybody, the admin role included, so that it can be
+    // withdrawn from an administrator. The relationship this test is about is
+    // unchanged.
     const c = caps('admin', [])
     assert.equal(c.canApproveAdvanceException, true)
-    assert.equal(c.canApproveOrderSubmission, true)
+    assert.equal(c.canApproveOrderSubmission, false,
+      'except approve_order, which is granted per person since 20261224000000 §4')
+    assert.equal(caps('admin', ['approve_order']).canApproveOrderSubmission, true)
   })
 
   test('the module parent gate still applies: no entry, no authority', () => {
