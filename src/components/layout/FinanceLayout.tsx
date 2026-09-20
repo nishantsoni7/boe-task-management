@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { CheckSquare, CreditCard, Bell } from 'lucide-react'
+import { CheckSquare, CreditCard, Bell, Receipt } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ModuleSwitchButton } from './ModuleSwitchButton'
@@ -32,6 +32,17 @@ import { ShellHomeLink, ShellNavLink, ShellRefreshButton } from './ModuleShellCo
  * anyone who lands on it directly — only the sidebar entries are gone.
  */
 export const RECEIVED_PAYMENTS_PATH = '/finance/received'
+
+/**
+ * The expense log, and the quick-entry route inside it.
+ *
+ * MONEY GOING OUT, AND STRUCTURALLY SEPARATE FROM THE TWO PAYMENT SECTIONS
+ * ABOVE. An expense has no customer, no PI, no Order, no allocation and no
+ * verification; it shares neither a table nor a workflow with a received
+ * payment. It is a third Finance section, not a third view of the payments.
+ */
+export const EXPENSES_PATH = '/finance/expenses'
+export const ADD_EXPENSE_PATH = '/finance/expenses/new'
 
 /** The one count the sidebar draws. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
@@ -155,6 +166,10 @@ export function FinanceLayout({
   const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number }[] = [
     { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} />, key: 'requests' },
     { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, key: 'confirmed', badge: receivedCounts.all },
+    // MONEY GOING OUT. Not a third payment section — see EXPENSES_PATH above.
+    // No badge: an expense log has no queue and nothing waiting on anybody, so a
+    // number beside it would count rows rather than report work.
+    { label: 'Expenses',           path: EXPENSES_PATH,           icon: <Receipt size={15} strokeWidth={1.8} />,    key: 'expenses' },
   ]
   const activeKey = activeFinanceNav(pathname)
 

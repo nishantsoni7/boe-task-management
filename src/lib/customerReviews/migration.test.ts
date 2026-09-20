@@ -282,6 +282,12 @@ describe('the migration is one file, correctly sequenced', () => {
       // closes the direct INSERT on finance_payment_requests. Nothing this file
       // asserts reads any of it.
       '20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql',
+      // 20261220000000 — Finance → Expenses, Phase 1. Two NEW tables of its own
+      // (expense_categories, expenses) with their own constraints, indexes, RLS
+      // policies and triggers. Additive only: it alters no existing table, drops
+      // nothing, registers no permission module or action, and runs no DML against
+      // any business table. It reaches nothing here.
+      '20261220000000_finance_expenses.sql',
     ])
   })
 

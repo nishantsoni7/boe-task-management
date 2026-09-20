@@ -971,6 +971,12 @@ describe('the applied migrations are frozen', () => {
       // finance_payment_requests and drops its own-insert policy. No read path, no
       // participant rule and no order total changes.
       '20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql',
+      // 20261220000000 — Finance → Expenses, Phase 1. Two NEW tables of its own
+      // (expense_categories, expenses) with their own constraints, indexes, RLS
+      // policies and triggers. Additive only: it alters no existing table, drops
+      // nothing, registers no permission module or action, and runs no DML against
+      // any business table. It reaches nothing here.
+      '20261220000000_finance_expenses.sql',
     ])
   })
 
@@ -1193,6 +1199,12 @@ describe('the applied migrations are frozen', () => {
       // finance_payment_requests and drops its own-insert policy. No read path, no
       // participant rule and no order total changes.
       '20261219000000_order_submission_unsaved_drafts_and_payment_idempotency.sql',
+      // 20261220000000 — Finance → Expenses, Phase 1. Two NEW tables of its own
+      // (expense_categories, expenses) with their own constraints, indexes, RLS
+      // policies and triggers. Additive only: it alters no existing table, drops
+      // nothing, registers no permission module or action, and runs no DML against
+      // any business table. It reaches nothing here.
+      '20261220000000_finance_expenses.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
