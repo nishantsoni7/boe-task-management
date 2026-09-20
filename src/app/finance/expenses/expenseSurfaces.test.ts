@@ -23,6 +23,13 @@ const FORM = 'src/app/finance/expenses/ExpenseForm.tsx'
 const VIEW = 'src/app/finance/expenses/ExpensesView.tsx'
 const QUICK = 'src/app/finance/expenses/new/page.tsx'
 const MODULES = 'src/app/modules/page.tsx'
+// ── Phase 2 ──
+const DELETE_MODAL = 'src/app/finance/expenses/DeleteExpenseModal.tsx'
+const DRAFTS = 'src/app/finance/expenses/NeedsDetailsList.tsx'
+const CAPTURE = 'src/app/finance/expenses/QuickCapture.tsx'
+const SUGGESTIONS = 'src/app/finance/expenses/SmartCategorySuggestions.tsx'
+const SPEECH = 'src/app/finance/expenses/useExpenseSpeech.ts'
+const MIGRATION = 'supabase/migrations/20261222000000_expense_lifecycle.sql'
 
 // ── The routes ───────────────────────────────────────────────────────────────
 
@@ -54,12 +61,23 @@ describe('the two expense routes exist and sit inside the Finance guard', () => 
     }
   })
 
-  test('the quick route opens straight into the form and reads no list', () => {
+  test('the quick route opens straight into an entry surface and waits for no list', () => {
     const quick = code(QUICK)
     assert.ok(quick.includes('<ExpenseForm'))
-    assert.equal(quick.includes("from('expenses')"), false,
-      'no expense list is read: the point of this route is that it is instant')
+    assert.ok(quick.includes('<QuickCapture'))
     assert.ok(quick.includes("from('expense_categories')"), 'the picker still needs its categories')
+
+    // THE BOOTSTRAP STILL READS NO EXPENSES. Phase 2 added one read of the
+    // Smart suggestion's training set — three columns, capped — and it is
+    // deliberately OUTSIDE the gating Promise.all and never awaited before
+    // setLoading(false). The promise to somebody's home screen is that this URL
+    // opens instantly; a suggestion that arrives a moment later is fine, a form
+    // that arrives a moment later is not.
+    const bootstrap = quick.slice(quick.indexOf('const [{ data: me }'), quick.indexOf('setLoading(false)'))
+    assert.equal(bootstrap.includes("from('expenses')"), false,
+      'the first paint must not wait on an expenses read')
+    // And where it does read them, it excludes the deleted ones.
+    assert.ok(quick.includes(".is('deleted_at', null)"))
   })
 
   test('the quick route offers both onward moves after a save', () => {
@@ -228,28 +246,45 @@ describe('saving', () => {
 describe('voice entry, as the component wires it', () => {
   const form = code(FORM)
 
-  test('IT IS FEATURE-DETECTED, and no paid service is involved', () => {
-    assert.ok(form.includes('webkitSpeechRecognition'))
-    assert.ok(form.includes('useVoiceSupported'))
-    assert.ok(form.includes('{voiceSupported && ('), 'no microphone where it cannot work')
-    assert.ok(form.includes('{!voiceSupported && ('), 'and one quiet line where it cannot')
-    for (const forbidden = 'fetch(' ; ; ) {
-      assert.equal(form.includes(forbidden), false, 'no network call: recognition is the browser\'s')
-      break
+  // THE RECOGNISER MOVED INTO ONE SHARED HOOK when Quick Capture became a
+  // second surface that listens. Two copies would drift, and the copy that
+  // drifted would be the one that quietly gained an auto-submit — so these
+  // assertions now read the hook, and assert that BOTH surfaces use it rather
+  // than rolling their own.
+  const speech = code(SPEECH)
+
+  test('THERE IS EXACTLY ONE RECOGNISER, and both surfaces use it', () => {
+    assert.ok(speech.includes('webkitSpeechRecognition'))
+    for (const file of [FORM, CAPTURE]) {
+      assert.ok(code(file).includes('useExpenseSpeech'), `${file} must use the shared hook`)
+      assert.equal(/webkitSpeechRecognition|new Ctor\(\)/.test(code(file)), false,
+        `${file} must not construct its own recogniser`)
     }
-    assert.equal(/api[Kk]ey|openai|whisper|FAL_KEY/.test(form), false)
+  })
+
+  test('IT IS FEATURE-DETECTED, and no paid service is involved', () => {
+    assert.ok(speech.includes('useVoiceSupported'))
+    assert.ok(form.includes('{voice.supported && ('), 'no microphone where it cannot work')
+    assert.ok(form.includes('{!voice.supported && ('), 'and one quiet line where it cannot')
+    assert.ok(code(CAPTURE).includes('{voice.supported && ('))
+    for (const file of [FORM, CAPTURE, SPEECH]) {
+      assert.equal(code(file).includes('fetch('), false,
+        'no network call: recognition is the browser\'s')
+      assert.equal(/api[Kk]ey|openai|anthropic|huggingface|whisper|FAL_KEY/i.test(code(file)), false)
+    }
   })
 
   test('NO AUDIO IS RETAINED — the recogniser is aborted on unmount', () => {
-    assert.ok(form.includes('recognitionRef.current?.abort()'))
-    assert.equal(/MediaRecorder|getUserMedia|new Blob|upload/.test(form), false,
+    assert.ok(speech.includes('recognitionRef.current?.abort()'))
+    assert.equal(/MediaRecorder|getUserMedia|new Blob|upload/.test(speech), false,
       'nothing here records, stores or uploads audio')
   })
 
-  test('A REFUSED MICROPHONE IS HANDLED, and the form stays fully usable', () => {
-    assert.ok(form.includes("e.error === 'not-allowed'"))
-    assert.ok(form.includes('VOICE_DENIED_MESSAGE'))
+  test('A REFUSED MICROPHONE IS HANDLED, and both surfaces stay fully usable', () => {
+    assert.ok(speech.includes("e.error === 'not-allowed'"))
+    assert.ok(speech.includes('VOICE_DENIED_MESSAGE'))
     assert.ok(form.includes('VOICE_UNSUPPORTED_MESSAGE'))
+    assert.ok(code(CAPTURE).includes('VOICE_UNSUPPORTED_MESSAGE'))
   })
 
   test('VOICE NEVER SAVES — there is no path from a transcript to a write', () => {
@@ -273,7 +308,7 @@ describe('voice entry, as the component wires it', () => {
   })
 
   test('it asks for Indian English', () => {
-    assert.ok(form.includes("recognition.lang = 'en-IN'"))
+    assert.ok(speech.includes("recognition.lang = 'en-IN'"))
   })
 })
 
@@ -332,21 +367,197 @@ describe('the expense list', () => {
       'nothing here opts into a sideways scroll')
   })
 
-  test('Edit is offered on exactly the rows the database would accept', () => {
-    assert.ok(/caps\.canManageFinance \|\| \(userId !== null && row\.created_by === userId\)/.test(view))
+  test('Edit and Delete are offered on exactly the rows the database would accept', () => {
+    // The rule now lives in ONE place — expenseDeletion.ts — and the view uses
+    // it rather than restating it, so a control drawn here and a policy in the
+    // database cannot drift apart.
+    assert.ok(view.includes('mayEditExpense(row, actor)'))
+    assert.ok(view.includes('mayDeleteExpense(row, actor)'))
+    assert.ok(view.includes('canManageFinance: caps.canManageFinance'))
   })
 
-  test('PHASE 1 OFFERS NO DELETE ANYWHERE', () => {
-    // Finance has no soft-delete pattern to reuse, so removal is omitted rather
-    // than built unsafely. Correction is the whole answer.
-    for (const file of [VIEW, FORM, QUICK]) {
-      assert.equal(/\.delete\(\)/.test(code(file)), false, `${file} must not delete`)
-      assert.equal(/>Delete</.test(read(file)), false, `${file} must not offer a Delete control`)
+  test('NO SURFACE EVER ISSUES A HARD DELETE', () => {
+    // PHASE 1 ASSERTED "no delete anywhere". Phase 2 adds removal deliberately,
+    // and the guarantee that survives is the stronger, more precise one:
+    // deletion is a TOMBSTONE, and no browser code path issues a DELETE against
+    // any expense table. It could not succeed if it did — the migration grants
+    // no DELETE policy and revokes the DELETE privilege from every client role.
+    for (const file of [VIEW, FORM, QUICK, DELETE_MODAL, DRAFTS, CAPTURE]) {
+      assert.equal(/\.delete\(\)/.test(code(file)), false, `${file} must not hard-delete`)
     }
+    // The one write that removes an expense sets two columns and nothing else.
+    assert.ok(code(DELETE_MODAL).includes('expenseSoftDeletePayload(userId)'))
   })
 })
 
 // ── Regression: what this work must not have touched ────────────────────────
+
+// ── Phase 2 wiring ───────────────────────────────────────────────────────────
+
+describe('THE EXPENSE LIST EXCLUDES DELETED EXPENSES FROM EVERY FIGURE', () => {
+  const view = code(VIEW)
+
+  test('the list query asks the DATABASE for live rows', () => {
+    // Asked of the database rather than filtered in the browser, so the `count`
+    // beside the rows counts live expenses and the total describes the same set.
+    assert.ok(/from\('expenses'\)[\s\S]{0,400}?\.is\('deleted_at', null\)/.test(view))
+  })
+
+  test('so does the Smart suggestion\'s training set', () => {
+    assert.ok(/select\('category_id, paid_to, remark, deleted_at'\)[\s\S]{0,120}?\.is\('deleted_at', null\)/.test(view),
+      'a removed expense must not keep teaching the matcher')
+  })
+
+  test('and the total re-applies the rule a second time', () => {
+    assert.ok(read('src/lib/finance/expenses.ts').includes('r.deleted_at == null'))
+  })
+
+  test('deleting refreshes the list, the total AND the training set', () => {
+    const onDeleted = view.slice(view.indexOf('onDeleted={row =>'), view.indexOf('onDeleted={row =>') + 600)
+    assert.ok(onDeleted.includes('loadExpenses()'))
+    assert.ok(onDeleted.includes('loadHistory()'))
+    assert.ok(onDeleted.includes('setRows(prev => prev.filter'),
+      'the figure changes in the same frame as the toast, not a round trip later')
+  })
+})
+
+describe('the Needs Details tab', () => {
+  const view = code(VIEW)
+
+  test('it is a prominent tab on the Expenses page, with a pending count', () => {
+    assert.ok(view.includes('data-testid="expense-tabs"'))
+    assert.ok(view.includes('label={NEEDS_DETAILS_LABEL}'))
+    assert.ok(view.includes('badge={pendingCount}'))
+    assert.ok(view.includes('pendingDraftCount(drafts)'))
+  })
+
+  test('IT READS ONLY PENDING CAPTURES', () => {
+    assert.ok(/from\('expense_drafts'\)[\s\S]{0,200}?\.eq\('status', 'pending'\)/.test(view))
+  })
+
+  test('the badge is hidden at a real zero', () => {
+    assert.ok(view.includes('badge > 0 &&'),
+      'a badge showing 0 is a thing to read and dismiss, every time, forever')
+  })
+
+  test('A DRAFT NEVER REACHES THE EXPENSE TOTAL — the query cannot see one', () => {
+    // Structural, not a filter: the expense query reads public.expenses and the
+    // draft query reads public.expense_drafts, and the total is computed from
+    // `rows`, which only the former fills.
+    assert.ok(view.includes('const shownTotal = expenseTotal(rows)'))
+    const listQuery = view.slice(view.indexOf('const loadExpenses'), view.indexOf('const loadExpenses') + 1400)
+    assert.equal(listQuery.includes('expense_drafts'), false)
+  })
+
+  test('completing one goes through the ONE safe transaction', () => {
+    assert.ok(code(FORM).includes("supabase.rpc('finalize_expense_draft'"))
+    // And nowhere else writes an expense on a draft's behalf.
+    assert.equal(/from\('expenses'\)\s*\.insert/.test(code(DRAFTS)), false)
+  })
+})
+
+describe('SMART SUGGESTION IS LOCAL, DETERMINISTIC AND FREE', () => {
+  const matcher = code('src/lib/finance/expenseCategoryMatch.ts')
+
+  test('NO HOSTED MODEL, NO API KEY, NO NETWORK CALL — anywhere in the feature', () => {
+    for (const file of [matcher, code(SUGGESTIONS), code(FORM), code(VIEW), code(CAPTURE)]) {
+      assert.equal(/openai|anthropic|huggingface|hugging_face|gemini|cohere|replicate|whisper/i.test(file), false,
+        'no hosted inference provider is named anywhere')
+      assert.equal(/api[_-]?key|API_KEY|process\.env/i.test(file), false,
+        'no key, and no environment variable that could hold one')
+      assert.equal(/fetch\(|axios|XMLHttpRequest/.test(file), false,
+        'no network call: the matcher reads rows already in memory')
+    }
+  })
+
+  test('and no new dependency was added for it', () => {
+    const pkg = JSON.parse(read('package.json'))
+    const deps = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies })
+    for (const name of deps) {
+      assert.equal(/openai|anthropic|langchain|transformers|onnx|tensorflow/i.test(name), false,
+        `${name} must not be a dependency of this repository`)
+    }
+  })
+
+  test('THE UI CALLS IT "Smart suggestion" AND CLAIMS NOTHING MORE', () => {
+    // Read with the comments STRIPPED: the file's header explains at length
+    // that there is no model here, and the word it has to use to say so must
+    // not be mistaken for a claim on the screen.
+    const ui = code(SUGGESTIONS)
+    assert.ok(ui.includes("SMART_SUGGESTION_LABEL = 'Smart suggestion'"))
+    assert.equal(/\bAI\b|artificial intelligence|machine learning|neural|powered by/i.test(ui), false)
+  })
+
+  test('the form feeds it the purpose AND the payee, and weighs neither itself', () => {
+    const form = code(FORM)
+    assert.ok(form.includes('paidTo={form.paidTo}'))
+    assert.ok(form.includes('purpose={form.remark}'))
+    assert.ok(form.includes('history={history}'))
+    // The weighting lives in the matcher, which is where the tests for it are.
+    assert.equal(/PURPOSE_TERM_SCORE|PAYEE_SCORE/.test(form), false)
+  })
+
+  test('THE PURPOSE FIELD SITS ABOVE THE CATEGORY, because it feeds the suggestion', () => {
+    const form = read(FORM)
+    assert.ok(form.indexOf('id="expense-remark"') < form.indexOf('id="expense-category"'))
+    assert.ok(form.indexOf('<SmartCategorySuggestions') > form.indexOf('id="expense-remark"'))
+    assert.ok(form.indexOf('<SmartCategorySuggestions') < form.indexOf('id="expense-category"'))
+  })
+})
+
+describe('the mobile shortcut still costs three actions', () => {
+  const quick = read(QUICK)
+
+  test('both ways in are visible at once — no chooser screen', () => {
+    assert.ok(quick.includes('data-testid="entry-mode-choice"'))
+    assert.ok(quick.includes('QUICK_CAPTURE_LABEL'))
+    assert.ok(quick.includes("FULL_ENTRY_LABEL = 'Full Expense Entry'"))
+  })
+
+  test('QUICK CAPTURE IS SELECTED ON ARRIVAL', () => {
+    assert.ok(code(QUICK).includes("useState<EntryMode>('capture')"),
+      'a chooser screen would make the fast path four taps instead of three')
+  })
+
+  test('after a capture it says where it went, and offers both onward moves', () => {
+    assert.ok(quick.includes('QUICK_CAPTURE_SAVED_MESSAGE'))
+    assert.ok(quick.includes("CAPTURE_ANOTHER_LABEL = 'Capture another'"))
+    assert.ok(quick.includes("COMPLETE_NOW_LABEL = 'Complete now'"))
+  })
+
+  test('"Complete now" opens the ordinary form in place, adding no screen', () => {
+    assert.ok(code(QUICK).includes('mode="complete"'))
+    assert.equal(code(QUICK).includes("router.push('/finance/expenses?"), false,
+      'completing a capture does not bounce through the list')
+  })
+
+  test('the shortcut URL is unchanged — it is a promise to somebody\'s phone', () => {
+    assert.equal(
+      JSON.parse(read('public/manifest.json')).shortcuts[0].url,
+      '/finance/expenses/new')
+  })
+})
+
+describe('the migration is the one this work adds, and it is additive', () => {
+  const sql = read(MIGRATION)
+
+  test('it exists, and names its dependencies rather than assuming them', () => {
+    assert.ok(existsSync(join(process.cwd(), MIGRATION)))
+    assert.ok(sql.includes('DEPENDENCY MISSING: 20261220000000'))
+    assert.ok(sql.includes('DEPENDENCY MISSING: 20260901000000'))
+    assert.ok(sql.includes('DEPENDENCY MISSING: 20260905000000'))
+  })
+
+  test('IT IS THE ONLY MIGRATION THIS BRANCH ADDS', () => {
+    const added = execFileSync('git', ['diff', '--name-only', '--diff-filter=A', 'origin/main...HEAD'],
+      { cwd: process.cwd(), encoding: 'utf8' })
+      .split('\n').map(s => s.trim()).filter(f => f.startsWith('supabase/migrations/'))
+    const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', 'supabase/migrations'],
+      { cwd: process.cwd(), encoding: 'utf8' })
+      .split('\n').map(s => s.trim()).filter(Boolean)
+    assert.deepEqual([...new Set([...added, ...untracked])], [MIGRATION])
+  })
+})
 
 describe('REGRESSION — the existing Finance and Orders surfaces are unchanged', () => {
   /** The files this branch changed, against the base it started from. */
@@ -397,14 +608,34 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
 
   test('NO PRODUCTION CODE WAS CHANGED EXCEPT THE SIX WIRING POINTS', () => {
     const production = [...touched].filter(f =>
-      /\.(ts|tsx|css|json|sql)$/.test(f) && !/\.test\.tsx?$/.test(f))
+      /\.(ts|tsx|css|json|sql|sh)$/.test(f) && !/\.test\.tsx?$/.test(f))
     const unexpected = production.filter(f =>
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense') &&
       !f.startsWith('supabase/migrations/2026122') &&
+      // supabase/tests IS NOT PRODUCTION. Every file there builds and drops a
+      // disposable local database and, by the header of each runner, never
+      // talks to a linked project. Phase 2 adds one such suite, in the shape
+      // the other eleven already use.
+      !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f))
     assert.deepEqual(unexpected, [])
+  })
+
+  test('and the files it added under supabase/tests are exactly the new suite', () => {
+    const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
+    assert.deepEqual(added.sort(), [
+      'supabase/tests/_expense_lifecycle_shaped_schema.sql',
+      'supabase/tests/expense_lifecycle_assertions.sql',
+      'supabase/tests/run_expense_lifecycle_suite.sh',
+    ])
+    // AND THE RUNNER CANNOT REACH A REAL PROJECT. It takes a psql host, creates
+    // its own database and drops it; nothing in it reads .env, a project ref or
+    // a linked connection.
+    const runner = read('supabase/tests/run_expense_lifecycle_suite.sh')
+    assert.equal(/--linked|project-ref|SUPABASE_|supabase db push/.test(runner), false)
+    assert.ok(runner.includes('drop database if exists'))
   })
 
   test('every EXISTING test this branch edited is a migration inventory', () => {
@@ -423,6 +654,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense') &&
       !f.startsWith('supabase/migrations/2026122') &&
+      !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
       !ALLOWED_TESTS.has(f))

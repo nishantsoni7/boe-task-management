@@ -680,6 +680,13 @@ describe('the migration is placed correctly', () => {
       // over-precise figure is REFUSED by the CHECK rather than silently rounded.
       // One ALTER COLUMN TYPE on an empty table of its own. It reaches nothing here.
       '20261221000000_expense_amounts_are_never_rounded.sql',
+      // 20261222000000 — Expenses Phase 2: the deleted_at/deleted_by tombstone on
+      // public.expenses, the new public.expense_drafts table and
+      // finalize_expense_draft(). Additive: it creates one table, adds two
+      // nullable columns, drops nothing, registers no permission module or
+      // action, and runs no DML against any business table. It reaches nothing
+      // here.
+      '20261222000000_expense_lifecycle.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

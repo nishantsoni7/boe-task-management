@@ -19,7 +19,7 @@
 // RLS's, which re-derives finance.create and finance.manage in the database
 // (20261220000000). A disabled button here is a courtesy, never a boundary.
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Mic, Plus } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { AmountInput } from '@/app/finance/components/AmountInput'
@@ -41,74 +41,40 @@ import {
   type ExpenseFormState,
   type ExpenseRow,
 } from '@/lib/finance/expenses'
+import type { ExpenseHistoryEntry } from '@/lib/finance/expenseCategoryMatch'
+import { type ExpenseDraftRow, expenseFormFromDraft } from '@/lib/finance/expenseDrafts'
+import { isExpenseDeleted } from '@/lib/finance/expenseDeletion'
+import { SmartCategorySuggestions } from './SmartCategorySuggestions'
 import {
-  VOICE_DENIED_MESSAGE,
   VOICE_EXAMPLE_PHRASE,
   VOICE_UNSUPPORTED_MESSAGE,
   parseExpenseSpeech,
   resolveVoiceParse,
 } from '@/lib/finance/expenseVoice'
+import { useExpenseSpeech } from './useExpenseSpeech'
 
 type Supabase = ReturnType<typeof createClient>
 
-// ── Speech recognition, as a browser actually exposes it ─────────────────────
-//
-// FEATURE-DETECTED, NEVER ASSUMED. `SpeechRecognition` is unprefixed in a few
-// browsers and `webkitSpeechRecognition` in Chrome and Edge; Firefox and most
-// iOS browsers have neither. When it is absent the microphone is simply not
-// drawn and the form is untouched — see voiceAvailability below.
-//
-// NO AUDIO IS KEPT. The browser does the recognition and hands back a string;
-// nothing here records, stores or uploads anything, and the recogniser is
-// stopped and discarded when the form unmounts.
-type SpeechResultEvent = { results: ArrayLike<ArrayLike<{ transcript: string }>> }
-type SpeechErrorEvent = { error: string }
-type Recognition = {
-  lang: string
-  interimResults: boolean
-  maxAlternatives: number
-  continuous: boolean
-  start: () => void
-  stop: () => void
-  abort: () => void
-  onresult: ((e: SpeechResultEvent) => void) | null
-  onerror: ((e: SpeechErrorEvent) => void) | null
-  onend: (() => void) | null
-}
-type RecognitionCtor = new () => Recognition
-
-function recognitionCtor(): RecognitionCtor | null {
-  if (typeof window === 'undefined') return null
-  const w = window as unknown as {
-    SpeechRecognition?: RecognitionCtor
-    webkitSpeechRecognition?: RecognitionCtor
-  }
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null
-}
-
-// ── "Does this browser have it?", answered without a cascading render ────────
-//
-// The answer differs between the server render (no) and the browser (maybe), so
-// it cannot simply be read during render — that is a hydration mismatch — and
-// setting it from an effect is a second render for a value that never changes.
-// useSyncExternalStore is exactly this: a snapshot on the client, a separate one
-// on the server, and a subscription that never fires because the capability of a
-// loaded browser does not come and go.
-const NEVER_CHANGES = () => () => {}
-const supportedOnClient = () => recognitionCtor() !== null
-const supportedOnServer = () => false
-
-function useVoiceSupported(): boolean {
-  return useSyncExternalStore(NEVER_CHANGES, supportedOnClient, supportedOnServer)
-}
-
-export type ExpenseFormMode = 'add' | 'edit'
+/**
+ * THREE MODES, ONE FORM.
+ *
+ *   add       a fresh expense, written straight to public.expenses.
+ *   edit      an existing one, corrected. Never a deleted one — see below.
+ *   complete  a Quick Capture being finished. The SAME fields, the same rules
+ *             and the same final review; only the write differs, and it differs
+ *             because it has to: finalizing goes through
+ *             finalize_expense_draft, which creates the expense and marks the
+ *             draft in ONE transaction under a row lock.
+ */
+export type ExpenseFormMode = 'add' | 'edit' | 'complete'
 
 export type ExpenseSaveOutcome = {
   mode: ExpenseFormMode
   /** For the confirmation line: "₹850 to Ramesh". */
   amount: string
   paidTo: string
+  /** Set by 'complete': the draft that has just left the Needs Details inbox. */
+  draftId?: string
 }
 
 export function ExpenseForm({
@@ -116,7 +82,9 @@ export function ExpenseForm({
   userId,
   mode,
   expense,
+  draft,
   categories,
+  history = [],
   onCategoryCreated,
   onSaved,
   onCancel,
@@ -129,7 +97,18 @@ export function ExpenseForm({
   mode: ExpenseFormMode
   /** The row being corrected. Required when mode is 'edit'. */
   expense?: ExpenseRow | null
+  /** The capture being completed. Required when mode is 'complete'. */
+  draft?: ExpenseDraftRow | null
   categories: readonly ExpenseCategory[]
+  /**
+   * Earlier FINALIZED, NON-DELETED expenses, for the Smart suggestion.
+   *
+   * Defaults to none, so a surface that has no history to give simply gets no
+   * suggestions rather than wrong ones. The matcher re-applies the deleted
+   * filter itself, and drafts cannot appear here at all — they are a different
+   * table and this type does not describe them.
+   */
+  history?: readonly ExpenseHistoryEntry[]
   onCategoryCreated: (category: ExpenseCategory) => void
   onSaved: (outcome: ExpenseSaveOutcome, andAnother: boolean) => void
   onCancel: () => void
@@ -142,8 +121,14 @@ export function ExpenseForm({
   // happen. Captured once per mount so the field cannot shift under a typist.
   const todayIso = useMemo(() => localTodayIso(), [])
 
+  // A CAPTURE OPENS THE ORDINARY FORM, PREFILLED. Not a special screen, not a
+  // reduced one: every recognised field is filled in and every field — filled
+  // or not — remains editable, because a parse that got the payee wrong must be
+  // as easy to fix as an empty box is to fill.
   const [form, setForm] = useState<ExpenseFormState>(() =>
-    expense ? expenseFormFromRow(expense) : emptyExpenseForm(todayIso))
+    expense ? expenseFormFromRow(expense)
+      : draft ? expenseFormFromDraft(draft, todayIso)
+        : emptyExpenseForm(todayIso))
 
   // Validation appears on the first Save attempt, not while somebody is still
   // typing the first character of a field they have just reached.
@@ -169,18 +154,9 @@ export function ExpenseForm({
 
   // ── Voice ──────────────────────────────────────────────────────────────────
 
-  const [listening, setListening] = useState(false)
   const [transcript, setTranscript] = useState<string | null>(null)
   const [voiceNotes, setVoiceNotes] = useState<string[]>([])
-  const [voiceMessage, setVoiceMessage] = useState<string | null>(null)
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null)
-  const recognitionRef = useRef<Recognition | null>(null)
-
-  const voiceSupported = useVoiceSupported()
-
-  // Nothing survives the form: the recogniser is stopped and dropped on unmount,
-  // so no listener outlives the screen and no audio is retained.
-  useEffect(() => () => { recognitionRef.current?.abort() }, [])
 
   // THE FORM AS IT IS RIGHT NOW, for a callback created when the microphone was
   // pressed and invoked seconds later. A ref rather than a dependency, so a
@@ -208,55 +184,21 @@ export function ExpenseForm({
     setSaveError(null)
   }, [todayIso])
 
+  // THE MICROPHONE, from the shared hook — the same feature detection, the same
+  // language and the same refusal messages Quick Capture uses. Two copies of
+  // this would drift, and the copy that drifted would be the one that quietly
+  // gained an auto-submit.
+  const voice = useExpenseSpeech(applyTranscript)
+
   const startListening = () => {
-    const Ctor = recognitionCtor()
-    if (!Ctor) { setVoiceMessage(VOICE_UNSUPPORTED_MESSAGE); return }
-    if (listening) { recognitionRef.current?.stop(); return }
-
-    setVoiceMessage(null)
-    setTranscript(null)
-    setVoiceNotes([])
-    setSuggestedCategory(null)
-
-    let recognition: Recognition
-    try {
-      recognition = new Ctor()
-    } catch {
-      setVoiceMessage(VOICE_UNSUPPORTED_MESSAGE)
-      return
+    // Clearing the previous result BEFORE listening, so the transcript on screen
+    // always belongs to the press that is happening now.
+    if (!voice.listening) {
+      setTranscript(null)
+      setVoiceNotes([])
+      setSuggestedCategory(null)
     }
-    // Indian English first: it is what these sentences are spoken in, and it
-    // recognises Indian names and "rupees" far better than en-US.
-    recognition.lang = 'en-IN'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
-    recognition.continuous = false
-    recognition.onresult = (e: SpeechResultEvent) => {
-      const heard = e.results?.[0]?.[0]?.transcript
-      if (typeof heard === 'string' && heard.trim() !== '') applyTranscript(heard)
-      else setVoiceMessage('Nothing was heard. Tap the microphone and try again.')
-    }
-    recognition.onerror = (e: SpeechErrorEvent) => {
-      setListening(false)
-      // A refused microphone is the one case worth naming precisely; everything
-      // else gets one calm sentence and a form that still works.
-      setVoiceMessage(
-        e.error === 'not-allowed' || e.error === 'service-not-allowed'
-          ? VOICE_DENIED_MESSAGE
-          : e.error === 'no-speech'
-            ? 'Nothing was heard. Tap the microphone and try again.'
-            : 'Voice entry could not run just now. Fill the form as usual.')
-    }
-    recognition.onend = () => setListening(false)
-
-    recognitionRef.current = recognition
-    try {
-      recognition.start()
-      setListening(true)
-    } catch {
-      setListening(false)
-      setVoiceMessage('Voice entry could not start. Fill the form as usual.')
-    }
+    voice.toggle()
   }
 
   // ── Save ───────────────────────────────────────────────────────────────────
@@ -277,17 +219,54 @@ export function ExpenseForm({
     setSaveError(null)
 
     const payload = expenseWritePayload(form)
-    const outcome: ExpenseSaveOutcome = { mode, amount: payload.amount, paidTo: payload.paid_to }
+    const outcome: ExpenseSaveOutcome = {
+      mode, amount: payload.amount, paidTo: payload.paid_to, draftId: draft?.id,
+    }
 
     try {
-      const { error } = mode === 'add'
-        ? await supabase.from('expenses').insert({ ...payload, created_by: userId })
+      let error: WriteError | null = null
+
+      if (mode === 'complete') {
+        // ── ONE SAFE TRANSACTION ──
+        // The expense and the draft's link are written together, or neither is.
+        // Two browser writes could not be made one, and every failure between
+        // them leaves the worse outcome: a capture still sitting in the inbox
+        // beside the expense it already became, waiting to be completed a second
+        // time.
+        //
+        // A RETRY IS HARMLESS. The function locks the draft row; a second call
+        // finds it finalized and returns the FIRST call's expense id, writing
+        // nothing. Neither a double tap nor a resent request can produce two
+        // expenses for one payment.
+        const { error: rpcError } = await supabase.rpc('finalize_expense_draft', {
+          p_draft_id: draft!.id,
+          p_expense_date: payload.expense_date,
+          p_amount: payload.amount,
+          p_payment_mode: payload.payment_mode,
+          p_paid_to: payload.paid_to,
+          p_category_id: payload.category_id,
+          p_remark: payload.remark,
+        })
+        error = rpcError
+      } else if (mode === 'add') {
+        const { error: insertError } = await supabase
+          .from('expenses').insert({ ...payload, created_by: userId })
+        error = insertError
+      } else {
         // updated_by is sent on EVERY correction because the database's WITH
         // CHECK requires it to be the caller — a correction always names its
         // author. created_by is never sent: a trigger refuses to change it.
-        : await supabase.from('expenses')
-            .update({ ...payload, updated_by: userId })
-            .eq('id', expense!.id)
+        //
+        // `.is('deleted_at', null)` IS NOT DECORATION. A deleted expense is not
+        // editable, and the database's guard trigger refuses this anyway; the
+        // predicate means a stale list that still shows an Edit button updates
+        // nothing rather than raising an error somebody has to interpret.
+        const { error: updateError } = await supabase.from('expenses')
+          .update({ ...payload, updated_by: userId })
+          .eq('id', expense!.id)
+          .is('deleted_at', null)
+        error = updateError
+      }
 
       if (error) {
         // The values stay EXACTLY as entered — nothing is cleared on a failure,
@@ -327,12 +306,50 @@ export function ExpenseForm({
     setAddingCategory(false)
   }
 
+  // ── A DELETED EXPENSE IS NOT EDITABLE, AND THIS IS THE SECOND OF THREE
+  // PLACES THAT SAY SO. The list draws no Edit control on one (mayEditExpense),
+  // this refuses to render the fields even if a stale list did, and the
+  // database's guard trigger refuses the UPDATE whatever reaches it. Each layer
+  // catches a different mistake; none of them is the boundary on its own.
+  if (mode === 'edit' && isExpenseDeleted(expense)) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div role="alert" style={{
+          padding: '12px 14px', borderRadius: '8px',
+          border: `1px solid ${colors.border}`, background: colors.raised,
+          fontSize: '12.5px', color: colors.secondary, lineHeight: 1.6,
+        }}>
+          This expense has been deleted, so it can no longer be changed.
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onCancel} className="boe-btn boe-btn-ghost" style={{ minHeight: '44px', fontSize: '13px' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
 
+      {/* ── WHAT WAS CAPTURED, VERBATIM, WHILE IT IS BEING COMPLETED ──
+          The parse in the fields below is a reading of this sentence, and the
+          person checking those fields needs the sentence beside them to check
+          against. */}
+      {mode === 'complete' && draft && (
+        <div style={{
+          border: `1px solid ${colors.border}`, borderRadius: '10px',
+          background: colors.raised, padding: '10px 12px',
+          fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+        }}>
+          <span style={{ color: colors.muted }}>Captured: </span>&ldquo;{draft.raw_text}&rdquo;
+        </div>
+      )}
+
       {/* ── Voice ── Drawn only where the browser can actually run it, so a
           phone that cannot is not shown a control that does nothing. */}
-      {voiceSupported && (
+      {voice.supported && (
         <div style={{
           border: `1px solid ${colors.border}`, borderRadius: '10px',
           background: colors.raised, padding: '10px 12px',
@@ -343,22 +360,22 @@ export function ExpenseForm({
               type="button"
               onClick={startListening}
               disabled={saving}
-              aria-pressed={listening}
-              aria-label={listening ? 'Stop listening' : 'Fill this form by voice'}
+              aria-pressed={voice.listening}
+              aria-label={voice.listening ? 'Stop listening' : 'Fill this form by voice'}
               className="boe-btn"
               style={{
                 display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0,
                 minHeight: '44px', padding: '8px 14px', fontSize: '13px', fontWeight: 600,
-                background: listening ? 'rgba(217,79,79,0.10)' : colors.base,
-                color: listening ? '#C13030' : colors.primary,
-                border: `1px solid ${listening ? 'rgba(217,79,79,0.35)' : colors.borderSoft}`,
+                background: voice.listening ? 'rgba(217,79,79,0.10)' : colors.base,
+                color: voice.listening ? '#C13030' : colors.primary,
+                border: `1px solid ${voice.listening ? 'rgba(217,79,79,0.35)' : colors.borderSoft}`,
               }}
             >
               <Mic size={16} strokeWidth={1.9} />
-              {listening ? 'Listening…' : 'Speak'}
+              {voice.listening ? 'Listening…' : 'Speak'}
             </button>
             <div style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.45, minWidth: 0 }}>
-              {listening
+              {voice.listening
                 ? 'Say the expense, then stop.'
                 : <>Try: <span style={{ color: colors.secondary }}>&ldquo;{VOICE_EXAMPLE_PHRASE}&rdquo;</span></>}
             </div>
@@ -400,9 +417,9 @@ export function ExpenseForm({
             </button>
           )}
 
-          {voiceMessage && (
+          {voice.message && (
             <div role="status" style={{ fontSize: '11.5px', color: colors.tertiary, lineHeight: 1.5 }}>
-              {voiceMessage}
+              {voice.message}
             </div>
           )}
         </div>
@@ -410,7 +427,7 @@ export function ExpenseForm({
 
       {/* When the browser has no speech recognition at all, one quiet line — the
           form below is complete and unchanged. */}
-      {!voiceSupported && (
+      {!voice.supported && (
         <div style={{ fontSize: '11.5px', color: colors.muted, lineHeight: 1.5 }}>
           {VOICE_UNSUPPORTED_MESSAGE}
         </div>
@@ -457,6 +474,45 @@ export function ExpenseForm({
           style={{ width: '100%' }}
         />
       </FormField>
+
+      {/* ── PURPOSE, MOVED ABOVE THE CATEGORY ──
+          It used to sit last, as an afterthought. It now sits here because it
+          is the strongest input the Smart suggestion has: what the money was
+          FOR is the question a category answers, and who took it is a weaker
+          clue. Somebody who writes "diesel" is handed Fuel before they ever
+          reach the picker. The field, its id, its optionality and its 500
+          character ceiling are all unchanged — only its position is. */}
+      <FormField label="Purpose / remark" htmlFor="expense-remark" error={shown.remark} hint="Optional — helps suggest a category">
+        <input
+          id="expense-remark"
+          className="boe-input"
+          value={form.remark}
+          disabled={saving}
+          maxLength={600}
+          autoComplete="off"
+          placeholder="What it was for — e.g. diesel for the tempo"
+          aria-invalid={shown.remark ? true : undefined}
+          onChange={e => set('remark')(e.target.value)}
+          style={{ width: '100%' }}
+        />
+      </FormField>
+
+      {/* ── SMART SUGGESTION ──
+          Sits ABOVE the picker, because it is a shortcut to an answer the
+          picker below still offers in full. It reads the payee and the remark
+          this person has typed, weighs the remark higher, and suggests only
+          categories that already exist — unless nothing existing fits, in which
+          case it proposes one broad new name and still creates nothing. */}
+      <SmartCategorySuggestions
+        paidTo={form.paidTo}
+        purpose={form.remark}
+        categories={categories}
+        history={history}
+        selectedCategoryId={form.categoryId}
+        disabled={saving}
+        onPick={id => set('categoryId')(id)}
+        onProposeNew={name => openAddCategory(name)}
+      />
 
       <div className="expense-form-row">
         <FormField label="Category" htmlFor="expense-category" required error={shown.categoryId}>
@@ -506,21 +562,6 @@ export function ExpenseForm({
         </FormField>
       </div>
 
-      <FormField label="Remark" htmlFor="expense-remark" error={shown.remark} hint="Optional">
-        <input
-          id="expense-remark"
-          className="boe-input"
-          value={form.remark}
-          disabled={saving}
-          maxLength={600}
-          autoComplete="off"
-          placeholder="Anything worth noting"
-          aria-invalid={shown.remark ? true : undefined}
-          onChange={e => set('remark')(e.target.value)}
-          style={{ width: '100%' }}
-        />
-      </FormField>
-
       {saveError && (
         <div role="alert" style={{
           padding: '10px 12px', borderRadius: '8px',
@@ -566,6 +607,9 @@ export function ExpenseForm({
           className="boe-btn boe-btn-primary"
           style={{ minHeight: '44px', fontSize: '13px', minWidth: '120px' }}
         >
+          {/* 'complete' says "Save expense" like 'add' does, and deliberately:
+              completing a capture RECORDS AN EXPENSE, and a different word
+              would suggest something less final than it is. */}
           {saving ? 'Saving…' : mode === 'edit' ? 'Save changes' : 'Save expense'}
         </button>
       </div>
