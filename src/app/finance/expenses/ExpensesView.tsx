@@ -1,25 +1,37 @@
 'use client'
 
-// ── /finance/expenses — the expense log ──────────────────────────────────────
+// ── /finance/expenses — the expense log, and the capture inbox ──────────────
 //
-// The list that replaces the spreadsheet: newest first, five filters, a total
-// under whatever is on screen, and one Add action. A table on a desktop, cards
-// on a phone, decided by the width the list ACTUALLY HAS rather than the
-// viewport — the Finance sidebar is a fixed 260px down to 768px, so a 1024px
-// window leaves a container the table does not fit. The same rule, and the same
-// reasoning, as ConfirmedPaymentsList.
+// TWO TABS, AND THE SECOND ONE IS NOT A SECOND EXPENSE LIST.
 //
-// WHAT IT DOES NOT DO, ON PURPOSE. No charts, no reporting dashboard, no export,
-// no approval, no ledger. Phase 1 is: record one, find one, correct one.
+//   Expenses       the log that replaces the spreadsheet: newest first, five
+//                  filters, a total under whatever is on screen, Add, Edit and
+//                  Delete.
+//   Needs Details  captures waiting for the rest of their details. A DIFFERENT
+//                  TABLE — public.expense_drafts — and nothing in it counts
+//                  towards the total above, the category totals, the Smart
+//                  suggestion's learning or any report. Not because this file
+//                  filters it out: because the expense query does not read that
+//                  table and never could.
 //
-// EVERY ROW IT SHOWS IS RLS'S DECISION. The query below asks for expenses; the
-// database returns the ones this caller may see — their own, or every one if
-// they hold the protected finance.view_all. Nothing here filters by person, and
-// nothing here could grant sight of a row the database withheld.
+// A DELETED EXPENSE IS NOT HERE AT ALL. The list query asks the database for
+// `deleted_at is null`, the total re-applies the same rule, and the learning set
+// the Smart suggestion is built from asks for it a third time. A removed expense
+// is absent from every figure on this page.
+//
+// EVERY ROW IT SHOWS IS RLS'S DECISION. The queries below ask for expenses and
+// drafts; the database returns the ones this caller may see — their own, or
+// every one if they hold the protected finance.view_all. Nothing here filters by
+// person, and nothing here could grant sight of a row the database withheld.
+//
+// A table on a desktop, cards on a phone, decided by the width the list ACTUALLY
+// HAS rather than the viewport — the Finance sidebar is a fixed 260px down to
+// 768px, so a 1024px window leaves a container the table does not fit. The same
+// rule, and the same reasoning, as ConfirmedPaymentsList.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { Plus, Trash2 } from 'lucide-react'
 import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
@@ -45,7 +57,20 @@ import {
   type ExpenseListRow,
   type ExpenseRow,
 } from '@/lib/finance/expenses'
+import { mayDeleteExpense, mayEditExpense } from '@/lib/finance/expenseDeletion'
+import type { ExpenseHistoryEntry } from '@/lib/finance/expenseCategoryMatch'
+import {
+  NEEDS_DETAILS_LABEL,
+  QUICK_CAPTURE_LABEL,
+  QUICK_CAPTURE_SAVED_MESSAGE,
+  mayActOnDraft,
+  pendingDraftCount,
+  type ExpenseDraftRow,
+} from '@/lib/finance/expenseDrafts'
 import { ExpenseForm, type ExpenseSaveOutcome } from './ExpenseForm'
+import { DeleteExpenseModal } from './DeleteExpenseModal'
+import { NeedsDetailsList } from './NeedsDetailsList'
+import { QuickCapture } from './QuickCapture'
 
 /**
  * How many rows one read returns.
@@ -58,8 +83,19 @@ import { ExpenseForm, type ExpenseSaveOutcome } from './ExpenseForm'
  */
 export const EXPENSE_LIST_LIMIT = 500
 
+/**
+ * How many earlier expenses the Smart suggestion learns from.
+ *
+ * SEPARATE FROM THE LIST, and deliberately so: the list is whatever the filters
+ * asked for, and a suggestion must not change because somebody narrowed the
+ * dates to September. This is one small read of the most recent expenses —
+ * three columns, no names, no joins — and it is the matcher's entire training
+ * set.
+ */
+export const EXPENSE_HISTORY_LIMIT = 400
+
 const LIST_COLUMNS =
-  'id, expense_date, amount, payment_mode, paid_to, category_id, remark, created_by, created_at, updated_at, updated_by'
+  'id, expense_date, amount, payment_mode, paid_to, category_id, remark, created_by, created_at, updated_at, updated_by, deleted_at, deleted_by'
 
 /**
  * THE TABLE'S COLUMNS, AND THE WIDTHS THE THRESHOLD IS COMPUTED FROM.
@@ -68,6 +104,14 @@ const LIST_COLUMNS =
  * none and share whatever is left, so the columns sit where the header says
  * they are whatever the rows contain.
  *
+ * ACTIONS GREW FROM 72 TO 106 to hold Delete beside Edit, AND THE FIXED TOTAL
+ * DID NOT MOVE: Date, Category, Mode and Recorded by each gave up a few pixels
+ * they were not using (100→96, 124→112, 100→92, 110→100), so the six still sum
+ * to 618 and EXPENSE_TABLE_MIN_CONTAINER_PX is still 930 — the same width at
+ * which Confirmed Payments switches. Adding a second action did not cost the
+ * payee or the remark a single pixel, and did not move the breakpoint a phone
+ * or a tablet depends on.
+ *
  * The two flexible columns have no CSS floor — with `table-layout: fixed` they
  * simply divide the remainder — so the floor is enforced by the THRESHOLD
  * instead: below it there is not enough remainder to read a payee, and the list
@@ -75,14 +119,14 @@ const LIST_COLUMNS =
  * ALLOCATED_AGAINST_MIN_PX in paymentSurfaces.ts.
  */
 export const EXPENSE_TABLE_COLUMNS = [
-  { key: 'date',        label: 'Date',        align: 'left',  width: '100px' },
+  { key: 'date',        label: 'Date',        align: 'left',  width: '96px' },
   { key: 'amount',      label: 'Amount',      align: 'right', width: '112px' },
   { key: 'paid_to',     label: 'Paid to',     align: 'left' },
-  { key: 'category',    label: 'Category',    align: 'left',  width: '124px' },
-  { key: 'mode',        label: 'Mode',        align: 'left',  width: '100px' },
+  { key: 'category',    label: 'Category',    align: 'left',  width: '112px' },
+  { key: 'mode',        label: 'Mode',        align: 'left',  width: '92px' },
   { key: 'remark',      label: 'Remark',      align: 'left' },
-  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '110px' },
-  { key: 'actions',     label: 'Actions',     align: 'right', width: '72px' },
+  { key: 'recorded_by', label: 'Recorded by', align: 'left',  width: '100px' },
+  { key: 'actions',     label: 'Actions',     align: 'right', width: '106px' },
 ] as const
 
 /** The room Paid to and Remark each need before the table is worth drawing. */
@@ -99,7 +143,7 @@ const EXPENSE_FLEX_REMARK_MIN_PX = 150
  * to a character or two and the headers collided. Found at 768px in the
  * responsive pass and corrected here.
  *
- * The sum: 100 + 112 + 124 + 100 + 110 + 72 = 618 fixed, plus 160 for Paid to
+ * The sum: 96 + 112 + 112 + 92 + 100 + 106 = 618 fixed, plus 160 for Paid to
  * and 150 for Remark = 928, rounded to 930 — deliberately the same figure as
  * CONFIRMED_TABLE_MIN_CONTAINER_PX, so both Finance lists switch at one width.
  *
@@ -109,7 +153,7 @@ const EXPENSE_FLEX_REMARK_MIN_PX = 150
  * clipped and nothing ever scrolls sideways.
  */
 export const EXPENSE_TABLE_MIN_CONTAINER_PX =
-  100 + 112 + 124 + 100 + 110 + 72 + EXPENSE_FLEX_COLUMN_MIN_PX + EXPENSE_FLEX_REMARK_MIN_PX + 2
+  96 + 112 + 112 + 92 + 100 + 106 + EXPENSE_FLEX_COLUMN_MIN_PX + EXPENSE_FLEX_REMARK_MIN_PX + 2
 
 /**
  * Table or cards, from the width the list ACTUALLY HAS.
@@ -127,6 +171,9 @@ export function expenseListMode(containerWidth: number | null): 'table' | 'cards
   return containerWidth >= EXPENSE_TABLE_MIN_CONTAINER_PX ? 'table' : 'cards'
 }
 
+/** The two tabs, as a value the render branches on. */
+export type ExpenseTab = 'expenses' | 'drafts'
+
 function fmtDate(value: string): string {
   const at = new Date(`${value}T00:00:00`)
   if (Number.isNaN(at.getTime())) return value
@@ -143,17 +190,28 @@ export function ExpensesView() {
   const [userId, setUserId] = useState<string | null>(null)
   const [caps, setCaps] = useState(NO_FINANCE_CAPABILITIES)
 
+  const [tab, setTab] = useState<ExpenseTab>('expenses')
+
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [rows, setRows] = useState<ExpenseListRow[]>([])
   const [total, setTotal] = useState(0)
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
 
+  const [history, setHistory] = useState<ExpenseHistoryEntry[]>([])
+
+  const [drafts, setDrafts] = useState<ExpenseDraftRow[]>([])
+  const [draftsLoading, setDraftsLoading] = useState(true)
+  const [draftsError, setDraftsError] = useState<string | null>(null)
+
   const [filters, setFilters] = useState<ExpenseFilters>(EMPTY_EXPENSE_FILTERS)
   const [searchTerm, setSearchTerm] = useState('')
 
   const [adding, setAdding] = useState(false)
+  const [capturing, setCapturing] = useState(false)
   const [editing, setEditing] = useState<ExpenseRow | null>(null)
+  const [deleting, setDeleting] = useState<ExpenseRow | null>(null)
+  const [completing, setCompleting] = useState<ExpenseDraftRow | null>(null)
 
   const handleSignOut = useCallback(async () => {
     await supabase.auth.signOut()
@@ -180,6 +238,46 @@ export function ExpensesView() {
     return list
   }, [supabase])
 
+  /**
+   * THE SMART SUGGESTION'S TRAINING SET, read once and separately.
+   *
+   * `deleted_at is null` is asked of the DATABASE, so a removed expense never
+   * reaches the browser to be learned from; the matcher re-applies the same rule
+   * over whatever it is handed. Drafts cannot appear here at all — this reads
+   * public.expenses, and a draft is not in it.
+   */
+  const loadHistory = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .select('category_id, paid_to, remark, deleted_at')
+      .is('deleted_at', null)
+      .order('expense_date', { ascending: false })
+      .limit(EXPENSE_HISTORY_LIMIT)
+    // A failed read means no suggestions, never wrong ones.
+    setHistory(error ? [] : ((data ?? []) as ExpenseHistoryEntry[]))
+  }, [supabase])
+
+  const loadDrafts = useCallback(async () => {
+    setDraftsLoading(true)
+    setDraftsError(null)
+    const { data, error } = await supabase
+      .from('expense_drafts')
+      .select('*')
+      // ONLY THE PENDING ONES. A finalized draft became an expense and a
+      // discarded one was not wanted; both stay in the table for audit and
+      // neither belongs in an inbox.
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false })
+      .limit(200)
+    if (error) {
+      setDraftsError('The captures could not be loaded. Use Refresh to try again.')
+      setDrafts([])
+    } else {
+      setDrafts((data ?? []) as ExpenseDraftRow[])
+    }
+    setDraftsLoading(false)
+  }, [supabase])
+
   // A load token, so a slow response for an older filter cannot land on top of a
   // newer one and repaint the list with rows nobody asked for.
   const loadToken = useRef(0)
@@ -193,8 +291,12 @@ export function ExpensesView() {
     let query = supabase
       .from('expenses')
       .select(LIST_COLUMNS, { count: 'exact' })
-      // NEWEST FIRST, by the date the money left — and by id after it, so two
-      // expenses on the same day keep a stable order between reads.
+      // ── DELETED EXPENSES ARE NOT IN THE LIST, THE FILTERS OR THE TOTAL ──
+      // Asked of the database rather than filtered in the browser, so the
+      // `count` beside the rows is a count of LIVE expenses and the total under
+      // them describes the same set. A removed expense is absent from every
+      // figure on this page.
+      .is('deleted_at', null)
       .order('expense_date', { ascending: false })
       .order('id', { ascending: false })
       .limit(EXPENSE_LIST_LIMIT)
@@ -252,11 +354,13 @@ export function ExpensesView() {
         getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
         loadCategories(),
         loadExpenses(),
+        loadDrafts(),
+        loadHistory(),
       ])
       if (!active) return
       setProfile(me as UserProfile)
       // Capabilities start at NONE and widen only once the resolver answers, so
-      // no Add or Edit control can appear before it is authorized.
+      // no Add, Edit or Delete control can appear before it is authorized.
       setCaps(deriveFinanceCapabilities((me as UserProfile | null)?.role, perms))
       setPageLoading(false)
     }
@@ -290,6 +394,7 @@ export function ExpensesView() {
   const narrowed = expenseFiltersActive(filters)
   const shownTotal = expenseTotal(rows)
   const capped = total > rows.length
+  const pendingCount = pendingDraftCount(drafts)
 
   const clearFilters = () => {
     setSearchTerm('')
@@ -301,14 +406,27 @@ export function ExpensesView() {
       ? `Expense corrected — ${formatMoney(outcome.amount)} to ${outcome.paidTo}`
       : `Expense saved — ${formatMoney(outcome.amount)} to ${outcome.paidTo}`)
     void loadExpenses()
+    // THE SUGGESTION LEARNS FROM WHAT WAS JUST FILED, on the next form that
+    // opens. This is the whole of "it gets better as more expenses are
+    // finalized" — one more row in the training set, no model, no retraining.
+    void loadHistory()
+    if (outcome.mode === 'complete') {
+      // The capture has left the inbox. Re-read rather than removing it here:
+      // the database decided, and the badge should agree with the database.
+      void loadDrafts()
+      setCompleting(null)
+      return
+    }
     if (!andAnother) { setAdding(false); setEditing(null) }
   }
 
-  // An expense is corrected by the person who recorded it, or by a holder of the
-  // protected finance.manage. Exactly what the two UPDATE policies allow, so a
-  // button drawn here matches what the database will accept.
-  const mayEdit = (row: ExpenseRow) =>
-    caps.canManageFinance || (userId !== null && row.created_by === userId)
+  // An expense is corrected or removed by the person who recorded it, or by a
+  // holder of the protected finance.manage — and never once it has been
+  // deleted. Exactly what the two UPDATE policies and the guard trigger allow,
+  // so a button drawn here matches what the database will accept.
+  const actor = { userId, canManageFinance: caps.canManageFinance }
+  const mayEdit = (row: ExpenseRow) => mayEditExpense(row, actor)
+  const mayDelete = (row: ExpenseRow) => mayDeleteExpense(row, actor)
 
   if (pageLoading) return <FinanceRouteFallback />
 
@@ -318,134 +436,194 @@ export function ExpensesView() {
       title="Expenses"
       subtitle="Money paid out"
       onSignOut={handleSignOut}
-      onRefresh={async () => { await loadCategories(); await loadExpenses() }}
+      onRefresh={async () => {
+        await loadCategories()
+        await loadExpenses()
+        await loadDrafts()
+        await loadHistory()
+      }}
       actions={caps.canCreatePaymentRecord && (
-        <button onClick={() => setAdding(true)} className="boe-btn boe-btn-primary">
-          Add Expense
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => setCapturing(true)} className="boe-btn boe-btn-ghost">
+            {QUICK_CAPTURE_LABEL}
+          </button>
+          <button onClick={() => setAdding(true)} className="boe-btn boe-btn-primary">
+            Add Expense
+          </button>
+        </div>
       )}
     >
-      {/* ── Everything that narrows the list, and nothing else ── */}
-      <div className="boe-list-toolbar" role="search" aria-label="Filter expenses">
-        <label className="boe-list-search">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
-            <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input
-            type="search"
-            aria-label="Search by paid-to name or remark"
-            placeholder="Search paid to or remark"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-          {searchTerm && (
-            <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
-          )}
-        </label>
-
-        <div className="boe-list-daterange" role="group" aria-label="Expense date">
-          <label className="boe-list-date">
-            <span>Paid from</span>
-            <input
-              type="date" className="boe-input" aria-label="Expenses on or after"
-              value={filters.dateFrom}
-              onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-            />
-          </label>
-          <label className="boe-list-date">
-            <span>to</span>
-            <input
-              type="date" className="boe-input" aria-label="Expenses on or before"
-              value={filters.dateTo}
-              onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-            />
-          </label>
-        </div>
-
-        <select
-          className="boe-input expense-filter-select"
-          aria-label="Filter by category"
-          value={filters.categoryId}
-          onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
-        >
-          <option value="">All categories</option>
-          {selectableCategories(categories, filters.categoryId || null).map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
-
-        <select
-          className="boe-input expense-filter-select"
-          aria-label="Filter by payment mode"
-          value={filters.paymentMode}
-          onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
-        >
-          <option value="">All modes</option>
-          {EXPENSE_PAYMENT_MODES.map(m => (
-            <option key={m.value} value={m.value}>{m.label}</option>
-          ))}
-        </select>
-
-        {narrowed && (
-          <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      {/* ── The total of what is on screen ──
-          Stated as what it is. When the cap has bitten it says which rows it
-          describes rather than presenting a partial figure as the whole. */}
+      {/* ── THE TWO TABS ──
+          Needs Details carries a count because it IS a queue — something is
+          waiting for this person, which is exactly the fact a badge should
+          report. The Expenses tab carries none: a log is not a queue, and a
+          number beside it would count rows rather than report work. */}
       <div
-        aria-live="polite"
-        style={{
-          display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
-          gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
-          padding: '10px 12px', borderRadius: '10px',
-          border: `1px solid ${colors.border}`, background: colors.raised,
-        }}
+        role="tablist"
+        aria-label="Expenses and captures"
+        data-testid="expense-tabs"
+        style={{ display: 'flex', gap: '6px', marginBottom: '12px', flexWrap: 'wrap' }}
       >
-        <span style={{ fontSize: '12px', color: colors.tertiary }}>
-          {listLoading
-            ? 'Loading…'
-            : listError
-              ? 'Total unavailable'
-              : capped
-                ? `Total of the ${rows.length} most recent shown, of ${total}`
-                : `Total${narrowed ? ' (filtered)' : ''} · ${total} ${total === 1 ? 'expense' : 'expenses'}`}
-        </span>
-        <span style={{
-          fontSize: '17px', fontWeight: 700, color: colors.primary,
-          fontVariantNumeric: 'tabular-nums',
-        }}>
-          {listLoading || listError ? '—' : formatMoney(shownTotal)}
-        </span>
-      </div>
-
-      {capped && !listLoading && !listError && (
-        <div role="status" style={{
-          marginBottom: '10px', padding: '9px 12px', borderRadius: '8px',
-          border: `1px solid ${colors.border}`, background: colors.amberTint,
-          fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
-        }}>
-          Showing the {rows.length} most recent of {total} matching expenses. Narrow the
-          dates to see the rest, and for a complete total of a period.
-        </div>
-      )}
-
-      <div className="boe-card" style={{ overflow: 'hidden' }}>
-        <ExpenseList
-          rows={rows}
-          loading={listLoading}
-          error={listError}
-          narrowed={narrowed}
-          categoryName={categoryName}
-          personName={(id: string) => people.get(id) ?? '—'}
-          mayEdit={mayEdit}
-          onEdit={setEditing}
-          onClearFilters={clearFilters}
+        <TabButton
+          id="expenses" label="Expenses" active={tab === 'expenses'}
+          onClick={() => setTab('expenses')}
+        />
+        <TabButton
+          id="drafts" label={NEEDS_DETAILS_LABEL} active={tab === 'drafts'}
+          badge={pendingCount}
+          onClick={() => setTab('drafts')}
         />
       </div>
+
+      {tab === 'drafts' ? (
+        <div className="boe-card" style={{ overflow: 'hidden' }}>
+          {userId && (
+            <NeedsDetailsList
+              rows={drafts}
+              loading={draftsLoading}
+              error={draftsError}
+              personName={(id: string) => people.get(id) ?? '—'}
+              mayAct={row => mayActOnDraft(row, actor)}
+              onComplete={setCompleting}
+              onDiscarded={row => {
+                show('Capture discarded')
+                setDrafts(prev => prev.filter(d => d.id !== row.id))
+                void loadDrafts()
+              }}
+              supabase={supabase}
+              userId={userId}
+            />
+          )}
+        </div>
+      ) : (
+        <>
+          {/* ── Everything that narrows the list, and nothing else ── */}
+          <div className="boe-list-toolbar" role="search" aria-label="Filter expenses">
+            <label className="boe-list-search">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={colors.muted} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" style={{ flexShrink: 0 }}>
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="search"
+                aria-label="Search by paid-to name or remark"
+                placeholder="Search paid to or remark"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
+              {searchTerm && (
+                <button type="button" onClick={() => setSearchTerm('')} aria-label="Clear search" className="boe-list-search-clear">✕</button>
+              )}
+            </label>
+
+            <div className="boe-list-daterange" role="group" aria-label="Expense date">
+              <label className="boe-list-date">
+                <span>Paid from</span>
+                <input
+                  type="date" className="boe-input" aria-label="Expenses on or after"
+                  value={filters.dateFrom}
+                  onChange={e => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                />
+              </label>
+              <label className="boe-list-date">
+                <span>to</span>
+                <input
+                  type="date" className="boe-input" aria-label="Expenses on or before"
+                  value={filters.dateTo}
+                  onChange={e => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                />
+              </label>
+            </div>
+
+            <select
+              className="boe-input expense-filter-select"
+              aria-label="Filter by category"
+              value={filters.categoryId}
+              onChange={e => setFilters(prev => ({ ...prev, categoryId: e.target.value }))}
+            >
+              <option value="">All categories</option>
+              {selectableCategories(categories, filters.categoryId || null).map(c => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+
+            <select
+              className="boe-input expense-filter-select"
+              aria-label="Filter by payment mode"
+              value={filters.paymentMode}
+              onChange={e => setFilters(prev => ({ ...prev, paymentMode: e.target.value }))}
+            >
+              <option value="">All modes</option>
+              {EXPENSE_PAYMENT_MODES.map(m => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+
+            {narrowed && (
+              <button type="button" onClick={clearFilters} className="boe-btn boe-btn-ghost boe-list-clear">
+                Clear filters
+              </button>
+            )}
+          </div>
+
+          {/* ── The total of what is on screen ──
+              Stated as what it is. When the cap has bitten it says which rows it
+              describes rather than presenting a partial figure as the whole.
+              DELETED EXPENSES ARE NOT IN IT: the query excluded them and
+              expenseTotal excludes them again. */}
+          <div
+            aria-live="polite"
+            style={{
+              display: 'flex', alignItems: 'baseline', justifyContent: 'space-between',
+              gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
+              padding: '10px 12px', borderRadius: '10px',
+              border: `1px solid ${colors.border}`, background: colors.raised,
+            }}
+          >
+            <span style={{ fontSize: '12px', color: colors.tertiary }}>
+              {listLoading
+                ? 'Loading…'
+                : listError
+                  ? 'Total unavailable'
+                  : capped
+                    ? `Total of the ${rows.length} most recent shown, of ${total}`
+                    : `Total${narrowed ? ' (filtered)' : ''} · ${total} ${total === 1 ? 'expense' : 'expenses'}`}
+            </span>
+            <span style={{
+              fontSize: '17px', fontWeight: 700, color: colors.primary,
+              fontVariantNumeric: 'tabular-nums',
+            }}>
+              {listLoading || listError ? '—' : formatMoney(shownTotal)}
+            </span>
+          </div>
+
+          {capped && !listLoading && !listError && (
+            <div role="status" style={{
+              marginBottom: '10px', padding: '9px 12px', borderRadius: '8px',
+              border: `1px solid ${colors.border}`, background: colors.amberTint,
+              fontSize: '12px', color: colors.secondary, lineHeight: 1.5,
+            }}>
+              Showing the {rows.length} most recent of {total} matching expenses. Narrow the
+              dates to see the rest, and for a complete total of a period.
+            </div>
+          )}
+
+          <div className="boe-card" style={{ overflow: 'hidden' }}>
+            <ExpenseList
+              rows={rows}
+              loading={listLoading}
+              error={listError}
+              narrowed={narrowed}
+              categoryName={categoryName}
+              personName={(id: string) => people.get(id) ?? '—'}
+              mayEdit={mayEdit}
+              mayDelete={mayDelete}
+              onEdit={setEditing}
+              onDelete={setDeleting}
+              onClearFilters={clearFilters}
+            />
+          </div>
+        </>
+      )}
 
       {adding && userId && (
         <FinanceModal title="Add Expense" onClose={() => setAdding(false)} width="560px" closeOnBackdropClick={false}>
@@ -454,11 +632,29 @@ export function ExpensesView() {
             userId={userId}
             mode="add"
             categories={categories}
+            history={history}
             onCategoryCreated={c => setCategories(prev => [...prev, c])}
             onSaved={afterSave}
             onCancel={() => setAdding(false)}
             showSaveAndAddAnother
             autoFocus
+          />
+        </FinanceModal>
+      )}
+
+      {capturing && userId && (
+        <FinanceModal title={QUICK_CAPTURE_LABEL} onClose={() => setCapturing(false)} width="480px" closeOnBackdropClick={false}>
+          <QuickCapture
+            supabase={supabase}
+            userId={userId}
+            autoFocus
+            onSaved={() => {
+              show(QUICK_CAPTURE_SAVED_MESSAGE)
+              setCapturing(false)
+              setTab('drafts')
+              void loadDrafts()
+            }}
+            onCancel={() => setCapturing(false)}
           />
         </FinanceModal>
       )}
@@ -476,6 +672,7 @@ export function ExpensesView() {
             mode="edit"
             expense={editing}
             categories={categories}
+            history={history}
             onCategoryCreated={c => setCategories(prev => [...prev, c])}
             onSaved={afterSave}
             onCancel={() => setEditing(null)}
@@ -483,8 +680,103 @@ export function ExpensesView() {
         </FinanceModal>
       )}
 
+      {/* ── COMPLETING A CAPTURE OPENS THE ORDINARY FORM ──
+          Same fields, same validation, same Smart suggestion, same final
+          review. Only the write differs, and only because it must be one
+          transaction. */}
+      {completing && userId && (
+        <FinanceModal
+          title="Complete capture"
+          onClose={() => setCompleting(null)}
+          width="560px"
+          closeOnBackdropClick={false}
+        >
+          <ExpenseForm
+            supabase={supabase}
+            userId={userId}
+            mode="complete"
+            draft={completing}
+            categories={categories}
+            history={history}
+            onCategoryCreated={c => setCategories(prev => [...prev, c])}
+            onSaved={afterSave}
+            onCancel={() => setCompleting(null)}
+          />
+        </FinanceModal>
+      )}
+
+      {deleting && userId && (
+        <DeleteExpenseModal
+          supabase={supabase}
+          userId={userId}
+          expense={deleting}
+          categoryName={categoryName(deleting.category_id)}
+          onClose={() => setDeleting(null)}
+          onDeleted={row => {
+            setDeleting(null)
+            show(`Expense deleted — ${formatMoney(row.amount)} to ${row.paid_to}`)
+            // THE LIST AND THE TOTAL UPDATE IMMEDIATELY. Removed from the rows
+            // in hand first so the figure changes in the same frame as the
+            // toast, then re-read so the count beside it comes from the
+            // database rather than from arithmetic here.
+            setRows(prev => prev.filter(r => r.id !== row.id))
+            setTotal(prev => Math.max(0, prev - 1))
+            void loadExpenses()
+            // AND IT STOPS TEACHING THE MATCHER. Re-read, so the next
+            // suggestion is computed without it.
+            void loadHistory()
+          }}
+        />
+      )}
+
       <Toast toast={toast} onDismiss={dismiss} />
     </FinanceLayout>
+  )
+}
+
+// ── One tab ──────────────────────────────────────────────────────────────────
+
+function TabButton({ id, label, active, badge, onClick }: {
+  id: string
+  label: string
+  active: boolean
+  badge?: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      id={`expense-tab-${id}`}
+      aria-selected={active}
+      onClick={onClick}
+      className="boe-btn"
+      style={{
+        display: 'flex', alignItems: 'center', gap: '7px',
+        minHeight: '42px', padding: '8px 15px', fontSize: '13px',
+        fontWeight: active ? 700 : 600,
+        background: active ? colors.base : 'transparent',
+        color: active ? colors.primary : colors.tertiary,
+        border: `1px solid ${active ? colors.borderSoft : 'transparent'}`,
+      }}
+    >
+      {label}
+      {/* Hidden at a real zero: a badge showing 0 is a thing to read and
+          dismiss, every time, forever. */}
+      {typeof badge === 'number' && badge > 0 && (
+        <span
+          data-testid="needs-details-badge"
+          style={{
+            minWidth: '19px', height: '19px', padding: '0 5px', borderRadius: '10px',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '10.5px', fontWeight: 700,
+            background: 'rgba(217,148,0,0.16)', color: '#8A5A00',
+          }}
+        >
+          {badge > 99 ? '99+' : badge}
+        </span>
+      )}
+    </button>
   )
 }
 
@@ -498,7 +790,9 @@ type ListProps = {
   categoryName: (id: string) => string
   personName: (id: string) => string
   mayEdit: (row: ExpenseRow) => boolean
+  mayDelete: (row: ExpenseRow) => boolean
   onEdit: (row: ExpenseRow) => void
+  onDelete: (row: ExpenseRow) => void
   onClearFilters: () => void
 }
 
@@ -573,7 +867,7 @@ const TD: React.CSSProperties = {
   whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
 }
 
-export function ExpenseTable({ rows, categoryName, personName, mayEdit, onEdit }: ListProps) {
+export function ExpenseTable({ rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete }: ListProps) {
   return (
     // FIXED LAYOUT, so the columns sit where the header says they are whatever
     // the rows contain, and a long payee truncates instead of widening the table
@@ -623,15 +917,33 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, onEdit }
               {personName(row.created_by)}
             </td>
             <td style={{ ...TD, textAlign: 'right' }}>
-              {mayEdit(row) ? (
-                <button
-                  onClick={() => onEdit(row)}
-                  className="boe-btn boe-btn-ghost"
-                  style={{ padding: '4px 10px', fontSize: '12px' }}
-                  aria-label={`Correct the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
-                >
-                  Edit
-                </button>
+              {mayEdit(row) || mayDelete(row) ? (
+                <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', alignItems: 'center' }}>
+                  {mayEdit(row) && (
+                    <button
+                      onClick={() => onEdit(row)}
+                      className="boe-btn boe-btn-ghost"
+                      style={{ padding: '4px 9px', fontSize: '12px' }}
+                      aria-label={`Correct the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                    >
+                      Edit
+                    </button>
+                  )}
+                  {/* ICON-ONLY, AND NAMED FOR EVERYBODY WHO CANNOT SEE IT. The
+                      column has room for one word and one icon; the word goes
+                      to the action somebody performs often. */}
+                  {mayDelete(row) && (
+                    <button
+                      onClick={() => onDelete(row)}
+                      className="boe-btn boe-btn-ghost"
+                      style={{ padding: '4px 7px', fontSize: '12px', color: '#C13030', lineHeight: 1 }}
+                      aria-label={`Delete the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                      title="Delete"
+                    >
+                      <Trash2 size={14} strokeWidth={1.9} />
+                    </button>
+                  )}
+                </div>
               ) : <span style={{ fontSize: '12px', color: colors.muted }}>—</span>}
             </td>
           </tr>
@@ -645,10 +957,10 @@ export function ExpenseTable({ rows, categoryName, personName, mayEdit, onEdit }
 //
 // SAME DATA, SAME DECISIONS. Nothing a desktop reader sees is hidden here: the
 // amount and payee lead, the date, mode and category sit under them, the remark
-// is on its own line, and Edit is a full-height tap target rather than a
-// squeezed link.
+// is on its own line, and Edit and Delete are full-height tap targets rather
+// than squeezed links.
 
-export function ExpenseCards({ rows, categoryName, personName, mayEdit, onEdit }: ListProps) {
+export function ExpenseCards({ rows, categoryName, personName, mayEdit, mayDelete, onEdit, onDelete }: ListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
       {rows.map(row => (
@@ -688,16 +1000,28 @@ export function ExpenseCards({ rows, categoryName, personName, mayEdit, onEdit }
             <span style={{ fontSize: '11px', color: colors.muted, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {personName(row.created_by)}
             </span>
-            {mayEdit(row) && (
-              <button
-                onClick={() => onEdit(row)}
-                className="boe-btn boe-btn-ghost"
-                style={{ flexShrink: 0, minHeight: '40px', padding: '6px 14px', fontSize: '12.5px' }}
-                aria-label={`Correct the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
-              >
-                Edit
-              </button>
-            )}
+            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+              {mayEdit(row) && (
+                <button
+                  onClick={() => onEdit(row)}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ minHeight: '40px', padding: '6px 14px', fontSize: '12.5px' }}
+                  aria-label={`Correct the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                >
+                  Edit
+                </button>
+              )}
+              {mayDelete(row) && (
+                <button
+                  onClick={() => onDelete(row)}
+                  className="boe-btn boe-btn-ghost"
+                  style={{ minHeight: '40px', padding: '6px 12px', fontSize: '12.5px', color: '#C13030' }}
+                  aria-label={`Delete the expense of ${formatMoney(row.amount)} paid to ${row.paid_to}`}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ))}

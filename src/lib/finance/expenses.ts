@@ -98,6 +98,18 @@ export type ExpenseRow = {
   created_at: string
   updated_at: string
   updated_by: string | null
+  /**
+   * THE TOMBSTONE. Null on every expense that counts; set on one that has been
+   * removed from the normal records — the list, the filters, the total,
+   * category learning and reporting alike.
+   *
+   * THE ROW ITSELF IS NEVER DESTROYED. Migration 20261222000000 adds these two
+   * columns and still adds no DELETE policy, so a hard delete remains refused
+   * by RLS for every non-service caller. See expenseDeletion.ts for the rules
+   * and ExpensesView for where the exclusion is applied.
+   */
+  deleted_at: string | null
+  deleted_by: string | null
 }
 
 /** A row joined to the two names a list row prints. */
@@ -353,7 +365,18 @@ export function expenseSearchClause(search: string): string | null {
  * result (it is not paged in Phase 1), so that is the filtered total; if paging
  * is ever added, this must be replaced by a database-side sum rather than left
  * to describe one page.
+ *
+ * A SOFT-DELETED EXPENSE CONTRIBUTES NOTHING, and that is enforced HERE as well
+ * as in the query. The list already asks the database for `deleted_at is null`,
+ * so in practice no tombstoned row reaches this function — but "a deleted
+ * expense is not in the total" is the promise the delete dialog makes, and a
+ * promise about money is worth holding in the one place that computes it, where
+ * a test can reach it without a database. A row with no `deleted_at` field at
+ * all — a plain `{ amount }`, which several callers pass — is live.
  */
-export function expenseTotal(rows: readonly { amount: string | number | null }[]): string {
-  return exactToString(sumExact(rows.map(r => r.amount)))
+export function expenseTotal(
+  rows: readonly { amount: string | number | null; deleted_at?: string | null }[],
+): string {
+  return exactToString(sumExact(
+    rows.filter(r => r.deleted_at == null).map(r => r.amount)))
 }

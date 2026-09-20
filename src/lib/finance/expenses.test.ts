@@ -328,6 +328,7 @@ describe('correcting an expense', () => {
     paid_to: 'Sharma Ji', category_id: 'cat-1', remark: 'welding machine',
     created_by: 'user-1', created_at: '2026-09-18T10:00:00Z',
     updated_at: '2026-09-18T10:00:00Z', updated_by: null,
+    deleted_at: null, deleted_by: null,
   }
 
   test('the same form opens on the stored values, exactly', () => {

@@ -23,6 +23,7 @@ import {
   EXPENSE_TABLE_MIN_CONTAINER_PX, EXPENSE_TABLE_COLUMNS, EXPENSE_FLEX_COLUMN_MIN_PX,
 } from './ExpensesView'
 import type { ExpenseCategory, ExpenseListRow, ExpenseRow } from '@/lib/finance/expenses'
+import { mayDeleteExpense, mayEditExpense } from '@/lib/finance/expenseDeletion'
 import { VOICE_UNSUPPORTED_MESSAGE } from '@/lib/finance/expenseVoice'
 
 const CATEGORIES: ExpenseCategory[] = [
@@ -36,6 +37,7 @@ const ROW: ExpenseRow = {
   paid_to: 'Sharma Ji', category_id: 'cat-1', remark: 'welding machine',
   created_by: 'user-1', created_at: '2026-09-18T10:00:00Z',
   updated_at: '2026-09-18T10:00:00Z', updated_by: null,
+  deleted_at: null, deleted_by: null,
 }
 
 // The form never calls Supabase during a render; a stub satisfies the type.
@@ -65,7 +67,9 @@ const renderList = (over: Partial<Parameters<typeof ExpenseList>[0]> = {}) =>
     categoryName: (id: string) => CATEGORIES.find(c => c.id === id)?.name ?? '—',
     personName: () => 'Nishant',
     mayEdit: () => true,
+    mayDelete: () => true,
     onEdit: () => {},
+    onDelete: () => {},
     onClearFilters: () => {},
     ...over,
   }))
@@ -269,7 +273,9 @@ describe('the desktop table', () => {
     categoryName: (id: string) => CATEGORIES.find(c => c.id === id)?.name ?? '—',
     personName: () => 'Nishant',
     mayEdit: () => true,
+    mayDelete: () => true,
     onEdit: () => {},
+    onDelete: () => {},
     onClearFilters: () => {},
   }))
 
@@ -300,7 +306,8 @@ describe('the desktop table', () => {
     const empty = renderToStaticMarkup(createElement(ExpenseTable, {
       rows: [listRow({ remark: null })], loading: false, error: null, narrowed: false,
       categoryName: () => 'Diesel', personName: () => 'Nishant',
-      mayEdit: () => true, onEdit: () => {}, onClearFilters: () => {},
+      mayEdit: () => true, mayDelete: () => true,
+      onEdit: () => {}, onDelete: () => {}, onClearFilters: () => {},
     }))
     assert.ok(empty.includes('—'))
   })
@@ -338,9 +345,29 @@ describe('what a row shows', () => {
     assert.equal(html2.includes('>Edit</button>'), false)
   })
 
-  test('NOTHING OFFERS DELETION', () => {
-    assert.equal(/>Delete</.test(html), false)
-    assert.equal(/>Remove</.test(html), false)
+  // PHASE 1 ASSERTED "NOTHING OFFERS DELETION". Phase 2 adds it deliberately —
+  // as a TOMBSTONE, never a DELETE — so the assertion is replaced rather than
+  // deleted: the row must offer removal, and must still never offer a hard one.
+  test('DELETION IS OFFERED, AND IT IS NEVER A HARD DELETE', () => {
+    assert.ok(/aria-label="Delete the expense of [^"]+ paid to [^"]+"/.test(html),
+      'the control names the row it removes, for somebody who cannot see it')
+    assert.equal(/>Remove</.test(html), false, 'one word for one act, everywhere')
+  })
+
+  test('a row somebody may not act on offers neither control', () => {
+    const readOnly = renderList({ mayEdit: () => false, mayDelete: () => false })
+    assert.equal(/aria-label="Delete the expense/.test(readOnly), false)
+    assert.equal(/aria-label="Correct the expense/.test(readOnly), false)
+  })
+
+  test('A DELETED ROW IS NEVER IN THE LIST TO BEGIN WITH', () => {
+    // The query asks the database for deleted_at is null, so this is belt and
+    // braces — but mayEdit/mayDelete refuse a tombstoned row whatever reaches
+    // them, which is what stops a stale list arming a control.
+    const dead = { ...ROW, deleted_at: '2026-09-19T10:00:00Z', deleted_by: 'user-1' }
+    const actor = { userId: 'user-1', canManageFinance: true }
+    assert.equal(mayEditExpense(dead, actor), false)
+    assert.equal(mayDeleteExpense(dead, actor), false)
   })
 
   test('a row with no remark prints nothing rather than an empty line', () => {
