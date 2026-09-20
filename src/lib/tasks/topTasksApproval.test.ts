@@ -239,6 +239,10 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // drops nothing, registers no permission module or action, and contains no
     // DML against any business table. It reaches nothing here.
     '20261220000000_finance_expenses.sql',
+    // 20261221000000 — drops the declared scale from expenses.amount so an
+    // over-precise figure is REFUSED by the CHECK rather than silently rounded.
+    // One ALTER COLUMN TYPE on an empty table of its own. It reaches nothing here.
+    '20261221000000_expense_amounts_are_never_rounded.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 

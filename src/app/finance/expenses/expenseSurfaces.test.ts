@@ -401,7 +401,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     const unexpected = production.filter(f =>
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense') &&
-      !f.startsWith('supabase/migrations/20261220000000') &&
+      !f.startsWith('supabase/migrations/2026122') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f))
     assert.deepEqual(unexpected, [])
@@ -422,7 +422,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     const unexpected = [...touched].filter(f =>
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense') &&
-      !f.startsWith('supabase/migrations/20261220000000') &&
+      !f.startsWith('supabase/migrations/2026122') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
       !ALLOWED_TESTS.has(f))

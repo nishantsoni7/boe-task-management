@@ -223,6 +223,10 @@ describe('the file, and where it sits', () => {
       // nothing, registers no permission module or action, and runs no DML against
       // any business table. It reaches nothing here.
       '20261220000000_finance_expenses.sql',
+      // 20261221000000 — drops the declared scale from expenses.amount so an
+      // over-precise figure is REFUSED by the CHECK rather than silently rounded.
+      // One ALTER COLUMN TYPE on an empty table of its own. It reaches nothing here.
+      '20261221000000_expense_amounts_are_never_rounded.sql',
     ])
   })
 
