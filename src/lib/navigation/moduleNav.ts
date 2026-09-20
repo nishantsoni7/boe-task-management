@@ -19,7 +19,7 @@
 // route's own guard and the database still decide what opens.
 
 export type OrdersNavKey = 'dashboard' | 'drafts' | 'confirmed'
-export type FinanceNavKey = 'requests' | 'confirmed'
+export type FinanceNavKey = 'requests' | 'confirmed' | 'expenses'
 
 // The destinations themselves (labels, paths, icons) stay in OrdersLayout and
 // FinanceLayout, where several retirement tests read them; this file only
@@ -56,6 +56,10 @@ export function activeOrdersNav(pathname: string): OrdersNavKey | null {
  *                                            records; the latter is retired from
  *                                            the sidebar but still answers)
  *   /finance/received…                     → confirmed
+ *   /finance/expenses, /expenses/new       → expenses (the quick-entry route is
+ *                                            a step of the same section, so the
+ *                                            entry is lit when somebody lands on
+ *                                            it from a home-screen shortcut)
  *   /finance/notifications                 → null
  */
 export function activeFinanceNav(pathname: string): FinanceNavKey | null {
@@ -63,6 +67,7 @@ export function activeFinanceNav(pathname: string): FinanceNavKey | null {
   if (root !== 'finance') return null
   if (section === undefined || section === 'payments-to-verify') return 'requests'
   if (section === 'received') return 'confirmed'
+  if (section === 'expenses') return 'expenses'
   return null
 }
 
@@ -78,6 +83,9 @@ export function pendingModuleTitle(pathname: string): string {
     if (section === undefined) return 'Payment Requests'
     if (section === 'received') return 'Confirmed Payments'
     if (section === 'payments-to-verify') return 'Payments to Verify'
+    // The quick-entry route's own heading, so the shell does not say "Expenses"
+    // for a frame and then change to "Add Expense" once the page lands.
+    if (section === 'expenses') return id === 'new' ? 'Add Expense' : 'Expenses'
     if (section === 'notifications') return 'Notifications'
     return 'Finance'
   }

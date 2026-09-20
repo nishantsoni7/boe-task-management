@@ -17,8 +17,9 @@ import {
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
+import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
-import { Image as ImageIcon } from 'lucide-react'
+import { Image as ImageIcon, Receipt as ReceiptIcon } from 'lucide-react'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -233,6 +234,24 @@ export default function BoeOsHomePage() {
       subjectRole,
       subjectPermissions.get('customer_review_requests') ?? [],
     ).canAccessModule
+
+  // ── QUICK ADD EXPENSE ──
+  //
+  // The launcher is where somebody lands after signing in on a phone, so it is
+  // where the one action that has to be instant belongs: recording an expense
+  // they have just paid for, without opening Finance and finding a list first.
+  //
+  // GATED ON THE SAME TWO FACTS THE ROUTE AND THE DATABASE USE — Finance entry
+  // and finance.create — through deriveFinanceCapabilities, the module's own
+  // derivation. Somebody who may open Finance but may not record anything is not
+  // offered a form that would be refused, and somebody without Finance sees
+  // neither this nor the Finance card. It grants nothing: ModuleGuard decides
+  // the route and RLS decides the write.
+  const financeCaps = deriveFinanceCapabilities(
+    subjectRole,
+    subjectPermissions.get('finance') ?? [],
+  )
+  const canQuickAddExpense = permsReady && financeCaps.canCreatePaymentRecord
 
   // Fallback used when app_modules DB data is unavailable. Now reached only by
   // the Attendance/Payroll self-service card — every other module resolves
@@ -539,6 +558,27 @@ export default function BoeOsHomePage() {
           subtitle={new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           onSignOut={handleSignOut}
         >
+          {/* ── Quick actions ──
+              One action, and only where it is authorized. It sits above the
+              module grid because its whole reason for existing is that it must
+              be reachable in one tap from the first screen after sign-in. */}
+          {canQuickAddExpense && (
+            <div style={{ marginBottom: '22px' }}>
+              <div className={styles.sectionLabel}>Quick actions</div>
+              <button
+                onClick={() => router.push('/finance/expenses/new')}
+                className="boe-btn boe-btn-primary"
+                style={{
+                  minHeight: '46px', fontSize: '13.5px', fontWeight: 600,
+                  display: 'inline-flex', alignItems: 'center', gap: '8px',
+                }}
+              >
+                <ReceiptIcon size={16} strokeWidth={1.9} />
+                Quick Add Expense
+              </button>
+            </div>
+          )}
+
           {/* Section label */}
           <div className={styles.sectionLabel}>
             Modules

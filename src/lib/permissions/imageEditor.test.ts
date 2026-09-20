@@ -324,7 +324,10 @@ describe('the /modules launcher card', () => {
   })
 
   test('the icon comes from a library already used in the app', () => {
-    assert.match(LAUNCHER, /import \{ Image as ImageIcon \} from 'lucide-react'/)
+    // The rule is that ImageIcon is a lucide-react import, not that it is the
+    // only one on the line: the launcher has since gained a Quick Add Expense
+    // action whose icon comes from the same library and the same statement.
+    assert.match(LAUNCHER, /import \{[^}]*\bImage as ImageIcon\b[^}]*\} from 'lucide-react'/)
     assert.match(cardBlock, /<ImageIcon size=\{26\} strokeWidth=\{1\.8\} \/>/)
     const editor = readFileSync(join(process.cwd(), 'src/app/image-editor/page.tsx'), 'utf8')
     assert.ok(editor.includes("from 'lucide-react'"), 'lucide is already in use by this module')

@@ -55,6 +55,15 @@ describe('the Finance entry a path belongs to', () => {
     assert.equal(activeFinanceNav('/finance/payments-to-verify'), 'requests')
   })
 
+  test('Expenses lights itself, and so does its quick-entry route', () => {
+    // Money going out — a third Finance section, not a third view of the
+    // payments. /finance/expenses/new is a step of the same section, so
+    // somebody who arrived there from a phone's home screen still sees where
+    // they are in the module.
+    assert.equal(activeFinanceNav('/finance/expenses'), 'expenses')
+    assert.equal(activeFinanceNav('/finance/expenses/new'), 'expenses')
+  })
+
   test('Notifications and other modules light no primary entry', () => {
     assert.equal(activeFinanceNav('/finance/notifications'), null)
     assert.equal(activeFinanceNav('/orders'), null)
@@ -76,6 +85,10 @@ describe('the header while a route is still loading says what the page will say'
     assert.equal(pendingModuleTitle('/finance'), 'Payment Requests')
     assert.equal(pendingModuleTitle('/finance/received'), 'Confirmed Payments')
     assert.equal(pendingModuleTitle('/finance/payments-to-verify'), 'Payments to Verify')
+    assert.equal(pendingModuleTitle('/finance/expenses'), 'Expenses')
+    // The quick-entry route's own heading, so the shell does not say "Expenses"
+    // for a frame and then change once the page lands.
+    assert.equal(pendingModuleTitle('/finance/expenses/new'), 'Add Expense')
     assert.equal(pendingModuleTitle('/finance/notifications'), 'Notifications')
   })
 })

@@ -5397,3 +5397,44 @@ h1.boe-page-title { margin-top: 0; }
   background: #FFFBEB; border: 1px solid #FDE68A;
   font-size: 12px; color: #92400E; line-height: 1.5;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FINANCE → EXPENSES
+
+   Two rules, scoped by the `expense-` prefix and used by exactly two screens:
+   the expense form (/finance/expenses and /finance/expenses/new) and the
+   expense list's filter toolbar. Nothing else in the app reads them, and they
+   introduce no colour, radius, font or spacing token of their own — every value
+   below is one the surrounding `.boe-` rules already use.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Two fields side by side where there is room, stacked where there is not.
+   NOT a media query: this form is rendered at ~520px inside a modal on a
+   desktop and at 360px on a phone, and a viewport test would give the modal a
+   phone's layout or the phone a desktop's. Each column asks for 200px and wraps
+   when both cannot have it, so 360px and 390px stack and the modal does not. */
+.expense-form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  min-width: 0;
+}
+.expense-form-row > * {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+/* The two filter dropdowns match the height of the search box and the date
+   inputs beside them, so the toolbar reads as one row rather than three. */
+.expense-filter-select {
+  height: 32px;
+  padding: 0 8px;
+  font-size: 12px;
+  flex: 0 1 160px;
+  min-width: 0;
+}
+@media (max-width: 480px) {
+  /* On a phone the two sit side by side on their own line, full width between
+     them — no horizontal scrolling, and each stays a comfortable tap target. */
+  .expense-filter-select { flex: 1 1 calc(50% - 5px); height: 38px; font-size: 13px; }
+}
