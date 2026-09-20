@@ -988,6 +988,11 @@ describe('the applied migrations are frozen', () => {
       // action, and runs no DML against any business table. It reaches nothing
       // here.
       '20261222000000_expense_lifecycle.sql',
+      // 20261223000000 — revokes EXECUTE on finalize_expense_draft from anon,
+      // which 20261222000000 meant to do and did not (it revoked from the
+      // pseudo-role public only). One revoke and one grant on one function.
+      // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
+      '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
     ])
   })
 
@@ -1227,6 +1232,11 @@ describe('the applied migrations are frozen', () => {
       // action, and runs no DML against any business table. It reaches nothing
       // here.
       '20261222000000_expense_lifecycle.sql',
+      // 20261223000000 — revokes EXECUTE on finalize_expense_draft from anon,
+      // which 20261222000000 meant to do and did not (it revoked from the
+      // pseudo-role public only). One revoke and one grant on one function.
+      // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
+      '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

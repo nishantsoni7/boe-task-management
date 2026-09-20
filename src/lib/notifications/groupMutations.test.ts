@@ -481,6 +481,11 @@ describe('34/35. no regression into suppressed territory', () => {
       // action, and runs no DML against any business table. It reaches nothing
       // here.
       '20261222000000_expense_lifecycle.sql',
+      // 20261223000000 — revokes EXECUTE on finalize_expense_draft from anon,
+      // which 20261222000000 meant to do and did not (it revoked from the
+      // pseudo-role public only). One revoke and one grant on one function.
+      // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
+      '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
     ],'the activity-link column and the three modules added by later work')
     // Grouping is a presentation change and its own files reach for no schema.
     for (const f of ['src/lib/notifications/grouping.ts', 'src/lib/notificationMutations.ts']) {

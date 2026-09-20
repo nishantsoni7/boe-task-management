@@ -250,6 +250,11 @@ test('everything after it is later, unrelated work — it does not apply ahead o
     // action, and runs no DML against any business table. It reaches nothing
     // here.
     '20261222000000_expense_lifecycle.sql',
+    // 20261223000000 — revokes EXECUTE on finalize_expense_draft from anon,
+    // which 20261222000000 meant to do and did not (it revoked from the
+    // pseudo-role public only). One revoke and one grant on one function.
+    // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
+    '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
   ],'Image Editor, Review Workflow, Assets & Access, BOE Credits and the half-day holiday work, none of which touches user_top_tasks or the completion trigger')
 })
 
