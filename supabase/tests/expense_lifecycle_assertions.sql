@@ -432,4 +432,52 @@ begin
     'THE PRODUCTION EXPENSE IS BYTE FOR BYTE WHAT IT WAS, after every test above');
 end $$;
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 5. THE FINALIZE DOOR IS FOR SIGNED-IN CALLERS ONLY
+-- ═══════════════════════════════════════════════════════════════════════════
+--
+-- 20261223000000. The four refusals inside the function stood in front of this
+-- grant the whole time; what is asserted here is that the ROLE cannot execute
+-- it, which is a property of the database rather than of today's body.
+
+do $$
+declare v_fn oid := to_regprocedure(
+  'public.finalize_expense_draft(uuid, date, numeric, text, text, uuid, text)')::oid;
+begin
+  perform pg_temp.ok(not has_function_privilege('anon', v_fn, 'EXECUTE'),
+    'anon cannot execute finalize_expense_draft');
+  perform pg_temp.ok(has_function_privilege('authenticated', v_fn, 'EXECUTE'),
+    'and authenticated still can — the app''s door is not closed');
+  perform pg_temp.ok(has_function_privilege('service_role', v_fn, 'EXECUTE'),
+    'and neither is the service role''s');
+end $$;
+
+-- AND IT STILL WORKS. The grant change must not have disturbed the body: one
+-- more capture, finalized, exactly once.
+do $$
+declare v_draft uuid; v_first jsonb; v_second jsonb; v_before int;
+begin
+  set local role authenticated;
+  perform set_config('request.jwt.claim.sub', '11111111-1111-1111-1111-111111111111', true);
+
+  select count(*) into v_before from public.expenses;
+  insert into public.expense_drafts (raw_text, created_by)
+  values ('after the grant fix', auth.uid()) returning id into v_draft;
+
+  v_first := public.finalize_expense_draft(
+    v_draft, current_date, 12.00, 'upi', 'Still Works',
+    '8a0b094a-ddfd-4f97-a204-ac96c983e5b1', null);
+  v_second := public.finalize_expense_draft(
+    v_draft, current_date, 12.00, 'upi', 'Still Works',
+    '8a0b094a-ddfd-4f97-a204-ac96c983e5b1', null);
+
+  perform pg_temp.ok((v_first->>'created')::boolean, 'the door still finalizes a capture');
+  perform pg_temp.ok(not (v_second->>'created')::boolean
+    and v_second->>'expense_id' = v_first->>'expense_id',
+    'and a retry is still answered with the first call''s expense');
+  perform pg_temp.ok((select count(*) from public.expenses) = v_before + 1,
+    'exactly one expense, after the grant change as before it');
+  reset role;
+end $$;
+
 select 'expense lifecycle assertions: all passed' as result;

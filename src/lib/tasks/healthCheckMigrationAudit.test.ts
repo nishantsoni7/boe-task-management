@@ -687,6 +687,11 @@ describe('the migration is placed correctly', () => {
       // action, and runs no DML against any business table. It reaches nothing
       // here.
       '20261222000000_expense_lifecycle.sql',
+      // 20261223000000 — revokes EXECUTE on finalize_expense_draft from anon,
+      // which 20261222000000 meant to do and did not (it revoked from the
+      // pseudo-role public only). One revoke and one grant on one function.
+      // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
+      '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
     ])
     // 116's applied status is recorded in the FROZEN ledger, never in its own
     // header: that header still reads "NOT APPLIED" and is left stale on

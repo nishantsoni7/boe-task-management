@@ -46,6 +46,8 @@ const readSql = (p: string) =>
 
 const MIGRATION = readSql('supabase/migrations/20261222000000_expense_lifecycle.sql')
 const PHASE_ONE = readSql('supabase/migrations/20261220000000_finance_expenses.sql')
+/** The follow-up that takes finalize_expense_draft away from anon. */
+const GRANT_FIX = readSql('supabase/migrations/20261223000000_finalize_expense_draft_is_not_for_anon.sql')
 
 const TODAY = '2026-09-20'
 
@@ -419,6 +421,31 @@ describe('the finalize door creates EXACTLY ONE expense, safely', () => {
     assert.ok(MIGRATION.includes('revoke all on function public.finalize_expense_draft'))
     assert.ok(MIGRATION.includes('grant execute on function public.finalize_expense_draft'))
     assert.ok(MIGRATION.includes('to authenticated;'))
+  })
+
+  test('AND anon CANNOT EXECUTE IT — the grant, not only the body, says so', () => {
+    // 20261222000000 revoked `from public`, which removes the PSEUDO-ROLE's
+    // grant and NOT the explicit one Supabase's default privileges hand to
+    // anon when a function is created. The post-deployment schema dump caught
+    // it: the function shipped granted to anon, unlike every comparable
+    // Finance RPC. Nothing was at risk — an anon caller is refused by the
+    // function's first line, by module_entry_open, by finance.create and by
+    // RLS on both tables — but "unreachable" is a property of today's body and
+    // "cannot execute" is a property of the database.
+    assert.ok(GRANT_FIX.includes('from public, anon, authenticated'),
+      'the revoke must name the roles the bootstrap actually granted')
+    assert.ok(GRANT_FIX.includes("has_function_privilege('anon'"),
+      'and the migration asserts the outcome rather than assuming it')
+    assert.ok(GRANT_FIX.includes('anon can still execute finalize_expense_draft'))
+    // It tightens a grant and nothing else: no CREATE FUNCTION, no DML.
+    // Read with the comments stripped — the header explains at length that the
+    // file contains no CREATE FUNCTION, and the words it uses to say so must
+    // not be mistaken for the statement itself.
+    const sql = GRANT_FIX.split('\n').filter(l => !/^\s*--/.test(l)).join('\n')
+    assert.equal(/create (or replace )?function/i.test(sql), false,
+      'the deployed body is not redefined')
+    assert.equal(/\b(insert into|delete from|alter table|drop\s+\w)\b/i.test(sql), false,
+      'no DML and no schema change')
   })
 })
 

@@ -548,14 +548,28 @@ describe('the migration is the one this work adds, and it is additive', () => {
     assert.ok(sql.includes('DEPENDENCY MISSING: 20260905000000'))
   })
 
-  test('IT IS THE ONLY MIGRATION THIS BRANCH ADDS', () => {
+  test('EVERY MIGRATION THIS BRANCH ADDS BELONGS TO THIS FEATURE, and none is edited', () => {
+    // Stated as a rule, not a fixed name: this feature lands over more than one
+    // branch. What must hold on all of them is that a branch adds only expense
+    // migrations, and EDITS none — an applied migration is immutable, and a
+    // forward-only correction is a new file.
     const added = execFileSync('git', ['diff', '--name-only', '--diff-filter=A', 'origin/main...HEAD'],
       { cwd: process.cwd(), encoding: 'utf8' })
       .split('\n').map(s => s.trim()).filter(f => f.startsWith('supabase/migrations/'))
     const untracked = execFileSync('git', ['ls-files', '--others', '--exclude-standard', 'supabase/migrations'],
       { cwd: process.cwd(), encoding: 'utf8' })
       .split('\n').map(s => s.trim()).filter(Boolean)
-    assert.deepEqual([...new Set([...added, ...untracked])], [MIGRATION])
+    const all = [...new Set([...added, ...untracked])]
+    assert.ok(all.length >= 1, 'a branch of this feature carries at least one migration')
+    for (const f of all) {
+      assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
+        `${f} is not an expense-feature migration`)
+    }
+
+    const edited = execFileSync('git', ['diff', '--name-only', '--diff-filter=M', 'origin/main...HEAD'],
+      { cwd: process.cwd(), encoding: 'utf8' })
+      .split('\n').map(s => s.trim()).filter(f => f.startsWith('supabase/migrations/'))
+    assert.deepEqual(edited, [], 'an applied migration is never edited')
   })
 })
 
@@ -623,13 +637,14 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     assert.deepEqual(unexpected, [])
   })
 
-  test('and the files it added under supabase/tests are exactly the new suite', () => {
+  test('anything it adds under supabase/tests belongs to the expense suite', () => {
+    // Written as a RULE rather than a fixed list, because this feature lands
+    // over more than one branch: the phase that adds the suite and any
+    // follow-up that does not. Either way, nothing unrelated may appear here.
     const added = [...touched].filter(f => f.startsWith('supabase/tests/'))
-    assert.deepEqual(added.sort(), [
-      'supabase/tests/_expense_lifecycle_shaped_schema.sql',
-      'supabase/tests/expense_lifecycle_assertions.sql',
-      'supabase/tests/run_expense_lifecycle_suite.sh',
-    ])
+    for (const f of added) {
+      assert.ok(/expense_lifecycle/.test(f), `${f} does not belong to this feature`)
+    }
     // AND THE RUNNER CANNOT REACH A REAL PROJECT. It takes a psql host, creates
     // its own database and drops it; nothing in it reads .env, a project ref or
     // a linked connection.

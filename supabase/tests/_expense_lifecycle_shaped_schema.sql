@@ -21,10 +21,19 @@ begin
 end $$;
 
 grant usage on schema public to anon, authenticated, service_role;
--- Supabase's own bootstrap grants ALL on public to the client roles, including
--- DELETE. Reproduced faithfully, because §4 of the migration REVOKES it and a
--- base that never granted it would make that revoke untestable.
+-- ── SUPABASE'S BOOTSTRAP, REPRODUCED FAITHFULLY ────────────────────────────
+--
+-- A Supabase project grants ALL on tables AND ON FUNCTIONS in `public` to anon,
+-- authenticated and service_role, through default privileges that fire the
+-- moment an object is created.
+--
+-- BOTH LINES MATTER, AND THE SECOND ONE WAS MISSING AT FIRST. A base that never
+-- granted DELETE would make 20261222000000 §4's revoke untestable; a base that
+-- never granted EXECUTE on functions made 20261223000000 untestable in exactly
+-- the same way, and the suite said so rather than passing vacuously. A shaped
+-- base is only useful while it is shaped like the thing it stands in for.
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
 
 -- ── auth.uid(), as a settable shim ─────────────────────────────────────────
 -- The suite switches actor with `set local request.jwt.claim.sub`.

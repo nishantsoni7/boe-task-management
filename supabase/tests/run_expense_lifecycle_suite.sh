@@ -87,6 +87,25 @@ SQL
 echo "== apply 20261222000000 for real"
 $PSQL -d "$DB" -f "$MIG/20261222000000_expense_lifecycle.sql" >/dev/null
 
+echo "== anon can execute the finalize door, before the follow-up"
+# REPRODUCING THE GAP before closing it, the same way the other suites do. The
+# shaped base reproduces Supabase's `alter default privileges ... grant all on
+# functions`, so the grant lands here exactly as it landed in production.
+$PSQL -d "$DB" >/dev/null <<'SQL'
+do $$
+begin
+  if not has_function_privilege('anon',
+      to_regprocedure('public.finalize_expense_draft(uuid, date, numeric, text, text, uuid, text)')::oid,
+      'EXECUTE') then
+    raise exception 'the gap did not reproduce: anon already lacks EXECUTE, so the follow-up proves nothing';
+  end if;
+  raise notice 'ok: reproduced — anon holds EXECUTE after 20261222000000 alone';
+end $$;
+SQL
+
+echo "== apply 20261223000000, which closes it"
+$PSQL -d "$DB" -f "$MIG/20261223000000_finalize_expense_draft_is_not_for_anon.sql" >/dev/null
+
 echo "== assertions"
 $PSQL -d "$DB" -f "$REPO/supabase/tests/expense_lifecycle_assertions.sql"
 
