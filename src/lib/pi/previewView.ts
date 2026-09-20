@@ -268,6 +268,92 @@ export function buildHeaderRows(header: PiHeader): PiSummaryRow[] {
   ]
 }
 
+/**
+ * Where a PI is going.
+ *
+ * Ship To is the fact the question is actually about — which site the furniture
+ * is delivered to — so it is what the screen states. Plenty of real PIs leave
+ * G25 blank because the client is having it delivered to themselves, and there
+ * the billing name IS the destination; an em dash would report a missing
+ * address on an order that has one.
+ *
+ * Nothing is merged and nothing is derived: the value shown is one of the two
+ * names the workbook already carries, chosen by which of them is filled in.
+ */
+export function piLocationName(header: PiHeader): string | null {
+  const shipTo = header.shipToName?.trim()
+  if (shipTo) return shipTo
+  return header.billToName?.trim() || null
+}
+
+/**
+ * Who took the workbook into the application, and when.
+ *
+ * BOTH ARE APPLICATION FACTS, NOT WORKBOOK ONES, which is the whole reason they
+ * are a separate argument rather than fields on PiHeader. G20/G21 are what the
+ * Excel file says about itself — a date typed into a template and whichever
+ * salesperson's name it was saved under — and a reviewer asking "who put this
+ * here" is not asking either question.
+ *
+ * `at` arrives ALREADY FORMATTED. The screen that has the timestamp is the one
+ * that knows which clock it came from, and this module deliberately holds no
+ * timezone rules: every other date here is a workbook cell that carries its own
+ * text.
+ */
+export type PiUploadIdentity = {
+  /** The signed-in application user. */
+  by: string | null
+  /** Display text for the moment the workbook was taken in. */
+  at: string | null
+}
+
+/**
+ * The eight facts the Upload PI screen opens with.
+ *
+ * WHAT CHANGED AND WHY. buildHeaderRows above answers "what does this document
+ * say about itself" and is still what the saved-draft screen reads two dates
+ * out of. This answers a different question — "is this the right order, and is
+ * it mine to be looking at" — and the difference shows up in three places:
+ *
+ *   Product value   the gross figure, restated at the top so the reviewer does
+ *                   not have to scroll past a twelve-line product table to
+ *                   learn the size of what they are approving. It is the SAME
+ *                   number buildCommercialRows puts in its first row, through
+ *                   the same formatter; nothing here adds, nets or rounds.
+ *   Location        one destination line instead of the Bill To / Ship To pair,
+ *                   which on the overwhelming majority of PIs printed the same
+ *                   name twice.
+ *   Salesperson     G21, under the name of the thing it actually is. "Created
+ *                   by" read as "the person who uploaded this", which is the
+ *                   next field down and is usually somebody else.
+ *
+ * PI created (G20) is gone from this block. The date a template was filled in
+ * is not a commitment anybody checks, and two of the three dates that ARE
+ * commitments were competing with it for the same eye.
+ *
+ * Contact numbers, GST registrations and postal addresses stay off this screen
+ * for the reason buildHeaderRows states, and B20 stays off it for the reason
+ * buildHeaderRows states. This function adds no field that carries either.
+ */
+export function buildOrderInformationRows(input: {
+  header: PiHeader
+  /** commercial.grossProductAmount, passed through unchanged. */
+  grossProductAmount: number | null
+  upload: PiUploadIdentity
+}): PiSummaryRow[] {
+  const { header, grossProductAmount, upload } = input
+  return [
+    { key: 'client',       label: 'Client name',    value: orDash(header.billToName) },
+    { key: 'productValue', label: 'Product value',  value: formatInr(grossProductAmount) },
+    { key: 'location',     label: 'Location',       value: orDash(piLocationName(header)) },
+    { key: 'confirmed',    label: 'Confirmed date', value: formatPiDate(header.orderConfirmationDate) },
+    { key: 'due',          label: 'Due date',       value: formatPiDate(header.dispatchCommitment) },
+    { key: 'salesperson',  label: 'Salesperson',    value: orDash(header.createdBy) },
+    { key: 'uploadedBy',   label: 'Uploaded by',    value: orDash(upload.by) },
+    { key: 'uploadedAt',   label: 'Upload date',    value: orDash(upload.at) },
+  ]
+}
+
 // ── Commercial summary ────────────────────────────────────────────────────────
 
 /** The standard advance BOE requires against a confirmed order. */

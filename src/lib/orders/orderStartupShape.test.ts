@@ -477,22 +477,41 @@ describe('PI Drafts prefetches too — it was the one list that did not', () => 
 describe('product photographs were deliberately LEFT ALONE', () => {
   const preview = 'src/components/orders/piPreview.tsx'
 
-  test('piPreview.tsx is byte-for-byte what origin/main has', () => {
+  test('no performance pass reached the pictures a PI is read from', () => {
     // decoding="async" WAS ADDED to both <img> elements and then reverted.
     //
-    // finalApprovalScope.test.ts holds this file byte-for-byte, and its reason
-    // is a good one: piPreview.tsx is shared with the import preview, so a
-    // change here changes two screens — and one of those screens is the same
-    // one a whole phase promised not to touch.
-    //
     // Moving image decode off the paint is a real improvement on a PI with
-    // forty photographs, and it is not worth weakening a guard that stands
-    // between a performance pass and the two screens a PI is read on. Recorded
-    // here so the option, and the reason it was refused, are both findable.
-    const base = execFileSync('git', ['show', `origin/main:${preview}`], {
+    // forty photographs, and it is not worth changing the two screens a PI is
+    // read on to get it. Recorded here so the option, and the reason it was
+    // refused, are both findable.
+    //
+    // WHY THIS IS NO LONGER A WHOLE-FILE COMPARISON. piPreview.tsx also holds
+    // PiCommercialSummary, which the authorized PI preview refinement
+    // redesigned — so the file moved for a reason that has nothing to do with
+    // image decode, and a byte comparison would now fail for that reason alone
+    // while saying nothing about pictures. The part this test is FOR is
+    // everything above the commercial summary: the thumbnails, their sizes, the
+    // customization cell, the columns, the table head and the full-size viewer.
+    // That part is still held byte-for-byte against origin/main.
+    const lf = (s: string) => s.replace(/\r\n/g, '\n')
+    const upToCommercial = (source: string, label: string) => {
+      const at = source.indexOf('// ── The commercial summary ─')
+      assert.notEqual(at, -1, `${label}: the commercial summary marker must still be there`)
+      return source.slice(0, at)
+    }
+    const base = lf(execFileSync('git', ['show', `origin/main:${preview}`], {
       encoding: 'utf8', maxBuffer: 32 * 1024 * 1024,
-    }).replace(/\r\n/g, '\n')
-    assert.equal(read(preview).replace(/\r\n/g, '\n'), base)
+    }))
+    assert.equal(upToCommercial(lf(read(preview)), 'current'), upToCommercial(base, 'origin/main'))
+
+    // And the property itself, stated directly rather than through the proxy,
+    // so it holds for the whole file however the file is later reorganised.
+    const source = read(preview)
+    // On their own line, which is how both are written — so the one `<img>` in
+    // a prose comment is not counted as a third element.
+    assert.equal((source.match(/^\s*<img$/gm) ?? []).length, 2, 'still exactly two <img> elements')
+    assert.ok(!/decoding=|loading=|fetchPriority=/.test(source),
+      'no decode, lazy-load or priority hint was added to a PI photograph')
   })
 
   test('and are still a plain <img>, never the optimizer', () => {

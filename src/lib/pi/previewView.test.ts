@@ -38,6 +38,8 @@ import {
   NO_CUSTOMIZATION_TEXT,
   orDash,
   buildHeaderRows,
+  buildOrderInformationRows,
+  piLocationName,
   buildCommercialRows,
   computeRequiredAdvance,
   PI_ADVANCE_PERCENT,
@@ -438,6 +440,104 @@ describe('buildHeaderRows', () => {
   })
 })
 
+
+// ── Order information (the Upload PI screen's opening block) ──────────────────
+
+describe('buildOrderInformationRows', () => {
+  const upload = { by: 'Fixture Uploader', at: '02 Sep 2026, 11:20 AM' }
+  const full = () => buildOrderInformationRows({
+    header: header({
+      billToName: 'Zzyzx Fixture Co',
+      shipToName: 'Zzyzx Fixture Co — Site B',
+      createdBy: 'Fixture Operator',
+      billToPhone: '0000000001',
+      billToGst: '99ZZZZZ9999Z9ZZ',
+      billingAddress: '404 Nowhere Lane, Testville',
+      creationDate: { iso: '2026-08-16', text: '16/08/2026', source: 'serial' },
+      orderConfirmationDate: { iso: '2026-08-20', text: '20/08/2026', source: 'serial' },
+      dispatchCommitment: { iso: null, text: '6 weeks from date of confirmation', source: 'text' },
+    }),
+    grossProductAmount: 512000,
+    upload,
+  })
+
+  test('states the eight facts, in the order the screen groups them', () => {
+    assert.deepEqual(full().map(r => r.key), [
+      'client', 'productValue', 'location',
+      'confirmed', 'due',
+      'salesperson', 'uploadedBy', 'uploadedAt',
+    ])
+  })
+
+  test('each field reads its own source and nothing else', () => {
+    const byKey = Object.fromEntries(full().map(r => [r.key, r.value]))
+    assert.equal(byKey.client, 'Zzyzx Fixture Co')
+    assert.equal(byKey.productValue, '₹5,12,000')
+    assert.equal(byKey.location, 'Zzyzx Fixture Co — Site B')
+    assert.equal(byKey.confirmed, '20 Aug 2026')
+    assert.equal(byKey.due, '6 weeks from date of confirmation')
+    assert.equal(byKey.salesperson, 'Fixture Operator')
+    assert.equal(byKey.uploadedBy, 'Fixture Uploader')
+    assert.equal(byKey.uploadedAt, '02 Sep 2026, 11:20 AM')
+  })
+
+  test('the product value is the commercial summary’s own gross figure', () => {
+    const rows = buildCommercialRows(commercial({ grossProductAmount: 512000 }))
+    const gross = rows.find(r => r.key === 'gross')?.value
+    assert.equal(Object.fromEntries(full().map(r => [r.key, r.value])).productValue, gross,
+      'one figure, one formatter — the block states it, it does not recompute it')
+  })
+
+  test('the upload date is the application’s, never the date inside the workbook', () => {
+    const byKey = Object.fromEntries(full().map(r => [r.key, r.value]))
+    // G20 said 16 Aug; the app took the file in on 02 Sep. Showing the
+    // workbook's own date under "Upload date" is the exact mistake this field
+    // exists to stop.
+    assert.notEqual(byKey.uploadedAt, '16 Aug 2026')
+    assert.ok(!full().map(r => r.value).join(' | ').includes('16 Aug 2026'),
+      'and the PI-created date is off this block entirely')
+  })
+
+  test('Location falls back to Bill To only when Ship To is empty', () => {
+    const shipped = header({ billToName: 'Bill Co', shipToName: 'Ship Site' })
+    assert.equal(piLocationName(shipped), 'Ship Site')
+    assert.equal(piLocationName(header({ billToName: 'Bill Co', shipToName: null })), 'Bill Co')
+    assert.equal(piLocationName(header({ billToName: 'Bill Co', shipToName: '   ' })), 'Bill Co',
+      'a cell holding spaces is empty')
+    assert.equal(piLocationName(header()), null, 'neither name is not a location')
+  })
+
+  test('an absent optional value is an em dash, never a blank or "null"', () => {
+    for (const row of buildOrderInformationRows({
+      header: header(),
+      grossProductAmount: null,
+      upload: { by: null, at: null },
+    })) {
+      assert.equal(row.value, '—', `${row.key} should be an em dash`)
+    }
+  })
+
+  test('no contact detail, registration, address or source order number', () => {
+    const rendered = full().map(r => `${r.key} ${r.label} ${r.value}`).join(' | ')
+    assert.ok(!rendered.includes('0000000001'), 'phone numbers stay off the preview')
+    assert.ok(!rendered.includes('99ZZZZZ9999Z9ZZ'), 'GST registrations stay off the preview')
+    assert.ok(!rendered.includes('Nowhere Lane'), 'postal addresses stay off the preview')
+    assert.ok(!/order\s*(number|no\.?|#)/i.test(rendered), 'and no row is an order number')
+  })
+
+  test('the labels the screen was asked for, with no Created By left on it', () => {
+    const labels = full().map(r => r.label)
+    assert.deepEqual(labels, [
+      'Client name', 'Product value', 'Location',
+      'Confirmed date', 'Due date',
+      'Salesperson', 'Uploaded by', 'Upload date',
+    ])
+    assert.ok(!labels.some(l => /created by/i.test(l)),
+      'G21 is the salesperson; "Created by" read as "who uploaded this", which is a different field')
+    assert.ok(!labels.some(l => /bill to|ship to|pi created/i.test(l)),
+      'replaced by Client name, Location and the two commitment dates')
+  })
+})
 // ── Commercial summary ────────────────────────────────────────────────────────
 
 describe('buildCommercialRows', () => {
