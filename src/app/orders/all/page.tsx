@@ -227,6 +227,14 @@ export default function AllOrdersPage() {
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
   const [orders,       setOrders]       = useState<Order[]>([])
   const [listLoading,  setListLoading]  = useState(false)
+  /**
+   * A FAILED READ IS NOT AN EMPTY LIST (launch audit, 2026-09-19). The loader
+   * ignored the query's error, so a failed read became zero rows and the page
+   * said "No orders found." — a statement about the business that nobody read.
+   * On failure the rows already on screen stay, and the page says it could not
+   * load and offers Retry.
+   */
+  const [loadError,    setLoadError]    = useState<string | null>(null)
   // Every control reads and writes the URL (see ORDERS_LIST_PARAMS). The
   // names below are the ones the rest of this page always used, so the
   // filtering and sorting logic is untouched.
@@ -272,7 +280,7 @@ export default function AllOrdersPage() {
 
   const loadOrders = async () => {
     setListLoading(true)
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('orders')
       .select(`
         id, display_number, client_name,
@@ -283,6 +291,13 @@ export default function AllOrdersPage() {
         assigned_to_user:users!assigned_to(full_name)
       `)
       .order('created_at', { ascending: false })
+
+    if (error) {
+      setLoadError('Could not load Confirmed Orders. Check your connection and try again.')
+      setListLoading(false)
+      return
+    }
+    setLoadError(null)
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapped: Order[] = ((data ?? []) as any[]).map(o => ({
@@ -623,8 +638,23 @@ export default function AllOrdersPage() {
         {/* A REFRESH KEEPS THE ROWS. The table used to be swapped for
             "Loading…" on every re-read, which threw the reader back to the
             top; the count above says a read is in flight. */}
+        {loadError && (
+          <div role="alert" style={{
+            display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+            margin: '12px 14px 0', padding: '9px 12px', borderRadius: '8px',
+            background: 'rgba(217,79,79,0.08)', color: '#C13030', fontSize: '12px',
+          }}>
+            <span style={{ flex: 1, minWidth: 0 }}>{loadError}</span>
+            <button type="button" onClick={() => { void loadOrders() }} className="boe-btn boe-btn-ghost" style={{ padding: '4px 12px', fontSize: '12px' }}>
+              Retry
+            </button>
+          </div>
+        )}
         {listLoading && orders.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>Loading…</div>
+        ) : loadError && orders.length === 0 ? (
+          // Nothing was read, so nothing is claimed — the banner above says why.
+          null
         ) : visible.length === 0 ? (
           <div style={{ padding: '32px', textAlign: 'center', color: colors.muted, fontSize: '13px' }}>
             {filtersActive ? (

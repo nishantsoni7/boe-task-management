@@ -37,7 +37,8 @@ import {
   subtractExact,
   type ExactDecimal,
 } from './exactMoney'
-import { isValidAmount } from '@/lib/currency'
+import { amountInputProblem, isValidAmount } from '@/lib/currency'
+import { SUBMISSION_KEY_REUSED_MESSAGE } from './submissionAttempt'
 import { destinationTargetKind, type PaymentDestination } from './paymentEntry'
 
 /** The two kinds of destination the business has. There is no third. */
@@ -170,7 +171,9 @@ export function splitPaymentBlockedReason(input: {
   // from the targets, or the payment has none because it has no targets
   // (20261013000000). A form that refused to submit without one would be
   // demanding something it can no longer ask for.
-  if (!isValidAmount(input.amount)) return 'Enter the amount received, in rupees and paise.'
+  if (!isValidAmount(input.amount)) {
+    return amountInputProblem(input.amount) ?? 'Enter the amount received, in rupees and paise.'
+  }
   if (!input.paymentDate) return 'Choose the date the payment was received.'
   if (!input.paymentMode) return 'Choose how the payment was made.'
 
@@ -213,7 +216,8 @@ export function splitPaymentBlockedReason(input: {
       return `Choose ${noun === 'Order' ? 'an' : 'a'} ${noun} for allocation ${i + 1}, or remove it.`
     }
     if (!isValidAmount(row.amount)) {
-      return `Enter an amount for allocation ${i + 1}, in rupees and paise.`
+      const problem = amountInputProblem(row.amount)
+      return problem ? `Allocation ${i + 1}: ${problem}` : `Enter an amount for allocation ${i + 1}, in rupees and paise.`
     }
     const parsed = parseExact(row.amount)
     if (!parsed || isZero(parsed) || isNegative(parsed)) {
@@ -287,6 +291,7 @@ export function splitPaymentErrorMessage(raw: string | null | undefined): string
     return 'This page is out of step with the server. Reload it and try again. Nothing was saved.'
   }
   if (m.includes('PAYMENT_AMOUNT_INVALID'))  return 'Enter a positive amount in rupees and paise.'
+  if (m.includes('PAYMENT_IDEMPOTENCY_KEY_REUSED')) return SUBMISSION_KEY_REUSED_MESSAGE
   if (m.includes('PAYMENT_DATE_FUTURE'))     return 'A payment date cannot be in the future.'
   if (m.includes('PAYMENT_DATE_REQUIRED'))   return 'A payment date is required.'
   if (m.includes('PAYMENT_MODE_INVALID') || m.includes('PAYMENT_MODE_RETIRED')) {

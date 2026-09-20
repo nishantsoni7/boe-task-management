@@ -269,8 +269,11 @@ describe('nothing is persisted, uploaded or logged', () => {
       assert.ok(!source.includes(call), `${call} must not appear — this screen writes no table directly`)
     }
     const rpcs = [...source.matchAll(/\.rpc\(\s*'([^']+)'/g)].map(m => m[1])
-    assert.deepEqual(rpcs, ['create_order_submission'],
-      'the one RPC creates an empty draft; every figure is written by the server')
+    // TWO RPCS since 20261219000000: the one that creates an empty draft, and
+    // the one that removes it again when the save failed and nothing was ever
+    // saved to it. Neither writes a figure; the server writes every one.
+    assert.deepEqual([...rpcs].sort(), ['create_order_submission', 'discard_unsaved_order_submission'],
+      'the draft is created and, after a failed save, discarded; every figure is written by the server')
   })
 
   test('the tables read are the access check and the record being replaced', () => {
@@ -467,8 +470,15 @@ describe('the Save Draft action', () => {
   })
 
   test('Change PI never discards the draft, so no second submission is created', () => {
-    assert.ok(!source.includes('draftRef.current = null'),
+    // The ONE place the draft is let go is after the server has discarded it
+    // (a failed save, 20261219000000) — never on a changed file.
+    assert.equal((source.match(/draftRef\.current = null/g) ?? []).length, 1)
+    const discardAt = source.indexOf('const discardDraft = useCallback')
+    const resetAt = source.indexOf('draftRef.current = null')
+    assert.ok(discardAt > -1 && resetAt > discardAt && resetAt < source.indexOf('const discardOnLeave'),
       'a changed file is a new reading of the SAME editable draft')
+    assert.ok(source.includes('if (gone && draftRef.current === draft) {'),
+      'and only once the server says nothing is left')
     // The only place a draft is created is guarded on there being none.
     const creations = source.match(/create_order_submission/g) ?? []
     assert.equal(creations.length, 1)

@@ -150,19 +150,21 @@ import {
   reservationErrorMessage,
 } from '@/lib/orders/orderNumberReservation'
 import {
-  PI_PAYMENT_PROOF_FAILED,
+  PI_PAYMENT_PROOF_RETRY,
   PI_PAYMENT_RECORDED_BODY,
   canAddPiPayment,
   countPiPaymentRows,
   formatMoney,
   formatPercent,
   loadPiPaymentSummary,
+  localTodayIso,
   recordPiPayment,
   type PiPaymentFilter,
   type PiPaymentFormState,
   type PiPaymentSummary,
 } from '@/lib/finance/piPaymentView'
 import { attachPaymentProof, paymentProofSignedUrl } from '@/lib/finance/paymentProof'
+import { SubmissionAttempt } from '@/lib/finance/submissionAttempt'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import {
   changePiHref,
@@ -378,6 +380,8 @@ function PiDraftDetailPageInner() {
   const [payments, setPayments]           = useState<PiPaymentSummary | null>(null)
   const [paymentsLoading, setPaymentsLoading] = useState(true)
   const [paymentSaving, setPaymentSaving] = useState(false)
+  /** The pending payment submission for THIS PI — see recordPayment. */
+  const paymentAttemptRef = useRef<{ scope: string; attempt: SubmissionAttempt } | null>(null)
   const [paymentNotice, setPaymentNotice] = useState<string | null>(null)
   const [canAllocatePayment, setCanAllocatePayment] = useState(false)
   const [viewerIndex, setViewerIndex] = useState<number | null>(null)
@@ -1025,14 +1029,27 @@ function PiDraftDetailPageInner() {
   ): Promise<string | null> => {
     setPaymentSaving(true)
     try {
+      // ONE SUBMISSION, ONE PAYMENT — ON THE SERVER (20261219000000). The key
+      // is kept until the outcome is known and the proof is attached, so a lost
+      // response, a refresh or a proof retry replays the payment already
+      // recorded instead of recording it again.
+      if (!paymentAttemptRef.current || paymentAttemptRef.current.scope !== submissionId) {
+        paymentAttemptRef.current = { scope: submissionId, attempt: new SubmissionAttempt(`pi-payment:${submissionId}`) }
+      }
+      const attempt = paymentAttemptRef.current.attempt
+      const key = attempt.begin(form)
+
       // The raw database error is consumed inside recordPiPayment and never
       // reaches this file — the PI screens show a fixed sentence, never the
       // database's own words.
-      const result = await recordPiPayment(supabase, submissionId, form)
-      if (!result.ok) return result.message
+      const result = await recordPiPayment(supabase, submissionId, form, key)
+      if (!result.ok) {
+        if (!result.ambiguous) attempt.settle()
+        return result.message
+      }
 
       const paymentId = result.paymentRequestId
-      let notice = PI_PAYMENT_RECORDED_BODY
+      const notice = PI_PAYMENT_RECORDED_BODY
 
       if (proof && paymentId) {
         // The payment is already recorded and committed. A proof failure is
@@ -1042,9 +1059,15 @@ function PiDraftDetailPageInner() {
           file: proof,
           userId: viewerId,
         })
-        if (proofError) notice = PI_PAYMENT_PROOF_FAILED
+        if (proofError) {
+          // The form STAYS OPEN and the key is KEPT: pressing Record again
+          // replays this payment and retries only the proof.
+          await loadPayments()
+          return PI_PAYMENT_PROOF_RETRY
+        }
       }
 
+      attempt.settle()
       setPaymentNotice(notice)
       // ONLY the payment section is refreshed. The submission, its items, its
       // images and its signed workbook URL are untouched.
@@ -2597,7 +2620,7 @@ function PiDraftDetailPageInner() {
       {/* The unchanged entry form, on the unchanged gate and the unchanged RPC. */}
       {paymentDialog === 'add' && canAddPayment && (
         <AddPiPaymentModal
-          todayIso={new Date().toISOString().slice(0, 10)}
+          todayIso={localTodayIso()}
           saving={paymentSaving}
           onClose={() => setPaymentDialog(null)}
           onSubmit={async (form, proof) => {

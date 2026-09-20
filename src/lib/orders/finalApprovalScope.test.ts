@@ -242,6 +242,172 @@ function withoutUsabilityPass(src: string): string {
   return out
 }
 
+/**
+ * THE LAUNCH AUDIT'S DRAFT CLEANUP (20261219000000, PR #172): a failed save no
+ * longer leaves an empty PI Draft. The create carries a key, a definitive failure
+ * discards the unsaved draft this screen created, and leaving the screen asks
+ * the server to do the same. Undone exactly — and in reverse order — so any
+ * OTHER drift on this screen still fails the comparison below.
+ */
+function withoutUnsavedDraftDiscard(src: string): string {
+  const undo: [string, string][] = [
+    [`  afterSaveFailure,
+  canSaveDraft,
+  describeSaveFailure,
+  discardUnsavedDraft,`,
+     `  canSaveDraft,
+  describeSaveFailure,`],
+    [`  const draftRef = useRef<{ submissionId: string; workbookPath: string | null } | null>(null)
+  /**
+   * ONE KEY PER UPLOAD ATTEMPT (20261219000000), sent with the create so a
+   * retry after a lost response returns the SAME draft instead of a second.
+   * In memory only; cleared when the draft it made is discarded.
+   */
+  const creationKeyRef = useRef<string | null>(null)
+  /** True only for a row THIS screen created — a replacement's record is never
+   *  discarded. */
+  const createdHereRef = useRef(false)
+`,
+     `  const draftRef = useRef<{ submissionId: string; workbookPath: string | null } | null>(null)
+`],
+    [`  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      releaseImages()
+    }
+  }, [releaseImages])
+
+  // ── A failed save leaves nothing behind (saveDraftFlow, 20261219000000) ──
+  //
+  // The workbook THIS attempt uploaded goes first — only when the row holds no
+  // saved workbook — and then the server discards the row if, and only if, it
+  // was never saved. A refusal is an answer: the row is kept for Retry.
+  const discardDraft = useCallback(async (strayPaths: readonly string[]) => {
+    const draft = draftRef.current
+    if (!draft || !createdHereRef.current) return
+    const gone = await discardUnsavedDraft(draft.submissionId, [draft.workbookPath, ...strayPaths], {
+      readSavedWorkbookPath: async id => {
+        const { data, error } = await supabase
+          .from('order_submissions')
+          .select('source_workbook_path')
+          .eq('id', id)
+          .maybeSingle()
+        if (error) return undefined
+        return (data as { source_workbook_path?: string | null } | null)?.source_workbook_path ?? null
+      },
+      removeWorkbook: async path => !(await supabase.storage.from('order-files').remove([path])).error,
+      discard: async id => {
+        const { data, error } = await supabase.rpc('discard_unsaved_order_submission', { p_submission_id: id })
+        if (error) return 'failed'
+        const outcome = data as { discarded?: boolean; reason?: string } | null
+        return outcome?.discarded ? 'discarded' : outcome?.reason === 'absent' ? 'absent' : 'kept'
+      },
+    })
+    if (gone && draftRef.current === draft) {
+      draftRef.current = null
+      creationKeyRef.current = null
+      createdHereRef.current = false
+    }
+  }, [supabase])
+
+  // LEAVING WITH AN UNSAVED DRAFT. The server discards it only if nothing was
+  // ever saved to it; the workbook is not touched here, because a save may
+  // still be finishing on the server.
+  const discardOnLeave = useRef(discardDraft)
+  useEffect(() => { discardOnLeave.current = discardDraft }, [discardDraft])
+  useEffect(() => {
+    const leave = discardOnLeave
+    const saving = savingRef
+    return () => {
+      if (!saving.current) void leave.current([])
+    }
+  }, [])
+`,
+     `  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      releaseImages()
+    }
+  }, [releaseImages])
+`],
+    [`        // The key is KEPT on failure: if the draft was made and the answer was
+        // lost, Retry returns that same draft.
+        if (!creationKeyRef.current) creationKeyRef.current = crypto.randomUUID()
+        const { data, error } = await supabase.rpc('create_order_submission', {
+          p_client_name: null,
+          p_idempotency_key: creationKeyRef.current,
+        })
+        if (error || !data || typeof (data as { id?: unknown }).id !== 'string') {
+          setSaveFailure(describeSaveFailure('CREATE_FAILED'))
+          return
+        }
+        draftRef.current = { submissionId: (data as { id: string }).id, workbookPath: null }
+        createdHereRef.current = true
+      }`,
+     `        const { data, error } = await supabase.rpc('create_order_submission', { p_client_name: null })
+        if (error || !data || typeof (data as { id?: unknown }).id !== 'string') {
+          setSaveFailure(describeSaveFailure('CREATE_FAILED'))
+          return
+        }
+        draftRef.current = { submissionId: (data as { id: string }).id, workbookPath: null }
+      }`],
+    [`          // The path is NOT recorded, so a retry uploads afresh rather than
+          // pointing the server at a key that may hold nothing. The preview
+          // stays on screen — the parse is still valid.
+          setSaveFailure(describeSaveFailure('UPLOAD_FAILED'))
+          // The draft this attempt created is discarded, and the object too in
+          // case it landed before its answer was lost. Retry starts clean.
+          if (afterSaveFailure({ createdHere: createdHereRef.current, ambiguous: false }) === 'discard') {
+            await discardDraft([path])
+          }
+          return`,
+     `          // The path is NOT recorded, so a retry uploads afresh rather than
+          // pointing the server at a key that may hold nothing. The preview
+          // stays on screen — the parse is still valid.
+          setSaveFailure(describeSaveFailure('UPLOAD_FAILED'))
+          return`],
+    [`      } catch {
+        // NO ANSWER: the server may have saved it. Everything is kept, so Retry
+        // resumes the same draft and the same stored workbook.
+        setSaveFailure(describeSaveFailure('NETWORK'))
+        return
+      }`,
+     `      } catch {
+        setSaveFailure(describeSaveFailure('NETWORK'))
+        return
+      }`],
+    [`        setSaveFailure(describeSaveFailure(typeof body?.error === 'string' ? body.error : null))
+        // A coded answer from the route is a decision: nothing was saved, so
+        // this attempt's draft and workbook are discarded. An uncoded one (a
+        // gateway timeout) is not — the save may still finish — so it is kept.
+        const ambiguous = typeof body?.error !== 'string'
+        if (afterSaveFailure({ createdHere: createdHereRef.current, ambiguous }) === 'discard') {
+          await discardDraft([])
+        }
+        return
+      }`,
+     `        setSaveFailure(describeSaveFailure(typeof body?.error === 'string' ? body.error : null))
+        return
+      }`],
+    [`      const success = summariseSaveResult(body, draft.submissionId)
+      setSaveSuccess(success)
+      // Saved: nothing about this draft is ever discarded from here now.
+      createdHereRef.current = false`,
+     `      const success = summariseSaveResult(body, draft.submissionId)
+      setSaveSuccess(success)`],
+    [`  }, [stage, supabase, router, replaceTarget, discardDraft])`,
+     `  }, [stage, supabase, router, replaceTarget])`],
+  ]
+  let out = src
+  for (const [is, was] of [...undo].reverse()) {
+    assert.ok(out.includes(is), `the draft-cleanup edit is where it was left: ${is.slice(0, 60)}`)
+    out = out.replace(is, was)
+  }
+  return out
+}
+
 /** The ready-to-submit card, and the screen with that card lifted out of it. */
 function readyCard(source: string, label: string): { card: string; rest: string } {
   const start = source.indexOf(READY_CARD_START)
@@ -261,7 +427,7 @@ describe('the import preview and the parser are untouched', () => {
     const base = atBase(IMPORT_PAGE)
     if (base === null) return
     const was = readyCard(base, 'base')
-    const is = readyCard(withoutUsabilityPass(now(IMPORT_PAGE)), 'current')
+    const is = readyCard(withoutUsabilityPass(withoutUnsavedDraftDiscard(now(IMPORT_PAGE))), 'current')
     assert.equal(is.card, was.card,
       'the verdict, the Save Draft button, the saving and failure states are unchanged')
     assert.equal(is.rest, was.rest,

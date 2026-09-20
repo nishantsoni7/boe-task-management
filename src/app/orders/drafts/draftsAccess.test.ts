@@ -514,6 +514,9 @@ describe('the detail page renders only what it fetched', () => {
       // one verified-payment line the review dialogs and the snapshot share.
       'formatMoney',
       'formatPercent',
+      // Today's date in the reader's own time zone, for the payment form's date
+      // bound. It reads the clock only; the server re-checks the date.
+      'localTodayIso',
     ] as const
 
     // Anything imported from the Finance library must be on one of the
