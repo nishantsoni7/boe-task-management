@@ -553,6 +553,12 @@ describe('the migration is the one this work adds, and it is additive', () => {
     // branch. What must hold on all of them is that a branch adds only expense
     // migrations, and EDITS none — an applied migration is immutable, and a
     // forward-only correction is a new file.
+    //
+    // A BRANCH MAY ADD NONE AT ALL. This assertion used to demand at least one,
+    // which was a fair description of the two branches that existed when it was
+    // written and a wrong one the moment a CODE-ONLY fix arrived: the Edit-crash
+    // fix is a mapping bug in the browser and touches no schema. "Adds only
+    // expense migrations" is the rule; "adds a migration" never was.
     const added = execFileSync('git', ['diff', '--name-only', '--diff-filter=A', 'origin/main...HEAD'],
       { cwd: process.cwd(), encoding: 'utf8' })
       .split('\n').map(s => s.trim()).filter(f => f.startsWith('supabase/migrations/'))
@@ -560,7 +566,6 @@ describe('the migration is the one this work adds, and it is additive', () => {
       { cwd: process.cwd(), encoding: 'utf8' })
       .split('\n').map(s => s.trim()).filter(Boolean)
     const all = [...new Set([...added, ...untracked])]
-    assert.ok(all.length >= 1, 'a branch of this feature carries at least one migration')
     for (const f of all) {
       assert.ok(/^supabase\/migrations\/2026122[0-9]{7}_/.test(f),
         `${f} is not an expense-feature migration`)
