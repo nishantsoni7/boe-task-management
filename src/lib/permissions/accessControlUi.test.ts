@@ -243,18 +243,32 @@ describe('a system Administrator cannot be edited here', () => {
     assert.ok(page.includes("this person&apos;s system role"))
   })
 
-  test('toggles and level selectors are disabled', () => {
+  test('toggles are disabled, and the dialog opens only where it can decide something', () => {
+    // MODULE ACCESS is still role-driven for an administrator on every module
+    // without exception, so the Visible/Hidden switch stays locked.
     assert.ok(page.includes('locked={adminLocked}'))
     assert.ok(page.includes('disabled={locked}'))
-    assert.ok(page.includes('onOpen={() => { if (!adminLocked) setChangeModalModuleKey(mod.moduleKey) }}'))
+
+    // The DIALOG is a separate lock since 20261224000000 §4, because Orders
+    // now holds an action an override really can decide for an administrator
+    // (approve_order). Everywhere else the dialog is still shut.
+    assert.ok(page.includes('changeLocked={adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)}'))
+    assert.ok(page.includes('disabled={changeLocked}'))
+    assert.ok(page.includes('if (adminLocked && !moduleHasAdminEditableActions(mod.moduleKey)) return'))
   })
 
-  test('no PUT can be issued for a system Admin', () => {
+  test('a PUT for a system Admin can carry only what an override can decide', () => {
+    // The blanket refusal became a per-action filter when approve_order got a
+    // permission-only door: refusing the whole employee would have made the
+    // one grant that DOES work impossible to set. The property being defended
+    // is unchanged — nothing that decides nothing may be sent.
     const start = page.indexOf('async function save()')
     const body = page.slice(start, page.indexOf('// ── Render', start))
-    const guardAt = body.indexOf('if (isSystemAdmin(tree)) return')
-    assert.ok(guardAt > -1, 'save must refuse a system admin')
-    assert.ok(guardAt < body.indexOf('fetch('), 'the refusal must precede the request')
+    const guardAt = body.indexOf('if (admin && !isAdminEditableAction(mod.moduleKey, action.actionKey)) continue')
+    assert.ok(guardAt > -1, 'save must filter a system admin down to the editable actions')
+    assert.ok(guardAt < body.indexOf('fetch('), 'the filter must precede the request')
+    assert.ok(!body.includes('if (isSystemAdmin(tree)) return'),
+      'the blanket refusal is what made the Order Approval grant unreachable')
   })
 
   test('the Control Center itself remains admin-only', () => {

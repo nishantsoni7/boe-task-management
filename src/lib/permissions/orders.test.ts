@@ -151,13 +151,26 @@ describe('revocation removes exactly what was granted, and nothing else', () => 
     })
   }
 
-  test('an admin needs no grant, so revoking a non-admin employee override cannot touch admin authority', () => {
+  test('an admin needs no grant for the capabilities the admin branch still carries', () => {
     // Revocation writes to employee_permission_overrides, which the admin
-    // branch of actor_has_module_permission never consults.
+    // branch of actor_has_module_permission never consults — for every action
+    // that still HAS an admin branch.
     const caps = deriveOrdersCapabilities('admin', [])
-    assert.equal(caps.canApproveOrderSubmission, true)
     assert.equal(caps.canApproveAdvanceException, true)
     assert.equal(caps.canAlignProduction, true)
+  })
+
+  test('APPROVE_ORDER IS THE EXCEPTION: an admin holds it only when it is granted', () => {
+    // 20261224000000 §4. The doors ask actor_can_approve_order(), which is the
+    // resolver alone, so this capability is withdrawable from an administrator
+    // and the screen has to say so. Reporting true here would draw an Approve
+    // button the database then refuses.
+    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, false)
+    assert.equal(
+      deriveOrdersCapabilities('admin', perms(['approve_order'])).canApproveOrderSubmission, true)
+    // Withdrawn again, and it is gone again — no role floor underneath it.
+    assert.equal(
+      deriveOrdersCapabilities('admin', perms(['view', 'create'])).canApproveOrderSubmission, false)
   })
 })
 
@@ -181,8 +194,29 @@ describe('levels produce the expected Orders capabilities', () => {
 })
 
 describe('admin compatibility', () => {
-  test('an admin holds every module capability with no rows at all', () => {
+  /**
+   * THE ONE CAPABILITY THE ADMIN ROLE NO LONGER CARRIES.
+   *
+   * 20261224000000 §4 gave orders.approve_order a permission-only door in the
+   * database so that PI approval can be withdrawn from an administrator. Every
+   * other capability on this module still comes with the role, and this test
+   * is the record of exactly where that line is drawn.
+   */
+  const NOT_FROM_THE_ROLE = new Set(['canApproveOrderSubmission'])
+
+  test('an admin holds every module capability except Order Approval with no rows at all', () => {
     const caps = deriveOrdersCapabilities('admin', [])
+    for (const [name, value] of Object.entries(caps)) {
+      if (NOT_FROM_THE_ROLE.has(name)) {
+        assert.equal(value, false, `${name} must not come from the admin role`)
+        continue
+      }
+      assert.equal(value, true, `admin missing ${name}`)
+    }
+  })
+
+  test('and holds every one of them once Order Approval is granted', () => {
+    const caps = deriveOrdersCapabilities('admin', perms(['approve_order']))
     for (const [name, value] of Object.entries(caps)) {
       assert.equal(value, true, `admin missing ${name}`)
     }

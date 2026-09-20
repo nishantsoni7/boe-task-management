@@ -46,6 +46,7 @@ import {
   type PermissionSource,
   type SourceSummary,
 } from '@/lib/permissions/accessControlChanges'
+import { moduleHasAdminEditableActions } from '@/lib/permissions/orderApproval'
 import styles from '../permissions.module.css'
 import {
   usePermissionModules, useModuleAccessMatrix, useDepartments,
@@ -480,7 +481,20 @@ function ByModulePageInner() {
                       </td>
                       <td>
                         {row.locked
-                          ? <CcBadge tone="gray">System role</CcBadge>
+                          ? <>
+                              <CcBadge tone="gray">System role</CcBadge>
+                              {/* Except for the actions that are granted per
+                                  person whatever the role says. This screen
+                                  only ever writes LEVELS, and a protected
+                                  action is never in a level, so the grant
+                                  itself is made in By Employee — which is
+                                  what the Open link goes to. */}
+                              {selectedKey && moduleHasAdminEditableActions(selectedKey) && (
+                                <span className={cc.muted} style={{ fontSize: 11.5, marginLeft: 6 }}>
+                                  except Order Approval — open to set it
+                                </span>
+                              )}
+                            </>
                           : <>
                               <SourceBadge summary={row.source} />
                               {row.level === 'custom' && <span className={cc.muted} style={{ fontSize: 11.5, marginLeft: 6 }}><CcBadge tone={LEVEL_TONE.custom}>Custom</CcBadge></span>}

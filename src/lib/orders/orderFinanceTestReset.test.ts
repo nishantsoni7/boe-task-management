@@ -517,6 +517,13 @@ describe('the migration is unapplied, numbered 110, and says its apply order', (
       // pseudo-role public only). One revoke and one grant on one function.
       // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
       '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
+      // 20261224000000 — Order Approval: a permanent orders.approve_order grant
+      // for the seeded owner account, a guard trigger on
+      // employee_permission_overrides scoped to that one row, and the PI decision
+      // stamped on self-submit for a holder of that action. It defines no reset
+      // function, truncates nothing and deletes nothing, so the test-data reset
+      // this file is about is unaffected.
+      '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
     ])
   })
 

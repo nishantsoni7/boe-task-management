@@ -378,7 +378,15 @@ describe('verification and approval are separate authorities, in both directions
   })
 
   test('an active admin holds both, exactly as the database has it', () => {
-    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, true)
+    // WHO holds it moved in 20261224000000 §4: approve_order is now resolved
+    // from the grant for everybody, the admin role included, so that it can be
+    // withdrawn from an administrator. The relationship this test is about is
+    // unchanged.
+    assert.equal(deriveOrdersCapabilities(
+      'admin', [{ actionKey: 'approve_order', allowed: true, source: 'employee_override' }])
+      .canApproveOrderSubmission, true)
+    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, false,
+      'the admin role alone no longer carries PI approval')
     assert.equal(deriveFinanceCapabilities('admin', []).canApprovePayment, true)
   })
 

@@ -300,8 +300,15 @@ describe('this phase still cannot approve a PI', () => {
   })
 
   test('the browser has no PI approval to call either', () => {
-    const admin = deriveOrdersCapabilities('admin', [])
+    // WHO holds it moved in 20261224000000 §4: approve_order is now resolved
+    // from the grant for everybody, the admin role included, so that it can be
+    // withdrawn from an administrator. The relationship this test is about is
+    // unchanged.
+    const admin = deriveOrdersCapabilities(
+      'admin', [{ actionKey: 'approve_order', allowed: true, source: 'employee_override' }])
     assert.equal(admin.canApproveOrderSubmission, true, 'review authority is unchanged')
+    assert.equal(deriveOrdersCapabilities('admin', []).canApproveOrderSubmission, false,
+      'and the admin role alone no longer carries it')
     const member = deriveOrdersCapabilities('member', [{ actionKey: 'view', allowed: true, source: 'role' }])
     assert.equal(member.canApproveOrderSubmission, false)
   })

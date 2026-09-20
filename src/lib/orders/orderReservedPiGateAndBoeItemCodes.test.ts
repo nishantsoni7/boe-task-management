@@ -381,6 +381,17 @@ describe('it sorts after everything that was on disk when it was written', () =>
       // pseudo-role public only). One revoke and one grant on one function.
       // No CREATE FUNCTION, no table, no policy, no DML. It reaches nothing here.
       '20261223000000_finalize_expense_draft_is_not_for_anon.sql',
+      // 20261224000000 — Order Approval: a permanent orders.approve_order grant
+      // for the seeded owner account, a guard trigger on
+      // employee_permission_overrides scoped to that one row, and the PI decision
+      // stamped on self-submit for a holder of that action.
+      //
+      // IT RE-EMITS submit_pi_for_review_internal, NOT approve_order_submission.
+      // This file is about the Order door and the reserved-number gate, and both
+      // are untouched: the conversion keeps its finance verification, its payment
+      // gate and its four required fields, and no order number is reserved or
+      // taken any earlier than it is today.
+      '20261224000000_order_submission_approval_permanent_grant_and_auto_approval.sql',
     ],'every migration at or after this one is accounted for')
   })
 })

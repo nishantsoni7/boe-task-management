@@ -1,6 +1,10 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
+import {
+  refusePermanentOrderApprovalRemoval,
+  targetsOrderApproval,
+} from '@/lib/permissions/orderApproval'
 
 async function adminClient(req: NextRequest): Promise<{ svc: SupabaseClient; adminId: string } | null> {
   const token = req.headers.get('authorization')?.replace('Bearer ', '').trim()
@@ -186,6 +190,29 @@ export async function PUT(
 
   if (changes.length === 0) {
     return NextResponse.json({ error: 'No changes provided' }, { status: 400 })
+  }
+
+  // ── The one grant this route may not take away ──
+  //
+  // orders.approve_order on the seeded owner account is permanent. The database
+  // refuses it too (20261224000000 §3, a trigger rather than a policy precisely
+  // because THIS route holds the service role and is exempt from RLS), and both
+  // Control Centre screens already render an administrator's row read-only. The
+  // check here exists so the refusal arrives as a sentence rather than as a
+  // Postgres error, and so a crafted request is turned away before anything in
+  // the batch is written.
+  //
+  // The employee read is paid for ONLY when a change is about this action: an
+  // ordinary save touches no extra row.
+  if (changes.some(targetsOrderApproval)) {
+    const { data: target } = await svc
+      .from('users')
+      .select('employee_code')
+      .eq('id', userId)
+      .maybeSingle()
+
+    const refusal = refusePermanentOrderApprovalRemoval(target?.employee_code, changes)
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 409 })
   }
 
   const moduleKeys = Array.from(new Set(changes.map((c) => c.moduleKey)))

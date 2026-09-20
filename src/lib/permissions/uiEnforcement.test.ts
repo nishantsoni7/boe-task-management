@@ -322,9 +322,21 @@ describe('the acceptance conditions, as capabilities', () => {
     const finance = deriveFinanceCapabilities('admin', [])
     for (const value of Object.values(finance)) assert.equal(value, true)
 
+    // Orders has ONE exception, and it is deliberate: 20261224000000 §4 took
+    // approve_order off the admin role so the owner can withdraw PI approval
+    // from an administrator. Everything else an admin held, they still hold.
     const orders = deriveOrdersCapabilities('admin', [])
     for (const [name, value] of Object.entries(orders)) {
+      if (name === 'canApproveOrderSubmission') {
+        assert.equal(value, false, 'approve_order is granted per person, not by the role')
+        continue
+      }
       assert.equal(value, true, `admin must keep ${name}`)
+    }
+    const granted = deriveOrdersCapabilities(
+      'admin', [{ actionKey: 'approve_order', allowed: true, source: 'employee_override' }])
+    for (const [name, value] of Object.entries(granted)) {
+      assert.equal(value, true, `a granted admin must hold ${name}`)
     }
   })
 })
