@@ -68,6 +68,7 @@ import {
   type ExpenseDraftRow,
 } from '@/lib/finance/expenseDrafts'
 import { ExpenseForm, type ExpenseSaveOutcome } from './ExpenseForm'
+import { ExpenseErrorBoundary } from './ExpenseErrorBoundary'
 import { DeleteExpenseModal } from './DeleteExpenseModal'
 import { NeedsDetailsList } from './NeedsDetailsList'
 import { QuickCapture } from './QuickCapture'
@@ -608,6 +609,9 @@ export function ExpensesView() {
           )}
 
           <div className="boe-card" style={{ overflow: 'hidden' }}>
+            {/* ONE MALFORMED ROW MUST NOT COST THE WHOLE PAGE. The filters,
+                the total and the tabs above stay usable. */}
+            <ExpenseErrorBoundary label="list">
             <ExpenseList
               rows={rows}
               loading={listLoading}
@@ -621,6 +625,7 @@ export function ExpensesView() {
               onDelete={setDeleting}
               onClearFilters={clearFilters}
             />
+            </ExpenseErrorBoundary>
           </div>
         </>
       )}
@@ -666,17 +671,21 @@ export function ExpensesView() {
           width="560px"
           closeOnBackdropClick={false}
         >
-          <ExpenseForm
-            supabase={supabase}
-            userId={userId}
-            mode="edit"
-            expense={editing}
-            categories={categories}
-            history={history}
-            onCategoryCreated={c => setCategories(prev => [...prev, c])}
-            onSaved={afterSave}
-            onCancel={() => setEditing(null)}
-          />
+          {/* A CRASH HERE USED TO TAKE THE WHOLE PAGE. Now it costs the
+              modal, and the list behind it keeps working. */}
+          <ExpenseErrorBoundary label="edit" onReset={() => setEditing(null)}>
+            <ExpenseForm
+              supabase={supabase}
+              userId={userId}
+              mode="edit"
+              expense={editing}
+              categories={categories}
+              history={history}
+              onCategoryCreated={c => setCategories(prev => [...prev, c])}
+              onSaved={afterSave}
+              onCancel={() => setEditing(null)}
+            />
+          </ExpenseErrorBoundary>
         </FinanceModal>
       )}
 

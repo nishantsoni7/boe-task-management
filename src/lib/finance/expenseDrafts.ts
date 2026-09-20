@@ -46,6 +46,7 @@
 import { localTodayIso } from './piPaymentView'
 import {
   emptyExpenseForm,
+  expenseAmountText,
   isExpensePaymentMode,
   type ExpenseFormState,
 } from './expenses'
@@ -80,8 +81,13 @@ export type ExpenseDraftRow = {
   raw_text: string
   /** Always set. Today when the sentence named no date — and the UI says so. */
   parsed_date: string
-  /** `numeric` crosses the wire as a STRING, or null when none was heard. */
-  parsed_amount: string | null
+  /**
+   * `numeric`, AS POSTGREST ACTUALLY SENDS IT — a JSON NUMBER, or null when
+   * none was heard. This was typed `string` at first, for the same wrong reason
+   * ExpenseRow.amount was; see the note there. Read it with
+   * expenseAmountText(), never with a string method.
+   */
+  parsed_amount: string | number | null
   parsed_paid_to: string | null
   parsed_payment_mode: string | null
   parsed_remark: string | null
@@ -196,13 +202,17 @@ export function draftDateWasAssumed(
  * THE REMARK IS NEVER MISSING EITHER — it is optional on a finalized expense.
  */
 export function draftMissingFields(row: {
-  parsed_amount: string | null
+  parsed_amount: string | number | null
   parsed_paid_to: string | null
   parsed_payment_mode: string | null
   category_id: string | null
 }): string[] {
   const missing: string[] = []
-  if (row.parsed_amount === null || row.parsed_amount.trim() === '') missing.push('Amount')
+  // THROUGH expenseAmountText, NOT `.trim()`. A stored amount arrives as a
+  // NUMBER (see ExpenseRow.amount), and calling a string method on it is the
+  // defect that crashed the Edit form; the inbox would have crashed the same
+  // way the first time a saved draft carried an amount.
+  if (expenseAmountText(row.parsed_amount).trim() === '') missing.push('Amount')
   if (row.parsed_paid_to === null || row.parsed_paid_to.trim() === '') missing.push('Paid to')
   if (!isExpensePaymentMode(row.parsed_payment_mode)) missing.push('Payment mode')
   if (row.category_id === null || row.category_id === '') missing.push('Category')
@@ -259,7 +269,8 @@ export function expenseFormFromDraft(
   const base = emptyExpenseForm(todayIso)
   return {
     expenseDate: row.parsed_date || base.expenseDate,
-    amount: row.parsed_amount ?? '',
+    // Through expenseAmountText: a stored parsed_amount arrives as a NUMBER.
+    amount: expenseAmountText(row.parsed_amount),
     paymentMode: isExpensePaymentMode(row.parsed_payment_mode)
       ? row.parsed_payment_mode
       : base.paymentMode,

@@ -18,7 +18,7 @@
 // below.
 
 import { isValidAmount, amountInputProblem } from '@/lib/currency'
-import { sumExact, exactToString } from './exactMoney'
+import { sumExact, exactToString, parseExact } from './exactMoney'
 
 // ── Payment mode ─────────────────────────────────────────────────────────────
 //
@@ -88,8 +88,27 @@ export type ExpenseCategory = {
 export type ExpenseRow = {
   id: string
   expense_date: string
-  /** `numeric` crosses the wire as a STRING. Kept as one; see exactMoney.ts. */
-  amount: string
+  /**
+   * `numeric`, AS POSTGREST ACTUALLY SENDS IT — which is a JSON NUMBER, not a
+   * string.
+   *
+   * THIS TYPE SAID `string` AND THAT WAS WRONG. PostgREST serialises a numeric
+   * column with `to_json`, which emits it unquoted: the wire carries
+   * `{"amount":1000.00}`, and `JSON.parse` hands the browser the number 1000.
+   * Verified against a real PostgREST, not assumed.
+   *
+   * The lie was invisible everywhere the value is only ever formatted —
+   * formatMoney and parseExact both already accept `string | number`, which is
+   * how the rest of Finance types its amounts (allocatedAgainst.ts,
+   * allocationCorrection.ts). It was NOT invisible in expenseFormFromRow, which
+   * fed the value straight into a form field whose validator calls `.trim()`:
+   * clicking Edit threw `amount.trim is not a function` during render and, with
+   * no error boundary above it, took the whole Expenses page down.
+   *
+   * Use expenseAmountText() to turn this into the form's text. Do not widen it
+   * back to `string`.
+   */
+  amount: string | number
   payment_mode: string
   paid_to: string
   category_id: string
@@ -204,14 +223,61 @@ export function emptyExpenseForm(todayIso: string): ExpenseFormState {
   }
 }
 
-/** An existing expense, as the shared form edits it. */
+/**
+ * A STORED AMOUNT, AS THE FORM'S TEXT FIELD HOLDS IT.
+ *
+ * EVERY FIELD OF ExpenseFormState IS A STRING, because the form is a set of
+ * text inputs and the amount must survive as the digits somebody typed rather
+ * than as a double. PostgREST sends `numeric` as a JSON number, so the value
+ * arriving from the database is NOT already that string, and this is where the
+ * two meet.
+ *
+ * WHAT IT DOES NOT DO:
+ *
+ *   * It does not round. The conversion runs through parseExact/exactToString —
+ *     the same exact-decimal path the Finance totals use — so no double ever
+ *     decides a digit.
+ *   * It does not rewrite a string. A value that is already text is returned
+ *     verbatim, so a figure somebody typed reaches validation exactly as typed
+ *     and is refused on its own terms rather than quietly reshaped.
+ *   * It does not truncate. Padding only ever ADDS the trailing zeros an
+ *     expense amount always has (the column's CHECK requires round(amount, 2)),
+ *     so the form reads ₹1,000.00 like the list does instead of "1000". A value
+ *     carrying more than two decimals is left alone for validation to refuse.
+ *   * It does not invent a figure. An amount that is missing or not a finite
+ *     number becomes an EMPTY field, which the form then reports as "Enter the
+ *     amount paid" — a controlled message, not a silent zero and not a crash.
+ */
+export function expenseAmountText(value: string | number | null | undefined): string {
+  if (typeof value === 'string') return value
+  if (value === null || value === undefined) return ''
+
+  const exact = parseExact(value)
+  if (exact === null) return ''
+
+  const text = exactToString(exact)
+  const dot = text.indexOf('.')
+  if (dot === -1) return `${text}.00`
+  const decimals = text.length - dot - 1
+  return decimals < 2 ? `${text}${'0'.repeat(2 - decimals)}` : text
+}
+
+/**
+ * An existing expense, as the shared form edits it.
+ *
+ * `paid_to` is NOT NULL in the database and so should never be missing. It is
+ * still coerced rather than trusted, because the cost of being wrong is the bug
+ * this function caused once already: a non-string reaching a `.trim()` in the
+ * validator crashes the render, and with no boundary above it that is the whole
+ * page. An empty field is a controlled state the form can talk about.
+ */
 export function expenseFormFromRow(row: ExpenseRow): ExpenseFormState {
   return {
-    expenseDate: row.expense_date,
-    amount: row.amount,
-    paymentMode: row.payment_mode,
-    paidTo: row.paid_to,
-    categoryId: row.category_id,
+    expenseDate: row.expense_date ?? '',
+    amount: expenseAmountText(row.amount),
+    paymentMode: row.payment_mode ?? '',
+    paidTo: row.paid_to ?? '',
+    categoryId: row.category_id ?? '',
     remark: row.remark ?? '',
   }
 }

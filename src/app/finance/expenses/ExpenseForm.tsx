@@ -261,11 +261,24 @@ export function ExpenseForm({
         // editable, and the database's guard trigger refuses this anyway; the
         // predicate means a stale list that still shows an Edit button updates
         // nothing rather than raising an error somebody has to interpret.
-        const { error: updateError } = await supabase.from('expenses')
+        //
+        // AND THE ROW IT CHANGED IS READ BACK, because a filtered UPDATE that
+        // matches NOTHING is not an error in PostgREST — it succeeds, changes
+        // nothing, and would have reported "Expense corrected" over an expense
+        // somebody else had just deleted. Asking for the id turns that silent
+        // no-op into the one sentence the person needs.
+        const { data: updated, error: updateError } = await supabase.from('expenses')
           .update({ ...payload, updated_by: userId })
           .eq('id', expense!.id)
           .is('deleted_at', null)
+          .select('id')
         error = updateError
+        if (!updateError && (updated?.length ?? 0) === 0) {
+          setSaveError(
+            'This expense could not be updated — it may have been deleted since this '
+            + 'form was opened. Close and refresh the list.')
+          return
+        }
       }
 
       if (error) {
