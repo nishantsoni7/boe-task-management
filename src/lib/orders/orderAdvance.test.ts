@@ -154,16 +154,27 @@ describe('what counts toward the advance', () => {
 // ── The threshold ─────────────────────────────────────────────────────────────
 
 describe('Risky and Safe', () => {
-  test('the line is 35, and the boundary belongs to the cautious side', () => {
+  test('the line is 35, and reaching it is enough', () => {
     assert.equal(ADVANCE_SAFE_THRESHOLD_PERCENT, 35)
   })
 
-  test('EXACTLY 35.00% IS RISKY', () => {
-    const s = standing([verified('p1', 350000)], 1000000)
-    assert.equal(s.percent, '35.00')
+  // ── THE FOUR CASES THE BUSINESS STATED, each through a real finance
+  //    position rather than a hand-made percentage ──
+
+  test('34.99% IS RISKY — short of the line', () => {
+    const s = standing([verified('p1', 349900)], 1000000)
+    assert.equal(s.percent, '34.99')
     assert.equal(s.classification?.label, ADVANCE_RISKY_LABEL)
     assert.equal(s.classification?.tone, 'red')
     assert.equal(s.classification?.safe, false)
+  })
+
+  test('EXACTLY 35.00% IS SAFE — the line is a minimum, and it is reached', () => {
+    const s = standing([verified('p1', 350000)], 1000000)
+    assert.equal(s.percent, '35.00')
+    assert.equal(s.classification?.label, ADVANCE_SAFE_LABEL)
+    assert.equal(s.classification?.tone, 'green')
+    assert.equal(s.classification?.safe, true)
   })
 
   test('35.01% IS SAFE', () => {
@@ -174,17 +185,22 @@ describe('Risky and Safe', () => {
     assert.equal(s.classification?.safe, true)
   })
 
-  test('34.99% is Risky', () => {
-    const s = standing([verified('p1', 349900)], 1000000)
-    assert.equal(s.classification?.label, ADVANCE_RISKY_LABEL)
+  test('A MISSING OR ZERO ORDER VALUE IS NOT AVAILABLE, and neither label', () => {
+    for (const orderValue of [0, null]) {
+      const s = standing([verified('p1', 350000)], orderValue)
+      assert.equal(s.percent, null, String(orderValue))
+      assert.equal(s.percentLabel, ADVANCE_NOT_AVAILABLE, String(orderValue))
+      assert.equal(s.classification, null, String(orderValue))
+    }
   })
 
   test('the boundary is read straight off the percentage, either side of it', () => {
     for (const [percent, label] of [
-      ['0', ADVANCE_RISKY_LABEL], ['34.999', ADVANCE_RISKY_LABEL],
-      ['35', ADVANCE_RISKY_LABEL], ['35.0', ADVANCE_RISKY_LABEL],
-      ['35.001', ADVANCE_SAFE_LABEL], ['40', ADVANCE_SAFE_LABEL],
-      ['100', ADVANCE_SAFE_LABEL],
+      ['0', ADVANCE_RISKY_LABEL], ['34.99', ADVANCE_RISKY_LABEL],
+      ['34.999', ADVANCE_RISKY_LABEL],
+      ['35', ADVANCE_SAFE_LABEL], ['35.0', ADVANCE_SAFE_LABEL],
+      ['35.00', ADVANCE_SAFE_LABEL], ['35.01', ADVANCE_SAFE_LABEL],
+      ['40', ADVANCE_SAFE_LABEL], ['100', ADVANCE_SAFE_LABEL],
     ] as const) {
       assert.equal(classifyAdvance(percent)?.label, label, percent)
     }

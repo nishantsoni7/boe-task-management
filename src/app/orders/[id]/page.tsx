@@ -126,7 +126,7 @@ import { advanceStanding } from '@/lib/orders/orderAdvance'
 import {
   APPROVAL_EVIDENCE_BUCKET,
   FABRIC_FINISH_VIEW_AS_NOTE,
-  ORDER_APPROVAL_EVENT_COLUMNS,
+  ORDER_APPROVAL_EVENT_SELECT,
   approvalStanding,
   canRecordApproval,
   describeApprovalFailure,
@@ -998,10 +998,23 @@ export default function OrderDetailPage() {
    * each kind and the history reads the rest. Two kinds, a handful of events
    * each; there is no page to keep.
    */
+  /**
+   * The embed arrives NESTED, as PostgREST returns it, and the view wants one
+   * flat field. Flattened here rather than in the lib so the lib keeps taking
+   * a plain row shape a test can build by hand.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapApprovalRows = (raw: any[] | null): PersistedApprovalEvent[] =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (raw ?? []).map((row: any) => ({
+      ...row,
+      actor_name: row.actor?.full_name ?? null,
+    })) as PersistedApprovalEvent[]
+
   const approvalsQuery = () =>
     supabase
       .from('order_approval_events')
-      .select(ORDER_APPROVAL_EVENT_COLUMNS)
+      .select(ORDER_APPROVAL_EVENT_SELECT)
       .eq('order_id', id)
       .order('created_at', { ascending: false })
 
@@ -1013,7 +1026,7 @@ export default function OrderDetailPage() {
    */
   const reloadApprovals = async () => {
     const { data } = await approvalsQuery()
-    setApprovals((data ?? []) as unknown as PersistedApprovalEvent[])
+    setApprovals(mapApprovalRows(data))
   }
 
   /** The full load. A refresh calls this and replaces data in place. */
@@ -1093,7 +1106,7 @@ export default function OrderDetailPage() {
         .order('created_at', { ascending: false }),
     ])
 
-    setApprovals((apprData ?? []) as unknown as PersistedApprovalEvent[])
+    setApprovals(mapApprovalRows(apprData))
 
     // MERGE, THEN RE-READ THE MONEY EXACTLY.
     //

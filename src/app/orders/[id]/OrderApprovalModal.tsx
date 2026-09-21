@@ -24,6 +24,8 @@ import {
   APPROVAL_STATUSES,
   APPROVAL_STATUS_LABEL,
   EVIDENCE_ACCEPT,
+  EVIDENCE_FIELD_LABEL,
+  EVIDENCE_NOT_VERIFIED_NOTE,
   FABRIC_FINISH_TITLE,
   checkApprovalDraft,
   isChanged,
@@ -39,7 +41,9 @@ export const APPROVAL_MODAL_TITLE = `Update ${FABRIC_FINISH_TITLE}`
 export const APPROVAL_SAVE_LABEL = 'Save'
 export const APPROVAL_SAVING_LABEL = 'Saving…'
 export const APPROVAL_CANCEL_LABEL = 'Cancel'
-export const APPROVAL_EVIDENCE_LABEL = 'ERP screenshot'
+/** The field asks for the thing by name. Re-exported so the tests and the
+ *  form cannot word it differently. */
+export const APPROVAL_EVIDENCE_LABEL = EVIDENCE_FIELD_LABEL
 export const APPROVAL_CHANGED_MARK = 'Changed'
 
 export type ApprovalSubmission = {
@@ -161,11 +165,20 @@ export function OrderApprovalModal({ standing, saving, failure, onClose, onConfi
                     accept={EVIDENCE_ACCEPT}
                     className="order-approval-file"
                     disabled={saving}
+                    aria-describedby={`evidence-note-${kind}`}
                     onChange={e => {
                       setFiles(f => ({ ...f, [kind]: e.target.files?.[0] ?? null }))
                       setTouched(true)
                     }}
                   />
+                  {/* WHAT THE SYSTEM DOES NOT DO, said where the file is
+                      chosen. Nothing here reads the image or establishes that
+                      it came from the ERP; it stores what somebody picked and
+                      records who picked it. Implying otherwise would claim a
+                      verification that does not exist. */}
+                  <p id={`evidence-note-${kind}`} className="order-approval-hint">
+                    {EVIDENCE_NOT_VERIFIED_NOTE}
+                  </p>
                   {missing && (
                     <p className="order-approval-error" role="alert">
                       Choose the {APPROVAL_KIND_LABEL[kind].toLowerCase()} screenshot.

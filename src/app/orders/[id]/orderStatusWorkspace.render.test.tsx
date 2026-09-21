@@ -29,6 +29,8 @@ import {
   advanceStanding,
 } from '@/lib/orders/orderAdvance'
 import {
+  EVIDENCE_FIELD_LABEL,
+  EVIDENCE_NOT_VERIFIED_NOTE,
   EVIDENCE_SAME_FILE_MESSAGE,
   FABRIC_FINISH_READ_ONLY,
   FABRIC_FINISH_UPDATE_LABEL,
@@ -207,14 +209,16 @@ describe('the Advance Received card', () => {
     assert.ok(body.includes(formatMoney(1000000)))
   })
 
-  test('EXACTLY 35% READS RISKY, in words as well as colour', () => {
+  test('EXACTLY 35% READS SAFE, in words as well as colour', () => {
     const body = text(advanceCard(350000, 1000000))
-    assert.ok(body.includes(ADVANCE_RISKY_LABEL))
-    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
+    assert.ok(body.includes(ADVANCE_SAFE_LABEL))
+    assert.equal(body.includes(ADVANCE_RISKY_LABEL), false)
   })
 
-  test('just above it reads Safe', () => {
-    assert.ok(text(advanceCard(350100, 1000000)).includes(ADVANCE_SAFE_LABEL))
+  test('just below it reads Risky, in words as well as colour', () => {
+    const body = text(advanceCard(349900, 1000000))
+    assert.ok(body.includes(ADVANCE_RISKY_LABEL))
+    assert.equal(body.includes(ADVANCE_SAFE_LABEL), false)
   })
 
   test('an overpayment prints its real figure rather than a capped one', () => {
@@ -298,6 +302,56 @@ describe('the Fabric & Finish card', () => {
     assert.equal(fabricCard([approvalEvent()]).includes('secret-proof'), false)
   })
 
+  test('EVERY REQUIRED FACT IS ON THE CARD for an approved kind', () => {
+    const body = text(fabricCard([
+      approvalEvent({ status: 'fully_approved', actor_name: 'Nishant Soni' }),
+      approvalEvent({ id: 'e2', approval_kind: 'finish', status: 'partially_approved',
+                      actor_name: 'Ravi Menon',
+                      evidence_path: `orders/${ORDER}/finish/b.png` }),
+    ]))
+    for (const required of [
+      'Fabric', 'Fully Approved',          // status, in Partial/Full wording
+      'Finish', 'Partially Approved',
+      '2026-09-10',                        // the approval date
+      'by Nishant Soni', 'by Ravi Menon',  // the approver
+      'View proof',                        // evidence access
+    ]) {
+      assert.ok(body.includes(required), required)
+    }
+  })
+
+  test('THE PERMANENT TRAIL IS VISIBLE when a kind has more than one event', () => {
+    const html = fabricCard([
+      approvalEvent({ id: 'e1', status: 'partially_approved', actor_name: 'Nishant Soni',
+                      created_at: '2026-09-10T05:00:00Z',
+                      evidence_path: `orders/${ORDER}/fabric/one.png` }),
+      approvalEvent({ id: 'e2', status: 'fully_approved', actor_name: 'Ravi Menon',
+                      created_at: '2026-09-20T05:00:00Z',
+                      evidence_path: `orders/${ORDER}/fabric/two.png` }),
+    ])
+    // A native disclosure: keyboard-operable and announced, no script.
+    assert.match(html, /<details class="order-approval-history"/)
+    const body = text(html)
+    assert.ok(body.includes('Earlier changes (1)'))
+    assert.ok(body.includes('Partially Approved'), 'the superseded status is still readable')
+    assert.ok(body.includes('Nishant Soni'), 'and still names who recorded it')
+    // Two proofs are now reachable: the current one and the one it replaced.
+    assert.equal((html.match(/View proof/g) ?? []).length, 2)
+  })
+
+  test('and there is NO trail to show when a kind has only one event', () => {
+    assert.equal(/order-approval-history/.test(fabricCard([approvalEvent()])), false)
+    assert.equal(/order-approval-history/.test(fabricCard([])), false)
+  })
+
+  test('NO EARLIER EVIDENCE PATH REACHES THE MARKUP either', () => {
+    assertNoFileReference(fabricCard([
+      approvalEvent({ id: 'e1', created_at: '2026-09-10T05:00:00Z' }),
+      approvalEvent({ id: 'e2', status: 'fully_approved', created_at: '2026-09-20T05:00:00Z',
+                      evidence_path: `orders/${ORDER}/fabric/secret-proof-two.png` }),
+    ]), 'the Fabric & Finish trail')
+  })
+
   test('but a proof that exists is offered', () => {
     assert.ok(text(fabricCard([approvalEvent()])).includes('View proof'))
     assert.equal(text(fabricCard([])).includes('View proof'), false)
@@ -359,6 +413,26 @@ describe('the Fabric & Finish update dialog', () => {
     const html = approvalModal([], { failure: EVIDENCE_SAME_FILE_MESSAGE })
     assert.match(html, /role="alert"/)
     assert.ok(text(html).includes(EVIDENCE_SAME_FILE_MESSAGE))
+  })
+
+  test('THE FILE FIELD ASKS FOR AN ERP APPROVAL SCREENSHOT, and says what is NOT checked', () => {
+    // Fabric is already Fully Approved here, so moving Finish to Partially
+    // Approved is the change that asks for a file. The dialog opens pre-filled,
+    // so drive it through a standing where Finish is behind.
+    const html = renderToStaticMarkup(
+      <OrderApprovalModal
+        standing={approvals([
+          approvalEvent({ status: 'partially_approved' }),
+        ])}
+        saving={false} failure={null} onClose={noop} onConfirm={noop}
+      />,
+    )
+    // Nothing has changed yet, so no input is drawn — that is the rule tested
+    // above. What must be true is that the WORDS the field would use are the
+    // ones the business asked for.
+    assert.equal(EVIDENCE_FIELD_LABEL, 'ERP approval screenshot')
+    assert.match(EVIDENCE_NOT_VERIFIED_NOTE, /not checked against the ERP/i)
+    assert.equal(/type="file"/.test(html), false)
   })
 
   test('THERE IS NO MANDATORY REASON BOX — no existing rule asks for one', () => {

@@ -25,7 +25,10 @@ import {
   EVIDENCE_MAX_BYTES,
   EVIDENCE_REQUIRED_MESSAGE,
   EVIDENCE_SAME_FILE_MESSAGE,
+  EVIDENCE_NOT_VERIFIED_NOTE,
+  EVIDENCE_FIELD_LABEL,
   EVIDENCE_TOO_LARGE_MESSAGE,
+  UNKNOWN_ACTOR,
   approvalStanding,
   canRecordApproval,
   checkApprovalDraft,
@@ -71,6 +74,56 @@ describe('where fabric and finish stand', () => {
     assert.equal(reverted?.status, 'not_approved')
     assert.equal(reverted?.at, null)
     assert.equal(reverted?.evidencePath, null)
+  })
+
+  test('IT NAMES WHO RECORDED THE CURRENT STATUS', () => {
+    const k = kind([event({ actor_name: 'Nishant Soni' })], 'fabric')
+    assert.equal(k?.approver, 'Nishant Soni')
+  })
+
+  test('a reader whose RLS hides that user gets the unknown wording, not an id', () => {
+    const k = kind([event({ actor_name: null, actor_id: 'u1' })], 'fabric')
+    assert.equal(k?.approver, UNKNOWN_ACTOR)
+    assert.notEqual(k?.approver, 'u1')
+  })
+
+  test('NOT APPROVED NAMES NOBODY, for the same reason it carries no date', () => {
+    assert.equal(kind([], 'fabric')?.approver, null)
+    const reverted = kind([event({ status: 'not_approved', evidence_path: null,
+                                   actor_name: 'Ravi Menon' })], 'fabric')
+    assert.equal(reverted?.approver, null, 'the card credits nobody with a revert')
+  })
+
+  test('EVERY EARLIER EVENT IS KEPT, newest first, with its actor and proof', () => {
+    const k = kind([
+      event({ id: 'e1', status: 'partially_approved', created_at: '2026-09-10T05:00:00Z',
+              actor_name: 'Nishant Soni', evidence_path: `orders/${ORDER}/fabric/one.png` }),
+      event({ id: 'e2', status: 'fully_approved', created_at: '2026-09-20T05:00:00Z',
+              actor_name: 'Ravi Menon', evidence_path: `orders/${ORDER}/fabric/two.png` }),
+    ], 'fabric')
+    assert.equal(k?.status, 'fully_approved')
+    assert.equal(k?.approver, 'Ravi Menon')
+    assert.deepEqual(k?.history.map(h => h.id), ['e1'], 'the one it replaced')
+    assert.equal(k?.history[0].statusLabel, 'Partially Approved')
+    assert.equal(k?.history[0].actor, 'Nishant Soni')
+    assert.equal(k?.history[0].evidencePath, `orders/${ORDER}/fabric/one.png`,
+      'an earlier proof is never overwritten, so it is still reachable')
+  })
+
+  test('a single event leaves an EMPTY trail — there is nothing it replaced', () => {
+    assert.deepEqual(kind([event()], 'fabric')?.history, [])
+    assert.deepEqual(kind([], 'fabric')?.history, [])
+  })
+
+  test('the two kinds keep SEPARATE trails', () => {
+    const rows = [
+      event({ id: 'f1', approval_kind: 'fabric', status: 'partially_approved', created_at: '2026-09-10T05:00:00Z' }),
+      event({ id: 'f2', approval_kind: 'fabric', status: 'fully_approved', created_at: '2026-09-20T05:00:00Z' }),
+      event({ id: 'n1', approval_kind: 'finish', status: 'partially_approved', created_at: '2026-09-11T05:00:00Z',
+              evidence_path: `orders/${ORDER}/finish/a.png` }),
+    ]
+    assert.deepEqual(kind(rows, 'fabric')?.history.map(h => h.id), ['f1'])
+    assert.deepEqual(kind(rows, 'finish')?.history.map(h => h.id), [])
   })
 
   test('a Partial status carries its date and its proof', () => {
@@ -324,6 +377,23 @@ describe('a refusal is one quiet sentence, chosen by its code', () => {
 })
 
 // ── The guarantees that actually matter ───────────────────────────────────────
+
+describe('the words the evidence field uses', () => {
+  test('IT ASKS FOR AN ERP APPROVAL SCREENSHOT, by name', () => {
+    assert.equal(EVIDENCE_FIELD_LABEL, 'ERP approval screenshot')
+  })
+
+  test('AND IT CLAIMS NO AUTOMATIC ERP VERIFICATION', () => {
+    // Nothing in this product reads the image or establishes where it came
+    // from. The note says so plainly rather than letting the form imply a
+    // check that does not exist.
+    assert.match(EVIDENCE_NOT_VERIFIED_NOTE, /not checked against the ERP/i)
+    for (const overclaim of [/verif\w* (that|the file|it) (is|came)/i, /we check/i,
+                             /automatic/i, /validated against/i]) {
+      assert.equal(overclaim.test(EVIDENCE_NOT_VERIFIED_NOTE), false, String(overclaim))
+    }
+  })
+})
 
 describe('the migration holds every rule the browser only mirrors', () => {
   const sql = readFileSync(join(process.cwd(),

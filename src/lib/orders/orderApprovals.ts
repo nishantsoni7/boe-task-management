@@ -73,6 +73,24 @@ export const EVIDENCE_SAME_FILE_MESSAGE =
 
 export const EVIDENCE_VIEW_LABEL = 'View proof'
 
+/** What the field asks for, in the words the business uses for it. */
+export const EVIDENCE_FIELD_LABEL = 'ERP approval screenshot'
+
+/**
+ * WHAT THE SYSTEM DOES NOT DO, said on the form.
+ *
+ * Nothing here inspects the image, reads it, or establishes that it came from
+ * the ERP at all — it stores the file somebody chose and records who chose it.
+ * A form that implied otherwise would be claiming a verification that does not
+ * exist, and the whole value of this evidence is that a person can open it and
+ * judge it themselves.
+ */
+export const EVIDENCE_NOT_VERIFIED_NOTE =
+  'The file is stored and attributed to you. It is not checked against the ERP — whoever reviews this approval opens it and judges it.'
+
+/** What the compact history calls itself. */
+export const APPROVAL_HISTORY_LABEL = 'Earlier changes'
+
 /** What the bucket accepts. Stated once so the picker, the check and the
  *  migration's allowed_mime_types cannot drift apart. */
 export const EVIDENCE_MIME_TYPES: readonly string[] = ['image/png', 'image/jpeg', 'image/webp']
@@ -92,12 +110,35 @@ export type PersistedApprovalEvent = {
   evidence_path: string | null
   actor_id: string | null
   created_at: string
+  /**
+   * Who recorded it, resolved by the READ rather than by a second query.
+   *
+   * public.order_approval_events.actor_id is a foreign key onto public.users,
+   * so PostgREST embeds the name in the same round trip — the pattern the
+   * activity trail beside it already uses. A reader whose RLS does not show
+   * them that user simply gets null here, and the card says so rather than
+   * printing an id.
+   */
+  actor_name?: string | null
 }
 
 /** Named, never `*`. */
 export const ORDER_APPROVAL_EVENT_COLUMNS = [
   'id', 'order_id', 'approval_kind', 'status', 'evidence_path', 'actor_id', 'created_at',
 ].join(', ')
+
+/**
+ * The same columns plus the actor's name, in ONE read.
+ *
+ * The embed names its FOREIGN KEY rather than a column, which is the form that
+ * cannot become ambiguous if this table ever gains a second reference to
+ * public.users.
+ */
+export const ORDER_APPROVAL_EVENT_SELECT =
+  `${ORDER_APPROVAL_EVENT_COLUMNS}, actor:users!actor_id(full_name)`
+
+/** What a card says when the reader's RLS does not show them that user. */
+export const UNKNOWN_ACTOR = 'Unknown user'
 
 const isKind = (value: string): value is ApprovalKind =>
   value === 'fabric' || value === 'finish'
@@ -127,6 +168,36 @@ export type ApprovalKindStanding = {
   evidencePath: string | null
   /** Who recorded it, or null. */
   actorId: string | null
+  /**
+   * Who recorded the current status, in words — or the unknown wording.
+   *
+   * NULL FOR NOT APPROVED, like the date beside it: that is where every Order
+   * starts, and naming somebody for it would credit them with an event that
+   * never happened. A deliberate revert TO Not Approved keeps its actor in the
+   * history below, where it belongs.
+   */
+  approver: string | null
+  /**
+   * EVERY EARLIER EVENT for this kind, newest first — the ones the current
+   * status replaced.
+   *
+   * The table is append-only, so these are permanent. The card lists them
+   * behind a disclosure rather than in the open: the question a reader opens
+   * this page with is where fabric and finish stand NOW, and a card that leads
+   * with four superseded states answers a question nobody asked.
+   */
+  history: ApprovalEventView[]
+}
+
+/** One event, as the compact history lists it. */
+export type ApprovalEventView = {
+  id: string
+  status: ApprovalStatus
+  statusLabel: string
+  tone: ApprovalTone
+  at: string
+  actor: string
+  evidencePath: string | null
 }
 
 export type ApprovalStanding = {
@@ -146,6 +217,11 @@ export type ApprovalStanding = {
  * same reason the activity trail drops an unknown action: showing a status the
  * screen cannot name would be worse than showing the last one it can.
  */
+const actorOf = (event: PersistedApprovalEvent): string => {
+  const name = (event.actor_name ?? '').trim()
+  return name === '' ? UNKNOWN_ACTOR : name
+}
+
 export function approvalStanding(input: {
   events: readonly PersistedApprovalEvent[]
   /** Already formatted by the caller. */
@@ -154,16 +230,24 @@ export function approvalStanding(input: {
 }): ApprovalStanding {
   const { events, formatWhen } = input
 
-  const newest = new Map<ApprovalKind, PersistedApprovalEvent>()
+  // EVERY EVENT PER KIND, newest first. The caller reads them in that order
+  // already; sorting again here means a differently-ordered read cannot change
+  // which status the card reports.
+  const byKind = new Map<ApprovalKind, PersistedApprovalEvent[]>()
   for (const event of events) {
     if (!isKind(event.approval_kind) || !isStatus(event.status)) continue
-    const held = newest.get(event.approval_kind)
-    if (!held || event.created_at > held.created_at) newest.set(event.approval_kind, event)
+    const held = byKind.get(event.approval_kind) ?? []
+    held.push(event)
+    byKind.set(event.approval_kind, held)
+  }
+  for (const held of byKind.values()) {
+    held.sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
   }
 
   return {
     kinds: APPROVAL_KINDS.map(kind => {
-      const event = newest.get(kind)
+      const all = byKind.get(kind) ?? []
+      const event = all[0]
       const status: ApprovalStatus =
         event && isStatus(event.status) ? event.status : 'not_approved'
       const approved = status !== 'not_approved'
@@ -173,8 +257,21 @@ export function approvalStanding(input: {
         status,
         tone: APPROVAL_STATUS_TONE[status],
         at: approved && event ? formatWhen(event.created_at) : null,
+        approver: approved && event ? actorOf(event) : null,
         evidencePath: approved && event ? event.evidence_path : null,
         actorId: event?.actor_id ?? null,
+        history: all.slice(1).map(e => {
+          const s = e.status as ApprovalStatus
+          return {
+            id: e.id,
+            status: s,
+            statusLabel: APPROVAL_STATUS_LABEL[s],
+            tone: APPROVAL_STATUS_TONE[s],
+            at: formatWhen(e.created_at),
+            actor: actorOf(e),
+            evidencePath: e.evidence_path,
+          }
+        }),
       }
     }),
     readOnlyNote: input.readOnlyNote ?? FABRIC_FINISH_READ_ONLY,

@@ -3,8 +3,8 @@
 // WHAT THIS MODULE IS FOR
 // -----------------------
 // The status workspace states one figure: the share of the final Order Value
-// that Finance has VERIFIED and that is genuinely allocated to this Order. Over
-// 35% reads Safe; at or under 35% reads Risky.
+// that Finance has VERIFIED and that is genuinely allocated to this Order.
+// 35% or more reads Safe; below 35% reads Risky.
 //
 // IT COMPUTES NO MONEY. Every figure below is buildOrderFinancePosition's, and
 // `verifiedPercent` is already exactly the quantity this card wants:
@@ -46,10 +46,10 @@ export const ADVANCE_SAFE_LABEL = 'Safe'
 /**
  * The line between the two labels, in percent.
  *
- * AT OR BELOW IS RISKY; STRICTLY ABOVE IS SAFE. Exactly 35.00 is Risky — the
- * boundary belongs to the cautious side, because a threshold that reads Safe at
- * its own edge is a threshold that tells somebody they are fine at the exact
- * moment they are not.
+ * REACHING IT IS SAFE; ONLY FALLING SHORT IS RISKY. Exactly 35.00 reads Safe,
+ * because the business states this as a MINIMUM the advance has to reach — and
+ * a minimum that an exact hit fails is not a minimum, it is 35-point-something.
+ * 34.99 is short of it and reads Risky.
  */
 export const ADVANCE_SAFE_THRESHOLD_PERCENT = 35
 
@@ -100,7 +100,7 @@ export function classifyAdvance(percent: string | null): AdvanceClassification |
   const value = Number(percent)
   if (!Number.isFinite(value)) return null
 
-  return value > ADVANCE_SAFE_THRESHOLD_PERCENT
+  return value >= ADVANCE_SAFE_THRESHOLD_PERCENT
     ? { label: ADVANCE_SAFE_LABEL, tone: 'green', safe: true }
     : { label: ADVANCE_RISKY_LABEL, tone: 'red', safe: false }
 }

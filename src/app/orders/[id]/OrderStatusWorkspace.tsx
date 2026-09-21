@@ -47,6 +47,7 @@ import {
   type AdvanceStanding,
 } from '@/lib/orders/orderAdvance'
 import {
+  APPROVAL_HISTORY_LABEL,
   APPROVAL_STATUS_LABEL,
   EVIDENCE_VIEW_LABEL,
   FABRIC_FINISH_TITLE,
@@ -270,8 +271,13 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
             <dt className="order-status-fact-label">{kind.label}</dt>
             <dd className="order-status-approval-value">
               <StatusPill label={APPROVAL_STATUS_LABEL[kind.status]} tone={kind.tone} />
-              {/* Only where there is an event to date. */}
+              {/* WHEN AND WHO, only where there is an event to name. Not
+                  Approved is where every Order starts; dating it or crediting
+                  somebody with it would report an event that never happened. */}
               {kind.at && <span className="order-status-approval-at">{kind.at}</span>}
+              {kind.approver && (
+                <span className="order-status-approval-by">by {kind.approver}</span>
+              )}
               {kind.evidencePath && (
                 <button
                   type="button"
@@ -283,6 +289,43 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
                 </button>
               )}
             </dd>
+
+            {/* THE PERMANENT TRAIL, and only when there is one. The table is
+                append-only, so a status this kind has left is still on record
+                with its actor, its moment and its proof. It sits behind a
+                disclosure because the question a reader opens this page with is
+                where fabric and finish stand NOW — a card that led with four
+                superseded states would answer a question nobody asked.
+
+                A native <details>: it opens with a keyboard, it is announced,
+                and it needs no state of its own. */}
+            {kind.history.length > 0 && (
+              <details className="order-approval-history">
+                <summary className="order-approval-history-summary">
+                  {APPROVAL_HISTORY_LABEL} ({kind.history.length})
+                </summary>
+                <ol className="order-approval-history-list">
+                  {kind.history.map(event => (
+                    <li key={event.id} className="order-approval-history-row">
+                      <span className="order-approval-history-status">{event.statusLabel}</span>
+                      <span className="order-approval-history-meta">
+                        {event.at} · {event.actor}
+                      </span>
+                      {event.evidencePath && (
+                        <button
+                          type="button"
+                          className="order-status-proof"
+                          onClick={() => onViewEvidence(event.evidencePath as string)}
+                          disabled={busyEvidence === event.evidencePath}
+                        >
+                          {busyEvidence === event.evidencePath ? 'Opening…' : EVIDENCE_VIEW_LABEL}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </details>
+            )}
           </div>
         ))}
       </dl>
