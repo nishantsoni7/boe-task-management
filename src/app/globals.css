@@ -3021,6 +3021,113 @@ body {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   QUICK ACTIONS
+
+   One definition list (src/components/layout/QuickActions.tsx) rendered in two
+   places, with CSS — not JavaScript — deciding which one is on screen. The
+   switch is the SIDEBAR’S OWN BREAKPOINT, 767px, the same one that turns
+   .boe-sidebar into a drawer and reveals .boe-menu-toggle. There is no second
+   breakpoint for quick actions to disagree with.
+
+     >= 768px  permanent sidebar  →  sidebar copy shown, page copy hidden
+     <= 767px  drawer             →  page copy shown, sidebar copy hidden
+
+   The sidebar copy is hidden rather than merely off-screen below 767px: an
+   action you must open a menu to reach is not a quick action, and leaving it
+   in the drawer would also put it on screen twice once the drawer is open.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* Shared: a vertical stack, so a second action drops underneath the first with
+   no further layout work on either surface. */
+.boe-quick-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Full width on both surfaces, and never below the 44px touch minimum — .boe-btn
+   only reaches that at <= 767px, and this button has to be tappable at every
+   width. Colour is left to .boe-btn-primary, which is the amber action token. */
+.boe-quick-action {
+  width: 100%;
+  justify-content: center;
+  min-height: 46px;
+  font-size: 13.5px;
+  gap: 8px;
+}
+
+/* DARK LABEL ON THE AMBER FILL, for this button only.
+
+   .boe-btn-primary sets white on #E8A030, which measures 2.2:1 — below the
+   4.5:1 AA needs for 13.5px text. The amber IS the identity and stays; what
+   changes is the foreground, to --color-boe-primary (#111318), the token the
+   rest of the app already uses for primary text. That measures 8.4:1 on the
+   fill and 7.0:1 on the #D4911F hover, so both states clear AA comfortably.
+   The icon is stroke="currentColor", so it follows the label with no rule of
+   its own.
+
+   SCOPED TWO WAYS, deliberately:
+     .boe-btn-primary.boe-quick-action outranks .boe-btn-primary on
+       specificity rather than source order, so the global token and every
+       other primary button in the app are untouched. Same shape as the
+       existing .boe-btn-primary.pi-approve-btn override further down.
+     :not(:disabled) leaves .boe-btn-primary:disabled alone, which supplies
+       its own grey-on-grey pair. Without it this rule, being equally
+       specific and later, would paint a disabled button in live text. */
+.boe-btn-primary.boe-quick-action:not(:disabled) {
+  color: var(--color-boe-primary);
+}
+
+/* An amber ring on an amber fill is no ring at all. Same reasoning, and the
+   same shape, as .boe-task-action-submit:focus-visible above: where the global
+   default disappears into the button, the button states its own. #111318 is
+   the primary text token, so this introduces no new colour. */
+.boe-quick-action:focus-visible {
+  outline: 2px solid #111318;
+  outline-offset: 2px;
+}
+
+/* ── Sidebar copy (>= 768px) ── */
+.boe-quick-actions-sidebar {
+  margin-bottom: 8px;
+}
+
+/* h2 carrying .boe-sidebar-label: the heading is real structure, so it needs
+   its user-agent margin removed rather than its semantics dropped. */
+.boe-quick-actions-sidebar .boe-sidebar-label {
+  margin: 0;
+}
+
+/* ── Page copy (<= 767px) ──
+   A tinted amber container so the section reads as one block and is clearly
+   separated from the module grid below it, using the existing amber tint token
+   rather than a new colour. */
+.boe-quick-actions-page {
+  display: none;
+  margin-bottom: 18px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--color-boe-amber-tint);
+  border: 1px solid rgba(232, 160, 48, 0.22);
+}
+
+/* Matches the launcher’s own MODULES label, one token darker (tertiary rather
+   than muted) because it sits on a tinted ground. */
+.boe-quick-actions-page-label {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--color-boe-tertiary);
+}
+
+@media (max-width: 767px) {
+  .boe-quick-actions-sidebar { display: none; }
+  .boe-quick-actions-page    { display: block; }
+}
+
 /* ── Mobile bottom navigation — hidden on desktop, shown on mobile ── */
 .boe-mobile-bottom-nav {
   display: none;
