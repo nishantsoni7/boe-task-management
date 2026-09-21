@@ -26,7 +26,6 @@ import {
   EVIDENCE_REQUIRED_MESSAGE,
   EVIDENCE_SAME_FILE_MESSAGE,
   EVIDENCE_TOO_LARGE_MESSAGE,
-  approvalHistory,
   approvalStanding,
   canRecordApproval,
   checkApprovalDraft,
@@ -117,36 +116,6 @@ describe('where fabric and finish stand', () => {
     ]
     assert.equal(kind(rows, 'fabric')?.status, 'fully_approved')
     assert.equal(standing(rows).kinds.length, 2)
-  })
-})
-
-// ── The history ───────────────────────────────────────────────────────────────
-
-describe('the approval history', () => {
-  const rows = [
-    event({ id: 'e1', status: 'partially_approved', created_at: '2026-09-10T05:00:00Z' }),
-    event({ id: 'e2', status: 'fully_approved', created_at: '2026-09-20T05:00:00Z' }),
-    event({ id: 'e3', status: 'not_approved', evidence_path: null,
-            created_at: '2026-09-05T05:00:00Z', actor_id: 'ghost' }),
-  ]
-  const history = () => approvalHistory({
-    events: rows, namesById: new Map([['u1', 'Nishant Soni']]), formatWhen: when,
-  })
-
-  test('every event survives, newest first', () => {
-    assert.deepEqual(history().map(e => e.id), ['e2', 'e1', 'e3'])
-  })
-
-  test('each names its actor, and an unknown one says so rather than being blank', () => {
-    assert.equal(history()[0].actorName, 'Nishant Soni')
-    assert.equal(history()[2].actorName, 'Unknown user')
-  })
-
-  test('a revert is kept in the history with its actor and timestamp', () => {
-    const revert = history().find(e => e.status === 'not_approved')
-    assert.ok(revert)
-    assert.equal(revert?.at, '2026-09-05')
-    assert.equal(revert?.evidencePath, null, 'and needs no proof')
   })
 })
 

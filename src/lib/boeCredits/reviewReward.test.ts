@@ -252,6 +252,11 @@ describe('the file, and where it sits', () => {
       // approval functions re-emitted with one check removed and one added, no
       // schema change, no DML, nothing dropped. It reaches nothing here.
       '20261226000000_order_submission_finance_verification_no_longer_required.sql',
+      // The Confirmed Order’s fabric and finish approvals: one new append-only
+      // table, one new private storage bucket and one write RPC. It re-emits no
+      // existing function, adds no column to any existing table, writes no row and
+      // drops nothing, so it reaches nothing here.
+      '20261227000000_order_fabric_finish_approvals.sql',
     ])
   })
 

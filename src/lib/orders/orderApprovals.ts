@@ -182,50 +182,18 @@ export function approvalStanding(input: {
 }
 
 /**
- * EVERY EVENT, newest first, for the history a reader can open.
+ * WHY THERE IS NO HISTORY VIEW HERE.
  *
- * Unrecognised rows are dropped here too, and for the same reason.
+ * Every event IS preserved — the table is append-only and its evidence bucket
+ * has no UPDATE or DELETE policy — but the card states the CURRENT standing of
+ * each kind and offers the proof behind it, which is what this phase's design
+ * asks for. A reader who needs the whole trail has the log; building a second
+ * modal for it would be a surface nobody asked for, and an exported helper with
+ * no caller is how a module starts carrying code nothing tests in anger.
+ *
+ * The rule to keep if one is ever added: newest first, unrecognised rows
+ * dropped, and a revert to Not Approved listed like any other event.
  */
-export type ApprovalHistoryEntry = {
-  id: string
-  kind: ApprovalKind
-  kindLabel: string
-  status: ApprovalStatus
-  statusLabel: string
-  tone: ApprovalTone
-  at: string
-  actorName: string
-  evidencePath: string | null
-}
-
-export const UNKNOWN_ACTOR = 'Unknown user'
-
-export function approvalHistory(input: {
-  events: readonly PersistedApprovalEvent[]
-  namesById: ReadonlyMap<string, string>
-  formatWhen: (iso: string) => string
-}): ApprovalHistoryEntry[] {
-  return input.events
-    .filter(e => isKind(e.approval_kind) && isStatus(e.status))
-    .slice()
-    .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0))
-    .map(e => {
-      const kind = e.approval_kind as ApprovalKind
-      const status = e.status as ApprovalStatus
-      const name = e.actor_id ? input.namesById.get(e.actor_id) : undefined
-      return {
-        id: e.id,
-        kind,
-        kindLabel: APPROVAL_KIND_LABEL[kind],
-        status,
-        statusLabel: APPROVAL_STATUS_LABEL[status],
-        tone: APPROVAL_STATUS_TONE[status],
-        at: input.formatWhen(e.created_at),
-        actorName: name && name.trim() !== '' ? name.trim() : UNKNOWN_ACTOR,
-        evidencePath: e.evidence_path,
-      }
-    })
-}
 
 // ── Who may move one ──────────────────────────────────────────────────────────
 
