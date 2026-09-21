@@ -976,6 +976,13 @@ export default function TaskDetailPage() {
         try {
           const { error } = await supabase.from('tasks').update({ last_update_at: now }).eq('id', task.id)
           if (error) console.error('[saveComment] last_update_at bump failed (freshness only):', error.message)
+          // Quotation Requests ORDERS BY this column (last_update_at ?? created_at),
+          // and it caches its rows — so a commented-on quotation would keep its old
+          // position in that list until the entry aged out. The broader
+          // invalidateTaskCache is deliberately NOT used here: a comment is not a
+          // status change, and My Tasks and Today's Focus have never refetched for
+          // one. This narrows to the list whose ordering actually moved.
+          else queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
         } catch (e) {
           console.error('[saveComment] last_update_at bump threw (freshness only):', e)
         }

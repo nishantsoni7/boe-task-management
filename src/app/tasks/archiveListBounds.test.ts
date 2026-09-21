@@ -205,11 +205,31 @@ describe('quotation requests are read in pages, once, and cached', () => {
     assert.ok(hook.includes('gcTime: 5 * 60 * 1000'),
       `${QUOTATION_HOOK}: the cache must outlive a trip to a detail page`)
 
-    // Cached rows must never be allowed to go stale silently: the detail page is
-    // the only thing that mutates them, and it marks this key on every mutation.
+    // Cached rows must never be allowed to go stale silently. Three writers can
+    // move this list, and each one marks the key:
+    //
+    //   · Task Detail's shared invalidateTaskCache — every status move, reopen,
+    //     cancel, acknowledge, due date, priority and title edit;
+    //   · Task Detail's comment save, which bumps last_update_at — the column
+    //     this list ORDERS BY, so a comment moves a row's position;
+    //   · the New Quotation Request form, whose whole point is a row that must
+    //     appear in the list the person goes to next.
     const detail = source('src/app/tasks/[id]/page.tsx')
-    assert.ok(detail.includes('queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })'),
+    const invalidation = 'queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })'
+
+    const helper = detail.indexOf('const invalidateTaskCache =')
+    assert.ok(helper > 0, 'src/app/tasks/[id]/page.tsx: expected the shared invalidation helper')
+    assert.ok(detail.indexOf(invalidation, helper) > helper,
       'src/app/tasks/[id]/page.tsx: a task mutation must invalidate the quotation list')
+
+    const comment = detail.indexOf('const saveComment =')
+    assert.ok(comment > 0, 'src/app/tasks/[id]/page.tsx: expected saveComment')
+    const commentInvalidation = detail.indexOf(invalidation, comment)
+    assert.ok(commentInvalidation > comment && commentInvalidation < detail.indexOf('const saveDueDate =', comment),
+      'src/app/tasks/[id]/page.tsx: a comment bumps last_update_at, which this list orders by')
+
+    assert.ok(source('src/app/tasks/quotation-requests/new/page.tsx').includes(invalidation),
+      'src/app/tasks/quotation-requests/new/page.tsx: a new request must reach the cached list')
   })
 
   test('a return paints the cached rows instead of the full-screen loader', () => {
