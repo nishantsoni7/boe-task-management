@@ -23,8 +23,19 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import { PiApproveOrderModal, PiFinanceVerifyModal } from './piReviewModals'
-import { buildApprovalSummary } from '@/app/orders/drafts/[submissionId]/piDetailView'
+import { PiApproveOrderModal, PiFinanceVerifyModal, type ApproveDialogMode } from './piReviewModals'
+import {
+  APPROVE_SUMMARY_EXTRA_LABEL,
+  buildApprovalSummary,
+} from '@/app/orders/drafts/[submissionId]/piDetailView'
+import {
+  ORDER_CONFIRMATION_LABEL,
+  ORDER_CONFIRMATION_MESSAGE,
+  resolveSavedSalesperson,
+  validateOrderConfirmation,
+  type OrderConfirmationDraft,
+  type OrderConfirmationField,
+} from '@/lib/orders/orderConfirmation'
 import {
   APPROVE_ORDER_BUSY_LABEL,
   APPROVE_ORDER_CONFIRM_LABEL,
@@ -67,27 +78,73 @@ const verifyModal = (over: { saving?: boolean; failure?: string | null } = {}): 
     />,
   )
 
+/** The people the control offers, as the page reads them. */
+const SALESPEOPLE = [
+  { id: 'u-dhruv', name: 'Dhruv Mehta' },
+  { id: 'u-priya', name: 'Priya Rao' },
+  { id: 'u-nishant', name: 'Nishant Soni' },
+]
+
 const approveModal = (over: {
   saving?: boolean
   failure?: string | null
-  productCount?: number
-  advanceLabel?: string
+  client?: string
+  productValue?: string
+  advanceConfirmed?: string | null
+  exception?: { reason: string | null; status: string | null } | null
+  mode?: ApproveDialogMode
+  confirmation?: OrderConfirmationDraft
+  salespeople?: readonly { id: string; name: string }[]
+  confirmationField?: OrderConfirmationField | null
 } = {}): string =>
   renderToStaticMarkup(
     <PiApproveOrderModal
-      client="Kalyan Interiors"
+      client={over.client ?? 'Kalyan Interiors'}
+      mode={over.mode ?? 'approve_and_create'}
       rows={buildApprovalSummary({
-        client: 'Kalyan Interiors',
-        grandTotal: '₹11,80,000',
-        advanceLabel: over.advanceLabel ?? 'Standard advance (40%)',
-        productCount: over.productCount ?? 3,
+        client: over.client ?? 'Kalyan Interiors',
+        productValue: over.productValue ?? '₹10,00,000',
+        advanceConfirmed: over.advanceConfirmed === undefined ? '₹4,72,000' : over.advanceConfirmed,
+        exception: over.exception ?? null,
       })}
       saving={over.saving ?? false}
       failure={over.failure ?? null}
       onCancel={() => {}}
       onConfirm={() => {}}
+      salespeople={over.salespeople ?? SALESPEOPLE}
+      confirmation={over.confirmation ?? {
+        salesperson: null, confirmDate: null, dueDate: null, leadSource: null,
+      }}
+      onConfirmationChange={() => {}}
+      confirmationField={over.confirmationField ?? null}
     />,
   )
+
+/**
+ * Which option a `<select>` opened on, by the field label it follows.
+ *
+ * React's SERVER render marks the chosen option with `selected` rather than
+ * putting `value` on the select, so that is what is read here. Returns '' for
+ * the placeholder — an unselected field — and null when the field is absent.
+ */
+const selectValue = (html: string, label: string): string | null => {
+  const at = html.indexOf(label)
+  if (at < 0) return null
+  const open = html.indexOf('<select', at)
+  if (open < 0) return null
+  const block = html.slice(open, html.indexOf('</select>', open))
+  const chosen = block.match(/<option\b[^>]*\bselected\b[^>]*>/)?.[0] ?? null
+  if (!chosen) return null
+  return chosen.match(/value="([^"]*)"/)?.[1] ?? ''
+}
+
+/** Whether the control after `label` is enabled and editable. */
+const isEditable = (html: string, label: string): boolean => {
+  const at = html.indexOf(label)
+  if (at < 0) return false
+  const tag = html.slice(at).match(/<(select|input)\b[^>]*>/)?.[0] ?? ''
+  return tag !== '' && !tag.includes('disabled') && !tag.includes('readonly')
+}
 
 // ── Verify finance ────────────────────────────────────────────────────────────
 
@@ -159,38 +216,46 @@ describe('the final approval dialog', () => {
     assert.equal(APPROVE_ORDER_DIALOG_TITLE, 'Approve PI & Create Order')
   })
 
-  test('shows the four facts a reviewer confirms against', () => {
-    // FOUR, NOT FIVE, since 20261226000000 removed the PI-level finance row.
+  test('shows the THREE facts a reviewer confirms against', () => {
     const body = text(html)
     assert.ok(body.includes('Kalyan Interiors'), 'client')
-    assert.ok(body.includes('₹11,80,000'), 'grand total')
-    assert.ok(body.includes('Standard advance (40%)'), 'the declared advance condition')
-    assert.ok(body.includes('3 lines'), 'the number of product lines')
+    assert.ok(body.includes(APPROVE_SUMMARY_EXTRA_LABEL.productValue))
+    assert.ok(body.includes('₹10,00,000'), 'the product value')
+    assert.ok(body.includes(APPROVE_SUMMARY_EXTRA_LABEL.advanceConfirmed))
+    assert.ok(body.includes('₹4,72,000'), 'the confirmed advance')
   })
 
-  test('does not repeat the advance figures the page already carries', () => {
-    // The CONDITION is named; the rupee value stays on the page, where it is
-    // derived once from the current grand total.
+  test('THE SEVEN REPEATED ROWS ARE GONE from the rendered dialog', () => {
     const body = text(html)
-    assert.ok(!/₹4,72,000/.test(body))
-    assert.ok(!body.includes('Standard requirement'))
-  })
-
-  test('one product line reads as one line', () => {
-    assert.ok(text(approveModal({ productCount: 1 })).includes('1 line'))
-  })
-
-  test('the dialog carries no PI-level finance row at all', () => {
-    // WHAT THIS TEST USED TO SAY (before 20261226000000): an unverified PI had
-    // to SAY so in the summary rather than hide the row, so a stale screen
-    // could not imply a sign-off that never happened.
-    //
-    // WHAT IT SAYS NOW: there is no such sign-off, so there is no row to get
-    // wrong. What Finance has approved and what is still with them are the two
-    // payment rows, and they are figures rather than a boolean.
-    const body = text(approveModal({}))
+    for (const gone of ['Grand total', 'Advance condition', 'Product lines',
+                        'Approved payment', 'Pending / unapproved payment',
+                        'Total attached payment', 'PI decision']) {
+      assert.ok(!body.includes(gone), `${gone} is on the page behind this dialog`)
+    }
+    assert.ok(!/\bline(s)?\b/.test(body.replace(/inline/gi, '')), 'no product-line count')
     assert.ok(!body.includes(APPROVE_SUMMARY_LABEL.finance),
-      'no "Finance verification" row survives in the approval dialog')
+      'and nothing 20261226000000 removed has come back')
+  })
+
+  test('the product value is the PAGE\u2019S figure, never the grand total', () => {
+    // The page prints ₹10,00,000 as "Product value" and ₹11,80,000 as the grand
+    // total. The dialog must carry the first and never the second.
+    const body = text(html)
+    assert.ok(body.includes('₹10,00,000'))
+    assert.ok(!body.includes('₹11,80,000'), 'the grand total is not this dialog\u2019s figure')
+    for (const wrong of ['Total before GST', 'PI total', 'Billing value']) {
+      assert.ok(!body.includes(wrong), `${wrong} is a different number`)
+    }
+  })
+
+  test('Confirm date and Due date appear ONCE each, as editable inputs', () => {
+    const body = text(html)
+    // Once in the label of its own input, and nowhere as a read-only row.
+    assert.equal(body.split(ORDER_CONFIRMATION_LABEL.confirm_date).length - 1, 1)
+    assert.equal(body.split(ORDER_CONFIRMATION_LABEL.due_date).length - 1, 1)
+    assert.ok(isEditable(html, 'Confirm date'), 'and it is still editable')
+    assert.ok(isEditable(html, 'Due date'), 'and so is it')
+    assert.equal((html.match(/type="date"/g) ?? []).length, 2, 'two date inputs, no more')
   })
 
   test('says approval is final, a number is assigned, and the Order is created', () => {
@@ -227,6 +292,129 @@ describe('the final approval dialog', () => {
     })
     assert.ok(text(failed).includes('No Order has been created.'))
     assert.ok(text(failed).includes(APPROVE_ORDER_DIALOG_TITLE))
+  })
+
+  test('long client names and long currency values wrap rather than clip', () => {
+    const long = approveModal({
+      client: 'Kalyan Interiors & Contract Furnishing Solutions Private Limited',
+      productValue: '₹12,34,56,789',
+    })
+    assert.ok(text(long).includes('Kalyan Interiors & Contract Furnishing Solutions Private Limited'))
+    assert.ok(long.includes('overflow-wrap:anywhere'), 'the VALUE breaks instead of overflowing')
+    assert.ok(long.includes('flex-wrap:wrap'), 'and the row wraps before it pushes')
+    assert.ok(!/overflow-x\s*:\s*(scroll|auto)/.test(long))
+  })
+})
+
+// ── The salesperson the PI already names ──────────────────────────────────────
+
+describe('the salesperson is preselected from the PI, or not at all', () => {
+  test('1 · the PI\u2019s saved salesperson is preselected', () => {
+    const saved = resolveSavedSalesperson({ savedName: 'Dhruv Mehta', options: SALESPEOPLE })
+    assert.equal(saved, 'u-dhruv')
+    const html = approveModal({ confirmation: {
+      salesperson: saved, confirmDate: null, dueDate: null, leadSource: null,
+    } })
+    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), 'u-dhruv')
+  })
+
+  test('2 · the SUBMITTER is never used as the salesperson', () => {
+    // The PI names Dhruv; Nishant submitted it. Two different people, and the
+    // dropdown must carry the first.
+    const saved = resolveSavedSalesperson({ savedName: 'Dhruv Mehta', options: SALESPEOPLE })
+    assert.equal(saved, 'u-dhruv')
+    assert.notEqual(saved, 'u-nishant')
+    // And a PI naming nobody does not borrow the submitter to fill the gap.
+    assert.equal(resolveSavedSalesperson({ savedName: null, options: SALESPEOPLE }), null)
+  })
+
+  test('3 · the logged-in user is never an automatic fallback', () => {
+    // IT CANNOT REACH FOR ONE. The resolver takes a saved name and a list of
+    // options, and its body names no identity of any other kind.
+    const source = resolveSavedSalesperson.toString()
+    for (const leak of [/\bviewer\b/i, /\bsession\b/i, /\bauth\b/i,
+                        /\bcurrentUser\b/i, /\bviewerId\b/i, /\bprofile\b/i]) {
+      assert.ok(!leak.test(source), `${leak} is not an input to preselection`)
+    }
+    // And the page hands it exactly two things: the PI's name and the options.
+    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    const call = page.slice(page.indexOf('resolveSavedSalesperson({'))
+      .slice(0, page.slice(page.indexOf('resolveSavedSalesperson({')).indexOf('})') + 2)
+    assert.ok(call.includes('savedName: documentAuthor'), 'the PI document\u2019s own name')
+    assert.ok(call.includes('options: salespeople'))
+    assert.ok(!/viewerId|session|profile|submitterName/.test(call),
+      'no identity of the reader or the submitter is in reach of it')
+
+    // Nor does it fall back to the only option, or the first one.
+    assert.equal(resolveSavedSalesperson({ savedName: '', options: [SALESPEOPLE[0]] }), null)
+    assert.equal(resolveSavedSalesperson({ savedName: 'Somebody Else', options: SALESPEOPLE }), null)
+  })
+
+  test('4 · a name that cannot be matched EXACTLY leaves the field unselected', () => {
+    for (const unmatched of ['D. Mehta', 'Dhruv', 'Mehta', 'Dhruv M', 'Dhruvv Mehta', '—']) {
+      assert.equal(resolveSavedSalesperson({ savedName: unmatched, options: SALESPEOPLE }), null,
+        `"${unmatched}" must not be guessed into a person`)
+    }
+    // Case and stray whitespace are normalised — same person, not a guess.
+    assert.equal(resolveSavedSalesperson({ savedName: '  dhruv   mehta ', options: SALESPEOPLE }), 'u-dhruv')
+    // Two people of the same name is an ambiguity a machine must not resolve.
+    assert.equal(resolveSavedSalesperson({
+      savedName: 'Dhruv Mehta',
+      options: [...SALESPEOPLE, { id: 'u-other', name: 'Dhruv Mehta' }],
+    }), null)
+  })
+
+  test('4b · an unmatched salesperson keeps the existing required validation', () => {
+    const draft: OrderConfirmationDraft = {
+      salesperson: resolveSavedSalesperson({ savedName: 'D. Mehta', options: SALESPEOPLE }),
+      confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: 'reference',
+    }
+    assert.equal(draft.salesperson, null)
+    const check = validateOrderConfirmation(draft)
+    assert.equal(check.ok, false)
+    assert.equal(check.ok === false && check.field, 'salesperson')
+    assert.equal(check.ok === false && check.message, ORDER_CONFIRMATION_MESSAGE.salesperson)
+    // And the dialog draws it as an empty, still-required control.
+    const html = approveModal({ confirmation: draft })
+    assert.equal(selectValue(html, ORDER_CONFIRMATION_LABEL.salesperson), '')
+    assert.ok(text(html).includes('Select a salesperson…'))
+  })
+
+  test('5 · the dropdown stays editable, with every option still offered', () => {
+    const html = approveModal({ confirmation: {
+      salesperson: 'u-dhruv', confirmDate: null, dueDate: null, leadSource: null,
+    } })
+    assert.ok(isEditable(html, ORDER_CONFIRMATION_LABEL.salesperson),
+      'preselected is not the same as decided')
+    for (const person of SALESPEOPLE) {
+      assert.ok(html.includes(`value="${person.id}"`), `${person.name} is still choosable`)
+    }
+    assert.ok(html.includes('Select a salesperson…'), 'and it can be cleared again')
+  })
+
+  test('12 · Lead source is still required, and still a select', () => {
+    const html = approveModal()
+    assert.ok(text(html).includes(`${ORDER_CONFIRMATION_LABEL.lead_source} *`))
+    assert.ok(isEditable(html, ORDER_CONFIRMATION_LABEL.lead_source))
+    const draft: OrderConfirmationDraft = {
+      salesperson: 'u-dhruv', confirmDate: '2026-01-31', dueDate: '2026-03-25', leadSource: null,
+    }
+    const check = validateOrderConfirmation(draft)
+    assert.equal(check.ok, false)
+    assert.equal(check.ok === false && check.field, 'lead_source')
+  })
+
+  test('13 · Create Order behaviour and payload are untouched', () => {
+    const page = readFileSync('src/app/orders/drafts/[submissionId]/page.tsx', 'utf8')
+    // The RPC, its name and its four parameters are exactly what they were.
+    assert.ok(page.includes('p_assigned_to:   check.values.salesperson,'),
+      'the id sent is still the VALIDATED draft value, not the preselection')
+    assert.ok(page.includes('validateOrderConfirmation('),
+      'and it still goes through the same gate')
+    // Preselection only ever seeds the draft; it never reaches the call.
+    assert.ok(!page.includes('p_assigned_to:   resolveSavedSalesperson'))
+    assert.ok(!page.includes('resolveSavedSalesperson') || page.includes('setConfirmation(prev => ({'),
+      'it is written into the draft the person can still change')
   })
 })
 

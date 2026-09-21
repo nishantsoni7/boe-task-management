@@ -895,6 +895,55 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
    * ends in .test.ts, and the production caller filters test files out
    * before it ever gets here, so the sets cannot meet.
    */
+  /**
+   * THE CONFIRMED-ORDER DIALOG follow-up: preselect the salesperson the PI
+   * already names, and cut the verification summary from nine repeated rows to
+   * three.
+   *
+   * WHY IT REACHES THIS FILE AND NOT MORE. src/lib/orders/orderConfirmation.ts
+   * is the module that already owns the four fields a Confirmed Order is built
+   * from, so the "which saved salesperson does this PI mean" resolver belongs
+   * beside validateOrderConfirmation rather than in a new module. It adds ONE
+   * pure function and changes nothing that existed: not the four fields, not
+   * the validation, not the labels, not the messages.
+   *
+   * NOTHING ABOUT AUTHORITY, MONEY OR THE RPC MOVES. approve_order_submission
+   * still takes the same four parameters, still re-derives every one of them
+   * under its own lock, and the page still sends the VALIDATED draft value —
+   * preselection only ever seeds a control the person can still change.
+   */
+  const ALLOWED_PI_CONFIRMATION_DIALOG = new Set([
+    // Production — the resolver, the summary it feeds, and the dialog.
+    'src/lib/orders/orderConfirmation.ts',
+    'src/app/orders/drafts/[submissionId]/page.tsx',
+    'src/app/orders/drafts/[submissionId]/piDetailView.ts',
+    'src/components/orders/piReviewModals.tsx',
+    // The suites that hold them to it.
+    'src/components/orders/piApprovalModals.render.test.tsx',
+    'src/lib/orders/reviewDecision.test.ts',
+  ])
+
+  test('the confirmation-dialog allowance names files, never a directory', () => {
+    for (const file of ALLOWED_PI_CONFIRMATION_DIALOG) {
+      assert.ok(/\.(tsx?)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+    }
+    // It admits no Finance surface, no permission file and no migration.
+    for (const untouchable of [
+      'src/app/finance/page.tsx',
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      'src/lib/orders/finalApproval.ts',
+    ]) {
+      assert.equal(ALLOWED_PI_CONFIRMATION_DIALOG.has(untouchable), false,
+        `${untouchable} must not ride in on the confirmation-dialog allowance`)
+    }
+  })
+
   const isUnexpectedFile = (f: string) =>
     !f.startsWith('src/app/finance/expenses/') &&
     !f.startsWith('src/lib/finance/expense') &&
@@ -909,7 +958,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
     !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
     !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f) &&
-    !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f)
+    !ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(f) &&
+    !ALLOWED_PI_CONFIRMATION_DIALOG.has(f)
 
   test('the quick-action allowance is EXACTLY three named files', () => {
     // Pinned by value, not by shape. Growing the allowance has to be a
@@ -1049,7 +1099,8 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     for (const file of editedTests) {
       assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
         || ALLOWED_PI_DRAFT_BUSINESS_RULES.has(file)
-        || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file),
+        || ALLOWED_PI_FINANCE_VERIFICATION_REMOVAL.has(file)
+        || ALLOWED_PI_CONFIRMATION_DIALOG.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
         + 'nor one of the named PI preview suites')
     }

@@ -986,12 +986,17 @@ export function PiFinanceVerifyModal({
 /**
  * The last decision, and the only one on this screen that cannot be undone.
  *
- * WHAT IT SHOWS: five facts, from buildApprovalSummary — the client, the grand
- * total, the advance condition, the finance state and the number of product
- * lines. Between them they answer "am I approving the thing I think I am
- * approving", which is what a confirmation dialog is for. It does NOT restate
- * the commercial breakdown, the addresses or the products; those are on the page
- * behind it in full, and a truncated copy here helps nobody.
+ * WHAT IT SHOWS: three facts, from buildApprovalSummary — the client, the total
+ * product value and the confirmed advance. Between them they answer "am I
+ * creating the Order I think I am creating", which is what a confirmation
+ * dialog is for. It does NOT restate the commercial breakdown, the addresses or
+ * the products; those are on the page behind it in full, and a truncated copy
+ * here helps nobody.
+ *
+ * AND IT DOES NOT RESTATE THE TWO DATES. Confirm date and Due date are editable
+ * inputs in the block below, and THOSE INPUTS ARE THE VERIFICATION: a read-only
+ * copy above them would print the same date twice and leave a reader unsure
+ * which one the Order will carry.
  *
  * WHAT IT SAYS, in three plain clauses: approval is final, an official Order
  * number will be assigned and the confirmed Order created, and NO PAYMENT IS
@@ -1121,17 +1126,32 @@ export function PiApproveOrderModal({
         />
 
         <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {/* ── The compact verification block ──
+              Three short rows on one soft ground, so the eye takes them in as a
+              group and lands on the fields below. The label holds its line; the
+              VALUE is what wraps, because a long client name or a long currency
+              string must break rather than push the label off the row or open a
+              horizontal scrollbar on a phone. */}
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: '5px',
+            padding: '11px 13px', borderRadius: '8px', background: colors.raised,
+          }}>
             {rows.map(row => (
               <div
                 key={row.key}
-                style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: '13px' }}
+                style={{
+                  display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'baseline', gap: '10px 14px',
+                  flexWrap: 'wrap', minWidth: 0, fontSize: '13px',
+                }}
               >
-                <span style={KEY_STYLE}>{row.label}</span>
+                <span style={{ ...KEY_STYLE, flexShrink: 0 }}>{row.label}</span>
                 <span style={{
+                  minWidth: 0,
                   color: colors.primary,
                   fontWeight: row.strong ? 700 : 600,
                   textAlign: 'right',
+                  overflowWrap: 'anywhere',
                   fontVariantNumeric: row.strong ? 'tabular-nums' : undefined,
                 }}>
                   {row.value}

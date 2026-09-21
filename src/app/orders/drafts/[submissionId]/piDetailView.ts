@@ -673,90 +673,91 @@ export type ApprovalSummaryRow = {
 /**
  * The compact final summary a reviewer confirms against.
  *
- * FIVE FACTS, AND NOT ONE MORE. Client, grand total, the advance condition, the
- * finance state and how many product lines are being committed to. Between them
- * they answer "am I approving the thing I think I am approving", which is the
- * only question a confirmation dialog is for.
+ * THREE FACTS, AND NOT ONE MORE: who the client is, what is being sold, and how
+ * much confirmed money is already against it. Between them they answer "am I
+ * creating the Order I think I am creating", which is the only question a
+ * confirmation dialog is for.
  *
- * WHAT IS DELIBERATELY ABSENT: the commercial breakdown, the addresses, the
- * dispatch commitment and the product table. All of them are on the page behind
- * this dialog, in full, and a reviewer who has not read them is not helped by a
- * truncated copy in a modal.
+ * THE DIALOG USED TO CARRY NINE ROWS — grand total, advance condition, product
+ * lines, approved payment, pending payment, total attached payment and the PI
+ * decision on top of these three. Every one of them is on the page behind the
+ * dialog, most of them twice over, and a reader confirming an irreversible
+ * action scans a short list or scans nothing at all. The long version was read
+ * as a wall and skipped, which is worse than showing less.
  *
- * THE ADVANCE FIGURES ARE NOT RESTATED HERE EITHER — the condition is named
- * ("Standard advance (40%)", "No advance (0%)") and the rupee value stays on the
- * page, where it is derived once from the current grand total.
+ * THE TWO DATES ARE NOT HERE EITHER, and deliberately: Confirm date and Due
+ * date are EDITABLE INPUTS a few millimetres below, and those inputs are what
+ * the approver is verifying. Printing them read-only above would state the same
+ * two dates twice and leave a reader wondering which one counts.
+ *
+ * NOTHING IS COMPUTED HERE. Both figures arrive formatted, from the page's own
+ * single source for each — see the field notes below.
  */
-/**
- * THE PAYMENT SUMMARY the approver evaluates the PI beside (20261119000000).
- *
- * Every string is already formatted by the page from the database's own
- * figures. `attached` is null on a summary produced before the migration, and
- * the row is simply not printed; the exception reason appears only while an
- * exception exists, headed by its state so the approver knows whether it is
- * still theirs to decide.
- */
-export type ApprovalPaymentSummary = {
-  orderValue: string
-  /** "₹X · Y%" — verified money. */
-  approved: string
-  /** "₹X · Y%" — money awaiting Finance verification. */
-  pending: string
-  /** "₹X · Y%" — the two together, or null when the server did not report it. */
-  attached: string | null
-  exceptionReason: string | null
-  exceptionStatus: string | null
-}
+export const APPROVE_SUMMARY_EXTRA_LABEL = {
+  /**
+   * THE SAME FIGURE THE PI DETAIL PAGE PRINTS AS "Product value", passed
+   * through from summaryCommercialFigures' `gross` row. It is NOT the grand
+   * total, NOT the PI total, NOT the total before GST and NOT the billing
+   * value, and it is not recomputed here — one calculation, printed in two
+   * places, so the dialog and the page can never disagree.
+   */
+  productValue: 'Total product value',
+  /**
+   * CONFIRMED MONEY ONLY — the verified amount, which is exactly the money
+   * Finance has approved. Money awaiting verification, money in clarification
+   * and rejected money are all excluded, because an approver reading "advance
+   * confirmed" beside an Order must not be shown a figure that could still
+   * evaporate. Stated as an amount alone; the shares and the row-by-row
+   * position live on the payment card, where they can be acted on.
+   */
+  advanceConfirmed: 'Advance confirmed',
+} as const
 
+/**
+ * What survives of the old payment block: the exception reason.
+ *
+ * IT IS NOT ONE OF THE THREE and it is not always drawn — it appears only while
+ * an advance exception actually exists, headed by its state so the approver
+ * knows whether it is still theirs to decide. It is kept because it is the one
+ * payment fact that is a WARNING rather than a figure: an Order created under a
+ * waived advance condition is a different commitment, and the person taking the
+ * irreversible action is the right person to be told.
+ */
 export const APPROVE_PAYMENT_LABEL = {
-  orderValue: 'Order value',
-  approved: 'Approved payment',
-  pending: 'Pending / unapproved payment',
-  attached: 'Total attached payment',
   exception: 'Exception reason',
-  piDecision: 'PI decision',
 } as const
 
 export function buildApprovalSummary(input: {
   client: string
-  grandTotal: string
-  /** advance.conditionLabel, or the undeclared label. One source, one wording. */
-  advanceLabel: string
-  productCount: number
-  /** The payment position, when the page has read it. */
-  payment?: ApprovalPaymentSummary | null
-  /** "PI approved by X · date", when the PI decision already stands. */
-  piApprovedLine?: string | null
+  /** summaryCommercialFigures' `gross` value — the page's "Product value". */
+  productValue: string
+  /** formatMoney(payments.verified_amount), or null before the read lands. */
+  advanceConfirmed: string | null
+  /** An advance exception, while one exists. */
+  exception?: { reason: string | null; status: string | null } | null
 }): ApprovalSummaryRow[] {
   const rows: ApprovalSummaryRow[] = [
     { key: 'client', label: APPROVE_SUMMARY_LABEL.client, value: input.client },
-    { key: 'total', label: APPROVE_SUMMARY_LABEL.grandTotal, value: input.grandTotal, strong: true },
-    { key: 'advance', label: APPROVE_SUMMARY_LABEL.advance, value: input.advanceLabel },
-    // NO 'finance' ROW (20261226000000). The approval dialog used to carry a
-    // "Finance verification: Verified/Pending" line for the PI-level sign-off
-    // that is no longer required. The two payment rows below — what Finance has
-    // approved and what is still with them — are the money facts an approver
-    // actually decides on, and they were always the real answer.
     {
-      key: 'lines',
-      label: APPROVE_SUMMARY_LABEL.lines,
-      value: `${input.productCount} line${input.productCount === 1 ? '' : 's'}`,
+      key: 'product_value',
+      label: APPROVE_SUMMARY_EXTRA_LABEL.productValue,
+      value: input.productValue,
+      strong: true,
     },
   ]
-  const payment = input.payment ?? null
-  if (payment) {
-    rows.push({ key: 'approved_payment', label: APPROVE_PAYMENT_LABEL.approved, value: payment.approved })
-    rows.push({ key: 'pending_payment', label: APPROVE_PAYMENT_LABEL.pending, value: payment.pending })
-    if (payment.attached !== null) {
-      rows.push({ key: 'attached_payment', label: APPROVE_PAYMENT_LABEL.attached, value: payment.attached, strong: true })
-    }
-    if (payment.exceptionReason) {
-      const state = payment.exceptionStatus ? ` (${payment.exceptionStatus})` : ''
-      rows.push({ key: 'exception', label: `${APPROVE_PAYMENT_LABEL.exception}${state}`, value: payment.exceptionReason })
-    }
+  // Not a labelled hole: before the payment summary has been read there is no
+  // confirmed figure to state, and inventing ₹0 would be a figure somebody acts on.
+  if (input.advanceConfirmed !== null) {
+    rows.push({
+      key: 'advance_confirmed',
+      label: APPROVE_SUMMARY_EXTRA_LABEL.advanceConfirmed,
+      value: input.advanceConfirmed,
+    })
   }
-  if (input.piApprovedLine) {
-    rows.push({ key: 'pi_decision', label: APPROVE_PAYMENT_LABEL.piDecision, value: input.piApprovedLine })
+  const exception = input.exception ?? null
+  if (exception?.reason) {
+    const state = exception.status ? ` (${exception.status})` : ''
+    rows.push({ key: 'exception', label: `${APPROVE_PAYMENT_LABEL.exception}${state}`, value: exception.reason })
   }
   return rows
 }
