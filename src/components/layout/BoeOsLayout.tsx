@@ -6,16 +6,27 @@ import { Home, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeSidebarSection } from './AdminViewModeControls'
+import { QuickActionList, type QuickAction } from './QuickActions'
 
 type BoeOsLayoutProps = {
   profile: UserProfile | null
   title: string
   subtitle?: string
   onSignOut: () => void
+  /**
+   * Quick actions the viewer is authorized for, already gated by the caller.
+   * Rendered directly below Home and displayed only while the sidebar is
+   * permanent; below 767px the page carries its own copy instead. Defaults
+   * to none, so a caller that passes nothing gets the sidebar exactly as it
+   * is today.
+   */
+  quickActions?: QuickAction[]
   children: React.ReactNode
 }
 
-export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: BoeOsLayoutProps) {
+export function BoeOsLayout({
+  profile, title, subtitle, onSignOut, quickActions = [], children,
+}: BoeOsLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const router   = useRouter()
   const pathname = usePathname()
@@ -60,6 +71,15 @@ export function BoeOsLayout({ profile, title, subtitle, onSignOut, children }: B
               same destination on screen twice. The menu is the one place, and
               the route is unchanged. */}
         </div>
+
+        {/* Quick actions, directly below Home so they sit near the top of the
+            sidebar. Displayed only while this sidebar is permanent — below
+            767px the launcher page carries the section instead, so it is
+            never behind the menu button. See QuickActions.tsx.
+
+            Nothing under this point moves: the identity block below still
+            pins itself to the foot with margin-top: auto. */}
+        <QuickActionList actions={quickActions} variant="sidebar" />
 
         {/* Bottom: profile + account settings + view as + sign out */}
         <ViewModeSidebarSection

@@ -23,6 +23,12 @@ const FORM = 'src/app/finance/expenses/ExpenseForm.tsx'
 const VIEW = 'src/app/finance/expenses/ExpensesView.tsx'
 const QUICK = 'src/app/finance/expenses/new/page.tsx'
 const MODULES = 'src/app/modules/page.tsx'
+// The one definition list behind Quick Add Expense, rendered by the desktop
+// sidebar and by the launcher page. The label, the icon and the route live
+// there now, so neither surface can restate them and drift.
+const QUICK_ACTIONS = 'src/components/layout/QuickActions.tsx'
+const OS_LAYOUT = 'src/components/layout/BoeOsLayout.tsx'
+const OS_CSS = 'src/app/globals.css'
 // ── Phase 2 ──
 const DELETE_MODAL = 'src/app/finance/expenses/DeleteExpenseModal.tsx'
 const DRAFTS = 'src/app/finance/expenses/NeedsDetailsList.tsx'
@@ -42,7 +48,7 @@ describe('the two expense routes exist and sit inside the Finance guard', () => 
   test('THE DEDICATED URL IS /finance/expenses/new', () => {
     // The manifest shortcut, the launcher action and the Android home-screen
     // instructions all name this path. It is a promise to somebody's phone.
-    assert.ok(code(MODULES).includes("router.push('/finance/expenses/new')"))
+    assert.ok(code(QUICK_ACTIONS).includes("href: '/finance/expenses/new'"))
     assert.equal(
       JSON.parse(read('public/manifest.json')).shortcuts[0].url,
       '/finance/expenses/new')
@@ -137,24 +143,70 @@ describe('Finance navigation', () => {
 
 describe('Quick Add Expense on the launcher', () => {
   const modules = code(MODULES)
+  const quickActions = code(QUICK_ACTIONS)
+  const osLayout = code(OS_LAYOUT)
 
   test('it is drawn, and it is a real action rather than a module card', () => {
-    assert.ok(modules.includes('Quick Add Expense'))
-    assert.ok(modules.includes('Quick actions'))
+    assert.ok(quickActions.includes('Quick Add Expense'))
+    assert.ok(quickActions.includes('Quick Actions'))
   })
 
   test('IT IS GATED ON THE SAME AUTHORITY THE ROUTE AND THE DATABASE USE', () => {
     // deriveFinanceCapabilities is the module's own derivation, and
     // canCreatePaymentRecord is Finance entry AND finance.create — exactly what
-    // expenses_create_insert requires in the database.
+    // expenses_create_insert requires in the database. UNCHANGED by the move:
+    // the launcher still computes the gate, the shared list only draws it.
     assert.ok(modules.includes('deriveFinanceCapabilities('))
     assert.ok(modules.includes('financeCaps.canCreatePaymentRecord'))
-    assert.ok(/canQuickAddExpense && \(/.test(modules),
-      'the action is not rendered at all when it is not authorized')
+    assert.ok(/buildQuickActions\(\{ canQuickAddExpense \}\)/.test(modules),
+      'the list is built from the gate and from nothing else')
+    assert.ok(/if \(gates\.canQuickAddExpense\)/.test(quickActions),
+      'the definition enters the list only when its gate is true')
+    assert.ok(/actions\.length === 0\) return null/.test(quickActions),
+      'no authorized action means no heading and no container, on either surface')
   })
 
   test('it reads the DISPLAY SUBJECT, so View As previews the employee\'s screen', () => {
     assert.ok(/deriveFinanceCapabilities\(\s*subjectRole,\s*subjectPermissions\.get\('finance'\)/.test(modules))
+  })
+
+  // ── WHERE it is drawn, and that it is drawn exactly once ──
+
+  test('ONE definition list feeds both placements', () => {
+    assert.ok(osLayout.includes('<QuickActionList actions={quickActions} variant="sidebar" />'))
+    assert.ok(modules.includes('<QuickActionList actions={quickActions} variant="page" />'))
+    // Neither surface may restate the label or the route.
+    for (const [file, src] of [[MODULES, modules], [OS_LAYOUT, osLayout]] as const) {
+      assert.equal(src.includes('Quick Add Expense'), false,
+        `${file} must take the label from QuickActions.tsx, not repeat it`)
+      assert.equal(src.includes('/finance/expenses/new'), false,
+        `${file} must take the route from QuickActions.tsx, not repeat it`)
+    }
+  })
+
+  test('THE SIDEBAR COPY AND THE PAGE COPY ARE NEVER BOTH ON SCREEN', () => {
+    // CSS decides, at the sidebar’s own 767px breakpoint — the one that turns
+    // .boe-sidebar into a drawer — so there is no media query in JavaScript to
+    // disagree with it and no width at which the action appears twice.
+    const css = read(OS_CSS)
+    assert.ok(/\.boe-quick-actions-page \{[^}]*display: none;/.test(css),
+      'the page copy is hidden by default, which is to say on desktop')
+    assert.ok(/@media \(max-width: 767px\) \{\s*\.boe-quick-actions-sidebar \{ display: none; \}\s*\.boe-quick-actions-page\s+\{ display: block; \}\s*\}/.test(css),
+      'below the sidebar breakpoint the sidebar copy goes and the page copy arrives')
+  })
+
+  test('it sits below Home in the sidebar and above Modules in the page', () => {
+    // Below the Home nav block…
+    assert.ok(osLayout.indexOf('label="Home"') < osLayout.indexOf('variant="sidebar"'))
+    // …and above the identity block, so Switch User and the profile controls
+    // keep the foot of the sidebar to themselves.
+    assert.ok(osLayout.indexOf('variant="sidebar"') < osLayout.indexOf('<ViewModeSidebarSection'))
+    // In the page it precedes the Modules heading and therefore the grid.
+    assert.ok(modules.indexOf('variant="page"') < modules.indexOf('styles.sectionLabel'))
+  })
+
+  test('the touch target clears 44px at every width', () => {
+    assert.ok(/\.boe-quick-action \{[^}]*min-height: 46px;/.test(read(OS_CSS)))
   })
 })
 
@@ -738,6 +790,135 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     }
   })
 
+  /**
+   * THE AUTHORIZED QUICK-ACTION PLACEMENT PASS
+   * (branch feat/home-quick-actions-responsive).
+   *
+   * Same reasoning as ALLOWED_PI_PREVIEW_REFINEMENT above: these guards say
+   * "this branch changed nothing but expenses", and they run against whatever
+   * branch is checked out, so a later authorized branch trips them for a
+   * reason that has nothing to do with expenses.
+   *
+   * This pass MOVED Quick Add Expense rather than changing it. The route, the
+   * label, the icon and the permission gate are byte-for-byte what they were;
+   * what changed is which of two containers draws them at a given width. That
+   * needs exactly three files beyond the launcher page and globals.css, which
+   * are already accounted for above:
+   */
+  const ALLOWED_QUICK_ACTION_PLACEMENT = new Set([
+    // The one definition list, and the one component that renders it.
+    'src/components/layout/QuickActions.tsx',
+    // The BOE OS shell, which now offers the sidebar placement. One prop,
+    // one element, nothing below the Home nav block disturbed.
+    'src/components/layout/BoeOsLayout.tsx',
+    // Launcher card layout on small screens. No Finance surface uses it.
+    'src/app/modules/modules.module.css',
+  ])
+
+  /**
+   * THE GUARD ITSELF, as one function.
+   *
+   * The two assertions below used to spell this predicate out twice. It is
+   * named once here so that the NEGATIVE test further down exercises the
+   * very expression the guard runs on, rather than a copy of it that could
+   * quietly drift and start proving nothing.
+   *
+   * Behaviour is unchanged from the two inline copies it replaces.
+   * ALLOWED_TESTS was in one of them and not the other; every entry in it
+   * ends in .test.ts, and the production caller filters test files out
+   * before it ever gets here, so the sets cannot meet.
+   */
+  const isUnexpectedFile = (f: string) =>
+    !f.startsWith('src/app/finance/expenses/') &&
+    !f.startsWith('src/lib/finance/expense') &&
+    !f.startsWith('supabase/migrations/2026122') &&
+    // supabase/tests IS NOT PRODUCTION. Every file there builds and drops a
+    // disposable local database and, by the header of each runner, never
+    // talks to a linked project.
+    !f.startsWith('supabase/tests/') &&
+    !f.startsWith('docs/') &&
+    !ALLOWED_EXISTING.has(f) &&
+    !ALLOWED_TESTS.has(f) &&
+    !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
+    !ALLOWED_QUICK_ACTION_PLACEMENT.has(f) &&
+    !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f)
+
+  test('the quick-action allowance is EXACTLY three named files', () => {
+    // Pinned by value, not by shape. Growing the allowance has to be a
+    // deliberate edit to this assertion, which is the point of it.
+    assert.deepEqual([...ALLOWED_QUICK_ACTION_PLACEMENT].sort(), [
+      'src/app/modules/modules.module.css',
+      'src/components/layout/BoeOsLayout.tsx',
+      'src/components/layout/QuickActions.tsx',
+    ])
+  })
+
+  test('it names files, never a directory, a pattern or a Finance surface', () => {
+    for (const file of ALLOWED_QUICK_ACTION_PLACEMENT) {
+      assert.ok(/\.(tsx?|css)$/.test(file), `${file} must be one file, not a directory`)
+      assert.equal(file.endsWith('/'), false, `${file} must not be a folder`)
+      assert.equal(file.includes('*'), false, `${file} must not be a pattern`)
+      assert.equal(file.includes('..'), false, `${file} must not escape upwards`)
+      // No Finance, Orders, payment or permission file may ride in on a
+      // layout allowance.
+      assert.equal(
+        /^src\/(app\/finance|app\/orders|lib\/finance|lib\/orders|lib\/pi|lib\/permissions)\//.test(file),
+        false, `${file} is not a layout file`)
+    }
+    // And it may not shadow anything the PI list already accounts for.
+    for (const file of ALLOWED_QUICK_ACTION_PLACEMENT) {
+      assert.equal(ALLOWED_PI_PREVIEW_REFINEMENT.has(file), false)
+    }
+  })
+
+  test('THE GUARD STILL BITES \u2014 an unrelated changed file fails it', () => {
+    // The negative half of the allowance. Adding a list of permitted files
+    // is only safe if the guard still rejects everything else, so this runs
+    // the REAL predicate (isUnexpectedFile, the one both assertions above
+    // call) over files this branch has no business touching.
+    for (const intruder of [
+      // Finance and payment surfaces the expense guard exists to protect.
+      'src/app/finance/page.tsx',
+      'src/app/finance/received/ReceivedPaymentsView.tsx',
+      'src/lib/finance/paymentEntry.ts',
+      'src/lib/finance/allocation.ts',
+      // Permission files — the gate this work deliberately did not touch.
+      'src/lib/permissions/finance.ts',
+      'src/lib/permissions/orders.ts',
+      // Orders screens.
+      'src/app/orders/[id]/page.tsx',
+      'src/app/orders/all/page.tsx',
+      // src/app/orders/drafts/page.tsx WAS on this list and is not any more.
+      // It is not that the guard got weaker: the Draft PI business rules branch
+      // legitimately renames that screen's "Created by" column to "Salesperson",
+      // so the file is now a NAMED entry in ALLOWED_PI_DRAFT_BUSINESS_RULES and
+      // can no longer serve as an intruder. Another Orders screen takes its
+      // place above, so the category is still probed.
+      // NEAR MISSES. Each one probes for a prefix leak: a sibling in the
+      // same folder as an allowed file must NOT be admitted by it.
+      'src/components/layout/OrdersLayout.tsx',
+      'src/components/layout/QuickActionsExtra.tsx',
+      'src/app/modules/somethingElse.module.css',
+      'src/app/modules/layout.tsx',
+      // And something entirely unrelated.
+      'src/app/tasks/page.tsx',
+    ]) {
+      assert.ok(isUnexpectedFile(intruder),
+        `${intruder} must still trip the guard — the allowance is too wide`)
+    }
+
+    // The three that ARE allowed pass, so the check above is not vacuous.
+    for (const allowed of ALLOWED_QUICK_ACTION_PLACEMENT) {
+      assert.equal(isUnexpectedFile(allowed), false, `${allowed} should be allowed`)
+    }
+
+    // End to end: an intruder in the touched set makes the guard FAIL, not
+    // merely register. This is the assertion 'NO EXISTING FINANCE OR ORDERS
+    // SCREEN WAS EDITED' runs, with one extra file in the input.
+    const withIntruder = [...touched, 'src/app/finance/page.tsx'].filter(isUnexpectedFile)
+    assert.deepEqual(withIntruder, ['src/app/finance/page.tsx'])
+  })
+
   test('the PI refinement allowance names files, never a directory', () => {
     // The guard above is only as good as this: a future edit that turns one of
     // these into a prefix would silently readmit every Orders screen.
@@ -772,19 +953,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   test('NO PRODUCTION CODE WAS CHANGED EXCEPT THE SIX WIRING POINTS', () => {
     const production = [...touched].filter(f =>
       /\.(ts|tsx|css|json|sql|sh)$/.test(f) && !/\.test\.tsx?$/.test(f))
-    const unexpected = production.filter(f =>
-      !f.startsWith('src/app/finance/expenses/') &&
-      !f.startsWith('src/lib/finance/expense') &&
-      !f.startsWith('supabase/migrations/2026122') &&
-      // supabase/tests IS NOT PRODUCTION. Every file there builds and drops a
-      // disposable local database and, by the header of each runner, never
-      // talks to a linked project. Phase 2 adds one such suite, in the shape
-      // the other eleven already use.
-      !f.startsWith('supabase/tests/') &&
-      !f.startsWith('docs/') &&
-      !ALLOWED_EXISTING.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
-      !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f))
+    const unexpected = production.filter(isUnexpectedFile)
     assert.deepEqual(unexpected, [])
   })
 
@@ -818,16 +987,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
   })
 
   test('NO EXISTING FINANCE OR ORDERS SCREEN WAS EDITED', () => {
-    const unexpected = [...touched].filter(f =>
-      !f.startsWith('src/app/finance/expenses/') &&
-      !f.startsWith('src/lib/finance/expense') &&
-      !f.startsWith('supabase/migrations/2026122') &&
-      !f.startsWith('supabase/tests/') &&
-      !f.startsWith('docs/') &&
-      !ALLOWED_EXISTING.has(f) &&
-      !ALLOWED_TESTS.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
-      !ALLOWED_PI_DRAFT_BUSINESS_RULES.has(f))
+    const unexpected = [...touched].filter(isUnexpectedFile)
     assert.deepEqual(unexpected, [],
       'every other file in the repository is untouched by this branch')
   })

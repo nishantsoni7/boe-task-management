@@ -101,7 +101,70 @@
   gap: 8px;
 }
 
-/* ── Mobile: compact app-launcher grid, < 640px ──────────────────────────── */
+/* ── Small screens: centred cards, <= 767px ──────────────────────────────────
+   767px is the SIDEBAR’S OWN BREAKPOINT (globals.css) — the width at which the
+   permanent sidebar becomes a drawer and quick actions move into the page — so
+   "small screen" means one thing across the whole launcher and there is no
+   second breakpoint to keep in step. The 639px block further down is the
+   pre-existing PHONE COMPACTION (two-up grid, smaller boxes); it is a size
+   change, not a layout change, and is deliberately left where it was.
+
+   A narrow card is read down the middle rather than scanned along a left edge,
+   so everything centres on one axis. NOTHING IS HIDDEN to buy the space: the
+   name, the description, the notification line and Open are all still drawn,
+   which is the point — a card that shows only an icon makes the reader guess
+   what the module is and gives them no idea whether anything is waiting in it. */
+@media (max-width: 767px) {
+  .card {
+    align-items: center;
+    text-align: center;
+  }
+
+  /* Centres the icon AND its badge in one move: .badge is positioned against
+     .iconWrap, so it travels with the wrapper and stays pinned to the corner
+     of the box rather than drifting to the card edge. */
+  .iconWrap {
+    align-self: center;
+  }
+
+  .titleWrap {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* NO CLAMP ON A SMALL SCREEN. The base rule caps the description at two
+     lines with -webkit-box + -webkit-line-clamp + overflow: hidden, which on
+     a column half the desktop width ends most descriptions in an ellipsis —
+     and a truncated description is barely better than the hidden one this
+     work replaced. All three declarations are unwound here, so the text runs
+     to its last word.
+
+     THE CARD GROWS INSTEAD. Every card in a grid row already stretches to
+     the tallest of them, so a long description makes its row taller and
+     changes nothing else; no card overlaps, clips or scrolls sideways. */
+  .description {
+    display: block;
+    -webkit-line-clamp: none;
+    overflow: visible;
+  }
+
+  /* The footer keeps both halves and stacks them instead of pushing them to
+     opposite edges, so at 320px neither the count nor Open is squeezed into a
+     column too narrow to read. */
+  .footer {
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .footer > * {
+    justify-content: center;
+    max-width: 100%;
+  }
+}
+
+/* ── Phone: compact two-up app-launcher grid, < 640px ────────────────────── */
 @media (max-width: 639px) {
   .sectionLabel {
     margin-bottom: 10px;
@@ -133,14 +196,9 @@
     font-size: 8px;
   }
 
-  .titleWrap {
-    display: flex;
-    align-items: center;
-  }
-
   .title {
     font-size: 13.5px;
-    margin-bottom: 0;
+    margin-bottom: 4px;
     line-height: 1.25;
     display: -webkit-box;
     -webkit-line-clamp: 2;
@@ -148,10 +206,15 @@
     overflow: hidden;
   }
 
-  /* Description, the notification-count line and "Open →" are desktop-only
-     furniture — the mobile card is identity + badge, nothing else. */
-  .description,
+  /* Type size only. The unclamping is in the <= 767px block above and is NOT
+     re-capped here — a phone is the width at which a cut-off description is
+     most likely and least acceptable. */
+  .description {
+    font-size: 11.5px;
+    line-height: 1.4;
+  }
+
   .footer {
-    display: none;
+    padding-top: 10px;
   }
 }
