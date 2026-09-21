@@ -19,26 +19,20 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { renderToStaticMarkup } from 'react-dom/server'
 
 import { piReadiness } from './piReadiness'
 import {
   describeApprovalReadiness,
   approvalBlockedIncomplete,
-  APPROVAL_BLOCKED_FINANCE,
+  APPROVAL_BLOCKED_PAYMENT_AWAITING,
   APPROVAL_BLOCKED_NO_LINES,
   APPROVAL_BLOCKED_BLOCKING_ISSUES,
 } from './finalApproval'
-import { PiFinanceVerifyModal } from '@/components/orders/piReviewModals'
 
 const read = (p: string) => readFileSync(p, 'utf8')
 const PAGE = 'src/app/orders/drafts/[submissionId]/page.tsx'
 const SECTIONS = 'src/app/orders/drafts/[submissionId]/piDetailSections.tsx'
 
-const text = (html: string): string =>
-  html.replace(/<[^>]*>/g, ' ')
-    .replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, '&').replace(/&quot;/g, '"')
-    .replace(/\s+/g, ' ')
 
 /** A PI that is complete in every way the readiness check cares about. */
 const COMPLETE = {
@@ -53,7 +47,7 @@ const LINES = [{ item_sequence: 1, product_name: 'Oak sideboard', hasRepresentat
 describe('management approval is blocked by the same list', () => {
   const base = {
     status: 'submitted',
-    financeVerified: true,
+    awaitingVerificationAmount: 0,
     paymentPosition: 'standard_met' as const,
     neededForStandard: null,
     hasBlockingIssues: false,
@@ -78,14 +72,14 @@ describe('management approval is blocked by the same list', () => {
   })
 
   test('it is the LAST blocker, never the first', () => {
-    // Everything above it is somebody else's outstanding task — finance has not
-    // signed off, the money has not arrived, the workbook has problems — and
-    // each is a bigger obstacle. Reporting an absent client name ahead of an
-    // unverified PI puts the smallest thing first and reads as the only one.
+    // Everything above it is somebody else's outstanding task — a payment is
+    // still with Finance, the money has not arrived, the workbook has problems —
+    // and each is a bigger obstacle. Reporting an absent client name ahead of
+    // undecided money puts the smallest thing first and reads as the only one.
     const incomplete = 'Before this PI can be submitted, client name is needed.'
     assert.equal(
-      describeApprovalReadiness({ ...base, financeVerified: false, incompleteSummary: incomplete }).blocker,
-      APPROVAL_BLOCKED_FINANCE)
+      describeApprovalReadiness({ ...base, awaitingVerificationAmount: '1', incompleteSummary: incomplete }).blocker,
+      APPROVAL_BLOCKED_PAYMENT_AWAITING)
     assert.equal(
       describeApprovalReadiness({ ...base, hasBlockingIssues: true, incompleteSummary: incomplete }).blocker,
       APPROVAL_BLOCKED_BLOCKING_ISSUES)
@@ -108,45 +102,17 @@ describe('management approval is blocked by the same list', () => {
   })
 })
 
-// ══ 2. The finance dialog reads it ═══════════════════════════════════════════
 
-describe('finance sees what will stop the approval, and is not refused for it', () => {
-  const dialog = (incompleteSummary: string | null) => renderToStaticMarkup(
-    <PiFinanceVerifyModal
-      client="Acme Interiors"
-      grandTotal="Rs. 3,10,000"
-      advanceLabel="40% standard"
-      incompleteSummary={incompleteSummary}
-      saving={false}
-      failure={null}
-      onCancel={() => {}}
-      onConfirm={() => {}}
-    />)
+// ══ 2. The submit surface reads it, and it is the SAME value ═════════════════
+//
+// THERE WERE THREE SURFACES. The third was the Verify Finance dialog, which
+// showed a finance authority what would stop the approval before they signed
+// the PI off. 20261226000000 removed that step — there is no PI-level finance
+// sign-off, so there is no dialog and no third reader. The two that remain are
+// the submit control and the approval control, and they still read ONE
+// computation, which is what this section has always been about.
 
-  test('a complete PI says nothing about it', () => {
-    assert.ok(!text(dialog(null)).includes('cannot be approved'))
-  })
-
-  test('an incomplete one names it', () => {
-    const t = text(dialog('Before this PI can be submitted, client name is needed.'))
-    assert.ok(t.includes('client name is needed'))
-    assert.match(t, /cannot be approved until it is supplied/)
-  })
-
-  test('and the confirm control is NOT disabled by it', () => {
-    // Finance signs off on the FIGURES. Whether the PI carries a client name is
-    // not their decision, and a dialog that refused them would be this screen
-    // inventing an authority the database does not have.
-    const html = dialog('Before this PI can be submitted, client name is needed.')
-    const confirm = [...html.matchAll(/<button\b[^>]*>/g)].map(m => m[0])
-    assert.ok(confirm.some(b => !b.includes('disabled')),
-      'at least one control is still pressable')
-  })
-})
-
-// ══ 3. The submit surface reads it, and it is the SAME value ═════════════════
-
-describe('the three surfaces read one computation, not three', () => {
+describe('the two surfaces read one computation, not two', () => {
   const page = read(PAGE)
 
   test('piReadiness is called for submission exactly once on the page', () => {
@@ -155,13 +121,10 @@ describe('the three surfaces read one computation, not three', () => {
       'one payment answer and one submission answer, and no third')
   })
 
-  test('all three surfaces are handed that one value', () => {
-    for (const surface of [
-      'readiness={actions.canSubmit ? submissionReadiness : null}',   // submit
-      'incompleteSummary={submissionReadiness.ready ? null : submissionReadiness.summary}',
-    ]) {
-      assert.ok(page.includes(surface), `missing wiring: ${surface}`)
-    }
+  test('both surfaces are handed that one value', () => {
+    // The submit control.
+    assert.ok(page.includes('readiness={actions.canSubmit ? submissionReadiness : null}'),
+      'missing wiring: the submit control')
     // The approval control, through describeApprovalReadiness.
     assert.match(page,
       /incompleteSummary: submissionReadiness\.ready \? null : submissionReadiness\.summary/)
@@ -176,7 +139,7 @@ describe('the three surfaces read one computation, not three', () => {
   })
 })
 
-// ══ 4. The list is offered as actions only where a form can act ══════════════
+// ══ 3. The list is offered as actions only where a form can act ══════════════
 
 describe('the missing list offers a way in only where one exists', () => {
   const panel = read(SECTIONS)

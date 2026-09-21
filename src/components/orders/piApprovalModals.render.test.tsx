@@ -31,8 +31,7 @@ import {
   APPROVE_ORDER_DIALOG_TITLE,
   APPROVE_ORDER_FINAL_NOTE,
   APPROVE_ORDER_NOT_A_PAYMENT,
-  FINANCE_SUMMARY_PENDING,
-  FINANCE_SUMMARY_VERIFIED,
+  APPROVE_SUMMARY_LABEL,
   VERIFY_FINANCE_BUSY_LABEL,
   VERIFY_FINANCE_BUTTON_LABEL,
   VERIFY_FINANCE_CONFIRM,
@@ -71,7 +70,6 @@ const verifyModal = (over: { saving?: boolean; failure?: string | null } = {}): 
 const approveModal = (over: {
   saving?: boolean
   failure?: string | null
-  financeVerified?: boolean
   productCount?: number
   advanceLabel?: string
 } = {}): string =>
@@ -82,7 +80,6 @@ const approveModal = (over: {
         client: 'Kalyan Interiors',
         grandTotal: '₹11,80,000',
         advanceLabel: over.advanceLabel ?? 'Standard advance (40%)',
-        financeVerified: over.financeVerified ?? true,
         productCount: over.productCount ?? 3,
       })}
       saving={over.saving ?? false}
@@ -162,12 +159,12 @@ describe('the final approval dialog', () => {
     assert.equal(APPROVE_ORDER_DIALOG_TITLE, 'Approve PI & Create Order')
   })
 
-  test('shows the five facts a reviewer confirms against', () => {
+  test('shows the four facts a reviewer confirms against', () => {
+    // FOUR, NOT FIVE, since 20261226000000 removed the PI-level finance row.
     const body = text(html)
     assert.ok(body.includes('Kalyan Interiors'), 'client')
     assert.ok(body.includes('₹11,80,000'), 'grand total')
     assert.ok(body.includes('Standard advance (40%)'), 'the declared advance condition')
-    assert.ok(body.includes(FINANCE_SUMMARY_VERIFIED), 'the finance state')
     assert.ok(body.includes('3 lines'), 'the number of product lines')
   })
 
@@ -183,11 +180,17 @@ describe('the final approval dialog', () => {
     assert.ok(text(approveModal({ productCount: 1 })).includes('1 line'))
   })
 
-  test('an unverified PI says so, rather than hiding the row', () => {
-    // The dialog is only reachable when approval is READY, so this state should
-    // not normally be seen — and if a stale screen ever produces it, the summary
-    // must report it rather than imply a sign-off that never happened.
-    assert.ok(text(approveModal({ financeVerified: false })).includes(FINANCE_SUMMARY_PENDING))
+  test('the dialog carries no PI-level finance row at all', () => {
+    // WHAT THIS TEST USED TO SAY (before 20261226000000): an unverified PI had
+    // to SAY so in the summary rather than hide the row, so a stale screen
+    // could not imply a sign-off that never happened.
+    //
+    // WHAT IT SAYS NOW: there is no such sign-off, so there is no row to get
+    // wrong. What Finance has approved and what is still with them are the two
+    // payment rows, and they are figures rather than a boolean.
+    const body = text(approveModal({}))
+    assert.ok(!body.includes(APPROVE_SUMMARY_LABEL.finance),
+      'no "Finance verification" row survives in the approval dialog')
   })
 
   test('says approval is final, a number is assigned, and the Order is created', () => {

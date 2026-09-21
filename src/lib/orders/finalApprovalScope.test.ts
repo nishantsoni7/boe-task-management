@@ -867,7 +867,12 @@ describe('this phase records no payment of any kind', () => {
     for (const name of rpcs) {
       assert.ok(!/payment|receipt|reconcil/i.test(name), `${name} moves money`)
     }
-    assert.ok(rpcs.includes('verify_pi_finance_check'))
+    // ONE DOOR NOW, NOT TWO. This phase added verify_pi_finance_check and
+    // approve_order_submission; 20261226000000 removed the PI-level finance
+    // sign-off, so the first has no caller on this screen any more. The
+    // function is still in the database, still granted, and still holds every
+    // verification it recorded — it simply gates nothing.
+    assert.ok(!rpcs.includes('verify_pi_finance_check'))
     assert.ok(rpcs.includes('approve_order_submission'))
   })
 

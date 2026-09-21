@@ -320,7 +320,13 @@ describe('no Order screen waits more than it must', () => {
       // the record, because their columns are spread into
       // PI_DRAFT_DETAIL_COLUMNS, so the startup path is unchanged and the
       // wait test above still requires exactly three.
-      [DRAFTS]: 4, [PI_DETAIL]: 29, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      // PI_DETAIL 29 -> 28 (20261226000000), and it is the FIRST TIME THIS
+      // COUNT HAS GONE DOWN. verify_pi_finance_check is gone: the PI-level
+      // finance sign-off it recorded is no longer a step, so the page no longer
+      // calls it. A SAVE rather than a load, so the startup path is unchanged
+      // and the wait test above still requires exactly three — what changed is
+      // that this screen now makes one fewer write of any kind.
+      [DRAFTS]: 4, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

@@ -40,10 +40,7 @@ import {
 import {
   APPROVED_ORDER_HEADING,
   APPROVED_ORDER_NUMBER_LABEL,
-  FINANCE_SECTION_LABEL,
   OPEN_ORDER_BUTTON_LABEL,
-  VERIFY_FINANCE_BUTTON_LABEL,
-  type FinanceStatusView,
   type ReviewDecision,
 } from '@/lib/orders/finalApproval'
 import {
@@ -905,7 +902,6 @@ export function PiWorkflowPanel({
   readiness,
   onFixReadiness,
   acting,
-  finance,
   approvalBlocker,
   approvalReady,
   decision = null,
@@ -915,7 +911,6 @@ export function PiWorkflowPanel({
   onSubmit,
   onRequestChanges,
   onReject,
-  onVerifyFinance,
   onApprove,
   onOpenOrder,
   openOrderHref = null,
@@ -953,12 +948,6 @@ export function PiWorkflowPanel({
   onFixReadiness: ((section: PiRequirement['section']) => void) | null
   acting: boolean
   /**
-   * Where finance verification stands — for EVERY viewer who can read the PI,
-   * not only the person who can act on it. Null on a record where the question
-   * does not arise (a draft, a returned PI, a rejected one).
-   */
-  finance: FinanceStatusView | null
-  /**
    * The one sentence explaining why Approve cannot be pressed yet, or null.
    * Rendered beside the control rather than as a banner: it is a note about one
    * button, and a strip across the panel would read as a note about the record.
@@ -980,7 +969,6 @@ export function PiWorkflowPanel({
   onSubmit: () => void
   onRequestChanges: () => void
   onReject: () => void
-  onVerifyFinance: () => void
   onApprove: () => void
   onOpenOrder: () => void
   /** The approved Order's page, when this reader can see it. Drawn as a real
@@ -1022,15 +1010,13 @@ export function PiWorkflowPanel({
   const primaryDisabled = decision ? decision.rpc === null : !approvalReady
   const primaryNote = decision ? decision.note : approvalBlocker
 
-  // What the context row already says is not said again. The Verify Finance
-  // control is never dropped: it is an action, not a restatement.
+  // What the context row already says is not said again.
   const showMeta = panel.meta !== null && !statusShownAbove
-  const showFinance = finance !== null && (!statusShownAbove || finance.canVerify)
   const showPiApproved = piApprovedLine !== null && !statusShownAbove
 
   const hasBody = Boolean(
     panel.instruction || reviewNote || employeeReply || advanceRefusal
-    || showFinance || approvedOrder || showPiApproved || (isReviewer && primaryNote),
+    || approvedOrder || showPiApproved || (isReviewer && primaryNote),
   )
 
   /**
@@ -1188,14 +1174,12 @@ export function PiWorkflowPanel({
           {approvedOrder && (
             <PiApprovedOrderStrip order={approvedOrder} onOpen={onOpenOrder} href={openOrderHref} acting={acting} />
           )}
-          {/* Where finance stands: one compact line, never a card of its own.
-              A second full-size panel for a single boolean would outweigh the
-              decision it reports. */}
-          {showFinance && finance && (
-            <PiFinanceLine finance={finance} acting={acting} onVerify={onVerifyFinance} />
-          )}
-          {/* THE PI DECISION, once it stands: one line, the same weight as the
-              finance line above it — unless the context row already says it. */}
+          {/* NO FINANCE LINE (20261226000000). The PI-level sign-off it
+              reported is no longer a step in the workflow, so the panel says
+              nothing about it. Where Finance stands on this PI's MONEY is on
+              the payment card, in figures. */}
+          {/* THE PI DECISION, once it stands: one line — unless the context row
+              already says it. */}
           {showPiApproved && (
             <div style={{
               display: 'flex', alignItems: 'center', gap: '7px', flexWrap: 'wrap',
@@ -1253,62 +1237,6 @@ export function PiWorkflowPanel({
 
       {advanceBand && <div className="pi-detail-workflow-band">{advanceBand}</div>}
     </PiCard>
-  )
-}
-
-// ── Finance verification, as one line ─────────────────────────────────────────
-
-/**
- * Where finance stands on this PI: a state, and — for somebody who holds the
- * authority — one restrained control.
- *
- * A LINE, NOT A PANEL. The whole content is a boolean and, once it is true, a
- * name and a time. A card with a heading, a border and its own padding would
- * give a single fact the same weight the page gives the product table, and this
- * screen has already spent its structure on the decisions that need it.
- *
- * EVERYBODY WHO CAN READ THE PI SEES THE STATE. Only the button is gated, on the
- * finance authority alone — a PI waiting on somebody else's sign-off must not
- * look inert to the reviewer who is waiting on it.
- *
- * IT NEVER MENTIONS A PAYMENT, because none exists. The dialog behind the button
- * says so explicitly; the line itself simply does not raise the subject.
- */
-export function PiFinanceLine({ finance, acting, onVerify }: {
-  finance: FinanceStatusView
-  acting: boolean
-  onVerify: () => void
-}) {
-  const tone = finance.verified ? TONE_STYLE.green : TONE_STYLE.amber
-
-  return (
-    <div style={{
-      display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap',
-      padding: '8px 11px', borderRadius: '7px',
-      background: tone.bg, border: `1px solid ${tone.border}`,
-    }}>
-      <ShieldCheck size={13} strokeWidth={2} color={tone.color} />
-      <span style={{
-        fontSize: '11px', fontWeight: 700, color: colors.muted,
-        textTransform: 'uppercase', letterSpacing: '0.05em',
-      }}>
-        {FINANCE_SECTION_LABEL}
-      </span>
-      <span style={{ fontSize: '12px', color: colors.primary, lineHeight: 1.5, minWidth: 0 }}>
-        {finance.text}
-      </span>
-      {finance.canVerify && (
-        <button
-          className="boe-btn boe-btn-ghost"
-          onClick={onVerify}
-          disabled={acting}
-          style={{ marginLeft: 'auto' }}
-        >
-          <ShieldCheck size={13} strokeWidth={2} />
-          {VERIFY_FINANCE_BUTTON_LABEL}
-        </button>
-      )}
-    </div>
   )
 }
 

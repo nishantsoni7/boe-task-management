@@ -364,10 +364,10 @@ describe('the detail page renders only what it fetched', () => {
     // and chooses the standard or the reduced-payment route, so a browser can
     // neither declare an advance nor claim a payment position.
     //
-    // Phase C adds two: verify_pi_finance_check records the finance sign-off and
-    // nothing else, and approve_order_submission is the ONE authoritative
-    // approval door — the only thing on this screen that creates an Order, and
-    // the browser reaches it by id alone.
+    // Phase C added two. ONE REMAINS: 20261226000000 removed the PI-level
+    // finance sign-off, so verify_pi_finance_check is no longer called from
+    // here. approve_order_submission is the ONE authoritative approval door —
+    // the only thing on this screen that creates an Order.
     //
     // set_order_submission_billing_percentage is the one write here that is NOT
     // a status move, and it is deliberately narrow: one column on one row, no
@@ -451,7 +451,6 @@ describe('the detail page renders only what it fetched', () => {
       // firing two round trips could leave the PI half-updated. It refuses
       // billing_percentage BY NAME and points at that value's own RPC.
       'update_order_submission_schedule_terms',
-      'verify_pi_finance_check',
     ])
     // Still unreachable from a browser, in any phase: the number allocator, and
     // anything that would move money. Finance VERIFICATION is on the list above
@@ -1567,15 +1566,26 @@ describe('the record page draws controls from one rule, and from nothing else', 
     }
   })
 
-  test('finance verification is a second, separate authority on this screen', () => {
+  test('there is no second, PI-level finance authority on this screen', () => {
+    // WHAT THIS TEST USED TO PROVE (before 20261226000000): the screen resolved
+    // a SEPARATE finance authority from the Finance module, drew a control from
+    // it, and called verify_pi_finance_check — deliberately never resolving it
+    // from the Orders capability the review controls come from.
+    //
+    // WHAT IT PROVES NOW: that whole authority is not consulted here at all.
+    // Finance still decides payments, on the payment card, through the
+    // capability below; what is gone is the document-level sign-off.
     const source = detailScreen()
-    assert.ok(source.includes("supabase.rpc('verify_pi_finance_check'"))
-    // Resolved from the FINANCE module, never from the Orders capability the
-    // review controls come from.
+    assert.ok(!source.includes("supabase.rpc('verify_pi_finance_check'"),
+      'the PI-level verification RPC has no caller on this screen')
+    assert.ok(!source.includes('setCanVerifyFinance'),
+      'and no state is kept for a control that no longer exists')
+
+    // THE PAYMENT AUTHORITY IS UNCHANGED, and still comes from the Finance
+    // module rather than from Orders.
     assert.ok(source.includes('deriveFinanceCapabilities'))
-    assert.ok(source.includes('setCanVerifyFinance(financeCaps.canApprovePayment)'))
-    assert.ok(!/setCanVerifyFinance\(caps\./.test(source),
-      'orders.approve_order must never resolve the finance authority')
+    assert.ok(source.includes('setCanApprovePayments(financeCaps.canApprovePayment)'),
+      'approving a PAYMENT is still finance.approve, resolved from Finance')
   })
 
   test('a second click cannot start a second write', () => {
@@ -1992,7 +2002,8 @@ describe('the advance requirement is shown to everybody and decided by few', () 
     // Every blocker names an outstanding task belonging to somebody, and not a
     // phase of the roadmap. That is the difference between a disabled control
     // worth showing and the inert one this screen used to carry.
-    assert.ok(/Finance must verify this PI/.test(approval))
+    assert.ok(/awaiting Finance verification/.test(approval),
+      'money still with Finance is named as the outstanding task')
     assert.ok(/paymentApprovalBlocker/.test(approval),
       'and the payment gate produces its own actionable sentence')
     assert.ok(!/order-approval phase|later phase|Available in/.test(approval),
