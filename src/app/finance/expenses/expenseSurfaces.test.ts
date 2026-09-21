@@ -661,65 +661,6 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
     'src/lib/orders/orderStartupShape.test.ts',
   ])
 
-  /**
-   * THE AUTHORIZED TASK NAVIGATION PASS (branch fix/task-navigation-performance).
-   *
-   * A THIRD LIST, FOR THE REASON THE SECOND ONE EXISTS — and it is worth saying
-   * plainly that a third is one too many. These guards assert "this branch
-   * changed nothing but expenses", but they run against whatever branch is
-   * checked out, so every later authorized branch fails them for a reason that
-   * has nothing to do with expenses. #181 (the Quotation Requests performance
-   * pass) failed these same three assertions and merged anyway. The expense
-   * feature has now landed; scoping this suite to its own branch, or retiring
-   * it, would serve it better than a fourth list. That is a decision for the
-   * Finance module to make, not for a Task Management change to make for it —
-   * so this follows the convention already written here rather than rewriting
-   * it.
-   *
-   * Spelled out one by one, no prefix match and no wildcard, exactly as the PI
-   * list above is. The property these guards really protect is untouched: no
-   * Finance surface, no payment module, no permission file and no Orders file
-   * appears below.
-   *
-   * A task navigation pass is exactly: the five task screens, the root provider
-   * that samples the document's history entry, the two meeting modals that
-   * create ordinary tasks and must now say so to the task cache, the query
-   * hooks those screens read through, and the suites that hold all of it to its
-   * promises.
-   */
-  const ALLOWED_TASK_NAVIGATION = new Set([
-    // Production — the task screens and what they navigate and read with.
-    'src/app/tasks/[id]/page.tsx',
-    'src/app/tasks/assigned-by-me/page.tsx',
-    'src/app/tasks/create-self/page.tsx',
-    'src/app/tasks/create/page.tsx',
-    'src/app/tasks/my/page.tsx',
-    'src/components/layout/Providers.tsx',
-    'src/components/meetings/DiscussionTaskModal.tsx',
-    'src/components/meetings/MeetingTaskModal.tsx',
-    'src/hooks/queries/useAssignedByMe.ts',
-    'src/hooks/queries/useMyTasks.ts',
-    'src/lib/navigation/appHistory.ts',
-    'src/lib/tasks/taskReturnPath.ts',
-    // The suites that guard them.
-    'src/lib/navigation/appHistory.test.ts',
-    'src/lib/tasks/taskDetailOpenFromDrawer.test.ts',
-    'src/lib/tasks/taskNavigationPerformance.test.ts',
-    'src/lib/tasks/taskReturnPath.test.ts',
-  ])
-
-  test('the task navigation allowance names files, never a directory', () => {
-    for (const file of ALLOWED_TASK_NAVIGATION) {
-      assert.ok(/\.(ts|tsx)$/.test(file), `${file} must be one file, not a directory`)
-      assert.ok(!file.includes('*'), `${file} must not be a pattern`)
-    }
-    // Nothing Finance, Orders or permission-shaped may hide in it.
-    for (const file of ALLOWED_TASK_NAVIGATION) {
-      assert.equal(/^src\/(app|lib|components)\/(finance|orders)\//.test(file), false, file)
-      assert.equal(file.startsWith('src/lib/permissions/'), false, file)
-    }
-  })
-
   test('the PI refinement allowance names files, never a directory', () => {
     // The guard above is only as good as this: a future edit that turns one of
     // these into a prefix would silently readmit every Orders screen.
@@ -759,8 +700,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('supabase/tests/') &&
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
-      !ALLOWED_TASK_NAVIGATION.has(f))
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
     assert.deepEqual(unexpected, [])
   })
 
@@ -786,10 +726,9 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('src/app/finance/expenses/') &&
       !f.startsWith('src/lib/finance/expense'))
     for (const file of editedTests) {
-      assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file)
-        || ALLOWED_TASK_NAVIGATION.has(file),
+      assert.ok(ALLOWED_TESTS.has(file) || ALLOWED_PI_PREVIEW_REFINEMENT.has(file),
         `${file} was edited and is neither an accounted-for migration inventory `
-        + 'nor one of the named PI preview or task navigation suites')
+        + 'nor one of the named PI preview suites')
     }
   })
 
@@ -802,8 +741,7 @@ describe('REGRESSION — the existing Finance and Orders surfaces are unchanged'
       !f.startsWith('docs/') &&
       !ALLOWED_EXISTING.has(f) &&
       !ALLOWED_TESTS.has(f) &&
-      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f) &&
-      !ALLOWED_TASK_NAVIGATION.has(f))
+      !ALLOWED_PI_PREVIEW_REFINEMENT.has(f))
     assert.deepEqual(unexpected, [],
       'every other file in the repository is untouched by this branch')
   })
